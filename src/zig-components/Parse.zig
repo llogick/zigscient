@@ -3,7 +3,7 @@
 pub const Error = error{ParseError} || Allocator.Error;
 
 gpa: Allocator,
-source: []const u8,
+source: [:0]const u8,
 token_tags: []const Token.Tag,
 token_starts: []const Ast.ByteOffset,
 tok_i: TokenIndex,
@@ -13,10 +13,14 @@ extra_data: std.ArrayListUnmanaged(Node.Index),
 scratch: std.ArrayListUnmanaged(Node.Index),
 nstates: States,
 
+/// More like snapshots.
+/// The lengths and tok idx recorded at the end of a successful parse of a root decl
 pub const State = struct {
     nodes_len: usize,
     xdata_len: usize,
     token_ind: u32,
+
+    pub const zero: @This() = .{ .nodes_len = 0, .xdata_len = 0, .token_ind = 0 };
 };
 pub const States = std.AutoArrayHashMapUnmanaged(u32, State);
 
@@ -41,7 +45,7 @@ const Members = struct {
     }
 };
 
-fn listToSpan(p: *Parse, list: []const Node.Index) !Node.SubRange {
+pub fn listToSpan(p: *Parse, list: []const Node.Index) !Node.SubRange {
     try p.extra_data.appendSlice(p.gpa, list);
     return Node.SubRange{
         .start = @as(Node.Index, @intCast(p.extra_data.items.len - list.len)),
@@ -169,15 +173,18 @@ fn failMsg(p: *Parse, msg: Ast.Error) error{ ParseError, OutOfMemory } {
 }
 
 /// Root <- skip container_doc_comment? ContainerMembers eof
-pub fn parseRoot(p: *Parse) !void {
+pub fn parseRoot(p: *Parse, cutoff_tok_i: usize) !void {
     // Root node must be index 0.
-    p.nodes.appendAssumeCapacity(.{
+    if (p.tok_i == 0) p.nodes.appendAssumeCapacity(.{
         .tag = .root,
         .main_token = 0,
         .data = undefined,
     });
-    const root_members = try p.parseRootContainerMembers();
-    const root_decls = try root_members.toSpan(p);
+    p.parseRootContainerMembers(cutoff_tok_i) catch |err| switch (err) {
+        error.CutOff => return,
+        else => |e| return e,
+    };
+    const root_decls = try listToSpan(p, p.scratch.items); // try root_members.toSpan(p);
     if (p.token_tags[p.tok_i] != .eof) {
         try p.warnExpected(.eof);
     }
@@ -218,9 +225,8 @@ pub fn parseZon(p: *Parse) !void {
 /// ContainerDeclaration <- TestDecl / ComptimeDecl / doc_comment? KEYWORD_pub? Decl
 ///
 /// ComptimeDecl <- KEYWORD_comptime Block
-fn parseRootContainerMembers(p: *Parse) Allocator.Error!Members { // zigsy
-    var scratch_top: usize = 0; //p.scratch.items.len;
-    // defer p.scratch.shrinkRetainingCapacity(scratch_top);
+fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscient
+    var scratch_top: usize = 0;
 
     var field_state: union(enum) {
         /// No fields have been seen.
@@ -246,22 +252,21 @@ fn parseRootContainerMembers(p: *Parse) Allocator.Error!Members { // zigsy
                 // std.log.debug(
                 //     \\
                 //     \\tok_i: {} tag {}
+                //     \\ctoki: {} tag {}
                 //     \\nodes     len {}
                 //     \\xdata     len {}
                 //     \\scratch   len {}
-                //     \\scratch   itm {}
                 // , .{
                 //     p.tok_i,
                 //     p.token_tags[p.tok_i],
+                //     cutoff_tok_i,
+                //     p.token_tags[cutoff_tok_i],
                 //     p.nodes.len,
                 //     p.extra_data.items.len,
                 //     p.scratch.items.len,
-                //     if (p.scratch.items.len == 0) 9999999 else p.scratch.items[p.scratch.items.len - 1],
                 // });
-                // std.log.debug("pn1: {}", .{p.nstates});
                 // std.log.debug("sitems: {any}", .{p.scratch.items});
-                // std.log.debug("checking: {}", .{p.scratch.items[p.scratch.items.len - scratch_top - 1]});
-                // const value = p.scratch.items[p.scratch.items.len - scratch_top - 1];
+
                 for (p.scratch.items[scratch_top..]) |value| {
                     const gop_result = p.nstates.getOrPut(
                         p.gpa,
@@ -281,7 +286,15 @@ fn parseRootContainerMembers(p: *Parse) Allocator.Error!Members { // zigsy
                 scratch_top = p.scratch.items.len;
             }
         }
+
         const doc_comment = try p.eatDocComments();
+
+        if (cutoff_tok_i != 0) {
+            if (p.tok_i == cutoff_tok_i) return error.CutOff;
+            // Currently, Incremental Parsing is quite coarse -> works only at root decls level;
+            // a single missing brace can cause it to affect more than the requested nodes
+            if (p.tok_i > cutoff_tok_i) return error.OvershotCutOff;
+        }
 
         switch (p.token_tags[p.tok_i]) {
             .keyword_test => {
@@ -492,36 +505,36 @@ fn parseRootContainerMembers(p: *Parse) Allocator.Error!Members { // zigsy
         }
     }
 
-    const items = p.scratch.items[0..];
-    switch (items.len) {
-        0 => return Members{
-            .len = 0,
-            .lhs = 0,
-            .rhs = 0,
-            .trailing = trailing,
-        },
-        1 => return Members{
-            .len = 1,
-            .lhs = items[0],
-            .rhs = 0,
-            .trailing = trailing,
-        },
-        2 => return Members{
-            .len = 2,
-            .lhs = items[0],
-            .rhs = items[1],
-            .trailing = trailing,
-        },
-        else => {
-            const span = try p.listToSpan(items);
-            return Members{
-                .len = items.len,
-                .lhs = span.start,
-                .rhs = span.end,
-                .trailing = trailing,
-            };
-        },
-    }
+    // const items = p.scratch.items[0..];
+    // switch (items.len) {
+    //     0 => return Members{
+    //         .len = 0,
+    //         .lhs = 0,
+    //         .rhs = 0,
+    //         .trailing = trailing,
+    //     },
+    //     1 => return Members{
+    //         .len = 1,
+    //         .lhs = items[0],
+    //         .rhs = 0,
+    //         .trailing = trailing,
+    //     },
+    //     2 => return Members{
+    //         .len = 2,
+    //         .lhs = items[0],
+    //         .rhs = items[1],
+    //         .trailing = trailing,
+    //     },
+    //     else => {
+    //         const span = try p.listToSpan(items);
+    //         return Members{
+    //             .len = items.len,
+    //             .lhs = span.start,
+    //             .rhs = span.end,
+    //             .trailing = trailing,
+    //         };
+    //     },
+    // }
 }
 
 /// ContainerMembers <- ContainerDeclaration* (ContainerField COMMA)* (ContainerField / ContainerDeclaration*)
@@ -1451,7 +1464,7 @@ fn expectVarDeclExprStatement(p: *Parse, comptime_token: ?TokenIndex) !Node.Inde
                 .main_token = t,
                 .data = .{
                     .lhs = expr,
-                    .rhs = undefined,
+                    .rhs = 0,
                 },
             });
         } else {
@@ -2700,7 +2713,7 @@ fn parseCurlySuffixExpr(p: *Parse) !Node.Index {
     if (lhs == 0) return null_node;
     const lbrace = p.eatToken(.l_brace) orelse return lhs;
 
-    if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .period) { // zls
+    if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .period) { // zigscient
         try p.warn(.expected_initializer);
         p.tok_i += 1;
     }
@@ -2724,7 +2737,7 @@ fn parseCurlySuffixExpr(p: *Parse) !Node.Index {
                 // Likely just a missing comma; give error but continue parsing.
                 else => try p.warn(.expected_comma_after_initializer),
             }
-            if (p.token_tags[p.tok_i] == .period) { // zls
+            if (p.token_tags[p.tok_i] == .period) { // zigscient
                 if (p.token_tags[p.tok_i + 1] == .period or p.token_tags[p.tok_i + 1] == .r_brace) {
                     try p.warn(.expected_initializer);
                     p.tok_i += 1;
@@ -2758,7 +2771,7 @@ fn parseCurlySuffixExpr(p: *Parse) !Node.Index {
     }
 
     while (true) {
-        if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .r_brace) { // zls
+        if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .r_brace) { // zigscient
             try p.warn(.expected_expr);
             p.tok_i += 1;
         }
@@ -3126,10 +3139,10 @@ fn parsePrimaryTypeExpr(p: *Parse) !Node.Index {
         .keyword_for => return p.parseFor(expectTypeExpr),
         .keyword_while => return p.parseWhileTypeExpr(),
         .period => {
-            // zls
+            // zigscient
             // not strictly neccessary, but allows `.{.{. ,. .el}}`, ie
             // when the dot precedes existing elems here^, ^-or here
-            if (p.token_tags[p.tok_i + 1] == .period or p.token_tags[p.tok_i + 1] == .comma) { // zls
+            if (p.token_tags[p.tok_i + 1] == .period or p.token_tags[p.tok_i + 1] == .comma) { // zigscient
                 try p.warn(.expected_expr);
                 p.tok_i += 1;
             }
@@ -3146,7 +3159,7 @@ fn parsePrimaryTypeExpr(p: *Parse) !Node.Index {
                     const lbrace = p.tok_i + 1;
                     p.tok_i = lbrace + 1;
 
-                    if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .period) { // zls
+                    if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .period) { // zigscient
                         try p.warn(.expected_initializer);
                         p.tok_i += 1;
                     }
@@ -3170,7 +3183,7 @@ fn parsePrimaryTypeExpr(p: *Parse) !Node.Index {
                                 // Likely just a missing comma; give error but continue parsing.
                                 else => try p.warn(.expected_comma_after_initializer),
                             }
-                            if (p.token_tags[p.tok_i] == .period) { // zls
+                            if (p.token_tags[p.tok_i] == .period) { // zigscient
                                 if (p.token_tags[p.tok_i + 1] == .period or p.token_tags[p.tok_i + 1] == .r_brace) {
                                     try p.warn(.expected_initializer);
                                     p.tok_i += 1;
@@ -3215,7 +3228,7 @@ fn parsePrimaryTypeExpr(p: *Parse) !Node.Index {
                     }
 
                     while (true) {
-                        if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .r_brace) { // zls
+                        if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .r_brace) { // zigscient
                             try p.warn(.expected_expr);
                             p.tok_i += 1;
                         }
@@ -3410,7 +3423,7 @@ fn expectSwitchSuffix(p: *Parse, main_token: TokenIndex) !Node.Index {
     _ = try p.expectToken(.l_brace);
     const cases = try p.parseSwitchProngList();
     const trailing_comma = p.token_tags[p.tok_i - 1] == .comma;
-    if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .r_brace) { // zls
+    if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .r_brace) { // zigscient
         try p.warn(.expected_expr);
         p.tok_i += 1;
     }
@@ -3723,12 +3736,12 @@ fn parseSwitchProng(p: *Parse) !Node.Index {
 
     if (p.eatToken(.keyword_else) == null) blk: {
         while (true) {
-            if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .keyword_else) { // zls
+            if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .keyword_else) { // zigscient
                 try p.warn(.expected_expr);
                 p.tok_i += 2;
                 break :blk;
             }
-            if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .period) { // zls
+            if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .period) { // zigscient
                 try p.warn(.expected_expr);
                 p.tok_i += 1;
             }
@@ -3737,7 +3750,7 @@ fn parseSwitchProng(p: *Parse) !Node.Index {
                 .r_brace, // `error.}`, ie single/last entry
                 => true,
                 else => false,
-            }) { // zls
+            }) { // zigscient
                 try p.warn(.expected_expr);
                 p.tok_i += 2;
             }
@@ -3751,7 +3764,7 @@ fn parseSwitchProng(p: *Parse) !Node.Index {
             return null_node;
         }
     }
-    if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .period) { // zls
+    if (p.token_tags[p.tok_i] == .period and p.token_tags[p.tok_i + 1] == .period) { // zigscient
         try p.warn(.expected_expr);
         p.tok_i += 1;
     }

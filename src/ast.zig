@@ -4,10 +4,127 @@
 
 const std = @import("std");
 const offsets = @import("offsets.zig");
+const assert = std.debug.assert;
 const Ast = std.zig.Ast;
 const Node = Ast.Node;
 const full = Ast.full;
 
+pub fn fullFnProto(tree: Ast, buffer: *[1]Ast.Node.Index, node: Node.Index) ?full.FnProto {
+    return switch (tree.nodes.items(.tag)[node]) {
+        .fn_proto => fnProto(tree, node),
+        .fn_proto_multi => fnProtoMulti(tree, node),
+        .fn_proto_one => fnProtoOne(tree, buffer, node),
+        .fn_proto_simple => fnProtoSimple(tree, buffer, node),
+        .fn_decl => fullFnProto(tree, buffer, tree.nodes.items(.data)[node].lhs),
+        else => null,
+    };
+}
+
+pub fn fnProtoSimple(tree: Ast, buffer: *[1]Node.Index, node: Node.Index) full.FnProto {
+    assert(tree.nodes.items(.tag)[node] == .fn_proto_simple);
+    const data = tree.nodes.items(.data)[node];
+    buffer[0] = data.lhs;
+    const params = if (data.lhs == 0) buffer[0..0] else buffer[0..1];
+    return fullFnProtoComponents(tree, .{
+        .proto_node = node,
+        .fn_token = tree.nodes.items(.main_token)[node],
+        .return_type = data.rhs,
+        .params = params,
+        .align_expr = 0,
+        .addrspace_expr = 0,
+        .section_expr = 0,
+        .callconv_expr = 0,
+    });
+}
+
+pub fn fnProtoMulti(tree: Ast, node: Node.Index) full.FnProto {
+    assert(tree.nodes.items(.tag)[node] == .fn_proto_multi);
+    const data = tree.nodes.items(.data)[node];
+    const params_range = tree.extraData(data.lhs, Node.SubRange);
+    const params = tree.extra_data[params_range.start..params_range.end];
+    return fullFnProtoComponents(tree, .{
+        .proto_node = node,
+        .fn_token = tree.nodes.items(.main_token)[node],
+        .return_type = data.rhs,
+        .params = params,
+        .align_expr = 0,
+        .addrspace_expr = 0,
+        .section_expr = 0,
+        .callconv_expr = 0,
+    });
+}
+
+pub fn fnProtoOne(tree: Ast, buffer: *[1]Node.Index, node: Node.Index) full.FnProto {
+    assert(tree.nodes.items(.tag)[node] == .fn_proto_one);
+    const data = tree.nodes.items(.data)[node];
+    const extra = tree.extraData(data.lhs, Node.FnProtoOne);
+    buffer[0] = extra.param;
+    const params = if (extra.param == 0) buffer[0..0] else buffer[0..1];
+    return fullFnProtoComponents(tree, .{
+        .proto_node = node,
+        .fn_token = tree.nodes.items(.main_token)[node],
+        .return_type = data.rhs,
+        .params = params,
+        .align_expr = extra.align_expr,
+        .addrspace_expr = extra.addrspace_expr,
+        .section_expr = extra.section_expr,
+        .callconv_expr = extra.callconv_expr,
+    });
+}
+
+pub fn fnProto(tree: Ast, node: Node.Index) full.FnProto {
+    assert(tree.nodes.items(.tag)[node] == .fn_proto);
+    const data = tree.nodes.items(.data)[node];
+    const extra = tree.extraData(data.lhs, Node.FnProto);
+    const params = tree.extra_data[extra.params_start..extra.params_end];
+    return fullFnProtoComponents(tree, .{
+        .proto_node = node,
+        .fn_token = tree.nodes.items(.main_token)[node],
+        .return_type = data.rhs,
+        .params = params,
+        .align_expr = extra.align_expr,
+        .addrspace_expr = extra.addrspace_expr,
+        .section_expr = extra.section_expr,
+        .callconv_expr = extra.callconv_expr,
+    });
+}
+
+fn fullFnProtoComponents(tree: Ast, info: full.FnProto.Components) full.FnProto {
+    const token_tags = tree.tokens.items(.tag);
+    var result: full.FnProto = .{
+        .ast = info,
+        .visib_token = null,
+        .extern_export_inline_token = null,
+        .lib_name = null,
+        .name_token = null,
+        .lparen = undefined,
+    };
+    var i = info.fn_token;
+    while (i > 0) {
+        i -= 1;
+        switch (token_tags[i]) {
+            .keyword_extern,
+            .keyword_export,
+            .keyword_inline,
+            .keyword_noinline,
+            => result.extern_export_inline_token = i,
+            .keyword_pub => result.visib_token = i,
+            .string_literal => result.lib_name = i,
+            else => break,
+        }
+    }
+    const after_fn_token = info.fn_token + 1;
+    if (token_tags[after_fn_token] == .identifier) {
+        result.name_token = after_fn_token;
+        result.lparen = after_fn_token + 1;
+    } else {
+        result.lparen = after_fn_token;
+    }
+    // This gets triggered badly if backspaced one char at a time given a `fn name() !T`
+    // assert(token_tags[result.lparen] == .l_paren);
+
+    return result;
+}
 fn fullPtrTypeComponents(tree: Ast, info: full.PtrType.Components) full.PtrType {
     const token_tags = tree.tokens.items(.tag);
     const size: std.builtin.Type.Pointer.Size = switch (token_tags[info.main_token]) {
