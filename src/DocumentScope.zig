@@ -788,7 +788,7 @@ fn walkNode(
         .builtin_call_comma,
         .container_field,
         .@"asm",
-        => walkOtherNode(context, tree, node_idx),
+        => try walkOtherNode(context, tree, node_idx),
 
         .asm_output,
         .asm_input,
@@ -1041,6 +1041,7 @@ fn walkBlockNodeKeepOpen(
             => {
                 const var_decl = tree.fullVarDecl(idx).?;
                 const name_token = var_decl.ast.mut_token + 1;
+
                 try scope.pushDeclaration(name_token, .{ .ast_node = idx }, .other);
             },
             .assign_destructure => {
@@ -1302,7 +1303,7 @@ noinline fn walkSwitchNode(
     const cases = tree.extra_data[extra.start..extra.end];
 
     for (cases, 0..) |case, case_index| {
-        const switch_case: Ast.full.SwitchCase = tree.fullSwitchCase(case).?;
+        const switch_case: Ast.full.SwitchCase = tree.fullSwitchCase(case) orelse unreachable;
 
         if (switch_case.payload_token) |payload_token| {
             const name_token = payload_token + @intFromBool(token_tags[payload_token] == .asterisk);

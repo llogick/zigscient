@@ -6,14 +6,15 @@ const URI = @import("uri.zig");
 const analysis = @import("analysis.zig");
 const offsets = @import("offsets.zig");
 const log = std.log.scoped(.zls_store);
-const Ast = std.zig.Ast;
+const ast = @import("ast.zig");
+const StdAst = std.zig.Ast;
 const BuildAssociatedConfig = @import("BuildAssociatedConfig.zig");
 const BuildConfig = @import("build_runner/BuildConfig.zig");
 const tracy = @import("tracy");
 const translate_c = @import("translate_c.zig");
 const AstGen = std.zig.AstGen;
 const Zir = std.zig.Zir;
-const CustomAst = @import("zig-components//Ast.zig");
+const CustomAst = @import("zig-components/Ast.zig");
 const InternPool = @import("analyser/InternPool.zig");
 const DocumentScope = @import("DocumentScope.zig");
 const ContentChanges = @import("diff.zig").ContentChanges;
@@ -177,7 +178,7 @@ pub const BuildFile = struct {
 /// Represents a Zig source file.
 pub const Handle = struct {
     uri: Uri,
-    tree: Ast,
+    tree: StdAst,
     // Owned by `tree`
     tree_nstates: CustomAst.States,
     /// Contains one entry for every import in the document
@@ -256,12 +257,12 @@ pub const Handle = struct {
             allocator,
             text,
             .zig,
-            .{},
+            &.{},
         );
 
         errdefer custom_ast.deinit(allocator);
 
-        const ast = Ast{
+        const std_ast = StdAst{
             .source = custom_ast.source,
             .tokens = custom_ast.tokens,
             .nodes = custom_ast.nodes,
@@ -271,7 +272,7 @@ pub const Handle = struct {
 
         return .{
             .uri = duped_uri,
-            .tree = ast,
+            .tree = std_ast,
             .tree_nstates = custom_ast.nstates,
             .impl = .{
                 .allocator = allocator,
@@ -487,8 +488,8 @@ pub const Handle = struct {
         }
     }
 
-    fn parseTree(allocator: std.mem.Allocator, new_text: [:0]const u8) error{OutOfMemory}!Ast {
-        const tracy_zone_inner = tracy.traceNamed(@src(), "Ast.parse");
+    fn parseTree(allocator: std.mem.Allocator, new_text: [:0]const u8) error{OutOfMemory}!StdAst {
+        const tracy_zone_inner = tracy.traceNamed(@src(), "StdAst.parse");
         defer tracy_zone_inner.end();
 
         var custom_ast = try CustomAst.parse(
@@ -500,7 +501,7 @@ pub const Handle = struct {
 
         errdefer custom_ast.deinit(allocator);
 
-        var tree = Ast{
+        var tree = StdAst{
             .source = custom_ast.source,
             .tokens = custom_ast.tokens,
             .nodes = custom_ast.nodes,
@@ -538,13 +539,18 @@ pub const Handle = struct {
                 const tok_starts = self.tree.tokens.items(.start);
                 const tok_tags = self.tree.tokens.items(.tag);
 
-                var tok_i = offsets.sourceIndexToTokenIndex(self.tree, content_changes.idx_lo);
+                var text_idx_lo = content_changes.idx_lo;
+                // Always retokenize whole line(s), because .comment(s)
+                while (text_idx_lo != 0 and self.tree.source[text_idx_lo] != '\n') text_idx_lo -= 1;
+                while (text_idx_lo != 0 and self.tree.source[text_idx_lo] == ' ') text_idx_lo -= 1;
+
+                var tok_i = offsets.sourceIndexToTokenIndex(self.tree, text_idx_lo);
 
                 // Doc comments $#^@$
                 // Have ample room in case a broken doc comment got tokenized, eg
                 // /
                 // /! many words that are tokenized as identifiers and also can be valid keywords ...
-                if (tok_i < 100) tok_i = 0 else tok_i -= 50;
+                // if (tok_i < 100) tok_i = 0 else tok_i -= 50;
 
                 while (tok_i != 0 and switch (tok_tags[tok_i]) {
                     .invalid,
@@ -574,11 +580,21 @@ pub const Handle = struct {
                     };
                 }
 
-                var upper_tok_i = offsets.sourceIndexToTokenIndex(self.tree, content_changes.idx_hi);
+                var text_idx_hi = content_changes.idx_hi;
+                const max_text_idx = self.tree.source.len - 1;
+                // Always retokenize whole line(s), because .comment(s)
+                while (text_idx_hi < max_text_idx and self.tree.source[text_idx_hi] != '\n') text_idx_hi += 1;
+                while (text_idx_hi < max_text_idx and self.tree.source[text_idx_hi] == ' ') text_idx_hi += 1;
+                // while (text_idx_hi < content_changes.text.len - 1 and switch(content_changes.text[text_idx_hi]) {
+                //     ' ', '\n' => true,
+                //     else => false,
+                // }) text_idx_hi += 1;
+                // std.log.debug("affected text span: {s}", .{self.tree.source[text_idx_lo..text_idx_hi]});
+                var upper_tok_i = offsets.sourceIndexToTokenIndex(self.tree, text_idx_hi);
 
                 // See "Doc comments" above
                 // NB: tok_tags.len - 2 to get the .eof in so it gets copied
-                if (upper_tok_i < tok_tags.len - 52) upper_tok_i += 50 else upper_tok_i = @intCast(tok_tags.len - 2);
+                // if (upper_tok_i < tok_tags.len - 52) upper_tok_i += 50 else upper_tok_i = @intCast(tok_tags.len - 2);
 
                 while ((upper_tok_i != tok_tags.len - 1) and switch (tok_tags[upper_tok_i]) {
                     .invalid,
@@ -587,9 +603,12 @@ pub const Handle = struct {
                     else => false,
                 }) upper_tok_i += 1;
 
+                // Always grab one extra token in case the tokens within the affected area got converted to comments
+                if (upper_tok_i < tok_tags.len - 2) upper_tok_i += 1;
+
                 const upper_source_index = tok_starts[upper_tok_i];
 
-                var new_tokens = std.zig.Ast.TokenList{};
+                var new_tokens = StdAst.TokenList{};
                 try new_tokens.ensureTotalCapacity(gpa, tok_tags.len);
                 errdefer new_tokens.deinit(gpa);
 
@@ -611,11 +630,9 @@ pub const Handle = struct {
                 //     try new_tokens.append(gpa, .{ .start = start, .tag = tag });
                 // }
 
-                // Add new tokens
                 const text = content_changes.text;
 
-                // do delta
-                const delta: struct {
+                const text_delta: struct {
                     op: enum {
                         add,
                         sub,
@@ -646,7 +663,7 @@ pub const Handle = struct {
                 //     tok_tags[tok_i],
                 //     self.tree.source.len,
                 //     text.len,
-                //     delta.value,
+                //     text_delta.value,
                 //     start_source_index,
                 //     upper_source_index,
                 // });
@@ -656,19 +673,46 @@ pub const Handle = struct {
                     .index = start_source_index,
                 };
 
+                // std.log.debug("tokenizer: {}", .{tokenizer.index});
+
+                const reused_tokens_len = new_tokens.len;
+                // std;
                 while (true) {
                     const token = tokenizer.next();
+                    // if (token.tag == .eof) @panic("brah");
                     // std.log.debug("newtok: {}", .{token});
-                    // std.log.debug("adding: {}", .{token});
-                    if ((token.loc.start == switch (delta.op) {
-                        .add => upper_source_index + delta.value,
-                        .sub => upper_source_index - delta.value,
+                    if ((token.loc.start >= switch (text_delta.op) {
+                        .add => upper_source_index + text_delta.value,
+                        .sub => upper_source_index - text_delta.value,
                     })) break;
+                    // std.log.debug("adding: {}", .{token});
                     try new_tokens.append(gpa, .{
                         .tag = token.tag,
                         .start = @as(u32, @intCast(token.loc.start)),
                     });
                 }
+                const base_affected_tokens_len = upper_tok_i - tok_i;
+                const new_affected_tokens_len: usize = new_tokens.len - reused_tokens_len;
+
+                const tokens_delta: CustomAst.Delta = if (new_affected_tokens_len == base_affected_tokens_len) .{
+                    .op = .nop,
+                    .value = 0,
+                } else if (new_affected_tokens_len > base_affected_tokens_len) .{
+                    .op = .add,
+                    .value = @intCast(new_affected_tokens_len - base_affected_tokens_len),
+                } else .{
+                    .op = .sub,
+                    .value = @intCast(base_affected_tokens_len - new_affected_tokens_len),
+                };
+
+                // std.log.debug(
+                //     \\
+                //     \\"tokens_delta: {}"
+                //     \\"text   delta  {}"
+                // , .{
+                //     tokens_delta,
+                //     text_delta,
+                // });
 
                 const cnti = new_tokens.len;
                 const num_to_copy = tok_tags.len - upper_tok_i;
@@ -689,13 +733,29 @@ pub const Handle = struct {
                 @memcpy(new_tokens.items(.start)[cnti..], tok_starts[upper_tok_i..]);
                 @memcpy(new_tokens.items(.tag)[cnti..], tok_tags[upper_tok_i..]);
 
+                // std.log.debug("f_copied_ttag: {}", .{new_tokens.items(.tag)[cnti]});
+
                 for (new_tokens.items(.start)[cnti..]) |*start| {
-                    const new_start: u32 = switch (delta.op) {
-                        .add => start.* + delta.value,
-                        .sub => start.* - delta.value,
+                    // std.log.debug("old start idx: {}", .{start.*});
+                    const new_start: u32 = switch (text_delta.op) {
+                        .add => start.* + text_delta.value,
+                        .sub => start.* - text_delta.value,
                     };
+                    // std.log.debug("new start idx: {}", .{new_start});
                     start.* = new_start;
                 }
+
+                // XXX This is probably wrong, eg a Find and Replace "fn" -> "nf"
+                // if (tokens_delta.op == .nop) {
+                //     const old_status: Handle.Status = @bitCast(self.impl.status.swap(@bitCast(new_status), .acq_rel));
+                //     if (old_status.has_document_scope) self.impl.document_scope.deinit(gpa);
+                //     if (old_status.has_zir) self.impl.zir.deinit(gpa); // XXX Can it be reused?
+                //     gpa.free(self.tree.source);
+                //     self.tree.source = text;
+                //     self.tree.tokens.deinit(gpa);
+                //     self.tree.tokens = new_tokens.toOwnedSlice();
+                //     return;
+                // }
 
                 // Add the rest of the existing tokens
                 // for (tok_starts[upper_tok_i + 1 ..], tok_tags[upper_tok_i + 1 ..]) |start, tag| {
@@ -714,16 +774,29 @@ pub const Handle = struct {
                 // std.log.debug("nstates   : {any}", .{self.tree_nstates.keys()});
                 const root_decls = self.tree.rootDecls();
                 for (root_decls, 0..) |root_decl, idx| {
-                    const node_loc = offsets.nodeToLoc(self.tree, root_decl);
-                    // std.log.debug("rd.id: {}\nrd.loc: {}\n=========\n{s}\n=========\n", .{ root_decl, node_loc, offsets.nodeToSlice(self.tree, root_decl) });
-                    if (node_loc.end < start_source_index) continue;
+                    const f_tok_i = self.tree.firstToken(root_decl);
+                    const l_tok_i = ast.lastToken(self.tree, root_decl);
+                    const node_loc = offsets.tokensToLoc(self.tree, f_tok_i, l_tok_i);
+                    // std.log.debug(
+                    //     \\
+                    //     \\rd.id: {}
+                    //     \\rd.loc: {}
+                    //     // \\=========
+                    //     // \\{s}
+                    //     // \\=========
+                    // , .{
+                    //     root_decl,
+                    //     node_loc,
+                    //     // offsets.nodeToSlice(self.tree, root_decl),
+                    // });
+                    if (!CustomAst.nodeHasErrors(self.tree, f_tok_i, l_tok_i) and node_loc.end < start_source_index) continue;
                     // std.log.debug("! ssi: {}\nrd.loc: {}\n=========\n{s}\n=========\n", .{ start_source_index, node_loc, offsets.nodeToSlice(self.tree, root_decl) });
-                    if (idx == 0) break;
+                    const prev_node_idx = if (idx == 0) 0 else idx - 1;
                     // std.log.debug("1st tok of affn: {}", .{self.tree.firstToken(root_decls[idx])});
-                    const prev_node_state = self.tree_nstates.get(root_decls[idx - 1]) orelse break;
+                    const prev_node_state = self.tree_nstates.get(root_decls[prev_node_idx]) orelse break;
                     if (!(prev_node_state.token_ind < new_tokens.len)) break;
                     // var new_nodes = try self.tree.nodes.toMultiArrayList().clone(gpa);
-                    var new_nodes: Ast.NodeList = .{};
+                    var new_nodes: StdAst.NodeList = .{};
                     try new_nodes.setCapacity(gpa, self.tree.nodes.len);
                     errdefer new_nodes.deinit(gpa);
                     new_nodes.len = prev_node_state.nodes_len;
@@ -737,23 +810,156 @@ pub const Handle = struct {
                     const new_nodes_mtok = new_nodes.items(.main_token);
                     @memcpy(new_nodes_mtok, self.tree.nodes.items(.main_token)[0..new_nodes_mtok.len]);
 
-                    var new_xdata: std.ArrayListUnmanaged(Ast.Node.Index) = try .initCapacity(gpa, self.tree.extra_data.len);
+                    var new_xdata: std.ArrayListUnmanaged(StdAst.Node.Index) = try .initCapacity(gpa, self.tree.extra_data.len);
                     errdefer new_xdata.deinit(gpa);
                     new_xdata.items.len = prev_node_state.xdata_len;
                     @memcpy(new_xdata.items, self.tree.extra_data[0..new_xdata.items.len]);
                     // new_xdata.items = try gpa.dupe(u32, self.tree.extra_data);
                     // new_xdata.items.len = prev_node_state.xdata_len;
                     // new_xdata.capacity = self.tree.extra_data.len;
-                    var scratch: std.ArrayListUnmanaged(Ast.Node.Index) = try .initCapacity(gpa, root_decls.len);
+                    var scratch: std.ArrayListUnmanaged(StdAst.Node.Index) = try .initCapacity(gpa, root_decls.len);
                     errdefer scratch.deinit(gpa);
-                    for (root_decls[0..idx]) |value| scratch.appendAssumeCapacity(value);
+                    for (root_decls[0 .. prev_node_idx + 1]) |value| scratch.appendAssumeCapacity(value);
                     var new_nstates: CustomAst.States = .empty;
                     errdefer new_nstates.deinit(gpa);
                     for (self.tree_nstates.keys()) |key| {
-                        if (key < root_decls[idx]) {
+                        if (key < root_decls[prev_node_idx + 1]) {
                             try new_nstates.put(gpa, key, self.tree_nstates.get(key).?);
                         }
                     }
+                    var new_errors: std.ArrayListUnmanaged(StdAst.Error) = try .initCapacity(gpa, self.tree.errors.len);
+                    errdefer new_errors.deinit(gpa);
+                    for (self.tree.errors) |ast_err| {
+                        if (ast_err.token < prev_node_state.token_ind) {
+                            new_errors.appendAssumeCapacity(ast_err);
+                        } else break;
+                    }
+
+                    for (root_decls[idx + 1 ..], idx + 1..) |root_decl2, idx2| {
+                        const rd2_first_tok_idx = self.tree.firstToken(root_decl2);
+                        const rd2_last_tok_idx = ast.lastToken(self.tree, root_decl2);
+                        // std.log.debug("rd2tag: {}", .{tok_tags[rd2_first_tok_idx]});
+                        // std.log.debug(
+                        //     \\
+                        //     \\rd2idx    {}
+                        //     \\rd2tokidx {}
+                        //     \\uppidx    {}
+                        // , .{
+                        //     root_decls[idx2],
+                        //     rd2_first_tok_idx,
+                        //     upper_tok_i,
+                        // });
+
+                        if (rd2_first_tok_idx < upper_tok_i or CustomAst.nodeHasErrors(self.tree, rd2_first_tok_idx, rd2_last_tok_idx)) continue;
+                        if (self.tree.errors.len != 0 and (rd2_first_tok_idx < self.tree.errors[self.tree.errors.len - 1].token)) continue;
+                        
+                        const mod_node_state = self.tree_nstates.get(root_decls[idx2 - 1]) orelse break;
+
+                        const stop_token_index = switch (tokens_delta.op) {
+                            .add => rd2_first_tok_idx + tokens_delta.value,
+                            .sub => rd2_first_tok_idx - tokens_delta.value,
+                            else => rd2_first_tok_idx,
+                        };
+
+                        // const stop_token_index = switch (tokens_delta.op) {
+                        //     .add => mod_node_state.token_ind + tokens_delta.value,
+                        //     .sub => mod_node_state.token_ind - tokens_delta.value,
+                        //     else => mod_node_state.token_ind,
+                        // };
+
+                        // const currns = self.tree_nstates.get(root_decls[idx2]) orelse blk: {
+                        //     std.log.debug("whaaaaaaat?: {}", .{root_decls[idx2]});
+                        //     break :blk mod_node_state;
+                        // };
+                        // if (tokens_delta.op == .sub) {
+                        //     std.log.debug("lalala: {}\n{}", .{
+                        //         mod_node_state.token_ind - prev_node_state.token_ind - tokens_delta.value - base_affected_tokens_len,
+                        //         currns.token_ind,
+                        //     });
+                        // }
+
+                        // std.log.debug(
+                        //     \\
+                        //     \\idx: {}      idx2: {}
+                        //     \\strt tok i {}     stop tok i {}
+                        //     \\strt src i {}     stop src i {}
+                        //     \\smh {}
+                        // , .{
+                        //     idx,
+                        //     idx2,
+                        //     prev_node_state.token_ind,
+                        //     stop_token_index,
+                        //     start_source_index,
+                        //     offsets.tokenToLoc(self.tree, mod_node_state.token_ind),
+                        //     node_loc,
+                        // });
+                        // std.log.debug("affected nodes: {any}", .{root_decls[prev_node_idx..idx2]});
+
+                        // std.log.debug(
+                        //     \\
+                        //     \\rd2_tok_idx    {}
+                        //     \\upp_tok_idx    {}
+                        //     \\stp_tok_idx    {}
+                        //     \\
+                        //     \\lo_nde_stat    idx: {}     {}
+                        //     \\curr_n_stat    idx: {}     {}
+                        //     \\
+                        //     \\modf_n_stat    idx: {}     {}
+                        // , .{
+                        //     rd2_first_tok_idx,
+                        //     upper_tok_i,
+                        //     stop_token_index,
+                        //     prev_node_idx,
+                        //     prev_node_state,
+                        //     idx2,
+                        //     self.tree_nstates.get(root_decls[idx2]) orelse break,
+                        //     idx2 - 1,
+                        //     mod_node_state,
+                        // });
+
+                        const rd: CustomAst.ReusableData = .{
+                            .tokens = .{
+                                .full = &new_tokens,
+                            },
+                            .nodes = .{
+                                .span = .{
+                                    .nodes = &new_nodes,
+                                    .xdata = &new_xdata,
+                                    .scratch = &scratch,
+                                    .nstates = &new_nstates,
+                                    .errors = &new_errors,
+                                    .start_token_index = prev_node_state.token_ind,
+                                    .stop_token_index = stop_token_index,
+                                    .tokens_delta = &tokens_delta,
+                                    .lowst_node_state = prev_node_state,
+                                    .start_node_state = mod_node_state,
+                                    .root_decl_index = idx2,
+                                    .len_diffs = .{
+                                        .nodes_len = self.tree.nodes.len - mod_node_state.nodes_len,
+                                        .xdata_len = self.tree.extra_data.len - mod_node_state.xdata_len,
+                                    },
+                                    .existing_tree = &self.tree,
+                                    .existing_tree_nstates = &self.tree_nstates,
+                                },
+                            },
+                        };
+
+                        const custom_ast = try CustomAst.parse(
+                            self.impl.allocator,
+                            content_changes.text,
+                            .zig,
+                            &rd,
+                        );
+
+                        // custom_ast.deinit(gpa);
+
+                        // memcpy many
+                        // adjust indices
+
+                        break :custom_ast custom_ast;
+                        // break;
+                    }
+
                     // std.log.debug("scratch new: {any}", .{scratch.items});
                     nodes = .{
                         .some = .{
@@ -761,6 +967,7 @@ pub const Handle = struct {
                             .xdata = &new_xdata,
                             .scratch = &scratch,
                             .nstates = &new_nstates,
+                            .errors = &new_errors,
                             .start_token_index = prev_node_state.token_ind,
                         },
                     };
@@ -789,7 +996,7 @@ pub const Handle = struct {
                 self.impl.allocator,
                 content_changes.text,
                 .zig,
-                reusable_data,
+                &reusable_data,
             );
         };
 
@@ -805,7 +1012,7 @@ pub const Handle = struct {
         var old_document_scope = if (old_status.has_document_scope) self.impl.document_scope else null;
         var old_zir = if (old_status.has_zir) self.impl.zir else null;
 
-        const new_tree: Ast = .{
+        const new_tree: StdAst = .{
             .source = custom_ast.source,
             .tokens = custom_ast.tokens,
             .nodes = custom_ast.nodes,
@@ -1603,7 +1810,7 @@ fn collectImportUris(self: *DocumentStore, handle: *Handle) error{OutOfMemory}!s
 
 pub const CImportHandle = struct {
     /// the `@cImport` node
-    node: Ast.Node.Index,
+    node: StdAst.Node.Index,
     /// hash of c source file
     hash: Hash,
     /// c source file
@@ -1612,7 +1819,7 @@ pub const CImportHandle = struct {
 
 /// Collects all `@cImport` nodes and converts them into c source code if possible
 /// Caller owns returned memory.
-fn collectCIncludes(allocator: std.mem.Allocator, tree: Ast) error{OutOfMemory}!std.MultiArrayList(CImportHandle) {
+fn collectCIncludes(allocator: std.mem.Allocator, tree: StdAst) error{OutOfMemory}!std.MultiArrayList(CImportHandle) {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -1746,7 +1953,7 @@ pub fn collectIncludeDirs(
 /// comptime value `resolveCImport` will return null
 /// returned memory is owned by DocumentStore
 /// **Thread safe** takes an exclusive lock
-pub fn resolveCImport(self: *DocumentStore, handle: *Handle, node: Ast.Node.Index) error{OutOfMemory}!?Uri {
+pub fn resolveCImport(self: *DocumentStore, handle: *Handle, node: StdAst.Node.Index) error{OutOfMemory}!?Uri {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -1757,7 +1964,7 @@ pub fn resolveCImport(self: *DocumentStore, handle: *Handle, node: Ast.Node.Inde
 
     // TODO regenerate cimports if the header files gets modified
 
-    const index = std.mem.indexOfScalar(Ast.Node.Index, handle.cimports.items(.node), node) orelse return null;
+    const index = std.mem.indexOfScalar(StdAst.Node.Index, handle.cimports.items(.node), node) orelse return null;
     const hash: Hash = handle.cimports.items(.hash)[index];
     const source = handle.cimports.items(.source)[index];
 

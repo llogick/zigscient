@@ -536,6 +536,7 @@ fn getDiagnosticsFromZir(
 ) error{OutOfMemory}!void {
     const tree = handle.tree;
     std.debug.assert(tree.errors.len == 0);
+    // if (true) return; //////////// ------------ ================ !!!!!!!!!!!!!!!!!!!!! Remove
     const zir = try handle.getZir();
     std.debug.assert(handle.getZirStatus() == .done);
 

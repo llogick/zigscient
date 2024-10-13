@@ -615,19 +615,19 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
                 .triggerCharacters = &[_][]const u8{ ".", ":", "@", "]", "/" },
                 .completionItem = .{ .labelDetailsSupport = true },
             },
-            .documentHighlightProvider = .{ .bool = true },
+            // .documentHighlightProvider = .{ .bool = true },
             .hoverProvider = .{ .bool = true },
-            .codeActionProvider = .{ .bool = true },
+            // .codeActionProvider = .{ .bool = true },
             .declarationProvider = .{ .bool = true },
             .definitionProvider = .{ .bool = true },
             .typeDefinitionProvider = .{ .bool = true },
             .implementationProvider = .{ .bool = false },
             .referencesProvider = .{ .bool = true },
-            .documentSymbolProvider = .{ .bool = true },
+            // .documentSymbolProvider = .{ .bool = true },
             .colorProvider = .{ .bool = false },
             .documentFormattingProvider = .{ .bool = true },
             .documentRangeFormattingProvider = .{ .bool = false },
-            .foldingRangeProvider = .{ .bool = true },
+            // .foldingRangeProvider = .{ .bool = true },
             .selectionRangeProvider = .{ .bool = true },
             .workspaceSymbolProvider = .{ .bool = false },
             .workspace = .{
@@ -636,17 +636,17 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
                     .changeNotifications = .{ .bool = true },
                 },
             },
-            .semanticTokensProvider = .{
-                .SemanticTokensOptions = .{
-                    .full = .{ .bool = true },
-                    .range = .{ .bool = true },
-                    .legend = .{
-                        .tokenTypes = std.meta.fieldNames(semantic_tokens.TokenType),
-                        .tokenModifiers = std.meta.fieldNames(semantic_tokens.TokenModifiers),
-                    },
-                },
-            },
-            .inlayHintProvider = .{ .bool = true },
+            // .semanticTokensProvider = .{
+            //     .SemanticTokensOptions = .{
+            //         .full = .{ .bool = true },
+            //         .range = .{ .bool = true },
+            //         .legend = .{
+            //             .tokenTypes = std.meta.fieldNames(semantic_tokens.TokenType),
+            //             .tokenModifiers = std.meta.fieldNames(semantic_tokens.TokenModifiers),
+            //         },
+            //     },
+            // },
+            // .inlayHintProvider = .{ .bool = true },
         },
     };
 }
