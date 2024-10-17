@@ -7,7 +7,7 @@ const tracy = @import("tracy");
 const known_folders = @import("known-folders");
 const binned_allocator = @import("binned_allocator.zig");
 
-const log = std.log.scoped(.zls_main);
+const log = std.log.scoped(._main);
 
 const usage =
     \\A non-official language server for Zig
@@ -37,6 +37,10 @@ pub const std_options: std.Options = .{
     .logFn = logFn,
 };
 
+/// Any logging done during the init stage, ie within this file
+const init_stage_log_level: std.log.Level = .info;
+
+/// Logging level while running, visible in a client's lsp log
 var runtime_log_level: std.log.Level = switch (zig_builtin.mode) {
     .Debug => .debug,
     .ReleaseFast,
@@ -62,7 +66,7 @@ fn logFn(
         .debug => "D",
     };
     const scope_txt: []const u8 = comptime @tagName(scope);
-    const trimmed_scope = if (comptime std.mem.startsWith(u8, scope_txt, "zls_")) scope_txt[4..] else scope_txt;
+    const trimmed_scope = if (comptime std.mem.startsWith(u8, scope_txt, "_")) scope_txt[1..] else scope_txt;
 
     var buffer: [1024]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buffer);
@@ -324,6 +328,9 @@ const stack_frames = switch (zig_builtin.mode) {
 };
 
 pub fn main() !u8 {
+    const preferred_runtime_log_level = runtime_log_level;
+    runtime_log_level = init_stage_log_level;
+
     var allocator_state, const allocator_name = if (exe_options.use_gpa)
         .{
             std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = stack_frames }){},
@@ -359,7 +366,7 @@ pub fn main() !u8 {
         log_file = null;
     };
 
-    const resolved_log_level = result.log_level orelse runtime_log_level;
+    const resolved_log_level = result.log_level orelse preferred_runtime_log_level;
 
     log.info(
         \\Hello/
