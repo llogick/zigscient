@@ -3,7 +3,7 @@
 const std = @import("std");
 const zig_builtin = @import("builtin");
 const Ast = std.zig.Ast;
-const log = std.log.scoped(.zls_inlay_hint);
+const log = std.log.scoped(._inlay_hint);
 
 const DocumentStore = @import("../DocumentStore.zig");
 const Analyser = @import("../analysis.zig");

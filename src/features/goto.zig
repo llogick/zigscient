@@ -6,7 +6,7 @@
 
 const std = @import("std");
 const Ast = std.zig.Ast;
-const log = std.log.scoped(.zls_goto);
+const log = std.log.scoped(._goto);
 
 const Server = @import("../Server.zig");
 const ast = @import("../ast.zig");

@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const Ast = std.zig.Ast;
-const log = std.log.scoped(.zls_hover);
+const log = std.log.scoped(._hover);
 
 const ast = @import("../ast.zig");
 const types = @import("lsp").types;

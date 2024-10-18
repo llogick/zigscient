@@ -36,7 +36,7 @@ const hover_handler = @import("features/hover.zig");
 const selection_range = @import("features/selection_range.zig");
 const diagnostics_gen = @import("features/diagnostics.zig");
 
-const log = std.log.scoped(.zls_server);
+const log = std.log.scoped(._server);
 const message_logger = std.log.scoped(.message);
 
 // public fields

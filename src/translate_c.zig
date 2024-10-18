@@ -9,7 +9,7 @@ const tracy = @import("tracy");
 const Ast = std.zig.Ast;
 const URI = @import("uri.zig");
 const ZCS = @import("ZigCompileServer.zig");
-const log = std.log.scoped(.zls_translate_c);
+const log = std.log.scoped(._translate_c);
 
 /// converts a `@cInclude` node into an equivalent c header file
 /// which can then be handed over to `zig translate-c`
