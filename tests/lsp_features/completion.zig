@@ -363,7 +363,7 @@ test "generic function" {
     });
 }
 
-test "recusive generic function" {
+test "recursive generic function" {
     try testCompletion(
         \\const S = struct { alpha: u32 };
         \\fn ArrayList(comptime T: type) type {
