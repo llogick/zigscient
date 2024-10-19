@@ -2491,7 +2491,7 @@ test "anytype resolution based on callsite-references" {
     });
 }
 
-test "completion - builtin fns return type" {
+test "@field" {
     try testCompletion(
         \\pub const chip_mod = struct {
         \\    pub const devices = struct {
@@ -2507,6 +2507,26 @@ test "completion - builtin fns return type" {
     , &.{
         .{ .label = "peripherals", .kind = .Struct, .detail = "type" },
     });
+}
+
+test "@FieldType" {
+    try testCompletion(
+        \\test {
+        \\    const Foo = struct {
+        \\        alpha: u32,
+        \\    };
+        \\    const Bar = struct {
+        \\        beta: Foo,
+        \\    };
+        \\    const foo: @FieldType(Bar, "beta") = undefined;
+        \\    foo.<cursor>
+        \\}
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+    });
+}
+
+test "builtin fns return type" {
     try testCompletion(
         \\pub const chip_mod = struct {
         \\    pub const devices = struct {
@@ -2585,7 +2605,7 @@ test "completion - builtin fns return type" {
     });
 }
 
-test "completion - builtin fns taking an enum arg" {
+test "builtin fns taking an enum arg" {
     try testCompletion(
         \\test {
         \\    @Type(.{.<cursor>
