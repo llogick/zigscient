@@ -70,9 +70,9 @@ pub const ContentChanges = struct {
     /// New contents
     text: [:0]const u8,
     /// Lowest index affected by the change(s)
-    idx_lo: usize,
+    idx_lo: u32,
     /// Highest index affected by the change(s)
-    idx_hi: usize,
+    idx_hi: u32,
 };
 
 /// Caller owns returned memory.
@@ -132,8 +132,8 @@ pub fn applyContentChanges(
 
     return .{
         .text = try text_array.toOwnedSliceSentinel(allocator, 0),
-        .idx_lo = idx_lo,
-        .idx_hi = idx_hi,
+        .idx_lo = @intCast(idx_lo),
+        .idx_hi = @intCast(idx_hi),
     };
 }
 

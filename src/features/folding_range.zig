@@ -190,7 +190,7 @@ pub fn generateFoldingRanges(allocator: std.mem.Allocator, tree: Ast, encoding: 
             // .fn_decl
             => {
                 var buffer: [1]Ast.Node.Index = undefined;
-                const fn_proto = tree.fullFnProto(&buffer, node).?;
+                const fn_proto = ast.fullFnProto(tree, &buffer, node).?;
                 var it = fn_proto.iterate(&tree);
 
                 var last_param: ?Ast.full.FnProto.Param = null;
