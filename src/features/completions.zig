@@ -332,7 +332,7 @@ fn functionTypeCompletion(
                     .parameters = .{ .show = .{
                         .include_modifiers = true,
                         .include_names = true,
-                        .include_types = true,
+                        .include_types = false,
                     } },
                     .include_return_type = false,
                     .snippet_placeholders = true,

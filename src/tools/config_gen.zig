@@ -812,7 +812,7 @@ fn extractSnippetFromSignature(allocator: std.mem.Allocator, signature: []const 
     var argument_start: usize = start_index;
     var index: usize = start_index;
     var i: u32 = 1;
-    while (std.mem.indexOfAnyPos(u8, signature, index, ",()")) |token_index| {
+    while (std.mem.indexOfAnyPos(u8, signature, index, ":()")) |token_index| {
         if (signature[token_index] == '(') {
             argument_start = index;
             index = 1 + std.mem.indexOfScalarPos(u8, signature, token_index + 1, ')').?;
@@ -824,8 +824,12 @@ fn extractSnippetFromSignature(allocator: std.mem.Allocator, signature: []const 
             try writer.print("${{{d}:{s}}}", .{ i, argument });
         }
         if (signature[token_index] == ')') break;
-        argument_start = token_index + 1;
-        index = token_index + 1;
+        const r_paren_idx = std.mem.indexOfScalarPos(u8, signature, token_index, ')');
+        index = std.mem.indexOfScalarPos(u8, signature, token_index, ',') orelse break;
+        // Some builtins have complex return types, eg `@addWithOverflow(a: anytype, b: anytype) struct { @TypeOf(a, b), u1 }`
+        // check if we've moved past a ')'
+        if (r_paren_idx) |rpi| if (rpi < index) break;
+        argument_start = index + 1;
         i += 1;
     }
     try writer.writeByte(')');
