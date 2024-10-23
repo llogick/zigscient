@@ -1639,7 +1639,7 @@ pub fn derive(
 
             // std.log.debug("root decls len: {any}", .{std_ast.rootDecls().len});
             // std.log.debug("root decls: {any}", .{std_ast.rootDecls()});
-            // std.log.debug("nstates   : {any}", .{std_ast_nstates.keys()});
+            // std.log.debug("nstates   : {any}", .{nstates.keys()});
             // std.log.debug("std_ast.errors: {any}", .{std_ast.errors});
 
             for (root_decls, 0..) |root_decl, idx| {
@@ -1661,8 +1661,8 @@ pub fn derive(
                     node_loc.end < indices.txt_idx_lo and
                     idx != root_decls.len - 1 // an error in a 'would be node' at the very end of the document, eg 'test }'
                 ) continue;
+                const prev_node_idx = if (idx < 2) 0 else idx - 2;
 
-                const prev_node_idx = if (idx == 0) 0 else idx - 1;
                 // std.log.debug(
                 //     \\rd1 nidx: {}      f_to_i: {}      l_tok_i: {}
                 //     \\prv nidx: {}      f_to_i: x      l_tok_i: x
@@ -1710,6 +1710,7 @@ pub fn derive(
                 parser.tok_i = prev_node_state.token_ind;
 
                 reuse_upper_nodes: {
+                    if (true) break :reuse_upper_nodes; // XXX DISABLED UNTIL EXTENSIVE TESTING IS DONE
                     if (idx + 2 > root_decls.len) break :reuse_upper_nodes;
                     for (root_decls[idx + 1 ..], idx + 1..) |root_decl2, idx2| {
                         const rd2_first_tok_idx = std_ast.firstToken(root_decl2);
@@ -1731,7 +1732,7 @@ pub fn derive(
 
                         if (rd2_first_tok_idx < indices.tok_idx_hi or nodeHasErrors(std_ast, rd2_first_tok_idx, rd2_last_tok_idx)) continue;
                         if (std_ast.errors.len != 0 and (rd2_first_tok_idx < std_ast.errors[std_ast.errors.len - 1].token)) continue;
-                        if (idx2 - 1 == 0) continue;
+                        if (idx2 - idx < 2) continue;
 
                         const mod_node_state = nstates.get(root_decls[idx2 - 1]) orelse break;
 
