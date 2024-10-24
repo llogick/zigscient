@@ -45,6 +45,12 @@ test "extern function call" {
     , .{ .kind = .Parameter });
 }
 
+test "function's callconv" {
+    try testInlayHints(
+        \\fn foo() callconv(.{ .x86_64_sysv<CommonOptions> = .{ .incoming_stack_alignment<?u64> = 8} }) void {};
+    , .{ .kind = .Type });
+}
+
 test "function self parameter" {
     try testInlayHints(
         \\const Foo = struct { pub fn bar(self: *Foo, alpha: u32) void {} };
