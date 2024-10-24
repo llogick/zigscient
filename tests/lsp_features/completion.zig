@@ -2773,6 +2773,12 @@ test "builtin fns taking an enum arg" {
         .expected_insert_line = "fn foo() callconv(.AAPCS",
         .expected_replace_line = "fn foo() callconv(.AAPCS",
     });
+    try testCompletionTextEdit(.{
+        .source = "fn foo() callconv(.{ .x86_64_sysv = .<cursor>",
+        .label = "incoming_stack_alignment",
+        .expected_insert_line = "fn foo() callconv(.{ .x86_64_sysv = .{ .incoming_stack_alignment = ",
+        .expected_replace_line = "fn foo() callconv(.{ .x86_64_sysv = .{ .incoming_stack_alignment = ",
+    });
 }
 
 test "block" {
