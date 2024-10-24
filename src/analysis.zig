@@ -4547,6 +4547,7 @@ pub fn resolveExpressionTypeFromAncestors(
             const struct_init = tree.fullStructInit(&buffer, ancestors[0]).?;
             if (std.mem.indexOfScalar(Ast.Node.Index, struct_init.ast.fields, node) != null) {
                 const field_name_token = tree.firstToken(node) - 2;
+                if (token_tags[field_name_token] != .identifier) return null; // cause: `.{ .name =<insert dot here> .some`
                 const field_name = offsets.identifierTokenToNameSlice(tree, field_name_token);
                 if (try analyser.lookupSymbolFieldInit(handle, field_name, ancestors)) |field_decl| {
                     return try field_decl.resolveType(analyser);

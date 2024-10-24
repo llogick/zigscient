@@ -566,6 +566,7 @@ fn writeNodeInlayHint(
             const struct_init = tree.fullStructInit(&buffer, node).?;
             for (struct_init.ast.fields) |value_node| { // the node of `value` in `.name = value`
                 const name_token = tree.firstToken(value_node) - 2; // math our way two token indexes back to get the `name`
+                if (token_tags[name_token] != .identifier) continue; // cause: `.{ .name =<insert dot here> .some`
                 const name_loc = offsets.tokenToLoc(tree, name_token);
                 const name = offsets.identifierTokenToNameSlice(tree, name_token);
                 const decl = (try builder.analyser.getSymbolEnumLiteral(builder.arena, builder.handle, name_loc.start, name)) orelse continue;
