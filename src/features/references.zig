@@ -150,12 +150,8 @@ const Builder = struct {
             },
             .struct_init_one,
             .struct_init_one_comma,
-            .struct_init,
-            .struct_init_comma,
-            .struct_init_dot,
-            .struct_init_dot_comma,
-            .struct_init_dot_two,
-            .struct_init_dot_two_comma,
+            .struct_init, // rhs is a SubRange into data
+            .struct_init_comma, // rhs is a SubRange into data
             => {
                 var buffer: [2]Ast.Node.Index = undefined;
                 const struct_init = tree.fullStructInit(&buffer, node).?;
@@ -166,6 +162,40 @@ const Builder = struct {
 
                     var nodes = [_]Ast.Node.Index{datas[node].lhs};
                     const lookup = try builder.analyser.lookupSymbolFieldInit(handle, name, &nodes) orelse continue;
+
+                    if (builder.decl_handle.eql(lookup)) {
+                        try builder.add(handle, name_token);
+                    }
+                }
+            },
+            .struct_init_dot, // NOTE lhs and rhs are indices into extra_data
+            .struct_init_dot_comma, // NOTE lhs and rhs are indices into extra_data
+            .struct_init_dot_two, // lhs and rhs(!=0) are fields
+            .struct_init_dot_two_comma, // lhs and rhs(!=0) are fields
+            => {
+                // TODO This obviously doesn't work if it's a fn arg
+                const f_tok_i = tree.firstToken(node);
+                const src_i = if (tree.tokens.items(.tag)[f_tok_i -| 1] == .equal and f_tok_i > 1) tree.tokens.items(.start)[f_tok_i - 2] else return;
+
+                const nodes = try ast.nodesOverlappingIndex(
+                    builder.allocator,
+                    tree,
+                    src_i,
+                );
+                if (nodes.len == 0) return;
+
+                var buffer: [2]Ast.Node.Index = undefined;
+                const struct_init = tree.fullStructInit(&buffer, node).?;
+                for (struct_init.ast.fields) |value_node| { // the node of `value` in `.name = value`
+                    const name_token = tree.firstToken(value_node) - 2; // math our way two token indexes back to get the `name`
+                    const name_loc = offsets.tokenToLoc(tree, name_token);
+                    const name = offsets.locToSlice(tree.source, name_loc);
+
+                    const lookup = try builder.analyser.lookupSymbolFieldInit(
+                        handle,
+                        name,
+                        nodes,
+                    ) orelse continue;
 
                     if (builder.decl_handle.eql(lookup)) {
                         try builder.add(handle, name_token);

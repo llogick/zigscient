@@ -144,6 +144,23 @@ test "struct multi-field init" {
         \\const S = struct {<0>: u32, a: bool};
         \\const s = S{.<0> = 0, .a = true};
     );
+    // Anon
+    try testReferences(
+        \\const S = struct {<0>: u32, a: bool};
+        \\const s: S = .{.<0> = 0, .a = true};
+    );
+}
+
+test "struct_init_dot" {
+    try testReferences(
+        \\const S = struct {<0>: u32, a: bool, b: u8};
+        \\const s = S{.<0> = 0, .a = true, .b = 1};
+    );
+    // Anon
+    try testReferences(
+        \\const S = struct {<0>: u32, a: bool, b: u8};
+        \\const s: S = .{.<0> = 0, .a = true, .b = 1};
+    );
 }
 
 test "while continue expression" {
