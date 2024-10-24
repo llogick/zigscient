@@ -4820,6 +4820,11 @@ pub fn resolveExpressionTypeFromAncestors(
                 ancestors[index + 1 ..],
             );
         },
+        .fn_decl => {
+            var buffer: [1]Ast.Node.Index = undefined;
+            const fn_proto = ast.fullFnProto(tree, &buffer, ancestors[0]) orelse return null;
+            if (fn_proto.ast.callconv_expr != 0 and node == fn_proto.ast.callconv_expr) return analyser.instanceStdBuiltinType("CallingConvention");
+        },
 
         else => {}, // TODO: Implement more expressions; better safe than sorry
     }
