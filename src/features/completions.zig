@@ -1262,6 +1262,7 @@ fn getSwitchOrStructInitContext(
                                     if (parens_depth == one_opening and switch (token_tags[upper_index - 1]) {
                                         .identifier,
                                         .builtin,
+                                        .keyword_callconv,
                                         => true,
                                         else => false,
                                     }) {
