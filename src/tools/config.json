@@ -72,18 +72,6 @@
             "default": true
         },
         {
-            "name": "inlay_hints_hide_redundant_param_names",
-            "description": "Hides inlay hints when parameter name matches the identifier (e.g. foo: foo)",
-            "type": "bool",
-            "default": false
-        },
-        {
-            "name": "inlay_hints_hide_redundant_param_names_last_token",
-            "description": "Hides inlay hints when parameter name matches the last token of a parameter node (e.g. foo: bar.foo, foo: &foo)",
-            "type": "bool",
-            "default": false
-        },
-        {
             "name": "warn_style",
             "description": "Enables warnings for style guideline mismatches",
             "type": "bool",

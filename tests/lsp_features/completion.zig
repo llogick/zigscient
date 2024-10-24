@@ -3115,8 +3115,8 @@ test "insert replace behaviour - builtin with snippets" {
     try testCompletionTextEdit(.{
         .source = "const foo = @<cursor>;",
         .label = "@as",
-        .expected_insert_line = "const foo = @as(${1:comptime T: type}, ${2:expression});",
-        .expected_replace_line = "const foo = @as(${1:comptime T: type}, ${2:expression});",
+        .expected_insert_line = "const foo = @as(${1:comptime T}, ${2:expression});",
+        .expected_replace_line = "const foo = @as(${1:comptime T}, ${2:expression});",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3131,8 +3131,8 @@ test "insert replace behaviour - builtin with snippets" {
     try testCompletionTextEdit(.{
         .source = "const foo = @<cursor>();",
         .label = "@as",
-        .expected_insert_line = "const foo = @as(${1:comptime T: type}, ${2:expression});",
-        .expected_replace_line = "const foo = @as(${1:comptime T: type}, ${2:expression});",
+        .expected_insert_line = "const foo = @as(${1:comptime T}, ${2:expression});",
+        .expected_replace_line = "const foo = @as(${1:comptime T}, ${2:expression});",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3177,8 +3177,8 @@ test "insert replace behaviour - builtin with partial argument placeholders" {
     try testCompletionTextEdit(.{
         .source = "const foo = @<cursor>( , 5);",
         .label = "@as",
-        .expected_insert_line = "const foo = @as(${1:comptime T: type}, 5);",
-        .expected_replace_line = "const foo = @as(${1:comptime T: type}, 5);",
+        .expected_insert_line = "const foo = @as(${1:comptime T}, 5);",
+        .expected_replace_line = "const foo = @as(${1:comptime T}, 5);",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3345,8 +3345,8 @@ test "insert replace behaviour - function with snippets" {
         \\const foo = <cursor>;
         ,
         .label = "func",
-        .expected_insert_line = "const foo = func(${1:comptime T: type}, ${2:number: u32});",
-        .expected_replace_line = "const foo = func(${1:comptime T: type}, ${2:number: u32});",
+        .expected_insert_line = "const foo = func(${1:comptime T}, ${2:number});",
+        .expected_replace_line = "const foo = func(${1:comptime T}, ${2:number});",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3367,8 +3367,8 @@ test "insert replace behaviour - function with snippets" {
         \\const foo = <cursor>();
         ,
         .label = "func",
-        .expected_insert_line = "const foo = func(${1:comptime T: type}, ${2:number: u32});",
-        .expected_replace_line = "const foo = func(${1:comptime T: type}, ${2:number: u32});",
+        .expected_insert_line = "const foo = func(${1:comptime T}, ${2:number});",
+        .expected_replace_line = "const foo = func(${1:comptime T}, ${2:number});",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3381,8 +3381,8 @@ test "insert replace behaviour - function with snippets" {
         \\S.<cursor>
         ,
         .label = "f",
-        .expected_insert_line = "S.f(${1:self: S})",
-        .expected_replace_line = "S.f(${1:self: S})",
+        .expected_insert_line = "S.f(${1:self})",
+        .expected_replace_line = "S.f(${1:self})",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3396,8 +3396,8 @@ test "insert replace behaviour - function with snippets" {
         \\s.<cursor>
         ,
         .label = "f",
-        .expected_insert_line = "s.f(${1:number: u32})",
-        .expected_replace_line = "s.f(${1:number: u32})",
+        .expected_insert_line = "s.f(${1:number})",
+        .expected_replace_line = "s.f(${1:number})",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3464,8 +3464,8 @@ test "insert replace behaviour - function with partial argument placeholders" {
         \\const foo = <cursor>(u32,);
         ,
         .label = "func",
-        .expected_insert_line = "const foo = func(u32, ${1:number: u32});",
-        .expected_replace_line = "const foo = func(u32, ${1:number: u32});",
+        .expected_insert_line = "const foo = func(u32, ${1:number});",
+        .expected_replace_line = "const foo = func(u32, ${1:number});",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3475,8 +3475,8 @@ test "insert replace behaviour - function with partial argument placeholders" {
         \\const foo = <cursor>( , 5);
         ,
         .label = "func",
-        .expected_insert_line = "const foo = func(${1:comptime T: type}, 5);",
-        .expected_replace_line = "const foo = func(${1:comptime T: type}, 5);",
+        .expected_insert_line = "const foo = func(${1:comptime T}, 5);",
+        .expected_replace_line = "const foo = func(${1:comptime T}, 5);",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
