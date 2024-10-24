@@ -7,8 +7,8 @@ const proj_version = std.SemanticVersion{ .major = 0, .minor = 14, .patch = 0, .
 
 /// Specify the minimum Zig version that is required to compile and test the project:
 /// Must match the `minimum_zig_version` in `build.zig.zon`.
-/// Breaking change summary: std.zig.tokenizer: simplify line-based tokens
-const minimum_build_zig_version = "0.14.0-dev.1517+900753455";
+/// Breaking change summary: Replace `std.builtin.CallingConvention` with a tagged union, eliminating `@setAlignStack`
+const minimum_build_zig_version = "0.14.0-dev.1983+6bf52b050";
 
 /// Specify the minimum Zig version that is required to run the project:
 /// Release 0.12.0
