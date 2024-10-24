@@ -2450,8 +2450,8 @@ const InMemoryCoercionResult = union(enum) {
     };
 
     const CC = struct {
-        actual: std.builtin.CallingConvention,
-        wanted: std.builtin.CallingConvention,
+        actual: std.builtin.CallingConvention.Tag,
+        wanted: std.builtin.CallingConvention.Tag,
     };
 
     const BitRange = struct {
@@ -4532,19 +4532,26 @@ test "function type" {
         },
     } });
 
-    const @"fn() align(4) callconv(.C) type" = try ip.get(gpa, .{ .function_type = .{
+    try expectFmt("fn(i32) bool", "{}", .{@"fn(i32) bool".fmt(&ip)});
+    try expectFmt("fn(comptime type, noalias i32) type", "{}", .{@"fn(comptime type, noalias i32) type".fmt(&ip)});
+    try expectFmt("fn(i32, ...) type", "{}", .{@"fn(i32, ...) type".fmt(&ip)});
+
+    const @"fn() align(4) callconv(<c>) type" = try ip.get(gpa, .{ .function_type = .{
         .args = Index.Slice.empty,
         .return_type = .type_type,
         .flags = .{
-            .calling_convention = .C,
+            .calling_convention = std.builtin.CallingConvention.c,
             .alignment = 4,
         },
     } });
 
-    try expectFmt("fn(i32) bool", "{}", .{@"fn(i32) bool".fmt(&ip)});
-    try expectFmt("fn(comptime type, noalias i32) type", "{}", .{@"fn(comptime type, noalias i32) type".fmt(&ip)});
-    try expectFmt("fn(i32, ...) type", "{}", .{@"fn(i32, ...) type".fmt(&ip)});
-    try expectFmt("fn() align(4) callconv(.C) type", "{}", .{@"fn() align(4) callconv(.C) type".fmt(&ip)});
+    try expectFmt(
+        std.fmt.comptimePrint("fn() align(4) callconv(.{s}) type", .{@tagName(std.builtin.CallingConvention.c)}),
+        "{}",
+        .{
+            @"fn() align(4) callconv(<c>) type".fmt(&ip),
+        },
+    );
 }
 
 test "union value" {
