@@ -1401,11 +1401,12 @@ test "while" {
         .{ "false", .keywordLiteral, .{} },
     });
     try testSemanticTokens(
-        \\const foo = while (false) |*val| {};
+        \\const foo = inline while (false) |*val| {};
     , &.{
         .{ "const", .keyword, .{} },
         .{ "foo", .variable, .{ .declaration = true } },
         .{ "=", .operator, .{} },
+        .{ "inline", .keyword, .{} },
         .{ "while", .keyword, .{} },
         .{ "false", .keywordLiteral, .{} },
         .{ "val", .variable, .{ .declaration = true } },
@@ -1453,11 +1454,12 @@ test "for" {
         .{ "\"\"", .string, .{} },
     });
     try testSemanticTokens(
-        \\const foo = for ("") |val| {};
+        \\const foo = inline for ("") |val| {};
     , &.{
         .{ "const", .keyword, .{} },
         .{ "foo", .variable, .{ .declaration = true } },
         .{ "=", .operator, .{} },
+        .{ "inline", .keyword, .{} },
         .{ "for", .keyword, .{} },
         .{ "\"\"", .string, .{} },
         .{ "val", .variable, .{ .declaration = true } },
