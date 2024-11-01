@@ -14,19 +14,19 @@ pub const Config = struct {
 pub fn BinnedAllocator(comptime config: Config) type {
     return struct {
         backing_allocator: std.mem.Allocator = std.heap.page_allocator,
-        bins: Bins = .{},
+        bins: Bins = .{ .{}, .{}, .{}, .{}, .{} },
         large_count: if (config.report_leaks) Counter else void = if (config.report_leaks) Counter.init(),
 
         const Bins = struct {
-            Bin(16, 8) = .{},
-            Bin(64, 4) = .{},
-            Bin(256, 2) = .{},
-            Bin(1024, 0) = .{},
-            Bin(4096, 0) = .{},
+            Bin(16, 8),
+            Bin(64, 4),
+            Bin(256, 2),
+            Bin(1024, 0),
+            Bin(4096, 0),
         };
         comptime {
             var prev: usize = 0;
-            for (Bins{}) |bin| {
+            for (Bins{ .{}, .{}, .{}, .{}, .{} }) |bin| {
                 std.debug.assert(bin.size > prev);
                 prev = bin.size;
             }

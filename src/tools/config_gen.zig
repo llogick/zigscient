@@ -888,7 +888,7 @@ fn generateVersionDataFile(allocator: std.mem.Allocator, version: []const u8, ou
         try writer.print(
             \\    .{{
             \\        "{}",
-            \\        .{{
+            \\        Builtin{{
             \\            .signature = "{}",
             \\            .snippet = "{}",
             \\
