@@ -91,6 +91,13 @@ test "function self parameter" {
     , .{ .kind = .Parameter });
 }
 
+test "fncall decl lit init" {
+    try testInlayHints(
+        \\const Foo = struct { pub fn bar(alpha: u32, beta: []const u8) void {} };
+        \\const foo: Foo = .bar(<u32>5,<[]const u8>"");
+    , .{ .kind = .Parameter });
+}
+
 test "function self parameter with pointer type in type declaration" {
     try testInlayHints(
         \\const Foo = *opaque { pub fn bar(self: Foo, alpha: u32) void {} };

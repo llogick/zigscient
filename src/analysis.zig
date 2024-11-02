@@ -2200,7 +2200,15 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
             };
         },
 
-        .enum_literal => return try Type.typeValFromIP(analyser, .enum_literal_type),
+        .enum_literal => {
+            maybe_decl_init: {
+                const nloc = offsets.nodeToLoc(tree, node);
+                const name = offsets.locToSlice(tree.source, nloc)[1..]; // mind the '.'
+                const decl = (try analyser.getSymbolEnumLiteral(arena, handle, nloc.end, name)) orelse break :maybe_decl_init;
+                return try decl.resolveType(analyser) orelse break :maybe_decl_init;
+            }
+            return try Type.typeValFromIP(analyser, .enum_literal_type);
+        },
         .unreachable_literal => return try Type.typeValFromIP(analyser, .noreturn_type),
         .anyframe_literal => return try Type.typeValFromIP(analyser, .anyframe_type),
 
