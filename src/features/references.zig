@@ -247,7 +247,7 @@ fn gatherReferences(
         if (std.mem.eql(u8, uri, curr_handle.uri)) continue;
         const handle = switch (handle_behavior) {
             .get => analyser.store.getHandle(uri),
-            .get_or_load => analyser.store.getOrLoadHandle(uri),
+            .get_or_load => analyser.store.getOrLoadHandle(uri, curr_handle.uri),
         } orelse continue;
 
         try builder.collectReferences(handle, 0);

@@ -44,4 +44,4 @@ relative_builtin_path: ?[]const u8 = null,
 build_options: ?[]BuildOption = null,
 
 /// See `zig build --build-runner /path/to/zigscient/src/build_runner/0.12.0.zig --roots`
-root_id: u32 = 0,
+root_id: ?u32 = null,

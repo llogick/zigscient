@@ -130,6 +130,12 @@
             "description": "When false, the function signature of completion results is hidden. Improves readability in some editors",
             "type": "bool",
             "default": true
+        },
+        {
+            "name": "ws_build_zig",
+            "description": "Internal; Override/specify the build.zig file to use.",
+            "type": "?[]const u8",
+            "default": null
         }
     ]
 }

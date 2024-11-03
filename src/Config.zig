@@ -43,12 +43,6 @@ inlay_hints_show_builtin: bool = true,
 /// Don't show inlay hints for single argument calls
 inlay_hints_exclude_single_argument: bool = true,
 
-/// Hides inlay hints when parameter name matches the identifier (e.g. foo: foo)
-inlay_hints_hide_redundant_param_names: bool = false,
-
-/// Hides inlay hints when parameter name matches the last token of a parameter node (e.g. foo: bar.foo, foo: &foo)
-inlay_hints_hide_redundant_param_names_last_token: bool = false,
-
 /// Enables warnings for style guideline mismatches
 warn_style: bool = false,
 
@@ -78,5 +72,8 @@ global_cache_path: ?[]const u8 = null,
 
 /// When false, the function signature of completion results is hidden. Improves readability in some editors
 completion_label_details: bool = true,
+
+/// Internal; Override/specify the build.zig file to use.
+ws_build_zig: ?[]const u8 = null,
 
 // DO NOT EDIT
