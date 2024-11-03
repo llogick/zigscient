@@ -70,6 +70,7 @@ pub const BuildFile = struct {
     builtin_uri: ?Uri = null,
     /// config options extracted from zls.build.json
     build_associated_config: ?std.json.Parsed(BuildAssociatedConfig) = null,
+    root_id: u32 = 0,
     impl: struct {
         mutex: std.Thread.Mutex = .{},
         /// contains information extracted from running build.zig with a custom build runner
@@ -1130,6 +1131,7 @@ fn createBuildFile(self: *DocumentStore, uri: Uri) error{OutOfMemory}!BuildFile 
 
     if (loadBuildAssociatedConfiguration(self.allocator, build_file)) |cfg| {
         build_file.build_associated_config = cfg;
+        build_file.root_id = cfg.value.root_id;
 
         if (cfg.value.relative_builtin_path) |relative_builtin_path| blk: {
             const build_file_path = URI.parse(self.allocator, build_file.uri) catch break :blk;
@@ -1576,11 +1578,24 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
             const build_config = build_file.tryLockConfig() orelse break :blk;
             defer build_file.unlockConfig();
 
-            for (build_config.packages) |pkg| {
-                if (std.mem.eql(u8, import_str, pkg.name)) {
-                    return try URI.fromPath(allocator, pkg.path);
+            if (build_config.roots.len == 0) break :blk;
+            if (build_file.root_id > build_config.roots.len) {
+                std.log.err("root_id > roots.len; using id 0", .{});
+                build_file.root_id = 0;
+            }
+
+            for (build_config.roots[build_file.root_id]) |mod| {
+                if (std.mem.eql(u8, import_str, mod.name)) {
+                    return try URI.fromPath(allocator, mod.path);
                 }
             }
+
+            // Legacy
+            // for (build_config.packages) |pkg| {
+            //     if (std.mem.eql(u8, import_str, pkg.name)) {
+            //         return try URI.fromPath(allocator, pkg.path);
+            //     }
+            // }
         } else if (isBuildFile(handle.uri)) blk: {
             const build_file = self.getBuildFile(handle.uri) orelse break :blk;
             const build_config = build_file.tryLockConfig() orelse break :blk;

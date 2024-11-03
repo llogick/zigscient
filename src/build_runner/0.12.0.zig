@@ -26,6 +26,7 @@ const ArrayList = std.ArrayList;
 const Step = std.Build.Step;
 const Watch = std.Build.Watch;
 const Allocator = std.mem.Allocator;
+const Module = std.Build.Module;
 
 pub const dependencies = @import("@dependencies");
 
@@ -48,6 +49,8 @@ const ProgressNode = if (builtin.zig_version.order(std_progress_rework_version) 
     *std.Progress.Node
 else
     std.Progress.Node;
+
+var print_project_roots_info: bool = false;
 
 ///! This is a modified build runner to extract information out of build.zig
 ///! Modified version of lib/build_runner.zig
@@ -170,7 +173,9 @@ pub fn main() !void {
                     fatal("  access the help menu with 'zig build -h'", .{});
             }
         } else if (mem.startsWith(u8, arg, "-")) {
-            if (mem.eql(u8, arg, "--verbose")) {
+            if (mem.eql(u8, arg, "--roots")) {
+                print_project_roots_info = true;
+            } else if (mem.eql(u8, arg, "--verbose")) {
                 builder.verbose = true;
             } else if (mem.eql(u8, arg, "-h") or mem.eql(u8, arg, "--help")) {
                 fatal("argument '{s}' is not available", .{arg});
@@ -855,8 +860,8 @@ const Packages = struct {
         return path_gop_result.found_existing;
     }
 
-    pub fn toPackageList(self: *Packages) ![]BuildConfig.Package {
-        var result: std.ArrayListUnmanaged(BuildConfig.Package) = .{};
+    pub fn toPackageList(self: *Packages) ![]BuildConfig.NamePathPair {
+        var result: std.ArrayListUnmanaged(BuildConfig.NamePathPair) = .{};
         errdefer result.deinit(self.allocator);
 
         var name_iter = self.packages.iterator();
@@ -1011,6 +1016,67 @@ fn extractBuildInformation(
         run,
     );
 
+    const roots_info = struct {
+        pub fn printIt(it: std.StringArrayHashMapUnmanaged(*std.Build.Module)) void {
+            for (it.keys(), it.values()) |name, import| {
+                if (import.root_source_file) |root_source_file| {
+                    std.log.info("   * {s} @ {s}", .{ name, root_source_file.getPath(import.owner) });
+                }
+                for (import.import_table.keys(), import.import_table.values()) |name2, import2| {
+                    if (import2.root_source_file) |root_source_file2| {
+                        std.log.info("     * {s} @ {s}", .{ name2, root_source_file2.getPath(import2.owner) });
+                    }
+                    for (import2.import_table.keys(), import2.import_table.values()) |name3, import3| {
+                        if (import3.root_source_file) |root_source_file3| {
+                            std.log.info("       * {s} @ {s}", .{ name3, root_source_file3.getPath(import3.owner) });
+                        }
+                    }
+                }
+            }
+        }
+        pub fn print(s: []*Step, idx: *u32) void {
+            for (s) |step| {
+                const compile: *Step.Compile = step.cast(Step.Compile) orelse continue;
+                if (compile.root_module.root_source_file) |root_source_file| {
+                    std.log.info("{}: {s} @ {s}", .{ idx.*, compile.name, root_source_file.getPath(compile.root_module.owner) });
+                }
+                printIt(compile.root_module.import_table);
+                idx.* += 1;
+            }
+        }
+    };
+
+    var root_imports: std.ArrayListUnmanaged(BuildConfig.NamePathPair) = .{};
+    var roots: std.ArrayListUnmanaged([]BuildConfig.NamePathPair) = .{};
+    var root_idx: u32 = 0;
+    for (b.top_level_steps.values(), 0..) |tls, i| {
+        if (print_project_roots_info) {
+            if (i != 0) std.log.info("", .{});
+            std.log.info("S: {s} - {s}", .{ tls.step.name, tls.description });
+        }
+        for (tls.step.dependencies.items) |step| {
+            if (print_project_roots_info) roots_info.print(step.dependencies.items, &root_idx);
+            for (step.dependencies.items) |dep_step| {
+                const compile: *Step.Compile = dep_step.cast(Step.Compile) orelse continue;
+                var cli_named_modules = try copied_from_zig.CliNamedModules.init(gpa, &compile.root_module);
+                var dep_it = compile.root_module.iterateDependencies(compile, false);
+                while (dep_it.next()) |dep| {
+                    if (!(dep.compile.? == compile)) continue; // !my_responsibility
+                    if (cli_named_modules.modules.getIndex(dep.module)) |module_cli_index| {
+                        const module_cli_name = cli_named_modules.names.keys()[module_cli_index];
+                        if (dep.module.root_source_file) |lp| {
+                            const src = lp.getPath2(dep.module.owner, step);
+                            // std.log.debug("-M{s}={s}", .{ module_cli_name, src });
+                            try root_imports.append(gpa, .{ .name = module_cli_name, .path = src });
+                        }
+                    }
+                }
+                try roots.append(gpa, try root_imports.toOwnedSlice(gpa));
+                root_imports.items.len = 0; // clearRetainingCapacity();
+            }
+        }
+    }
+
     var include_dirs: std.StringArrayHashMapUnmanaged(void) = .{};
     var packages: Packages = .{ .allocator = gpa };
     defer packages.deinit();
@@ -1083,7 +1149,7 @@ fn extractBuildInformation(
     //     .{ "diffz", "122089a8247a693cad53beb161bde6c30f71376cd4298798d45b32740c3581405864" },
     // };
 
-    var deps_build_roots: std.ArrayListUnmanaged(BuildConfig.DepsBuildRoots) = .{};
+    var deps_build_roots: std.ArrayListUnmanaged(BuildConfig.NamePathPair) = .{};
     for (dependencies.root_deps) |root_dep| {
         inline for (comptime std.meta.declarations(dependencies.packages)) |package| blk: {
             if (std.mem.eql(u8, package.name, root_dep[1])) {
@@ -1109,6 +1175,7 @@ fn extractBuildInformation(
     try std.json.stringify(
         BuildConfig{
             .deps_build_roots = deps_build_roots.items,
+            .roots = roots.items,
             .packages = try packages.toPackageList(),
             .include_dirs = include_dirs.keys(),
             .top_level_steps = b.top_level_steps.keys(),
@@ -1170,6 +1237,44 @@ fn getPkgConfigIncludes(
 
 // TODO: Having a copy of this is not very nice
 const copied_from_zig = struct {
+    // Gotten from std.Build.Step.Compile
+    const CliNamedModules = struct {
+        modules: std.AutoArrayHashMapUnmanaged(*Module, void),
+        names: std.StringArrayHashMapUnmanaged(void),
+
+        /// Traverse the whole dependency graph and give every module a unique
+        /// name, ideally one named after what it's called somewhere in the graph.
+        /// It will help here to have both a mapping from module to name and a set
+        /// of all the currently-used names.
+        fn init(arena: Allocator, root_module: *Module) Allocator.Error!CliNamedModules {
+            var compile: CliNamedModules = .{
+                .modules = .{},
+                .names = .{},
+            };
+            var dep_it = root_module.iterateDependencies(null, false);
+            {
+                const item = dep_it.next().?;
+                assert(root_module == item.module);
+                try compile.modules.put(arena, root_module, {});
+                try compile.names.put(arena, "root", {});
+            }
+            while (dep_it.next()) |item| {
+                var name = item.name;
+                var n: usize = 0;
+                while (true) {
+                    const gop = try compile.names.getOrPut(arena, name);
+                    if (!gop.found_existing) {
+                        try compile.modules.putNoClobber(arena, item.module, {});
+                        break;
+                    }
+                    name = try std.fmt.allocPrint(arena, "{s}{d}", .{ item.name, n });
+                    n += 1;
+                }
+            }
+            return compile;
+        }
+    };
+
     /// Run pkg-config for the given library name and parse the output, returning the arguments
     /// that should be passed to zig to link the given library.
     fn runPkgConfig(self: *Step.Compile, lib_name: []const u8) ![]const []const u8 {
