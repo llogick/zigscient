@@ -1,5 +1,6 @@
 const std = @import("std");
 
+roots_info_file: []const u8,
 deps_build_roots: []NamePathPair,
 roots: [][]NamePathPair,
 packages: []NamePathPair,

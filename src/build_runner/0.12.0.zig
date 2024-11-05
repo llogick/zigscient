@@ -50,7 +50,7 @@ const ProgressNode = if (builtin.zig_version.order(std_progress_rework_version) 
 else
     std.Progress.Node;
 
-var print_project_roots_info: bool = false;
+var self_path: [:0]const u8 = undefined;
 
 ///! This is a modified build runner to extract information out of build.zig
 ///! Modified version of lib/build_runner.zig
@@ -68,9 +68,9 @@ pub fn main() !void {
 
     const args = try process.argsAlloc(arena);
 
-    // skip my own exe name
-    var arg_idx: usize = 1;
+    var arg_idx: usize = 0;
 
+    self_path = nextArg(args, &arg_idx) orelse unreachable;
     const zig_exe = nextArg(args, &arg_idx) orelse fatal("missing zig compiler path", .{});
     const zig_lib_directory = if (comptime builtin.zig_version.order(file_watch_version).compare(.gte)) blk: {
         const zig_lib_dir = nextArg(args, &arg_idx) orelse fatal("missing zig lib directory path", .{});
@@ -173,9 +173,7 @@ pub fn main() !void {
                     fatal("  access the help menu with 'zig build -h'", .{});
             }
         } else if (mem.startsWith(u8, arg, "-")) {
-            if (mem.eql(u8, arg, "--roots")) {
-                print_project_roots_info = true;
-            } else if (mem.eql(u8, arg, "--verbose")) {
+            if (mem.eql(u8, arg, "--verbose")) {
                 builder.verbose = true;
             } else if (mem.eql(u8, arg, "-h") or mem.eql(u8, arg, "--help")) {
                 fatal("argument '{s}' is not available", .{arg});
@@ -884,6 +882,58 @@ const Packages = struct {
     }
 };
 
+const roots_info = struct {
+    pub fn printIt(
+        roots_info_slc: *std.ArrayList(u8),
+        it: std.StringArrayHashMapUnmanaged(*std.Build.Module),
+    ) !void {
+        for (it.keys(), it.values()) |name, import| {
+            if (import.root_source_file) |root_source_file| {
+                try roots_info_slc.writer().print(
+                    "   * {s} @ {s}\n",
+                    .{ name, root_source_file.getPath(import.owner) },
+                );
+            }
+            for (import.import_table.keys(), import.import_table.values()) |name2, import2| {
+                if (import2.root_source_file) |root_source_file2| {
+                    try roots_info_slc.writer().print(
+                        "     * {s} @ {s}\n",
+                        .{ name2, root_source_file2.getPath(import.owner) },
+                    );
+                }
+                for (import2.import_table.keys(), import2.import_table.values()) |name3, import3| {
+                    if (import3.root_source_file) |root_source_file3| {
+                        try roots_info_slc.writer().print(
+                            "       * {s} @ {s}\n",
+                            .{ name3, root_source_file3.getPath(import.owner) },
+                        );
+                    }
+                }
+            }
+        }
+    }
+    pub fn print(
+        roots_info_slc: *std.ArrayList(u8),
+        idx: *u32,
+        s: []*Step,
+    ) !void {
+        for (s) |step| {
+            const compile: *Step.Compile = step.cast(Step.Compile) orelse continue;
+            if (compile.root_module.root_source_file) |root_source_file| {
+                try roots_info_slc.writer().print(
+                    "{}: {s} @ {s}\n",
+                    .{ idx.*, compile.name, root_source_file.getPath(compile.root_module.owner) },
+                );
+            }
+            try printIt(
+                roots_info_slc,
+                compile.root_module.import_table,
+            );
+            idx.* += 1;
+        }
+    }
+};
+
 fn extractBuildInformation(
     gpa: Allocator,
     b: *std.Build,
@@ -1016,46 +1066,25 @@ fn extractBuildInformation(
         run,
     );
 
-    const roots_info = struct {
-        pub fn printIt(it: std.StringArrayHashMapUnmanaged(*std.Build.Module)) void {
-            for (it.keys(), it.values()) |name, import| {
-                if (import.root_source_file) |root_source_file| {
-                    std.log.info("   * {s} @ {s}", .{ name, root_source_file.getPath(import.owner) });
-                }
-                for (import.import_table.keys(), import.import_table.values()) |name2, import2| {
-                    if (import2.root_source_file) |root_source_file2| {
-                        std.log.info("     * {s} @ {s}", .{ name2, root_source_file2.getPath(import2.owner) });
-                    }
-                    for (import2.import_table.keys(), import2.import_table.values()) |name3, import3| {
-                        if (import3.root_source_file) |root_source_file3| {
-                            std.log.info("       * {s} @ {s}", .{ name3, root_source_file3.getPath(import3.owner) });
-                        }
-                    }
-                }
-            }
-        }
-        pub fn print(s: []*Step, idx: *u32) void {
-            for (s) |step| {
-                const compile: *Step.Compile = step.cast(Step.Compile) orelse continue;
-                if (compile.root_module.root_source_file) |root_source_file| {
-                    std.log.info("{}: {s} @ {s}", .{ idx.*, compile.name, root_source_file.getPath(compile.root_module.owner) });
-                }
-                printIt(compile.root_module.import_table);
-                idx.* += 1;
-            }
-        }
-    };
-
     var root_imports: std.ArrayListUnmanaged(BuildConfig.NamePathPair) = .{};
     var roots: std.ArrayListUnmanaged([]BuildConfig.NamePathPair) = .{};
+
+    var roots_info_slc = std.ArrayList(u8).init(gpa);
     var root_idx: u32 = 0;
+
     for (b.top_level_steps.values(), 0..) |tls, i| {
-        if (print_project_roots_info) {
-            if (i != 0) std.log.info("", .{});
-            std.log.info("S: {s} - {s}", .{ tls.step.name, tls.description });
-        }
+        if (i != 0) try roots_info_slc.writer().writeByte('\n');
+        try roots_info_slc.writer().print(
+            "S: {s} - {s}\n",
+            .{ tls.step.name, tls.description },
+        );
+
         for (tls.step.dependencies.items) |step| {
-            if (print_project_roots_info) roots_info.print(step.dependencies.items, &root_idx);
+            try roots_info.print(
+                &roots_info_slc,
+                &root_idx,
+                step.dependencies.items,
+            );
             for (step.dependencies.items) |dep_step| {
                 const compile: *Step.Compile = dep_step.cast(Step.Compile) orelse continue;
                 var cli_named_modules = try copied_from_zig.CliNamedModules.init(gpa, &compile.root_module);
@@ -1172,8 +1201,15 @@ fn extractBuildInformation(
         available_options.map.putAssumeCapacityNoClobber(available_option.key_ptr.*, available_option.value_ptr.*);
     }
 
+    const dir_path = std.fs.path.dirname(self_path) orelse unreachable;
+    const file_path = try std.fs.path.join(gpa, &.{ dir_path, "roots.txt" });
+    const file = try std.fs.cwd().createFile(file_path, .{});
+    defer file.close();
+    try file.writeAll(roots_info_slc.items);
+
     try std.json.stringify(
         BuildConfig{
+            .roots_info_file = file_path,
             .deps_build_roots = deps_build_roots.items,
             .roots = roots.items,
             .packages = try packages.toPackageList(),

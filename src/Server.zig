@@ -1563,7 +1563,15 @@ fn hoverHandler(server: *Server, arena: std.mem.Allocator, request: types.HoverP
     var analyser = server.initAnalyser(handle);
     defer analyser.deinit();
 
-    return hover_handler.hover(&analyser, arena, handle, source_index, markup_kind, server.offset_encoding);
+    return hover_handler.hover(
+        server,
+        &analyser,
+        arena,
+        handle,
+        source_index,
+        markup_kind,
+        server.offset_encoding,
+    );
 }
 
 fn documentSymbolsHandler(server: *Server, arena: std.mem.Allocator, request: types.DocumentSymbolParams) Error!lsp.ResultType("textDocument/documentSymbol") {
