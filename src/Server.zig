@@ -1351,6 +1351,36 @@ fn changeDocumentHandler(server: *Server, _: std.mem.Allocator, notification: ty
 
     try server.document_store.refreshDocument(handle, content_changes);
 
+    // TODO This needs to happen whenever loading the build file too
+    if (handle.tree.errors.len == 0) mc: {
+        const build_file = server.document_store.getBuildFile(handle.uri) orelse break :mc;
+        std.log.debug("got build file", .{});
+        const ttags = handle.tree.tokens.items(.tag);
+        var tok_i: u32 = 0;
+        while (tok_i < ttags.len) : (tok_i += 1) {
+            if (ttags[tok_i] != .keyword_fn) continue;
+            if (tok_i + 10 > ttags.len) break :mc;
+            tok_i += 1;
+            if (ttags[tok_i] != .identifier) continue;
+            if (!std.mem.eql(u8, "build", handle.tree.tokenSlice(tok_i))) continue;
+            while (tok_i < ttags.len - 1 and ttags[tok_i] != .r_brace) tok_i += 1;
+            const src_i = handle.tree.tokens.items(.start)[tok_i];
+            const source = handle.tree.source;
+            if (src_i + 20 > source.len) break :mc;
+            _ = std.mem.indexOf(u8, source[0 .. src_i + 20], "//") orelse break :mc;
+            const lsm_i = std.mem.indexOf(u8, source[0 .. src_i + 20], "$ls") orelse break :mc;
+            var tokenizer: std.zig.Tokenizer = .{ .buffer = source, .index = lsm_i + 3 };
+            var tok = tokenizer.next();
+            if (tok.tag != .identifier and !std.mem.eql(u8, "root_id", source[tok.loc.start..tok.loc.end])) break :mc;
+            tok = tokenizer.next();
+            if (tok.tag != .number_literal) break :mc;
+            const root_id = std.fmt.parseInt(u32, source[tok.loc.start..tok.loc.end], 10) catch break :mc;
+            build_file.root_id = root_id;
+            std.log.debug("NEW root_id: {}", .{root_id});
+            break :mc;
+        }
+    }
+
     if (server.client_capabilities.supports_publish_diagnostics) {
         try server.pushJob(.{
             .generate_diagnostics = try server.allocator.dupe(u8, handle.uri),

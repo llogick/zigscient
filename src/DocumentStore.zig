@@ -1622,7 +1622,7 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
             defer build_file.unlockConfig();
 
             if (build_config.roots.len == 0) break :blk;
-            if (build_file.root_id > build_config.roots.len) {
+            if (!(build_file.root_id < build_config.roots.len)) {
                 std.log.err("root_id > roots.len; using id 0", .{});
                 build_file.root_id = 0;
             }
