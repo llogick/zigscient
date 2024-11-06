@@ -256,7 +256,7 @@ pub const Handle = struct {
         const custom_ast = CustomAst.parse(
             allocator,
             text,
-            .zig,
+            if (std.mem.eql(u8, std.fs.path.extension(uri), ".zon")) .zon else .zig,
             &.{},
         ) catch |err| switch (err) {
             error.OutOfMemory => |e| return e,
@@ -265,6 +265,7 @@ pub const Handle = struct {
 
         const std_ast = StdAst{
             .source = custom_ast.source,
+            .mode = custom_ast.mode,
             .tokens = custom_ast.tokens,
             .nodes = custom_ast.nodes,
             .extra_data = custom_ast.extra_data,
@@ -489,39 +490,6 @@ pub const Handle = struct {
         }
     }
 
-    fn parseTree(allocator: std.mem.Allocator, new_text: [:0]const u8) error{OutOfMemory}!StdAst {
-        const tracy_zone_inner = tracy.traceNamed(@src(), "StdAst.parse");
-        defer tracy_zone_inner.end();
-
-        var custom_ast = try CustomAst.parse(
-            allocator,
-            new_text,
-            .zig,
-            .{},
-        );
-
-        errdefer custom_ast.deinit(allocator);
-
-        var tree = StdAst{
-            .source = custom_ast.source,
-            .tokens = custom_ast.tokens,
-            .nodes = custom_ast.nodes,
-            .extra_data = custom_ast.extra_data,
-            .errors = custom_ast.errors,
-        };
-
-        // remove unused capacity
-        var nodes = tree.nodes.toMultiArrayList();
-        try nodes.setCapacity(allocator, nodes.len);
-        tree.nodes = nodes.slice();
-
-        // remove unused capacity
-        var tokens = tree.tokens.toMultiArrayList();
-        try tokens.setCapacity(allocator, tokens.len);
-        tree.tokens = tokens.slice();
-        return tree;
-    }
-
     fn setSource(
         self: *Handle,
         content_changes: ContentChanges,
@@ -556,6 +524,7 @@ pub const Handle = struct {
 
         const new_tree: StdAst = .{
             .source = custom_ast.source,
+            .mode = custom_ast.mode,
             .tokens = custom_ast.tokens,
             .nodes = custom_ast.nodes,
             .extra_data = custom_ast.extra_data,

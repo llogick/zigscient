@@ -12,6 +12,7 @@ tokens: std.zig.Ast.TokenList.Slice,
 /// references to the root node, this means 0 is available to indicate null.
 nodes: std.zig.Ast.NodeList.Slice,
 extra_data: []std.zig.Ast.Node.Index,
+mode: StdAst.Mode = .zig,
 nstates: Parse.States,
 
 errors: []const std.zig.Ast.Error,
@@ -86,7 +87,7 @@ pub const Delta = struct {
 pub fn parse(
     gpa: Allocator,
     source: [:0]const u8,
-    mode: Mode,
+    mode: StdAst.Mode,
     reusable_data: *const ReusableData,
 ) !Ast {
     // std.log.debug("parse rd: {}", .{reusable_data});
@@ -377,6 +378,7 @@ pub fn parse(
 
     return Ast{
         .source = source,
+        .mode = mode,
         .tokens = tokens.toOwnedSlice(),
         .nodes = parser.nodes.toOwnedSlice(),
         .extra_data = try parser.extra_data.toOwnedSlice(gpa),
@@ -1602,6 +1604,18 @@ pub fn derive(
     nstates: Parse.States,
     content_changes: *const ContentChanges,
 ) !Ast {
+    switch (std_ast.mode) {
+        .zon => return parse(
+            gpa,
+            content_changes.text,
+            .zon,
+            &.{},
+        ) catch |err| switch (err) {
+            error.OutOfMemory => |e| return e,
+            error.OvershotCutOff => unreachable,
+        },
+        .zig => {},
+    }
     return custom_ast: {
         const reusable_data: ReusableData = reuse: {
             const root_decls = std_ast.rootDecls();
@@ -1823,7 +1837,7 @@ pub fn derive(
         break :custom_ast parse(
             gpa,
             content_changes.text,
-            .zig,
+            std_ast.mode,
             &reusable_data,
         ) catch |err| switch (err) {
             error.OutOfMemory => |e| return e,
