@@ -586,20 +586,6 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
         }
     }
 
-    if (server.config.ws_build_zig == null and server.client_capabilities.workspace_folders.len != 0) {
-        var config_arena_allocator = server.config_arena.promote(server.allocator);
-        defer server.config_arena = config_arena_allocator.state;
-        const config_arena = config_arena_allocator.allocator();
-        server.config.ws_build_zig = DocumentStore.findBuildZig(
-            config_arena,
-            server.client_capabilities.workspace_folders[0], // more than 1?
-        ) catch null;
-        if (server.config.ws_build_zig) |ws_build_zig| {
-            server.document_store.config = DocumentStore.Config.fromMainConfig(server.config);
-            log.info("WS: Project configuration file: '{s}'", .{ws_build_zig});
-        }
-    }
-
     return .{
         .serverInfo = .{
             .name = "zigscient",
@@ -671,6 +657,21 @@ fn initializedHandler(server: *Server, _: std.mem.Allocator, notification: types
 
     if (server.status != .initializing) {
         log.warn("received a initialized notification but the server has not send a initialize request!", .{});
+    }
+
+    if (server.config.ws_build_zig == null and server.client_capabilities.workspace_folders.len != 0) {
+        var config_arena_allocator = server.config_arena.promote(server.allocator);
+        defer server.config_arena = config_arena_allocator.state;
+        const config_arena = config_arena_allocator.allocator();
+        server.config.ws_build_zig = DocumentStore.findBuildZig(
+            config_arena,
+            server.client_capabilities.workspace_folders[0], // more than 1?
+        ) catch null;
+        if (server.config.ws_build_zig) |ws_build_zig| {
+            server.document_store.config = DocumentStore.Config.fromMainConfig(server.config);
+            _ = server.document_store.getOrLoadBuildFile(ws_build_zig);
+            log.info("WS: Project configuration file: '{s}'", .{ws_build_zig});
+        }
     }
 
     server.status = .initialized;

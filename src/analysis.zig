@@ -1807,7 +1807,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                     import_str[1 .. import_str.len - 1],
                 )) orelse return null;
 
-                const new_handle = analyser.store.getOrLoadHandle(import_uri, handle.uri) orelse return null;
+                const new_handle = analyser.store.getOrLoadHandle(import_uri) orelse return null;
 
                 return .{
                     .data = .{
@@ -1823,7 +1823,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
             if (std.mem.eql(u8, call_name, "@cImport")) {
                 const cimport_uri = (try analyser.store.resolveCImport(handle, node)) orelse return null;
 
-                const new_handle = analyser.store.getOrLoadHandle(cimport_uri, handle.uri) orelse return null;
+                const new_handle = analyser.store.getOrLoadHandle(cimport_uri) orelse return null;
 
                 return .{
                     .data = .{
@@ -3025,7 +3025,7 @@ pub fn instanceStdBuiltinType(analyser: *Analyser, type_name: []const u8) error{
     const zig_lib_path = analyser.store.config.zig_lib_path orelse return null;
     const builtin_path = try std.fs.path.join(analyser.arena.allocator(), &.{ zig_lib_path, "std", "builtin.zig" });
     const builtin_uri = try URI.fromPath(analyser.arena.allocator(), builtin_path);
-    const builtin_handle = analyser.store.getOrLoadHandle(builtin_uri, null) orelse return null;
+    const builtin_handle = analyser.store.getOrLoadHandle(builtin_uri) orelse return null;
     const builtin_root_struct_type: Type = .{
         .data = .{
             .container = .{
@@ -3297,7 +3297,7 @@ pub fn getFieldAccessType(
                         .end = import_str_tok.loc.end - 1,
                     });
                     const uri = try analyser.store.uriFromImportStr(analyser.arena.allocator(), handle, import_str) orelse return null;
-                    const node_handle = analyser.store.getOrLoadHandle(uri, handle.uri) orelse return null;
+                    const node_handle = analyser.store.getOrLoadHandle(uri) orelse return null;
                     current_type = .{
                         .data = .{
                             .container = .{
@@ -3933,7 +3933,7 @@ pub const DeclWithHandle = struct {
                     var possible = std.ArrayListUnmanaged(Type.TypeWithDescriptor){};
 
                     for (refs.items) |ref| {
-                        const handle = analyser.store.getOrLoadHandle(ref.uri, self.handle.uri).?;
+                        const handle = analyser.store.getOrLoadHandle(ref.uri).?;
 
                         var call_buf: [1]Ast.Node.Index = undefined;
                         const call = tree.fullCall(&call_buf, ref.call_node).?;

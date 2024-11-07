@@ -189,6 +189,8 @@ pub const Handle = struct {
     /// Contains one entry for every cimport in the document
     cimports: std.MultiArrayList(CImportHandle) = .{},
 
+    closest_build_zig: ?[]const u8 = null,
+
     /// private field
     impl: struct {
         /// @bitCast from/to `Status`
@@ -578,6 +580,8 @@ pub const Handle = struct {
         for (self.cimports.items(.source)) |source| allocator.free(source);
         self.cimports.deinit(allocator);
 
+        if (self.closest_build_zig) |uri| allocator.free(uri);
+
         switch (self.impl.associated_build_file) {
             .none, .resolved => {},
             .unresolved => |*payload| payload.deinit(allocator),
@@ -626,7 +630,7 @@ pub fn getHandle(self: *DocumentStore, uri: Uri) ?*Handle {
 /// Will load the document from disk if it hasn't been already
 /// **Thread safe** takes an exclusive lock
 /// This function does not protect against data races from modifying the Handle
-pub fn getOrLoadHandle(self: *DocumentStore, uri: Uri, parent_uri: ?Uri) ?*Handle {
+pub fn getOrLoadHandle(self: *DocumentStore, uri: Uri) ?*Handle {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -654,7 +658,7 @@ pub fn getOrLoadHandle(self: *DocumentStore, uri: Uri, parent_uri: ?Uri) ?*Handl
         return null;
     };
 
-    return self.createAndStoreDocument(uri, file_contents, false, parent_uri) catch return null;
+    return self.createAndStoreDocument(uri, file_contents, false) catch return null;
 }
 
 /// **Thread safe** takes a shared lock
@@ -668,7 +672,7 @@ pub fn getBuildFile(self: *DocumentStore, uri: Uri) ?*BuildFile {
 /// invalidates any pointers into `DocumentStore.build_files`
 /// **Thread safe** takes an exclusive lock
 /// This function does not protect against data races from modifying the BuildFile
-fn getOrLoadBuildFile(self: *DocumentStore, uri: Uri) ?*BuildFile {
+pub fn getOrLoadBuildFile(self: *DocumentStore, uri: Uri) ?*BuildFile {
     if (self.getBuildFile(uri)) |build_file| return build_file;
 
     self.lock.lock();
@@ -713,7 +717,7 @@ pub fn openDocument(self: *DocumentStore, uri: Uri, text: []const u8) error{OutO
     }
 
     const duped_text = try self.allocator.dupeZ(u8, text);
-    _ = try self.createAndStoreDocument(uri, duped_text, true, null);
+    _ = try self.createAndStoreDocument(uri, duped_text, true);
 }
 
 /// **Thread safe** takes a shared lock, takes an exclusive lock (with `tryLock`)
@@ -1042,8 +1046,20 @@ fn loadBuildConfiguration(self: *DocumentStore, build_file_uri: Uri) !std.json.P
     ) catch return error.RunFailed;
     errdefer build_config.deinit();
 
+    // Resolve paths for `.@"mod" = .{ .path = ".."`
+
     for (build_config.value.packages) |*pkg| {
-        pkg.path = try std.fs.path.resolve(build_config.arena.allocator(), &[_][]const u8{ build_file_path, "..", pkg.path });
+        pkg.path = try std.fs.path.resolve(
+            build_config.arena.allocator(),
+            &[_][]const u8{ build_file_path, "..", pkg.path },
+        );
+    }
+
+    for (build_config.value.roots) |root| {
+        for (root) |*root_entry| root_entry.path = try std.fs.path.resolve(
+            build_config.arena.allocator(),
+            &[_][]const u8{ build_file_path, "..", root_entry.path },
+        );
     }
 
     return build_config;
@@ -1233,7 +1249,7 @@ fn uriInImports(
     const gop = try checked_uris.getOrPut(self.allocator, source_uri);
     if (gop.found_existing) return false;
 
-    const handle = self.getOrLoadHandle(source_uri, source_uri) orelse {
+    const handle = self.getOrLoadHandle(source_uri) orelse {
         errdefer std.debug.assert(checked_uris.remove(source_uri));
         gop.key_ptr.* = try self.allocator.dupe(u8, source_uri);
         return false;
@@ -1255,7 +1271,7 @@ fn uriInImports(
 /// invalidates any pointers into `DocumentStore.build_files`
 /// takes ownership of the `text` passed in.
 /// **Thread safe** takes an exclusive lock
-fn createDocument(self: *DocumentStore, uri: Uri, text: [:0]const u8, open: bool, parent_uri: ?Uri) error{OutOfMemory}!Handle {
+fn createDocument(self: *DocumentStore, uri: Uri, text: [:0]const u8, open: bool) error{OutOfMemory}!Handle {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -1267,18 +1283,9 @@ fn createDocument(self: *DocumentStore, uri: Uri, text: [:0]const u8, open: bool
     if (isBuildFile(handle.uri) and !isInStd(handle.uri)) {
         _ = self.getOrLoadBuildFile(handle.uri);
     } else if (!isBuiltinFile(handle.uri) and !isInStd(handle.uri)) blk: {
-        if (self.config.ws_build_zig) |ws_build_zig| {
-            _ = self.getOrLoadBuildFile(ws_build_zig) orelse break :blk;
-            handle.impl.associated_build_file = .{ .resolved = ws_build_zig };
-            break :blk;
-        }
-        // Try to propagate the build.zig/roots
-        if (parent_uri) |par_uri| p: {
-            const parent = self.getHandle(par_uri) orelse break :p;
-            handle.impl.associated_build_file = parent.impl.associated_build_file;
-            break :blk;
-        }
-        // Legacy
+        handle.closest_build_zig = findBuildZig(self.allocator, handle.uri) catch null;
+        if (handle.closest_build_zig) |bzfuri| _ = self.getOrLoadBuildFile(bzfuri);
+
         const potential_build_files = self.collectPotentialBuildFiles(uri) catch {
             log.err("failed to collect potential build files of '{s}'", .{handle.uri});
             break :blk;
@@ -1306,11 +1313,11 @@ fn createDocument(self: *DocumentStore, uri: Uri, text: [:0]const u8, open: bool
 /// takes ownership of the `text` passed in.
 /// invalidates any pointers into `DocumentStore.build_files`
 /// **Thread safe** takes an exclusive lock
-fn createAndStoreDocument(self: *DocumentStore, uri: Uri, text: [:0]const u8, open: bool, parent_uri: ?Uri) error{OutOfMemory}!*Handle {
+fn createAndStoreDocument(self: *DocumentStore, uri: Uri, text: [:0]const u8, open: bool) error{OutOfMemory}!*Handle {
     const handle_ptr: *Handle = try self.allocator.create(Handle);
     errdefer self.allocator.destroy(handle_ptr);
 
-    handle_ptr.* = try self.createDocument(uri, text, open, parent_uri);
+    handle_ptr.* = try self.createDocument(uri, text, open);
     errdefer handle_ptr.deinit();
 
     const gop = blk: {
@@ -1616,6 +1623,56 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
         }
         return null;
     } else if (!std.mem.endsWith(u8, import_str, ".zig")) {
+        if (isBuildFile(handle.uri)) blk: {
+            const build_file = self.getBuildFile(handle.uri) orelse break :blk;
+            const build_config = build_file.tryLockConfig() orelse break :blk;
+            defer build_file.unlockConfig();
+
+            for (build_config.deps_build_roots) |dep_build_root| {
+                if (std.mem.eql(u8, import_str, dep_build_root.name)) {
+                    return try URI.fromPath(allocator, dep_build_root.path);
+                }
+            }
+        }
+
+        ws_build_zig: {
+            const ws_build_zig_uri = self.config.ws_build_zig orelse break :ws_build_zig;
+            const build_file = self.getBuildFile(ws_build_zig_uri) orelse break :ws_build_zig;
+            const build_config = build_file.tryLockConfig() orelse break :ws_build_zig;
+            defer build_file.unlockConfig();
+
+            if (build_config.roots.len == 0) break :ws_build_zig;
+            if (!(build_file.root_id < build_config.roots.len)) {
+                std.log.err("root_id > roots.len; using id 0", .{});
+                build_file.root_id = 0;
+            }
+
+            for (build_config.roots[build_file.root_id]) |mod| {
+                if (std.mem.eql(u8, import_str, mod.name)) {
+                    return try URI.fromPath(allocator, mod.path);
+                }
+            }
+        }
+
+        closest: {
+            const closest_build_zig_uri = handle.closest_build_zig orelse break :closest;
+            const build_file = self.getBuildFile(closest_build_zig_uri) orelse break :closest;
+            const build_config = build_file.tryLockConfig() orelse break :closest;
+            defer build_file.unlockConfig();
+
+            if (build_config.roots.len == 0) break :closest;
+            if (!(build_file.root_id < build_config.roots.len)) {
+                std.log.err("root_id > roots.len; using id 0", .{});
+                build_file.root_id = 0;
+            }
+
+            for (build_config.roots[build_file.root_id]) |mod| {
+                if (std.mem.eql(u8, import_str, mod.name)) {
+                    return try URI.fromPath(allocator, mod.path);
+                }
+            }
+        }
+
         if (try handle.getAssociatedBuildFileUri(self)) |build_file_uri| blk: {
             const build_file = self.getBuildFile(build_file_uri).?;
             const build_config = build_file.tryLockConfig() orelse break :blk;
@@ -1632,24 +1689,48 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
                     return try URI.fromPath(allocator, mod.path);
                 }
             }
+        }
 
-            // Legacy, but keep around -- useful for simple nested projects
+        // Legacy
+
+        ws_build_zig_droll: {
+            const ws_build_zig_uri = self.config.ws_build_zig orelse break :ws_build_zig_droll;
+            const build_file = self.getBuildFile(ws_build_zig_uri) orelse break :ws_build_zig_droll;
+            const build_config = build_file.tryLockConfig() orelse break :ws_build_zig_droll;
+            defer build_file.unlockConfig();
+
             for (build_config.packages) |pkg| {
                 if (std.mem.eql(u8, import_str, pkg.name)) {
                     return try URI.fromPath(allocator, pkg.path);
                 }
             }
-        } else if (isBuildFile(handle.uri)) blk: {
-            const build_file = self.getBuildFile(handle.uri) orelse break :blk;
-            const build_config = build_file.tryLockConfig() orelse break :blk;
+        }
+
+        closest_droll: {
+            const closest_build_zig_uri = handle.closest_build_zig orelse break :closest_droll;
+            const build_file = self.getBuildFile(closest_build_zig_uri) orelse break :closest_droll;
+            const build_config = build_file.tryLockConfig() orelse break :closest_droll;
             defer build_file.unlockConfig();
 
-            for (build_config.deps_build_roots) |dep_build_root| {
-                if (std.mem.eql(u8, import_str, dep_build_root.name)) {
-                    return try URI.fromPath(allocator, dep_build_root.path);
+            for (build_config.packages) |pkg| {
+                if (std.mem.eql(u8, import_str, pkg.name)) {
+                    return try URI.fromPath(allocator, pkg.path);
                 }
             }
         }
+
+        if (try handle.getAssociatedBuildFileUri(self)) |build_file_uri| blk: {
+            const build_file = self.getBuildFile(build_file_uri).?;
+            const build_config = build_file.tryLockConfig() orelse break :blk;
+            defer build_file.unlockConfig();
+
+            for (build_config.packages) |pkg| {
+                if (std.mem.eql(u8, import_str, pkg.name)) {
+                    return try URI.fromPath(allocator, pkg.path);
+                }
+            }
+        }
+
         return null;
     } else {
         const base_path = URI.parse(allocator, handle.uri) catch |err| switch (err) {
