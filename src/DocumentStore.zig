@@ -746,7 +746,7 @@ pub fn closeDocument(self: *DocumentStore, uri: Uri) void {
 
     self.garbageCollectionImports() catch {};
     self.garbageCollectionCImports() catch {};
-    self.garbageCollectionBuildFiles() catch {};
+    // self.garbageCollectionBuildFiles() catch {};
 }
 
 /// Takes ownership of `new_text` which has to be allocated with this DocumentStore's allocator.
