@@ -403,7 +403,7 @@ fn handleUnorganizedImport(builder: *Builder, actions: *std.ArrayListUnmanaged(t
         var writer = new_text.writer(builder.arena);
 
         for (sorted_imports, 0..) |import_decl, i| {
-            if (i != 0 and ImportDecl.addSeperator(sorted_imports[i - 1], import_decl)) {
+            if (i != 0 and ImportDecl.addSeparator(sorted_imports[i - 1], import_decl)) {
                 try new_text.append(builder.arena, '\n');
             }
 
@@ -442,7 +442,7 @@ fn handleUnorganizedImport(builder: *Builder, actions: *std.ArrayListUnmanaged(t
     const workspace_edit = try builder.createWorkspaceEdit(edits.items);
 
     try actions.append(builder.arena, .{
-        .title = "organize @import",
+        .title = "Organize Imports (Fields First)",
         .kind = .@"source.organizeImports",
         .isPreferred = true,
         .edit = workspace_edit,
@@ -476,6 +476,7 @@ pub const ImportDecl = struct {
 
     /// declaration order controls sorting order
     pub const Kind = enum {
+        field,
         std,
         builtin,
         build_options,
@@ -490,6 +491,7 @@ pub const ImportDecl = struct {
         const lhs_kind = lhs.getKind();
         const rhs_kind = rhs.getKind();
         if (lhs_kind != rhs_kind) return @intFromEnum(lhs_kind) < @intFromEnum(rhs_kind);
+        if (lhs_kind == .field) return false; // Don't sort container fields (TODO separate code action)
 
         if (sort_public_decls_first) {
             const node_tokens = context.nodes.items(.main_token);
@@ -518,7 +520,10 @@ pub const ImportDecl = struct {
     }
 
     pub fn getKind(self: ImportDecl) Kind {
-        const name = self.getSortValue()[1 .. self.getSortValue().len - 1];
+        const val_slc = self.getSortValue();
+        const name = val_slc[1 .. val_slc.len - 1];
+
+        if (std.mem.eql(u8, name, "$field!")) return .field;
 
         if (std.mem.endsWith(u8, name, ".zig")) return .file;
 
@@ -534,8 +539,10 @@ pub const ImportDecl = struct {
     pub fn getSortSlice(self: ImportDecl) []const u8 {
         switch (self.getKind()) {
             .file => {
-                if (std.mem.indexOfScalar(u8, self.getSortValue(), '/') != null) {
-                    return self.getSortValue()[1 .. self.getSortValue().len - 1];
+                const val_slc = self.getSortValue();
+                if (std.mem.lastIndexOfScalar(u8, val_slc, '/')) |path_sep_idx| blk: {
+                    if (!(path_sep_idx + 1 < val_slc.len - 2)) break :blk;
+                    return val_slc[path_sep_idx + 1 .. val_slc.len - 1];
                 }
                 return self.getSortName();
             },
@@ -555,10 +562,10 @@ pub const ImportDecl = struct {
 
     /// returns true if there should be an empty line between these two imports
     /// assumes `lessThan(void, lhs, rhs) == true`
-    pub fn addSeperator(lhs: ImportDecl, rhs: ImportDecl) bool {
-        const lhs_kind = @intFromEnum(lhs.getKind());
-        const rhs_kind = @intFromEnum(rhs.getKind());
-        if (rhs_kind <= @intFromEnum(Kind.build_options)) return false;
+    pub fn addSeparator(lhs: ImportDecl, rhs: ImportDecl) bool {
+        const lhs_kind = lhs.getKind();
+        const rhs_kind = rhs.getKind();
+        if (lhs_kind != .field and @intFromEnum(rhs_kind) <= @intFromEnum(Kind.build_options)) return false;
         return lhs_kind != rhs_kind;
     }
 
@@ -570,7 +577,7 @@ pub const ImportDecl = struct {
         const token_tags = tree.tokens.items(.tag);
 
         var last_token = ast.lastToken(tree, self.var_decl);
-        if (last_token + 1 < tree.tokens.len - 1 and token_tags[last_token + 1] == .semicolon) {
+        if (last_token + 1 < tree.tokens.len - 1 and (token_tags[last_token + 1] == .semicolon or token_tags[last_token + 1] == .comma)) {
             last_token += 1;
         }
 
@@ -616,81 +623,100 @@ pub fn getImportsDecls(builder: *Builder, allocator: std.mem.Allocator) error{Ou
 
             if (skip_set.isSet(root_decl_index)) continue;
 
-            if (node_tags[node] != .simple_var_decl) continue;
-            const var_decl = tree.simpleVarDecl(node);
+            switch (node_tags[node]) {
+                .simple_var_decl => {
+                    const var_decl = tree.simpleVarDecl(node);
 
-            var current_node = var_decl.ast.init_node;
-            const import: ImportDecl = found_decl: while (true) {
-                const token = node_tokens[current_node];
-                switch (node_tags[current_node]) {
-                    .builtin_call_two, .builtin_call_two_comma => {
-                        // `>@import("string")<` case
-                        const builtin_name = offsets.tokenToSlice(tree, token);
-                        if (!std.mem.eql(u8, builtin_name, "@import")) continue :next_decl;
-                        // TODO what about @embedFile ?
+                    var current_node = var_decl.ast.init_node;
+                    const import: ImportDecl = found_decl: while (true) {
+                        const token = node_tokens[current_node];
+                        switch (node_tags[current_node]) {
+                            .builtin_call_two, .builtin_call_two_comma => {
+                                // `>@import("string")<` case
+                                const builtin_name = offsets.tokenToSlice(tree, token);
+                                if (!std.mem.eql(u8, builtin_name, "@import")) continue :next_decl;
+                                // TODO what about @embedFile ?
 
-                        if (node_data[current_node].lhs == 0 or node_data[current_node].rhs != 0) continue :next_decl;
-                        const param_node = node_data[current_node].lhs;
-                        if (node_tags[param_node] != .string_literal) continue :next_decl;
+                                if (node_data[current_node].lhs == 0 or node_data[current_node].rhs != 0) continue :next_decl;
+                                const param_node = node_data[current_node].lhs;
+                                if (node_tags[param_node] != .string_literal) continue :next_decl;
 
-                        const name_token = var_decl.ast.mut_token + 1;
-                        const value_token = node_tokens[param_node];
+                                const name_token = var_decl.ast.mut_token + 1;
+                                const value_token = node_tokens[param_node];
 
-                        break :found_decl .{
-                            .var_decl = node,
-                            .first_comment_token = Analyser.getDocCommentTokenIndex(tree.tokens.items(.tag), node_tokens[node]),
-                            .name = offsets.tokenToSlice(tree, name_token),
-                            .value = offsets.tokenToSlice(tree, value_token),
-                        };
-                    },
-                    .field_access => {
-                        // `@import("foo").>bar<` or `foo.>bar<` case
-                        // drill down to the base import
-                        current_node = node_data[current_node].lhs;
-                        continue;
-                    },
-                    .identifier => {
-                        // `>std<.ascii` case - Might be an alias
-                        const name_token = ast.identifierTokenFromIdentifierNode(tree, current_node) orelse continue :next_decl;
-                        const name = offsets.identifierTokenToNameSlice(tree, name_token);
+                                break :found_decl .{
+                                    .var_decl = node,
+                                    .first_comment_token = Analyser.getDocCommentTokenIndex(tree.tokens.items(.tag), node_tokens[node]),
+                                    .name = offsets.tokenToSlice(tree, name_token),
+                                    .value = offsets.tokenToSlice(tree, value_token),
+                                };
+                            },
+                            .field_access => {
+                                // `@import("foo").>bar<` or `foo.>bar<` case
+                                // drill down to the base import
+                                current_node = node_data[current_node].lhs;
+                                continue;
+                            },
+                            .identifier => {
+                                // `>std<.ascii` case - Might be an alias
+                                const name_token = ast.identifierTokenFromIdentifierNode(tree, current_node) orelse continue :next_decl;
+                                const name = offsets.identifierTokenToNameSlice(tree, name_token);
 
-                        // calling `lookupSymbolGlobal` is slower than just looking up a symbol at the root scope directly.
-                        // const decl = try builder.analyser.lookupSymbolGlobal(builder.handle, name, source_index) orelse continue :next_decl;
-                        const document_scope = try builder.handle.getDocumentScope();
+                                // calling `lookupSymbolGlobal` is slower than just looking up a symbol at the root scope directly.
+                                // const decl = try builder.analyser.lookupSymbolGlobal(builder.handle, name, source_index) orelse continue :next_decl;
+                                const document_scope = try builder.handle.getDocumentScope();
 
-                        const decl_index = document_scope.getScopeDeclaration(.{
-                            .scope = .root,
-                            .name = name,
-                            .kind = .other,
-                        }).unwrap() orelse continue :next_decl;
+                                const decl_index = document_scope.getScopeDeclaration(.{
+                                    .scope = .root,
+                                    .name = name,
+                                    .kind = .other,
+                                }).unwrap() orelse continue :next_decl;
 
-                        const decl = document_scope.declarations.get(@intFromEnum(decl_index));
+                                const decl = document_scope.declarations.get(@intFromEnum(decl_index));
 
-                        if (decl != .ast_node) continue :next_decl;
-                        const decl_found = decl.ast_node;
+                                if (decl != .ast_node) continue :next_decl;
+                                const decl_found = decl.ast_node;
 
-                        const import_decl = imports.getKeyAdapted(decl_found, ImportDecl.AstNodeAdapter{}) orelse {
-                            // We may find the import in a future loop iteration
-                            do_skip = false;
-                            continue :next_decl;
-                        };
-                        const ident_name_token = var_decl.ast.mut_token + 1;
-                        const var_name = offsets.tokenToSlice(tree, ident_name_token);
-                        break :found_decl .{
-                            .var_decl = node,
-                            .first_comment_token = Analyser.getDocCommentTokenIndex(tree.tokens.items(.tag), node_tokens[node]),
-                            .name = var_name,
-                            .value = var_name,
-                            .parent_name = import_decl.getSortName(),
-                            .parent_value = import_decl.getSortValue(),
-                        };
-                    },
-                    else => continue :next_decl,
-                }
-            };
-            const gop = try imports.getOrPutContextAdapted(allocator, import.var_decl, ImportDecl.AstNodeAdapter{}, {});
-            if (!gop.found_existing) gop.key_ptr.* = import;
-            updated = true;
+                                const import_decl = imports.getKeyAdapted(decl_found, ImportDecl.AstNodeAdapter{}) orelse {
+                                    // We may find the import in a future loop iteration
+                                    do_skip = false;
+                                    continue :next_decl;
+                                };
+                                const ident_name_token = var_decl.ast.mut_token + 1;
+                                const var_name = offsets.tokenToSlice(tree, ident_name_token);
+                                break :found_decl .{
+                                    .var_decl = node,
+                                    .first_comment_token = Analyser.getDocCommentTokenIndex(tree.tokens.items(.tag), node_tokens[node]),
+                                    .name = var_name,
+                                    .value = var_name,
+                                    .parent_name = import_decl.getSortName(),
+                                    .parent_value = import_decl.getSortValue(),
+                                };
+                            },
+                            else => continue :next_decl,
+                        }
+                    };
+                    const gop = try imports.getOrPutContextAdapted(allocator, import.var_decl, ImportDecl.AstNodeAdapter{}, {});
+                    if (!gop.found_existing) gop.key_ptr.* = import;
+                    updated = true;
+                },
+                .container_field,
+                .container_field_init,
+                .container_field_align,
+                => {
+                    const nslc = offsets.nodeToSlice(tree, node);
+                    const import: ImportDecl = .{
+                        .var_decl = node,
+                        .first_comment_token = Analyser.getDocCommentTokenIndex(tree.tokens.items(.tag), node_tokens[node]),
+                        .name = nslc,
+                        .value = "<$field!>", // getKind strips first and last char
+                    };
+                    const gop = try imports.getOrPutContextAdapted(allocator, import.var_decl, ImportDecl.AstNodeAdapter{}, {});
+                    if (!gop.found_existing) gop.key_ptr.* = import;
+                    updated = true;
+                },
+                else => continue :next_decl,
+            }
         }
     }
 
