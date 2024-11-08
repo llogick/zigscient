@@ -627,6 +627,32 @@ test "organize imports - @embedFile" {
     );
 }
 
+test "organize imports - fields first" {
+    try testOrganizeImports(
+        \\const std = @import("std");
+        \\const abc = @import("abc.zig");
+        \\/// a
+        \\a: bool,
+        \\/// b
+        \\b: u8 = 1,
+        \\/// c
+        \\c: i8 align(8),
+    ,
+        \\/// a
+        \\a: bool,
+        \\/// b
+        \\b: u8 = 1,
+        \\/// c
+        \\c: i8 align(8),
+        \\
+        \\const std = @import("std");
+        \\
+        \\const abc = @import("abc.zig");
+        \\
+        \\
+    );
+}
+
 test "organize imports - edge cases" {
     // Withstands non-standard behavior
     try testOrganizeImports(
