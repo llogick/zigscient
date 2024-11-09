@@ -559,6 +559,34 @@ pub const Handle = struct {
         if (old_zir) |*zir| zir.deinit(self.impl.allocator);
     }
 
+    // IF this handle is also a BuildFile scan for `$ls root_id N` and apply
+    pub fn handleRootIdComment(handle: *Handle, ds: *DocumentStore) void {
+        if (handle.tree.errors.len != 0) return;
+        const build_file = ds.getBuildFile(handle.uri) orelse return;
+        const ttags = handle.tree.tokens.items(.tag);
+        var tok_i: u32 = 0;
+        while (tok_i < ttags.len) : (tok_i += 1) {
+            if (ttags[tok_i] != .keyword_fn) continue;
+            if (tok_i + 10 > ttags.len) return;
+            tok_i += 1;
+            if (ttags[tok_i] != .identifier) continue;
+            if (!std.mem.eql(u8, "build", handle.tree.tokenSlice(tok_i))) continue;
+            while (tok_i < ttags.len - 1 and ttags[tok_i] != .r_brace) tok_i += 1;
+            const src_i = handle.tree.tokens.items(.start)[tok_i];
+            const source = handle.tree.source;
+            if (src_i + 20 > source.len) return;
+            _ = std.mem.indexOf(u8, source[0 .. src_i + 20], "//") orelse return;
+            const lsm_i = std.mem.indexOf(u8, source[0 .. src_i + 20], "$ls") orelse return;
+            var tokenizer: std.zig.Tokenizer = .{ .buffer = source, .index = lsm_i + 3 };
+            var tok = tokenizer.next();
+            if (tok.tag != .identifier and !std.mem.eql(u8, "root_id", source[tok.loc.start..tok.loc.end])) return;
+            tok = tokenizer.next();
+            if (tok.tag != .number_literal) return;
+            const root_id = std.fmt.parseInt(u32, source[tok.loc.start..tok.loc.end], 10) catch return;
+            build_file.root_id = root_id;
+        }
+    }
+
     fn deinit(self: *Handle) void {
         const tracy_zone = tracy.trace(@src());
         defer tracy_zone.end();
@@ -672,7 +700,7 @@ pub fn getBuildFile(self: *DocumentStore, uri: Uri) ?*BuildFile {
 /// invalidates any pointers into `DocumentStore.build_files`
 /// **Thread safe** takes an exclusive lock
 /// This function does not protect against data races from modifying the BuildFile
-pub fn getOrLoadBuildFile(self: *DocumentStore, uri: Uri) ?*BuildFile {
+fn getOrLoadBuildFile(self: *DocumentStore, uri: Uri) ?*BuildFile {
     if (self.getBuildFile(uri)) |build_file| return build_file;
 
     self.lock.lock();
@@ -708,11 +736,11 @@ pub fn openDocument(self: *DocumentStore, uri: Uri, text: []const u8) error{OutO
         defer self.lock.unlockShared();
 
         if (self.handles.get(uri)) |handle| {
-            _ = handle;
-            // if (!handle.setOpen(true)) {
-            //     log.warn("Document already open: {s}", .{uri});
-            // }
-            return;
+            // Happens for build files as we preload these, but
+            // the editor's buffer might have additional content/unsaved changes and we need to sync up
+            _ = self.handles.swapRemove(uri);
+            handle.deinit();
+            self.allocator.destroy(handle);
         }
     }
 
@@ -798,6 +826,8 @@ fn invalidateBuildFileWorker(self: *DocumentStore, build_file_uri: Uri) void {
         return;
     };
     build_file.setBuildConfig(build_config);
+    const bfh = self.getHandle(build_file_uri) orelse return;
+    bfh.handleRootIdComment(self);
 }
 
 /// The `DocumentStore` represents a graph structure where every
@@ -1284,7 +1314,7 @@ fn createDocument(self: *DocumentStore, uri: Uri, text: [:0]const u8, open: bool
         _ = self.getOrLoadBuildFile(handle.uri);
     } else if (!isBuiltinFile(handle.uri) and !isInStd(handle.uri)) blk: {
         handle.closest_build_zig = findBuildZig(self.allocator, handle.uri) catch null;
-        if (handle.closest_build_zig) |bzfuri| _ = self.getOrLoadBuildFile(bzfuri);
+        if (handle.closest_build_zig) |bzfuri| _ = self.getOrLoadHandle(bzfuri); // This would trigger getOrLoadBuildFile too
 
         const potential_build_files = self.collectPotentialBuildFiles(uri) catch {
             log.err("failed to collect potential build files of '{s}'", .{handle.uri});
