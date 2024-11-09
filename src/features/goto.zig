@@ -192,7 +192,7 @@ fn gotoDefinitionString(
     pos_context: Analyser.PositionContext,
     handle: *DocumentStore.Handle,
     offset_encoding: offsets.Encoding,
-) error{OutOfMemory}!?types.DefinitionLink {
+) error{OutOfMemory}!?[]types.DefinitionLink {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -229,16 +229,24 @@ fn gotoDefinitionString(
         else => unreachable,
     };
 
+    var locs = std.ArrayListUnmanaged(types.DefinitionLink){};
+
     const target_range = types.Range{
         .start = .{ .line = 0, .character = 0 },
         .end = .{ .line = 0, .character = 0 },
     };
-    return types.DefinitionLink{
-        .originSelectionRange = offsets.locToRange(handle.tree.source, import_str_loc, offset_encoding),
-        .targetUri = uri orelse return null,
-        .targetRange = target_range,
-        .targetSelectionRange = target_range,
-    };
+
+    try locs.append(
+        arena,
+        types.DefinitionLink{
+            .originSelectionRange = offsets.locToRange(handle.tree.source, import_str_loc, offset_encoding),
+            .targetUri = uri orelse return null,
+            .targetRange = target_range,
+            .targetSelectionRange = target_range,
+        },
+    );
+
+    return try locs.toOwnedSlice(arena);
 }
 
 pub fn gotoHandler(
@@ -279,7 +287,17 @@ pub fn gotoHandler(
         .import_string_literal,
         .cinclude_string_literal,
         .embedfile_string_literal,
-        => try gotoDefinitionString(&server.document_store, arena, pos_context, handle, server.offset_encoding),
+        => blk: {
+            const links = try gotoDefinitionString(&server.document_store, arena, pos_context, handle, server.offset_encoding) orelse return null;
+            if (server.client_capabilities.supports_textDocument_definition_linkSupport) {
+                return .{ .array_of_DefinitionLink = links };
+            }
+            switch (links.len) {
+                0 => unreachable,
+                1 => break :blk links[0],
+                else => return null,
+            }
+        },
         .label => try gotoDefinitionLabel(&analyser, handle, source_index, kind, server.offset_encoding),
         .enum_literal => try gotoDefinitionEnumLiteral(&analyser, arena, handle, source_index, kind, server.offset_encoding),
         else => null,

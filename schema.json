@@ -67,16 +67,6 @@
             "type": "boolean",
             "default": true
         },
-        "inlay_hints_hide_redundant_param_names": {
-            "description": "Hides inlay hints when parameter name matches the identifier (e.g. foo: foo)",
-            "type": "boolean",
-            "default": false
-        },
-        "inlay_hints_hide_redundant_param_names_last_token": {
-            "description": "Hides inlay hints when parameter name matches the last token of a parameter node (e.g. foo: bar.foo, foo: &foo)",
-            "type": "boolean",
-            "default": false
-        },
         "warn_style": {
             "description": "Enables warnings for style guideline mismatches",
             "type": "boolean",
@@ -126,6 +116,11 @@
             "description": "When false, the function signature of completion results is hidden. Improves readability in some editors",
             "type": "boolean",
             "default": true
+        },
+        "ws_build_zig": {
+            "description": "Internal; Override/specify the build.zig file to use.",
+            "type": "string",
+            "default": null
         }
     }
 }

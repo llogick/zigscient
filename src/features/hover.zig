@@ -10,22 +10,32 @@ const offsets = @import("../offsets.zig");
 const URI = @import("../uri.zig");
 const tracy = @import("tracy");
 
+const Server = @import("../Server.zig");
 const Analyser = @import("../analysis.zig");
 const DocumentStore = @import("../DocumentStore.zig");
 
 const data = @import("version_data");
 
 fn hoverSymbol(
+    server: *Server,
     analyser: *Analyser,
     arena: std.mem.Allocator,
     decl_handle: Analyser.DeclWithHandle,
     markup_kind: types.MarkupKind,
 ) error{OutOfMemory}!?[]const u8 {
     var doc_strings = std.ArrayListUnmanaged([]const u8){};
-    return hoverSymbolRecursive(analyser, arena, decl_handle, markup_kind, &doc_strings);
+    return hoverSymbolRecursive(
+        server,
+        analyser,
+        arena,
+        decl_handle,
+        markup_kind,
+        &doc_strings,
+    );
 }
 
 fn hoverSymbolRecursive(
+    server: *Server,
     analyser: *Analyser,
     arena: std.mem.Allocator,
     decl_handle: Analyser.DeclWithHandle,
@@ -48,7 +58,14 @@ fn hoverSymbolRecursive(
     const def_str = switch (decl_handle.decl) {
         .ast_node => |node| def: {
             if (try analyser.resolveVarDeclAlias(.{ .node = node, .handle = handle })) |result| {
-                return try hoverSymbolRecursive(analyser, arena, result, markup_kind, doc_strings);
+                return try hoverSymbolRecursive(
+                    server,
+                    analyser,
+                    arena,
+                    result,
+                    markup_kind,
+                    doc_strings,
+                );
             }
 
             switch (tree.nodes.items(.tag)[node]) {
@@ -100,6 +117,28 @@ fn hoverSymbolRecursive(
                     is_fn = true;
                     var buf: [1]Ast.Node.Index = undefined;
                     const fn_proto = tree.fullFnProto(&buf, node).?;
+                    if (fn_proto.name_token) |fname_tok| {
+                        if (server.document_store.getBuildFile(handle.uri)) |build_file| blk: {
+                            if (tree.tokens.items(.tag)[fname_tok] != .identifier) break :blk;
+                            const name = tree.tokenSlice(fname_tok);
+                            if (!std.mem.eql(u8, name, "build")) break :blk;
+                            const build_config = build_file.tryLockConfig() orelse break :blk;
+                            defer build_file.unlockConfig();
+                            var def: std.ArrayList(u8) = .init(arena);
+                            try def.writer().writeAll("```\n");
+                            if (!(build_file.root_id < build_config.roots.len)) {
+                                try def.writer().print("Current root_id > roots.len => defaulting to root_id 0\n\nModules:\n\n", .{});
+                                build_file.root_id = 0;
+                            } else try def.writer().print("Current root_id: {}\n\nModules:\n\n", .{build_file.root_id});
+                            for (build_config.roots[build_file.root_id]) |entry| {
+                                try def.writer().print(" * {s} @ {s}\n", .{ entry.name, entry.path });
+                            }
+                            try def.writer().print("\nSee [List of all roots]({s}#L{d})\n", .{ build_config.roots_info_file, 0 });
+                            try def.writer().writeAll("```zig\n");
+                            try def.appendSlice(Analyser.getFunctionSignature(tree, fn_proto));
+                            break :def try def.toOwnedSlice();
+                        }
+                    }
                     break :def Analyser.getFunctionSignature(tree, fn_proto);
                 },
                 .test_decl => {
@@ -179,6 +218,7 @@ fn hoverSymbolRecursive(
 }
 
 fn hoverDefinitionLabel(
+    server: *Server,
     analyser: *Analyser,
     arena: std.mem.Allocator,
     handle: *DocumentStore.Handle,
@@ -197,7 +237,7 @@ fn hoverDefinitionLabel(
         .contents = .{
             .MarkupContent = .{
                 .kind = markup_kind,
-                .value = (try hoverSymbol(analyser, arena, decl, markup_kind)) orelse return null,
+                .value = (try hoverSymbol(server, analyser, arena, decl, markup_kind)) orelse return null,
             },
         },
         .range = offsets.locToRange(handle.tree.source, name_loc, offset_encoding),
@@ -280,6 +320,7 @@ fn hoverDefinitionBuiltin(
 }
 
 fn hoverDefinitionGlobal(
+    server: *Server,
     analyser: *Analyser,
     arena: std.mem.Allocator,
     handle: *DocumentStore.Handle,
@@ -300,7 +341,7 @@ fn hoverDefinitionGlobal(
         .contents = .{
             .MarkupContent = .{
                 .kind = markup_kind,
-                .value = (try hoverSymbol(analyser, arena, decl, markup_kind)) orelse return null,
+                .value = (try hoverSymbol(server, analyser, arena, decl, markup_kind)) orelse return null,
             },
         },
         .range = offsets.locToRange(handle.tree.source, name_loc, offset_encoding),
@@ -308,6 +349,7 @@ fn hoverDefinitionGlobal(
 }
 
 fn hoverDefinitionEnumLiteral(
+    server: *Server,
     analyser: *Analyser,
     arena: std.mem.Allocator,
     handle: *DocumentStore.Handle,
@@ -328,7 +370,7 @@ fn hoverDefinitionEnumLiteral(
         .contents = .{
             .MarkupContent = .{
                 .kind = markup_kind,
-                .value = (try hoverSymbol(analyser, arena, decl, markup_kind)) orelse return null,
+                .value = (try hoverSymbol(server, analyser, arena, decl, markup_kind)) orelse return null,
             },
         },
         .range = offsets.locToRange(handle.tree.source, name_loc, offset_encoding),
@@ -336,6 +378,7 @@ fn hoverDefinitionEnumLiteral(
 }
 
 fn hoverDefinitionFieldAccess(
+    server: *Server,
     analyser: *Analyser,
     arena: std.mem.Allocator,
     handle: *DocumentStore.Handle,
@@ -357,7 +400,7 @@ fn hoverDefinitionFieldAccess(
     var content = try std.ArrayListUnmanaged([]const u8).initCapacity(arena, decls.len);
 
     for (decls) |decl| {
-        content.appendAssumeCapacity(try hoverSymbol(analyser, arena, decl, markup_kind) orelse continue);
+        content.appendAssumeCapacity(try hoverSymbol(server, analyser, arena, decl, markup_kind) orelse continue);
     }
 
     return .{
@@ -449,6 +492,7 @@ fn hoverDefinitionNumberLiteral(
 }
 
 pub fn hover(
+    server: *Server,
     analyser: *Analyser,
     arena: std.mem.Allocator,
     handle: *DocumentStore.Handle,
@@ -459,12 +503,59 @@ pub fn hover(
     const pos_context = try Analyser.getPositionContext(arena, handle.tree, source_index, true);
 
     const response = switch (pos_context) {
-        .builtin => |loc| try hoverDefinitionBuiltin(analyser, arena, handle, source_index, loc, markup_kind, offset_encoding),
-        .var_access => try hoverDefinitionGlobal(analyser, arena, handle, source_index, markup_kind, offset_encoding),
-        .field_access => |loc| try hoverDefinitionFieldAccess(analyser, arena, handle, source_index, loc, markup_kind, offset_encoding),
-        .label => try hoverDefinitionLabel(analyser, arena, handle, source_index, markup_kind, offset_encoding),
-        .enum_literal => try hoverDefinitionEnumLiteral(analyser, arena, handle, source_index, markup_kind, offset_encoding),
-        .number_literal, .char_literal => try hoverDefinitionNumberLiteral(arena, handle, source_index, markup_kind, offset_encoding),
+        .builtin => |loc| try hoverDefinitionBuiltin(
+            analyser,
+            arena,
+            handle,
+            source_index,
+            loc,
+            markup_kind,
+            offset_encoding,
+        ),
+        .var_access => try hoverDefinitionGlobal(
+            server,
+            analyser,
+            arena,
+            handle,
+            source_index,
+            markup_kind,
+            offset_encoding,
+        ),
+        .field_access => |loc| try hoverDefinitionFieldAccess(
+            server,
+            analyser,
+            arena,
+            handle,
+            source_index,
+            loc,
+            markup_kind,
+            offset_encoding,
+        ),
+        .label => try hoverDefinitionLabel(
+            server,
+            analyser,
+            arena,
+            handle,
+            source_index,
+            markup_kind,
+            offset_encoding,
+        ),
+        .enum_literal => try hoverDefinitionEnumLiteral(
+            server,
+            analyser,
+            arena,
+            handle,
+            source_index,
+            markup_kind,
+            offset_encoding,
+        ),
+        .number_literal, .char_literal => try hoverDefinitionNumberLiteral(
+            arena,
+            handle,
+            source_index,
+            markup_kind,
+            offset_encoding,
+        ),
         else => null,
     };
 

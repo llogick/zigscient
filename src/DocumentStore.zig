@@ -51,6 +51,7 @@ pub const Config = struct {
     build_runner_path: ?[]const u8,
     builtin_path: ?[]const u8,
     global_cache_path: ?[]const u8,
+    ws_build_zig: ?[]const u8,
 
     pub fn fromMainConfig(config: @import("Config.zig")) Config {
         return .{
@@ -59,6 +60,7 @@ pub const Config = struct {
             .build_runner_path = config.build_runner_path,
             .builtin_path = config.builtin_path,
             .global_cache_path = config.global_cache_path,
+            .ws_build_zig = config.ws_build_zig,
         };
     }
 };
@@ -70,6 +72,7 @@ pub const BuildFile = struct {
     builtin_uri: ?Uri = null,
     /// config options extracted from zls.build.json
     build_associated_config: ?std.json.Parsed(BuildAssociatedConfig) = null,
+    root_id: u32 = 0,
     impl: struct {
         mutex: std.Thread.Mutex = .{},
         /// contains information extracted from running build.zig with a custom build runner
@@ -185,6 +188,8 @@ pub const Handle = struct {
     import_uris: std.ArrayListUnmanaged(Uri) = .{},
     /// Contains one entry for every cimport in the document
     cimports: std.MultiArrayList(CImportHandle) = .{},
+
+    closest_build_zig: ?[]const u8 = null,
 
     /// private field
     impl: struct {
@@ -554,6 +559,34 @@ pub const Handle = struct {
         if (old_zir) |*zir| zir.deinit(self.impl.allocator);
     }
 
+    // IF this handle is also a BuildFile scan for `$ls root_id N` and apply
+    pub fn handleRootIdComment(handle: *Handle, ds: *DocumentStore) void {
+        if (handle.tree.errors.len != 0) return;
+        const build_file = ds.getBuildFile(handle.uri) orelse return;
+        const ttags = handle.tree.tokens.items(.tag);
+        var tok_i: u32 = 0;
+        while (tok_i < ttags.len) : (tok_i += 1) {
+            if (ttags[tok_i] != .keyword_fn) continue;
+            if (tok_i + 10 > ttags.len) return;
+            tok_i += 1;
+            if (ttags[tok_i] != .identifier) continue;
+            if (!std.mem.eql(u8, "build", handle.tree.tokenSlice(tok_i))) continue;
+            while (tok_i < ttags.len - 1 and ttags[tok_i] != .r_brace) tok_i += 1;
+            const src_i = handle.tree.tokens.items(.start)[tok_i];
+            const source = handle.tree.source;
+            if (src_i + 20 > source.len) return;
+            _ = std.mem.indexOf(u8, source[0 .. src_i + 20], "//") orelse return;
+            const lsm_i = std.mem.indexOf(u8, source[0 .. src_i + 20], "$ls") orelse return;
+            var tokenizer: std.zig.Tokenizer = .{ .buffer = source, .index = lsm_i + 3 };
+            var tok = tokenizer.next();
+            if (tok.tag != .identifier and !std.mem.eql(u8, "root_id", source[tok.loc.start..tok.loc.end])) return;
+            tok = tokenizer.next();
+            if (tok.tag != .number_literal) return;
+            const root_id = std.fmt.parseInt(u32, source[tok.loc.start..tok.loc.end], 10) catch return;
+            build_file.root_id = root_id;
+        }
+    }
+
     fn deinit(self: *Handle) void {
         const tracy_zone = tracy.trace(@src());
         defer tracy_zone.end();
@@ -574,6 +607,8 @@ pub const Handle = struct {
 
         for (self.cimports.items(.source)) |source| allocator.free(source);
         self.cimports.deinit(allocator);
+
+        if (self.closest_build_zig) |uri| allocator.free(uri);
 
         switch (self.impl.associated_build_file) {
             .none, .resolved => {},
@@ -701,11 +736,11 @@ pub fn openDocument(self: *DocumentStore, uri: Uri, text: []const u8) error{OutO
         defer self.lock.unlockShared();
 
         if (self.handles.get(uri)) |handle| {
-            _ = handle;
-            // if (!handle.setOpen(true)) {
-            //     log.warn("Document already open: {s}", .{uri});
-            // }
-            return;
+            // Happens for build files as we preload these, but
+            // the editor's buffer might have additional content/unsaved changes and we need to sync up
+            _ = self.handles.swapRemove(uri);
+            handle.deinit();
+            self.allocator.destroy(handle);
         }
     }
 
@@ -739,7 +774,7 @@ pub fn closeDocument(self: *DocumentStore, uri: Uri) void {
 
     self.garbageCollectionImports() catch {};
     self.garbageCollectionCImports() catch {};
-    self.garbageCollectionBuildFiles() catch {};
+    // self.garbageCollectionBuildFiles() catch {};
 }
 
 /// Takes ownership of `new_text` which has to be allocated with this DocumentStore's allocator.
@@ -791,6 +826,8 @@ fn invalidateBuildFileWorker(self: *DocumentStore, build_file_uri: Uri) void {
         return;
     };
     build_file.setBuildConfig(build_config);
+    const bfh = self.getHandle(build_file_uri) orelse return;
+    bfh.handleRootIdComment(self);
 }
 
 /// The `DocumentStore` represents a graph structure where every
@@ -1039,8 +1076,20 @@ fn loadBuildConfiguration(self: *DocumentStore, build_file_uri: Uri) !std.json.P
     ) catch return error.RunFailed;
     errdefer build_config.deinit();
 
+    // Resolve paths for `.@"mod" = .{ .path = ".."`
+
     for (build_config.value.packages) |*pkg| {
-        pkg.path = try std.fs.path.resolve(build_config.arena.allocator(), &[_][]const u8{ build_file_path, "..", pkg.path });
+        pkg.path = try std.fs.path.resolve(
+            build_config.arena.allocator(),
+            &[_][]const u8{ build_file_path, "..", pkg.path },
+        );
+    }
+
+    for (build_config.value.roots) |root| {
+        for (root) |*root_entry| root_entry.path = try std.fs.path.resolve(
+            build_config.arena.allocator(),
+            &[_][]const u8{ build_file_path, "..", root_entry.path },
+        );
     }
 
     return build_config;
@@ -1084,6 +1133,35 @@ const BuildDotZigIterator = struct {
         }
     }
 };
+
+pub fn findBuildZig(allocator: std.mem.Allocator, dir_path: []const u8) !?[]const u8 {
+    const fss = "file://";
+    const low_idx = if (std.mem.startsWith(u8, dir_path, fss)) fss.len else 0;
+    const min_i = @max(low_idx, std.fs.path.diskDesignator(dir_path).len);
+    var i: usize = dir_path.len;
+    if (i <= min_i) return null;
+    while (true) {
+        if (i <= min_i)
+            return null;
+
+        const potential_root_path = dir_path[low_idx..i];
+
+        i -= 1;
+        while (i > min_i and !std.fs.path.isSep(dir_path[i])) : (i -= 1) {}
+
+        if (!std.fs.path.isAbsolute(potential_root_path)) continue;
+
+        var dir = try std.fs.openDirAbsolute(potential_root_path, .{});
+        defer dir.close();
+        if (dir.access("build.zig", .{})) {
+            // found a build.zig file
+            return try URI.fromPath(
+                allocator,
+                try std.fs.path.join(allocator, &.{ potential_root_path, "build.zig" }),
+            );
+        } else |_| continue;
+    }
+}
 
 /// Walk down the tree towards the uri. When we hit `build.zig` files
 /// add them to the list of potential build files.
@@ -1131,6 +1209,7 @@ fn createBuildFile(self: *DocumentStore, uri: Uri) error{OutOfMemory}!BuildFile 
     if (loadBuildAssociatedConfiguration(self.allocator, build_file)) |cfg| {
         build_file.build_associated_config = cfg;
 
+        if (cfg.value.root_id) |root_id| build_file.root_id = root_id;
         if (cfg.value.relative_builtin_path) |relative_builtin_path| blk: {
             const build_file_path = URI.parse(self.allocator, build_file.uri) catch break :blk;
             const absolute_builtin_path = std.fs.path.resolve(self.allocator, &.{ build_file_path, "..", relative_builtin_path }) catch break :blk;
@@ -1234,6 +1313,9 @@ fn createDocument(self: *DocumentStore, uri: Uri, text: [:0]const u8, open: bool
     if (isBuildFile(handle.uri) and !isInStd(handle.uri)) {
         _ = self.getOrLoadBuildFile(handle.uri);
     } else if (!isBuiltinFile(handle.uri) and !isInStd(handle.uri)) blk: {
+        handle.closest_build_zig = findBuildZig(self.allocator, handle.uri) catch null;
+        if (handle.closest_build_zig) |bzfuri| _ = self.getOrLoadHandle(bzfuri); // This would trigger getOrLoadBuildFile too
+
         const potential_build_files = self.collectPotentialBuildFiles(uri) catch {
             log.err("failed to collect potential build files of '{s}'", .{handle.uri});
             break :blk;
@@ -1571,17 +1653,7 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
         }
         return null;
     } else if (!std.mem.endsWith(u8, import_str, ".zig")) {
-        if (try handle.getAssociatedBuildFileUri(self)) |build_file_uri| blk: {
-            const build_file = self.getBuildFile(build_file_uri).?;
-            const build_config = build_file.tryLockConfig() orelse break :blk;
-            defer build_file.unlockConfig();
-
-            for (build_config.packages) |pkg| {
-                if (std.mem.eql(u8, import_str, pkg.name)) {
-                    return try URI.fromPath(allocator, pkg.path);
-                }
-            }
-        } else if (isBuildFile(handle.uri)) blk: {
+        if (isBuildFile(handle.uri)) blk: {
             const build_file = self.getBuildFile(handle.uri) orelse break :blk;
             const build_config = build_file.tryLockConfig() orelse break :blk;
             defer build_file.unlockConfig();
@@ -1592,6 +1664,103 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
                 }
             }
         }
+
+        ws_build_zig: {
+            const ws_build_zig_uri = self.config.ws_build_zig orelse break :ws_build_zig;
+            const build_file = self.getBuildFile(ws_build_zig_uri) orelse break :ws_build_zig;
+            const build_config = build_file.tryLockConfig() orelse break :ws_build_zig;
+            defer build_file.unlockConfig();
+
+            if (build_config.roots.len == 0) break :ws_build_zig;
+            if (!(build_file.root_id < build_config.roots.len)) {
+                std.log.err("root_id > roots.len; using id 0", .{});
+                build_file.root_id = 0;
+            }
+
+            for (build_config.roots[build_file.root_id]) |mod| {
+                if (std.mem.eql(u8, import_str, mod.name)) {
+                    return try URI.fromPath(allocator, mod.path);
+                }
+            }
+        }
+
+        closest: {
+            const closest_build_zig_uri = handle.closest_build_zig orelse break :closest;
+            const build_file = self.getBuildFile(closest_build_zig_uri) orelse break :closest;
+            const build_config = build_file.tryLockConfig() orelse break :closest;
+            defer build_file.unlockConfig();
+
+            if (build_config.roots.len == 0) break :closest;
+            if (!(build_file.root_id < build_config.roots.len)) {
+                std.log.err("root_id > roots.len; using id 0", .{});
+                build_file.root_id = 0;
+            }
+
+            for (build_config.roots[build_file.root_id]) |mod| {
+                if (std.mem.eql(u8, import_str, mod.name)) {
+                    return try URI.fromPath(allocator, mod.path);
+                }
+            }
+        }
+
+        if (try handle.getAssociatedBuildFileUri(self)) |build_file_uri| blk: {
+            const build_file = self.getBuildFile(build_file_uri).?;
+            const build_config = build_file.tryLockConfig() orelse break :blk;
+            defer build_file.unlockConfig();
+
+            if (build_config.roots.len == 0) break :blk;
+            if (!(build_file.root_id < build_config.roots.len)) {
+                std.log.err("root_id > roots.len; using id 0", .{});
+                build_file.root_id = 0;
+            }
+
+            for (build_config.roots[build_file.root_id]) |mod| {
+                if (std.mem.eql(u8, import_str, mod.name)) {
+                    return try URI.fromPath(allocator, mod.path);
+                }
+            }
+        }
+
+        // Legacy
+
+        ws_build_zig_droll: {
+            const ws_build_zig_uri = self.config.ws_build_zig orelse break :ws_build_zig_droll;
+            const build_file = self.getBuildFile(ws_build_zig_uri) orelse break :ws_build_zig_droll;
+            const build_config = build_file.tryLockConfig() orelse break :ws_build_zig_droll;
+            defer build_file.unlockConfig();
+
+            for (build_config.packages) |pkg| {
+                if (std.mem.eql(u8, import_str, pkg.name)) {
+                    return try URI.fromPath(allocator, pkg.path);
+                }
+            }
+        }
+
+        closest_droll: {
+            const closest_build_zig_uri = handle.closest_build_zig orelse break :closest_droll;
+            const build_file = self.getBuildFile(closest_build_zig_uri) orelse break :closest_droll;
+            const build_config = build_file.tryLockConfig() orelse break :closest_droll;
+            defer build_file.unlockConfig();
+
+            for (build_config.packages) |pkg| {
+                if (std.mem.eql(u8, import_str, pkg.name)) {
+                    return try URI.fromPath(allocator, pkg.path);
+                }
+            }
+        }
+
+        if (try handle.getAssociatedBuildFileUri(self)) |build_file_uri| blk: {
+            const build_file = self.getBuildFile(build_file_uri).?;
+            const build_config = build_file.tryLockConfig() orelse break :blk;
+            defer build_file.unlockConfig();
+
+            for (build_config.packages) |pkg| {
+                if (std.mem.eql(u8, import_str, pkg.name)) {
+                    return try URI.fromPath(allocator, pkg.path);
+                }
+            }
+        }
+
         return null;
     } else {
         const base_path = URI.parse(allocator, handle.uri) catch |err| switch (err) {

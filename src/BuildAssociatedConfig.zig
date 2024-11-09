@@ -42,3 +42,6 @@ relative_builtin_path: ?[]const u8 = null,
 
 /// If provided, this list of options will be passed to `build.zig`.
 build_options: ?[]BuildOption = null,
+
+/// See `zig build --build-runner /path/to/zigscient/src/build_runner/0.12.0.zig --roots`
+root_id: ?u32 = null,

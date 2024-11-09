@@ -659,6 +659,21 @@ fn initializedHandler(server: *Server, _: std.mem.Allocator, notification: types
         log.warn("received a initialized notification but the server has not send a initialize request!", .{});
     }
 
+    if (server.config.ws_build_zig == null and server.client_capabilities.workspace_folders.len != 0) {
+        var config_arena_allocator = server.config_arena.promote(server.allocator);
+        defer server.config_arena = config_arena_allocator.state;
+        const config_arena = config_arena_allocator.allocator();
+        server.config.ws_build_zig = DocumentStore.findBuildZig(
+            config_arena,
+            server.client_capabilities.workspace_folders[0], // more than 1?
+        ) catch null;
+        if (server.config.ws_build_zig) |ws_build_zig| {
+            server.document_store.config = DocumentStore.Config.fromMainConfig(server.config);
+            _ = server.document_store.getOrLoadHandle(ws_build_zig); // Should trigger getOrLoadBuildFile too
+            log.info("WS: Project configuration file: '{s}'", .{ws_build_zig});
+        }
+    }
+
     server.status = .initialized;
 
     if (server.client_capabilities.supports_workspace_did_change_configuration_dynamic_registration) {
@@ -1337,6 +1352,8 @@ fn changeDocumentHandler(server: *Server, _: std.mem.Allocator, notification: ty
 
     try server.document_store.refreshDocument(handle, content_changes);
 
+    handle.handleRootIdComment(&server.document_store);
+
     if (server.client_capabilities.supports_publish_diagnostics) {
         try server.pushJob(.{
             .generate_diagnostics = try server.allocator.dupe(u8, handle.uri),
@@ -1549,7 +1566,15 @@ fn hoverHandler(server: *Server, arena: std.mem.Allocator, request: types.HoverP
     var analyser = server.initAnalyser(handle);
     defer analyser.deinit();
 
-    return hover_handler.hover(&analyser, arena, handle, source_index, markup_kind, server.offset_encoding);
+    return hover_handler.hover(
+        server,
+        &analyser,
+        arena,
+        handle,
+        source_index,
+        markup_kind,
+        server.offset_encoding,
+    );
 }
 
 fn documentSymbolsHandler(server: *Server, arena: std.mem.Allocator, request: types.DocumentSymbolParams) Error!lsp.ResultType("textDocument/documentSymbol") {
