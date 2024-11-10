@@ -1764,6 +1764,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                 .{"@atomicLoad"},
                 .{"@atomicRmw"},
                 .{"@atomicStore"},
+                .{"@extern"},
                 .{"@mulAdd"},
                 .{"@unionInit"},
             });
