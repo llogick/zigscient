@@ -1826,7 +1826,7 @@ pub fn derive(
                 };
             }
 
-            break :reuse .{ // TODO make completions work here
+            break :reuse .{
                 .tokens = .{
                     .full = &tokens,
                 },

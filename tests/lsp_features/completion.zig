@@ -2800,6 +2800,24 @@ test "block" {
     , &.{
         .{ .label = "alpha", .kind = .Field, .detail = "u32" },
     });
+    try testCompletion(
+        \\const Birdie = enum { canary };
+        \\const U = union(enum) { alpha: u32 };;
+        \\const bar: U = blk: {
+        \\    break :blk .<cursor>;
+        \\};
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+    });
+    try testCompletion(
+        \\const Birdie = enum { canary };
+        \\const U = union(enum) { alpha: u32 };;
+        \\const bar: U = blk: {
+        \\    break :blk .{.<cursor>;
+        \\};
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+    });
 }
 
 test "either" {
