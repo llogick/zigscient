@@ -125,6 +125,30 @@ pub fn build(b: *Build) !void {
         },
     });
 
+    // Compilation check step, ie without emitting a file
+    {
+        const exe = b.addExecutable(.{
+            .name = "zls",
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .single_threaded = single_threaded,
+            .pic = pie,
+            .use_llvm = use_llvm,
+            .use_lld = use_llvm,
+        });
+        exe.pie = pie;
+        exe.root_module.addImport("exe_options", exe_options_module);
+        exe.root_module.addImport("tracy", tracy_module);
+        exe.root_module.addImport("diffz", diffz_module);
+        exe.root_module.addImport("lsp", lsp_module);
+        exe.root_module.addImport("known-folders", known_folders_module);
+        exe.root_module.addImport("zls", zls_module);
+
+        const check_step = b.step("check", "Check");
+        check_step.dependOn(&exe.step);
+    }
+
     const exe = b.addExecutable(.{
         .name = "zigscient",
         .root_source_file = b.path("src/main.zig"),
