@@ -618,6 +618,7 @@ fn completeDot(builder: *Builder, loc: offsets.Loc) error{OutOfMemory}!void {
             builder.orig_handle,
             offsets.tokenToLoc(tree, dot_context.identifier_token_index).end,
             dot_context,
+            loc.start,
         );
         for (containers) |container| {
             try collectContainerFields(builder, dot_context.likely, container);
@@ -861,6 +862,7 @@ fn completeError(builder: *Builder, loc: offsets.Loc) error{OutOfMemory}!?void {
         builder.orig_handle,
         offsets.tokenToLoc(tree, dot_context.identifier_token_index).end,
         dot_context,
+        0,
     );
     for (containers) |container| {
         try collectContainerFields(builder, dot_context.likely, container);
@@ -1169,6 +1171,12 @@ fn getEnumLiteralContext(
         .l_brace, .comma, .l_paren => {
             dot_context = getSwitchOrStructInitContext(builder, dot_token_index) orelse return null;
         },
+        .identifier => {
+            token_index -= 1;
+            if (token_tags[token_index] != .colon) return null;
+            dot_context.likely = .assignment;
+            dot_context.identifier_token_index = token_index;
+        },
         .keyword_return => {
             const doc_scope = builder.orig_handle.getDocumentScope() catch return null;
             const fn_scope = Analyser.innermostFunctionScopeAtIndex(doc_scope, tree.tokens.items(.start)[token_index]).unwrap() orelse return null;
@@ -1254,6 +1262,9 @@ fn getSwitchOrStructInitContext(
                                 => break :find_identifier,
                                 else => return null,
                             }
+                        }
+                        if (token_tags[upper_index] == .identifier and token_tags[upper_index - 1] == .colon) { // `:label .{.`
+                            break :find_identifier;
                         }
                         // We never return from this branch/condition to the `find_identifier: while ..` loop, so reset and reuse these
                         fn_arg_index = 0;
@@ -1517,6 +1528,7 @@ fn collectContainerNodes(
     handle: *DocumentStore.Handle,
     source_index: usize,
     dot_context: EnumLiteralContext,
+    dot_src_i: usize,
 ) error{OutOfMemory}![]Analyser.Type {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
@@ -1529,6 +1541,28 @@ fn collectContainerNodes(
         .enum_literal => |loc| try collectEnumLiteralContainerNodes(builder, handle, loc, &types_with_handles),
         .builtin => |loc| try collectBuiltinContainerNodes(builder, handle, loc, dot_context, &types_with_handles),
         .kwcall => |tag| try collectKeywordFnContainerNodes(builder, tag, dot_context, &types_with_handles),
+        .label => blk: {
+            const nodes = try ast.nodesOverlappingIndex(
+                builder.arena,
+                handle.tree,
+                dot_src_i,
+            );
+            if (nodes.len == 0) break :blk;
+            var container_type = (try builder.analyser.resolveExpressionType(
+                handle,
+                nodes[0],
+                nodes[1..],
+            )) orelse break :blk;
+            if (try builder.analyser.resolveDerefType(container_type)) |unwrapped|
+                container_type = unwrapped;
+            container_type.is_type_val = false; // `resolveOptionalUnwrap` expects an "instance"
+            if (try builder.analyser.resolveOptionalUnwrap(container_type)) |unwrapped|
+                container_type = unwrapped;
+            try container_type.getAllTypesWithHandlesArrayList(
+                builder.arena,
+                &types_with_handles,
+            );
+        },
         else => {},
     }
     return types_with_handles.toOwnedSlice(builder.arena);
@@ -1811,6 +1845,7 @@ fn collectFieldAccessContainerNodes(
                 fn_proto_handle,
                 offsets.nodeToLoc(fn_proto_handle.tree, param.type_expr).end,
                 dot_context,
+                0,
             );
             for (param_rcts) |prct| try types_with_handles.append(arena, prct);
             continue;
@@ -1835,6 +1870,7 @@ fn collectEnumLiteralContainerNodes(
         handle,
         offsets.tokenToLoc(handle.tree, el_dot_context.identifier_token_index).end,
         el_dot_context,
+        loc.start,
     );
     for (containers) |container| {
         const container_instance = try container.instanceTypeVal(analyser) orelse container;
