@@ -176,6 +176,7 @@ test "test with identifier" {
     try testReferences(
         \\pub fn <0>() bool {}
         \\test <0> {}
+        \\test "placeholder" {}
         \\test {}
     );
 }
