@@ -1428,6 +1428,7 @@ fn semanticTokensFullHandler(server: *Server, arena: std.mem.Allocator, request:
     if (server.config.semantic_tokens == .none) return null;
 
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
+    if (handle.tree.mode == .zon and handle.tree.errors.len != 0) return null;
 
     var analyser = server.initAnalyser(handle);
     defer analyser.deinit();

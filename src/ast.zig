@@ -1698,6 +1698,7 @@ fn iterateChildrenTypeErased(
         },
 
         .root => {
+            if (tree.mode == .zon and tree.errors.len != 0) return;
             for (rootDecls(tree)) |child| {
                 try callback(context, tree, child);
             }

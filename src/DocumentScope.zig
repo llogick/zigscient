@@ -815,6 +815,8 @@ noinline fn walkContainerDecl(
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
+    // This is not ready for .zon -- tree.fullContainerDecl on 0 calls tree.rootDecls
+    if (tree.mode == .zon) return; // and node_idx == 0 and tree.errors.len != 0) return;
     const allocator = context.allocator;
     const tags = tree.nodes.items(.tag);
     const token_tags = tree.tokens.items(.tag);
