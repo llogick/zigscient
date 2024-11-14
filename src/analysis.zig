@@ -4409,6 +4409,7 @@ pub fn lookupSymbolGlobal(
 ) error{OutOfMemory}!?DeclWithHandle {
     const tree = handle.tree;
     const document_scope = try handle.getDocumentScope();
+    if (document_scope.scopes.len == 0) return null;
     var current_scope = innermostScopeAtIndex(document_scope, source_index);
 
     while (true) {

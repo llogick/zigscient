@@ -1467,6 +1467,7 @@ fn semanticTokensRangeHandler(server: *Server, arena: std.mem.Allocator, request
 
 fn completionHandler(server: *Server, arena: std.mem.Allocator, request: types.CompletionParams) Error!lsp.ResultType("textDocument/completion") {
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
+    if (handle.tree.mode == .zon) return null; // if we're doing completions it def has errors
 
     const source_index = offsets.positionToIndex(handle.tree.source, request.position, server.offset_encoding);
 
