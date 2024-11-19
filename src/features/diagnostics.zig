@@ -994,7 +994,7 @@ pub fn generateBuildOnSaveDiagnostics(
         .allocator = server.allocator,
         .argv = argv.items,
         .cwd = workspace_path,
-        .max_output_bytes = 1024 * 1024,
+        .max_output_bytes = 16 * 1024 * 1024,
     }) catch |err| {
         const joined = std.mem.join(server.allocator, " ", argv.items) catch return;
         defer server.allocator.free(joined);
