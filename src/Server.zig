@@ -763,8 +763,11 @@ fn handleConfiguration(server: *Server, json: std.json.Value) error{OutOfMemory}
     var new_config: configuration.Configuration = .{};
 
     inline for (fields, result) |field, json_value| {
+        var runtime_known_field_name: []const u8 = ""; // avoid unnecessary function instantiations of `std.fmt.format`
+        runtime_known_field_name = field.name;
+
         const maybe_new_value = std.json.parseFromValueLeaky(field.type, arena, json_value, .{}) catch |err| blk: {
-            log.err("failed to parse configuration option '{s}': {}", .{ field.name, err });
+            log.err("failed to parse configuration option '{s}': {}", .{ runtime_known_field_name, err });
             break :blk null;
         };
         if (maybe_new_value) |new_value| {
