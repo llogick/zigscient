@@ -400,6 +400,7 @@ fn handleUnorganizedImport(builder: *Builder, actions: *std.ArrayListUnmanaged(t
     if (tree.errors.len != 0) return;
 
     const imports = try getImportsDecls(builder, builder.arena);
+    if (imports.len == 0) return;
 
     // The optimization is disabled because it does not detect the case where imports and other decls are mixed
     // if (std.sort.isSorted(ImportDecl, imports.items, tree, ImportDecl.lessThan)) return;
