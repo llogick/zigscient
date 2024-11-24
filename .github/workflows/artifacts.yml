@@ -57,7 +57,7 @@ jobs:
           name: zigscient
           path: zigscient
       - name: Get project version
-        run: echo "PROJECT_VERSION=$(zigscient/zigscient-x86_64-linux-gnu version)" >> $GITHUB_ENV
+        run: echo "PROJECT_VERSION=$(zigscient/zigscient-x86_64-linux version)" >> $GITHUB_ENV
       - name: Create zips
         run: |
           cd zigscient
