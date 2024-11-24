@@ -2,14 +2,13 @@ name: Deploy release artifacts
 
 on:
   push:
-    branches:
-      - master
+#    branches:
+#      - dev
   workflow_dispatch:
-  # When manually invocing this workflow, keep in mind that ZLS builds can't be modified after they have been published to `releases.zigtools.org/v1/zls/publish`.
 
 jobs:
-  deploy:
-    if: github.repository_owner == 'zigtools' && github.ref == 'refs/heads/master'
+  build:
+#    if: github.repository_owner == 'llogick' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,22 +19,54 @@ jobs:
         with:
           version: master
 
-      - name: Install APT packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install tar 7zip
+      # - name: Install APT packages
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install tar 7zip
 
-      - name: Install minisign
-        run: |
-          wget https://github.com/jedisct1/minisign/releases/download/0.11/minisign-0.11-linux.tar.gz
-          tar -xf minisign-0.11-linux.tar.gz --directory ${HOME}
-          echo "${HOME}/minisign-linux/x86_64/" >> $GITHUB_PATH
+      # - name: Install minisign
+      #   run: |
+      #     wget https://github.com/jedisct1/minisign/releases/download/0.11/minisign-0.11-linux.tar.gz
+      #     tar -xf minisign-0.11-linux.tar.gz --directory ${HOME}
+      #     echo "${HOME}/minisign-linux/x86_64/" >> $GITHUB_PATH
 
-      - name: Build and Publish artifacts
+      - name: Build all targets
         run: |
-          echo "${MINISIGN_SECRET_FILE}" > minisign.key
-          zig build publish -Drelease-minisign -Doptimize=ReleaseSafe --summary all
-          rm -f minisign.key
-        env:
-          ZLS_WORKER_API_TOKEN: ${{ secrets.ZLS_WORKER_API_TOKEN }}
-          MINISIGN_SECRET_FILE: ${{ secrets.MINISIGN_SECRET_FILE }}
+          mkdir -p builds
+          for target in "x86_64-linux" "aarch64-linux" "x86_64-windows" "aarch64-windows" "x86_64-macos" "aarch64-macos"; do
+            zig build -Dtarget=${target} -Doptimize=ReleaseFast
+            if [[ $target == *"windows"* ]]; then
+              cp zig-out/bin/zigscient.exe builds/zigscient-${target}.exe
+            else
+              cp zig-out/bin/zigscient builds/zigscient-${target}
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zigscient
+          path: builds/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: zigscient
+          path: zigscient
+      - name: Get project version
+        run: echo "PROJECT_VERSION=$(zigscient/zigscient-x86_64-linux-gnu version)" >> $GITHUB_ENV
+      - name: Create zips
+        run: |
+          cd zigscient
+          for file in *; do
+            zip -j "../${file%.*}.zip" "$file"
+          done
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ env.PROJECT_VERSION }}
+          draft: true
+          make_latest: true
+          files: "*.zip"
