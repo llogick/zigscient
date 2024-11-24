@@ -1,14 +1,14 @@
 name: Deploy release artifacts
 
 on:
-  push:
-#    branches:
-#      - dev
+  #  push:
+  #    branches:
+  #      - dev
   workflow_dispatch:
 
 jobs:
   build:
-#    if: github.repository_owner == 'llogick' && github.ref == 'refs/heads/dev'
+    #    if: github.repository_owner == 'llogick' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +67,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           name: ${{ env.PROJECT_VERSION }}
+          tag_name: ${{ env.PROJECT_VERSION }}
           draft: true
           make_latest: true
           files: "*.zip"

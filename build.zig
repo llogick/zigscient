@@ -241,7 +241,7 @@ fn getVersion(b: *Build) std.SemanticVersion {
 
     var code: u8 = undefined;
     const git_describe_untrimmed = b.runAllowFail(
-        &.{ "git", "-C", b.pathFromRoot("."), "describe", "--match", "*.*.*", "--tags" },
+        &.{ "git", "-C", b.pathFromRoot("."), "describe", "--match", "*.*.0", "--tags" },
         &code,
         .Ignore,
     ) catch return proj_version;
