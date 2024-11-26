@@ -126,14 +126,16 @@ fn hoverSymbolRecursive(
                             defer build_file.unlockConfig();
                             var def: std.ArrayList(u8) = .init(arena);
                             try def.writer().writeAll("```\n");
-                            if (!(build_file.root_id < build_config.roots.len)) {
-                                try def.writer().print("Current root_id > roots.len => defaulting to root_id 0\n\nModules:\n\n", .{});
-                                build_file.root_id = 0;
-                            } else try def.writer().print("Current root_id: {}\n\nModules:\n\n", .{build_file.root_id});
-                            for (build_config.roots[build_file.root_id]) |entry| {
-                                try def.writer().print(" * {s} @ {s}\n", .{ entry.name, entry.path });
-                            }
-                            try def.writer().print("\nSee [List of all roots]({s}#L{d})\n", .{ build_config.roots_info_file, 0 });
+                            if (build_config.roots.len != 0) {
+                                if (!(build_file.root_id < build_config.roots.len)) {
+                                    try def.writer().print("Current root_id > roots.len => defaulting to root_id 0\n\nModules:\n\n", .{});
+                                    build_file.root_id = 0;
+                                } else try def.writer().print("Current root_id: {}\n\nModules:\n\n", .{build_file.root_id});
+                                for (build_config.roots[build_file.root_id]) |entry| {
+                                    try def.writer().print(" * {s} @ {s}\n", .{ entry.name, entry.path });
+                                }
+                                try def.writer().print("\nSee [List of all roots]({s}#L{d})\n", .{ build_config.roots_info_file, 0 });
+                            } else try def.writer().writeAll("build_runner reported NO (0) CompileSteps (roots)\n");
                             try def.writer().writeAll("```zig\n");
                             try def.appendSlice(Analyser.getFunctionSignature(tree, fn_proto));
                             break :def try def.toOwnedSlice();
