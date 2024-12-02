@@ -130,9 +130,9 @@ fn hoverSymbolRecursive(
                                 if (!(build_file.root_id < build_config.roots.len)) {
                                     try def.writer().print("Current root_id > roots.len => defaulting to root_id 0\n\nModules:\n\n", .{});
                                     build_file.root_id = 0;
-                                } else try def.writer().print("Current root_id: {}\n\nModules:\n\n", .{build_file.root_id});
-                                for (build_config.roots[build_file.root_id]) |entry| {
-                                    try def.writer().print(" * {s} @ {s}\n", .{ entry.name, entry.path });
+                                } else try def.writer().print("root_id: {}, name: \"{s}\"\n\nModules:\n\n", .{ build_file.root_id, build_config.roots[build_file.root_id].name });
+                                for (build_config.roots[build_file.root_id].mods) |mod| {
+                                    try def.writer().print(" * {s} @ {s}\n", .{ mod.name, mod.path });
                                 }
                                 try def.writer().print("\nSee [List of all roots]({s}#L{d})\n", .{ build_config.roots_info_file, 0 });
                             } else try def.writer().writeAll("build_runner reported NO (0) CompileSteps (roots)\n");

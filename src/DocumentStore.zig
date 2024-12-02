@@ -1086,9 +1086,9 @@ fn loadBuildConfiguration(self: *DocumentStore, build_file_uri: Uri) !std.json.P
     }
 
     for (build_config.value.roots) |root| {
-        for (root) |*root_entry| root_entry.path = try std.fs.path.resolve(
+        for (root.mods) |*mod_entry| mod_entry.path = try std.fs.path.resolve(
             build_config.arena.allocator(),
-            &[_][]const u8{ build_file_path, "..", root_entry.path },
+            &[_][]const u8{ build_file_path, "..", mod_entry.path },
         );
     }
 
@@ -1677,7 +1677,7 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
                 build_file.root_id = 0;
             }
 
-            for (build_config.roots[build_file.root_id]) |mod| {
+            for (build_config.roots[build_file.root_id].mods) |mod| {
                 if (std.mem.eql(u8, import_str, mod.name)) {
                     return try URI.fromPath(allocator, mod.path);
                 }
@@ -1696,7 +1696,7 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
                 build_file.root_id = 0;
             }
 
-            for (build_config.roots[build_file.root_id]) |mod| {
+            for (build_config.roots[build_file.root_id].mods) |mod| {
                 if (std.mem.eql(u8, import_str, mod.name)) {
                     return try URI.fromPath(allocator, mod.path);
                 }
@@ -1714,7 +1714,7 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
                 build_file.root_id = 0;
             }
 
-            for (build_config.roots[build_file.root_id]) |mod| {
+            for (build_config.roots[build_file.root_id].mods) |mod| {
                 if (std.mem.eql(u8, import_str, mod.name)) {
                     return try URI.fromPath(allocator, mod.path);
                 }

@@ -51,6 +51,7 @@ else
     std.Progress.Node;
 
 var self_path: [:0]const u8 = undefined;
+var build_root: [:0]const u8 = undefined;
 
 ///! This is a modified build runner to extract information out of build.zig
 ///! Modified version of lib/build_runner.zig
@@ -82,7 +83,7 @@ pub fn main() !void {
 
         break :blk zig_lib_directory;
     } else {};
-    const build_root = nextArg(args, &arg_idx) orelse fatal("missing build root directory path", .{});
+    build_root = nextArg(args, &arg_idx) orelse fatal("missing build root directory path", .{});
     const cache_root = nextArg(args, &arg_idx) orelse fatal("missing cache root directory path", .{});
     const global_cache_root = nextArg(args, &arg_idx) orelse fatal("missing global cache root directory path", .{});
 
@@ -890,6 +891,82 @@ const Packages = struct {
 };
 
 const roots_info = struct {
+    pub const RootEntry = struct {
+        step: *Step.Compile,
+        mods: []BuildConfig.NamePathPair,
+    };
+
+    pub fn collect(
+        gpa: std.mem.Allocator,
+        step: *Step,
+        visited_steps: *std.AutoArrayHashMapUnmanaged(*Step, void),
+        unsorted_roots: *std.ArrayListUnmanaged(RootEntry),
+    ) !void {
+        const gop_result = try visited_steps.getOrPut(gpa, step);
+        if (gop_result.found_existing) return;
+        if (step.cast(Step.Compile)) |compile| {
+            var root_imports: std.ArrayListUnmanaged(BuildConfig.NamePathPair) = .{};
+            // std.debug.print("cstep: {s}\n", .{compile.name});
+
+            var cli_named_modules = try copied_from_zig.CliNamedModules.init(gpa, &compile.root_module);
+            var dep_it = compile.root_module.iterateDependencies(compile, false);
+            while (dep_it.next()) |dep| {
+                if (!(dep.compile.? == compile)) continue; // !my_responsibility
+                if (cli_named_modules.modules.getIndex(dep.module)) |module_cli_index| {
+                    const module_cli_name = cli_named_modules.names.keys()[module_cli_index];
+                    if (dep.module.root_source_file) |lp| {
+                        const src = lp.getPath2(dep.module.owner, step);
+                        // std.log.debug("-M{s}={s}\n", .{ module_cli_name, src });
+                        try root_imports.append(gpa, .{ .name = module_cli_name, .path = src });
+                    }
+                }
+            }
+            try unsorted_roots.append(
+                gpa,
+                .{
+                    .step = compile,
+                    .mods = try root_imports.toOwnedSlice(gpa),
+                },
+            );
+            root_imports.items.len = 0; // clearRetainingCapacity();
+        }
+        for (step.dependencies.items) |dep_step| try collect(
+            gpa,
+            dep_step,
+            visited_steps,
+            unsorted_roots,
+        );
+    }
+
+    pub fn hasPrecedence(dir_path: []const u8, lhs: RootEntry, rhs: RootEntry) bool {
+        if (lhs.mods.len == 0) return false; // C compile steps should be last
+        if (rhs.mods.len == 0) return true; //  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        const lhs_dir_name = std.fs.path.dirname(lhs.mods[0].path).?; // [0] should be 'root'
+        const rhs_dir_name = std.fs.path.dirname(rhs.mods[0].path).?; // [0] should be 'root'
+        if (std.mem.startsWith(u8, lhs_dir_name, dir_path)) {
+            return if (!std.mem.startsWith(u8, rhs_dir_name, dir_path)) true else (lhs.mods.len > rhs.mods.len);
+        }
+        return false;
+    }
+
+    pub fn print(
+        roots_info_slc: *std.ArrayList(u8),
+        idx: *u32,
+        compile: *Step.Compile,
+    ) !void {
+        if (compile.root_module.root_source_file) |root_source_file| {
+            try roots_info_slc.writer().print(
+                "{}: {s} @ {s}\n",
+                .{ idx.*, compile.name, root_source_file.getPath(compile.root_module.owner) },
+            );
+        }
+        try printIt(
+            roots_info_slc,
+            compile.root_module.import_table,
+        );
+        idx.* += 1;
+    }
+
     pub fn printIt(
         roots_info_slc: *std.ArrayList(u8),
         it: std.StringArrayHashMapUnmanaged(*std.Build.Module),
@@ -917,26 +994,6 @@ const roots_info = struct {
                     }
                 }
             }
-        }
-    }
-    pub fn print(
-        roots_info_slc: *std.ArrayList(u8),
-        idx: *u32,
-        s: []*Step,
-    ) !void {
-        for (s) |step| {
-            const compile: *Step.Compile = step.cast(Step.Compile) orelse continue;
-            if (compile.root_module.root_source_file) |root_source_file| {
-                try roots_info_slc.writer().print(
-                    "{}: {s} @ {s}\n",
-                    .{ idx.*, compile.name, root_source_file.getPath(compile.root_module.owner) },
-                );
-            }
-            try printIt(
-                roots_info_slc,
-                compile.root_module.import_table,
-            );
-            idx.* += 1;
         }
     }
 };
@@ -1073,46 +1130,6 @@ fn extractBuildInformation(
         run,
     );
 
-    var root_imports: std.ArrayListUnmanaged(BuildConfig.NamePathPair) = .{};
-    var roots: std.ArrayListUnmanaged([]BuildConfig.NamePathPair) = .{};
-
-    var roots_info_slc = std.ArrayList(u8).init(gpa);
-    var root_idx: u32 = 0;
-
-    for (b.top_level_steps.values(), 0..) |tls, i| {
-        if (i != 0) try roots_info_slc.writer().writeByte('\n');
-        try roots_info_slc.writer().print(
-            "S: {s} - {s}\n",
-            .{ tls.step.name, tls.description },
-        );
-
-        for (tls.step.dependencies.items) |step| {
-            try roots_info.print(
-                &roots_info_slc,
-                &root_idx,
-                step.dependencies.items,
-            );
-            for (step.dependencies.items) |dep_step| {
-                const compile: *Step.Compile = dep_step.cast(Step.Compile) orelse continue;
-                var cli_named_modules = try copied_from_zig.CliNamedModules.init(gpa, &compile.root_module);
-                var dep_it = compile.root_module.iterateDependencies(compile, false);
-                while (dep_it.next()) |dep| {
-                    if (!(dep.compile.? == compile)) continue; // !my_responsibility
-                    if (cli_named_modules.modules.getIndex(dep.module)) |module_cli_index| {
-                        const module_cli_name = cli_named_modules.names.keys()[module_cli_index];
-                        if (dep.module.root_source_file) |lp| {
-                            const src = lp.getPath2(dep.module.owner, step);
-                            // std.log.debug("-M{s}={s}", .{ module_cli_name, src });
-                            try root_imports.append(gpa, .{ .name = module_cli_name, .path = src });
-                        }
-                    }
-                }
-                try roots.append(gpa, try root_imports.toOwnedSlice(gpa));
-                root_imports.items.len = 0; // clearRetainingCapacity();
-            }
-        }
-    }
-
     var include_dirs: std.StringArrayHashMapUnmanaged(void) = .{};
     var packages: Packages = .{ .allocator = gpa };
     defer packages.deinit();
@@ -1206,6 +1223,29 @@ fn extractBuildInformation(
     var it = b.available_options_map.iterator();
     while (it.next()) |available_option| {
         available_options.map.putAssumeCapacityNoClobber(available_option.key_ptr.*, available_option.value_ptr.*);
+    }
+
+    // roots[]
+    var visited_steps: std.AutoArrayHashMapUnmanaged(*Step, void) = .{};
+    var unsorted_roots: std.ArrayListUnmanaged(roots_info.RootEntry) = .{};
+    var roots_info_slc = std.ArrayList(u8).init(gpa);
+    var root_idx: u32 = 0;
+
+    for (b.top_level_steps.values()) |tls| {
+        try roots_info.collect(
+            gpa,
+            &tls.step,
+            &visited_steps,
+            &unsorted_roots,
+        );
+    }
+
+    std.mem.sort(roots_info.RootEntry, unsorted_roots.items, build_root, roots_info.hasPrecedence);
+
+    var roots = try std.ArrayListUnmanaged(BuildConfig.RootEntry).initCapacity(gpa, unsorted_roots.items.len);
+    for (unsorted_roots.items) |item| {
+        roots.appendAssumeCapacity(.{ .name = item.step.name, .mods = item.mods });
+        try roots_info.print(&roots_info_slc, &root_idx, item.step);
     }
 
     const dir_path = std.fs.path.dirname(self_path) orelse unreachable;
