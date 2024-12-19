@@ -44,6 +44,8 @@ const file_watch_windows_version =
     std.SemanticVersion.parse("0.14.0-dev.625+2de0e2eca") catch unreachable;
 const child_type_coercion_version =
     std.SemanticVersion.parse("0.14.0-dev.2506+32354d119") catch unreachable;
+const accept_root_module_version =
+    std.SemanticVersion.parse("0.14.0-dev.2534+12d64c456") catch unreachable;
 
 // -----------------------------------------------------------------------------
 
@@ -915,7 +917,50 @@ const roots_info = struct {
             var root_imports: std.ArrayListUnmanaged(BuildConfig.NamePathPair) = .{};
             // std.debug.print("cstep: {s}\n", .{compile.name});
 
-            var cli_named_modules = try copied_from_zig.CliNamedModules.init(gpa, &compile.root_module);
+            var cli_named_modules = try copied_from_zig.CliNamedModules.init(gpa, compile.root_module);
+            for (compile.getCompileDependencies(false)) |dep_compile| {
+                for (dep_compile.root_module.getGraph().modules) |mod| {
+                    if (!(dep_compile == compile)) continue; // !my_responsibility
+                    if (cli_named_modules.modules.getIndex(mod)) |module_cli_index| {
+                        const module_cli_name = cli_named_modules.names.keys()[module_cli_index];
+                        if (mod.root_source_file) |lp| {
+                            const src = lp.getPath2(mod.owner, step);
+                            // std.log.debug("-M{s}={s}\n", .{ module_cli_name, src });
+                            try root_imports.append(gpa, .{ .name = module_cli_name, .path = src });
+                        }
+                    }
+                }
+            }
+            try unsorted_roots.append(
+                gpa,
+                .{
+                    .step = compile,
+                    .mods = try root_imports.toOwnedSlice(gpa),
+                },
+            );
+            root_imports.items.len = 0; // clearRetainingCapacity();
+        }
+        for (step.dependencies.items) |dep_step| try collect(
+            gpa,
+            dep_step,
+            visited_steps,
+            unsorted_roots,
+        );
+    }
+
+    pub fn collect_pre_zig_014_2534(
+        gpa: std.mem.Allocator,
+        step: *Step,
+        visited_steps: *std.AutoArrayHashMapUnmanaged(*Step, void),
+        unsorted_roots: *std.ArrayListUnmanaged(RootEntry),
+    ) !void {
+        const gop_result = try visited_steps.getOrPut(gpa, step);
+        if (gop_result.found_existing) return;
+        if (step.cast(Step.Compile)) |compile| {
+            var root_imports: std.ArrayListUnmanaged(BuildConfig.NamePathPair) = .{};
+            // std.debug.print("cstep: {s}\n", .{compile.name});
+
+            var cli_named_modules = try copied_from_zig.CliNamedModules_Legacy.init(gpa, &compile.root_module);
             var dep_it = compile.root_module.iterateDependencies(compile, false);
             while (dep_it.next()) |dep| {
                 if (!(dep.compile.? == compile)) continue; // !my_responsibility
@@ -937,7 +982,7 @@ const roots_info = struct {
             );
             root_imports.items.len = 0; // clearRetainingCapacity();
         }
-        for (step.dependencies.items) |dep_step| try collect(
+        for (step.dependencies.items) |dep_step| try collect_pre_zig_014_2534(
             gpa,
             dep_step,
             visited_steps,
@@ -1034,34 +1079,6 @@ fn extractBuildInformation(
         }
     }
 
-    var dependency_iterator: std.Build.Module.DependencyIterator = .{
-        .allocator = gpa,
-        .index = 0,
-        .set = .{},
-        .chase_dyn_libs = true,
-    };
-    defer dependency_iterator.deinit();
-
-    // collect root modules of `Step.Compile`
-    for (steps.keys()) |step| {
-        const compile = step.cast(Step.Compile) orelse continue;
-
-        dependency_iterator.set.ensureUnusedCapacity(arena, compile.root_module.import_table.count() + 1) catch @panic("OOM");
-        dependency_iterator.set.putAssumeCapacity(.{
-            .module = &compile.root_module,
-            .compile = compile,
-        }, "root");
-    }
-
-    // collect public modules
-    for (b.modules.values()) |module| {
-        dependency_iterator.set.ensureUnusedCapacity(gpa, module.import_table.count() + 1) catch @panic("OOM");
-        dependency_iterator.set.putAssumeCapacity(.{
-            .module = module,
-            .compile = null,
-        }, "root");
-    }
-
     const helper = struct {
         fn addStepDependencies(allocator: Allocator, set: *std.AutoArrayHashMapUnmanaged(*Step, void), lazy_path: std.Build.LazyPath) !void {
             const lazy_path_updated_version = comptime std.SemanticVersion.parse("0.13.0-dev.79+6bc0cef60") catch unreachable;
@@ -1114,13 +1131,71 @@ fn extractBuildInformation(
     var step_dependencies: std.AutoArrayHashMapUnmanaged(*Step, void) = .{};
     defer step_dependencies.deinit(gpa);
 
-    var dependency_items: std.ArrayListUnmanaged(std.Build.Module.DependencyIterator.Item) = .{};
-    defer dependency_items.deinit(gpa);
+    const DependencyItem = struct {
+        compile: ?*std.Build.Step.Compile,
+        module: *std.Build.Module,
+    };
 
-    // collect all dependencies
-    while (dependency_iterator.next()) |item| {
-        try helper.addModuleDependencies(gpa, &step_dependencies, item.module);
-        try dependency_items.append(gpa, item);
+    var dependency_set: std.AutoArrayHashMapUnmanaged(DependencyItem, []const u8) = .{};
+    defer dependency_set.deinit(gpa);
+
+    if (comptime builtin.zig_version.order(accept_root_module_version) != .lt) {
+        // collect root modules of `Step.Compile`
+        for (steps.keys()) |step| {
+            const compile = step.cast(Step.Compile) orelse continue;
+            const graph = compile.root_module.getGraph();
+
+            try dependency_set.ensureUnusedCapacity(arena, graph.modules.len);
+            _ = dependency_set.fetchPutAssumeCapacity(.{ .module = compile.root_module, .compile = compile }, "root");
+            for (graph.modules[1..], graph.names[1..]) |module, name| {
+                _ = dependency_set.fetchPutAssumeCapacity(.{ .module = module, .compile = null }, name);
+            }
+        }
+
+        // collect all dependencies
+        for (dependency_set.keys()) |item| {
+            try helper.addModuleDependencies(gpa, &step_dependencies, item.module);
+        }
+    } else {
+        var dependency_iterator: std.Build.Module.DependencyIterator = .{
+            .allocator = gpa,
+            .index = 0,
+            .set = .{},
+            .chase_dyn_libs = true,
+        };
+        defer dependency_iterator.deinit();
+
+        // collect root modules of `Step.Compile`
+        for (steps.keys()) |step| {
+            const compile = step.cast(Step.Compile) orelse continue;
+
+            dependency_iterator.set.ensureUnusedCapacity(arena, compile.root_module.import_table.count() + 1) catch @panic("OOM");
+            dependency_iterator.set.putAssumeCapacity(.{
+                .module = &compile.root_module,
+                .compile = compile,
+            }, "root");
+        }
+
+        // collect public modules
+        for (b.modules.values()) |module| {
+            dependency_iterator.set.ensureUnusedCapacity(gpa, module.import_table.count() + 1) catch @panic("OOM");
+            dependency_iterator.set.putAssumeCapacity(.{
+                .module = module,
+                .compile = null,
+            }, "root");
+        }
+
+        var dependency_items: std.ArrayListUnmanaged(std.Build.Module.DependencyIterator.Item) = .{};
+        defer dependency_items.deinit(gpa);
+
+        // collect all dependencies
+        while (dependency_iterator.next()) |item| {
+            try helper.addModuleDependencies(gpa, &step_dependencies, item.module);
+            _ = try dependency_set.fetchPut(gpa, .{
+                .module = item.module,
+                .compile = item.compile,
+            }, item.name);
+        }
     }
 
     prepare(gpa, b, &step_dependencies, run, seed) catch |err| switch (err) {
@@ -1142,14 +1217,16 @@ fn extractBuildInformation(
     defer packages.deinit();
 
     // extract packages and include paths
-    for (dependency_items.items) |item| {
+    for (dependency_set.keys(), dependency_set.values()) |item, name| {
         if (item.module.root_source_file) |root_source_file| {
-            _ = try packages.addPackage(item.name, root_source_file.getPath(item.module.owner));
+            _ = try packages.addPackage(name, root_source_file.getPath(item.module.owner));
         }
 
-        for (item.module.import_table.keys(), item.module.import_table.values()) |name, import| {
-            if (import.root_source_file) |root_source_file| {
-                _ = try packages.addPackage(name, root_source_file.getPath(item.module.owner));
+        if (comptime builtin.zig_version.order(accept_root_module_version) == .lt) {
+            for (item.module.import_table.keys(), item.module.import_table.values()) |import_name, import| {
+                if (import.root_source_file) |root_source_file| {
+                    _ = try packages.addPackage(import_name, root_source_file.getPath(item.module.owner));
+                }
             }
         }
 
@@ -1238,13 +1315,24 @@ fn extractBuildInformation(
     var roots_info_slc = std.ArrayList(u8).init(gpa);
     var root_idx: u32 = 0;
 
-    for (b.top_level_steps.values()) |tls| {
-        try roots_info.collect(
-            gpa,
-            &tls.step,
-            &visited_steps,
-            &unsorted_roots,
-        );
+    if (comptime builtin.zig_version.order(accept_root_module_version) != .lt) {
+        for (b.top_level_steps.values()) |tls| {
+            try roots_info.collect(
+                gpa,
+                &tls.step,
+                &visited_steps,
+                &unsorted_roots,
+            );
+        }
+    } else {
+        for (b.top_level_steps.values()) |tls| {
+            try roots_info.collect_pre_zig_014_2534(
+                gpa,
+                &tls.step,
+                &visited_steps,
+                &unsorted_roots,
+            );
+        }
     }
 
     std.mem.sort(roots_info.RootEntry, unsorted_roots.items, build_root, roots_info.hasPrecedence);
@@ -1329,6 +1417,43 @@ fn getPkgConfigIncludes(
 const copied_from_zig = struct {
     // Gotten from std.Build.Step.Compile
     const CliNamedModules = struct {
+        modules: std.AutoArrayHashMapUnmanaged(*Module, void),
+        names: std.StringArrayHashMapUnmanaged(void),
+
+        /// Traverse the whole dependency graph and give every module a unique
+        /// name, ideally one named after what it's called somewhere in the graph.
+        /// It will help here to have both a mapping from module to name and a set
+        /// of all the currently-used names.
+        fn init(arena: Allocator, root_module: *Module) Allocator.Error!CliNamedModules {
+            var compile: CliNamedModules = .{
+                .modules = .{},
+                .names = .{},
+            };
+            const graph = root_module.getGraph();
+
+            {
+                assert(graph.modules[0] == root_module);
+                try compile.modules.put(arena, root_module, {});
+                try compile.names.put(arena, "root", {});
+            }
+            for (graph.modules[1..], graph.names[1..]) |mod, orig_name| {
+                var name = orig_name;
+                var n: usize = 0;
+                while (true) {
+                    const gop = try compile.names.getOrPut(arena, name);
+                    if (!gop.found_existing) {
+                        try compile.modules.putNoClobber(arena, mod, {});
+                        break;
+                    }
+                    name = try std.fmt.allocPrint(arena, "{s}{d}", .{ orig_name, n });
+                    n += 1;
+                }
+            }
+            return compile;
+        }
+    };
+
+    const CliNamedModules_Legacy = struct {
         modules: std.AutoArrayHashMapUnmanaged(*Module, void),
         names: std.StringArrayHashMapUnmanaged(void),
 
