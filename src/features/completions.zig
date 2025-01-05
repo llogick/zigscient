@@ -1830,7 +1830,7 @@ fn collectFieldAccessContainerNodes(
                 }
                 break :blk 1; // is `T`, no SelfParam
             };
-            for (dot_context.fn_arg_index + additional_index) |_| maybe_fn_param = ast.nextFnParam(&fn_param_iter);
+            for (0..dot_context.fn_arg_index + additional_index) |_| maybe_fn_param = ast.nextFnParam(&fn_param_iter);
             const param = maybe_fn_param orelse continue;
             if (param.type_expr == 0) continue;
             const param_rcts = try collectContainerNodes(
