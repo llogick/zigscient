@@ -14,8 +14,8 @@
             .hash = "1220102cb2c669d82184fb1dc5380193d37d68b54e8d75b76b2d155b9af7d7e2e76d",
         },
         .@"lsp-codegen" = .{
-            .url = "https://github.com/zigtools/zig-lsp-codegen/archive/6b34887189def7c859307f4a9fc436bc5f2f04c9.tar.gz",
-            .hash = "122054fe123b819c1cca154f0f89dd799832a639d432287a2371499bcaf7b9dcb7a0",
+            .url = "https://github.com/zigtools/zig-lsp-codegen/archive/e1f281f67ac2cb8c19d3cabe9cfae46fde691c56.tar.gz",
+            .hash = "12208e12a10e78de19f140acae65e6edc20189459dd208d5f6b7afdf0aa894113d1b",
         },
         .tracy = .{
             .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.11.1.tar.gz",
