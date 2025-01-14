@@ -101,17 +101,22 @@ pub fn build(b: *Build) !void {
         break :blk b.addModule("version_data", .{ .root_source_file = version_data_path });
     };
 
-    const gen_cmd = b.addRunArtifact(gen_exe);
-    gen_cmd.addArgs(&.{
-        "--generate-config",
-        b.pathFromRoot("src/Config.zig"),
-        "--generate-schema",
-        b.pathFromRoot("schema.json"),
-    });
-    if (b.args) |args| gen_cmd.addArgs(args);
+    { // zig build gen
+        const gen_step = b.step("gen", "Regenerate config files");
 
-    const gen_step = b.step("gen", "Regenerate config files");
-    gen_step.dependOn(&gen_cmd.step);
+        const gen_cmd = b.addRunArtifact(gen_exe);
+        if (b.args) |args| {
+            gen_cmd.addArgs(args);
+            gen_step.dependOn(&gen_cmd.step);
+        } else {
+            const update_source = b.addUpdateSourceFiles();
+            gen_cmd.addArg("--generate-config");
+            update_source.addCopyFileToSource(gen_cmd.addOutputFileArg("Config.zig"), "src/Config.zig");
+            gen_cmd.addArg("--generate-schema");
+            update_source.addCopyFileToSource(gen_cmd.addOutputFileArg("schema.json"), "schema.json");
+            gen_step.dependOn(&update_source.step);
+        }
+    }
 
     const zls_module = b.addModule("zls", .{
         .root_source_file = b.path("src/zls.zig"),
