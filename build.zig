@@ -3,12 +3,17 @@ const builtin = @import("builtin");
 
 /// Must match the `version` in `build.zig.zon`.
 /// Remove `.pre` when tagging a new release and add it back on the next development cycle.
-const proj_version = std.SemanticVersion{ .major = 0, .minor = 14, .patch = 0, .pre = "dev" };
+const proj_version: std.SemanticVersion = .{
+    .major = 0,
+    .minor = 14,
+    .patch = 0,
+    .pre = "dev",
+};
 
 /// Specify the minimum Zig version that is required to compile and test the project:
 /// Must match the `minimum_zig_version` in `build.zig.zon`.
-/// Breaking change summary: Replace `std.builtin.CallingConvention` with a tagged union, eliminating `@setAlignStack`
-const minimum_build_zig_version = "0.14.0-dev.1983+6bf52b050";
+/// Breaking change summary: std.Build: add new functions to create artifacts/Step.Compile from existing module
+const minimum_build_zig_version = "0.14.0-dev.2634+b36ea592b";
 
 /// Specify the minimum Zig version that is required to run the project:
 /// Release 0.12.0
@@ -35,43 +40,166 @@ pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const single_threaded = b.option(bool, "single-threaded", "Build a single threaded Executable");
-    const pie = b.option(bool, "pie", "Build a Position Independent Executable");
-    const enable_tracy = b.option(bool, "enable_tracy", "Whether tracy should be enabled.") orelse false;
-    const enable_tracy_allocation = b.option(bool, "enable_tracy_allocation", "Enable using TracyAllocator to monitor allocations.") orelse enable_tracy;
-    const enable_tracy_callstack = b.option(bool, "enable_tracy_callstack", "Enable callstack graphs.") orelse enable_tracy;
-    const test_filters = b.option([]const []const u8, "test-filter", "Skip tests that do not match filter") orelse &[0][]const u8{};
-    const use_llvm = b.option(bool, "use_llvm", "Use Zig's llvm code backend");
+    const single_threaded = b.option(
+        bool,
+        "single-threaded",
+        "Build a single threaded Executable",
+    );
+    const pie = b.option(
+        bool,
+        "pie",
+        "Build a Position Independent Executable",
+    );
+    const enable_tracy = b.option(
+        bool,
+        "enable_tracy",
+        "Whether tracy should be enabled.",
+    ) orelse false;
+    const enable_tracy_allocation = b.option(
+        bool,
+        "enable_tracy_allocation",
+        "Enable using TracyAllocator to monitor allocations.",
+    ) orelse enable_tracy;
+    const enable_tracy_callstack = b.option(
+        bool,
+        "enable_tracy_callstack",
+        "Enable callstack graphs.",
+    ) orelse enable_tracy;
+    const test_filters = b.option(
+        []const []const u8,
+        "test-filter",
+        "Skip tests that do not match filter",
+    ) orelse &[0][]const u8{};
+    const use_llvm = b.option(
+        bool,
+        "use_llvm",
+        "Use Zig's llvm code backend",
+    );
+    const link_libc_opt = b.option(
+        bool,
+        "llc",
+        "Link against libc and use the c allocator",
+    ) orelse false;
 
     const resolved_proj_version = getVersion(b);
-    const resolved_proj_version_string = b.fmt("{}", .{resolved_proj_version});
+    const resolved_proj_version_string = b.fmt(
+        "{}",
+        .{resolved_proj_version},
+    );
 
-    const build_options = b.addOptions();
-    build_options.step.name = "Build Options";
-    const build_options_module = build_options.createModule();
-    build_options.addOption(std.SemanticVersion, "version", resolved_proj_version);
-    build_options.addOption([]const u8, "version_string", resolved_proj_version_string);
-    build_options.addOption([]const u8, "minimum_runtime_zig_version_string", minimum_runtime_zig_version);
+    const build_options_module = blk: {
+        const build_options = b.addOptions();
+        build_options.step.name = "Build Options";
 
-    const exe_options = b.addOptions();
-    exe_options.step.name = "Exe Options";
-    const exe_options_module = exe_options.createModule();
-    exe_options.addOption(bool, "enable_failing_allocator", b.option(bool, "enable_failing_allocator", "Whether to use a randomly failing allocator.") orelse false);
-    exe_options.addOption(u32, "enable_failing_allocator_likelihood", b.option(u32, "enable_failing_allocator_likelihood", "The chance that an allocation will fail is `1/likelihood`") orelse 256);
-    exe_options.addOption(bool, "use_gpa", b.option(bool, "use_gpa", "Good for debugging") orelse (optimize == .Debug));
-    const link_libc_opt = b.option(bool, "llc", "Link against libc and use the c allocator") orelse false;
-    exe_options.addOption(bool, "llc", link_libc_opt);
+        build_options.addOption(
+            std.SemanticVersion,
+            "version",
+            resolved_proj_version,
+        );
+        build_options.addOption(
+            []const u8,
+            "version_string",
+            resolved_proj_version_string,
+        );
+        build_options.addOption(
+            []const u8,
+            "minimum_runtime_zig_version_string",
+            minimum_runtime_zig_version,
+        );
 
-    const test_options = b.addOptions();
-    test_options.step.name = "Tests Options";
-    const test_options_module = test_options.createModule();
-    test_options.addOption([]const u8, "zig_exe_path", b.graph.zig_exe);
-    test_options.addOption([]const u8, "zig_lib_path", b.graph.zig_lib_directory.path.?);
-    test_options.addOption([]const u8, "global_cache_path", b.graph.global_cache_root.join(b.allocator, &.{"zigscient"}) catch @panic("OOM"));
+        break :blk build_options.createModule();
+    };
 
-    const known_folders_module = b.dependency("known_folders", .{}).module("known-folders");
-    const diffz_module = b.dependency("diffz", .{}).module("diffz");
-    const lsp_module = b.dependency("lsp-codegen", .{}).module("lsp");
+    const exe_options_module = blk: {
+        const exe_options = b.addOptions();
+        exe_options.step.name = "Exe Options";
+
+        exe_options.addOption(
+            bool,
+            "enable_failing_allocator",
+            b.option(
+                bool,
+                "enable_failing_allocator",
+                "Whether to use a randomly failing allocator.",
+            ) orelse false,
+        );
+        exe_options.addOption(
+            u32,
+            "enable_failing_allocator_likelihood",
+            b.option(
+                u32,
+                "enable_failing_allocator_likelihood",
+                "The chance that an allocation will fail is `1/likelihood`",
+            ) orelse 256,
+        );
+        exe_options.addOption(
+            bool,
+            "use_gpa",
+            b.option(
+                bool,
+                "use_gpa",
+                "Good for debugging",
+            ) orelse (optimize == .Debug),
+        );
+        exe_options.addOption(
+            bool,
+            "llc",
+            link_libc_opt,
+        );
+
+        break :blk exe_options.createModule();
+    };
+
+    const test_options_module = blk: {
+        const test_options = b.addOptions();
+        test_options.step.name = "Tests Options";
+
+        test_options.addOption(
+            []const u8,
+            "zig_exe_path",
+            b.graph.zig_exe,
+        );
+        test_options.addOption(
+            []const u8,
+            "zig_lib_path",
+            b.graph.zig_lib_directory.path.?,
+        );
+        test_options.addOption(
+            []const u8,
+            "global_cache_path",
+            b.graph.global_cache_root.join(
+                b.allocator,
+                &.{"zigscient"},
+            ) catch @panic("OOM"),
+        );
+
+        break :blk test_options.createModule();
+    };
+
+    const known_folders_module = b.dependency(
+        "known_folders",
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    ).module("known-folders");
+
+    const diffz_module = b.dependency(
+        "diffz",
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    ).module("diffz");
+
+    const lsp_module = b.dependency(
+        "lsp-codegen",
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    ).module("lsp");
+
     const tracy_module = getTracyModule(b, .{
         .target = target,
         .optimize = optimize,
@@ -82,9 +210,11 @@ pub fn build(b: *Build) !void {
 
     const gen_exe = b.addExecutable(.{
         .name = "cfg_gen",
-        .root_source_file = b.path("src/tools/config_gen.zig"),
-        .target = b.graph.host,
-        .single_threaded = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tools/config_gen.zig"),
+            .target = b.graph.host,
+            .single_threaded = true,
+        }),
     });
 
     const version_data_module = blk: {
@@ -120,6 +250,10 @@ pub fn build(b: *Build) !void {
 
     const zls_module = b.addModule("zls", .{
         .root_source_file = b.path("src/zls.zig"),
+        .target = target,
+        .optimize = optimize,
+        .single_threaded = single_threaded,
+        .pic = pie,
         .imports = &.{
             .{ .name = "known-folders", .module = known_folders_module },
             .{ .name = "diffz", .module = diffz_module },
@@ -130,82 +264,72 @@ pub fn build(b: *Build) !void {
         },
     });
 
-    // Compilation check step, ie without emitting a file
-    {
-        const exe = b.addExecutable(.{
-            .name = "zls",
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .single_threaded = single_threaded,
-            .pic = pie,
-            .use_llvm = use_llvm,
-            .use_lld = use_llvm,
-        });
-        exe.pie = pie;
-        exe.root_module.addImport("exe_options", exe_options_module);
-        exe.root_module.addImport("tracy", tracy_module);
-        exe.root_module.addImport("diffz", diffz_module);
-        exe.root_module.addImport("lsp", lsp_module);
-        exe.root_module.addImport("known-folders", known_folders_module);
-        exe.root_module.addImport("zls", zls_module);
-
-        const check_step = b.step("check", "Check");
-        check_step.dependOn(&exe.step);
-    }
-
-    const exe = b.addExecutable(.{
-        .name = "zigscient",
+    const exe_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .single_threaded = single_threaded,
         .pic = pie,
-        .use_llvm = use_llvm,
-        .use_lld = use_llvm,
+        .imports = &.{
+            .{ .name = "exe_options", .module = exe_options_module },
+            .{ .name = "known-folders", .module = known_folders_module },
+            .{ .name = "tracy", .module = tracy_module },
+            .{ .name = "zls", .module = zls_module },
+        },
     });
-    exe.pie = pie;
-    if (link_libc_opt) exe.linkLibC();
-    exe.root_module.addImport("exe_options", exe_options_module);
-    exe.root_module.addImport("tracy", tracy_module);
-    exe.root_module.addImport("diffz", diffz_module);
-    exe.root_module.addImport("lsp", lsp_module);
-    exe.root_module.addImport("known-folders", known_folders_module);
-    exe.root_module.addImport("zls", zls_module);
-    b.installArtifact(exe);
 
-    const test_step = b.step("test", "Run all the tests");
+    { // zig build check
+        const exe_check = b.addExecutable(.{
+            .name = "check",
+            .root_module = exe_module,
+        });
+
+        const check = b.step("check", "Check if the project compiles");
+        check.dependOn(&exe_check.step);
+    }
+
+    { // zig build
+        const exe = b.addExecutable(.{
+            .name = "zigscient",
+            .root_module = exe_module,
+            .use_llvm = use_llvm,
+            .use_lld = use_llvm,
+        });
+        if (link_libc_opt) exe.linkLibC();
+        b.installArtifact(exe);
+    }
 
     const tests = b.addTest(.{
-        .root_source_file = b.path("tests/tests.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/tests.zig"),
+            .target = target,
+            .optimize = optimize,
+            .single_threaded = single_threaded,
+            .pic = pie,
+            .imports = &.{
+                .{ .name = "zls", .module = zls_module },
+                .{ .name = "test_options", .module = test_options_module },
+            },
+        }),
         .filters = test_filters,
-        .single_threaded = single_threaded,
-        .pic = pie,
         .use_llvm = use_llvm,
         .use_lld = use_llvm,
     });
-
-    tests.root_module.addImport("zls", zls_module);
-    tests.root_module.addImport("test_options", test_options_module);
-    test_step.dependOn(&b.addRunArtifact(tests).step);
 
     const src_tests = b.addTest(.{
         .name = "src test",
-        .root_source_file = b.path("src/zls.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = zls_module,
         .filters = test_filters,
-        .single_threaded = single_threaded,
-        .pic = pie,
         .use_llvm = use_llvm,
         .use_lld = use_llvm,
     });
-    src_tests.root_module.addImport("build_options", build_options_module);
-    src_tests.root_module.addImport("test_options", test_options_module);
-    src_tests.root_module.addImport("lsp", lsp_module);
-    test_step.dependOn(&b.addRunArtifact(src_tests).step);
+
+    { // zig build test
+        const test_step = b.step("test", "Run all the tests");
+
+        test_step.dependOn(&b.addRunArtifact(tests).step);
+        test_step.dependOn(&b.addRunArtifact(src_tests).step);
+    }
 
     const coverage_step = b.step("coverage", "Generate a coverage report with kcov");
 
