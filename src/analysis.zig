@@ -3564,6 +3564,44 @@ pub fn getPositionContext(
         break;
     }
 
+    // Check if the (trimmed) line starts with a ').', ie a multi-line fncall field-access,
+    // and find the line on which the opening paren is -- include anything in-between
+    if (std.mem.startsWith(
+        u8,
+        std.mem.trimLeft(
+            u8,
+            text[line_loc.start..line_loc.end],
+            " \t\r",
+        ),
+        ").",
+    )) blk: {
+        var i = doc_index;
+        while (i != 0) : (i -= 1) {
+            if (text[i] == '\n') break;
+        } else break :blk;
+        var tok_i = offsets.sourceIndexToTokenIndex(tree, i);
+        var depth: u32 = 1;
+        while (tok_i > 0) : (tok_i -= 1) {
+            switch (token_tags[tok_i]) {
+                .r_paren => depth += 1,
+                .l_paren => {
+                    depth -= 1;
+                    if (depth != 0) continue;
+                    var new_src_idx = tree.tokens.items(.start)[tok_i];
+                    while (new_src_idx != 0) : (new_src_idx -= 1) {
+                        if (text[new_src_idx] == '\n') {
+                            line_loc.start = new_src_idx;
+                            break;
+                        }
+                    }
+                    break;
+                },
+                .semicolon => break :blk,
+                else => {},
+            }
+        }
+    }
+
     var stack = try std.ArrayListUnmanaged(StackState).initCapacity(allocator, 8);
     defer stack.deinit(allocator);
 
