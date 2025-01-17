@@ -379,16 +379,16 @@ pub fn firstParamIs(
 
     const deref_type = switch (resolved_type.data) {
         .pointer => |info| switch (info.size) {
-            .One => info.elem_ty.*,
-            .Many, .Slice, .C => return false,
+            .one => info.elem_ty.*,
+            .many, .slice, .c => return false,
         },
         else => resolved_type,
     };
 
     const deref_expected_type = switch (expected_type.data) {
         .pointer => |info| switch (info.size) {
-            .One => info.elem_ty.*,
-            .Many, .Slice, .C => return false,
+            .one => info.elem_ty.*,
+            .many, .slice, .c => return false,
         },
         else => expected_type,
     };
@@ -855,7 +855,7 @@ pub fn resolveAddressOf(analyser: *Analyser, ty: Type) error{OutOfMemory}!?Type 
     return Type{
         .data = .{
             .pointer = .{
-                .size = .One,
+                .size = .one,
                 .sentinel = .none,
                 .is_const = false,
                 .elem_ty = base_type_ptr,
@@ -934,15 +934,15 @@ pub fn resolveDerefType(analyser: *Analyser, pointer: Type) error{OutOfMemory}!?
 
     switch (pointer.data) {
         .pointer => |info| switch (info.size) {
-            .One, .C => return try info.elem_ty.instanceTypeVal(analyser),
-            .Many, .Slice => return null,
+            .one, .c => return try info.elem_ty.instanceTypeVal(analyser),
+            .many, .slice => return null,
         },
         .ip_index => |payload| {
             const ty = analyser.ip.typeOf(payload.index);
             switch (analyser.ip.indexToKey(ty)) {
                 .pointer_type => |pointer_info| switch (pointer_info.flags.size) {
-                    .One, .C => return try Type.typeValFromIP(analyser, pointer_info.elem_type),
-                    .Many, .Slice => return null,
+                    .one, .c => return try Type.typeValFromIP(analyser, pointer_info.elem_type),
+                    .many, .slice => return null,
                 },
                 else => return null,
             }
@@ -978,7 +978,7 @@ fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKi
                 return Type{
                     .data = .{
                         .pointer = .{
-                            .size = .Slice,
+                            .size = .slice,
                             .sentinel = info.sentinel,
                             .is_const = false,
                             .elem_ty = info.elem_ty,
@@ -991,7 +991,7 @@ fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKi
                 return Type{
                     .data = .{
                         .pointer = .{
-                            .size = .Slice,
+                            .size = .slice,
                             .sentinel = .none,
                             .is_const = false,
                             .elem_ty = info.elem_ty,
@@ -1002,7 +1002,7 @@ fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKi
             },
         },
         .pointer => |info| return switch (info.size) {
-            .One => switch (info.elem_ty.data) {
+            .one => switch (info.elem_ty.data) {
                 .array => |array_info| {
                     switch (rhs) {
                         .Single => return try array_info.elem_ty.instanceTypeVal(analyser),
@@ -1010,7 +1010,7 @@ fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKi
                             return Type{
                                 .data = .{
                                     .pointer = .{
-                                        .size = .Slice,
+                                        .size = .slice,
                                         .sentinel = array_info.sentinel,
                                         .is_const = false,
                                         .elem_ty = array_info.elem_ty,
@@ -1023,7 +1023,7 @@ fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKi
                             return Type{
                                 .data = .{
                                     .pointer = .{
-                                        .size = .Slice,
+                                        .size = .slice,
                                         .sentinel = .none,
                                         .is_const = false,
                                         .elem_ty = array_info.elem_ty,
@@ -1036,14 +1036,14 @@ fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKi
                 },
                 else => return null,
             },
-            .Many => switch (rhs) {
+            .many => switch (rhs) {
                 .Single => try info.elem_ty.instanceTypeVal(analyser),
                 .Open => lhs,
                 .Range => {
                     return Type{
                         .data = .{
                             .pointer = .{
-                                .size = .Slice,
+                                .size = .slice,
                                 .sentinel = .none,
                                 .is_const = info.is_const,
                                 .elem_ty = info.elem_ty,
@@ -1053,17 +1053,17 @@ fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKi
                     };
                 },
             },
-            .Slice => switch (rhs) {
+            .slice => switch (rhs) {
                 .Single => try info.elem_ty.instanceTypeVal(analyser),
                 .Open, .Range => lhs,
             },
-            .C => switch (rhs) {
+            .c => switch (rhs) {
                 .Single => try info.elem_ty.instanceTypeVal(analyser),
                 .Open => lhs,
                 .Range => Type{
                     .data = .{
                         .pointer = .{
-                            .size = .Slice,
+                            .size = .slice,
                             .sentinel = .none,
                             .is_const = info.is_const,
                             .elem_ty = info.elem_ty,
@@ -1125,7 +1125,7 @@ fn resolvePropertyType(analyser: *Analyser, ty: Type, name: []const u8) error{Ou
 
     switch (ty.data) {
         .pointer => |info| switch (info.size) {
-            .One => switch (info.elem_ty.data) {
+            .one => switch (info.elem_ty.data) {
                 .array => {
                     std.debug.assert(!info.elem_ty.is_type_val);
                     if (std.mem.eql(u8, "len", name)) {
@@ -1134,7 +1134,7 @@ fn resolvePropertyType(analyser: *Analyser, ty: Type, name: []const u8) error{Ou
                 },
                 else => {},
             },
-            .Slice => {
+            .slice => {
                 if (std.mem.eql(u8, "len", name)) {
                     return try Type.typeValFromIP(analyser, .usize_type);
                 }
@@ -1143,7 +1143,7 @@ fn resolvePropertyType(analyser: *Analyser, ty: Type, name: []const u8) error{Ou
                     return Type{
                         .data = .{
                             .pointer = .{
-                                .size = .Many,
+                                .size = .many,
                                 .sentinel = info.sentinel,
                                 .is_const = info.is_const,
                                 .elem_ty = info.elem_ty,
@@ -1153,7 +1153,7 @@ fn resolvePropertyType(analyser: *Analyser, ty: Type, name: []const u8) error{Ou
                     };
                 }
             },
-            .Many, .C => {},
+            .many, .c => {},
         },
 
         .array => {
@@ -1930,7 +1930,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
         .@"if", .if_simple => {
             const if_node = ast.fullIf(tree, node).?;
 
-            // HACK: resolve std.ArrayList(T).Slice
+            // HACK: resolve std.ArrayList(T).slice
             if (std.mem.endsWith(u8, node_handle.handle.uri, "array_list.zig") and
                 if_node.payload_token != null and
                 std.mem.eql(u8, offsets.identifierTokenToNameSlice(tree, if_node.payload_token.?), "a") and
@@ -2107,7 +2107,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                     .sentinel = .zero_u8,
                 } }),
                 .flags = .{
-                    .size = .One,
+                    .size = .one,
                     .is_const = true,
                 },
             } });
@@ -2130,7 +2130,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                     .sentinel = .zero_u8,
                 } }),
                 .flags = .{
-                    .size = .One,
+                    .size = .one,
                     .is_const = true,
                 },
             } });
@@ -2871,22 +2871,22 @@ pub const Type = struct {
         switch (ty.data) {
             .pointer => |info| {
                 switch (info.size) {
-                    .One => try writer.writeByte('*'),
-                    .Many => {
+                    .one => try writer.writeByte('*'),
+                    .many => {
                         try writer.writeAll("[*");
                         if (info.sentinel != .none) {
                             try writer.print(":{}", .{info.sentinel.fmt(analyser.ip)});
                         }
                         try writer.writeByte(']');
                     },
-                    .Slice => {
+                    .slice => {
                         try writer.writeAll("[");
                         if (info.sentinel != .none) {
                             try writer.print(":{}", .{info.sentinel.fmt(analyser.ip)});
                         }
                         try writer.writeByte(']');
                     },
-                    .C => try writer.writeAll("[*c]"),
+                    .c => try writer.writeAll("[*c]"),
                 }
                 if (info.is_const) try writer.writeAll("const ");
                 return try writer.print("{}", .{info.elem_ty.fmtTypeVal(analyser, ctx.options)});
@@ -4155,7 +4155,7 @@ pub const DeclWithHandle = struct {
                 .elem_ty = resolved_ty_ptr,
                 .sentinel = .none,
                 .is_const = false,
-                .size = .One,
+                .size = .one,
             } },
             .is_type_val = false,
         };
@@ -4829,7 +4829,7 @@ pub fn resolveExpressionTypeFromAncestors(
                     .handle = handle,
                 });
                 // The following logic adresses `unresolvable = T{...};`
-                // Example: `gop.key_ptr.* = types.CompletionItem{..`,
+                // Example: `gop.key_ptr.* = types.completionItem{..`,
                 //                        ^ gets "resolved" to 'u32'
                 // This is important to be able to gen inlay hints for struct_init*
                 const rhs_ty = try analyser.resolveTypeOfNode(.{
