@@ -89,6 +89,7 @@ const ClientCapabilities = struct {
     supports_configuration: bool = false,
     supports_workspace_did_change_configuration_dynamic_registration: bool = false,
     supports_textDocument_definition_linkSupport: bool = false,
+    supports_work_done_progress: bool = false,
     /// The detail entries for big structs such as std.zig.CrossTarget were
     /// bricking the preview window in Sublime Text.
     /// https://github.com/zigtools/zls/pull/261
@@ -510,6 +511,12 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
                     }
                 }
             }
+        }
+    }
+
+    if (request.capabilities.window) |window| {
+        if (window.workDoneProgress) |wdp| {
+            server.client_capabilities.supports_work_done_progress = wdp;
         }
     }
 
@@ -1781,7 +1788,7 @@ pub fn create(allocator: std.mem.Allocator) !*Server {
         .document_store = .{
             .allocator = allocator,
             .config = DocumentStore.Config.fromMainConfig(Config{}),
-            .thread_pool = if (zig_builtin.single_threaded) {} else undefined, // set below
+            .server = server,
         },
         .job_queue = std.fifo.LinearFifo(Job, .Dynamic).init(allocator),
         .thread_pool = undefined, // set below
@@ -1795,7 +1802,6 @@ pub fn create(allocator: std.mem.Allocator) !*Server {
             .allocator = allocator,
             .n_jobs = 4, // what is a good value here?
         });
-        server.document_store.thread_pool = &server.thread_pool;
     }
 
     server.ip = try InternPool.init(allocator);
@@ -2143,13 +2149,15 @@ fn handleResponse(server: *Server, response: lsp.JsonRPCMessage.Response) Error!
         },
     };
 
-    if (std.mem.eql(u8, id, "semantic_tokens_refresh")) {
-        //
-    } else if (std.mem.startsWith(u8, id, "register")) {
-        //
-    } else if (std.mem.eql(u8, id, "apply_edit")) {
-        //
-    } else if (std.mem.eql(u8, id, "i_haz_configuration")) {
+    const ignore_map = std.StaticStringMap(void).initComptime(.{
+        .{"semantic_tokens_refresh"},
+        .{"register"},
+        .{"apply_edit"},
+        .{"progress"},
+    });
+    if (ignore_map.has(id)) return;
+
+    if (std.mem.eql(u8, id, "i_haz_configuration")) {
         try server.handleConfiguration(result orelse .null);
     } else {
         log.warn("received response from client with id '{s}' that has no handler!", .{id});

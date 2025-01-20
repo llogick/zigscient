@@ -18,17 +18,20 @@ const CustomAst = @import("zig-components/Ast.zig");
 const InternPool = @import("analyser/InternPool.zig");
 const DocumentScope = @import("DocumentScope.zig");
 const ContentChanges = @import("diff.zig").ContentChanges;
+const Server = @import("Server.zig");
+const lsp = @import("lsp");
 
 const DocumentStore = @This();
 
 allocator: std.mem.Allocator,
 /// the DocumentStore assumes that `config` is not modified while calling one of its functions.
 config: Config,
+server: *Server,
 lock: std.Thread.RwLock = .{},
-thread_pool: if (builtin.single_threaded) void else *std.Thread.Pool,
 handles: std.StringArrayHashMapUnmanaged(*Handle) = .{},
 build_files: std.StringArrayHashMapUnmanaged(*BuildFile) = .{},
 cimports: std.AutoArrayHashMapUnmanaged(Hash, translate_c.Result) = .{},
+num_builds_in_progress: std.atomic.Value(i32) = .init(0),
 
 pub const Uri = []const u8;
 
@@ -794,6 +797,95 @@ pub fn refreshDocument(self: *DocumentStore, handle: *Handle, content_changes: C
     handle.cimports = try collectCIncludes(self.allocator, handle.tree);
 }
 
+// Build Progress Notification
+const progress_token = "buildProgressToken";
+
+fn sendMessageToClient(allocator: std.mem.Allocator, transport: lsp.AnyTransport, message: anytype) !void {
+    const serialized = try std.json.stringifyAlloc(
+        allocator,
+        message,
+        .{ .emit_null_optional_fields = false },
+    );
+    defer allocator.free(serialized);
+
+    try transport.writeJsonMessage(serialized);
+}
+
+fn notifyBuildStart(self: *DocumentStore) void {
+    if (!self.server.client_capabilities.supports_work_done_progress) return;
+
+    // Atomicity note: We do not actually care about memory surrounding the
+    // counter, we only care about the counter itself. We only need to ensure
+    // we aren't double entering/exiting
+    const prev = self.num_builds_in_progress.fetchAdd(1, .monotonic);
+    if (prev != 0) return;
+
+    const transport = self.server.transport orelse return;
+
+    sendMessageToClient(
+        self.allocator,
+        transport,
+        .{
+            .jsonrpc = "2.0",
+            .id = "progress",
+            .method = "window/workDoneProgress/create",
+            .params = lsp.types.WorkDoneProgressCreateParams{
+                .token = .{ .string = progress_token },
+            },
+        },
+    ) catch |err| {
+        log.err("Failed to send create work message: {}", .{err});
+        return;
+    };
+
+    sendMessageToClient(self.allocator, transport, .{
+        .jsonrpc = "2.0",
+        .method = "$/progress",
+        .params = .{
+            .token = progress_token,
+            .value = lsp.types.WorkDoneProgressBegin{
+                .title = "Loading build configuration",
+            },
+        },
+    }) catch |err| {
+        log.err("Failed to send progress start message: {}", .{err});
+        return;
+    };
+}
+
+const EndStatus = enum { success, failed };
+
+fn notifyBuildEnd(self: *DocumentStore, status: EndStatus) void {
+    if (!self.server.client_capabilities.supports_work_done_progress) return;
+
+    // Atomicity note: We do not actually care about memory surrounding the
+    // counter, we only care about the counter itself. We only need to ensure
+    // we aren't double entering/exiting
+    const prev = self.num_builds_in_progress.fetchSub(1, .monotonic);
+    if (prev != 1) return;
+
+    const transport = self.server.transport orelse return;
+
+    const message = switch (status) {
+        .failed => "Failed",
+        .success => "Success",
+    };
+
+    sendMessageToClient(self.allocator, transport, .{
+        .jsonrpc = "2.0",
+        .method = "$/progress",
+        .params = .{
+            .token = progress_token,
+            .value = lsp.types.WorkDoneProgressEnd{
+                .message = message,
+            },
+        },
+    }) catch |err| {
+        log.err("Failed to send progress end message: {}", .{err});
+        return;
+    };
+}
+
 /// Invalidates a build files.
 /// **Thread safe** takes a shared lock
 pub fn invalidateBuildFile(self: *DocumentStore, build_file_uri: Uri) error{OutOfMemory}!void {
@@ -810,12 +902,16 @@ pub fn invalidateBuildFile(self: *DocumentStore, build_file_uri: Uri) error{OutO
     if (builtin.single_threaded) {
         self.invalidateBuildFileWorker(uri);
     } else {
-        try self.thread_pool.spawn(invalidateBuildFileWorker, .{ self, uri });
+        try self.server.thread_pool.spawn(invalidateBuildFileWorker, .{ self, uri });
     }
 }
 
 fn invalidateBuildFileWorker(self: *DocumentStore, build_file_uri: Uri) void {
     defer self.allocator.free(build_file_uri);
+
+    var end_status: EndStatus = .failed;
+    self.notifyBuildStart();
+    defer self.notifyBuildEnd(end_status);
 
     const build_config = loadBuildConfiguration(self, build_file_uri) catch |err| {
         log.err("Failed to load build configuration for {s} (error: {})", .{ build_file_uri, err });
@@ -827,8 +923,12 @@ fn invalidateBuildFileWorker(self: *DocumentStore, build_file_uri: Uri) void {
         return;
     };
     build_file.setBuildConfig(build_config);
+
     const bfh = self.getHandle(build_file_uri) orelse return;
     bfh.handleRootIdComment(self);
+
+    // Looks like a useless assignment, but alters deffered onEnd
+    end_status = .success;
 }
 
 /// The `DocumentStore` represents a graph structure where every
