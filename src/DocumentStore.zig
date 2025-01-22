@@ -927,6 +927,32 @@ fn invalidateBuildFileWorker(self: *DocumentStore, build_file_uri: Uri) void {
     const bfh = self.getHandle(build_file_uri) orelse return;
     bfh.handleRootIdComment(self);
 
+    // Notify client to refresh semanticTokens and inlayHints for the workspace
+    if (self.server.transport) |transport| {
+        if (self.server.client_capabilities.supports_semantic_tokens_refresh) {
+            sendMessageToClient(
+                self.allocator,
+                transport,
+                lsp.TypedJsonRPCRequest(?void){
+                    .id = .{ .string = "semantic_tokens_refresh" },
+                    .method = "workspace/semanticTokens/refresh",
+                    .params = @as(?void, null),
+                },
+            ) catch {};
+        }
+        if (self.server.client_capabilities.supports_inlay_hints_refresh) {
+            sendMessageToClient(
+                self.allocator,
+                transport,
+                lsp.TypedJsonRPCRequest(?void){
+                    .id = .{ .string = "inlay_hints_refresh" },
+                    .method = "workspace/inlayHint/refresh",
+                    .params = @as(?void, null),
+                },
+            ) catch {};
+        }
+    }
+
     // Looks like a useless assignment, but alters deffered onEnd
     end_status = .success;
 }

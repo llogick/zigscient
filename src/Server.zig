@@ -90,6 +90,8 @@ const ClientCapabilities = struct {
     supports_workspace_did_change_configuration_dynamic_registration: bool = false,
     supports_textDocument_definition_linkSupport: bool = false,
     supports_work_done_progress: bool = false,
+    supports_semantic_tokens_refresh: bool = false,
+    supports_inlay_hints_refresh: bool = false,
     /// The detail entries for big structs such as std.zig.CrossTarget were
     /// bricking the preview window in Sublime Text.
     /// https://github.com/zigtools/zls/pull/261
@@ -516,6 +518,12 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
             if (did_change.dynamicRegistration orelse false) {
                 server.client_capabilities.supports_workspace_did_change_configuration_dynamic_registration = true;
             }
+        }
+        if (workspace.semanticTokens) |workspace_semantic_tokens| {
+            server.client_capabilities.supports_semantic_tokens_refresh = workspace_semantic_tokens.refreshSupport orelse false;
+        }
+        if (workspace.inlayHint) |inlay_hint| {
+            server.client_capabilities.supports_inlay_hints_refresh = inlay_hint.refreshSupport orelse false;
         }
     }
 
@@ -966,13 +974,6 @@ pub fn updateConfiguration(
                 try server.pushJob(.{ .generate_diagnostics = try server.allocator.dupe(u8, handle.uri) });
             }
         }
-
-        const json_message = try server.sendToClientRequest(
-            .{ .string = "semantic_tokens_refresh" },
-            "workspace/semanticTokens/refresh",
-            {},
-        );
-        server.allocator.free(json_message);
     }
 
     // <---------------------------------------------------------->
@@ -2140,6 +2141,7 @@ fn handleResponse(server: *Server, response: lsp.JsonRPCMessage.Response) Error!
 
     const ignore_map = std.StaticStringMap(void).initComptime(.{
         .{"semantic_tokens_refresh"},
+        .{"inlay_hints_refresh"},
         .{"register"},
         .{"apply_edit"},
         .{"progress"},
