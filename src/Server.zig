@@ -11,6 +11,7 @@ const build_options = @import("build_options");
 const Config = @import("Config.zig");
 const configuration = @import("configuration.zig");
 const DocumentStore = @import("DocumentStore.zig");
+const DiagnosticsCollection = @import("DiagnosticsCollection.zig");
 const lsp = @import("lsp");
 const types = lsp.types;
 const Analyser = @import("analysis.zig");
@@ -67,6 +68,7 @@ zig_ast_check_lock: std.Thread.Mutex = .{},
 /// often in one session,
 config_arena: std.heap.ArenaAllocator.State = .{},
 client_capabilities: ClientCapabilities = .{},
+diagnostics_collection: DiagnosticsCollection,
 
 // Code was based off of https://github.com/andersfr/zig-lsp/blob/master/server.zig
 
@@ -337,7 +339,7 @@ fn initAnalyser(server: *Server, handle: ?*DocumentStore.Handle) Analyser {
     );
 }
 
-fn getAutofixMode(server: *Server) enum {
+pub fn getAutofixMode(server: *Server) enum {
     on_save,
     will_save_wait_until,
     fixall,
@@ -423,6 +425,7 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
             } else server.offset_encoding;
         }
     }
+    server.diagnostics_collection.offset_encoding = server.offset_encoding;
 
     if (request.capabilities.textDocument) |textDocument| {
         server.client_capabilities.supports_publish_diagnostics = textDocument.publishDiagnostics != null;
@@ -1783,6 +1786,7 @@ pub fn create(allocator: std.mem.Allocator) !*Server {
         .job_queue = std.fifo.LinearFifo(Job, .Dynamic).init(allocator),
         .thread_pool = undefined, // set below
         .wait_group = if (zig_builtin.single_threaded) {} else .{},
+        .diagnostics_collection = .{ .allocator = allocator },
     };
 
     if (zig_builtin.single_threaded) {
@@ -1811,7 +1815,13 @@ pub fn destroy(server: *Server) void {
     server.ip.deinit(server.allocator);
     server.client_capabilities.deinit(server.allocator);
     server.config_arena.promote(server.allocator).deinit();
+    server.diagnostics_collection.deinit();
     server.allocator.destroy(server);
+}
+
+pub fn setTransport(server: *Server, transport: lsp.AnyTransport) void {
+    server.transport = transport;
+    server.diagnostics_collection.transport = transport;
 }
 
 pub fn keepRunning(server: Server) bool {
@@ -2035,11 +2045,7 @@ fn processJob(server: *Server, job: Job, wait_group: ?*std.Thread.WaitGroup) voi
         },
         .generate_diagnostics => |uri| {
             const handle = server.document_store.getHandle(uri) orelse return;
-            var arena_allocator = std.heap.ArenaAllocator.init(server.allocator);
-            defer arena_allocator.deinit();
-            const diagnostics = diagnostics_gen.generateDiagnostics(server, arena_allocator.allocator(), handle) catch return;
-            const json_message = server.sendToClientNotification("textDocument/publishDiagnostics", diagnostics) catch return;
-            server.allocator.free(json_message);
+            diagnostics_gen.generateDiagnostics(server, handle) catch return;
         },
         .run_build_on_save => {
             if (!std.process.can_spawn) unreachable;

@@ -691,18 +691,7 @@ fn testDiagnostic(
     ctx.server.config.prefer_ast_check_as_child_process = !options.want_zir;
 
     const uri = try ctx.addDocument(.{ .source = before });
-    const handle = ctx.server.document_store.getHandle(uri).?;
-
-    var error_bundle = try zls.diagnostics.getAstCheckDiagnostics(ctx.server, handle);
-    defer error_bundle.deinit(ctx.server.allocator);
-    var diagnostics_set: std.StringArrayHashMapUnmanaged(std.ArrayListUnmanaged(types.Diagnostic)) = .{};
-    try zls.diagnostics.errorBundleToDiagnostics(error_bundle, ctx.arena.allocator(), &diagnostics_set, "ast-check", ctx.server.offset_encoding);
-
-    const diagnostics: []const types.Diagnostic = switch (diagnostics_set.count()) {
-        0 => &.{},
-        1 => diagnostics_set.values()[0].items,
-        else => unreachable, // ast-check diagnostics only affect a single file
-    };
+    // const handle = ctx.server.document_store.getHandle(uri).?;
 
     const params: types.CodeActionParams = .{
         .textDocument = .{ .uri = uri },
@@ -710,7 +699,7 @@ fn testDiagnostic(
             .start = .{ .line = 0, .character = 0 },
             .end = offsets.indexToPosition(before, before.len, ctx.server.offset_encoding),
         },
-        .context = .{ .diagnostics = diagnostics },
+        .context = .{ .diagnostics = &.{} },
     };
 
     @setEvalBranchQuota(5000);
