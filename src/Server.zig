@@ -2148,11 +2148,10 @@ fn handleResponse(server: *Server, response: lsp.JsonRPCMessage.Response) Error!
     const ignore_map = std.StaticStringMap(void).initComptime(.{
         .{"semantic_tokens_refresh"},
         .{"inlay_hints_refresh"},
-        .{"register"},
         .{"apply_edit"},
         .{"progress"},
     });
-    if (ignore_map.has(id)) return;
+    if (ignore_map.has(id) or std.mem.startsWith(u8, id, "register")) return;
 
     if (std.mem.eql(u8, id, "i_haz_configuration")) {
         try server.handleConfiguration(result orelse .null);
