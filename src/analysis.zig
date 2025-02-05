@@ -817,7 +817,7 @@ pub fn resolveReturnType(analyser: *Analyser, fn_decl: Ast.full.FnProto, handle:
         return null;
     if (!child_type.is_type_val) return null;
 
-    if (ast.hasInferredError(tree, fn_proto)) {
+    if (ast.hasInferredError(tree, fn_decl)) {
         return .{
             .data = .{ .error_union = .{
                 .error_set = null,

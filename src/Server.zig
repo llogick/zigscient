@@ -357,12 +357,12 @@ pub fn getAutofixMode(server: *Server) enum {
 
 /// caller owns returned memory.
 fn autofix(server: *Server, arena: std.mem.Allocator, handle: *DocumentStore.Handle) error{OutOfMemory}!std.ArrayListUnmanaged(types.TextEdit) {
-    if (handle.tree.errors.len != 0) return .{};
-    if (handle.tree.mode == .zon) return .{};
+    if (handle.tree.errors.len != 0) return .empty;
+    if (handle.tree.mode == .zon) return .empty;
 
     var error_bundle = try diagnostics_gen.getAstCheckDiagnostics(server, handle);
     defer error_bundle.deinit(server.allocator);
-    if (error_bundle.errorMessageCount() == 0) return .{};
+    if (error_bundle.errorMessageCount() == 0) return .empty;
 
     var analyser = server.initAnalyser(handle);
     defer analyser.deinit();
@@ -372,28 +372,18 @@ fn autofix(server: *Server, arena: std.mem.Allocator, handle: *DocumentStore.Han
         .analyser = &analyser,
         .handle = handle,
         .offset_encoding = server.offset_encoding,
+        .only_kinds = .init(.{
+            .@"source.fixAll" = true,
+        }),
     };
 
-    var actions: std.ArrayListUnmanaged(types.CodeAction) = .{};
-    try builder.generateCodeAction(error_bundle, &actions);
-
-    var text_edits: std.ArrayListUnmanaged(types.TextEdit) = .{};
-    for (actions.items) |action| {
-        std.debug.assert(action.kind != null);
-        std.debug.assert(action.edit != null);
-        std.debug.assert(action.edit.?.changes != null);
-
-        if (action.kind.? != .@"source.fixAll") continue;
-
-        const changes = action.edit.?.changes.?.map;
-        if (changes.count() != 1) continue;
-
-        const edits: []const types.TextEdit = changes.get(handle.uri) orelse continue;
-
-        try text_edits.appendSlice(arena, edits);
+    try builder.generateCodeAction(error_bundle);
+    for (builder.actions.items) |action| {
+        std.debug.assert(action.kind.?.eql(.@"source.fixAll")); // We request only source.fixall code actions
     }
 
-    return text_edits;
+    defer builder.fixall_text_edits = .empty;
+    return builder.fixall_text_edits;
 }
 
 fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.InitializeParams) Error!types.InitializeResult {
@@ -1648,22 +1638,28 @@ fn codeActionHandler(server: *Server, arena: std.mem.Allocator, request: types.C
     var analyser = server.initAnalyser(handle);
     defer analyser.deinit();
 
+    const only_kinds = if (request.context.only) |kinds| blk: {
+        var set: std.EnumSet(std.meta.Tag(types.CodeActionKind)) = .initEmpty();
+        for (kinds) |kind| {
+            set.setPresent(kind, true);
+        }
+        break :blk set;
+    } else null;
+
     var builder: code_actions.Builder = .{
         .arena = arena,
         .analyser = &analyser,
         .handle = handle,
         .offset_encoding = server.offset_encoding,
+        .only_kinds = only_kinds,
     };
 
-    var actions: std.ArrayListUnmanaged(types.CodeAction) = .{};
-    try builder.generateCodeAction(error_bundle, &actions);
+    try builder.generateCodeAction(error_bundle);
+    try builder.generateCodeActionsInRange(request.range);
 
-    // Always generate code action organizeImports
-    try builder.generateOrganizeImportsAction(&actions);
-
-    const Result = lsp.types.getRequestMetadata("textDocument/codeAction").?.Result;
-    const result = try arena.alloc(std.meta.Child(std.meta.Child(Result)), actions.items.len);
-    for (actions.items, result) |action, *out| {
+    const Result = lsp.ResultType("textDocument/codeAction");
+    const result = try arena.alloc(std.meta.Child(std.meta.Child(Result)), builder.actions.items.len);
+    for (builder.actions.items, result) |action, *out| {
         out.* = .{ .CodeAction = action };
     }
 
