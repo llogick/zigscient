@@ -553,8 +553,20 @@ pub fn init(allocator: std.mem.Allocator, tree: Ast) error{OutOfMemory}!Document
         .doc_scope = &document_scope,
     };
     defer context.deinit();
-    try walkContainerDecl(&context, tree, 0);
 
+    switch (tree.mode) {
+        .zig => try walkContainerDecl(&context, tree, 0),
+        .zon => {
+            const root_node = tree.nodes.items(.data)[0].lhs;
+            const new_scope = try context.startScope(
+                .container,
+                .{ .ast_node = root_node },
+                .{ .start = 0, .end = @intCast(tree.source.len) },
+            );
+            try walkNode(&context, tree, root_node);
+            try new_scope.finalize();
+        },
+    }
     return document_scope;
 }
 
@@ -815,8 +827,6 @@ noinline fn walkContainerDecl(
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    // This is not ready for .zon -- tree.fullContainerDecl on 0 calls tree.rootDecls
-    if (tree.mode == .zon) return; // and node_idx == 0 and tree.errors.len != 0) return;
     const allocator = context.allocator;
     const tags = tree.nodes.items(.tag);
     const token_tags = tree.tokens.items(.tag);

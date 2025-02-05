@@ -12,8 +12,8 @@ const proj_version: std.SemanticVersion = .{
 
 /// Specify the minimum Zig version that is required to compile and test the project:
 /// Must match the `minimum_zig_version` in `build.zig.zon`.
-/// Breaking change summary: std.builtin.Type renames
-const minimum_build_zig_version = "0.14.0-dev.2801+4d8c24c6c";
+/// Breaking change summary: ZON
+const minimum_build_zig_version = "0.14.0-dev.3042+317722b37";
 
 /// Specify the minimum Zig version that is required to run the project:
 /// Release 0.12.0

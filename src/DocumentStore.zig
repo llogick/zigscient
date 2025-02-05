@@ -506,7 +506,7 @@ pub const Handle = struct {
                     const tracy_zone_inner = tracy.traceNamed(@src(), "ZonGen.generate");
                     defer tracy_zone_inner.end();
 
-                    var zoir = try std.zig.ZonGen.generate(self.impl.allocator, self.tree);
+                    var zoir = try std.zig.ZonGen.generate(self.impl.allocator, self.tree, .{});
                     errdefer zoir.deinit(self.impl.allocator);
 
                     self.impl.zoir = zoir;
@@ -571,6 +571,7 @@ pub const Handle = struct {
         var old_cimports = self.cimports;
         var old_document_scope = if (old_status.has_document_scope) self.impl.document_scope else null;
         var old_zir = if (old_status.has_zir) self.impl.zir else null;
+        var old_zoir = if (old_status.has_zoir) self.impl.zoir else null;
 
         const new_tree: StdAst = .{
             .source = custom_ast.source,
@@ -602,6 +603,7 @@ pub const Handle = struct {
 
         if (old_document_scope) |*document_scope| document_scope.deinit(self.impl.allocator);
         if (old_zir) |*zir| zir.deinit(self.impl.allocator);
+        if (old_zoir) |*zoir| zoir.deinit(self.impl.allocator);
     }
 
     // IF this handle is also a BuildFile scan for `$ls root_id N` and apply
@@ -641,6 +643,7 @@ pub const Handle = struct {
         const allocator = self.impl.allocator;
 
         if (status.has_zir) self.impl.zir.deinit(allocator);
+        if (status.has_zoir) self.impl.zoir.deinit(allocator);
         if (status.has_document_scope) self.impl.document_scope.deinit(allocator);
         self.tree_nstates.deinit(allocator);
         allocator.free(self.tree.source);
