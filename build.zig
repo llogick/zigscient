@@ -12,8 +12,8 @@ const proj_version: std.SemanticVersion = .{
 
 /// Specify the minimum Zig version that is required to compile and test the project:
 /// Must match the `minimum_zig_version` in `build.zig.zon`.
-/// Breaking change summary: Allocator VTable API changes
-const minimum_build_zig_version = "0.14.0-dev.3145+6a6e72fff";
+/// Breaking change summary: std.heap.SmpAllocator
+const minimum_build_zig_version = "0.14.0-dev.3165+ea1ce2df9";
 
 /// Specify the minimum Zig version that is required to run the project:
 /// Release 0.12.0
@@ -35,6 +35,8 @@ const release_targets = [_]std.Target.Query{
     .{ .cpu_arch = .aarch64, .os_tag = .macos },
     .{ .cpu_arch = .wasm32, .os_tag = .wasi },
 };
+
+const MemAllocatorOption = enum { debug, binned, smp, c };
 
 pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -72,14 +74,20 @@ pub fn build(b: *Build) !void {
     ) orelse &[0][]const u8{};
     const use_llvm = b.option(
         bool,
-        "use_llvm",
+        "use-llvm",
         "Use Zig's llvm code backend",
     );
-    const link_libc_opt = b.option(
-        bool,
-        "llc",
-        "Link against libc and use the c allocator",
-    ) orelse false;
+    const mem_allocator_opt: MemAllocatorOption = b.option(
+        MemAllocatorOption,
+        "allocator",
+        "Memory allocator to use",
+    ) orelse switch (optimize) {
+        .Debug => .debug,
+        .ReleaseSmall,
+        .ReleaseSafe,
+        => .binned,
+        .ReleaseFast => .smp,
+    };
 
     const resolved_proj_version = getVersion(b);
     const resolved_proj_version_string = b.fmt(
@@ -133,18 +141,9 @@ pub fn build(b: *Build) !void {
             ) orelse 256,
         );
         exe_options.addOption(
-            bool,
-            "use_gpa",
-            b.option(
-                bool,
-                "use_gpa",
-                "Good for debugging",
-            ) orelse (optimize == .Debug),
-        );
-        exe_options.addOption(
-            bool,
-            "llc",
-            link_libc_opt,
+            MemAllocatorOption,
+            "mema",
+            mem_allocator_opt,
         );
 
         break :blk exe_options.createModule();
@@ -295,7 +294,7 @@ pub fn build(b: *Build) !void {
             .use_llvm = use_llvm,
             .use_lld = use_llvm,
         });
-        if (link_libc_opt) exe.linkLibC();
+        if (mem_allocator_opt == .c) exe.linkLibC();
         b.installArtifact(exe);
     }
 

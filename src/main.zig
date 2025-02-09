@@ -313,43 +313,55 @@ fn parseArgs(allocator: std.mem.Allocator) ParseArgsError!ParseArgsResult {
     return result;
 }
 
-const LibcAllocatorInterface = struct {
-    const Self = @This();
-    pub fn allocator(_: Self) std.mem.Allocator {
-        return std.heap.c_allocator;
-    }
-    pub const init: Self = .{};
-    pub fn deinit(_: Self) void {}
-};
-
-const stack_frames = switch (zig_builtin.mode) {
-    .Debug => 10,
-    else => 0,
-};
+var debug_allocator_state: std.heap.DebugAllocator(
+    .{
+        .stack_trace_frames = switch (zig_builtin.mode) {
+            .Debug => 10,
+            else => 0,
+        },
+    },
+) = .init;
+var binned_allocator_state: binned_allocator.BinnedAllocator(.{}) = .{};
 
 pub fn main() !u8 {
     const preferred_runtime_log_level = runtime_log_level;
     runtime_log_level = init_stage_log_level;
 
-    var allocator_state, const allocator_name = if (exe_options.use_gpa)
-        .{
-            std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = stack_frames }){},
-            "GPA",
-        }
-    else if (exe_options.llc)
-        .{
-            LibcAllocatorInterface{},
-            "C",
-        }
-    else
-        .{
-            binned_allocator.BinnedAllocator(.{}){},
+    const main_allocator, //
+    const main_allocator_name //
+    = switch (exe_options.mema) {
+        .debug => .{
+            debug_allocator_state.allocator(),
+            "Debug",
+        },
+        .binned => .{
+            binned_allocator_state.allocator(),
             "Binned",
-        };
-    defer _ = allocator_state.deinit();
+        },
+        .smp => .{
+            std.heap.smp_allocator,
+            "SMP",
+        },
+        .c => if (@alignOf(std.c.max_align_t) < @max(@alignOf(i128), std.atomic.cache_line))
+            .{
+                std.heap.c_allocator,
+                "C",
+            }
+        else
+            .{
+                std.heap.raw_c_allocator,
+                "RawC",
+            },
+    };
 
-    var tracy_state = if (tracy.enable_allocation) tracy.tracyAllocator(allocator_state.allocator()) else void{};
-    const inner_allocator: std.mem.Allocator = if (tracy.enable_allocation) tracy_state.allocator() else allocator_state.allocator();
+    defer switch (exe_options.mema) {
+        .debug => _ = debug_allocator_state.deinit(),
+        .binned => binned_allocator_state.deinit(),
+        else => {},
+    };
+
+    var tracy_state = if (tracy.enable_allocation) tracy.tracyAllocator(main_allocator) else void{};
+    const inner_allocator: std.mem.Allocator = if (tracy.enable_allocation) tracy_state.allocator() else main_allocator;
 
     var failing_allocator_state = if (exe_options.enable_failing_allocator) zls.debug.FailingAllocator.init(inner_allocator, exe_options.enable_failing_allocator_likelihood) else void{};
     const allocator: std.mem.Allocator = if (exe_options.enable_failing_allocator) failing_allocator_state.allocator() else inner_allocator;
@@ -379,7 +391,7 @@ pub fn main() !u8 {
         result.zls_exe_path,
         zls.build_options.version_string,
         @tagName(zig_builtin.mode),
-        allocator_name,
+        main_allocator_name,
         @tagName(resolved_log_level),
         result.enable_message_tracing,
     });
