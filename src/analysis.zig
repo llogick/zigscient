@@ -3756,7 +3756,7 @@ pub fn getPositionContext(
         }
     }
 
-    if (stack.popOrNull()) |state| {
+    if (stack.pop()) |state| {
         switch (state.ctx) {
             .label => |filled| {
                 // We need to check this because the state could be a filled

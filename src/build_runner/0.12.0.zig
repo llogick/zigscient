@@ -46,6 +46,8 @@ const child_type_coercion_version =
     std.SemanticVersion.parse("0.14.0-dev.2506+32354d119") catch unreachable;
 const accept_root_module_version =
     std.SemanticVersion.parse("0.14.0-dev.2534+12d64c456") catch unreachable;
+const pop_or_null_version =
+    std.SemanticVersion.parse("0.14.0-dev.3181+914248237") catch unreachable;
 
 // -----------------------------------------------------------------------------
 
@@ -1155,11 +1157,22 @@ fn extractBuildInformation(
             stack.appendAssumeCapacity(&tls.step);
         }
 
-        while (stack.popOrNull()) |step| {
-            const gop = try steps.getOrPut(gpa, step);
-            if (gop.found_existing) continue;
+        @setEvalBranchQuota(2_000);
 
-            try stack.appendSlice(gpa, step.dependencies.items);
+        if (comptime builtin.zig_version.order(pop_or_null_version) == .lt) {
+            while (stack.popOrNull()) |step| {
+                const gop = try steps.getOrPut(gpa, step);
+                if (gop.found_existing) continue;
+
+                try stack.appendSlice(gpa, step.dependencies.items);
+            }
+        } else {
+            while (stack.pop()) |step| {
+                const gop = try steps.getOrPut(gpa, step);
+                if (gop.found_existing) continue;
+
+                try stack.appendSlice(gpa, step.dependencies.items);
+            }
         }
     }
 

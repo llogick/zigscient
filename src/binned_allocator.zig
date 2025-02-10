@@ -269,7 +269,7 @@ test "small allocations - free in reverse order" {
         try list.append(ptr);
     }
 
-    while (list.popOrNull()) |ptr| {
+    while (list.pop()) |ptr| {
         allocator.destroy(ptr);
     }
 }
@@ -438,7 +438,7 @@ test "shrink large object to large object with larger alignment" {
         try stuff_to_free.append(slice);
         slice = try allocator.alignedAlloc(u8, 16, alloc_size);
     }
-    while (stuff_to_free.popOrNull()) |item| {
+    while (stuff_to_free.pop()) |item| {
         allocator.free(item);
     }
     slice[0] = 0x12;
@@ -495,7 +495,7 @@ test "realloc large object to larger alignment" {
         try stuff_to_free.append(slice);
         slice = try allocator.alignedAlloc(u8, 16, 8192 + 50);
     }
-    while (stuff_to_free.popOrNull()) |item| {
+    while (stuff_to_free.pop()) |item| {
         allocator.free(item);
     }
     slice[0] = 0x12;
