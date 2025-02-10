@@ -2698,8 +2698,12 @@ pub const Type = struct {
     }
 
     pub fn isNamespace(self: Type) bool {
+        const scope_handle = switch (self.data) {
+            .tuple => |fields| return fields.len == 0,
+            .container => |scope_handle| scope_handle,
+            else => return false,
+        };
         if (!self.isStructType()) return false;
-        const scope_handle = self.data.container;
         const node = scope_handle.toNode();
         const tree = scope_handle.handle.tree;
         const tags = tree.nodes.items(.tag);
