@@ -41,7 +41,7 @@ test "function call" {
 test "function call with multiline string literal" {
     try testInlayHints(
         \\fn foo(bar: []const u8) void {}
-        \\const _ = foo(<bar>
+        \\const _ = foo(<[]const u8>
         \\    \\alpha
         \\    \\beta
         \\);
@@ -157,7 +157,7 @@ test "builtin call" {
 
 test "builtin call with multiline string literal" {
     try testInlayHints(
-        \\const _ = @compileError(<msg>
+        \\const _ = @compileError(<[]const u8>
         \\    \\foo
         \\    \\bar
         \\);
@@ -619,7 +619,7 @@ fn testInlayHints(source: []const u8, options: Options) !void {
                         try error_builder.msgAtLoc("label `{s}` must end with a colon!", test_uri, new_loc, .err, .{hint.label.string});
                         continue :outer;
                     }
-                    break :blk hint.label.string[0 .. hint.label.string.len - 1 - 1];
+                    break :blk hint.label.string[0 .. hint.label.string.len - 1];
                 },
                 .Type => blk: {
                     if (!std.mem.startsWith(u8, hint.label.string, ": ")) {
