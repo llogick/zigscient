@@ -95,10 +95,6 @@ pub fn build(b: *Build) !void {
     ) orelse false;
 
     const resolved_proj_version = getVersion(b);
-    const resolved_proj_version_string = b.fmt(
-        "{}",
-        .{resolved_proj_version},
-    );
 
     const build_options_module = blk: {
         const build_options = b.addOptions();
@@ -112,7 +108,7 @@ pub fn build(b: *Build) !void {
         build_options.addOption(
             []const u8,
             "version_string",
-            resolved_proj_version_string,
+            b.fmt("{}", .{resolved_proj_version}),
         );
         build_options.addOption(
             []const u8,
@@ -388,14 +384,29 @@ pub fn build(b: *Build) !void {
 
 /// Returns `MAJOR.MINOR.PATCH-dev` when `git describe` failed.
 fn getVersion(b: *Build) std.SemanticVersion {
+    const version_string = b.option([]const u8, "version-string", "Override the version of this build. Must be a semantic version.");
+    if (version_string) |semver_string| {
+        return std.SemanticVersion.parse(semver_string) catch |err| {
+            std.debug.panic("Expected -Dversion-string={s} to be a semantic version: {}", .{ semver_string, err });
+        };
+    }
+
     if (proj_version.pre == null and proj_version.build == null) return proj_version;
 
+    const argv: []const []const u8 = &.{
+        "git", "-C", b.pathFromRoot("."), "describe", "--match", "*.*.0", "--tags",
+    };
     var code: u8 = undefined;
-    const git_describe_untrimmed = b.runAllowFail(
-        &.{ "git", "-C", b.pathFromRoot("."), "describe", "--match", "*.*.0", "--tags" },
-        &code,
-        .Ignore,
-    ) catch return proj_version;
+    const git_describe_untrimmed = b.runAllowFail(argv, &code, .Ignore) catch |err| {
+        const argv_joined = std.mem.join(b.allocator, " ", argv) catch @panic("OOM");
+        std.log.warn(
+            \\Failed to run git describe to resolve version: {}
+            \\command: {s}
+            \\
+            \\Consider passing the -Dversion-string flag to specify the version.
+        , .{ err, argv_joined });
+        return proj_version;
+    };
 
     const git_describe = std.mem.trim(u8, git_describe_untrimmed, " \n\r");
 
