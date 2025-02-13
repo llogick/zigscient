@@ -1351,7 +1351,7 @@ fn changeDocumentHandler(server: *Server, _: std.mem.Allocator, notification: ty
 
     try server.document_store.refreshDocument(handle, content_changes);
 
-    handle.handleRootIdComment(&server.document_store);
+    handle.handleRootIdComment(&server.document_store, false);
 
     if (server.client_capabilities.supports_publish_diagnostics) {
         try server.pushJob(.{

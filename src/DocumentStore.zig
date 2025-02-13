@@ -607,30 +607,69 @@ pub const Handle = struct {
     }
 
     // IF this handle is also a BuildFile scan for `$ls root_id N` and apply
-    pub fn handleRootIdComment(handle: *Handle, ds: *DocumentStore) void {
+    pub fn handleRootIdComment(handle: *Handle, ds: *DocumentStore, send_notification: bool) void {
         if (handle.tree.errors.len != 0) return;
         const build_file = ds.getBuildFile(handle.uri) orelse return;
-        const ttags = handle.tree.tokens.items(.tag);
-        var tok_i: u32 = 0;
-        while (tok_i < ttags.len) : (tok_i += 1) {
-            if (ttags[tok_i] != .keyword_fn) continue;
-            if (tok_i + 10 > ttags.len) return;
-            tok_i += 1;
-            if (ttags[tok_i] != .identifier) continue;
-            if (!std.mem.eql(u8, "build", handle.tree.tokenSlice(tok_i))) continue;
-            while (tok_i < ttags.len - 1 and ttags[tok_i] != .r_brace) tok_i += 1;
-            const src_i = handle.tree.tokens.items(.start)[tok_i];
-            const source = handle.tree.source;
-            if (src_i + 20 > source.len) return;
-            _ = std.mem.indexOf(u8, source[0 .. src_i + 20], "//") orelse return;
-            const lsm_i = std.mem.indexOf(u8, source[0 .. src_i + 20], "$ls") orelse return;
-            var tokenizer: std.zig.Tokenizer = .{ .buffer = source, .index = lsm_i + 3 };
-            var tok = tokenizer.next();
-            if (tok.tag != .identifier and !std.mem.eql(u8, "root_id", source[tok.loc.start..tok.loc.end])) return;
-            tok = tokenizer.next();
-            if (tok.tag != .number_literal) return;
-            const root_id = std.fmt.parseInt(u32, source[tok.loc.start..tok.loc.end], 10) catch return;
-            build_file.root_id = root_id;
+
+        var send_noti: bool = send_notification;
+
+        switch_root_id: {
+            const ttags = handle.tree.tokens.items(.tag);
+            var tok_i: u32 = 0;
+            while (tok_i < ttags.len) : (tok_i += 1) {
+                if (ttags[tok_i] != .keyword_fn) continue;
+                if (tok_i + 10 > ttags.len) break :switch_root_id;
+                tok_i += 1;
+                if (ttags[tok_i] != .identifier) continue;
+                if (!std.mem.eql(u8, "build", handle.tree.tokenSlice(tok_i))) continue;
+                while (tok_i < ttags.len - 1 and ttags[tok_i] != .r_brace) tok_i += 1;
+                const src_i = handle.tree.tokens.items(.start)[tok_i];
+                const source = handle.tree.source;
+                if (src_i + 20 > source.len) break :switch_root_id;
+                _ = std.mem.indexOf(u8, source[0 .. src_i + 20], "//") orelse break :switch_root_id;
+                const lsm_i = std.mem.indexOf(u8, source[0 .. src_i + 20], "$ls") orelse break :switch_root_id;
+                var tokenizer: std.zig.Tokenizer = .{ .buffer = source, .index = lsm_i + 3 };
+                var tok = tokenizer.next();
+                if (tok.tag != .identifier and !std.mem.eql(u8, "root_id", source[tok.loc.start..tok.loc.end])) break :switch_root_id;
+                tok = tokenizer.next();
+                if (tok.tag != .number_literal) break :switch_root_id;
+                var root_id = std.fmt.parseInt(u32, source[tok.loc.start..tok.loc.end], 10) catch break :switch_root_id;
+                const config = build_file.tryLockConfig() orelse break :switch_root_id;
+                defer build_file.unlockConfig();
+                if (!(root_id < config.roots.len)) {
+                    std.log.err("{s}: root_id > roots.len; using id 0", .{handle.uri});
+                    root_id = 0;
+                }
+                build_file.root_id = root_id;
+                send_noti = true;
+            }
+        }
+
+        if (!send_noti) return;
+
+        root_id_msg: {
+            const config = build_file.tryLockConfig() orelse break :root_id_msg;
+            defer build_file.unlockConfig();
+
+            const message = std.fmt.allocPrint(
+                ds.allocator,
+                "Using CompileStep \"{s}\" (`root_id {}`) to resolve module imports for documents with build file {s} .",
+                .{
+                    config.roots[build_file.root_id].name,
+                    build_file.root_id,
+                    handle.uri,
+                },
+            ) catch break :root_id_msg;
+            defer ds.allocator.free(message);
+
+            sendMessageToClient(
+                ds.allocator,
+                ds.server.transport.?,
+                lsp.TypedJsonRPCNotification(lsp.types.ShowMessageParams){
+                    .method = "window/showMessage",
+                    .params = lsp.types.ShowMessageParams{ .type = .Info, .message = message },
+                },
+            ) catch {};
         }
     }
 
@@ -970,10 +1009,10 @@ fn invalidateBuildFileWorker(self: *DocumentStore, build_file_uri: Uri) void {
     build_file.setBuildConfig(build_config);
 
     const bfh = self.getHandle(build_file_uri) orelse return;
-    bfh.handleRootIdComment(self);
+    bfh.handleRootIdComment(self, true);
 
-    // Notify client to refresh semanticTokens and inlayHints for the workspace
     if (self.server.transport) |transport| {
+        // Notify client to refresh semanticTokens for the workspace
         if (self.server.client_capabilities.supports_semantic_tokens_refresh) {
             sendMessageToClient(
                 self.allocator,
@@ -985,6 +1024,7 @@ fn invalidateBuildFileWorker(self: *DocumentStore, build_file_uri: Uri) void {
                 },
             ) catch {};
         }
+        // Notify client to refresh inlayHints for the workspace
         if (self.server.client_capabilities.supports_inlay_hints_refresh) {
             sendMessageToClient(
                 self.allocator,
@@ -1846,7 +1886,7 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
 
             if (build_config.roots.len == 0) break :ws_build_zig;
             if (!(build_file.root_id < build_config.roots.len)) {
-                std.log.err("root_id > roots.len; using id 0", .{});
+                std.log.err("{s}: root_id > roots.len; using id 0", .{build_file.uri});
                 build_file.root_id = 0;
             }
 
