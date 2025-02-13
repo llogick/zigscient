@@ -266,13 +266,26 @@ test "StringPool - check interning" {
 
 test "StringPool - getOrPut on existing string without allocation" {
     const gpa = std.testing.allocator;
-    var failing_gpa = std.testing.FailingAllocator.init(gpa, .{ .fail_index = 0 });
+    var failing_gpa = std.testing.FailingAllocator.init(
+        gpa,
+        .{
+            .fail_index = 0,
+            .resize_fail_index = 0,
+        },
+    );
 
     var pool = StringPool(.{}){};
     defer pool.deinit(gpa);
 
     const hello_string = try pool.getOrPutString(gpa, "hello");
+    const aaaaa_buffer: [std.atomic.cache_line * 2]u8 = [_]u8{0x61} ** (std.atomic.cache_line * 2);
 
-    try std.testing.expectError(error.OutOfMemory, pool.getOrPutString(failing_gpa.allocator(), "world"));
-    try std.testing.expectEqual(hello_string, try pool.getOrPutString(failing_gpa.allocator(), "hello"));
+    try std.testing.expectError(
+        error.OutOfMemory,
+        pool.getOrPutString(failing_gpa.allocator(), &aaaaa_buffer),
+    );
+    try std.testing.expectEqual(
+        hello_string,
+        try pool.getOrPutString(failing_gpa.allocator(), "hello"),
+    );
 }
