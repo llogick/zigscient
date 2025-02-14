@@ -942,7 +942,7 @@ pub fn resolveDerefType(analyser: *Analyser, pointer: Type) error{OutOfMemory}!?
             .many, .slice => return null,
         },
         .ip_index => |payload| {
-            const ty = analyser.ip.typeOf(payload.index);
+            const ty = payload.type;
             switch (analyser.ip.indexToKey(ty)) {
                 .pointer_type => |pointer_info| switch (pointer_info.flags.size) {
                     .one, .c => return try Type.typeValFromIP(analyser, pointer_info.elem_type),
@@ -1424,9 +1424,10 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
             if (!is_escaped_identifier) {
                 if (std.mem.eql(u8, name, "_")) return null;
                 if (try analyser.resolvePrimitive(name)) |primitive| {
-                    return Type{
-                        .data = .{ .ip_index = .{ .index = primitive } },
-                        .is_type_val = analyser.ip.typeOf(primitive) == .type_type,
+                    const ty = analyser.ip.typeOf(primitive);
+                    return .{
+                        .data = .{ .ip_index = .{ .type = ty, .index = primitive } },
+                        .is_type_val = ty == .type_type,
                     };
                 }
             }
@@ -1891,7 +1892,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                 if (!child_ty.is_type_val) return null;
 
                 const child_ty_ip_index = switch (child_ty.data) {
-                    .ip_index => |payload| payload.index,
+                    .ip_index => |payload| payload.index orelse try analyser.ip.getUnknown(analyser.gpa, payload.type),
                     else => return null,
                 };
 
@@ -1905,8 +1906,8 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                     },
                 });
 
-                return Type{
-                    .data = .{ .ip_index = .{ .index = vector_ty_ip_index } },
+                return .{
+                    .data = .{ .ip_index = .{ .type = .type_type, .index = vector_ty_ip_index } },
                     .is_type_val = true,
                 };
             }
@@ -2028,7 +2029,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                 else => unreachable,
             };
             if (has_zero_statements) {
-                return Type{ .data = .{ .ip_index = .{ .index = .void_value } }, .is_type_val = false };
+                return .{ .data = .{ .ip_index = .{ .type = .void_type, .index = .void_value } }, .is_type_val = false };
             }
 
             const label_token = ast.blockLabel(tree, node) orelse return null;
@@ -2062,8 +2063,8 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
             ) orelse return try Type.typeValFromIP(analyser, .bool_type);
             const typeof = ty.typeOf(analyser);
 
-            if (typeof.data == .ip_index) {
-                const key = analyser.ip.indexToKey(typeof.data.ip_index.index);
+            if (typeof.data == .ip_index and typeof.data.ip_index.index != null) {
+                const key = analyser.ip.indexToKey(typeof.data.ip_index.index.?);
                 if (key == .vector_type) {
                     const vector_ty_ip_index = try analyser.ip.get(analyser.gpa, .{
                         .vector_type = .{
@@ -2147,7 +2148,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                 .ty = error_set_type,
                 .error_tag_name = name_index,
             } });
-            return Type{ .data = .{ .ip_index = .{ .index = error_value } }, .is_type_val = false };
+            return .{ .data = .{ .ip_index = .{ .type = error_set_type, .index = error_value } }, .is_type_val = false };
         },
 
         .char_literal => return try Type.typeValFromIP(analyser, .comptime_int_type),
@@ -2198,8 +2199,8 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                 .failure => unreachable, // checked above
             };
 
-            return Type{
-                .data = .{ .ip_index = .{ .index = value orelse try analyser.ip.getUnknown(analyser.gpa, ty) } },
+            return .{
+                .data = .{ .ip_index = .{ .type = ty, .index = value } },
                 .is_type_val = false,
             };
         },
@@ -2342,7 +2343,7 @@ pub const Type = struct {
     /// const foo = u32; // is_type_val == true
     /// const bar = @as(u32, ...); // is_type_val == false
     /// ```
-    /// if `data == .ip_index` then this field is equivalent to `typeOf(index) == .type_type`
+    /// if `data == .ip_index` then this field is equivalent to `data.ip_index.type == .type_type`
     is_type_val: bool,
 
     pub const Data = union(enum) {
@@ -2403,9 +2404,8 @@ pub const Type = struct {
         /// Primitive type: `u8`, `bool`, `type`, etc.
         /// Primitive value: `true`, `false`, `null`, `undefined`
         ip_index: struct {
-            node: ?NodeWithHandle = null,
-            /// this stores both the type and the value
-            index: InternPool.Index,
+            type: InternPool.Index,
+            index: ?InternPool.Index,
         },
 
         pub const EitherEntry = struct {
@@ -2468,7 +2468,7 @@ pub const Type = struct {
                 }
             },
             .ip_index => |payload| {
-                std.hash.autoHash(hasher, payload.node);
+                std.hash.autoHash(hasher, payload.type);
                 std.hash.autoHash(hasher, payload.index);
             },
         }
@@ -2532,8 +2532,8 @@ pub const Type = struct {
             .ip_index => |a_payload| {
                 const b_payload = b.data.ip_index;
 
+                if (a_payload.type != b_payload.type) return false;
                 if (a_payload.index != b_payload.index) return false;
-                if (!std.meta.eql(a_payload.node, b_payload.node)) return false;
             },
         }
 
@@ -2548,9 +2548,9 @@ pub const Type = struct {
     }
 
     pub fn typeValFromIP(analyser: *Analyser, ty: InternPool.Index) error{OutOfMemory}!Type {
-        std.debug.assert(analyser.ip.isType(ty));
-        return Type{
-            .data = .{ .ip_index = .{ .index = try analyser.ip.getUnknown(analyser.gpa, ty) } },
+        _ = analyser;
+        return .{
+            .data = .{ .ip_index = .{ .type = ty, .index = null } },
             .is_type_val = ty == .type_type,
         };
     }
@@ -2633,18 +2633,19 @@ pub const Type = struct {
     }
 
     pub fn instanceTypeVal(self: Type, analyser: *Analyser) error{OutOfMemory}!?Type {
+        _ = analyser;
         if (!self.is_type_val) return null;
         return switch (self.data) {
             .ip_index => |payload| {
-                if (payload.index == .unknown_type) return null;
-                return Type{
+                const ty = payload.index orelse return null;
+                return .{
                     .data = .{
                         .ip_index = .{
-                            .index = try analyser.ip.getUnknown(analyser.gpa, payload.index),
-                            .node = payload.node,
+                            .type = ty,
+                            .index = null,
                         },
                     },
-                    .is_type_val = payload.index == .type_type,
+                    .is_type_val = ty == .type_type,
                 };
             },
             else => Type{ .data = self.data, .is_type_val = false },
@@ -2652,16 +2653,17 @@ pub const Type = struct {
     }
 
     pub fn typeOf(self: Type, analyser: *Analyser) Type {
+        _ = analyser;
         if (self.is_type_val) {
-            return Type{
-                .data = .{ .ip_index = .{ .index = .type_type } },
+            return .{
+                .data = .{ .ip_index = .{ .type = .type_type, .index = .type_type } },
                 .is_type_val = true,
             };
         }
 
         if (self.data == .ip_index) {
-            return Type{
-                .data = .{ .ip_index = .{ .index = analyser.ip.typeOf(self.data.ip_index.index) } },
+            return .{
+                .data = .{ .ip_index = .{ .type = .type_type, .index = self.data.ip_index.type } },
                 .is_type_val = true,
             };
         }
@@ -2745,8 +2747,9 @@ pub const Type = struct {
     }
 
     pub fn isEnumLiteral(self: Type, analyser: *Analyser) bool {
+        _ = analyser;
         switch (self.data) {
-            .ip_index => |payload| return analyser.ip.typeOf(payload.index) == .enum_literal_type,
+            .ip_index => |payload| return payload.type == .enum_literal_type,
             else => return false,
         }
     }
@@ -3062,7 +3065,7 @@ pub const Type = struct {
                 .merge_error_sets => if (ctx.options.truncate_container_decls) try writer.writeAll("error{...}") else try writer.writeAll(offsets.nodeToSlice(node_handle.handle.tree, node_handle.node)),
                 else => try writer.writeAll(offsets.nodeToSlice(node_handle.handle.tree, node_handle.node)),
             },
-            .ip_index => |payload| try analyser.ip.print(payload.index, writer, .{}),
+            .ip_index => |payload| try analyser.ip.print(payload.index orelse try analyser.ip.getUnknown(analyser.gpa, payload.type), writer, .{}),
             .either => try writer.writeAll("either type"), // TODO
             .compile_error => |node_handle| try writer.writeAll(offsets.nodeToSlice(node_handle.handle.tree, node_handle.node)),
         }
