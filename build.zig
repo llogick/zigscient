@@ -88,6 +88,11 @@ pub fn build(b: *Build) !void {
         => .binned,
         .ReleaseFast => .smp,
     };
+    const coverage_opt = b.option(
+        bool,
+        "coverage",
+        "Generate a coverage report with kcov",
+    ) orelse false;
 
     const resolved_proj_version = getVersion(b);
     const resolved_proj_version_string = b.fmt(
@@ -323,44 +328,62 @@ pub fn build(b: *Build) !void {
         .use_lld = use_llvm,
     });
 
-    { // zig build test
+    blk: { // zig build test, zig build test-build-runner, zig build test-analysis
         const test_step = b.step("test", "Run all the tests");
+        // const test_build_runner_step = b.step("test-build-runner", "Run all the build runner tests");
+        const test_analysis_step = b.step("test-analysis", "Run all the analysis tests");
 
-        test_step.dependOn(&b.addRunArtifact(tests).step);
-        test_step.dependOn(&b.addRunArtifact(src_tests).step);
+        // Create run steps
+        // @import("tests/add_build_runner_cases.zig").addCases(b, test_build_runner_step, test_filters);
+        @import("tests/add_analysis_cases.zig").addCases(b, test_analysis_step, test_filters);
+
+        const run_tests = b.addRunArtifact(tests);
+        const run_src_tests = b.addRunArtifact(src_tests);
+
+        // Setup dependencies of `zig build test`
+        test_step.dependOn(&run_tests.step);
+        test_step.dependOn(&run_src_tests.step);
+        // test_step.dependOn(test_build_runner_step);
+        test_step.dependOn(test_analysis_step);
+
+        if (!coverage_opt) break :blk;
+
+        // Collect all run steps into one ArrayList
+        var run_test_steps: std.ArrayListUnmanaged(*std.Build.Step.Run) = .empty;
+        run_test_steps.append(b.allocator, run_tests) catch @panic("OOM");
+        run_test_steps.append(b.allocator, run_src_tests) catch @panic("OOM");
+        // for (test_build_runner_step.dependencies.items) |step| {
+        //     run_test_steps.append(b.allocator, step.cast(std.Build.Step.Run).?) catch @panic("OOM");
+        // }
+        for (test_analysis_step.dependencies.items) |step| {
+            run_test_steps.append(b.allocator, step.cast(std.Build.Step.Run).?) catch @panic("OOM");
+        }
+
+        const kcov_bin = b.findProgram(&.{"kcov"}, &.{}) catch "kcov";
+
+        const merge_step = std.Build.Step.Run.create(b, "merge coverage");
+        merge_step.addArgs(&.{ kcov_bin, "--merge" });
+        merge_step.rename_step_with_output_arg = false;
+        const merged_coverage_output = merge_step.addOutputFileArg(".");
+
+        for (run_test_steps.items) |run_step| {
+            run_step.setName(b.fmt("{s} (collect coverage)", .{run_step.step.name}));
+
+            // prepend the kcov exec args
+            const argv = run_step.argv.toOwnedSlice(b.allocator) catch @panic("OOM");
+            run_step.addArgs(&.{ kcov_bin, "--collect-only" });
+            run_step.addPrefixedDirectoryArg("--include-pattern=", b.path("src"));
+            merge_step.addDirectoryArg(run_step.addOutputFileArg(run_step.producer.?.name));
+            run_step.argv.appendSlice(b.allocator, argv) catch @panic("OOM");
+        }
+
+        const install_coverage = b.addInstallDirectory(.{
+            .source_dir = merged_coverage_output,
+            .install_dir = .{ .custom = "coverage" },
+            .install_subdir = "",
+        });
+        test_step.dependOn(&install_coverage.step);
     }
-
-    const coverage_step = b.step("coverage", "Generate a coverage report with kcov");
-
-    const merge_step = std.Build.Step.Run.create(b, "merge coverage");
-    merge_step.addArgs(&.{ "kcov", "--merge" });
-    merge_step.rename_step_with_output_arg = false;
-    const merged_coverage_output = merge_step.addOutputFileArg(".");
-
-    {
-        const kcov_collect = std.Build.Step.Run.create(b, "collect coverage");
-        kcov_collect.addArgs(&.{ "kcov", "--collect-only" });
-        kcov_collect.addPrefixedDirectoryArg("--include-pattern=", b.path("src"));
-        merge_step.addDirectoryArg(kcov_collect.addOutputFileArg(tests.name));
-        kcov_collect.addArtifactArg(tests);
-        kcov_collect.enableTestRunnerMode();
-    }
-
-    {
-        const kcov_collect = std.Build.Step.Run.create(b, "collect coverage");
-        kcov_collect.addArgs(&.{ "kcov", "--collect-only" });
-        kcov_collect.addPrefixedDirectoryArg("--include-pattern=", b.path("src"));
-        merge_step.addDirectoryArg(kcov_collect.addOutputFileArg(src_tests.name));
-        kcov_collect.addArtifactArg(src_tests);
-        kcov_collect.enableTestRunnerMode();
-    }
-
-    const install_coverage = b.addInstallDirectory(.{
-        .source_dir = merged_coverage_output,
-        .install_dir = .{ .custom = "coverage" },
-        .install_subdir = "",
-    });
-    coverage_step.dependOn(&install_coverage.step);
 }
 
 /// Returns `MAJOR.MINOR.PATCH-dev` when `git describe` failed.

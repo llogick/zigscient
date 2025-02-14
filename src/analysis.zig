@@ -2831,7 +2831,7 @@ pub const Type = struct {
     }
 
     pub fn fmtTypeVal(ty: Type, analyser: *Analyser, options: FormatOptions) std.fmt.Formatter(format) {
-        std.debug.assert(ty.is_type_val);
+        std.debug.assert(ty.data == .ip_index or ty.is_type_val);
         return .{ .data = .{ .ty = ty, .analyser = analyser, .options = options } };
     }
 
