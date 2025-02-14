@@ -1958,11 +1958,13 @@ pub fn sendMessageSync(server: *Server, arena: std.mem.Allocator, comptime metho
     } else unreachable;
 }
 
+const wantsLog = @import("root").wantsLog;
+
 fn processMessage(server: *Server, message: Message) Error!?[]u8 {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    var timer = std.time.Timer.start() catch null;
+    var timer = if (wantsLog(.debug)) std.time.Timer.start() catch null else null;
     defer if (timer) |*t| {
         const total_time = @divFloor(t.read(), std.time.ns_per_ms);
         if (zig_builtin.single_threaded) {

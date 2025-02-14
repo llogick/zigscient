@@ -1431,7 +1431,7 @@ fn createBuildFile(self: *DocumentStore, uri: Uri) error{OutOfMemory}!BuildFile 
         }
     } else |err| {
         if (err != error.FileNotFound) {
-            log.debug("Failed to load config associated with build file {s} (error: {})", .{ build_file.uri, err });
+            log.err("Failed to load config associated with build file {s} (error: {})", .{ build_file.uri, err });
         }
     }
 
@@ -1439,7 +1439,7 @@ fn createBuildFile(self: *DocumentStore, uri: Uri) error{OutOfMemory}!BuildFile 
         try self.invalidateBuildFile(build_file.uri);
     }
 
-    log.info("Loaded build file '{s}'", .{build_file.uri});
+    log.debug("Loaded build file '{s}'", .{build_file.uri});
 
     return build_file;
 }

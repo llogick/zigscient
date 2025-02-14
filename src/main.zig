@@ -51,6 +51,10 @@ var runtime_log_level: std.log.Level = switch (zig_builtin.mode) {
 
 var log_file: ?std.fs.File = null;
 
+pub fn wantsLog(level: std.log.Level) bool {
+    return (@intFromEnum(level) <= @intFromEnum(runtime_log_level));
+}
+
 fn logFn(
     comptime level: std.log.Level,
     comptime scope: @TypeOf(.enum_literal),
