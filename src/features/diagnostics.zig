@@ -66,7 +66,13 @@ pub fn generateDiagnostics(
         }
 
         if (server.config.warn_style and handle.tree.mode == .zig) {
-            try collectWarnStyleDiagnostics(handle.tree, arena, &diagnostics, server.offset_encoding);
+            try collectWarnStyleDiagnostics(
+                server,
+                handle,
+                arena,
+                &diagnostics,
+                server.offset_encoding,
+            );
         }
 
         if (server.config.highlight_global_var_declarations and handle.tree.mode == .zig) {
@@ -145,13 +151,16 @@ fn errorBundleSourceLocationFromToken(
 }
 
 fn collectWarnStyleDiagnostics(
-    tree: Ast,
+    server: *Server,
+    handle: *DocumentStore.Handle,
     arena: std.mem.Allocator,
     diagnostics: *std.ArrayListUnmanaged(types.Diagnostic),
     offset_encoding: offsets.Encoding,
 ) error{OutOfMemory}!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
+
+    const tree = handle.tree;
 
     var node: u32 = 0;
     while (node < tree.nodes.len) : (node += 1) {
@@ -183,6 +192,8 @@ fn collectWarnStyleDiagnostics(
 
     // TODO: style warnings for types, values and declarations below root scope
     if (tree.errors.len == 0) {
+        var analyser = server.initAnalyser(handle);
+        defer analyser.deinit();
         for (tree.rootDecls()) |decl_idx| {
             const decl = tree.nodes.items(.tag)[decl_idx];
             switch (decl) {
@@ -217,6 +228,51 @@ fn collectWarnStyleDiagnostics(
                                 .message = "Type functions should be PascalCase",
                             });
                         }
+                    }
+                },
+                else => {},
+            }
+        }
+        for (tree.nodes.items(.tag), 0..) |node_tag, node_index| {
+            switch (node_tag) {
+                .global_var_decl,
+                .local_var_decl,
+                .simple_var_decl,
+                .aligned_var_decl,
+                => {
+                    const full_var_decl = tree.fullVarDecl(@intCast(node_index)) orelse continue;
+                    const ty = try analyser.resolveTypeOfNode(.{ .handle = handle, .node = @intCast(node_index) }) orelse continue;
+                    switch (ty.is_type_val) {
+                        false => {
+                            const name_token = full_var_decl.ast.mut_token + 1;
+                            const var_name = tree.tokenSlice(name_token);
+                            if (!Analyser.isMixedCase(var_name)) continue;
+                            try diagnostics.append(arena, .{
+                                .range = offsets.tokenToRange(tree, name_token, offset_encoding),
+                                .severity = .Hint,
+                                .code = .{ .string = "bad_style" },
+                                .source = "zigscient",
+                                .message = "Variables should be snake_case",
+                            });
+                        },
+                        true => {
+                            const is_name_space = ty.isNamespace();
+                            const name_token = full_var_decl.ast.mut_token + 1;
+                            const var_name = tree.tokenSlice(name_token);
+                            const message = if (!Analyser.isPascalCase(var_name) and !is_name_space)
+                                "Type names should be PascalCase"
+                            else if (is_name_space and Analyser.isMixedCase(var_name))
+                                "Namespaces should be snake_case"
+                            else
+                                continue;
+                            try diagnostics.append(arena, .{
+                                .range = offsets.tokenToRange(tree, name_token, offset_encoding),
+                                .severity = .Hint,
+                                .code = .{ .string = "bad_style" },
+                                .source = "zigscient",
+                                .message = message,
+                            });
+                        },
                     }
                 },
                 else => {},

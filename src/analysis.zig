@@ -594,6 +594,16 @@ pub fn isSnakeCase(name: []const u8) bool {
     return std.mem.indexOf(u8, name, "_") != null;
 }
 
+pub fn isMixedCase(name: []const u8) bool {
+    var seen_lower: bool = std.ascii.isLower(name[0]);
+    var seen_upper: bool = !seen_lower;
+    for (name[1..]) |char| {
+        if (char == '_' or std.ascii.isDigit(char)) continue;
+        if (std.ascii.isUpper(char)) seen_upper = true else seen_lower = true;
+    }
+    return (seen_upper and seen_lower);
+}
+
 // ANALYSIS ENGINE
 
 /// if the `source_index` points to `@name`, the source location of `name` without the `@` is returned.
