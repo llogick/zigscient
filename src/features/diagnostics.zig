@@ -215,7 +215,7 @@ fn collectWarnStyleDiagnostics(
                             try diagnostics.append(arena, .{
                                 .range = offsets.tokenToRange(tree, name_token, offset_encoding),
                                 .severity = .Hint,
-                                .code = .{ .string = "bad_style" },
+                                .code = .{ .string = "naming_style" },
                                 .source = "zigscient",
                                 .message = "Functions should be camelCase",
                             });
@@ -223,7 +223,7 @@ fn collectWarnStyleDiagnostics(
                             try diagnostics.append(arena, .{
                                 .range = offsets.tokenToRange(tree, name_token, offset_encoding),
                                 .severity = .Hint,
-                                .code = .{ .string = "bad_style" },
+                                .code = .{ .string = "naming_style" },
                                 .source = "zigscient",
                                 .message = "Type functions should be PascalCase",
                             });
@@ -250,7 +250,7 @@ fn collectWarnStyleDiagnostics(
                             try diagnostics.append(arena, .{
                                 .range = offsets.tokenToRange(tree, name_token, offset_encoding),
                                 .severity = .Hint,
-                                .code = .{ .string = "bad_style" },
+                                .code = .{ .string = "naming_style" },
                                 .source = "zigscient",
                                 .message = "Variables should be snake_case",
                             });
@@ -268,7 +268,7 @@ fn collectWarnStyleDiagnostics(
                             try diagnostics.append(arena, .{
                                 .range = offsets.tokenToRange(tree, name_token, offset_encoding),
                                 .severity = .Hint,
-                                .code = .{ .string = "bad_style" },
+                                .code = .{ .string = "naming_style" },
                                 .source = "zigscient",
                                 .message = message,
                             });
