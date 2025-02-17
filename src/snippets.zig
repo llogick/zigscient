@@ -10,7 +10,7 @@ pub const Snipped = struct {
 
 pub const top_level_decl_data = [_]Snipped{
     .{ .label = "std", .kind = .Snippet, .text = "const std = @import(\"std\");" },
-    .{ .label = "import", .kind = .Snippet, .text = "const $1 = @import(\"$2\")" },
+    .{ .label = "import", .kind = .Snippet, .text = "const $1 = @import(\"$2\")$0;" },
     .{ .label = "fn", .kind = .Snippet, .text = "fn ${1:name}($2) ${3:!void} {$0}" },
     .{ .label = "pub fn", .kind = .Snippet, .text = "pub fn ${1:name}($2) ${3:!void} {$0}" },
     .{ .label = "struct", .kind = .Snippet, .text = "const $1 = struct {$0};" },
@@ -84,6 +84,7 @@ pub const generic = [_]Snipped{
     .{ .label = "log warn", .kind = .Snippet, .text = "std.log.warn(\"$1\", .{$0});" },
     .{ .label = "log info", .kind = .Snippet, .text = "std.log.info(\"$1\", .{$0});" },
     .{ .label = "log debug", .kind = .Snippet, .text = "std.log.debug(\"$1\", .{$0});" },
+    .{ .label = "assert", .kind = .Snippet, .text = "std.debug.assert($1);" },
 
     // types
     .{ .label = "anyerror", .kind = .Keyword },
