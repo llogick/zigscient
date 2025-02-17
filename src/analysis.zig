@@ -1966,11 +1966,16 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
 
                 const new_handle = analyser.store.getOrLoadHandle(import_uri) orelse return null;
 
+                const scope: Scope.Index = if (new_handle.tree.mode == .zon) blk: {
+                    _ = try new_handle.getDocumentScope();
+                    break :blk @enumFromInt(1);
+                } else @enumFromInt(0);
+
                 return .{
                     .data = .{
                         .container = .{
                             .handle = new_handle,
-                            .scope = Scope.Index.root,
+                            .scope = scope,
                         },
                     },
                     .is_type_val = true,
@@ -2830,6 +2835,7 @@ pub const Type = struct {
             .container => |scope_handle| scope_handle,
             else => return false,
         };
+        if (scope_handle.handle.tree.mode == .zon) return true;
         if (!self.isStructType()) return false;
         const node = scope_handle.toNode();
         const tree = scope_handle.handle.tree;
@@ -3367,7 +3373,16 @@ pub fn getFieldAccessType(
                         }
 
                         const symbol = offsets.identifierIndexToNameSlice(tokenizer.buffer, after_period.loc.start);
-
+                        if (current_type) |ct| {
+                            if (ct.data == .container and ct.data.container.handle.tree.mode == .zon) {
+                                current_type = try lookupZonSymbolChildScope(
+                                    current_type.?.data.container,
+                                    symbol,
+                                    .field,
+                                ) orelse return null;
+                                continue;
+                            }
+                        }
                         current_type = try analyser.resolveFieldAccess(current_type orelse return null, symbol) orelse return null;
                     },
                     .question_mark => {
@@ -3492,11 +3507,17 @@ pub fn getFieldAccessType(
                     });
                     const uri = try analyser.store.uriFromImportStr(analyser.arena.allocator(), handle, import_str) orelse return null;
                     const node_handle = analyser.store.getOrLoadHandle(uri) orelse return null;
+
+                    const scope: Scope.Index = if (node_handle.tree.mode == .zon) blk: {
+                        _ = try node_handle.getDocumentScope();
+                        break :blk @enumFromInt(1);
+                    } else @enumFromInt(0);
+
                     current_type = .{
                         .data = .{
                             .container = .{
                                 .handle = node_handle,
-                                .scope = @enumFromInt(0),
+                                .scope = scope,
                             },
                         },
                         .is_type_val = true,
@@ -4692,6 +4713,41 @@ pub fn lookupSymbolContainer(
     }
 
     if (try analyser.resolveUse(document_scope.getScopeUsingnamespaceNodesConst(container_scope.scope), symbol, handle)) |result| return result;
+
+    return null;
+}
+
+pub fn lookupZonSymbolChildScope(
+    container_scope: ScopeWithHandle,
+    symbol: []const u8,
+    kind: DocumentScope.DeclarationLookup.Kind,
+) error{OutOfMemory}!?Type {
+    std.debug.assert(container_scope.handle.tree.mode == .zon);
+
+    const handle = container_scope.handle;
+    const document_scope = try handle.getDocumentScope();
+
+    if (document_scope.getScopeDeclaration(.{
+        .scope = container_scope.scope,
+        .name = symbol,
+        .kind = kind,
+    }).unwrap()) |decl_index| {
+        const decl = document_scope.declarations.get(@intFromEnum(decl_index));
+        if (decl != .ast_node) return null;
+        for (document_scope.getScopeChildScopesConst(container_scope.scope)) |scope| {
+            const scope_node = document_scope.getScopeAstNode(scope) orelse continue;
+            if (decl.ast_node == scope_node)
+                return .{
+                    .data = .{
+                        .container = .{
+                            .handle = handle,
+                            .scope = scope,
+                        },
+                    },
+                    .is_type_val = true,
+                };
+        }
+    }
 
     return null;
 }

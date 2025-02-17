@@ -119,6 +119,32 @@ fn typeToCompletion(builder: *Builder, ty: Analyser.Type) error{OutOfMemory}!voi
         },
         .container => |scope_handle| {
             var decls: std.ArrayListUnmanaged(Analyser.DeclWithHandle) = .{};
+
+            if (scope_handle.handle.tree.mode == .zon) {
+                const tree = scope_handle.handle.tree;
+                const tags = tree.tokens.items(.tag);
+
+                var buf: [2]Ast.Node.Index = undefined;
+                const struct_init = tree.fullStructInit(&buf, scope_handle.toNode()) orelse return;
+
+                try builder.completions.ensureUnusedCapacity(builder.arena, struct_init.ast.fields.len);
+
+                for (struct_init.ast.fields) |value_node| { // the node of `value` in `.name = value`
+                    const name_token = tree.firstToken(value_node) - 2; // math our way two token indexes back to get the `name`
+                    if (tags[name_token] != .identifier) continue; // cause: `.{ .name =<insert dot here> .some`
+                    builder.completions.appendAssumeCapacity(.{
+                        .label = tree.tokenSlice(name_token),
+                        .kind = .Field,
+                        .detail = try std.fmt.allocPrint(
+                            builder.arena,
+                            "{s}",
+                            .{offsets.nodeToSlice(tree, value_node)},
+                        ),
+                    });
+                }
+                return;
+            }
+
             try builder.analyser.collectDeclarationsOfContainer(scope_handle, builder.orig_handle, !ty.is_type_val, &decls);
 
             for (decls.items) |decl_with_handle| {
@@ -699,6 +725,14 @@ fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.Posi
     const insert_range = offsets.locToRange(source, insert_loc, builder.server.offset_encoding);
     const replace_range = offsets.locToRange(source, replace_loc, builder.server.offset_encoding);
 
+    const expected_extension = switch (pos_context) {
+        .import_string_literal => &[_][]const u8{ ".zig", ".zon" },
+        .cinclude_string_literal => &[_][]const u8{".h"},
+        .embedfile_string_literal => null,
+        .string_literal => null,
+        else => unreachable,
+    };
+
     for (search_paths.items) |path| {
         if (!std.fs.path.isAbsolute(path)) continue;
         const dir_path = if (std.fs.path.isAbsolute(completing)) path else try std.fs.path.join(builder.arena, &.{ path, completing });
@@ -708,17 +742,12 @@ fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.Posi
         var it = iterable_dir.iterateAssumeFirstIteration();
 
         while (it.next() catch null) |entry| {
-            const expected_extension = switch (pos_context) {
-                .import_string_literal => ".zig",
-                .cinclude_string_literal => ".h",
-                .embedfile_string_literal => null,
-                .string_literal => null,
-                else => unreachable,
-            };
             switch (entry.kind) {
                 .file => if (expected_extension) |expected| {
                     const actual_extension = std.fs.path.extension(entry.name);
-                    if (!std.mem.eql(u8, actual_extension, expected)) continue;
+                    for (expected) |ext| {
+                        if (std.mem.eql(u8, actual_extension, ext)) break;
+                    } else continue;
                 },
                 .directory => {},
                 else => continue,

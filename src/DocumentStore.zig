@@ -1865,7 +1865,7 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
             return try URI.fromPath(allocator, builtin_path);
         }
         return null;
-    } else if (!std.mem.endsWith(u8, import_str, ".zig")) {
+    } else if (!std.mem.endsWith(u8, import_str, ".zig") and !std.mem.endsWith(u8, import_str, ".zon")) {
         if (isBuildFile(handle.uri)) blk: {
             const build_file = self.getBuildFile(handle.uri) orelse break :blk;
             const build_config = build_file.tryLockConfig() orelse break :blk;

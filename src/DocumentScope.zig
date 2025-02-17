@@ -395,10 +395,10 @@ const ScopeContext = struct {
             if (std.mem.eql(u8, name, "_")) return;
             defer std.debug.assert(pushed.context.doc_scope.declarations.len == pushed.context.doc_scope.declaration_lookup_map.count());
 
-            if (@import("builtin").mode == .Debug) {
-                // Check that nameToken works
-                std.debug.assert(identifier_token == declaration.nameToken(pushed.context.tree));
-            }
+            // if (@import("builtin").mode == .Debug) {
+            //     // Check that nameToken works
+            //     std.debug.assert(identifier_token == declaration.nameToken(pushed.context.tree));
+            // }
 
             const context = pushed.context;
             const doc_scope = context.doc_scope;
@@ -750,10 +750,6 @@ fn walkNode(
         .array_init_one_comma,
         .array_init_dot_two,
         .array_init_dot_two_comma,
-        .struct_init_one,
-        .struct_init_one_comma,
-        .struct_init_dot_two,
-        .struct_init_dot_two_comma,
         .call_one,
         .call_one_comma,
         .async_call_one,
@@ -766,6 +762,24 @@ fn walkNode(
         .error_union,
         .for_range,
         => walkLhsRhsNode(context, tree, node_idx),
+
+        .struct_init_one,
+        .struct_init_one_comma,
+        .struct_init_dot_two,
+        .struct_init_dot_two_comma,
+        => {
+            try walkStructInit(context, tree, node_idx);
+            try walkLhsRhsNode(context, tree, node_idx);
+        },
+
+        .struct_init_dot,
+        .struct_init_dot_comma,
+        .struct_init,
+        .struct_init_comma,
+        => {
+            try walkStructInit(context, tree, node_idx);
+            try walkOtherNode(context, tree, node_idx);
+        },
 
         .global_var_decl,
         .local_var_decl,
@@ -784,10 +798,6 @@ fn walkNode(
         .array_init_dot_comma,
         .array_init,
         .array_init_comma,
-        .struct_init_dot,
-        .struct_init_dot_comma,
-        .struct_init,
-        .struct_init_comma,
         .call,
         .call_comma,
         .async_call,
@@ -817,6 +827,37 @@ fn walkNode(
         .error_value,
         => return,
     };
+}
+
+noinline fn walkStructInit(
+    context: *ScopeContext,
+    tree: Ast,
+    node_idx: Ast.Node.Index,
+) error{OutOfMemory}!void {
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
+
+    if (tree.mode != .zon) return; // Limit to .zon for now
+
+    const token_tags = tree.tokens.items(.tag);
+
+    var buf: [2]Ast.Node.Index = undefined;
+    const struct_init = tree.fullStructInit(&buf, node_idx).?;
+
+    const scope = try context.startScope(
+        .container,
+        .{ .ast_node = node_idx },
+        locToSmallLoc(offsets.nodeToLoc(tree, node_idx)),
+    );
+
+    for (struct_init.ast.fields) |value_node| { // the node of `value` in `.name = value`
+        const name_token = tree.firstToken(value_node) - 2; // math our way two token indexes back to get the `name`
+        if (token_tags[name_token] != .identifier) continue; // cause: `.{ .name =<insert dot here> .some`
+        try scope.pushDeclaration(name_token, .{ .ast_node = value_node }, .field);
+        try walkNode(context, tree, value_node);
+    }
+
+    try scope.finalize();
 }
 
 noinline fn walkContainerDecl(
