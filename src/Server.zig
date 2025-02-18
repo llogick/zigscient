@@ -345,13 +345,10 @@ pub fn getAutofixMode(server: *Server) enum {
     fixall,
     none,
 } {
+    if (server.client_capabilities.supports_code_action_fixall) return .fixall;
     if (!server.config.enable_autofix) return .none;
-    // TODO https://github.com/zigtools/zls/issues/1093
-    // if (server.client_capabilities.supports_code_action_fixall) return .fixall;
-    if (server.client_capabilities.supports_apply_edits) {
-        if (server.client_capabilities.supports_will_save_wait_until) return .will_save_wait_until;
-        return .on_save;
-    }
+    if (server.client_capabilities.supports_will_save_wait_until) return .will_save_wait_until;
+    if (server.client_capabilities.supports_apply_edits) return .on_save;
     return .none;
 }
 
