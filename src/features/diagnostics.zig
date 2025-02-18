@@ -161,32 +161,48 @@ fn collectWarnStyleDiagnostics(
     defer tracy_zone.end();
 
     const tree = handle.tree;
+    const node_tags = tree.nodes.items(.tag);
+    const main_toks = tree.nodes.items(.main_token);
 
-    var node: u32 = 0;
-    while (node < tree.nodes.len) : (node += 1) {
-        if (ast.isBuiltinCall(tree, node)) {
-            const builtin_token = tree.nodes.items(.main_token)[node];
-            const call_name = tree.tokenSlice(builtin_token);
+    for (0..tree.nodes.len) |node| {
+        switch (node_tags[node]) {
+            .builtin_call,
+            .builtin_call_comma,
+            .builtin_call_two,
+            .builtin_call_two_comma,
+            => {},
+            else => continue,
+        }
 
-            if (!std.mem.eql(u8, call_name, "@import")) continue;
+        const name_token = main_toks[node];
+        const name = tree.tokenSlice(name_token);
 
-            var buffer: [2]Ast.Node.Index = undefined;
-            const params = ast.builtinCallParams(tree, node, &buffer).?;
+        if (!std.mem.eql(
+            u8,
+            name,
+            "@import",
+        )) continue;
 
-            if (params.len != 1) continue;
+        var buffer: [2]Ast.Node.Index = undefined;
+        const params = ast.builtinCallParams(
+            tree,
+            @intCast(node),
+            &buffer,
+        ).?;
 
-            const import_str_token = tree.nodes.items(.main_token)[params[0]];
-            const import_str = tree.tokenSlice(import_str_token);
+        if (params.len != 1) continue;
 
-            if (std.mem.startsWith(u8, import_str, "\"./")) {
-                try diagnostics.append(arena, .{
-                    .range = offsets.tokenToRange(tree, import_str_token, offset_encoding),
-                    .severity = .Hint,
-                    .code = .{ .string = "dot_slash_import" },
-                    .source = "zigscient",
-                    .message = "A ./ is not needed in imports",
-                });
-            }
+        const import_str_token = main_toks[params[0]];
+        const import_str = tree.tokenSlice(import_str_token);
+
+        if (std.mem.startsWith(u8, import_str, "\"./")) {
+            try diagnostics.append(arena, .{
+                .range = offsets.tokenToRange(tree, import_str_token, offset_encoding),
+                .severity = .Hint,
+                .code = .{ .string = "dot_slash_import" },
+                .source = "zigscient",
+                .message = "A ./ is not needed in imports",
+            });
         }
     }
 
@@ -194,46 +210,30 @@ fn collectWarnStyleDiagnostics(
     if (tree.errors.len == 0) {
         var analyser = server.initAnalyser(handle);
         defer analyser.deinit();
-        for (tree.rootDecls()) |decl_idx| {
-            const decl = tree.nodes.items(.tag)[decl_idx];
-            switch (decl) {
+
+        // Functions
+        // XXX methods?
+        for (tree.rootDecls()) |root_decl_idx| {
+            switch (node_tags[root_decl_idx]) {
                 .fn_proto,
                 .fn_proto_multi,
                 .fn_proto_one,
                 .fn_proto_simple,
                 .fn_decl,
-                => blk: {
-                    var buf: [1]Ast.Node.Index = undefined;
-                    const func = tree.fullFnProto(&buf, decl_idx).?;
-                    if (func.extern_export_inline_token != null) break :blk;
-
-                    if (func.name_token) |name_token| {
-                        const is_type_function = Analyser.isTypeFunction(tree, func);
-
-                        const func_name = tree.tokenSlice(name_token);
-                        if (!is_type_function and !Analyser.isCamelCase(func_name)) {
-                            try diagnostics.append(arena, .{
-                                .range = offsets.tokenToRange(tree, name_token, offset_encoding),
-                                .severity = .Hint,
-                                .code = .{ .string = "naming_style" },
-                                .source = "zigscient",
-                                .message = "Functions should be camelCase",
-                            });
-                        } else if (is_type_function and !Analyser.isPascalCase(func_name)) {
-                            try diagnostics.append(arena, .{
-                                .range = offsets.tokenToRange(tree, name_token, offset_encoding),
-                                .severity = .Hint,
-                                .code = .{ .string = "naming_style" },
-                                .source = "zigscient",
-                                .message = "Type functions should be PascalCase",
-                            });
-                        }
-                    }
-                },
+                => try dofnNameDiag(
+                    arena,
+                    tree,
+                    root_decl_idx,
+                    null,
+                    diagnostics,
+                    offset_encoding,
+                ),
                 else => {},
             }
         }
-        for (tree.nodes.items(.tag), 0..) |node_tag, node_index| {
+
+        // Variables
+        for (node_tags, 0..) |node_tag, node_index| {
             switch (node_tag) {
                 .global_var_decl,
                 .local_var_decl,
@@ -245,6 +245,20 @@ fn collectWarnStyleDiagnostics(
                     switch (ty.is_type_val) {
                         false => {
                             const name_token = full_var_decl.ast.mut_token + 1;
+
+                            if (ty.isFunc()) {
+                                // aliased `const fnName = ns.fnName;` / `const fnName = @import("ns.zig").fnName;`
+                                try dofnNameDiag(
+                                    arena,
+                                    ty.data.other.handle.tree,
+                                    ty.data.other.node,
+                                    .{ .tree = tree, .name_token = name_token },
+                                    diagnostics,
+                                    offset_encoding,
+                                );
+                                continue;
+                            }
+
                             const var_name = tree.tokenSlice(name_token);
                             if (!Analyser.isMixedCase(var_name)) continue;
                             try diagnostics.append(arena, .{
@@ -278,6 +292,46 @@ fn collectWarnStyleDiagnostics(
                 else => {},
             }
         }
+    }
+}
+
+fn dofnNameDiag(
+    arena: std.mem.Allocator,
+    /// Where the fn is declared
+    tree: Ast,
+    /// The node within that tree
+    node_idx: Ast.Node.Index,
+    /// Where to surface the diagnostic
+    target: ?struct { tree: Ast, name_token: Ast.TokenIndex },
+    diagnostics: *std.ArrayListUnmanaged(types.Diagnostic),
+    offset_encoding: offsets.Encoding,
+) error{OutOfMemory}!void {
+    var buf: [1]Ast.Node.Index = undefined;
+    const func = tree.fullFnProto(&buf, node_idx).?;
+    const is_type_function = Analyser.isTypeFunction(tree, func);
+
+    if (func.extern_export_inline_token != null) return;
+
+    const name_token = if (target) |t| t.name_token else func.name_token orelse return;
+    const dt_tree = if (target) |t| t.tree else tree;
+    const func_name = dt_tree.tokenSlice(name_token);
+
+    if (!is_type_function and !Analyser.isCamelCase(func_name)) {
+        try diagnostics.append(arena, .{
+            .range = offsets.tokenToRange(dt_tree, name_token, offset_encoding),
+            .severity = .Hint,
+            .code = .{ .string = "naming_style" },
+            .source = "zigscient",
+            .message = "Functions should be camelCase",
+        });
+    } else if (is_type_function and !Analyser.isPascalCase(func_name)) {
+        try diagnostics.append(arena, .{
+            .range = offsets.tokenToRange(dt_tree, name_token, offset_encoding),
+            .severity = .Hint,
+            .code = .{ .string = "naming_style" },
+            .source = "zigscient",
+            .message = "Type functions should be PascalCase",
+        });
     }
 }
 
