@@ -67,6 +67,12 @@ pub fn deinit(self: *Analyser) void {
     self.arena.deinit();
 }
 
+fn allocType(analyser: *Analyser, ty: Type) error{OutOfMemory}!*Type {
+    const ptr = try analyser.arena.allocator().create(Type);
+    ptr.* = ty;
+    return ptr;
+}
+
 pub fn getDocCommentsBeforeToken(allocator: std.mem.Allocator, tree: Ast, base: Ast.TokenIndex) error{OutOfMemory}!?[]const u8 {
     const tokens = tree.tokens.items(.tag);
     const doc_comment_index = getDocCommentTokenIndex(tokens, base) orelse return null;
@@ -811,13 +817,11 @@ pub fn resolveReturnType(analyser: *Analyser, fn_decl: Ast.full.FnProto, handle:
         return null;
     if (!child_type.is_type_val) return null;
 
-    if (ast.hasInferredError(tree, fn_decl)) {
-        const child_type_ptr = try analyser.arena.allocator().create(Type);
-        child_type_ptr.* = child_type;
-        return Type{
+    if (ast.hasInferredError(tree, fn_proto)) {
+        return .{
             .data = .{ .error_union = .{
                 .error_set = null,
-                .payload = child_type_ptr,
+                .payload = try analyser.allocType(child_type),
             } },
             .is_type_val = false,
         };
@@ -864,15 +868,13 @@ pub fn resolveOptionalChildType(analyser: *Analyser, optional_type: Type) error{
 }
 
 pub fn resolveAddressOf(analyser: *Analyser, ty: Type) error{OutOfMemory}!?Type {
-    const base_type_ptr = try analyser.arena.allocator().create(Type);
-    base_type_ptr.* = ty.typeOf(analyser);
-    return Type{
+    return .{
         .data = .{
             .pointer = .{
                 .size = .one,
                 .sentinel = .none,
                 .is_const = false,
-                .elem_ty = base_type_ptr,
+                .elem_ty = try analyser.allocType(ty.typeOf(analyser)),
             },
         },
         .is_type_val = false,
@@ -919,9 +921,7 @@ fn resolveTaggedUnionFieldType(analyser: *Analyser, ty: Type, symbol: []const u8
         return try child.resolveType(analyser);
 
     if (container_decl.ast.enum_token != null) {
-        const union_type_ptr = try analyser.arena.allocator().create(Type);
-        union_type_ptr.* = ty;
-        return Type{ .data = .{ .union_tag = union_type_ptr }, .is_type_val = false };
+        return .{ .data = .{ .union_tag = try analyser.allocType(ty) }, .is_type_val = false };
     }
 
     if (container_decl.ast.arg != 0) {
@@ -965,20 +965,20 @@ pub fn resolveDerefType(analyser: *Analyser, pointer: Type) error{OutOfMemory}!?
     }
 }
 
-const BracketAccessKind = enum {
+const BracketAccess = union(enum) {
     /// `lhs[index]`
-    Single,
+    single: ?u64,
     /// `lhs[start..]`
-    Open,
+    open: ?u64,
     /// `lhs[start..end]`
-    Range,
+    range: ?struct { u64, u64 },
 };
 
 /// Resolves slicing and array access
-/// - `lhs[index]` (Single)
-/// - `lhs[start..]` (Open)
-/// - `lhs[start..end]` (Range)
-fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKind) error{OutOfMemory}!?Type {
+/// - `lhs[index]` (single)
+/// - `lhs[start..]` (open)
+/// - `lhs[start..end]` (range)
+fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccess) error{OutOfMemory}!?Type {
     if (lhs.is_type_val) return null;
 
     switch (lhs.data) {
@@ -986,10 +986,45 @@ fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKi
             .for_range => return Type.fromIP(analyser, .usize_type, null),
             else => return null,
         },
+        .tuple => |fields| switch (rhs) {
+            .single => |index_maybe| {
+                const index = index_maybe orelse return null;
+                if (index >= fields.len) return null;
+                return fields[index];
+            },
+            .open, .range => return null,
+        },
         .array => |info| switch (rhs) {
-            .Single => return info.elem_ty.instanceTypeVal(analyser),
-            .Open => {
-                return Type{
+            .single => return info.elem_ty.instanceTypeVal(analyser),
+            .open => |start_maybe| {
+                if (start_maybe) |start| {
+                    const elem_count = blk: {
+                        const elem_count = info.elem_count orelse break :blk null;
+                        if (start > elem_count) break :blk null;
+                        break :blk elem_count - start;
+                    };
+                    return .{
+                        .data = .{
+                            .pointer = .{
+                                .size = .one,
+                                .sentinel = .none,
+                                .is_const = false,
+                                .elem_ty = try analyser.allocType(.{
+                                    .data = .{
+                                        .array = .{
+                                            .elem_count = elem_count,
+                                            .sentinel = info.sentinel,
+                                            .elem_ty = info.elem_ty,
+                                        },
+                                    },
+                                    .is_type_val = true,
+                                }),
+                            },
+                        },
+                        .is_type_val = false,
+                    };
+                }
+                return .{
                     .data = .{
                         .pointer = .{
                             .size = .slice,
@@ -1001,8 +1036,36 @@ fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKi
                     .is_type_val = false,
                 };
             },
-            .Range => {
-                return Type{
+            .range => |range_maybe| {
+                if (range_maybe) |range| {
+                    const start, const end = range;
+                    const elem_count = blk: {
+                        const elem_count = info.elem_count orelse break :blk null;
+                        if (start > end or start > elem_count or end > elem_count) break :blk null;
+                        break :blk end - start;
+                    };
+                    return .{
+                        .data = .{
+                            .pointer = .{
+                                .size = .one,
+                                .sentinel = .none,
+                                .is_const = false,
+                                .elem_ty = try analyser.allocType(.{
+                                    .data = .{
+                                        .array = .{
+                                            .elem_count = elem_count,
+                                            .sentinel = .none,
+                                            .elem_ty = info.elem_ty,
+                                        },
+                                    },
+                                    .is_type_val = true,
+                                }),
+                            },
+                        },
+                        .is_type_val = false,
+                    };
+                }
+                return .{
                     .data = .{
                         .pointer = .{
                             .size = .slice,
@@ -1018,43 +1081,67 @@ fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKi
         .pointer => |info| return switch (info.size) {
             .one => switch (info.elem_ty.data) {
                 .array => |array_info| {
-                    switch (rhs) {
-                        .Single => return array_info.elem_ty.instanceTypeVal(analyser),
-                        .Open => {
-                            return Type{
-                                .data = .{
-                                    .pointer = .{
-                                        .size = .slice,
-                                        .sentinel = array_info.sentinel,
-                                        .is_const = false,
-                                        .elem_ty = array_info.elem_ty,
-                                    },
-                                },
-                                .is_type_val = false,
-                            };
-                        },
-                        .Range => {
-                            return Type{
-                                .data = .{
-                                    .pointer = .{
-                                        .size = .slice,
-                                        .sentinel = .none,
-                                        .is_const = false,
-                                        .elem_ty = array_info.elem_ty,
-                                    },
-                                },
-                                .is_type_val = false,
-                            };
-                        },
-                    }
+                    const inner_ty: Type = .{ .data = .{ .array = array_info }, .is_type_val = false };
+                    return analyser.resolveBracketAccessType(inner_ty, rhs);
                 },
-                else => return null,
+                else => switch (rhs) {
+                    .single, .open => return null,
+                    .range => |range_maybe| {
+                        const start, const end = range_maybe orelse return null;
+                        if (start > end or start > 1 or end > 1) return null;
+                        const elem_count = end - start;
+                        return .{
+                            .data = .{
+                                .pointer = .{
+                                    .size = .one,
+                                    .sentinel = .none,
+                                    .is_const = info.is_const,
+                                    .elem_ty = try analyser.allocType(.{
+                                        .data = .{
+                                            .array = .{
+                                                .elem_count = elem_count,
+                                                .sentinel = .none,
+                                                .elem_ty = info.elem_ty,
+                                            },
+                                        },
+                                        .is_type_val = true,
+                                    }),
+                                },
+                            },
+                            .is_type_val = false,
+                        };
+                    },
+                },
             },
             .many => switch (rhs) {
-                .Single => info.elem_ty.instanceTypeVal(analyser),
-                .Open => lhs,
-                .Range => {
-                    return Type{
+                .single => info.elem_ty.instanceTypeVal(analyser),
+                .open => lhs,
+                .range => |range_maybe| {
+                    if (range_maybe) |range| {
+                        const start, const end = range;
+                        const elem_count = if (start > end) null else end - start;
+                        return .{
+                            .data = .{
+                                .pointer = .{
+                                    .size = .one,
+                                    .sentinel = .none,
+                                    .is_const = info.is_const,
+                                    .elem_ty = try analyser.allocType(.{
+                                        .data = .{
+                                            .array = .{
+                                                .elem_count = elem_count,
+                                                .sentinel = .none,
+                                                .elem_ty = info.elem_ty,
+                                            },
+                                        },
+                                        .is_type_val = true,
+                                    }),
+                                },
+                            },
+                            .is_type_val = false,
+                        };
+                    }
+                    return .{
                         .data = .{
                             .pointer = .{
                                 .size = .slice,
@@ -1068,13 +1155,60 @@ fn resolveBracketAccessType(analyser: *Analyser, lhs: Type, rhs: BracketAccessKi
                 },
             },
             .slice => switch (rhs) {
-                .Single => info.elem_ty.instanceTypeVal(analyser),
-                .Open, .Range => lhs,
+                .single => info.elem_ty.instanceTypeVal(analyser),
+                .open => lhs,
+                .range => |range_maybe| {
+                    const start, const end = range_maybe orelse return lhs;
+                    const elem_count = if (start > end) null else end - start;
+                    return .{
+                        .data = .{
+                            .pointer = .{
+                                .size = .one,
+                                .sentinel = .none,
+                                .is_const = info.is_const,
+                                .elem_ty = try analyser.allocType(.{
+                                    .data = .{
+                                        .array = .{
+                                            .elem_count = elem_count,
+                                            .sentinel = .none,
+                                            .elem_ty = info.elem_ty,
+                                        },
+                                    },
+                                    .is_type_val = true,
+                                }),
+                            },
+                        },
+                        .is_type_val = false,
+                    };
+                },
             },
             .c => switch (rhs) {
-                .Single => info.elem_ty.instanceTypeVal(analyser),
-                .Open => lhs,
-                .Range => Type{
+                .single => info.elem_ty.instanceTypeVal(analyser),
+                .open => lhs,
+                .range => |range_maybe| if (range_maybe) |range| {
+                    const start, const end = range;
+                    const elem_count = if (start > end) null else end - start;
+                    return .{
+                        .data = .{
+                            .pointer = .{
+                                .size = .one,
+                                .sentinel = .none,
+                                .is_const = info.is_const,
+                                .elem_ty = try analyser.allocType(.{
+                                    .data = .{
+                                        .array = .{
+                                            .elem_count = elem_count,
+                                            .sentinel = .none,
+                                            .elem_ty = info.elem_ty,
+                                        },
+                                    },
+                                    .is_type_val = true,
+                                }),
+                            },
+                        },
+                        .is_type_val = false,
+                    };
+                } else .{
                     .data = .{
                         .pointer = .{
                             .size = .slice,
@@ -1107,15 +1241,7 @@ fn resolvePropertyType(analyser: *Analyser, ty: Type, name: []const u8) error{Ou
 
     switch (ty.data) {
         .pointer => |info| switch (info.size) {
-            .one => switch (info.elem_ty.data) {
-                .array => {
-                    std.debug.assert(!info.elem_ty.is_type_val);
-                    if (std.mem.eql(u8, "len", name)) {
-                        return Type.fromIP(analyser, .usize_type, null);
-                    }
-                },
-                else => {},
-            },
+            .one => {}, // One level of indirection is handled by resolveDerefType
             .slice => {
                 if (std.mem.eql(u8, "len", name)) {
                     return Type.fromIP(analyser, .usize_type, null);
@@ -1138,8 +1264,15 @@ fn resolvePropertyType(analyser: *Analyser, ty: Type, name: []const u8) error{Ou
             .many, .c => {},
         },
 
-        .array => {
+        .array => |info| {
             if (std.mem.eql(u8, "len", name)) {
+                if (info.elem_count) |elem_count| {
+                    const index = try analyser.ip.get(
+                        analyser.gpa,
+                        .{ .int_u64_value = .{ .ty = .usize_type, .int = elem_count } },
+                    );
+                    return Type.fromIP(analyser, .usize_type, index);
+                }
                 return Type.fromIP(analyser, .usize_type, null);
             }
         },
@@ -1546,18 +1679,39 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                 .struct_init_comma,
                 .struct_init_one,
                 .struct_init_one_comma,
-                => base_type.instanceTypeVal(analyser),
+                => {
+                    var buffer: [2]Ast.Node.Index = undefined;
+                    const struct_init_info = tree.fullStructInit(&buffer, node).?;
+                    if (base_type.data == .array and base_type.data.array.elem_count == null) {
+                        var ty = base_type;
+                        ty.data.array.elem_count = struct_init_info.ast.fields.len;
+                        return ty.instanceTypeVal(analyser);
+                    }
+                    return base_type.instanceTypeVal(analyser);
+                },
                 .slice,
                 .slice_sentinel,
                 .slice_open,
                 => {
                     const slice_info = tree.fullSlice(node).?;
-                    const kind: BracketAccessKind = if (slice_info.ast.end == 0) .Open else .Range;
+                    const kind: BracketAccess = if (slice_info.ast.end == 0)
+                        .{ .open = try analyser.resolveIntegerLiteral(u64, .{ .node = slice_info.ast.start, .handle = handle }) }
+                    else
+                        .{ .range = blk: {
+                            const start = try analyser.resolveIntegerLiteral(u64, .{ .node = slice_info.ast.start, .handle = handle }) orelse
+                                break :blk null;
+                            const end = try analyser.resolveIntegerLiteral(u64, .{ .node = slice_info.ast.end, .handle = handle }) orelse
+                                break :blk null;
+                            break :blk .{ start, end };
+                        } };
                     return try analyser.resolveBracketAccessType(base_type, kind);
                 },
                 .deref => try analyser.resolveDerefType(base_type),
                 .unwrap_optional => try analyser.resolveOptionalUnwrap(base_type),
-                .array_access => try analyser.resolveBracketAccessType(base_type, .Single),
+                .array_access => try analyser.resolveBracketAccessType(
+                    base_type,
+                    .{ .single = try analyser.resolveIntegerLiteral(u64, .{ .node = datas[node].rhs, .handle = handle }) },
+                ),
                 .@"orelse" => {
                     const type_right = try analyser.resolveTypeOfNodeInternal(.{ .node = datas[node].rhs, .handle = handle }) orelse return try analyser.resolveOptionalUnwrap(base_type);
                     return try analyser.resolveOrelseType(base_type, type_right);
@@ -1583,11 +1737,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
         .optional_type => {
             const child_ty = try analyser.resolveTypeOfNodeInternal(.{ .node = datas[node].lhs, .handle = handle }) orelse return null;
             if (!child_ty.is_type_val) return null;
-
-            const child_ty_ptr = try arena.create(Type);
-            child_ty_ptr.* = child_ty;
-
-            return Type{ .data = .{ .optional = child_ty_ptr }, .is_type_val = true };
+            return .{ .data = .{ .optional = try analyser.allocType(child_ty) }, .is_type_val = true };
         },
         .ptr_type_aligned,
         .ptr_type_sentinel,
@@ -1601,15 +1751,13 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
             const elem_ty = try analyser.resolveTypeOfNodeInternal(.{ .node = ptr_info.ast.child_type, .handle = handle }) orelse return null;
             if (!elem_ty.is_type_val) return null;
 
-            const elem_ty_ptr = try arena.create(Type);
-            elem_ty_ptr.* = elem_ty;
-            return Type{
+            return .{
                 .data = .{
                     .pointer = .{
                         .size = ptr_info.size,
                         .sentinel = sentinel,
                         .is_const = ptr_info.const_token != null,
-                        .elem_ty = elem_ty_ptr,
+                        .elem_ty = try analyser.allocType(elem_ty),
                     },
                 },
                 .is_type_val = true,
@@ -1626,14 +1774,11 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
             const elem_ty = try analyser.resolveTypeOfNodeInternal(.{ .node = array_info.ast.elem_type, .handle = handle }) orelse return null;
             if (!elem_ty.is_type_val) return null;
 
-            const elem_ty_ptr = try arena.create(Type);
-            elem_ty_ptr.* = elem_ty;
-
-            return Type{
+            return .{
                 .data = .{ .array = .{
                     .elem_count = elem_count,
                     .sentinel = sentinel,
-                    .elem_ty = elem_ty_ptr,
+                    .elem_ty = try analyser.allocType(elem_ty),
                 } },
                 .is_type_val = true,
             };
@@ -1652,6 +1797,11 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
 
             if (array_init_info.ast.type_expr != 0) blk: {
                 const array_ty = try analyser.resolveTypeOfNode(.{ .node = array_init_info.ast.type_expr, .handle = handle }) orelse break :blk;
+                if (array_ty.data == .array and array_ty.data.array.elem_count == null) {
+                    var ty = array_ty;
+                    ty.data.array.elem_count = array_init_info.ast.elements.len;
+                    return ty.instanceTypeVal(analyser);
+                }
                 return array_ty.instanceTypeVal(analyser);
             }
 
@@ -1672,16 +1822,10 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
             const payload = try analyser.resolveTypeOfNodeInternal(.{ .node = datas[node].rhs, .handle = handle }) orelse return null;
             if (!payload.is_type_val) return null;
 
-            const error_set_ptr = try arena.create(Type);
-            error_set_ptr.* = error_set;
-
-            const payload_ptr = try arena.create(Type);
-            payload_ptr.* = payload;
-
-            return Type{
+            return .{
                 .data = .{ .error_union = .{
-                    .error_set = error_set_ptr,
-                    .payload = payload_ptr,
+                    .error_set = try analyser.allocType(error_set),
+                    .payload = try analyser.allocType(payload),
                 } },
                 .is_type_val = true,
             };
@@ -3306,7 +3450,7 @@ pub fn getFieldAccessType(
             },
             .l_bracket => {
                 var bracket_count: usize = 1;
-                var kind: BracketAccessKind = .Single;
+                var kind: BracketAccess = .{ .single = null };
 
                 while (true) {
                     const token = tokenizer.next();
@@ -3321,12 +3465,12 @@ pub fn getFieldAccessType(
                         },
                         .ellipsis2 => {
                             if (bracket_count == 1) {
-                                kind = .Open;
+                                kind = .{ .open = null };
                             }
                         },
                         else => {
-                            if (bracket_count == 1 and kind == .Open) {
-                                kind = .Range;
+                            if (bracket_count == 1 and kind == .open) {
+                                kind = .{ .range = null };
                             }
                         },
                     }
@@ -4099,7 +4243,7 @@ pub const DeclWithHandle = struct {
                     .node = pay.condition,
                     .handle = self.handle,
                 })) orelse return null,
-                .Single,
+                .{ .single = null },
             ),
             .assign_destructure => |pay| blk: {
                 const type_node = pay.getFullVarDecl(tree).ast.type_node;
@@ -4153,14 +4297,9 @@ pub const DeclWithHandle = struct {
 
         if (!self.isCaptureByRef()) return resolved_ty;
 
-        const resolved_ty_ptr = try arena.create(Type);
-        resolved_ty_ptr.* = resolved_ty.typeOf(analyser);
-
-        // const resolved_ty_ptr: *Type = try .createAndInit(arena, resolved_ty.typeOf(analyser));
-
-        return Type{
+        return .{
             .data = .{ .pointer = .{
-                .elem_ty = resolved_ty_ptr,
+                .elem_ty = try analyser.allocType(resolved_ty.typeOf(analyser)),
                 .sentinel = .none,
                 .is_const = false,
                 .size = .one,
@@ -4668,7 +4807,7 @@ pub fn resolveExpressionTypeFromAncestors(
                 ancestors[0],
                 ancestors[1..],
             )) |array_type| {
-                return (try analyser.resolveBracketAccessType(array_type, .Single)) orelse
+                return (try analyser.resolveBracketAccessType(array_type, .{ .single = null })) orelse
                     (try analyser.resolveTupleFieldType(array_type, element_index));
             }
 
@@ -4678,7 +4817,7 @@ pub fn resolveExpressionTypeFromAncestors(
                     ancestors[1],
                     ancestors[2..],
                 )) |slice_type| {
-                    return try analyser.resolveBracketAccessType(slice_type, .Single);
+                    return try analyser.resolveBracketAccessType(slice_type, .{ .single = null });
                 }
             }
         },
