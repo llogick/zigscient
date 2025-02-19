@@ -164,132 +164,126 @@ fn collectWarnStyleDiagnostics(
     const node_tags = tree.nodes.items(.tag);
     const main_toks = tree.nodes.items(.main_token);
 
-    for (0..tree.nodes.len) |node| {
-        switch (node_tags[node]) {
+    var analyser = server.initAnalyser(handle);
+    defer analyser.deinit();
+
+    var node_index: u32 = 0;
+    while (node_index < node_tags.len) : (node_index += 1) {
+        if (switch (node_tags[node_index]) {
             .builtin_call,
             .builtin_call_comma,
             .builtin_call_two,
             .builtin_call_two_comma,
-            => {},
-            else => continue,
-        }
+            => true,
+            else => false,
+        }) {
+            const name_token = main_toks[node_index];
+            const name = tree.tokenSlice(name_token);
 
-        const name_token = main_toks[node];
-        const name = tree.tokenSlice(name_token);
+            if (!std.mem.eql(
+                u8,
+                name,
+                "@import",
+            )) continue;
 
-        if (!std.mem.eql(
-            u8,
-            name,
-            "@import",
-        )) continue;
+            var buffer: [2]Ast.Node.Index = undefined;
+            const params = ast.builtinCallParams(
+                tree,
+                node_index,
+                &buffer,
+            ).?;
 
-        var buffer: [2]Ast.Node.Index = undefined;
-        const params = ast.builtinCallParams(
-            tree,
-            @intCast(node),
-            &buffer,
-        ).?;
+            if (params.len != 1) continue;
 
-        if (params.len != 1) continue;
+            const import_str_token = main_toks[params[0]];
+            const import_str = tree.tokenSlice(import_str_token);
 
-        const import_str_token = main_toks[params[0]];
-        const import_str = tree.tokenSlice(import_str_token);
-
-        if (std.mem.startsWith(u8, import_str, "\"./")) {
-            try diagnostics.append(arena, .{
-                .range = offsets.tokenToRange(tree, import_str_token, offset_encoding),
-                .severity = .Hint,
-                .code = .{ .string = "dot_slash_import" },
-                .source = "zigscient",
-                .message = "A ./ is not needed in imports",
-            });
-        }
-    }
-
-    // TODO: style warnings for types, values and declarations below root scope
-    if (tree.errors.len == 0) {
-        var analyser = server.initAnalyser(handle);
-        defer analyser.deinit();
-
-        // Functions
-        // XXX methods?
-        for (tree.rootDecls()) |root_decl_idx| {
-            switch (node_tags[root_decl_idx]) {
-                .fn_proto,
-                .fn_proto_multi,
-                .fn_proto_one,
-                .fn_proto_simple,
-                .fn_decl,
-                => try dofnNameDiag(
-                    arena,
-                    tree,
-                    root_decl_idx,
-                    null,
-                    diagnostics,
-                    offset_encoding,
-                ),
-                else => {},
+            if (std.mem.startsWith(u8, import_str, "\"./")) {
+                try diagnostics.append(arena, .{
+                    .range = offsets.tokenToRange(tree, import_str_token, offset_encoding),
+                    .severity = .Warning,
+                    .code = .{ .string = "dot-slash-import" },
+                    .source = "zigscient",
+                    .message = "A ./ is not needed in imports",
+                });
             }
         }
 
-        // Variables
-        for (node_tags, 0..) |node_tag, node_index| {
-            switch (node_tag) {
-                .global_var_decl,
-                .local_var_decl,
-                .simple_var_decl,
-                .aligned_var_decl,
-                => {
-                    const full_var_decl = tree.fullVarDecl(@intCast(node_index)) orelse continue;
-                    const ty = try analyser.resolveTypeOfNode(.{ .handle = handle, .node = @intCast(node_index) }) orelse continue;
-                    switch (ty.is_type_val) {
-                        false => {
-                            const name_token = full_var_decl.ast.mut_token + 1;
+        var buffer: [1]Ast.Node.Index = undefined;
+        if (switch (node_tags[node_index]) {
+            .fn_proto => ast.fnProto(tree, node_index),
+            .fn_proto_multi => ast.fnProtoMulti(tree, node_index),
+            .fn_proto_one => ast.fnProtoOne(tree, &buffer, node_index),
+            .fn_proto_simple => ast.fnProtoSimple(tree, &buffer, node_index),
+            else => null,
+        }) |full_fn_proto| {
+            try dofnNameDiag(
+                arena,
+                tree,
+                full_fn_proto,
+                null,
+                diagnostics,
+                offset_encoding,
+            );
+            continue;
+        }
 
-                            if (ty.isFunc()) {
-                                // aliased `const fnName = ns.fnName;` / `const fnName = @import("ns.zig").fnName;`
-                                try dofnNameDiag(
-                                    arena,
-                                    ty.data.other.handle.tree,
-                                    ty.data.other.node,
-                                    .{ .tree = tree, .name_token = name_token },
-                                    diagnostics,
-                                    offset_encoding,
-                                );
-                                continue;
-                            }
-
-                            const var_name = tree.tokenSlice(name_token);
-                            if (!Analyser.isMixedCase(var_name)) continue;
-                            try diagnostics.append(arena, .{
-                                .range = offsets.tokenToRange(tree, name_token, offset_encoding),
-                                .severity = .Hint,
-                                .code = .{ .string = "naming_style" },
-                                .source = "zigscient",
-                                .message = "Variables should be snake_case",
-                            });
-                        },
-                        true => {
-                            const is_name_space = ty.isNamespace();
-                            const name_token = full_var_decl.ast.mut_token + 1;
-                            const var_name = tree.tokenSlice(name_token);
-                            const message = if (!Analyser.isPascalCase(var_name) and !is_name_space)
-                                "Type names should be PascalCase"
-                            else if (is_name_space and Analyser.isMixedCase(var_name))
-                                "Namespaces should be snake_case"
-                            else
-                                continue;
-                            try diagnostics.append(arena, .{
-                                .range = offsets.tokenToRange(tree, name_token, offset_encoding),
-                                .severity = .Hint,
-                                .code = .{ .string = "naming_style" },
-                                .source = "zigscient",
-                                .message = message,
-                            });
-                        },
-                    }
+        if (tree.fullVarDecl(node_index)) |full_var_decl| {
+            const ty = try analyser.resolveTypeOfNode(
+                .{
+                    .handle = handle,
+                    .node = node_index,
                 },
-                else => {},
+            ) orelse continue;
+            switch (ty.is_type_val) {
+                false => {
+                    const name_token = full_var_decl.ast.mut_token + 1;
+
+                    if (ty.isFunc()) {
+                        // aliased `const fnName = ns.fnName;` / `const fnName = @import("ns.zig").fnName;`
+                        const full_fn_proto = ty.data.other.handle.tree.fullFnProto(
+                            &buffer,
+                            ty.data.other.node,
+                        ) orelse continue;
+                        try dofnNameDiag(
+                            arena,
+                            ty.data.other.handle.tree,
+                            full_fn_proto,
+                            .{ .tree = tree, .name_token = name_token },
+                            diagnostics,
+                            offset_encoding,
+                        );
+                        continue;
+                    }
+
+                    const var_name = tree.tokenSlice(name_token);
+                    if (!Analyser.isMixedCase(var_name)) continue;
+                    try diagnostics.append(arena, .{
+                        .range = offsets.tokenToRange(tree, name_token, offset_encoding),
+                        .severity = .Warning,
+                        .code = .{ .string = "naming-convention" },
+                        .source = "zigscient",
+                        .message = "Variables should be snake_case",
+                    });
+                },
+                true => {
+                    const is_name_space = ty.isNamespace();
+                    const name_token = full_var_decl.ast.mut_token + 1;
+                    const var_name = tree.tokenSlice(name_token);
+                    const message = if (!Analyser.isPascalCase(var_name) and !is_name_space)
+                        "Type names should be PascalCase"
+                    else if (is_name_space and Analyser.isMixedCase(var_name))
+                        "Namespaces should be snake_case"
+                    else
+                        continue;
+                    try diagnostics.append(arena, .{
+                        .range = offsets.tokenToRange(tree, name_token, offset_encoding),
+                        .severity = .Warning,
+                        .code = .{ .string = "naming-convention" },
+                        .source = "zigscient",
+                        .message = message,
+                    });
+                },
             }
         }
     }
@@ -299,38 +293,34 @@ fn dofnNameDiag(
     arena: std.mem.Allocator,
     /// Where the fn is declared
     tree: Ast,
-    /// The node within that tree
-    node_idx: Ast.Node.Index,
+    full_fn_proto: Ast.full.FnProto,
     /// Where to surface the diagnostic
     target: ?struct { tree: Ast, name_token: Ast.TokenIndex },
     diagnostics: *std.ArrayListUnmanaged(types.Diagnostic),
     offset_encoding: offsets.Encoding,
 ) error{OutOfMemory}!void {
-    var buf: [1]Ast.Node.Index = undefined;
-    const func = tree.fullFnProto(&buf, node_idx).?;
-    const is_type_function = Analyser.isTypeFunction(tree, func);
+    const is_type_function = Analyser.isTypeFunction(tree, full_fn_proto);
+    if (full_fn_proto.extern_export_inline_token != null) return;
 
-    if (func.extern_export_inline_token != null) return;
-
-    const name_token = if (target) |t| t.name_token else func.name_token orelse return;
+    const name_token = if (target) |t| t.name_token else full_fn_proto.name_token orelse return;
     const dt_tree = if (target) |t| t.tree else tree;
     const func_name = dt_tree.tokenSlice(name_token);
 
     if (!is_type_function and !Analyser.isCamelCase(func_name)) {
         try diagnostics.append(arena, .{
             .range = offsets.tokenToRange(dt_tree, name_token, offset_encoding),
-            .severity = .Hint,
-            .code = .{ .string = "naming_style" },
+            .severity = .Warning,
+            .code = .{ .string = "naming-convention" },
             .source = "zigscient",
-            .message = "Functions should be camelCase",
+            .message = "Function names should be camelCase",
         });
     } else if (is_type_function and !Analyser.isPascalCase(func_name)) {
         try diagnostics.append(arena, .{
             .range = offsets.tokenToRange(dt_tree, name_token, offset_encoding),
-            .severity = .Hint,
-            .code = .{ .string = "naming_style" },
+            .severity = .Warning,
+            .code = .{ .string = "naming-convention" },
             .source = "zigscient",
-            .message = "Type functions should be PascalCase",
+            .message = "Type function names should be PascalCase",
         });
     }
 }
@@ -361,7 +351,7 @@ fn collectGlobalVarDiagnostics(
                 //log.debug("possible global variable \"{s}\"", .{tree.tokenSlice(decl_main_token + 1)});
                 try diagnostics.append(arena, .{
                     .range = offsets.tokenToRange(tree, decl_main_token, offset_encoding),
-                    .severity = .Hint,
+                    .severity = .Warning,
                     .code = .{ .string = "highlight_global_var_declarations" },
                     .source = "zigscient",
                     .message = "Global var declaration",
