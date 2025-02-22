@@ -235,6 +235,7 @@ fn collectWarnStyleDiagnostics(
                     .node = node_index,
                 },
             ) orelse continue;
+            if (ty.data == .either) continue; // Skip either_type(s) for now
             switch (ty.is_type_val) {
                 false => {
                     const name_token = full_var_decl.ast.mut_token + 1;
