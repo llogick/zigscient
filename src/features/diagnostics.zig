@@ -201,7 +201,7 @@ fn collectWarnStyleDiagnostics(
             if (std.mem.startsWith(u8, import_str, "\"./")) {
                 try diagnostics.append(arena, .{
                     .range = offsets.tokenToRange(tree, import_str_token, offset_encoding),
-                    .severity = .Warning,
+                    .severity = .Hint,
                     .code = .{ .string = "dot-slash-import" },
                     .source = "zigscient",
                     .message = "A ./ is not needed in imports",
@@ -238,6 +238,8 @@ fn collectWarnStyleDiagnostics(
             switch (ty.is_type_val) {
                 false => {
                     const name_token = full_var_decl.ast.mut_token + 1;
+                    const name = tree.tokenSlice(name_token);
+                    if (name[0] == '@') continue;
 
                     if (ty.isFunc()) {
                         // aliased `const fnName = ns.fnName;` / `const fnName = @import("ns.zig").fnName;`
@@ -256,11 +258,10 @@ fn collectWarnStyleDiagnostics(
                         continue;
                     }
 
-                    const var_name = tree.tokenSlice(name_token);
-                    if (!Analyser.isMixedCase(var_name)) continue;
+                    if (!Analyser.isMixedCase(name)) continue;
                     try diagnostics.append(arena, .{
                         .range = offsets.tokenToRange(tree, name_token, offset_encoding),
-                        .severity = .Warning,
+                        .severity = .Hint,
                         .code = .{ .string = "naming-convention" },
                         .source = "zigscient",
                         .message = "Variables should be snake_case",
@@ -269,16 +270,17 @@ fn collectWarnStyleDiagnostics(
                 true => {
                     const is_name_space = ty.isNamespace();
                     const name_token = full_var_decl.ast.mut_token + 1;
-                    const var_name = tree.tokenSlice(name_token);
-                    const message = if (!Analyser.isPascalCase(var_name) and !is_name_space)
+                    const name = tree.tokenSlice(name_token);
+                    if (name[0] == '@') continue;
+                    const message = if (!Analyser.isPascalCase(name) and !is_name_space)
                         "Type names should be PascalCase"
-                    else if (is_name_space and Analyser.isMixedCase(var_name))
+                    else if (is_name_space and Analyser.isMixedCase(name))
                         "Namespaces should be snake_case"
                     else
                         continue;
                     try diagnostics.append(arena, .{
                         .range = offsets.tokenToRange(tree, name_token, offset_encoding),
-                        .severity = .Warning,
+                        .severity = .Hint,
                         .code = .{ .string = "naming-convention" },
                         .source = "zigscient",
                         .message = message,
@@ -305,11 +307,12 @@ fn dofnNameDiag(
     const name_token = if (target) |t| t.name_token else full_fn_proto.name_token orelse return;
     const dt_tree = if (target) |t| t.tree else tree;
     const func_name = dt_tree.tokenSlice(name_token);
+    if (func_name[0] == '@') return;
 
     if (!is_type_function and !Analyser.isCamelCase(func_name)) {
         try diagnostics.append(arena, .{
             .range = offsets.tokenToRange(dt_tree, name_token, offset_encoding),
-            .severity = .Warning,
+            .severity = .Hint,
             .code = .{ .string = "naming-convention" },
             .source = "zigscient",
             .message = "Function names should be camelCase",
@@ -317,7 +320,7 @@ fn dofnNameDiag(
     } else if (is_type_function and !Analyser.isPascalCase(func_name)) {
         try diagnostics.append(arena, .{
             .range = offsets.tokenToRange(dt_tree, name_token, offset_encoding),
-            .severity = .Warning,
+            .severity = .Hint,
             .code = .{ .string = "naming-convention" },
             .source = "zigscient",
             .message = "Type function names should be PascalCase",
@@ -351,7 +354,7 @@ fn collectGlobalVarDiagnostics(
                 //log.debug("possible global variable \"{s}\"", .{tree.tokenSlice(decl_main_token + 1)});
                 try diagnostics.append(arena, .{
                     .range = offsets.tokenToRange(tree, decl_main_token, offset_encoding),
-                    .severity = .Warning,
+                    .severity = .Hint,
                     .code = .{ .string = "highlight_global_var_declarations" },
                     .source = "zigscient",
                     .message = "Global var declaration",
