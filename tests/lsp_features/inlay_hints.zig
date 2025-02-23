@@ -127,7 +127,7 @@ test "resolve alias" {
 test "builtin call" {
     // XXX missing types for @memcpy args
     try testInlayHints(
-    // \\const _ = @memcpy(<dest>"",<source>"");
+        // \\const _ = @memcpy(<dest>"",<source>"");
         \\const _ = @Vector(<comptime_int>4,<type>u32);
         \\const _ = @compileError(<[]const u8>"");
     , .{ .kind = .Parameter });

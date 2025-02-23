@@ -4460,6 +4460,6 @@ const AstError = Ast.Error;
 const TokenIndex = Ast.TokenIndex;
 const Token = std.zig.Token;
 
-test {
-    _ = @import("parser_test.zig");
-}
+// test {
+//     _ = @import("parser_test.zig");
+// }

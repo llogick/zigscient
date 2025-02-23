@@ -124,31 +124,31 @@ pub fn parse(
     // const errors: std.ArrayListUnmanaged(std.zig.Ast.Error), //
     const nstates: States, const tok_i =
         switch (reusable_data.*.nodes) {
-        .none => .{
-            .{},
-            .{},
-            .{},
-            // .{},
-            .{},
-            0,
-        },
-        .span => |rd| .{
-            rd.nodes.*,
-            rd.xdata.*,
-            rd.scratch.*,
-            // rd.errors.*,
-            rd.nstates.*,
-            rd.start_token_index,
-        },
-        .some => |rd| .{
-            rd.nodes.*,
-            rd.xdata.*,
-            rd.scratch.*,
-            // rd.errors.*,
-            rd.nstates.*,
-            rd.start_token_index,
-        },
-    };
+            .none => .{
+                .{},
+                .{},
+                .{},
+                // .{},
+                .{},
+                0,
+            },
+            .span => |rd| .{
+                rd.nodes.*,
+                rd.xdata.*,
+                rd.scratch.*,
+                // rd.errors.*,
+                rd.nstates.*,
+                rd.start_token_index,
+            },
+            .some => |rd| .{
+                rd.nodes.*,
+                rd.xdata.*,
+                rd.scratch.*,
+                // rd.errors.*,
+                rd.nstates.*,
+                rd.start_token_index,
+            },
+        };
 
     var parser: Parse = .{
         .source = source,

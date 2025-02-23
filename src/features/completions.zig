@@ -221,11 +221,11 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle, opt
 
     const documentation: std.meta.FieldType(types.CompletionItem, .documentation) =
         .{
-        .MarkupContent = types.MarkupContent{
-            .kind = if (builder.server.client_capabilities.completion_doc_supports_md) .markdown else .plaintext,
-            .value = try std.mem.join(builder.arena, "\n\n", doc_comments.constSlice()),
-        },
-    };
+            .MarkupContent = types.MarkupContent{
+                .kind = if (builder.server.client_capabilities.completion_doc_supports_md) .markdown else .plaintext,
+                .value = try std.mem.join(builder.arena, "\n\n", doc_comments.constSlice()),
+            },
+        };
 
     try builder.completions.ensureUnusedCapacity(builder.arena, 1);
 
@@ -1456,9 +1456,9 @@ fn collectContainerFields(
             if (likely == .trycall_decl_literal or likely.omitDecl()) continue;
             const resolved_var_ty =
                 try builder.analyser.resolveTypeOfNode(.{
-                .handle = handle,
-                .node = full_var_decl.ast.type_node,
-            }) orelse continue;
+                    .handle = handle,
+                    .node = full_var_decl.ast.type_node,
+                }) orelse continue;
             if (resolved_var_ty.data != .container) continue;
             if (resolved_var_ty.data.container.handle != handle or
                 resolved_var_ty.data.container.scope != container_scope.scope) continue;

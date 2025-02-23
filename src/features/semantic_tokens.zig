@@ -228,19 +228,19 @@ fn colorIdentifierBasedOnType(
     if (type_node.is_type_val) {
         const token_type: TokenType =
             if (type_node.isNamespace())
-            .namespace
-        else if (type_node.isStructType())
-            .@"struct"
-        else if (type_node.isEnumType())
-            .@"enum"
-        else if (type_node.isUnionType())
-            .type // There is no token type for a union type
-        else if (type_node.isOpaqueType())
-            .type // There is no token type for an opaque
-        else if (is_parameter)
-            .typeParameter
-        else
-            .type;
+                .namespace
+            else if (type_node.isStructType())
+                .@"struct"
+            else if (type_node.isEnumType())
+                .@"enum"
+            else if (type_node.isUnionType())
+                .type // There is no token type for a union type
+            else if (type_node.isOpaqueType())
+                .type // There is no token type for an opaque
+            else if (is_parameter)
+                .typeParameter
+            else
+                .type;
 
         try writeTokenMod(builder, target_tok, token_type, tok_mod);
     } else if (type_node.isTypeFunc()) {

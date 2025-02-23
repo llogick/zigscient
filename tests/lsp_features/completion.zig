@@ -4019,9 +4019,9 @@ fn testCompletionWithOptions(
         blk: {
             const actual_deprecated =
                 if (actual_completion.tags) |tags|
-                std.mem.indexOfScalar(types.CompletionItemTag, tags, .Deprecated) != null
-            else
-                false;
+                    std.mem.indexOfScalar(types.CompletionItemTag, tags, .Deprecated) != null
+                else
+                    false;
             std.debug.assert(actual_deprecated == (actual_completion.deprecated orelse false));
             if (expected_completion.deprecated == actual_deprecated) break :blk;
 

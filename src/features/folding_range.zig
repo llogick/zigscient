@@ -232,7 +232,7 @@ pub fn generateFoldingRanges(allocator: std.mem.Allocator, tree: Ast, encoding: 
                     var start_tok = tree.firstToken(first_member) -| 1;
                     while (start_tok != 0 and
                         (token_tags[start_tok] == .doc_comment or
-                        token_tags[start_tok] == .container_doc_comment))
+                            token_tags[start_tok] == .container_doc_comment))
                     {
                         start_tok -= 1;
                     }
