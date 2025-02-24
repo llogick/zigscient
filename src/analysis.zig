@@ -1895,7 +1895,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                                 },
                                 else => {},
                             }
-                        } else unreachable, // is this safe? idk
+                        } else return null,
                     },
                 },
                 .is_type_val = true,
