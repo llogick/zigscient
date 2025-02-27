@@ -438,6 +438,7 @@ test "capture values with while loop" {
         \\  Err1,
         \\};
         \\const Iterator<type> = struct {
+        \\    state: void,
         \\    pub fn next(self: *Foo) Error!?usize {}
         \\};
         \\test {
