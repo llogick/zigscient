@@ -48,6 +48,8 @@ const accept_root_module_version =
     std.SemanticVersion.parse("0.14.0-dev.2534+12d64c456") catch unreachable;
 const pop_or_null_version =
     std.SemanticVersion.parse("0.14.0-dev.3181+914248237") catch unreachable;
+const graph_rb_fld_version =
+    std.SemanticVersion.parse("0.14.0-dev.3427+dea72d15d") catch unreachable;
 
 // -----------------------------------------------------------------------------
 
@@ -109,34 +111,50 @@ pub fn main() !void {
         .handle = try std.fs.cwd().makeOpenPath(global_cache_root, .{}),
     };
 
-    var graph: std.Build.Graph = if (comptime builtin.zig_version.order(file_watch_version).compare(.gte)) .{
-        .arena = arena,
-        .cache = .{
-            .gpa = arena,
-            .manifest_dir = try local_cache_directory.handle.makeOpenPath("h", .{}),
-        },
-        .zig_exe = zig_exe,
-        .env_map = try process.getEnvMap(arena),
-        .global_cache_root = global_cache_directory,
-        .zig_lib_directory = zig_lib_directory,
-        .host = .{
-            .query = .{},
-            .result = try std.zig.system.resolveTargetQuery(.{}),
-        },
-    } else .{
-        .arena = arena,
-        .cache = .{
-            .gpa = arena,
-            .manifest_dir = try local_cache_directory.handle.makeOpenPath("h", .{}),
-        },
-        .zig_exe = zig_exe,
-        .env_map = try process.getEnvMap(arena),
-        .global_cache_root = global_cache_directory,
-        .host = .{
-            .query = .{},
-            .result = try std.zig.system.resolveTargetQuery(.{}),
-        },
-    };
+    var graph: std.Build.Graph =
+        if (comptime builtin.zig_version.order(graph_rb_fld_version).compare(.gte)) .{
+            .arena = arena,
+            .cache = .{
+                .gpa = arena,
+                .manifest_dir = try local_cache_directory.handle.makeOpenPath("h", .{}),
+            },
+            .zig_exe = zig_exe,
+            .env_map = try process.getEnvMap(arena),
+            .global_cache_root = global_cache_directory,
+            .zig_lib_directory = zig_lib_directory,
+            .host = .{
+                .query = .{},
+                .result = try std.zig.system.resolveTargetQuery(.{}),
+            },
+            .root_builder = undefined, // populated below
+        } else if (comptime builtin.zig_version.order(file_watch_version).compare(.gte)) .{
+            .arena = arena,
+            .cache = .{
+                .gpa = arena,
+                .manifest_dir = try local_cache_directory.handle.makeOpenPath("h", .{}),
+            },
+            .zig_exe = zig_exe,
+            .env_map = try process.getEnvMap(arena),
+            .global_cache_root = global_cache_directory,
+            .zig_lib_directory = zig_lib_directory,
+            .host = .{
+                .query = .{},
+                .result = try std.zig.system.resolveTargetQuery(.{}),
+            },
+        } else .{
+            .arena = arena,
+            .cache = .{
+                .gpa = arena,
+                .manifest_dir = try local_cache_directory.handle.makeOpenPath("h", .{}),
+            },
+            .zig_exe = zig_exe,
+            .env_map = try process.getEnvMap(arena),
+            .global_cache_root = global_cache_directory,
+            .host = .{
+                .query = .{},
+                .result = try std.zig.system.resolveTargetQuery(.{}),
+            },
+        };
 
     graph.cache.addPrefix(.{ .path = null, .handle = std.fs.cwd() });
     graph.cache.addPrefix(build_root_directory);
@@ -150,6 +168,11 @@ pub fn main() !void {
         local_cache_directory,
         dependencies.root_deps,
     );
+
+    if (comptime builtin.zig_version.order(graph_rb_fld_version).compare(.gte)) {
+        graph.root_builder = builder;
+        graph.allow_deprecated = true; // ok for the purpose of collecting modules, and not doing build-on-save --watch
+    }
 
     var targets = ArrayList([]const u8).init(arena);
     var debug_log_scopes = ArrayList([]const u8).init(arena);
