@@ -34,6 +34,8 @@ pub const dependencies = @import("@dependencies");
 
 const writeFile2_removed_version =
     std.SemanticVersion.parse("0.13.0-dev.68+b86c4bde6") catch unreachable;
+const lazy_path_updated_version =
+    std.SemanticVersion.parse("0.13.0-dev.79+6bc0cef60") catch unreachable;
 const std_progress_rework_version =
     std.SemanticVersion.parse("0.13.0-dev.336+963ffe9d5") catch unreachable;
 const file_watch_version =
@@ -1201,9 +1203,17 @@ fn extractBuildInformation(
 
     const helper = struct {
         fn addStepDependencies(allocator: Allocator, set: *std.AutoArrayHashMapUnmanaged(*Step, void), lazy_path: std.Build.LazyPath) !void {
-            switch (lazy_path) {
-                .src_path, .cwd_relative, .dependency => {},
-                .generated => |gen| try set.put(allocator, gen.file.step, {}),
+            if (comptime builtin.zig_version.order(lazy_path_updated_version) == .lt) {
+                switch (lazy_path) {
+                    .src_path, .path, .cwd_relative, .dependency => {},
+                    .generated => |gen| try set.put(allocator, gen.step, {}),
+                    .generated_dirname => |gen| try set.put(allocator, gen.generated.step, {}),
+                }
+            } else {
+                switch (lazy_path) {
+                    .src_path, .cwd_relative, .dependency => {},
+                    .generated => |gen| try set.put(allocator, gen.file.step, {}),
+                }
             }
         }
 
