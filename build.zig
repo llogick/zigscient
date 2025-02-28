@@ -13,7 +13,7 @@ const proj_version: std.SemanticVersion = .{
 /// Specify the minimum Zig version that is required to compile and test the project:
 /// Must match the `minimum_zig_version` in `build.zig.zon`.
 /// Breaking change summary: std.ArrayList: popOrNull() -> pop() [v2] (#22720)
-const minimum_build_zig_version = "0.14.0-dev.3181+914248237";
+const minimum_build_zig_version = "0.14.0-dev.3445+6c3cbb0c8";
 
 /// Specify the minimum Zig version that is required to run the project:
 /// Release 0.12.0
@@ -193,7 +193,7 @@ pub fn build(b: *Build) !void {
     ).module("diffz");
 
     const lsp_module = b.dependency(
-        "lsp-codegen",
+        "lsp_codegen",
         .{
             .target = target,
             .optimize = optimize,
