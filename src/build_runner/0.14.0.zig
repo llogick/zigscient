@@ -22,7 +22,6 @@ const mem = std.mem;
 const process = std.process;
 const ArrayList = std.ArrayList;
 const Step = std.Build.Step;
-const Watch = std.Build.Watch;
 const Allocator = std.mem.Allocator;
 const Module = std.Build.Module;
 
@@ -122,6 +121,7 @@ pub fn main() !void {
     var output_tmp_nonce: ?[16]u8 = null;
     var debounce_interval_ms: u16 = 50;
     var watch = false;
+    var check_step_only = false;
 
     while (nextArg(args, &arg_idx)) |arg| {
         if (mem.startsWith(u8, arg, "-Z")) {
@@ -245,6 +245,12 @@ pub fn main() !void {
                 // prominent_compile_errors = true;
             } else if (mem.eql(u8, arg, "--watch")) {
                 watch = true;
+            } else if (mem.eql(u8, arg, "--check-only")) { // LS only
+                check_step_only = true;
+            } else if (mem.eql(u8, arg, "-fincremental")) {
+                graph.incremental = true;
+            } else if (mem.eql(u8, arg, "-fno-incremental")) {
+                graph.incremental = false;
             } else if (mem.eql(u8, arg, "-fwine")) {
                 builder.enable_wine = true;
             } else if (mem.eql(u8, arg, "-fno-wine")) {
@@ -352,6 +358,9 @@ pub fn main() !void {
         .thread_pool = undefined, // set below
 
         .claimed_rss = 0,
+
+        .transport = null,
+        .cycle = 0,
     };
 
     if (run.max_rss == 0) {
@@ -377,19 +386,45 @@ pub fn main() !void {
 
     var w = try Watch.init();
 
-    var step_stack = try stepNamesToStepStack(gpa, builder, targets.items);
+    const message_thread = try std.Thread.spawn(.{}, struct {
+        fn do(ww: *Watch) void {
+            while (std.io.getStdIn().reader().readByte()) |tag| {
+                switch (tag) {
+                    '\x00' => ww.trigger(),
+                    else => process.exit(1),
+                }
+            } else |err| switch (err) {
+                error.EndOfStream => process.exit(0),
+                else => process.exit(1),
+            }
+        }
+    }.do, .{&w});
+    message_thread.detach();
+
+    var transport = Transport.init(.{
+        .gpa = gpa,
+        .in = std.io.getStdIn(),
+        .out = std.io.getStdOut(),
+    });
+    defer transport.deinit();
+
+    run.transport = &transport;
+
+    var step_stack = try stepNamesToStepStack(gpa, builder, targets.items, check_step_only);
+    if (step_stack.count() == 0) {
+        // This means that `enable_build_on_save == null` and the project contains no "check" step.
+        return;
+    }
 
     prepare(gpa, builder, &step_stack, &run, seed) catch |err| switch (err) {
         error.UncleanExit => process.exit(1),
         else => return err,
     };
 
-    // TODO watch mode is currently always disabled until ZLS supports it
-    rebuild: while (false) {
+    rebuild: while (true) : (run.cycle += 1) {
         runSteps(
-            gpa,
             builder,
-            step_stack.keys(),
+            &step_stack,
             main_progress_node,
             &run,
         ) catch |err| switch (err) {
@@ -404,7 +439,7 @@ pub fn main() !void {
         // if any more events come in. After the debounce interval has passed,
         // trigger a rebuild on all steps with modified inputs, as well as their
         // recursive dependants.
-        var debounce_timeout: Watch.Timeout = .none;
+        var debounce_timeout: std.Build.Watch.Timeout = .none;
         while (true) switch (try w.wait(gpa, debounce_timeout)) {
             .timeout => {
                 markFailedStepsDirty(gpa, step_stack.keys());
@@ -431,6 +466,57 @@ fn markFailedStepsDirty(gpa: Allocator, all_steps: []const *Step) void {
     };
 }
 
+/// A wrapper around `std.Build.Watch` that supports manually triggering recompilations.
+const Watch = struct {
+    fs_watch: std.Build.Watch,
+    supports_fs_watch: bool,
+    manual_event: std.Thread.ResetEvent,
+    steps: []const *Step,
+
+    fn init() !Watch {
+        return .{
+            .fs_watch = if (@TypeOf(std.Build.Watch) != void) try std.Build.Watch.init() else {},
+            .supports_fs_watch = @TypeOf(std.Build.Watch) != void and shared.BuildOnSaveSupport.isSupportedRuntime(builtin.zig_version) == .supported,
+            .manual_event = .{},
+            .steps = &.{},
+        };
+    }
+
+    fn update(w: *Watch, gpa: Allocator, steps: []const *Step) !void {
+        if (@TypeOf(std.Build.Watch) != void and w.supports_fs_watch) {
+            return try w.fs_watch.update(gpa, steps);
+        }
+        w.steps = steps;
+    }
+
+    fn trigger(w: *Watch) void {
+        if (w.supports_fs_watch) {
+            @panic("received manualy filesystem event even though std.Build.Watch is supported");
+        }
+        w.manual_event.set();
+    }
+
+    fn wait(w: *Watch, gpa: Allocator, timeout: std.Build.Watch.Timeout) !std.Build.Watch.WaitResult {
+        if (@TypeOf(std.Build.Watch) != void and w.supports_fs_watch) {
+            return try w.fs_watch.wait(gpa, timeout);
+        }
+        switch (timeout) {
+            .none => w.manual_event.wait(),
+            .ms => |ms| w.manual_event.timedWait(@as(u64, ms) * std.time.ns_per_ms) catch return .timeout,
+        }
+        w.manual_event.reset();
+        markStepsDirty(gpa, w.steps);
+        return .dirty;
+    }
+
+    fn markStepsDirty(gpa: Allocator, all_steps: []const *Step) void {
+        for (all_steps) |step| switch (step.state) {
+            .precheck_done => continue,
+            else => step.recursiveReset(gpa),
+        };
+    }
+};
+
 const Run = struct {
     max_rss: u64,
     max_rss_is_default: bool,
@@ -440,19 +526,26 @@ const Run = struct {
     thread_pool: std.Thread.Pool,
 
     claimed_rss: usize,
+
+    transport: ?*Transport,
+    cycle: u32,
 };
 
 fn stepNamesToStepStack(
     gpa: Allocator,
     b: *std.Build,
     step_names: []const []const u8,
+    check_step_only: bool,
 ) !std.AutoArrayHashMapUnmanaged(*Step, void) {
     var step_stack: std.AutoArrayHashMapUnmanaged(*Step, void) = .{};
     errdefer step_stack.deinit(gpa);
 
     if (step_names.len == 0) {
-        const default_step = if (b.top_level_steps.get("check")) |tls| &tls.step else b.default_step;
-        try step_stack.put(gpa, default_step, {});
+        if (b.top_level_steps.get("check")) |tls| {
+            try step_stack.put(gpa, &tls.step, {});
+        } else if (!check_step_only) {
+            try step_stack.put(gpa, b.default_step, {});
+        }
     } else {
         try step_stack.ensureUnusedCapacity(gpa, step_names.len);
         for (0..step_names.len) |i| {
@@ -515,37 +608,41 @@ fn prepare(
 }
 
 fn runSteps(
-    gpa: std.mem.Allocator,
     b: *std.Build,
-    steps: []const *Step,
+    steps_stack: *const std.AutoArrayHashMapUnmanaged(*Step, void),
     parent_prog_node: std.Progress.Node,
     run: *Run,
 ) error{ OutOfMemory, UncleanExit }!void {
     const thread_pool = &run.thread_pool;
+    const steps = steps_stack.keys();
 
-    {
-        var step_prog = parent_prog_node.start("steps", steps.len);
-        defer step_prog.end();
+    var step_prog = parent_prog_node.start("steps", steps.len);
+    defer step_prog.end();
 
-        var wait_group: std.Thread.WaitGroup = .{};
-        defer wait_group.wait();
+    var wait_group: std.Thread.WaitGroup = .{};
+    defer wait_group.wait();
 
-        // Here we spawn the initial set of tasks with a nice heuristic -
-        // dependency order. Each worker when it finishes a step will then
-        // check whether it should run any dependants.
+    // Here we spawn the initial set of tasks with a nice heuristic -
+    // dependency order. Each worker when it finishes a step will then
+    // check whether it should run any dependants.
+    for (steps) |step| {
+        if (step.state == .skipped_oom) continue;
+
+        wait_group.start();
+        thread_pool.spawn(workerMakeOneStep, .{
+            &wait_group, b, steps_stack, step, step_prog, run,
+        }) catch @panic("OOM");
+    }
+
+    if (run.transport) |transport| {
         for (steps) |step| {
-            if (step.state == .skipped_oom) continue;
-
-            wait_group.start();
-            thread_pool.spawn(workerMakeOneStep, .{
-                &wait_group, b, step, step_prog, run,
-            }) catch @panic("OOM");
+            const step_id: u32 = @intCast(steps_stack.getIndex(step).?);
+            // missing fields:
+            // - result_error_msgs
+            // - result_stderr
+            serveWatchErrorBundle(transport, step_id, run.cycle, step.result_error_bundle) catch @panic("failed to send watch errors");
         }
     }
-    assert(run.memory_blocked_steps.items.len == 0);
-
-    _ = gpa;
-    // TODO collect std.zig.ErrorBundle's and stderr from failed steps and send them to ZLS
 }
 
 /// Traverse the dependency graph depth-first and make it undirected by having
@@ -601,6 +698,7 @@ fn constructGraphAndCheckForDependencyLoop(
 fn workerMakeOneStep(
     wg: *std.Thread.WaitGroup,
     b: *std.Build,
+    steps_stack: *const std.AutoArrayHashMapUnmanaged(*Step, void),
     s: *Step,
     prog_node: std.Progress.Node,
     run: *Run,
@@ -661,8 +759,16 @@ fn workerMakeOneStep(
     const make_result = s.make(.{
         .progress_node = sub_prog_node,
         .thread_pool = thread_pool,
-        .watch = false,
+        .watch = true,
     });
+
+    if (run.transport) |transport| {
+        const step_id: u32 = @intCast(steps_stack.getIndex(s).?);
+        // missing fields:
+        // - result_error_msgs
+        // - result_stderr
+        serveWatchErrorBundle(transport, step_id, run.cycle, s.result_error_bundle) catch @panic("failed to send watch errors");
+    }
 
     handle_result: {
         if (make_result) |_| {
@@ -679,7 +785,7 @@ fn workerMakeOneStep(
         for (s.dependants.items) |dep| {
             wg.start();
             thread_pool.spawn(workerMakeOneStep, .{
-                wg, b, dep, prog_node, run,
+                wg, b, steps_stack, dep, prog_node, run,
             }) catch @panic("OOM");
         }
     }
@@ -705,7 +811,7 @@ fn workerMakeOneStep(
 
                 wg.start();
                 thread_pool.spawn(workerMakeOneStep, .{
-                    wg, b, dep, prog_node, run,
+                    wg, b, steps_stack, dep, prog_node, run,
                 }) catch @panic("OOM");
             } else {
                 run.memory_blocked_steps.items[i] = dep;
@@ -859,6 +965,8 @@ fn createModuleDependenciesForStep(step: *Step) Allocator.Error!void {
 //
 //
 
+const shared = @import("shared.zig");
+const Transport = shared.Transport;
 const BuildConfig = @import("BuildConfig.zig");
 
 const Packages = struct {
@@ -1181,9 +1289,8 @@ fn extractBuildInformation(
 
     // run all steps that are dependencies
     try runSteps(
-        gpa,
         b,
-        step_dependencies.keys(),
+        &step_dependencies,
         main_progress_node,
         run,
     );
@@ -1557,3 +1664,26 @@ const copied_from_zig = struct {
         }
     }
 };
+
+fn serveWatchErrorBundle(
+    transport: *Transport,
+    step_id: u32,
+    cycle: u32,
+    error_bundle: std.zig.ErrorBundle,
+) !void {
+    const eb_hdr: shared.ServerToClient.ErrorBundle = .{
+        .step_id = step_id,
+        .cycle = cycle,
+        .extra_len = @intCast(error_bundle.extra.len),
+        .string_bytes_len = @intCast(error_bundle.string_bytes.len),
+    };
+    const bytes_len = @sizeOf(shared.ServerToClient.ErrorBundle) + 4 * error_bundle.extra.len + error_bundle.string_bytes.len;
+    try transport.serveMessage(.{
+        .tag = @intFromEnum(shared.ServerToClient.Tag.watch_error_bundle),
+        .bytes_len = @intCast(bytes_len),
+    }, &.{
+        std.mem.asBytes(&eb_hdr),
+        std.mem.sliceAsBytes(error_bundle.extra),
+        error_bundle.string_bytes,
+    });
+}

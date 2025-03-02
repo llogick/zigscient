@@ -150,45 +150,92 @@ pub const ServerToClient = struct {
     };
 };
 
-const windows_support_version = std.SemanticVersion.parse("0.14.0-dev.625+2de0e2eca") catch unreachable;
-const kqueue_support_version = std.SemanticVersion.parse("0.14.0-dev.2046+b8795b4d0") catch unreachable;
-/// The Zig version which added `std.Build.Watch.have_impl`
-const have_impl_flag_version = kqueue_support_version;
+pub const BuildOnSaveSupport = union(enum) {
+    supported,
+    invalid_linux_kernel_version: if (builtin.os.tag == .linux) std.meta.FieldType(std.posix.utsname, .release) else noreturn,
+    unsupported_linux_kernel_version: if (builtin.os.tag == .linux) std.SemanticVersion else noreturn,
+    unsupported_zig_version,
+    unsupported_os,
 
-/// Returns true if is comptime known that build on save is supported.
-pub inline fn isBuildOnSaveSupportedComptime() bool {
-    if (!std.process.can_spawn) return false;
-    if (builtin.single_threaded) return false;
-    return true;
-}
+    const linux_support_version = std.SemanticVersion.parse("0.14.0-dev.283+1d20ff11d") catch unreachable;
+    const windows_support_version = std.SemanticVersion.parse("0.14.0-dev.625+2de0e2eca") catch unreachable;
+    const kqueue_support_version = std.SemanticVersion.parse("0.14.0-dev.2046+b8795b4d0") catch unreachable;
 
-pub fn isBuildOnSaveSupportedRuntime(runtime_zig_version: std.SemanticVersion) bool {
-    if (!isBuildOnSaveSupportedComptime()) return false;
+    // We can't rely on `std.Build.Watch.have_impl` because we need to
+    // check the runtime Zig version instead of Zig version that ZLS
+    // has been built with.
+    pub const minimum_zig_version: std.SemanticVersion = .{ .major = 0, .minor = 14, .patch = 0 };
 
-    if (builtin.os.tag == .linux) blk: {
-        // std.build.Watch requires `FAN_REPORT_TARGET_FID` which is Linux 5.17+
-        const utsname = std.posix.uname();
-        const version = std.SemanticVersion.parse(&utsname.release) catch break :blk;
-        if (version.order(.{ .major = 5, .minor = 17, .patch = 0 }) != .lt) break :blk;
-        return false;
+    /// std.build.Watch requires `AT_HANDLE_FID` which is Linux 6.5+
+    /// https://github.com/ziglang/zig/issues/20720
+    pub const minimum_linux_version: std.SemanticVersion = .{ .major = 6, .minor = 5, .patch = 0 };
+
+    /// Returns true if is comptime known that build on save is supported.
+    pub inline fn isSupportedComptime() bool {
+        if (!std.process.can_spawn) return false;
+        if (builtin.single_threaded) return false;
+        return true;
     }
 
-    // This code path is present to support runtime Zig version before `0.14.0-dev.2046+b8795b4d0`.
-    // The main motivation is to keep support for the latest mach nominated zig version which is `0.14.0-dev.1911+3bf89f55c`.
-    return switch (builtin.os.tag) {
-        .linux => true,
-        .windows => runtime_zig_version.order(windows_support_version) != .lt,
-        .dragonfly,
-        .freebsd,
-        .netbsd,
-        .openbsd,
-        .ios,
-        .macos,
-        .tvos,
-        .visionos,
-        .watchos,
-        .haiku,
-        => runtime_zig_version.order(kqueue_support_version) != .lt,
-        else => false,
+    pub fn isSupportedRuntime(runtime_zig_version: std.SemanticVersion) BuildOnSaveSupport {
+        comptime std.debug.assert(isSupportedComptime());
+
+        if (runtime_zig_version.order(minimum_zig_version) == .lt) {
+            return .unsupported_zig_version;
+        }
+
+        switch (builtin.os.tag) {
+            .linux => blk: {
+                const utsname = std.posix.uname();
+                const unparsed_version = std.mem.sliceTo(&utsname.release, 0);
+                const version = parseUnameKernelVersion(unparsed_version) catch
+                    return .{ .invalid_linux_kernel_version = utsname.release };
+
+                if (version.order(minimum_linux_version) != .lt) break :blk;
+                std.debug.assert(version.build == null and version.pre == null); // Otherwise, returning the `std.SemanticVersion` would be unsafe
+                return .{
+                    .unsupported_linux_kernel_version = version,
+                };
+            },
+            .windows => windows_support_version,
+            .dragonfly,
+            .freebsd,
+            .netbsd,
+            .openbsd,
+            .ios,
+            .macos,
+            .tvos,
+            .visionos,
+            .watchos,
+            .haiku,
+            => kqueue_support_version,
+            else => return .unsupported_os,
+        }
+
+        return .supported;
+    }
+};
+
+/// Parses a Linux Kernel Version. The result will ignore pre-release and build metadata.
+fn parseUnameKernelVersion(kernel_version: []const u8) !std.SemanticVersion {
+    const extra_index = std.mem.indexOfAny(u8, kernel_version, "-+");
+    const required = kernel_version[0..(extra_index orelse kernel_version.len)];
+    var it = std.mem.splitScalar(u8, required, '.');
+    return .{
+        .major = try std.fmt.parseUnsigned(usize, it.next() orelse return error.InvalidVersion, 10),
+        .minor = try std.fmt.parseUnsigned(usize, it.next() orelse return error.InvalidVersion, 10),
+        .patch = try std.fmt.parseUnsigned(usize, it.next() orelse return error.InvalidVersion, 10),
     };
+}
+
+test parseUnameKernelVersion {
+    try std.testing.expectFmt("5.17.0", "{}", .{try parseUnameKernelVersion("5.17.0")});
+    try std.testing.expectFmt("6.12.9", "{}", .{try parseUnameKernelVersion("6.12.9-rc7")});
+    try std.testing.expectFmt("6.6.71", "{}", .{try parseUnameKernelVersion("6.6.71-42-generic")});
+    try std.testing.expectFmt("5.15.167", "{}", .{try parseUnameKernelVersion("5.15.167.4-microsoft-standard-WSL2")}); // WSL2
+    try std.testing.expectFmt("4.4.0", "{}", .{try parseUnameKernelVersion("4.4.0-20241-Microsoft")}); // WSL1
+
+    try std.testing.expectError(error.InvalidCharacter, parseUnameKernelVersion(""));
+    try std.testing.expectError(error.InvalidVersion, parseUnameKernelVersion("5"));
+    try std.testing.expectError(error.InvalidVersion, parseUnameKernelVersion("5.5"));
 }
