@@ -20,9 +20,19 @@ pub fn dotCompletions(
     const val: InternPool.Index = index;
     const ty: InternPool.Index = ip.typeOf(index);
 
-    const inner_ty = switch (ip.indexToKey(ty)) {
-        .pointer_type => |pointer_info| if (pointer_info.flags.size == .one) pointer_info.elem_type else ty,
-        else => ty,
+    const inner_ty, const is_indirect = switch (ip.indexToKey(ty)) {
+        .pointer_type => |pointer_info| switch (pointer_info.flags.size) {
+            .one => blk: {
+                try completions.append(arena, .{
+                    .label = "*",
+                    .kind = .Operator,
+                    .detail = try std.fmt.allocPrint(arena, "{}", .{pointer_info.elem_type.fmt(ip)}),
+                });
+                break :blk .{ pointer_info.elem_type, true };
+            },
+            else => .{ ty, false },
+        },
+        else => .{ ty, false },
     };
 
     switch (ip.indexToKey(inner_ty)) {
@@ -64,24 +74,41 @@ pub fn dotCompletions(
             },
             else => {},
         },
-        .pointer_type => |pointer_info| {
-            if (pointer_info.flags.size != .slice) return;
+        .pointer_type => |pointer_info| switch (pointer_info.flags.size) {
+            .one, .many => {},
+            .c => {
+                if (!is_indirect) {
+                    try completions.appendSlice(arena, &.{
+                        .{
+                            .label = "*",
+                            .kind = .Operator,
+                            .detail = try std.fmt.allocPrint(arena, "{}", .{pointer_info.elem_type.fmt(ip)}),
+                        },
+                        .{
+                            .label = "?",
+                            .kind = .Operator,
+                            .detail = try std.fmt.allocPrint(arena, "{}", .{inner_ty.fmt(ip)}),
+                        },
+                    });
+                }
+            },
+            .slice => {
+                const formatted = try std.fmt.allocPrint(arena, "{}", .{inner_ty.fmt(ip)});
+                std.debug.assert(std.mem.startsWith(u8, formatted, "[]"));
 
-            const formatted = try std.fmt.allocPrint(arena, "{}", .{inner_ty.fmt(ip)});
-            std.debug.assert(std.mem.startsWith(u8, formatted, "[]"));
-
-            try completions.appendSlice(arena, &.{
-                .{
-                    .label = "ptr",
-                    .kind = .Field,
-                    .detail = try std.fmt.allocPrint(arena, "ptr: [*]{s}", .{formatted["[]".len..]}),
-                },
-                .{
-                    .label = "len",
-                    .kind = .Field,
-                    .detail = "len: usize",
-                },
-            });
+                try completions.appendSlice(arena, &.{
+                    .{
+                        .label = "ptr",
+                        .kind = .Field,
+                        .detail = try std.fmt.allocPrint(arena, "ptr: [*]{s}", .{formatted["[]".len..]}),
+                    },
+                    .{
+                        .label = "len",
+                        .kind = .Field,
+                        .detail = "len: usize",
+                    },
+                });
+            },
         },
         .array_type => |array_info| {
             try completions.append(arena, .{
@@ -289,8 +316,20 @@ test "dotCompletions - pointer types" {
             .is_const = true,
         },
     } });
+    const @"[*c]u32" = try ip.get(gpa, .{ .pointer_type = .{
+        .elem_type = .u32_type,
+        .flags = .{
+            .size = .c,
+        },
+    } });
 
-    try testCompletion(&ip, try ip.getUnknown(gpa, @"*u32"), &.{});
+    try testCompletion(&ip, try ip.getUnknown(gpa, @"*u32"), &.{
+        .{
+            .label = "*",
+            .kind = .Operator,
+            .detail = "u32",
+        },
+    });
     try testCompletion(&ip, try ip.getUnknown(gpa, @"[]u32"), &.{
         .{
             .label = "ptr",
@@ -315,6 +354,18 @@ test "dotCompletions - pointer types" {
             .detail = "len: usize",
         },
     });
+    try testCompletion(&ip, try ip.getUnknown(gpa, @"[*c]u32"), &.{
+        .{
+            .label = "*",
+            .kind = .Operator,
+            .detail = "u32",
+        },
+        .{
+            .label = "?",
+            .kind = .Operator,
+            .detail = "[*c]u32",
+        },
+    });
 }
 
 test "dotCompletions - single pointer indirection" {
@@ -329,6 +380,12 @@ test "dotCompletions - single pointer indirection" {
             .size = .one,
         },
     } });
+    const @"[*c]u32" = try ip.get(gpa, .{ .pointer_type = .{
+        .elem_type = .u32_type,
+        .flags = .{
+            .size = .c,
+        },
+    } });
     const @"**[1]u32" = try ip.get(gpa, .{ .pointer_type = .{
         .elem_type = @"*[1]u32",
         .flags = .{
@@ -341,16 +398,41 @@ test "dotCompletions - single pointer indirection" {
             .size = .many,
         },
     } });
+    const @"*[*c]u32" = try ip.get(gpa, .{ .pointer_type = .{
+        .elem_type = @"[*c]u32",
+        .flags = .{
+            .size = .one,
+        },
+    } });
 
     try testCompletion(&ip, try ip.getUnknown(gpa, @"*[1]u32"), &.{
+        .{
+            .label = "*",
+            .kind = .Operator,
+            .detail = "[1]u32",
+        },
         .{
             .label = "len",
             .kind = .Field,
             .detail = "usize = 1",
         },
     });
-    try testCompletion(&ip, try ip.getUnknown(gpa, @"**[1]u32"), &.{});
+    try testCompletion(&ip, try ip.getUnknown(gpa, @"**[1]u32"), &.{
+        .{
+            .label = "*",
+            .kind = .Operator,
+            .detail = "*[1]u32",
+        },
+    });
     try testCompletion(&ip, try ip.getUnknown(gpa, @"[*][1]u32"), &.{});
+
+    try testCompletion(&ip, try ip.getUnknown(gpa, @"*[*c]u32"), &.{
+        .{
+            .label = "*",
+            .kind = .Operator,
+            .detail = "[*c]u32",
+        },
+    });
 }
 
 fn testCompletion(
