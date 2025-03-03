@@ -263,23 +263,48 @@ fn writeCallHint(
     const arguments = call.ast.params;
     const min_len = @min(parameters.len, arguments.len);
     for (parameters[0..min_len], arguments[0..min_len]) |param, arg| {
-        const hint = if (param.type_expr != 0) blk: {
-            const f_tok_i = fnh_ast.firstToken(param.type_expr);
-            break :blk switch (fnh_ast_ttags[f_tok_i]) {
-                .keyword_struct,
-                .keyword_union, // FLLW-UP Consider including `(..)`
-                .keyword_enum,
-                .keyword_fn,
-                => fnh_ast.tokenSlice(f_tok_i),
-                else => offsets.nodeToSlice(
-                    fnh_ast,
-                    param.type_expr,
-                ),
-            };
-        } else offsets.identifierTokenToNameSlice(
-            fnh_ast,
-            param.name_token orelse continue,
-        );
+        const hint = switch (builder.config.inlay_hints_param_hint_kind) {
+            .name => blk: {
+                const parameter_name_token = param.name_token orelse continue;
+                const parameter_name = offsets.identifierTokenToNameSlice(
+                    fn_node.handle.tree,
+                    parameter_name_token,
+                );
+
+                if (builder.config.inlay_hints_hide_redundant_param_names or builder.config.inlay_hints_hide_redundant_param_names_last_token) dont_skip: {
+                    const arg_token = if (builder.config.inlay_hints_hide_redundant_param_names_last_token)
+                        ast.lastToken(tree, arg)
+                    else if (builder.config.inlay_hints_hide_redundant_param_names)
+                        tree.nodes.items(.main_token)[arg]
+                    else
+                        unreachable;
+
+                    if (tree.tokens.items(.tag)[arg_token] != .identifier) break :dont_skip;
+                    const arg_token_name = offsets.identifierTokenToNameSlice(tree, arg_token);
+                    if (!std.mem.eql(u8, parameter_name, arg_token_name)) break :dont_skip;
+
+                    continue;
+                }
+                break :blk parameter_name;
+            },
+            .type => if (param.type_expr != 0) blk: {
+                const f_tok_i = fnh_ast.firstToken(param.type_expr);
+                break :blk switch (fnh_ast_ttags[f_tok_i]) {
+                    .keyword_struct,
+                    .keyword_union, // FLLW-UP Consider including `(..)`
+                    .keyword_enum,
+                    .keyword_fn,
+                    => fnh_ast.tokenSlice(f_tok_i),
+                    else => offsets.nodeToSlice(
+                        fnh_ast,
+                        param.type_expr,
+                    ),
+                };
+            } else offsets.identifierTokenToNameSlice(
+                fnh_ast,
+                param.name_token orelse continue,
+            ),
+        };
 
         const no_alias = if (param.comptime_noalias) |t| fnh_ast_ttags[t] == .keyword_noalias or fnh_ast_ttags[t - 1] == .keyword_noalias else false;
         const comp_time = if (param.comptime_noalias) |t| fnh_ast_ttags[t] == .keyword_comptime or fnh_ast_ttags[t - 1] == .keyword_comptime else false;

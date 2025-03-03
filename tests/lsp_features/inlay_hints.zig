@@ -569,6 +569,7 @@ fn testInlayHints(source: []const u8, options: Options) !void {
     ctx.server.config.inlay_hints_show_variable_type_hints = options.kind == .Type;
     ctx.server.config.inlay_hints_show_builtin = options.show_builtin;
     ctx.server.config.inlay_hints_exclude_single_argument = options.exclude_single_argument;
+    ctx.server.config.inlay_hints_param_hint_kind = .type;
 
     const test_uri = try ctx.addDocument(.{ .source = phr.new_source });
 

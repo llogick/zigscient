@@ -40,8 +40,20 @@ inlay_hints_show_parameter_name: bool = true,
 /// Enable inlay hints for builtin functions
 inlay_hints_show_builtin: bool = true,
 
+/// Show the parameter's name or type as the hint
+inlay_hints_param_hint_kind: enum {
+    name,
+    type,
+} = .name,
+
 /// Don't show inlay hints for single argument calls
 inlay_hints_exclude_single_argument: bool = true,
+
+/// Hides inlay hints when parameter name matches the identifier (e.g. foo: foo)
+inlay_hints_hide_redundant_param_names: bool = false,
+
+/// Hides inlay hints when parameter name matches the last token of a parameter node (e.g. foo: bar.foo, foo: &foo)
+inlay_hints_hide_redundant_param_names_last_token: bool = false,
 
 /// Enables warnings for style guideline mismatches
 warn_style: bool = false,
