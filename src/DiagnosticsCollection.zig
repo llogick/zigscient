@@ -212,7 +212,7 @@ fn collectUrisFromErrorBundle(
     }
 }
 
-fn pathToUri(allocator: std.mem.Allocator, base_path: ?[]const u8, src_path: []const u8) error{OutOfMemory}!?[]const u8 {
+pub fn pathToUri(allocator: std.mem.Allocator, base_path: ?[]const u8, src_path: []const u8) error{OutOfMemory}!?[]const u8 {
     if (std.fs.path.isAbsolute(src_path)) {
         return try URI.fromPath(allocator, src_path);
     }
@@ -355,7 +355,7 @@ fn convertErrorBundleToLSPDiangostics(
     }
 }
 
-fn errorBundleSourceLocationToRange(
+pub fn errorBundleSourceLocationToRange(
     error_bundle: std.zig.ErrorBundle,
     src_loc: std.zig.ErrorBundle.SourceLocation,
     offset_encoding: offsets.Encoding,

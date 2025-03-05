@@ -553,6 +553,7 @@ pub const BuildOnSave = struct {
         build_runner_path: []const u8,
 
         collection: *DiagnosticsCollection,
+        server: *Server,
     };
 
     pub fn init(options: InitOptions) !?BuildOnSave {
@@ -567,6 +568,7 @@ pub const BuildOnSave = struct {
             "--zig-lib-dir",
             options.zig_lib_path,
             "--watch",
+            "-freference-trace=12",
         };
         var argv: std.ArrayListUnmanaged([]const u8) = try .initCapacity(
             options.allocator,
@@ -602,12 +604,17 @@ pub const BuildOnSave = struct {
         const duped_workspace_path = try options.allocator.dupe(u8, options.workspace_path);
         errdefer options.allocator.free(duped_workspace_path);
 
-        const thread = try std.Thread.spawn(.{ .allocator = options.allocator }, loop, .{
-            options.allocator,
-            child_process,
-            options.collection,
-            duped_workspace_path,
-        });
+        const thread = try std.Thread.spawn(
+            .{ .allocator = options.allocator },
+            loop,
+            .{
+                options.allocator,
+                child_process,
+                options.collection,
+                duped_workspace_path,
+                options.server,
+            },
+        );
         errdefer comptime unreachable;
 
         return .{
@@ -644,6 +651,7 @@ pub const BuildOnSave = struct {
         child_process: *std.process.Child,
         collection: *DiagnosticsCollection,
         workspace_path: []const u8,
+        server: *Server,
     ) void {
         defer allocator.free(workspace_path);
 
@@ -682,6 +690,7 @@ pub const BuildOnSave = struct {
                         collection,
                         workspace_path,
                         &diagnostic_tags,
+                        server,
                     ) catch |err| {
                         log.err("failed to handle error bundle message from zig build runner: {}", .{err});
                         return;
@@ -700,6 +709,7 @@ pub const BuildOnSave = struct {
         collection: *DiagnosticsCollection,
         workspace_path: []const u8,
         diagnostic_tags: *std.AutoArrayHashMapUnmanaged(DiagnosticsCollection.Tag, void),
+        server: *Server,
     ) !void {
         const header = try transport.reader().readStructEndian(ServerToClient.ErrorBundle, .little);
 
@@ -709,8 +719,6 @@ pub const BuildOnSave = struct {
         const string_bytes = try transport.receiveBytes(allocator, header.string_bytes_len);
         defer allocator.free(string_bytes);
 
-        const error_bundle: std.zig.ErrorBundle = .{ .string_bytes = string_bytes, .extra = extra };
-
         var hasher: std.hash.Wyhash = .init(0);
         hasher.update(workspace_path);
         std.hash.autoHash(&hasher, header.step_id);
@@ -719,10 +727,126 @@ pub const BuildOnSave = struct {
 
         try diagnostic_tags.put(allocator, diagnostic_tag, {});
 
-        try collection.pushErrorBundle(diagnostic_tag, header.cycle, workspace_path, error_bundle);
+        const eb: std.zig.ErrorBundle = .{ .string_bytes = string_bytes, .extra = extra };
+
+        if (eb.errorMessageCount() != 0) {
+            for (eb.getMessages()) |err_msg_index| {
+                const err_msg = eb.getErrorMessage(err_msg_index);
+                if (err_msg.src_loc == .none) continue;
+
+                const err_src_loc = eb.getSourceLocation(err_msg.src_loc);
+                const src_path = eb.nullTerminatedString(err_src_loc.src_path);
+
+                const uri = try DiagnosticsCollection.pathToUri(
+                    allocator,
+                    workspace_path,
+                    src_path,
+                ) orelse continue;
+                defer allocator.free(uri);
+
+                const doc_is_open_in_editor = if (server.document_store.getHandle(uri)) |doc| doc.isOpen() else false;
+                if (doc_is_open_in_editor) continue;
+
+                if (err_src_loc.reference_trace_len == 0) continue;
+
+                // @compileError does not provide notes, eg
+                // `@compileError("invalid format string '" ++ fmt ++ "' for type '" ++ @typeName(@TypeOf(value)) ++ "'")`
+                // in std/fmt.zig .
+                // Attach a few reference-trace entries to help out.
+                const src = extraData(
+                    eb,
+                    std.zig.ErrorBundle.SourceLocation,
+                    @intFromEnum(err_msg.src_loc),
+                );
+                var ref_index = src.end;
+                for (0..src.data.reference_trace_len) |i| {
+                    const ref_trace = extraData(
+                        eb,
+                        std.zig.ErrorBundle.ReferenceTrace,
+                        ref_index,
+                    );
+                    ref_index = ref_trace.end;
+                    if (ref_trace.data.src_loc != .none) {
+                        const ref_src_loc = eb.getSourceLocation(ref_trace.data.src_loc);
+                        const ref_src_path = eb.nullTerminatedString(ref_src_loc.src_path);
+
+                        const ref_uri = try DiagnosticsCollection.pathToUri(
+                            allocator,
+                            workspace_path,
+                            ref_src_path,
+                        ) orelse continue;
+                        defer allocator.free(ref_uri);
+
+                        if ((if (server.document_store.getHandle(ref_uri)) |doc| doc.isOpen() else false)) {
+                            var wip_eb: std.zig.ErrorBundle.Wip = undefined;
+                            try wip_eb.init(allocator);
+                            defer wip_eb.deinit();
+
+                            const msg = try std.fmt.allocPrint(
+                                allocator,
+                                "(RTE#{}) {s}",
+                                .{
+                                    i + 1,
+                                    eb.nullTerminatedString(err_msg.msg),
+                                },
+                            );
+                            defer allocator.free(msg);
+
+                            try wip_eb.addRootErrorMessage(.{
+                                .msg = try wip_eb.addString(msg),
+                                .src_loc = try wip_eb.addSourceLocation(
+                                    .{
+                                        .src_path = try wip_eb.addString(ref_src_path),
+                                        .line = ref_src_loc.line,
+                                        .column = ref_src_loc.column,
+                                        .span_start = ref_src_loc.span_start,
+                                        .span_main = ref_src_loc.span_main,
+                                        .span_end = ref_src_loc.span_end,
+                                        .source_line = try wip_eb.addString(eb.nullTerminatedString(ref_src_loc.source_line)),
+                                    },
+                                ),
+                                .notes_len = 0,
+                            });
+
+                            try collection.pushErrorBundle(
+                                diagnostic_tag,
+                                header.cycle,
+                                workspace_path,
+                                try wip_eb.toOwnedBundle(""),
+                            );
+
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        try collection.pushErrorBundle(diagnostic_tag, header.cycle, workspace_path, eb);
         try collection.publishDiagnostics();
     }
 };
+
+/// Returns the requested data, as well as the new index which is at the start of the
+/// trailers for the object.
+fn extraData(eb: std.zig.ErrorBundle, comptime T: type, index: usize) struct { data: T, end: usize } {
+    const fields = @typeInfo(T).@"struct".fields;
+    var i: usize = index;
+    var result: T = undefined;
+    inline for (fields) |field| {
+        @field(result, field.name) = switch (field.type) {
+            u32 => eb.extra[i],
+            std.zig.ErrorBundle.MessageIndex => @as(std.zig.ErrorBundle.MessageIndex, @enumFromInt(eb.extra[i])),
+            std.zig.ErrorBundle.SourceLocationIndex => @as(std.zig.ErrorBundle.SourceLocationIndex, @enumFromInt(eb.extra[i])),
+            else => @compileError("bad field type"),
+        };
+        i += 1;
+    }
+    return .{
+        .data = result,
+        .end = i,
+    };
+}
 
 fn terminateChildProcessReportError(
     child_process: *std.process.Child,
