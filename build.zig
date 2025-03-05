@@ -12,8 +12,8 @@ const proj_version: std.SemanticVersion = .{
 
 /// Specify the minimum Zig version that is required to compile and test the project:
 /// Must match the `minimum_zig_version` in `build.zig.zon`.
-/// Breaking change summary: std.ArrayList: popOrNull() -> pop() [v2] (#22720)
-const minimum_build_zig_version = "0.14.0-dev.3445+6c3cbb0c8";
+/// Breaking change summary: 0.14.0
+const minimum_build_zig_version = "0.14.0";
 
 /// Specify the minimum Zig version that is required to run the project:
 /// Release 0.12.0
@@ -562,7 +562,6 @@ const Build = blk: {
                 \\Please download the {[minimum_version]} release of Zig. (https://ziglang.org/download/)
             , .{
                 .minimum_version = min_build_zig,
-                .minimum_version_simple = min_build_zig_simple,
             })
         else if (is_current_zig_tagged_release)
             \\Please download or compile a tagged release of this project.
