@@ -157,9 +157,9 @@ pub const BuildOnSaveSupport = union(enum) {
     unsupported_zig_version,
     unsupported_os,
 
-    const linux_support_version = std.SemanticVersion.parse("0.14.0-dev.283+1d20ff11d") catch unreachable;
-    const windows_support_version = std.SemanticVersion.parse("0.14.0-dev.625+2de0e2eca") catch unreachable;
-    const kqueue_support_version = std.SemanticVersion.parse("0.14.0-dev.2046+b8795b4d0") catch unreachable;
+    // const linux_support_version = std.SemanticVersion.parse("0.14.0-dev.283+1d20ff11d") catch unreachable;
+    // const windows_support_version = std.SemanticVersion.parse("0.14.0-dev.625+2de0e2eca") catch unreachable;
+    // const kqueue_support_version = std.SemanticVersion.parse("0.14.0-dev.2046+b8795b4d0") catch unreachable;
 
     // We can't rely on `std.Build.Watch.have_impl` because we need to
     // check the runtime Zig version instead of Zig version that ZLS
@@ -184,20 +184,20 @@ pub const BuildOnSaveSupport = union(enum) {
             return .unsupported_zig_version;
         }
 
-        switch (builtin.os.tag) {
-            .linux => blk: {
+        return switch (builtin.os.tag) {
+            .linux => {
                 const utsname = std.posix.uname();
                 const unparsed_version = std.mem.sliceTo(&utsname.release, 0);
                 const version = parseUnameKernelVersion(unparsed_version) catch
                     return .{ .invalid_linux_kernel_version = utsname.release };
 
-                if (version.order(minimum_linux_version) != .lt) break :blk;
+                if (version.order(minimum_linux_version) != .lt) return .supported;
                 std.debug.assert(version.build == null and version.pre == null); // Otherwise, returning the `std.SemanticVersion` would be unsafe
                 return .{
                     .unsupported_linux_kernel_version = version,
                 };
             },
-            .windows => windows_support_version,
+            .windows,
             .dragonfly,
             .freebsd,
             .netbsd,
@@ -208,11 +208,9 @@ pub const BuildOnSaveSupport = union(enum) {
             .visionos,
             .watchos,
             .haiku,
-            => kqueue_support_version,
-            else => return .unsupported_os,
-        }
-
-        return .supported;
+            => .supported,
+            else => .unsupported_os,
+        };
     }
 };
 
