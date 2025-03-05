@@ -808,11 +808,14 @@ pub const BuildOnSave = struct {
                                 .notes_len = 0,
                             });
 
+                            var owned_eb = try wip_eb.toOwnedBundle("");
+                            defer owned_eb.deinit(allocator);
+
                             try collection.pushErrorBundle(
                                 diagnostic_tag,
                                 header.cycle,
                                 workspace_path,
-                                try wip_eb.toOwnedBundle(""),
+                                owned_eb,
                             );
 
                             break;
