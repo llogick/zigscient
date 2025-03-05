@@ -967,7 +967,7 @@ fn createModuleDependenciesForStep(step: *Step) Allocator.Error!void {
 
 const shared = @import("shared.zig");
 const Transport = shared.Transport;
-const BuildConfig = @import("BuildConfig.zig");
+const BuildConfig = shared.BuildConfig;
 
 const Packages = struct {
     allocator: std.mem.Allocator,

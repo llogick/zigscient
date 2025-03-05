@@ -1368,7 +1368,7 @@ fn resolveConfiguration(
         };
         defer allocator.free(cache_dir_path);
 
-        config.global_cache_path = try std.fs.path.join(config_arena, &.{ cache_dir_path, "zls" });
+        config.global_cache_path = try std.fs.path.join(config_arena, &.{ cache_dir_path, "zigscient" });
 
         std.fs.cwd().makePath(config.global_cache_path.?) catch |err| {
             log.warn("failed to create directory '{s}': {}", .{ config.global_cache_path.?, err });
@@ -1386,7 +1386,7 @@ fn resolveConfiguration(
             break :blk;
         };
         const build_runner_source = build_runner_version.getBuildRunnerFile();
-        const build_runner_config_source = @embedFile("build_runner/BuildConfig.zig");
+        const build_runner_config_source = @embedFile("build_runner/shared.zig");
 
         const build_runner_hash = get_hash: {
             const Hasher = std.crypto.auth.siphash.SipHash128(1, 3);
@@ -1408,10 +1408,10 @@ fn resolveConfiguration(
         defer cache_dir.close();
 
         cache_dir.writeFile(.{
-            .sub_path = "BuildConfig.zig",
+            .sub_path = "shared.zig",
             .data = build_runner_config_source,
         }) catch |err| {
-            log.err("failed to write file '{s}/BuildConfig.zig': {}", .{ cache_path, err });
+            log.err("failed to write file '{s}/shared.zig': {}", .{ cache_path, err });
             break :blk;
         };
 
@@ -1537,10 +1537,10 @@ fn saveDocumentHandler(server: *Server, arena: std.mem.Allocator, notification: 
         server.allocator.free(json_message);
     }
 
-    if (BuildOnSaveSupport.isSupportedRuntime(server.runtime_zig_version.?) != .supported and
-        std.process.can_spawn and
+    if (std.process.can_spawn and
         server.config.enable_build_on_save != false and
-        server.client_capabilities.supports_publish_diagnostics)
+        server.client_capabilities.supports_publish_diagnostics and
+        BuildOnSaveSupport.isSupportedRuntime(server.runtime_zig_version.?) != .supported)
     {
         try server.pushJob(.run_build_on_save);
     }
