@@ -77,6 +77,11 @@ pub fn build(b: *Build) !void {
         "use-llvm",
         "Use Zig's llvm code backend",
     );
+    const no_bin = b.option(
+        bool,
+        "no-bin",
+        "skip emitting binary",
+    ) orelse false;
     const mem_allocator_opt: MemAllocatorOption = b.option(
         MemAllocatorOption,
         "allocator",
@@ -282,6 +287,8 @@ pub fn build(b: *Build) !void {
         const exe_check = b.addExecutable(.{
             .name = "check",
             .root_module = exe_module,
+            .use_llvm = use_llvm,
+            .use_lld = use_llvm,
         });
 
         const check = b.step("check", "Check if the project compiles");
@@ -296,7 +303,11 @@ pub fn build(b: *Build) !void {
             .use_lld = use_llvm,
         });
         if (mem_allocator_opt == .c) exe.linkLibC();
-        b.installArtifact(exe);
+        if (no_bin) {
+            b.getInstallStep().dependOn(&exe.step);
+        } else {
+            b.installArtifact(exe);
+        }
     }
 
     const tests = b.addTest(.{
