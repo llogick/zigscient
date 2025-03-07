@@ -9,7 +9,7 @@ const log = std.log.scoped(._store);
 const ast = @import("ast.zig");
 const StdAst = std.zig.Ast;
 const BuildAssociatedConfig = @import("BuildAssociatedConfig.zig");
-const BuildConfig = @import("build_runner/BuildConfig.zig");
+const BuildConfig = @import("build_runner/shared.zig").BuildConfig;
 const tracy = @import("tracy");
 const translate_c = @import("translate_c.zig");
 const AstGen = std.zig.AstGen;
@@ -1781,6 +1781,35 @@ pub fn collectIncludeDirs(
     return collected_all;
 }
 
+/// returns `true` if all c macro definitions could be collected
+/// may return `false` because macros from a build.zig may not have been resolved already
+/// **Thread safe** takes a shared lock
+pub fn collectCMacros(
+    store: *DocumentStore,
+    allocator: std.mem.Allocator,
+    handle: *Handle,
+    c_macros: *std.ArrayListUnmanaged([]const u8),
+) !bool {
+    const collected_all = switch (try handle.getAssociatedBuildFileUri2(store)) {
+        .none => true,
+        .unresolved => false,
+        .resolved => |build_file_uri| blk: {
+            const build_file = store.getBuildFile(build_file_uri).?;
+            const build_config = build_file.tryLockConfig() orelse break :blk false;
+            defer build_file.unlockConfig();
+
+            try c_macros.ensureUnusedCapacity(allocator, build_config.c_macros.len);
+            for (build_config.c_macros) |c_macro| {
+                c_macros.appendAssumeCapacity(try allocator.dupe(u8, c_macro));
+            }
+
+            break :blk true;
+        },
+    };
+
+    return collected_all;
+}
+
 /// returns the document behind `@cImport()` where `node` is the `cImport` node
 /// if a cImport can't be translated e.g. requires computing a
 /// comptime value `resolveCImport` will return null
@@ -1825,10 +1854,26 @@ pub fn resolveCImport(self: *DocumentStore, handle: *Handle, node: StdAst.Node.I
         return null;
     };
 
+    var c_macros: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer {
+        for (c_macros.items) |c_macro| {
+            self.allocator.free(c_macro);
+        }
+
+        c_macros.deinit(self.allocator);
+    }
+
+    const collected_all_c_macros = self.collectCMacros(self.allocator, handle, &c_macros) catch |err| {
+        log.err("failed to resolve include paths: {}", .{err});
+
+        return null;
+    };
+
     const maybe_result = translate_c.translate(
         self.allocator,
         self.config,
         include_dirs.items,
+        c_macros.items,
         source,
     ) catch |err| switch (err) {
         error.OutOfMemory => |e| return e,
@@ -1839,7 +1884,7 @@ pub fn resolveCImport(self: *DocumentStore, handle: *Handle, node: StdAst.Node.I
     };
     var result = maybe_result orelse return null;
 
-    if (result == .failure and !collected_all_include_dirs) {
+    if (result == .failure and (!collected_all_include_dirs or !collected_all_c_macros)) {
         result.deinit(self.allocator);
         return null;
     }

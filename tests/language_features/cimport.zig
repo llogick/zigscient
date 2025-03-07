@@ -109,7 +109,13 @@ fn testTranslate(c_source: []const u8) !translate_c.Result {
     var ctx = try Context.init();
     defer ctx.deinit();
 
-    var result = (try translate_c.translate(allocator, zls.DocumentStore.Config.fromMainConfig(ctx.server.config), &.{}, c_source)).?;
+    var result = (try translate_c.translate(
+        allocator,
+        zls.DocumentStore.Config.fromMainConfig(ctx.server.config),
+        &.{},
+        &.{},
+        c_source,
+    )).?;
     errdefer result.deinit(allocator);
 
     switch (result) {
