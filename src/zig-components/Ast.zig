@@ -182,7 +182,7 @@ pub fn parse(
 
     const base_nodes_len = parser.nodes.len;
     const base_xdata_len = parser.extra_data.items.len;
-    std.log.debug("pnl1: {}", .{base_nodes_len});
+    // std.log.debug("pnl1: {}", .{base_nodes_len});
 
     const cutoff_tok_i = if (reusable_data.*.nodes == .span) reusable_data.*.nodes.span.stop_token_index else 0;
 
@@ -196,7 +196,7 @@ pub fn parse(
     const reparsed_nodes_len = parser.nodes.len;
     const reparsed_xdata_len = parser.extra_data.items.len;
 
-    std.log.debug("pnl2: {}", .{reparsed_nodes_len});
+    // std.log.debug("pnl2: {}", .{reparsed_nodes_len});
 
     // XXX technically no longer needed -- remove later on
     if (reusable_data.*.nodes == .span) {
@@ -1891,7 +1891,7 @@ fn run(
 
     const base_nodes_len = parser.nodes.len;
     const base_xdata_len = parser.extra_data.items.len;
-    std.log.debug("pnl1: {}", .{base_nodes_len});
+    // std.log.debug("pnl1: {}", .{base_nodes_len});
 
     const cutoff_tok_i = if (run_ctx == .toks) 0 else run_ctx.span.cutoff_tok_i;
 
@@ -1900,7 +1900,7 @@ fn run(
     const reparsed_nodes_len = parser.nodes.len;
     const reparsed_xdata_len = parser.extra_data.items.len;
 
-    std.log.debug("pnl2: {}", .{reparsed_nodes_len});
+    // std.log.debug("pnl2: {}", .{reparsed_nodes_len});
 
     if (run_ctx == .toks) return Ast{
         .source = parser.source,
