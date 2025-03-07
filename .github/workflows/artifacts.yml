@@ -17,7 +17,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v1
         with:
-          version: master
+          version: 0.14.0
 
       # - name: Install APT packages
       #   run: |
@@ -34,7 +34,7 @@ jobs:
         run: |
           mkdir -p builds
           for target in "x86_64-linux" "aarch64-linux" "x86_64-windows" "aarch64-windows" "x86_64-macos" "aarch64-macos"; do
-            zig build -Dtarget=${target} -Doptimize=ReleaseFast
+            zig build -Dcpu=baseline -Dtarget=${target} -Doptimize=ReleaseFast
             if [[ $target == *"windows"* ]]; then
               cp zig-out/bin/zigscient.exe builds/zigscient-${target}.exe
             else
