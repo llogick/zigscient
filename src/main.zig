@@ -7,7 +7,7 @@ const tracy = @import("tracy");
 const known_folders = @import("known-folders");
 const binned_allocator = @import("binned_allocator.zig");
 
-const log = std.log.scoped(._main);
+const log = std.log.scoped(.main);
 
 const usage =
     \\A non-official language server for Zig
@@ -70,12 +70,11 @@ fn logFn(
         .debug => "D",
     };
     const scope_txt: []const u8 = comptime @tagName(scope);
-    const trimmed_scope = if (comptime std.mem.startsWith(u8, scope_txt, "_")) scope_txt[1..] else scope_txt;
 
     var buffer: [4096]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buffer);
     const no_space_left = blk: {
-        fbs.writer().print("<{s:^6}> {s}: ", .{ trimmed_scope, level_txt }) catch break :blk true;
+        fbs.writer().print("<{s:^6}> {s}: ", .{ scope_txt, level_txt }) catch break :blk true;
         fbs.writer().print(format, args) catch break :blk true;
         fbs.writer().writeByte('\n') catch break :blk true;
         break :blk false;

@@ -41,7 +41,7 @@ const build_runner_shared = @import("build_runner/shared.zig");
 const BuildOnSave = diagnostics_gen.BuildOnSave;
 const BuildOnSaveSupport = build_runner_shared.BuildOnSaveSupport;
 
-const log = std.log.scoped(._server);
+const log = std.log.scoped(.server);
 const message_logger = std.log.scoped(.message);
 
 // public fields

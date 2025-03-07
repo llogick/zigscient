@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const Ast = std.zig.Ast;
-const log = std.log.scoped(._completions);
+const log = std.log.scoped(.completions);
 
 const Server = @import("../Server.zig");
 const Config = @import("../Config.zig");
