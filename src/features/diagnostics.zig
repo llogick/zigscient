@@ -715,11 +715,12 @@ pub const BuildOnSave = struct {
     ) !void {
         const header = try transport.reader().readStructEndian(ServerToClient.ErrorBundle, .little);
 
-        const extra = try transport.receiveSlice(allocator, u32, header.extra_len);
-        defer allocator.free(extra);
+        var arena_state = std.heap.ArenaAllocator.init(server.allocator);
+        defer arena_state.deinit();
+        const arena = arena_state.allocator();
 
-        const string_bytes = try transport.receiveBytes(allocator, header.string_bytes_len);
-        defer allocator.free(string_bytes);
+        const extra = try transport.receiveSlice(arena, u32, header.extra_len);
+        const string_bytes = try transport.receiveBytes(arena, header.string_bytes_len);
 
         var hasher: std.hash.Wyhash = .init(0);
         hasher.update(workspace_path);
@@ -740,11 +741,10 @@ pub const BuildOnSave = struct {
                 const src_path = eb.nullTerminatedString(err_src_loc.src_path);
 
                 const uri = try DiagnosticsCollection.pathToUri(
-                    allocator,
+                    arena,
                     workspace_path,
                     src_path,
                 ) orelse continue;
-                defer allocator.free(uri);
 
                 const doc_is_open_in_editor = if (server.document_store.getHandle(uri)) |doc| doc.isOpen() else false;
                 if (doc_is_open_in_editor) continue;
@@ -773,26 +773,23 @@ pub const BuildOnSave = struct {
                         const ref_src_path = eb.nullTerminatedString(ref_src_loc.src_path);
 
                         const ref_uri = try DiagnosticsCollection.pathToUri(
-                            allocator,
+                            arena,
                             workspace_path,
                             ref_src_path,
                         ) orelse continue;
-                        defer allocator.free(ref_uri);
 
                         if ((if (server.document_store.getHandle(ref_uri)) |doc| doc.isOpen() else false)) {
                             var wip_eb: std.zig.ErrorBundle.Wip = undefined;
-                            try wip_eb.init(allocator);
-                            defer wip_eb.deinit();
+                            try wip_eb.init(arena);
 
                             const msg = try std.fmt.allocPrint(
-                                allocator,
+                                arena,
                                 "(RTE#{}) {s}",
                                 .{
                                     i + 1,
                                     eb.nullTerminatedString(err_msg.msg),
                                 },
                             );
-                            defer allocator.free(msg);
 
                             try wip_eb.addRootErrorMessage(.{
                                 .msg = try wip_eb.addString(msg),
@@ -810,14 +807,11 @@ pub const BuildOnSave = struct {
                                 .notes_len = 0,
                             });
 
-                            var owned_eb = try wip_eb.toOwnedBundle("");
-                            defer owned_eb.deinit(allocator);
-
                             try collection.pushErrorBundle(
                                 diagnostic_tag,
                                 header.cycle,
                                 workspace_path,
-                                owned_eb,
+                                try wip_eb.toOwnedBundle(""),
                             );
 
                             break;
