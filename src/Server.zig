@@ -830,7 +830,7 @@ const Workspace = struct {
         }
 
         const build_on_save_supported = workspace.build_on_save_mode != null;
-        const build_on_save_wanted = args.server.config.enable_build_on_save orelse true;
+        const build_on_save_wanted = args.server.config.enable_build_on_save == true;
         const enable = build_on_save_supported and build_on_save_wanted;
 
         if (workspace.build_on_save) |*build_on_save| {
@@ -846,6 +846,21 @@ const Workspace = struct {
         const zig_lib_path = args.server.config.zig_lib_path orelse return;
         const build_runner_path = args.server.config.build_runner_path orelse return;
 
+        const maybe_build_zig_uri = DocumentStore.findBuildZig(args.server.allocator, workspace.uri) catch |err| {
+            log.err("Could not find a build.zig for workspace folder {s}: {}", .{ workspace.uri, err });
+            return;
+        };
+        const build_zig_uri = maybe_build_zig_uri orelse {
+            log.err("Could not find a build.zig for workspace folder {s}", .{workspace.uri});
+            return;
+        };
+        defer args.server.allocator.free(maybe_build_zig_uri.?);
+
+        var has_check_step: bool = false;
+        if (args.server.document_store.getBuildFile(build_zig_uri)) |bld_file| {
+            has_check_step = bld_file.hasAcheckStep();
+        }
+
         const workspace_path = @import("uri.zig").parse(args.server.allocator, workspace.uri) catch |err| {
             log.err("failed to parse URI '{s}': {}", .{ workspace.uri, err });
             return;
@@ -857,7 +872,7 @@ const Workspace = struct {
             .allocator = args.server.allocator,
             .workspace_path = workspace_path,
             .build_on_save_args = args.server.config.build_on_save_args,
-            .check_step_only = args.server.config.enable_build_on_save == null,
+            .check_step_only = has_check_step,
             .zig_exe_path = zig_exe_path,
             .zig_lib_path = zig_lib_path,
             .build_runner_path = build_runner_path,
@@ -877,11 +892,12 @@ fn addWorkspace(server: *Server, uri: types.URI) error{OutOfMemory}!void {
     server.workspaces.appendAssumeCapacity(try Workspace.init(server, uri));
     log.info("added Workspace Folder: {s}", .{uri});
 
-    if (BuildOnSaveSupport.isSupportedComptime() and
+    if ((server.config.enable_build_on_save == true) and
         // Don't initialize build on save until initialization finished.
         // If the client supports the `workspace/configuration` request, wait
         // until we have received workspace configuration from the server.
-        (server.status == .initialized and !server.client_capabilities.supports_configuration))
+        (server.status == .initialized and !server.client_capabilities.supports_configuration) and
+        BuildOnSaveSupport.isSupportedComptime())
     {
         try server.workspaces.items[server.workspaces.items.len - 1].refreshBuildOnSave(.{
             .server = server,
@@ -1051,12 +1067,13 @@ pub fn updateConfiguration(
         }
     }
 
-    if (BuildOnSaveSupport.isSupportedComptime() and
+    if (server.config.enable_build_on_save == true and
         options.resolve and
         // If the client supports the `workspace/configuration` request, defer
         // build on save initialization until after we have received workspace
         // configuration from the server
-        (!server.client_capabilities.supports_configuration or server.status == .initialized))
+        (!server.client_capabilities.supports_configuration or server.status == .initialized) and
+        BuildOnSaveSupport.isSupportedComptime())
     {
         const should_restart =
             (new_zig_exe_path or
@@ -1145,7 +1162,7 @@ pub fn updateConfiguration(
         }
     }
 
-    if (server.config.enable_build_on_save orelse false) {
+    if (server.config.enable_build_on_save == true) {
         if (!BuildOnSaveSupport.isSupportedComptime()) {
             // This message is not very helpful but it relatively uncommon to happen anyway.
             log.info("Ignoring 'enable_build_on_save' because it isn't supported by this build of the server.", .{});

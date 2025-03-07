@@ -580,6 +580,8 @@ pub const BuildOnSave = struct {
         if (options.check_step_only) argv.appendAssumeCapacity("--check-only");
         argv.appendSliceAssumeCapacity(options.build_on_save_args);
 
+        log.debug("BoS args: {s}", .{argv.items});
+
         child_process.* = .init(argv.items, options.allocator);
         child_process.stdin_behavior = .Pipe;
         child_process.stdout_behavior = .Pipe;
@@ -965,14 +967,7 @@ pub fn generateBuildOnSaveDiagnostics(
 
         no_check: {
             if (has_explicit_steps) break :no_check;
-            const config = build_file.tryLockConfig() orelse break :no_check;
-            defer build_file.unlockConfig();
-            for (config.top_level_steps) |tls| {
-                if (std.mem.eql(u8, tls, "check")) {
-                    has_check_step = true;
-                    break;
-                }
-            }
+            has_check_step = build_file.hasAcheckStep();
         }
     }
 

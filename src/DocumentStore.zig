@@ -173,6 +173,19 @@ pub const BuildFile = struct {
         self.impl.config = new_build_config;
     }
 
+    pub fn hasAcheckStep(self: *BuildFile) bool {
+        const config = self.tryLockConfig() orelse return false;
+        defer self.unlockConfig();
+        for (config.top_level_steps) |tls| {
+            if (std.mem.eql(u8, tls, "check")) return true;
+        }
+        // XXX Maybe return a slice that can be appended as an arg, ie "check" or "-Dno-bin"
+        // for (config.available_options) |build_option| {
+        //     if (std.mem.eql(u8, build_option, "no-bin")) return true;
+        // }
+        return false;
+    }
+
     fn deinit(self: *BuildFile, allocator: std.mem.Allocator) void {
         allocator.free(self.uri);
         if (self.impl.config) |cfg| cfg.deinit();
@@ -1384,9 +1397,11 @@ pub fn findBuildZig(allocator: std.mem.Allocator, dir_path: []const u8) !?[]cons
         defer dir.close();
         if (dir.access("build.zig", .{})) {
             // found a build.zig file
+            const path = try std.fs.path.join(allocator, &.{ potential_root_path, "build.zig" });
+            defer allocator.free(path);
             return try URI.fromPath(
                 allocator,
-                try std.fs.path.join(allocator, &.{ potential_root_path, "build.zig" }),
+                path,
             );
         } else |_| continue;
     }
