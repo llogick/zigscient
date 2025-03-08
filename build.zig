@@ -7,7 +7,6 @@ const proj_version: std.SemanticVersion = .{
     .major = 0,
     .minor = 14,
     .patch = 0,
-    .pre = "dev",
 };
 
 /// Specify the minimum Zig version that is required to compile and test the project:
@@ -228,7 +227,7 @@ pub fn build(b: *Build) !void {
         gen_version_data_cmd.addArgs(&.{ "--langref-version", version });
 
         gen_version_data_cmd.addArg("--langref-path");
-        gen_version_data_cmd.addFileArg(b.path(b.fmt("src/tools/langref_{s}.html.in", .{version})));
+        gen_version_data_cmd.addFileArg(b.path("src/tools/langref_master.html.in"));
 
         gen_version_data_cmd.addArg("--generate-version-data");
         const version_data_path = gen_version_data_cmd.addOutputFileArg("version_data.zig");

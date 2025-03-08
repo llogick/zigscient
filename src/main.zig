@@ -241,7 +241,7 @@ fn parseArgs(allocator: std.mem.Allocator) ParseArgsError!ParseArgsResult {
             } else if (std.mem.eql(u8, arg, "env")) { // env
                 try @"zls env"(allocator);
             } else if (std.mem.eql(u8, arg, "--show-config-path")) { // --show-config-path
-                comptime std.debug.assert(zls.build_options.version.order(.{ .major = 0, .minor = 14, .patch = 0 }) == .lt); // This flag should be removed before 0.14.0 gets tagged
+                comptime std.debug.assert(zls.build_options.version.order(.{ .major = 0, .minor = 15, .patch = 0 }) == .lt); // This flag should be removed before 0.15.0 gets tagged
                 log.warn("--show-config-path has been deprecated. Use 'zls env' instead!", .{});
 
                 var config_result = try zls.configuration.load(allocator);
@@ -299,7 +299,7 @@ fn parseArgs(allocator: std.mem.Allocator) ParseArgsError!ParseArgsResult {
                 std.process.exit(1);
             };
         } else if (std.mem.eql(u8, arg, "--enable-debug-log")) { // --enable-debug-log
-            comptime std.debug.assert(zls.build_options.version.order(.{ .major = 0, .minor = 14, .patch = 0 }) == .lt); // This flag should be removed before 0.14.0 gets tagged
+            comptime std.debug.assert(zls.build_options.version.order(.{ .major = 0, .minor = 15, .patch = 0 }) == .lt); // This flag should be removed before 0.15.0 gets tagged
             log.warn("--enable-debug-log has been deprecated. Use --log-level instead!", .{});
             result.log_level = .debug;
         } else {
