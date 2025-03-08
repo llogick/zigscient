@@ -5,8 +5,9 @@ const builtin = @import("builtin");
 /// Remove `.pre` when tagging a new release and add it back on the next development cycle.
 const proj_version: std.SemanticVersion = .{
     .major = 0,
-    .minor = 14,
+    .minor = 15,
     .patch = 0,
+    .pre = "dev",
 };
 
 /// Specify the minimum Zig version that is required to compile and test the project:

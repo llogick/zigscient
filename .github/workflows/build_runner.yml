@@ -22,10 +22,10 @@ jobs:
         zig:
           - version: master
             build-runner-file: 0.14.0.zig
-          - version: 0.13.0
-            build-runner-file: legacy.zig
-          - version: 0.12.0
-            build-runner-file: legacy.zig
+          # - version: 0.13.0
+          #   build-runner-file: legacy.zig
+          # - version: 0.12.0
+          #   build-runner-file: legacy.zig
     runs-on: ${{ matrix.os }}
 
     steps:
