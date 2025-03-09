@@ -6,7 +6,7 @@ const builtin = @import("builtin");
 const proj_version: std.SemanticVersion = .{
     .major = 0,
     .minor = 14,
-    .patch = 0,
+    .patch = 1,
 };
 
 /// Specify the minimum Zig version that is required to compile and test the project:
