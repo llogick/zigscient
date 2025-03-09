@@ -502,11 +502,13 @@ fn getTracyModule(
 
 const Build = blk: {
     const min_build_zig = std.SemanticVersion.parse(minimum_build_zig_version) catch unreachable;
-    const min_runtime_zig = std.SemanticVersion.parse(minimum_runtime_zig_version) catch unreachable;
+    const min_zig_is_tagged = min_build_zig.build == null and min_build_zig.pre == null;
 
     std.debug.assert(proj_version.pre == null or std.mem.eql(u8, proj_version.pre.?, "dev"));
     std.debug.assert(proj_version.build == null);
     const proj_version_is_tagged = proj_version.pre == null and proj_version.build == null;
+
+    const min_runtime_zig = std.SemanticVersion.parse(minimum_runtime_zig_version) catch unreachable;
 
     if (min_runtime_zig.order(min_build_zig) == .gt) {
         const message = std.fmt.comptimePrint(
@@ -520,21 +522,22 @@ const Build = blk: {
     }
 
     // check that the project version and minimum build version make sense
-    if (proj_version_is_tagged) {
-        if (proj_version.order(min_build_zig) != .eq) {
-            const message = std.fmt.comptimePrint(
-                \\A tagged release should have the same tagged release of Zig as the minimum build requirement:
-                \\          Project version: {[current_version]}
-                \\  minimum Zig     version: {[minimum_version]}
-                \\
-                \\This is a developer error. Set `minimum_build_zig_version` in `build.zig` and `minimum_zig_version` in `build.zig.zon` to {[current_version]}.
-            , .{ .current_version = proj_version, .minimum_version = min_build_zig });
-            @compileError(message);
-        }
+    if (proj_version_is_tagged and
+        min_build_zig.minor != proj_version.minor and
+        min_build_zig.major != proj_version.major and
+        !min_zig_is_tagged)
+    {
+        const message = std.fmt.comptimePrint(
+            \\A tagged release should require a tagged release of Zig as the minimum build requirement:
+            \\          Project version: {[current_version]}
+            \\  minimum Zig     version: {[minimum_version]}
+            \\
+            \\This is a developer error. Set `minimum_build_zig_version` in `build.zig` and `minimum_zig_version` in `build.zig.zon` to {[current_version]}.
+        , .{ .current_version = proj_version, .minimum_version = min_build_zig });
+        @compileError(message);
     } else {
         const min_build_zig_simple = std.SemanticVersion{ .major = min_build_zig.major, .minor = min_build_zig.minor, .patch = 0 };
         const proj_version_simple = std.SemanticVersion{ .major = proj_version.major, .minor = proj_version.minor, .patch = 0 };
-        const min_zig_is_tagged = min_build_zig.build == null and min_build_zig.pre == null;
         if (!min_zig_is_tagged and proj_version_simple.order(min_build_zig_simple) != .eq) {
             const message = std.fmt.comptimePrint(
                 \\A development build should have a tagged release of Zig as the minimum build requirement or
