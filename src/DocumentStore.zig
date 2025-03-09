@@ -663,6 +663,7 @@ pub const Handle = struct {
         root_id_msg: {
             const config = build_file.tryLockConfig() orelse break :root_id_msg;
             defer build_file.unlockConfig();
+            if (config.roots.len == 0) return;
 
             const message = std.fmt.allocPrint(
                 ds.allocator,
