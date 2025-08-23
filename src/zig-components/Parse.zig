@@ -3448,7 +3448,7 @@ fn expectSwitchSuffix(p: *Parse, main_token: TokenIndex) !Node.Index {
 ///
 /// AsmInput <- COLON AsmInputList AsmClobbers?
 ///
-/// AsmClobbers <- COLON StringList
+/// AsmClobbers <- COLON Expr
 ///
 /// StringList <- (STRINGLITERAL COMMA)* STRINGLITERAL?
 ///
@@ -3503,13 +3503,21 @@ fn expectAsmExpr(p: *Parse) !Node.Index {
             }
         }
         if (p.eatToken(.colon)) |_| {
-            while (p.eatToken(.string_literal)) |_| {
-                switch (p.token_tags[p.tok_i]) {
-                    .comma => p.tok_i += 1,
-                    .colon, .r_paren, .r_brace, .r_bracket => break,
-                    // Likely just a missing comma; give error but continue parsing.
-                    else => try p.warnExpected(.comma),
+            if (p.token_tags[p.tok_i] == .string_literal) { // 0.14.x
+                while (p.eatToken(.string_literal)) |_| {
+                    switch (p.token_tags[p.tok_i]) {
+                        .comma => p.tok_i += 1,
+                        .colon, .r_paren, .r_brace, .r_bracket => break,
+                        // Likely just a missing comma; give error but continue parsing.
+                        else => try p.warnExpected(.comma),
+                    }
                 }
+            } else { // 0.15.x "compatibility"
+                const nl = p.nodes.len;
+                const sl = p.scratch.items.len;
+                _ = try p.expectExpr();
+                p.nodes.len = nl;
+                p.scratch.items.len = sl;
             }
         }
     }
