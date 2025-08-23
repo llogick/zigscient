@@ -23,7 +23,7 @@ pub const BuildConfig = struct {
         name: []const u8,
         path: []const u8,
     };
-    pub const AvailableOption = std.meta.FieldType(std.meta.FieldType(std.Build, .available_options_map).KV, .value);
+    pub const AvailableOption = if (@hasDecl(std.meta, "FieldType")) std.meta.FieldType(std.meta.FieldType(std.Build, .available_options_map).KV, .value) else @FieldType(@FieldType(std.Build, "available_options_map").KV, "value");
 };
 
 pub const Transport = struct {
@@ -132,6 +132,13 @@ pub const Transport = struct {
 };
 
 pub const ServerToClient = struct {
+    // 0.15.x build_runner
+    pub const Header = extern struct {
+        tag: Tag,
+        bytes_len: u32,
+    };
+
+    // 0.14.x build_runner
     pub const Tag = enum(u32) {
         /// Body is an ErrorBundle.
         watch_error_bundle,
@@ -153,7 +160,7 @@ pub const ServerToClient = struct {
 
 pub const BuildOnSaveSupport = union(enum) {
     supported,
-    invalid_linux_kernel_version: if (builtin.os.tag == .linux) std.meta.FieldType(std.posix.utsname, .release) else noreturn,
+    invalid_linux_kernel_version: if (builtin.os.tag == .linux) if (@hasDecl(std.meta, "FieldType")) std.meta.FieldType(std.posix.utsname, .release) else @FieldType(std.posix.utsname, "release") else noreturn,
     unsupported_linux_kernel_version: if (builtin.os.tag == .linux) std.SemanticVersion else noreturn,
     unsupported_zig_version,
     unsupported_os,

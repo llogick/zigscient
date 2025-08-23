@@ -1001,7 +1001,6 @@ pub fn updateConfiguration(
         server.runtime_zig_version = resolve_result.zig_runtime_version;
         break :blk resolve_result;
     };
-    defer resolve_result.deinit();
 
     // <---------------------------------------------------------->
     //                        apply changes
@@ -1305,7 +1304,7 @@ fn validateConfiguration(server: *Server, config: *configuration.Configuration) 
 }
 
 const ResolveConfigurationResult = struct {
-    zig_env: ?std.json.Parsed(configuration.Env),
+    zig_env: ?configuration.Env,
     zig_runtime_version: ?std.SemanticVersion,
     build_runner_version: union(enum) {
         /// If returned, guarantees `zig_runtime_version != null`.
@@ -1321,10 +1320,6 @@ const ResolveConfigurationResult = struct {
         .zig_runtime_version = null,
         .build_runner_version = .unresolved_dont_error,
     };
-
-    fn deinit(result: ResolveConfigurationResult) void {
-        if (result.zig_env) |parsed| parsed.deinit();
-    }
 };
 
 fn resolveConfiguration(
@@ -1341,7 +1336,6 @@ fn resolveConfiguration(
         .zig_runtime_version = null,
         .build_runner_version = .unresolved_dont_error,
     };
-    errdefer result.deinit();
 
     if (config.zig_exe_path == null) blk: {
         if (zig_builtin.is_test) unreachable;
@@ -1353,11 +1347,11 @@ fn resolveConfiguration(
 
     if (config.zig_exe_path) |exe_path| blk: {
         if (!std.process.can_spawn) break :blk;
-        result.zig_env = configuration.getZigEnv(allocator, exe_path);
+        result.zig_env = try configuration.getZigEnv(allocator, config_arena, exe_path);
         const env = result.zig_env orelse break :blk;
 
         if (config.zig_lib_path == null) {
-            if (env.value.lib_dir) |lib_dir| resolve_lib_failed: {
+            if (env.lib_dir) |lib_dir| resolve_lib_failed: {
                 if (std.fs.path.isAbsolute(lib_dir)) {
                     config.zig_lib_path = try config_arena.dupe(u8, lib_dir);
                 } else {
@@ -1374,7 +1368,7 @@ fn resolveConfiguration(
             }
         }
 
-        const version_string_duped = try config_arena.dupe(u8, env.value.version);
+        const version_string_duped = try config_arena.dupe(u8, env.version);
         result.zig_runtime_version = std.SemanticVersion.parse(version_string_duped) catch |err| {
             log.err("zig env returned a zig version that is an invalid semantic version: {}", .{err});
             break :blk;

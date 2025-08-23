@@ -5,6 +5,7 @@ const build_options = @import("build_options");
 /// There should be no need to have a build runner for minor patches (e.g. 0.10.1)
 /// The GitHub matrix in `.github\workflows\build_runner.yml` should be updated to check Zig master with the latest build runner file.
 pub const BuildRunnerVersion = enum {
+    @"0.15.0",
     @"0.14.0",
     @"0.13.0",
     @"0.12.0",
@@ -31,8 +32,8 @@ pub const BuildRunnerVersion = enum {
 
     pub fn getBuildRunnerFile(version: BuildRunnerVersion) [:0]const u8 {
         return switch (version) {
-            .@"0.14.0",
-            => @embedFile("0.14.0.zig"),
+            .@"0.15.0" => @embedFile("0.15.0.zig"),
+            .@"0.14.0" => @embedFile("0.14.0.zig"),
             .@"0.13.0",
             .@"0.12.0",
             => @embedFile("legacy.zig"),
