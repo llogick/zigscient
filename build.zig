@@ -6,7 +6,8 @@ const builtin = @import("builtin");
 const proj_version: std.SemanticVersion = .{
     .major = 0,
     .minor = 14,
-    .patch = 1,
+    .patch = 15,
+    .pre = "rc1",
 };
 
 /// Specify the minimum Zig version that is required to compile and test the project:
@@ -441,7 +442,7 @@ fn getVersion(b: *Build) std.SemanticVersion {
                 .major = proj_version.major,
                 .minor = proj_version.minor,
                 .patch = proj_version.patch,
-                .pre = b.fmt("dev.{s}", .{commit_height}),
+                .pre = b.fmt("{s}.{s}", .{ proj_version.pre orelse "dev", commit_height }),
                 .build = commit_id[1..],
             };
         },
@@ -504,8 +505,6 @@ const Build = blk: {
     const min_build_zig = std.SemanticVersion.parse(minimum_build_zig_version) catch unreachable;
     const min_zig_is_tagged = min_build_zig.build == null and min_build_zig.pre == null;
 
-    std.debug.assert(proj_version.pre == null or std.mem.eql(u8, proj_version.pre.?, "dev"));
-    std.debug.assert(proj_version.build == null);
     const proj_version_is_tagged = proj_version.pre == null and proj_version.build == null;
 
     const min_runtime_zig = std.SemanticVersion.parse(minimum_runtime_zig_version) catch unreachable;
