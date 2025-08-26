@@ -660,7 +660,7 @@ fn initializedHandler(server: *Server, _: std.mem.Allocator, notification: types
             server.workspaces.items[0].uri, // more than 1?
         ) catch null;
         if (server.config.ws_build_zig) |ws_build_zig| {
-            server.document_store.config = DocumentStore.Config.fromMainConfig(server.config);
+            server.document_store.config = DocumentStore.Config.fromMainConfig(server.config, server.runtime_zig_version);
             _ = server.document_store.getOrLoadHandle(ws_build_zig); // Should trigger getOrLoadBuildFile too
             log.info("WS: Project configuration file: '{s}'", .{ws_build_zig});
         }
@@ -1056,7 +1056,7 @@ pub fn updateConfiguration(
     const new_build_on_save_args = has_changed[std.meta.fieldIndex(Config, "build_on_save_args").?];
     const new_force_autofix = has_changed[std.meta.fieldIndex(Config, "enable_autofix").?];
 
-    server.document_store.config = DocumentStore.Config.fromMainConfig(server.config);
+    server.document_store.config = DocumentStore.Config.fromMainConfig(server.config, server.runtime_zig_version);
 
     if (new_zig_exe_path or new_build_runner_path) blk: {
         if (!std.process.can_spawn) break :blk;
@@ -1955,7 +1955,7 @@ pub fn create(allocator: std.mem.Allocator) !*Server {
         .config = .{},
         .document_store = .{
             .allocator = allocator,
-            .config = DocumentStore.Config.fromMainConfig(Config{}),
+            .config = DocumentStore.Config.fromMainConfig(Config{}, server.runtime_zig_version),
             .server = server,
         },
         .job_queue = std.fifo.LinearFifo(Job, .Dynamic).init(allocator),

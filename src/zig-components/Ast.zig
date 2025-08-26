@@ -89,6 +89,7 @@ pub fn parse(
     source: [:0]const u8,
     mode: StdAst.Mode,
     reusable_data: *const ReusableData,
+    rt_zig_ver: ?std.SemanticVersion,
 ) !Ast {
     // std.log.debug("parse rd: {}", .{reusable_data});
     var tokens, const src_idx = switch (reusable_data.*.tokens) {
@@ -98,7 +99,7 @@ pub fn parse(
     };
     errdefer if (reusable_data.nodes != .span) tokens.deinit(gpa);
 
-    if (reusable_data.*.tokens != .full) {
+    if (reusable_data.*.tokens != .full) tokenize: {
         // Empirically, the zig std lib has an 8:1 ratio of source bytes to token count.
         const estimated_token_count = source.len / 8;
         try tokens.ensureTotalCapacity(gpa, estimated_token_count);
@@ -107,6 +108,28 @@ pub fn parse(
             .buffer = source,
             .index = src_idx,
         };
+
+        if (allowed_to_manipulate_token_tags) mtt: {
+            const rtzv = rt_zig_ver orelse break :mtt;
+            if (rtzv.minor > 14) {
+                while (true) {
+                    var token = tokenizer.next();
+                    switch (token.tag) {
+                        .keyword_usingnamespace,
+                        .keyword_async,
+                        .keyword_await,
+                        => token.tag = .identifier,
+                        else => {},
+                    }
+                    try tokens.append(gpa, .{
+                        .tag = token.tag,
+                        .start = @as(u32, @intCast(token.loc.start)),
+                    });
+                    if (token.tag == .eof) break;
+                }
+                break :tokenize;
+            }
+        }
 
         while (true) {
             const token = tokenizer.next();
@@ -1445,6 +1468,7 @@ fn genTokenList(
     new_source: [:0]const u8,
     indices: *const TextAndTokenIndices,
     tokens_delta: *Delta,
+    rt_zig_ver: ?std.SemanticVersion,
 ) !StdAst.TokenList {
     const thead_indices = std_ast.tokens.items(.start);
     const ttags = std_ast.tokens.items(.tag);
@@ -1526,7 +1550,7 @@ fn genTokenList(
     const reused_tokens_len = new_tokens.len;
     // std;
     while (true) {
-        const token = tokenizer.next();
+        var token = tokenizer.next();
         // if (token.tag == .eof) @panic("brah");
         // std.log.debug("newtok: {}", .{token});
         if ((token.loc.start >= switch (text_delta.op) {
@@ -1534,6 +1558,18 @@ fn genTokenList(
             .sub => indices.txt_idx_hi - text_delta.value,
         })) break;
         // std.log.debug("adding: {}", .{token});
+        if (allowed_to_manipulate_token_tags) mtt: {
+            const rtzv = rt_zig_ver orelse break :mtt;
+            if (rtzv.minor > 14) {
+                switch (token.tag) {
+                    .keyword_usingnamespace,
+                    .keyword_async,
+                    .keyword_await,
+                    => token.tag = .identifier,
+                    else => {},
+                }
+            }
+        }
         try new_tokens.append(gpa, .{
             .tag = token.tag,
             .start = @as(u32, @intCast(token.loc.start)),
@@ -1603,6 +1639,7 @@ pub fn derive(
     std_ast: *StdAst,
     nstates: Parse.States,
     content_changes: *const ContentChanges,
+    rt_zig_ver: ?std.SemanticVersion,
 ) !Ast {
     switch (std_ast.mode) {
         .zon => return parse(
@@ -1610,6 +1647,7 @@ pub fn derive(
             content_changes.text,
             .zon,
             &.{},
+            rt_zig_ver,
         ) catch |err| switch (err) {
             error.OutOfMemory => |e| return e,
             error.OvershotCutOff => unreachable,
@@ -1633,6 +1671,7 @@ pub fn derive(
                 content_changes.text,
                 &indices,
                 &tokens_delta,
+                rt_zig_ver,
             );
             defer tokens.deinit(gpa);
 
@@ -1839,6 +1878,7 @@ pub fn derive(
             content_changes.text,
             std_ast.mode,
             &reusable_data,
+            rt_zig_ver,
         ) catch |err| switch (err) {
             error.OutOfMemory => |e| return e,
             error.OvershotCutOff => unreachable,
@@ -1860,6 +1900,18 @@ const ContentChanges = @import("../diff.zig").ContentChanges;
 
 pub const State = Parse.State;
 pub const States = Parse.States;
+
+const build_info = @import("builtin");
+
+pub const runtime_safety = switch (build_info.mode) {
+    .Debug, .ReleaseSafe => true,
+    .ReleaseFast, .ReleaseSmall => false,
+};
+
+// We cannot manipulate token tags in safety builds because AstGen does its own tokenization
+// calling std.zig.Ast.tokenslice fn which includes a `assert(token.tag == token_tag);`
+const I_have_deleted_the_assert_Zig014dir_lib_std_zig_Ast_tokenSlice_fn_line198 = false;
+const allowed_to_manipulate_token_tags = !runtime_safety or I_have_deleted_the_assert_Zig014dir_lib_std_zig_Ast_tokenSlice_fn_line198;
 
 test {
     testing.refAllDecls(@This());

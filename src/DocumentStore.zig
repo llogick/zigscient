@@ -55,8 +55,9 @@ pub const Config = struct {
     builtin_path: ?[]const u8,
     global_cache_path: ?[]const u8,
     ws_build_zig: ?[]const u8,
+    rt_zig_ver: ?std.SemanticVersion,
 
-    pub fn fromMainConfig(config: @import("Config.zig")) Config {
+    pub fn fromMainConfig(config: @import("Config.zig"), rt_zig_ver: ?std.SemanticVersion) Config {
         return .{
             .zig_exe_path = config.zig_exe_path,
             .zig_lib_path = config.zig_lib_path,
@@ -64,6 +65,7 @@ pub const Config = struct {
             .builtin_path = config.builtin_path,
             .global_cache_path = config.global_cache_path,
             .ws_build_zig = config.ws_build_zig,
+            .rt_zig_ver = rt_zig_ver,
         };
     }
 };
@@ -277,7 +279,7 @@ pub const Handle = struct {
     };
 
     /// takes ownership of `text`
-    pub fn init(allocator: std.mem.Allocator, uri: Uri, text: [:0]const u8) error{OutOfMemory}!Handle {
+    pub fn init(allocator: std.mem.Allocator, uri: Uri, text: [:0]const u8, rt_zig_ver: ?std.SemanticVersion) error{OutOfMemory}!Handle {
         const duped_uri = try allocator.dupe(u8, uri);
         errdefer allocator.free(duped_uri);
 
@@ -286,6 +288,7 @@ pub const Handle = struct {
             text,
             if (std.mem.eql(u8, std.fs.path.extension(uri), ".zon")) .zon else .zig,
             &.{},
+            rt_zig_ver,
         ) catch |err| switch (err) {
             error.OutOfMemory => |e| return e,
             error.OvershotCutOff => unreachable,
@@ -556,6 +559,7 @@ pub const Handle = struct {
     fn setSource(
         self: *Handle,
         content_changes: ContentChanges,
+        rt_zig_ver: ?std.SemanticVersion,
     ) error{OutOfMemory}!void {
         const tracy_zone = tracy.trace(@src());
         defer tracy_zone.end();
@@ -571,6 +575,7 @@ pub const Handle = struct {
             &self.tree,
             self.tree_nstates,
             &content_changes,
+            rt_zig_ver,
         );
 
         self.impl.lock.lock();
@@ -899,7 +904,9 @@ pub fn refreshDocument(self: *DocumentStore, handle: *Handle, content_changes: C
     if (!handle.getStatus().open) {
         log.warn("Document modified without being opened: {s}", .{handle.uri});
     }
-    try handle.setSource(content_changes);
+
+    try handle.setSource(content_changes, self.config.rt_zig_ver);
+
     handle.import_uris = try self.collectImportUris(handle);
     handle.cimports = try collectCIncludes(self.allocator, handle.tree);
 }
@@ -1546,7 +1553,7 @@ fn createDocument(self: *DocumentStore, uri: Uri, text: [:0]const u8, open: bool
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    var handle = try Handle.init(self.allocator, uri, text);
+    var handle = try Handle.init(self.allocator, uri, text, self.config.rt_zig_ver);
     errdefer handle.deinit();
 
     _ = handle.setOpen(open);

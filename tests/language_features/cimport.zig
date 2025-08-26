@@ -111,7 +111,7 @@ fn testTranslate(c_source: []const u8) !translate_c.Result {
 
     var result = (try translate_c.translate(
         allocator,
-        zls.DocumentStore.Config.fromMainConfig(ctx.server.config),
+        zls.DocumentStore.Config.fromMainConfig(ctx.server.config, null),
         &.{},
         &.{},
         c_source,
