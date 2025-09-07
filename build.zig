@@ -7,7 +7,6 @@ const proj_version: std.SemanticVersion = .{
     .major = 0,
     .minor = 14,
     .patch = 15,
-    .pre = "rc1",
 };
 
 /// Specify the minimum Zig version that is required to compile and test the project:
