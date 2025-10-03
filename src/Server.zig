@@ -1520,6 +1520,8 @@ fn changeDocumentHandler(server: *Server, _: std.mem.Allocator, notification: ty
 
     handle.handleRootIdComment(&server.document_store, false);
 
+    handle.setChangePending(false);
+
     if (server.client_capabilities.supports_publish_diagnostics) {
         try server.pushJob(.{
             .generate_diagnostics = try server.allocator.dupe(u8, handle.uri),
@@ -2032,6 +2034,18 @@ pub fn loop(server: *Server) !void {
 
             switch (job.syncMode()) {
                 .exclusive => {
+                    switch (job) {
+                        .incoming_message => |parsed_message| {
+                            if (parsed_message.value == .notification and
+                                parsed_message.value.notification.params == .@"textDocument/didChange")
+                            {
+                                if (server.document_store.getHandle(parsed_message.value.notification.params.@"textDocument/didChange".textDocument.uri)) |handle| {
+                                    handle.setChangePending(true);
+                                }
+                            }
+                        },
+                        else => {},
+                    }
                     server.waitAndWork();
                     server.processJob(job, null);
                 },
@@ -2230,6 +2244,10 @@ fn processJob(server: *Server, job: Job, wait_group: ?*std.Thread.WaitGroup) voi
         },
         .generate_diagnostics => |uri| {
             const handle = server.document_store.getHandle(uri) orelse return;
+            if (handle.getChangePending() == true) {
+                // std.log.info("!genDiag  : early exit", .{});
+                return;
+            }
             diagnostics_gen.generateDiagnostics(server, handle) catch return;
         },
         .run_build_on_save => {

@@ -209,6 +209,9 @@ pub const Handle = struct {
 
     closest_build_zig: ?[]const u8 = null,
 
+    // Set by the main thread / read by server.generateDiagnostics and AstCheck
+    change_pending: std.atomic.Value(bool) = .init(false),
+
     /// private field
     impl: struct {
         /// @bitCast from/to `Status`
@@ -508,13 +511,8 @@ pub const Handle = struct {
                     const tracy_zone_inner = tracy.traceNamed(@src(), "AstGen.generate");
                     defer tracy_zone_inner.end();
 
-                    var zir = try std.zig.AstGen.generate(self.impl.allocator, self.tree);
+                    var zir = try @import("zig-components/AstCheck.zig").generate(self.impl.allocator, self.tree, &self.change_pending);
                     errdefer zir.deinit(self.impl.allocator);
-
-                    // remove unused capacity
-                    var instructions = zir.instructions.toMultiArrayList();
-                    try instructions.setCapacity(self.impl.allocator, instructions.len);
-                    zir.instructions = instructions.slice();
 
                     self.impl.zir = zir;
                 },
@@ -554,6 +552,14 @@ pub const Handle = struct {
         } else {
             return self.impl.status.bitReset(@offsetOf(Handle.Status, "open"), .release) == 1;
         }
+    }
+
+    pub fn setChangePending(self: *Handle, value: bool) void {
+        self.change_pending.store(value, .release);
+    }
+
+    pub fn getChangePending(self: *const Handle) bool {
+        return self.change_pending.load(.acquire);
     }
 
     fn setSource(
