@@ -20,7 +20,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         zig:
-          - version: master
+          - version: 0.15.1
+            build-runner-file: 0.15.0.zig
+          - version: 0.14.1
             build-runner-file: 0.14.0.zig
           - version: 0.13.0
             build-runner-file: legacy.zig
@@ -31,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: mlugg/setup-zig@v1
+      - uses: mlugg/setup-zig@v2
         with:
           version: ${{ matrix.zig.version }}
 
