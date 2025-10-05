@@ -24,6 +24,9 @@ states: Parse.InternalStates,
 
 errors: []const std.zig.Ast.Error,
 
+/// Determines whether to manipulate select tokens tags, eg .keyword_async => .identifier
+rt_zig_ver: ?std.SemanticVersion,
+
 pub const ByteOffset = u32;
 
 pub const TokenInfo = struct {
@@ -79,7 +82,13 @@ pub fn destroy(ast: *Ast) void {
 pub const Kind = std.zig.Ast.Mode; // enum { zig, zon };
 pub const Mode = enum { standard, extended };
 /// Result shall be freed with .deinit(), takes ownership of the slice
-pub fn createFromBytesSlice(gpa: Allocator, source: [:0]const u8, kind: Kind, mode: Mode) Allocator.Error!Ast {
+pub fn createFromBytesSlice(
+    gpa: Allocator,
+    source: [:0]const u8,
+    kind: Kind,
+    mode: Mode,
+    rt_zig_ver: ?std.SemanticVersion,
+) Allocator.Error!Ast {
     var bytes: std.ArrayListUnmanaged(u8) = try .initCapacity(gpa, source.len + 1);
     errdefer bytes.deinit(gpa);
 
@@ -88,11 +97,17 @@ pub fn createFromBytesSlice(gpa: Allocator, source: [:0]const u8, kind: Kind, mo
     bytes.items[bytes.items.len - 1] = 0x00;
 
     defer gpa.free(source);
-    return createFromBytesArray(gpa, bytes, kind, mode);
+    return createFromBytesArray(gpa, bytes, kind, mode, rt_zig_ver);
 }
 
 /// Result shall be freed with .deinit(), takes ownership of the array
-pub fn createFromBytesArray(gpa: Allocator, bytes: std.ArrayListUnmanaged(u8), kind: Kind, mode: Mode) Allocator.Error!Ast {
+pub fn createFromBytesArray(
+    gpa: Allocator,
+    bytes: std.ArrayListUnmanaged(u8),
+    kind: Kind,
+    mode: Mode,
+    rt_zig_ver: ?std.SemanticVersion,
+) Allocator.Error!Ast {
     var tokens: TokenList = .empty;
     defer tokens.deinit(gpa);
 
@@ -106,7 +121,19 @@ pub fn createFromBytesArray(gpa: Allocator, bytes: std.ArrayListUnmanaged(u8), k
 
     var tokenizer = Tokenizer.init(source);
     while (true) {
-        const token = tokenizer.next();
+        var token = tokenizer.next();
+        if (allowed_to_manipulate_token_tags) mtt: {
+            const rtzv = rt_zig_ver orelse break :mtt;
+            if (rtzv.minor > 14) {
+                switch (token.tag) {
+                    .keyword_usingnamespace,
+                    .keyword_async,
+                    .keyword_await,
+                    => token.tag = .identifier,
+                    else => {},
+                }
+            }
+        }
         try tokens.append(gpa, .{
             .tag = token.tag,
             .start = @intCast(token.loc.start),
@@ -158,6 +185,7 @@ pub fn createFromBytesArray(gpa: Allocator, bytes: std.ArrayListUnmanaged(u8), k
         .extra_data = parser.extra_data.items[0..],
         .errors = errors,
         .states = parser.states,
+        .rt_zig_ver = rt_zig_ver,
     };
 
     return ast;
@@ -391,11 +419,23 @@ fn updateTokens(
     };
 
     while (true) {
-        const token = tokenizer.next();
+        var token = tokenizer.next();
         // std.log.debug("newtok: {}", .{token});
         if (token.tag == .eof or (token.loc.start > upper_tokenize_byt_idx)) {
             // std.log.debug("break@: {}", .{token});
             break;
+        }
+        if (allowed_to_manipulate_token_tags) mtt: {
+            const rtzv = ast.rt_zig_ver orelse break :mtt;
+            if (rtzv.minor > 14) {
+                switch (token.tag) {
+                    .keyword_usingnamespace,
+                    .keyword_async,
+                    .keyword_await,
+                    => token.tag = .identifier,
+                    else => {},
+                }
+            }
         }
         // std.log.debug("adding: {}", .{token});
         try new_tokens.append(ast.gpa, .{
@@ -458,7 +498,7 @@ pub fn update(
         return;
     }
     ast.deinitAllButSourceBytes();
-    ast.* = try createFromBytesArray(ast.gpa, ast.bytes, ast.kind, ast.mode);
+    ast.* = try createFromBytesArray(ast.gpa, ast.bytes, ast.kind, ast.mode, ast.rt_zig_ver);
 }
 
 fn reuseRootDecls(ast: *Ast, indices: AffectedIndices) Allocator.Error!bool {

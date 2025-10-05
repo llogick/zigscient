@@ -293,13 +293,18 @@ pub const Handle = struct {
         rt_zig_ver: ?std.SemanticVersion,
         open: bool,
     ) error{OutOfMemory}!Handle {
-        _ = rt_zig_ver; // autofix
         const duped_uri = try allocator.dupe(u8, uri);
         errdefer allocator.free(duped_uri);
 
         const kind: CustomAst.Kind = if (std.mem.eql(u8, std.fs.path.extension(uri), ".zon")) .zon else .zig;
 
-        const custom_ast = try CustomAst.createFromBytesSlice(allocator, text, kind, if (open) .extended else .standard);
+        const custom_ast = try CustomAst.createFromBytesSlice(
+            allocator,
+            text,
+            kind,
+            if (open) .extended else .standard,
+            rt_zig_ver,
+        );
         errdefer custom_ast.destroy();
 
         const std_ast = custom_ast.toStdAst();
@@ -926,7 +931,6 @@ pub fn refreshDocument(
     try handle.applyContentChanges(
         content_changes,
         encoding,
-        // self.config.rt_zig_ver,
     );
 
     handle.import_uris = try self.collectImportUris(handle);
