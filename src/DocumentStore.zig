@@ -199,9 +199,13 @@ pub const BuildFile = struct {
 /// Represents a Zig source file.
 pub const Handle = struct {
     uri: Uri,
+    /// Custom AST with extra data. Must be freed with .deinit
+    ast: CustomAst,
+
+    /// std.zig.Ast compatible mapping of the custom AST ('ast`)
+    /// Never .deinit directly
     tree: StdAst,
-    // Owned by `tree`
-    tree_nstates: CustomAst.States,
+
     /// Contains one entry for every import in the document
     import_uris: std.ArrayListUnmanaged(Uri) = .{},
     /// Contains one entry for every cimport in the document
@@ -282,34 +286,28 @@ pub const Handle = struct {
     };
 
     /// takes ownership of `text`
-    pub fn init(allocator: std.mem.Allocator, uri: Uri, text: [:0]const u8, rt_zig_ver: ?std.SemanticVersion) error{OutOfMemory}!Handle {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        uri: Uri,
+        text: [:0]const u8,
+        rt_zig_ver: ?std.SemanticVersion,
+        open: bool,
+    ) error{OutOfMemory}!Handle {
+        _ = rt_zig_ver; // autofix
         const duped_uri = try allocator.dupe(u8, uri);
         errdefer allocator.free(duped_uri);
 
-        const custom_ast = CustomAst.parse(
-            allocator,
-            text,
-            if (std.mem.eql(u8, std.fs.path.extension(uri), ".zon")) .zon else .zig,
-            &.{},
-            rt_zig_ver,
-        ) catch |err| switch (err) {
-            error.OutOfMemory => |e| return e,
-            error.OvershotCutOff => unreachable,
-        };
+        const kind: CustomAst.Kind = if (std.mem.eql(u8, std.fs.path.extension(uri), ".zon")) .zon else .zig;
 
-        const std_ast = StdAst{
-            .source = custom_ast.source,
-            .mode = custom_ast.mode,
-            .tokens = custom_ast.tokens,
-            .nodes = custom_ast.nodes,
-            .extra_data = custom_ast.extra_data,
-            .errors = custom_ast.errors,
-        };
+        const custom_ast = try CustomAst.createFromBytesSlice(allocator, text, kind, if (open) .extended else .standard);
+        errdefer custom_ast.destroy();
+
+        const std_ast = custom_ast.toStdAst();
 
         return .{
             .uri = duped_uri,
+            .ast = custom_ast,
             .tree = std_ast,
-            .tree_nstates = custom_ast.nstates,
             .impl = .{
                 .allocator = allocator,
             },
@@ -562,72 +560,73 @@ pub const Handle = struct {
         return self.change_pending.load(.acquire);
     }
 
-    fn setSource(
+    pub fn applyContentChanges(
         self: *Handle,
-        content_changes: ContentChanges,
-        rt_zig_ver: ?std.SemanticVersion,
-    ) error{OutOfMemory}!void {
+        content_changes: []const lsp.types.TextDocumentContentChangeEvent,
+        encoding: offsets.Encoding,
+    ) error{ OutOfMemory, InternalError }!void {
         const tracy_zone = tracy.trace(@src());
         defer tracy_zone.end();
 
-        const gpa = self.*.impl.allocator;
+        const prev_bytes_len = self.ast.bytes.items.len;
 
-        const new_status = Handle.Status{
-            .open = self.getStatus().open,
+        // lowest and highest indexes affected by the change(s)
+        var idx_lo: u32, //
+        var idx_hi: u32, //
+        const last_full_text_index //
+        = blk: {
+            var i: u32 = @intCast(content_changes.len -| 1);
+            while (i != 0) : (i -= 1) {
+                switch (content_changes[i]) {
+                    // TextDocumentContentChangePartial
+                    .literal_0 => continue,
+                    // TextDocumentContentChangeWholeDocument
+                    .literal_1 => |content_change| {
+                        try self.ast.bytes.replaceRange(self.ast.gpa, 0, self.ast.bytes.items.len - 1, content_change.text);
+                        break :blk .{ 0, @intCast(self.ast.bytes.items.len - 1), i };
+                    },
+                }
+            }
+            break :blk .{ @intCast(self.ast.bytes.items.len - 1), 0, null };
         };
 
-        const custom_ast: CustomAst = try .derive(
-            gpa,
-            &self.tree,
-            self.tree_nstates,
-            &content_changes,
-            rt_zig_ver,
-        );
+        // don't even bother applying changes before a full text change
+        const changes = content_changes[if (last_full_text_index) |index| index + 1 else 0..];
 
-        self.impl.lock.lock();
-        errdefer @compileError("");
+        for (changes) |item| {
+            const content_change = item.literal_0; // TextDocumentContentChangePartial
 
-        const old_status: Handle.Status = @bitCast(self.impl.status.swap(@bitCast(new_status), .acq_rel));
+            const loc = offsets.rangeToLoc(self.ast.bytes.items, content_change.range, encoding);
 
-        var old_tree = self.tree;
-        var old_tree_nstates = self.tree_nstates;
-        var old_import_uris = self.import_uris;
-        var old_cimports = self.cimports;
-        var old_document_scope = if (old_status.has_document_scope) self.impl.document_scope else null;
-        var old_zir = if (old_status.has_zir) self.impl.zir else null;
-        var old_zoir = if (old_status.has_zoir) self.impl.zoir else null;
+            if (loc.start < idx_lo) idx_lo = @intCast(loc.start);
+            const upper_index: u32 = @intCast(loc.end);
+            if (idx_hi < upper_index) idx_hi = upper_index;
 
-        const new_tree: StdAst = .{
-            .source = custom_ast.source,
-            .mode = custom_ast.mode,
-            .tokens = custom_ast.tokens,
-            .nodes = custom_ast.nodes,
-            .extra_data = custom_ast.extra_data,
-            .errors = custom_ast.errors,
-        };
+            try self.ast.bytes.replaceRange(self.ast.gpa, loc.start, loc.end - loc.start, content_change.text);
+        }
 
-        self.tree = new_tree;
-        self.tree_nstates = custom_ast.nstates;
+        std.debug.assert(self.ast.bytes.items[self.ast.bytes.items.len - 1] == 0);
+
+        if (self.ast.bytes.items.len > DocumentStore.max_document_size) {
+            log.err("change document '{s}' failed: text size ({d}) is above maximum length ({d})", .{
+                self.uri,
+                self.ast.bytes.items.len,
+                DocumentStore.max_document_size,
+            });
+            return error.InternalError;
+        }
+
+        try self.ast.update(@intCast(prev_bytes_len), idx_lo, idx_hi);
+
+        self.deinitAstDeps();
+
+        self.impl.status = .init(@bitCast(Status{ .open = self.getStatus().open }));
+
+        self.tree = self.ast.toStdAst();
         self.import_uris = .{};
         self.cimports = .{};
         self.impl.document_scope = undefined;
         self.impl.zir = undefined;
-
-        self.impl.lock.unlock();
-
-        old_tree_nstates.deinit(gpa);
-        self.impl.allocator.free(old_tree.source);
-        old_tree.deinit(self.impl.allocator);
-
-        for (old_import_uris.items) |uri| self.impl.allocator.free(uri);
-        old_import_uris.deinit(self.impl.allocator);
-
-        for (old_cimports.items(.source)) |source| self.impl.allocator.free(source);
-        old_cimports.deinit(self.impl.allocator);
-
-        if (old_document_scope) |*document_scope| document_scope.deinit(self.impl.allocator);
-        if (old_zir) |*zir| zir.deinit(self.impl.allocator);
-        if (old_zoir) |*zoir| zoir.deinit(self.impl.allocator);
     }
 
     // IF this handle is also a BuildFile scan for `$ls root_id N` and apply
@@ -698,7 +697,7 @@ pub const Handle = struct {
         }
     }
 
-    fn deinit(self: *Handle) void {
+    fn deinitAstDeps(self: *Handle) void {
         const tracy_zone = tracy.trace(@src());
         defer tracy_zone.end();
 
@@ -709,16 +708,22 @@ pub const Handle = struct {
         if (status.has_zir) self.impl.zir.deinit(allocator);
         if (status.has_zoir) self.impl.zoir.deinit(allocator);
         if (status.has_document_scope) self.impl.document_scope.deinit(allocator);
-        self.tree_nstates.deinit(allocator);
-        allocator.free(self.tree.source);
-        self.tree.deinit(allocator);
-        allocator.free(self.uri);
 
         for (self.import_uris.items) |uri| allocator.free(uri);
         self.import_uris.deinit(allocator);
 
         for (self.cimports.items(.source)) |source| allocator.free(source);
         self.cimports.deinit(allocator);
+    }
+
+    fn deinit(self: *Handle) void {
+        const tracy_zone = tracy.trace(@src());
+        defer tracy_zone.end();
+
+        const allocator = self.impl.allocator;
+
+        self.deinitAstDeps();
+        self.ast.destroy();
 
         if (self.closest_build_zig) |uri| allocator.free(uri);
 
@@ -726,6 +731,8 @@ pub const Handle = struct {
             .none, .resolved => {},
             .unresolved => |*payload| payload.deinit(allocator),
         }
+
+        allocator.free(self.uri);
 
         self.* = undefined;
     }
@@ -903,7 +910,12 @@ pub fn closeDocument(self: *DocumentStore, uri: Uri) void {
 ///
 /// **Thread safe** takes a shared lock when called on different documents
 /// **Not thread safe** when called on the same document
-pub fn refreshDocument(self: *DocumentStore, handle: *Handle, content_changes: ContentChanges) !void {
+pub fn refreshDocument(
+    self: *DocumentStore,
+    handle: *Handle,
+    content_changes: []const lsp.types.TextDocumentContentChangeEvent,
+    encoding: offsets.Encoding,
+) !void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -911,7 +923,11 @@ pub fn refreshDocument(self: *DocumentStore, handle: *Handle, content_changes: C
         log.warn("Document modified without being opened: {s}", .{handle.uri});
     }
 
-    try handle.setSource(content_changes, self.config.rt_zig_ver);
+    try handle.applyContentChanges(
+        content_changes,
+        encoding,
+        // self.config.rt_zig_ver,
+    );
 
     handle.import_uris = try self.collectImportUris(handle);
     handle.cimports = try collectCIncludes(self.allocator, handle.tree);
@@ -1559,7 +1575,7 @@ fn createDocument(self: *DocumentStore, uri: Uri, text: [:0]const u8, open: bool
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    var handle = try Handle.init(self.allocator, uri, text, self.config.rt_zig_ver);
+    var handle = try Handle.init(self.allocator, uri, text, self.config.rt_zig_ver, open);
     errdefer handle.deinit();
 
     _ = handle.setOpen(open);
