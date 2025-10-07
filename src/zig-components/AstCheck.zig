@@ -9431,7 +9431,10 @@ fn builtinCall(
     const main_tokens = tree.nodes.items(.main_token);
 
     const builtin_token = main_tokens[node];
-    const builtin_name = tree.tokenSlice(builtin_token);
+    var builtin_name = tree.tokenSlice(builtin_token);
+
+    // rather not report the error in 0.14 projects than have a false positive error in 0.15 projects
+    if (std.mem.eql(u8, builtin_name, "@memmove")) builtin_name = "@memcpy";
 
     // We handle the different builtins manually because they have different semantics depending
     // on the function. For example, `@as` and others participate in result location semantics,
