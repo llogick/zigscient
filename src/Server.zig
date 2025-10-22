@@ -1504,14 +1504,14 @@ fn openDocumentHandler(server: *Server, _: std.mem.Allocator, notification: type
 fn changeDocumentHandler(server: *Server, _: std.mem.Allocator, notification: types.DidChangeTextDocumentParams) Error!void {
     const handle = server.document_store.getHandle(notification.textDocument.uri) orelse return;
 
-    const nts1: i64 = @intCast(std.time.nanoTimestamp());
+    // const nts1: i64 = @intCast(std.time.nanoTimestamp());
 
     try server.document_store.refreshDocument(handle, notification.contentChanges, server.offset_encoding);
     handle.handleRootIdComment(&server.document_store, false);
     handle.setChangePending(false);
 
-    const nts2: i64 = @intCast(std.time.nanoTimestamp());
-    std.log.err("chng: {}", .{std.fmt.fmtDurationSigned(nts2 - nts1)});
+    // const nts2: i64 = @intCast(std.time.nanoTimestamp());
+    // std.log.err("chng: {}", .{std.fmt.fmtDurationSigned(nts2 - nts1)});
 
     if (server.client_capabilities.supports_publish_diagnostics) {
         try server.pushJob(.{
