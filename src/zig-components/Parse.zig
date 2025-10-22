@@ -3,6 +3,7 @@
 pub const Error = error{ParseError} || Allocator.Error;
 
 gpa: Allocator,
+mode: Ast.Mode,
 source: [:0]const u8,
 token_tags: []const Token.Tag,
 token_starts: []const Ast.ByteOffset,
@@ -11,18 +12,63 @@ errors: std.ArrayListUnmanaged(AstError),
 nodes: Ast.NodeList,
 extra_data: std.ArrayListUnmanaged(Node.Index),
 scratch: std.ArrayListUnmanaged(Node.Index),
-nstates: States,
+states: InternalStates,
 
-/// More like snapshots.
-/// The lengths and tok idx recorded at the end of a successful parse of a root decl
-pub const State = struct {
-    nodes_len: usize,
-    xdata_len: usize,
-    token_ind: u32,
+/// These are used only while parsing root decls, subcontainers use dedicated stack vars.
+/// Required so we can correctly emit .decl_between_fields, .previous_field and .next_field,
+/// (Given that we reparse only a subrange or root decls, we need to know the previous states of these values for ranges we don't reparse)
+field_state: FieldState = .none,
+last_field: TokenIndex = undefined,
+
+pub const InternalState = struct {
+    nodes_len: u32,
+    xdata_len: u32,
+    token_idx: u32,
+    errors_len: u32,
+    field_state: FieldState,
+    last_field: TokenIndex,
 
     pub const zero: @This() = .{ .nodes_len = 0, .xdata_len = 0, .token_ind = 0 };
+
+    /// Initializes and returns an InternalState based on the current parser values
+    /// or 'undefined' if p.mode != .extended
+    pub fn current(p: *Parse) InternalState {
+        return if (p.mode == .extended) .{
+            .nodes_len = @intCast(p.nodes.len),
+            .xdata_len = @intCast(p.extra_data.items.len),
+            .token_idx = p.tok_i,
+            .errors_len = @intCast(p.errors.items.len),
+            .field_state = p.field_state,
+            .last_field = p.last_field,
+        } else undefined;
+    }
+
+    /// Initializes and returns an InternalState based on the current parser values
+    /// or 'undefined' if p.mode != .extended
+    pub fn currentBacktrackDocCommentsTokens(p: *Parse, maybe_doc_comment_token_index: ?TokenIndex) InternalState {
+        return if (p.mode == .extended) .{
+            .nodes_len = @intCast(p.nodes.len),
+            .xdata_len = @intCast(p.extra_data.items.len),
+            .token_idx = if (maybe_doc_comment_token_index) |doc_comment_token_index| if (doc_comment_token_index > 0) doc_comment_token_index - 1 else 0 else p.tok_i,
+            .errors_len = @intCast(p.errors.items.len),
+            .field_state = p.field_state,
+            .last_field = p.last_field,
+        } else undefined;
+    }
 };
-pub const States = std.AutoArrayHashMapUnmanaged(u32, State);
+
+pub const InternalStateRange = struct {
+    pre: InternalState,
+    // it's double the data, but less work figuring out a possibly unaffected prev StateRange (make it work, optimize later)
+    aft: InternalState,
+};
+
+pub const RangeAndNode = struct {
+    node_idx: Node.Index,
+    range: InternalStateRange,
+};
+
+pub const InternalStates = std.ArrayListUnmanaged(RangeAndNode);
 
 const SmallSpan = union(enum) {
     zero_or_one: Node.Index,
@@ -106,7 +152,7 @@ fn warn(p: *Parse, error_tag: AstError.Tag) error{OutOfMemory}!void {
     try p.warnMsg(.{ .tag = error_tag, .token = p.tok_i });
 }
 
-fn warnMsg(p: *Parse, msg: Ast.Error) error{OutOfMemory}!void {
+fn warnMsg(p: *Parse, msg: StdAst.Error) error{OutOfMemory}!void {
     @branchHint(.cold);
     switch (msg.tag) {
         .expected_semi_after_decl,
@@ -152,7 +198,7 @@ fn warnMsg(p: *Parse, msg: Ast.Error) error{OutOfMemory}!void {
     try p.errors.append(p.gpa, msg);
 }
 
-fn fail(p: *Parse, tag: Ast.Error.Tag) error{ ParseError, OutOfMemory } {
+fn fail(p: *Parse, tag: StdAst.Error.Tag) error{ ParseError, OutOfMemory } {
     @branchHint(.cold);
     return p.failMsg(.{ .tag = tag, .token = p.tok_i });
 }
@@ -166,25 +212,26 @@ fn failExpected(p: *Parse, expected_token: Token.Tag) error{ ParseError, OutOfMe
     });
 }
 
-fn failMsg(p: *Parse, msg: Ast.Error) error{ ParseError, OutOfMemory } {
+fn failMsg(p: *Parse, msg: StdAst.Error) error{ ParseError, OutOfMemory } {
     @branchHint(.cold);
     try p.warnMsg(msg);
     return error.ParseError;
 }
 
 /// Root <- skip container_doc_comment? ContainerMembers eof
-pub fn parseRoot(p: *Parse, cutoff_tok_i: usize) !void {
+pub fn parseRoot(p: *Parse) !void {
     // Root node must be index 0.
-    if (p.tok_i == 0) p.nodes.appendAssumeCapacity(.{
+    if (p.nodes.len == 0) p.nodes.appendAssumeCapacity(.{
         .tag = .root,
         .main_token = 0,
         .data = undefined,
     });
-    p.parseRootContainerMembers(cutoff_tok_i) catch |err| switch (err) {
-        error.CutOff => return,
-        else => |e| return e,
-    };
-    const root_decls = try listToSpan(p, p.scratch.items); // try root_members.toSpan(p);
+    // p.parseRootContainerMembers() catch |err| switch (err) {
+    //     else => |e| return e,
+    // };
+    // const root_decls = try listToSpan(p, p.scratch.items); // try root_members.toSpan(p);
+    const root_members = try p.parseRootContainerMembers();
+    const root_decls = try root_members.toSpan(p);
     if (p.token_tags[p.tok_i] != .eof) {
         try p.warnExpected(.eof);
     }
@@ -220,81 +267,39 @@ pub fn parseZon(p: *Parse) !void {
     };
 }
 
+fn storeState(p: *Parse, node_idx: Node.Index, pre: InternalState, aft: InternalState) Allocator.Error!void {
+    if (p.mode != .extended) return;
+    try p.states.append(p.gpa, .{ .node_idx = node_idx, .range = .{ .pre = pre, .aft = aft } });
+}
+
+const FieldState = union(enum) {
+    /// No fields have been seen.
+    none,
+    /// Currently parsing fields.
+    seen,
+    /// Saw fields and then a declaration after them.
+    /// Payload is first token of previous declaration.
+    end: Node.Index,
+    /// There was a declaration between fields, don't report more errors.
+    err,
+};
+
 /// ContainerMembers <- ContainerDeclaration* (ContainerField COMMA)* (ContainerField / ContainerDeclaration*)
 ///
 /// ContainerDeclaration <- TestDecl / ComptimeDecl / doc_comment? KEYWORD_pub? Decl
 ///
 /// ComptimeDecl <- KEYWORD_comptime Block
-fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscient
-    var scratch_top: usize = 0;
-
-    var field_state: union(enum) {
-        /// No fields have been seen.
-        none,
-        /// Currently parsing fields.
-        seen,
-        /// Saw fields and then a declaration after them.
-        /// Payload is first token of previous declaration.
-        end: Node.Index,
-        /// There was a declaration between fields, don't report more errors.
-        err,
-    } = .none;
-
-    var last_field: TokenIndex = undefined;
+fn parseRootContainerMembers(p: *Parse) !Members { // zigscient
+    const scratch_top: usize = 0;
 
     // Skip container doc comments.
     while (p.eatToken(.container_doc_comment)) |_| {}
 
     var trailing = false;
     while (true) {
-        defer {
-            if (p.scratch.items.len != 0) {
-                // std.log.debug(
-                //     \\
-                //     \\tok_i: {} tag {}
-                //     \\ctoki: {} tag {}
-                //     \\nodes     len {}
-                //     \\xdata     len {}
-                //     \\scratch   len {}
-                // , .{
-                //     p.tok_i,
-                //     p.token_tags[p.tok_i],
-                //     cutoff_tok_i,
-                //     p.token_tags[cutoff_tok_i],
-                //     p.nodes.len,
-                //     p.extra_data.items.len,
-                //     p.scratch.items.len,
-                // });
-                // std.log.debug("sitems: {any}", .{p.scratch.items});
-
-                for (p.scratch.items[scratch_top..]) |value| {
-                    const gop_result = p.nstates.getOrPut(
-                        p.gpa,
-                        value,
-                    ) catch @panic("OOM");
-                    if (gop_result.found_existing) {
-                        // std.log.debug("Dup node: {}\nprev vals: {any}", .{ value, gop_result.value_ptr.* });
-                        continue;
-                    }
-                    gop_result.value_ptr.* = .{
-                        .nodes_len = p.nodes.len,
-                        .xdata_len = p.extra_data.items.len,
-                        .token_ind = p.tok_i,
-                    };
-                    // std.log.debug("stored: {}, tag: {}", .{ value, p.nodes.items(.tag)[value] });
-                }
-                scratch_top = p.scratch.items.len;
-            }
-        }
+        const pre: InternalState = .current(p); // treat doc_comment(s) as part of the root_decl for now
 
         const doc_comment = try p.eatDocComments();
-
-        if (cutoff_tok_i != 0) {
-            if (p.tok_i == cutoff_tok_i) return error.CutOff;
-            // Currently, Incremental Parsing is quite coarse -> works only at root decls level;
-            // a single missing brace can cause it to affect more than the requested nodes
-            if (p.tok_i > cutoff_tok_i) return error.OvershotCutOff;
-        }
 
         switch (p.token_tags[p.tok_i]) {
             .keyword_test => {
@@ -303,9 +308,10 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
                 }
                 const test_decl_node = try p.expectTestDeclRecoverable();
                 if (test_decl_node != 0) {
-                    if (field_state == .seen) {
-                        field_state = .{ .end = test_decl_node };
+                    if (p.field_state == .seen) {
+                        p.field_state = .{ .end = test_decl_node };
                     }
+                    try p.storeState(test_decl_node, pre, .current(p));
                     try p.scratch.append(p.gpa, test_decl_node);
                 }
                 trailing = false;
@@ -332,16 +338,17 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
                                 .rhs = undefined,
                             },
                         });
-                        if (field_state == .seen) {
-                            field_state = .{ .end = comptime_node };
+                        if (p.field_state == .seen) {
+                            p.field_state = .{ .end = comptime_node };
                         }
+                        try p.storeState(comptime_node, pre, .current(p));
                         try p.scratch.append(p.gpa, comptime_node);
                     }
                     trailing = false;
                 },
                 else => {
                     const identifier = p.tok_i;
-                    defer last_field = identifier;
+                    defer p.last_field = identifier;
                     const container_field = p.expectContainerField() catch |err| switch (err) {
                         error.OutOfMemory => return error.OutOfMemory,
                         error.ParseError => {
@@ -349,8 +356,8 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
                             continue;
                         },
                     };
-                    switch (field_state) {
-                        .none => field_state = .seen,
+                    switch (p.field_state) {
+                        .none => p.field_state = .seen,
                         .err, .seen => {},
                         .end => |node| {
                             try p.warnMsg(.{
@@ -360,7 +367,7 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
                             try p.warnMsg(.{
                                 .tag = .previous_field,
                                 .is_note = true,
-                                .token = last_field,
+                                .token = p.last_field,
                             });
                             try p.warnMsg(.{
                                 .tag = .next_field,
@@ -368,9 +375,10 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
                                 .token = identifier,
                             });
                             // Continue parsing; error will be reported later.
-                            field_state = .err;
+                            p.field_state = .err;
                         },
                     }
+                    try p.storeState(container_field, pre, .current(p));
                     try p.scratch.append(p.gpa, container_field);
                     switch (p.token_tags[p.tok_i]) {
                         .comma => {
@@ -394,9 +402,10 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
                 p.tok_i += 1;
                 const top_level_decl = try p.expectTopLevelDeclRecoverable();
                 if (top_level_decl != 0) {
-                    if (field_state == .seen) {
-                        field_state = .{ .end = top_level_decl };
+                    if (p.field_state == .seen) {
+                        p.field_state = .{ .end = top_level_decl };
                     }
+                    try p.storeState(top_level_decl, pre, .current(p));
                     try p.scratch.append(p.gpa, top_level_decl);
                 }
                 trailing = p.token_tags[p.tok_i - 1] == .semicolon;
@@ -404,9 +413,10 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
             .keyword_usingnamespace => {
                 const node = try p.expectUsingNamespaceRecoverable();
                 if (node != 0) {
-                    if (field_state == .seen) {
-                        field_state = .{ .end = node };
+                    if (p.field_state == .seen) {
+                        p.field_state = .{ .end = node };
                     }
+                    try p.storeState(node, pre, .current(p));
                     try p.scratch.append(p.gpa, node);
                 }
                 trailing = p.token_tags[p.tok_i - 1] == .semicolon;
@@ -422,9 +432,10 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
             => {
                 const top_level_decl = try p.expectTopLevelDeclRecoverable();
                 if (top_level_decl != 0) {
-                    if (field_state == .seen) {
-                        field_state = .{ .end = top_level_decl };
+                    if (p.field_state == .seen) {
+                        p.field_state = .{ .end = top_level_decl };
                     }
+                    try p.storeState(top_level_decl, pre, .current(p));
                     try p.scratch.append(p.gpa, top_level_decl);
                 }
                 trailing = p.token_tags[p.tok_i - 1] == .semicolon;
@@ -446,7 +457,7 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
                 if (c_container) continue;
 
                 const identifier = p.tok_i;
-                defer last_field = identifier;
+                defer p.last_field = identifier;
                 const container_field = p.expectContainerField() catch |err| switch (err) {
                     error.OutOfMemory => return error.OutOfMemory,
                     error.ParseError => {
@@ -454,8 +465,8 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
                         continue;
                     },
                 };
-                switch (field_state) {
-                    .none => field_state = .seen,
+                switch (p.field_state) {
+                    .none => p.field_state = .seen,
                     .err, .seen => {},
                     .end => |node| {
                         try p.warnMsg(.{
@@ -465,7 +476,7 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
                         try p.warnMsg(.{
                             .tag = .previous_field,
                             .is_note = true,
-                            .token = last_field,
+                            .token = p.last_field,
                         });
                         try p.warnMsg(.{
                             .tag = .next_field,
@@ -473,9 +484,10 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
                             .token = identifier,
                         });
                         // Continue parsing; error will be reported later.
-                        field_state = .err;
+                        p.field_state = .err;
                     },
                 }
+                try p.storeState(container_field, pre, .current(p));
                 try p.scratch.append(p.gpa, container_field);
                 switch (p.token_tags[p.tok_i]) {
                     .comma => {
@@ -505,36 +517,36 @@ fn parseRootContainerMembers(p: *Parse, cutoff_tok_i: usize) !void { // zigscien
         }
     }
 
-    // const items = p.scratch.items[0..];
-    // switch (items.len) {
-    //     0 => return Members{
-    //         .len = 0,
-    //         .lhs = 0,
-    //         .rhs = 0,
-    //         .trailing = trailing,
-    //     },
-    //     1 => return Members{
-    //         .len = 1,
-    //         .lhs = items[0],
-    //         .rhs = 0,
-    //         .trailing = trailing,
-    //     },
-    //     2 => return Members{
-    //         .len = 2,
-    //         .lhs = items[0],
-    //         .rhs = items[1],
-    //         .trailing = trailing,
-    //     },
-    //     else => {
-    //         const span = try p.listToSpan(items);
-    //         return Members{
-    //             .len = items.len,
-    //             .lhs = span.start,
-    //             .rhs = span.end,
-    //             .trailing = trailing,
-    //         };
-    //     },
-    // }
+    const items = p.scratch.items[scratch_top..];
+    switch (items.len) {
+        0 => return Members{
+            .len = 0,
+            .lhs = 0,
+            .rhs = 0,
+            .trailing = trailing,
+        },
+        1 => return Members{
+            .len = 1,
+            .lhs = items[0],
+            .rhs = 0,
+            .trailing = trailing,
+        },
+        2 => return Members{
+            .len = 2,
+            .lhs = items[0],
+            .rhs = items[1],
+            .trailing = trailing,
+        },
+        else => {
+            const span = try p.listToSpan(items);
+            return Members{
+                .len = items.len,
+                .lhs = span.start,
+                .rhs = span.end,
+                .trailing = trailing,
+            };
+        },
+    }
 }
 
 /// ContainerMembers <- ContainerDeclaration* (ContainerField COMMA)* (ContainerField / ContainerDeclaration*)
@@ -546,17 +558,7 @@ fn parseContainerMembers(p: *Parse) Allocator.Error!Members {
     const scratch_top = p.scratch.items.len;
     defer p.scratch.shrinkRetainingCapacity(scratch_top);
 
-    var field_state: union(enum) {
-        /// No fields have been seen.
-        none,
-        /// Currently parsing fields.
-        seen,
-        /// Saw fields and then a declaration after them.
-        /// Payload is first token of previous declaration.
-        end: Node.Index,
-        /// There was a declaration between fields, don't report more errors.
-        err,
-    } = .none;
+    var field_state: FieldState = .none;
 
     var last_field: TokenIndex = undefined;
 
@@ -4460,12 +4462,14 @@ const null_node: Node.Index = 0;
 
 const Parse = @This();
 const std = @import("std");
+const Ast = @import("Ast.zig");
+const StdAst = std.zig.Ast;
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
-const Ast = std.zig.Ast;
+// const Ast = std.zig.Ast;
 const Node = Ast.Node;
-const AstError = Ast.Error;
-const TokenIndex = Ast.TokenIndex;
+const AstError = std.zig.Ast.Error;
+const TokenIndex = std.zig.Ast.TokenIndex;
 const Token = std.zig.Token;
 
 // test {

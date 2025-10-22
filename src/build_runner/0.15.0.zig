@@ -1081,7 +1081,7 @@ const roots_info = struct {
         compile: *Step.Compile,
     ) !void {
         if (compile.root_module.root_source_file) |root_source_file| {
-            try roots_info_slc.writer().print(
+            try roots_info_slc.print(
                 "{}: {s} @ {s}\n",
                 .{ idx.*, compile.name, root_source_file.getPath(compile.root_module.owner) },
             );
@@ -1099,21 +1099,21 @@ const roots_info = struct {
     ) !void {
         for (it.keys(), it.values()) |name, import| {
             if (import.root_source_file) |root_source_file| {
-                try roots_info_slc.writer().print(
+                try roots_info_slc.print(
                     "   * {s} @ {s}\n",
                     .{ name, root_source_file.getPath(import.owner) },
                 );
             }
             for (import.import_table.keys(), import.import_table.values()) |name2, import2| {
                 if (import2.root_source_file) |root_source_file2| {
-                    try roots_info_slc.writer().print(
+                    try roots_info_slc.print(
                         "     * {s} @ {s}\n",
                         .{ name2, root_source_file2.getPath(import.owner) },
                     );
                 }
                 for (import2.import_table.keys(), import2.import_table.values()) |name3, import3| {
                     if (import3.root_source_file) |root_source_file3| {
-                        try roots_info_slc.writer().print(
+                        try roots_info_slc.print(
                             "       * {s} @ {s}\n",
                             .{ name3, root_source_file3.getPath(import.owner) },
                         );

@@ -1504,21 +1504,14 @@ fn openDocumentHandler(server: *Server, _: std.mem.Allocator, notification: type
 fn changeDocumentHandler(server: *Server, _: std.mem.Allocator, notification: types.DidChangeTextDocumentParams) Error!void {
     const handle = server.document_store.getHandle(notification.textDocument.uri) orelse return;
 
-    const content_changes = try diff.applyContentChanges(server.allocator, handle.tree.source, notification.contentChanges, server.offset_encoding);
-    const new_text = content_changes.text;
+    // const nts1: i64 = @intCast(std.time.nanoTimestamp());
 
-    if (new_text.len > DocumentStore.max_document_size) {
-        log.err("change document '{s}' failed: text size ({d}) is above maximum length ({d})", .{
-            notification.textDocument.uri,
-            new_text.len,
-            DocumentStore.max_document_size,
-        });
-        return error.InternalError;
-    }
-
-    try server.document_store.refreshDocument(handle, content_changes);
-
+    try server.document_store.refreshDocument(handle, notification.contentChanges, server.offset_encoding);
     handle.handleRootIdComment(&server.document_store, false);
+    handle.setChangePending(false);
+
+    // const nts2: i64 = @intCast(std.time.nanoTimestamp());
+    // std.log.err("chng: {}", .{std.fmt.fmtDurationSigned(nts2 - nts1)});
 
     if (server.client_capabilities.supports_publish_diagnostics) {
         try server.pushJob(.{
@@ -2032,6 +2025,18 @@ pub fn loop(server: *Server) !void {
 
             switch (job.syncMode()) {
                 .exclusive => {
+                    switch (job) {
+                        .incoming_message => |parsed_message| {
+                            if (parsed_message.value == .notification and
+                                parsed_message.value.notification.params == .@"textDocument/didChange")
+                            {
+                                if (server.document_store.getHandle(parsed_message.value.notification.params.@"textDocument/didChange".textDocument.uri)) |handle| {
+                                    handle.setChangePending(true);
+                                }
+                            }
+                        },
+                        else => {},
+                    }
                     server.waitAndWork();
                     server.processJob(job, null);
                 },
@@ -2230,6 +2235,10 @@ fn processJob(server: *Server, job: Job, wait_group: ?*std.Thread.WaitGroup) voi
         },
         .generate_diagnostics => |uri| {
             const handle = server.document_store.getHandle(uri) orelse return;
+            if (handle.getChangePending() == true) {
+                // std.log.info("!genDiag  : early exit", .{});
+                return;
+            }
             diagnostics_gen.generateDiagnostics(server, handle) catch return;
         },
         .run_build_on_save => {

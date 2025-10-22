@@ -30,6 +30,11 @@ pub fn generateDiagnostics(
         defer tracy_zone2.end();
 
         var error_bundle = try getAstCheckDiagnostics(server, handle);
+        if (handle.getChangePending() == true) {
+            // std.log.info("!genDiag  : ignoring AstCheck diags", .{});
+            error_bundle.deinit(server.allocator);
+            return;
+        }
         errdefer error_bundle.deinit(server.allocator);
 
         try server.diagnostics_collection.pushSingleDocumentDiagnostics(
@@ -43,6 +48,11 @@ pub fn generateDiagnostics(
         defer wip.deinit();
 
         try collectParseDiagnostics(handle.tree, &wip);
+
+        if (handle.getChangePending() == true) {
+            // std.log.info("!genDiag  : ignoring parse diags", .{});
+            return;
+        }
 
         var error_bundle = try wip.toOwnedBundle("");
         errdefer error_bundle.deinit(server.allocator);
