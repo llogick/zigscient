@@ -394,6 +394,12 @@ pub fn build(b: *Build) !void {
 
 /// Returns `MAJOR.MINOR.PATCH-dev` when `git describe` failed.
 fn getVersion(b: *Build) std.SemanticVersion {
+    if (true) return .{
+        .major = 0,
+        .minor = 14,
+        .patch = 15,
+        .pre = "2",
+    };
     const version_string = b.option([]const u8, "version-string", "Override the version of this build. Must be a semantic version.");
     if (version_string) |semver_string| {
         return std.SemanticVersion.parse(semver_string) catch |err| {
