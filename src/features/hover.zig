@@ -134,7 +134,7 @@ fn hoverSymbolRecursive(
                                 for (build_config.roots[build_file.root_id].mods) |mod| {
                                     try def.writer().print(" * {s} @ {s}\n", .{ mod.name, mod.path });
                                 }
-                                try def.writer().print("\nSee [List of all roots]({s}#L{d})\n", .{ build_config.roots_info_file, 0 });
+                                try def.writer().print("\nSee [List of all roots]({s}#L{d})\n", .{ try URI.fromPath(arena, build_config.roots_info_file), 0 });
                             } else try def.writer().writeAll("build_runner reported NO (0) CompileSteps (roots)\n");
                             try def.writer().writeAll("```zig\n");
                             try def.appendSlice(Analyser.getFunctionSignature(tree, fn_proto));
