@@ -398,7 +398,7 @@ fn getVersion(b: *Build) std.SemanticVersion {
         .major = 0,
         .minor = 14,
         .patch = 15,
-        .pre = "2",
+        .pre = "3",
     };
     const version_string = b.option([]const u8, "version-string", "Override the version of this build. Must be a semantic version.");
     if (version_string) |semver_string| {
