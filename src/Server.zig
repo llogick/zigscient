@@ -1145,11 +1145,11 @@ fn createDocumentStoreConfig(config_manager: *const configuration.Manager) Docum
 }
 
 fn openDocumentHandler(server: *Server, _: std.mem.Allocator, notification: types.TextDocument.DidOpenParams) Error!void {
-    if (notification.textDocument.text.len > DocumentStore.max_document_size) {
+    if (notification.textDocument.text.len > std.zig.max_src_size) {
         log.err("open document '{s}' failed: text size ({d}) is above maximum length ({d})", .{
             notification.textDocument.uri,
             notification.textDocument.text.len,
-            DocumentStore.max_document_size,
+            std.zig.max_src_size,
         });
         return error.InternalError;
     }
