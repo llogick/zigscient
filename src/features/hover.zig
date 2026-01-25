@@ -547,7 +547,7 @@ pub fn hover(
 
     const response = switch (pos_context) {
         .builtin => |loc| try hoverDefinitionBuiltin(analyser, arena, handle, source_index, loc, markup_kind, offset_encoding),
-        .var_access => try hoverDefinitionGlobal(ds, analyser, arena, handle, source_index, markup_kind, offset_encoding),
+        .var_access, .test_doctest_name => try hoverDefinitionGlobal(ds, analyser, arena, handle, source_index, markup_kind, offset_encoding),
         .field_access => |loc| try hoverDefinitionFieldAccess(ds, analyser, arena, handle, source_index, loc, markup_kind, offset_encoding),
         .label_access, .label_decl => |loc| try hoverDefinitionLabel(ds, analyser, arena, handle, source_index, loc, markup_kind, offset_encoding),
         .enum_literal => try hoverDefinitionEnumLiteral(ds, analyser, arena, handle, source_index, markup_kind, offset_encoding),

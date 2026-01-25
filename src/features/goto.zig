@@ -297,7 +297,7 @@ pub fn gotoHandler(
 
     const response = switch (pos_context) {
         .builtin => |loc| try gotoDefinitionBuiltin(&analyser, handle, loc, server.offset_encoding),
-        .var_access => try gotoDefinitionGlobal(&analyser, handle, source_index, kind, server.offset_encoding),
+        .var_access, .test_doctest_name => try gotoDefinitionGlobal(&analyser, handle, source_index, kind, server.offset_encoding),
         .field_access => |loc| blk: {
             const links = try gotoDefinitionFieldAccess(&analyser, arena, handle, source_index, loc, kind, server.offset_encoding) orelse return null;
             if (server.client_capabilities.supports_textDocument_definition_linkSupport) {
