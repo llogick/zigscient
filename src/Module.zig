@@ -42,8 +42,6 @@ sanitize_thread: bool,
 fuzz: bool,
 unwind_tables: std.lang.UnwindTables,
 cc_argv: []const []const u8,
-/// (SPIR-V) whether to generate a structured control flow graph or not
-structured_cfg: bool,
 no_builtin: bool,
 
 pub const Deps = std.array_hash_map.String(*Module);
@@ -85,7 +83,6 @@ pub const CreateOptions = struct {
         sanitize_c: ?std.zig.SanitizeC = null,
         sanitize_thread: ?bool = null,
         fuzz: ?bool = null,
-        structured_cfg: ?bool = null,
         no_builtin: ?bool = null,
     };
 };
@@ -320,17 +317,6 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Module {
         break :sp target_util.default_stack_protector_buffer_size;
     };
 
-    const structured_cfg = b: {
-        if (options.inherited.structured_cfg) |x| break :b x;
-        if (options.parent) |p| break :b p.structured_cfg;
-        // We always want a structured control flow in shaders. This option is
-        // only relevant for OpenCL kernels.
-        break :b switch (target.os.tag) {
-            .opencl => false,
-            else => true,
-        };
-    };
-
     const no_builtin = b: {
         if (options.inherited.no_builtin) |x| break :b x;
         if (options.parent) |p| break :b p.no_builtin;
@@ -411,7 +397,6 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Module {
         .fuzz = fuzz,
         .unwind_tables = unwind_tables,
         .cc_argv = options.cc_argv,
-        .structured_cfg = structured_cfg,
         .no_builtin = no_builtin,
     };
     return mod;
@@ -450,7 +435,6 @@ pub fn createLimited(gpa: Allocator, options: LimitedOptions) Allocator.Error!*M
         .fuzz = undefined,
         .unwind_tables = undefined,
         .cc_argv = undefined,
-        .structured_cfg = undefined,
         .no_builtin = undefined,
     };
     return mod;
@@ -489,7 +473,6 @@ pub fn createBuiltin(arena: Allocator, opts: Builtin, dirs: std.zig.Directories)
         .stack_protector = 0,
         .red_zone = false,
         .sanitize_c = .off,
-        .structured_cfg = false,
         .no_builtin = false,
     };
     return new;

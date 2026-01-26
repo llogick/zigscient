@@ -572,10 +572,6 @@ const usage_build_generic =
     \\  -fno-function-sections    All functions go into same section
     \\  -fdata-sections           Places each data in a separate section
     \\  -fno-data-sections        All data go into same section
-    \\  -fformatted-panics        Enable formatted safety panics
-    \\  -fno-formatted-panics     Disable formatted safety panics
-    \\  -fstructured-cfg          (SPIR-V) force SPIR-V kernels to use structured control flow
-    \\  -fno-structured-cfg       (SPIR-V) force SPIR-V kernels to not use structured control flow
     \\  -mexec-model=[value]      (WASI) Execution model
     \\  -municode                 (Windows) Use wmain/wWinMain as entry point
     \\  --time-report             Send timing diagnostics to '--listen' clients
@@ -1431,10 +1427,6 @@ pub fn buildOutputType(
                             if (mem.eql(u8, next_arg, "--")) break;
                             try cs.extra_rcflags.append(arena, next_arg);
                         }
-                    } else if (mem.eql(u8, arg, "-fstructured-cfg")) {
-                        cs.mod_opts.structured_cfg = true;
-                    } else if (mem.eql(u8, arg, "-fno-structured-cfg")) {
-                        cs.mod_opts.structured_cfg = false;
                     } else if (mem.eql(u8, arg, "--color")) {
                         const next_arg = args_iter.next() orelse {
                             fatal("expected [auto|on|off] after --color", .{});
@@ -1881,12 +1873,6 @@ pub fn buildOutputType(
                         cs.create_module.opts.debug_format = .{ .dwarf = .@"32" };
                     } else if (mem.eql(u8, arg, "-gdwarf64")) {
                         cs.create_module.opts.debug_format = .{ .dwarf = .@"64" };
-                    } else if (mem.eql(u8, arg, "-fformatted-panics")) {
-                        // Remove this after 0.15.0 is tagged.
-                        warn("-fformatted-panics is deprecated and does nothing", .{});
-                    } else if (mem.eql(u8, arg, "-fno-formatted-panics")) {
-                        // Remove this after 0.15.0 is tagged.
-                        warn("-fno-formatted-panics is deprecated and does nothing", .{});
                     } else if (mem.eql(u8, arg, "-fsingle-threaded")) {
                         cs.mod_opts.single_threaded = true;
                     } else if (mem.eql(u8, arg, "-fno-single-threaded")) {

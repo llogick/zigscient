@@ -225,7 +225,6 @@ pub fn buildCrtFile(comp: *Compilation, in_crt_file: CrtFile, prog_node: std.Pro
                     .omit_frame_pointer = comp.root_mod.omit_frame_pointer,
                     .valgrind = false,
                     .optimize_mode = optimize_mode,
-                    .structured_cfg = comp.root_mod.structured_cfg,
                 },
                 .global = config,
                 .cc_argv = cc_argv,

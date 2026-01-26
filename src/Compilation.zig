@@ -1235,7 +1235,6 @@ pub const cache_helpers = struct {
         hh.add(mod.sanitize_thread);
         hh.add(mod.fuzz);
         hh.add(mod.unwind_tables);
-        hh.add(mod.structured_cfg);
         hh.add(mod.no_builtin);
         hh.addListOfBytes(mod.cc_argv);
     }
@@ -7280,7 +7279,6 @@ fn buildOutputFromZig(
             .unwind_tables = comp.root_mod.unwind_tables,
             .pic = comp.root_mod.pic,
             .optimize_mode = optimize_mode,
-            .structured_cfg = comp.root_mod.structured_cfg,
             .no_builtin = true,
             .code_model = comp.root_mod.code_model,
             .error_tracing = false,
@@ -7429,7 +7427,6 @@ pub fn build_crt_file(
             // Some CRT objects (e.g. musl's rcrt1.o and Scrt1.o) are opinionated about PIC.
             .pic = options.pic orelse comp.root_mod.pic,
             .optimize_mode = comp.compilerRtOptMode(),
-            .structured_cfg = comp.root_mod.structured_cfg,
             // Some libcs (e.g. musl) are opinionated about -fno-builtin.
             .no_builtin = options.no_builtin orelse comp.root_mod.no_builtin,
             .code_model = comp.root_mod.code_model,

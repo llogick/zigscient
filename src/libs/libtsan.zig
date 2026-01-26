@@ -100,7 +100,6 @@ pub fn buildTsan(comp: *Compilation, prog_node: std.Progress.Node) BuildError!vo
             .valgrind = false,
             .unwind_tables = unwind_tables,
             .optimize_mode = optimize_mode,
-            .structured_cfg = comp.root_mod.structured_cfg,
             .pic = true,
             .no_builtin = true,
             .code_model = comp.root_mod.code_model,
