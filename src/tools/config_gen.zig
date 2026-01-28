@@ -1,5 +1,11 @@
+//! This script takes care of the following tasks:
+//!
+//! - generate `src/Config.zig`
+//! - generate `schema.json`
+//! - generate metadata about Zig's builtins (uses `src/tools/langref.html.in`)
+//! - generate ZLS configuration options for vscode-zig's package.json
+
 const std = @import("std");
-const zig_builtin = @import("builtin");
 
 const ConfigOption = struct {
     /// Name of config option
@@ -32,14 +38,7 @@ const ConfigOption = struct {
             error.UnsupportedType;
     }
 
-    fn formatZigType(
-        config: ConfigOption,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = options;
-        if (fmt.len != 0) return std.fmt.invalidFmtError(fmt, ConfigOption);
+    fn formatZigType(config: ConfigOption, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (config.@"enum") |enum_members| {
             try writer.writeAll("enum {\n");
             for (enum_members) |member_name| {
@@ -52,23 +51,16 @@ const ConfigOption = struct {
         try writer.writeAll(config.type);
     }
 
-    fn fmtZigType(self: ConfigOption) std.fmt.Formatter(formatZigType) {
+    fn fmtZigType(self: ConfigOption) std.fmt.Alt(ConfigOption, formatZigType) {
         return .{ .data = self };
     }
 
-    fn formatDefaultValue(
-        config: ConfigOption,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = options;
-        if (fmt.len != 0) return std.fmt.invalidFmtError(fmt, ConfigOption);
+    fn formatDefaultValue(config: ConfigOption, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (config.default == .array) {
             try writer.writeAll("&.{");
             for (config.default.array.items, 0..) |item, i| {
                 if (i != 0) try writer.writeByte(',');
-                try std.json.stringify(item, .{}, writer);
+                std.json.Stringify.value(item, .{}, writer) catch |err| return @errorCast(err);
             }
             try writer.writeByte('}');
             return;
@@ -77,10 +69,10 @@ const ConfigOption = struct {
             try writer.print(".{s}", .{config.default.string});
             return;
         }
-        try std.json.stringify(config.default, .{}, writer);
+        std.json.Stringify.value(config.default, .{}, writer) catch |err| return @errorCast(err);
     }
 
-    fn fmtDefaultValue(self: ConfigOption) std.fmt.Formatter(formatDefaultValue) {
+    fn fmtDefaultValue(self: ConfigOption) std.fmt.Alt(ConfigOption, formatDefaultValue) {
         return .{ .data = self };
     }
 };
@@ -90,9 +82,9 @@ const Config = struct {
 };
 
 const Schema = struct {
-    @"$schema": []const u8 = "https://json-schema.org/draft/2020-12/schema",
-    title: []const u8 = "ZLS Config",
-    description: []const u8 = "Configuration file for ZLS",
+    @"$schema": []const u8 = "http://json-schema.org/draft-04/schema",
+    title: []const u8 = "Config",
+    description: []const u8 = "Configuration Options",
     type: []const u8 = "object",
     properties: std.json.ArrayHashMap(SchemaEntry),
 };
@@ -105,93 +97,103 @@ const SchemaEntry = struct {
     default: std.json.Value,
 };
 
-fn formatDocs(
+const FormatDocs = struct {
     text: []const u8,
-    comptime fmt: []const u8,
-    options: std.fmt.FormatOptions,
-    writer: anytype,
-) @TypeOf(writer).Error!void {
-    _ = options;
-    if (fmt.len != 1) std.fmt.invalidFmtError(fmt, text);
-    const prefix = switch (fmt[0]) {
-        'n' => "// ",
-        'd' => "/// ",
-        '!' => "//! ",
-        else => std.fmt.invalidFmtError(fmt, text),
+    comment_kind: CommentKind,
+
+    const CommentKind = enum {
+        normal,
+        doc,
+        top_level,
     };
-    var i: usize = 0;
-    var iterator = std.mem.splitScalar(u8, text, '\n');
-    while (iterator.next()) |line| : (i += 1) {
-        if (i != 0) try writer.writeByte('\n');
-        try writer.print("{s}{s}", .{ prefix, line });
+
+    fn render(ctx: FormatDocs, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        const prefix = switch (ctx.comment_kind) {
+            .normal => "// ",
+            .doc => "/// ",
+            .top_level => "//! ",
+        };
+        var i: usize = 0;
+        var iterator = std.mem.splitScalar(u8, ctx.text, '\n');
+        while (iterator.next()) |line| : (i += 1) {
+            if (i != 0) try writer.writeByte('\n');
+            try writer.print("{s}{s}", .{ prefix, line });
+        }
     }
+};
+
+fn fmtDocs(text: []const u8, comment_kind: FormatDocs.CommentKind) std.fmt.Alt(FormatDocs, FormatDocs.render) {
+    return .{ .data = .{ .text = text, .comment_kind = comment_kind } };
 }
 
-/// The format specifier must be one of:
-///  * `{n}` writes normal (`//`) comments.
-///  * `{d}` writes doc-comments (`///`) comments.
-///  * `{!}` writes top-level-doc-comments (`//!`) comments.
-fn fmtDocs(text: []const u8) std.fmt.Formatter(formatDocs) {
-    return .{ .data = text };
-}
+fn generateConfigFile(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    config: Config,
+    path: []const u8,
+) (std.Io.Dir.WriteFileError || std.mem.Allocator.Error)!void {
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
 
-fn generateConfigFile(allocator: std.mem.Allocator, config: Config, path: []const u8) (std.fs.Dir.WriteFileError || std.mem.Allocator.Error)!void {
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    const writer = buffer.writer();
-
-    try writer.writeAll(
+    aw.writer.writeAll(
         \\//! DO NOT EDIT
-        \\//! Configuration options for ZLS.
+        \\//! Configuration options for Zigscient.
         \\//! If you want to add a config option edit
         \\//! src/tools/config.json
         \\//! GENERATED BY src/tools/config_gen.zig
         \\
-    );
+    ) catch return error.OutOfMemory;
 
     for (config.options) |option| {
-        try writer.print(
+        aw.writer.print(
             \\
-            \\{d}
-            \\{}: {} = {},
+            \\{f}
+            \\{f}: {f} = {f},
             \\
         , .{
-            fmtDocs(std.mem.trim(u8, option.description, &std.ascii.whitespace)),
+            fmtDocs(std.mem.trim(u8, option.description, &std.ascii.whitespace), .doc),
             std.zig.fmtId(std.mem.trim(u8, option.name, &std.ascii.whitespace)),
             option.fmtZigType(),
             option.fmtDefaultValue(),
-        });
+        }) catch return error.OutOfMemory;
     }
 
-    _ = try writer.writeAll(
+    aw.writer.writeAll(
         \\
         \\// DO NOT EDIT
         \\
-    );
+    ) catch return error.OutOfMemory;
 
-    const source_unformatted = try buffer.toOwnedSliceSentinel(0);
+    const source_unformatted = try aw.toOwnedSliceSentinel(0);
     defer allocator.free(source_unformatted);
 
-    var tree = try std.zig.Ast.parse(allocator, source_unformatted, .zig);
+    var tree: std.zig.Ast = try .parse(allocator, source_unformatted, .zig);
     defer tree.deinit(allocator);
     std.debug.assert(tree.errors.len == 0);
 
-    buffer.clearRetainingCapacity();
-    try tree.renderToArrayList(&buffer, .{});
+    const source = try tree.renderAlloc(allocator);
+    defer allocator.free(source);
 
-    try std.fs.cwd().writeFile(.{
+    try std.Io.Dir.cwd().writeFile(io, .{
         .sub_path = path,
-        .data = buffer.items,
+        .data = source,
     });
 }
 
-fn generateSchemaFile(allocator: std.mem.Allocator, config: Config, path: []const u8) !void {
-    const schema_file = try std.fs.cwd().createFile(path, .{});
-    defer schema_file.close();
+fn generateSchemaFile(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    config: Config,
+    path: []const u8,
+) !void {
+    const schema_file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer schema_file.close(io);
 
-    var buff_out = std.io.bufferedWriter(schema_file.writer());
+    var buffer: [4096]u8 = undefined;
+    var file_writer = schema_file.writer(io, &buffer);
+    const writer = &file_writer.interface;
 
-    var schema = Schema{ .properties = .{} };
+    var schema: Schema = .{ .properties = .{} };
     defer schema.properties.map.deinit(allocator);
 
     try schema.properties.map.ensureTotalCapacity(allocator, @intCast(config.options.len));
@@ -206,13 +208,13 @@ fn generateSchemaFile(allocator: std.mem.Allocator, config: Config, path: []cons
         });
     }
 
-    try std.json.stringify(schema, .{
+    try std.json.Stringify.value(schema, .{
         .whitespace = .indent_4,
         .emit_null_optional_fields = false,
-    }, buff_out.writer());
-    try buff_out.writer().writeByte('\n');
+    }, writer);
 
-    try buff_out.flush();
+    try writer.writeByte('\n');
+    try file_writer.end();
 }
 
 const ConfigurationProperty = struct {
@@ -224,9 +226,14 @@ const ConfigurationProperty = struct {
     default: ?std.json.Value = null,
 };
 
-fn generateVSCodeConfigFile(allocator: std.mem.Allocator, config: Config, path: []const u8) !void {
-    var config_file = try std.fs.cwd().createFile(path, .{});
-    defer config_file.close();
+fn generateVSCodeConfigFile(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    config: Config,
+    path: []const u8,
+) !void {
+    var config_file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer config_file.close(io);
 
     const predefined_configurations: usize = 4;
     var configuration: std.json.ArrayHashMap(ConfigurationProperty) = .{};
@@ -248,48 +255,48 @@ fn generateVSCodeConfigFile(allocator: std.mem.Allocator, config: Config, path: 
         .description = "Traces the communication between VS Code and the language server.",
         .default = .{ .string = "off" },
     });
-    configuration.map.putAssumeCapacityNoClobber("zig.zls.checkForUpdate", .{
-        .type = "boolean",
-        .description = "Whether to automatically check for new updates",
-        .default = .{ .bool = true },
-    });
     configuration.map.putAssumeCapacityNoClobber("zig.zls.path", .{
         .scope = "machine-overridable",
         .type = "string",
         .description = "Path to `zls` executable. Example: `C:/zls/zig-cache/bin/zls.exe`. The string \"zls\" means lookup ZLS in PATH.",
         .format = "path",
-        .default = null,
     });
 
     for (config.options) |option| {
-        if (std.mem.eql(u8, option.name, "zig_exe_path")) continue;
+        if (std.mem.eql(u8, option.name, "zig_exe_path")) continue; // vscode-zig has its own option for this
+        if (std.mem.eql(u8, option.name, "force_autofix")) continue; // VS Code supports code actions on save without a workaround
 
         const snake_case_name = try std.fmt.allocPrint(allocator, "zig.zls.{s}", .{option.name});
         defer allocator.free(snake_case_name);
         const name = try snakeCaseToCamelCase(allocator, snake_case_name);
         errdefer allocator.free(name);
 
-        const default: ?std.json.Value = if (option.default != .null) option.default else null;
+        const default: ?std.json.Value = if (std.mem.eql(u8, option.name, "enable_build_on_save"))
+            // "enable_build_on_save" need to be explicitly set to 'null' so that it doesn't default to 'false'
+            .null
+        else if (option.default != .null)
+            option.default
+        else
+            null;
 
         configuration.map.putAssumeCapacityNoClobber(name, .{
             .type = try option.getTypescriptType(),
             .description = option.description,
             .@"enum" = option.@"enum",
-            .format = if (std.mem.indexOf(u8, option.name, "path") != null) "path" else null,
-            // "enable_build_on_save" need to be explicitly set to 'null' so that it doesn't default to 'false'
-            .default = default orelse .null,
+            .format = if (std.mem.find(u8, option.name, "path") != null) "path" else null,
+            .default = default,
         });
     }
 
-    var buffered_writer = std.io.bufferedWriter(config_file.writer());
-    const writer = buffered_writer.writer();
+    var buffer: [4096]u8 = undefined;
+    var file_writer = config_file.writer(io, &buffer);
+    const writer = &file_writer.interface;
 
-    try std.json.stringify(configuration, .{
+    try std.json.Stringify.value(configuration, .{
         .whitespace = .indent_2,
         .emit_null_optional_fields = false,
     }, writer);
-
-    try buffered_writer.flush();
+    try file_writer.end();
 }
 
 fn snakeCaseToCamelCase(allocator: std.mem.Allocator, str: []const u8) error{OutOfMemory}![]u8 {
@@ -345,7 +352,7 @@ const Tokenizer = struct {
     };
 
     fn next(self: *Tokenizer) Token {
-        var result = Token{
+        var result: Token = .{
             .id = .Eof,
             .start = self.index,
             .end = undefined,
@@ -436,13 +443,13 @@ const Tokenizer = struct {
 const Builtin = struct {
     name: []const u8,
     signature: []const u8,
-    documentation: std.ArrayListUnmanaged(u8),
+    documentation: std.ArrayList(u8),
 };
 
 /// parses a `langref.html.in` file and extracts builtins from this section: `https://ziglang.org/documentation/master/#Builtin-Functions`
 /// the documentation field contains poorly formatted html
 fn collectBuiltinData(allocator: std.mem.Allocator, version: []const u8, langref_file: []const u8) error{OutOfMemory}![]Builtin {
-    var tokenizer = Tokenizer{ .buffer = langref_file };
+    var tokenizer: Tokenizer = .{ .buffer = langref_file };
 
     const State = enum {
         /// searching for this line:
@@ -459,7 +466,7 @@ fn collectBuiltinData(allocator: std.mem.Allocator, version: []const u8, langref
     };
     var state: State = .searching;
 
-    var builtins = std.ArrayListUnmanaged(Builtin){};
+    var builtins: std.ArrayList(Builtin) = .empty;
     errdefer {
         for (builtins.items) |*builtin| {
             builtin.documentation.deinit(allocator);
@@ -502,7 +509,7 @@ fn collectBuiltinData(allocator: std.mem.Allocator, version: []const u8, langref
                             try builtins.append(allocator, .{
                                 .name = content_name,
                                 .signature = "",
-                                .documentation = .{},
+                                .documentation = .empty,
                             });
                         },
                         .builtin_content => unreachable,
@@ -547,9 +554,12 @@ fn collectBuiltinData(allocator: std.mem.Allocator, version: []const u8, langref
                             state = .builtin_content;
                         },
                         .builtin_content => {
-                            const writer = builtins.items[builtins.items.len - 1].documentation.writer(allocator);
+                            const documentation = &builtins.items[builtins.items.len - 1].documentation;
 
-                            try writeMarkdownCode(content_name, "zig", writer);
+                            var aw: std.Io.Writer.Allocating = .fromArrayList(allocator, documentation);
+                            defer aw.deinit();
+                            writeMarkdownCode(content_name, "zig", &aw.writer) catch return error.OutOfMemory;
+                            documentation.* = aw.toArrayList();
                         },
                         else => {},
                     }
@@ -571,8 +581,12 @@ fn collectBuiltinData(allocator: std.mem.Allocator, version: []const u8, langref
                     const content_token = tokenizer.next();
                     std.debug.assert(content_token.id == .Content);
                     const content = tokenizer.buffer[content_token.start..content_token.end];
-                    const writer = builtins.items[builtins.items.len - 1].documentation.writer(allocator);
-                    try writeMarkdownCode(content, source_type, writer);
+                    const documentation = &builtins.items[builtins.items.len - 1].documentation;
+
+                    var aw: std.Io.Writer.Allocating = .fromArrayList(allocator, documentation);
+                    defer aw.deinit();
+                    writeMarkdownCode(content, source_type, &aw.writer) catch return error.OutOfMemory;
+                    documentation.* = aw.toArrayList();
 
                     std.debug.assert(tokenizer.next().id == .BracketOpen);
                     const end_code_token = tokenizer.next();
@@ -601,11 +615,11 @@ fn collectBuiltinData(allocator: std.mem.Allocator, version: []const u8, langref
                     const spaceless_url_name = try std.mem.replaceOwned(u8, allocator, url_name, " ", "-");
                     defer allocator.free(spaceless_url_name);
 
-                    const writer = builtins.items[builtins.items.len - 1].documentation.writer(allocator);
-                    try writer.print("[{s}](https://ziglang.org/documentation/{s}/#{s})", .{
+                    const documentation = &builtins.items[builtins.items.len - 1].documentation;
+                    try documentation.print(allocator, "[{s}](https://ziglang.org/documentation/{s}/#{s})", .{
                         name,
                         version,
-                        std.mem.trimLeft(u8, spaceless_url_name, "@"),
+                        std.mem.trimStart(u8, spaceless_url_name, "@"),
                     });
                 } else if (state != .searching and std.mem.eql(u8, tag_name, "code_begin")) {
                     std.debug.assert(tokenizer.next().id == .Separator);
@@ -638,8 +652,12 @@ fn collectBuiltinData(allocator: std.mem.Allocator, version: []const u8, langref
                         if (std.mem.eql(u8, end_tag_name, "code_end")) {
                             std.debug.assert(tokenizer.next().id == .BracketClose);
 
-                            const writer = builtins.items[builtins.items.len - 1].documentation.writer(allocator);
-                            try writeMarkdownCode(content, "zig", writer);
+                            const documentation = &builtins.items[builtins.items.len - 1].documentation;
+
+                            var aw: std.Io.Writer.Allocating = .fromArrayList(allocator, documentation);
+                            defer aw.deinit();
+                            writeMarkdownCode(content, "zig", &aw.writer) catch return error.OutOfMemory;
+                            documentation.* = aw.toArrayList();
                             break;
                         }
                         std.debug.assert(tokenizer.next().id == .BracketClose);
@@ -666,9 +684,9 @@ fn collectBuiltinData(allocator: std.mem.Allocator, version: []const u8, langref
 /// \`\`\`{source_type}
 /// {content}
 /// \`\`\`
-fn writeMarkdownCode(content: []const u8, source_type: []const u8, writer: anytype) @TypeOf(writer).Error!void {
+fn writeMarkdownCode(content: []const u8, source_type: []const u8, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     const trimmed_content = std.mem.trim(u8, content, " \n");
-    const is_multiline = std.mem.indexOfScalar(u8, trimmed_content, '\n') != null;
+    const is_multiline = std.mem.findScalar(u8, trimmed_content, '\n') != null;
     if (is_multiline) {
         var line_it = std.mem.tokenizeScalar(u8, trimmed_content, '\n');
         try writer.print("\n```{s}", .{source_type});
@@ -681,7 +699,7 @@ fn writeMarkdownCode(content: []const u8, source_type: []const u8, writer: anyty
     }
 }
 
-fn writeLine(str: []const u8, single_line: bool, writer: anytype) @TypeOf(writer).Error!void {
+fn writeLine(str: []const u8, single_line: bool, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     const trimmed_content = std.mem.trim(u8, str, &std.ascii.whitespace);
     if (trimmed_content.len == 0) return;
 
@@ -705,14 +723,14 @@ fn writeLine(str: []const u8, single_line: bool, writer: anytype) @TypeOf(writer
 /// - `<ul>` and `<li>`
 /// - `<a>`
 /// - `<code>`
-fn writeMarkdownFromHtml(html: []const u8, writer: anytype) !void {
+fn writeMarkdownFromHtml(html: []const u8, writer: *std.Io.Writer) !void {
     return writeMarkdownFromHtmlInternal(html, false, 0, writer);
 }
 
 /// this is kind of a hacky solution. A cleaner solution would be to implement using a xml/html parser.
-fn writeMarkdownFromHtmlInternal(html: []const u8, single_line: bool, depth: u32, writer: anytype) !void {
+fn writeMarkdownFromHtmlInternal(html: []const u8, single_line: bool, depth: u32, writer: *std.Io.Writer) !void {
     var index: usize = 0;
-    while (std.mem.indexOfScalarPos(u8, html, index, '<')) |tag_start_index| {
+    while (std.mem.findScalarPos(u8, html, index, '<')) |tag_start_index| {
         const tags: []const []const u8 = &.{ "pre", "p", "em", "ul", "li", "a", "code" };
         const opening_tags: []const []const u8 = &.{ "<pre>", "<p>", "<em>", "<ul>", "<li>", "<a>", "<code>" };
         const closing_tags: []const []const u8 = &.{ "</pre>", "</p>", "</em>", "</ul>", "</li>", "</a>", "</code>" };
@@ -731,13 +749,13 @@ fn writeMarkdownFromHtmlInternal(html: []const u8, single_line: bool, depth: u32
 
         // std.debug.print("tag: '{s}'\n", .{tag_name});
 
-        const content_start = 1 + (std.mem.indexOfScalarPos(u8, html, tag_start_index + 1 + tag_name.len, '>') orelse return error.InvalidTag);
+        const content_start = 1 + (std.mem.findScalarPos(u8, html, tag_start_index + 1 + tag_name.len, '>') orelse return error.InvalidTag);
 
         index = content_start;
-        const content_end = while (std.mem.indexOfScalarPos(u8, html, index, '<')) |end| {
+        const content_end = while (std.mem.findScalarPos(u8, html, index, '<')) |end| {
             if (std.mem.startsWith(u8, html[end..], closing_tag_name)) break end;
             if (std.mem.startsWith(u8, html[end..], opening_tag_name)) {
-                index = std.mem.indexOfPos(u8, html, end + opening_tag_name.len, closing_tag_name) orelse return error.MissingEndTag;
+                index = std.mem.findPos(u8, html, end + opening_tag_name.len, closing_tag_name) orelse return error.MissingEndTag;
                 index += closing_tag_name.len;
                 continue;
             }
@@ -758,15 +776,15 @@ fn writeMarkdownFromHtmlInternal(html: []const u8, single_line: bool, depth: u32
         } else if (std.mem.eql(u8, tag_name, "ul")) {
             try writeMarkdownFromHtmlInternal(content, false, depth + 1, writer);
         } else if (std.mem.eql(u8, tag_name, "li")) {
-            try writer.writeByteNTimes(' ', 1 + (depth -| 1) * 2);
+            try writer.splatByteAll(' ', 1 + (depth -| 1) * 2);
             try writer.writeAll("- ");
             try writeMarkdownFromHtmlInternal(content, true, depth, writer);
         } else if (std.mem.eql(u8, tag_name, "a")) {
-            const href_part = std.mem.trimLeft(u8, html[tag_start_index + 2 .. content_start - 1], " ");
+            const href_part = std.mem.trimStart(u8, html[tag_start_index + 2 .. content_start - 1], " ");
             std.debug.assert(std.mem.startsWith(u8, href_part, "href=\""));
-            std.debug.assert(href_part[href_part.len - 1] == '\"');
+            std.debug.assert(href_part[href_part.len - 1] == '"');
             const url = href_part["href=\"".len .. href_part.len - 1];
-            try writer.print("[{s}]({s})", .{ content, std.mem.trimLeft(u8, url, "@") });
+            try writer.print("[{s}]({s})", .{ content, std.mem.trimStart(u8, url, "@") });
         } else if (std.mem.eql(u8, tag_name, "code")) {
             try writeMarkdownCode(content, "zig", writer);
         } else return error.UnsupportedTag;
@@ -775,73 +793,82 @@ fn writeMarkdownFromHtmlInternal(html: []const u8, single_line: bool, depth: u32
     try writeLine(html[index..], single_line, writer);
 }
 
-/// takes in a signature like this: `@intToEnum(comptime DestType: type, integer: anytype) DestType`
-/// and outputs its arguments: `comptime DestType: type`, `integer: anytype`
-fn extractArgumentsFromSignature(allocator: std.mem.Allocator, signature: []const u8) error{OutOfMemory}![][]const u8 {
-    var arguments = std.ArrayListUnmanaged([]const u8){};
-    defer arguments.deinit(allocator);
+const Parameter = struct {
+    documentation: ?[]const u8,
+    signature: []const u8,
 
-    var argument_start: usize = 0;
-    var index: usize = 0;
-    while (std.mem.indexOfAnyPos(u8, signature, index, ",()")) |token_index| {
-        if (signature[token_index] == '(') {
-            argument_start = index;
-            index = 1 + std.mem.indexOfScalarPos(u8, signature, token_index + 1, ')').?;
-            continue;
-        }
-        const argument = std.mem.trim(u8, signature[argument_start..token_index], &std.ascii.whitespace);
-        if (argument.len != 0) try arguments.append(allocator, argument);
-        if (signature[token_index] == ')') break;
-        argument_start = token_index + 1;
-        index = token_index + 1;
+    fn deinit(param: *Parameter, allocator: std.mem.Allocator) void {
+        if (param.documentation) |doc| allocator.free(doc);
+        param.* = undefined;
+    }
+};
+
+/// takes in a signature (without name or leading parenthesis) like this:
+/// `comptime DestType: type, integer: anytype) DestType`
+/// and outputs its parameters and return type:
+/// `comptime DestType: type`, `integer: anytype`, `DestType`
+fn extractParametersAndReturnTypeFromSignature(allocator: std.mem.Allocator, signature: [:0]const u8) error{OutOfMemory}!struct { []Parameter, []const u8 } {
+    var parameters: std.ArrayList(Parameter) = .empty;
+    errdefer {
+        for (parameters.items) |*param| param.deinit(allocator);
+        defer parameters.deinit(allocator);
     }
 
-    return arguments.toOwnedSlice(allocator);
-}
-
-/// takes in a signature like this: `@intToEnum(comptime DestType: type, integer: anytype) DestType`
-/// and outputs a snippet: `@intToEnum(${1:comptime DestType: type}, ${2:integer: anytype})`
-fn extractSnippetFromSignature(allocator: std.mem.Allocator, signature: []const u8) error{OutOfMemory}![]const u8 {
-    var snippet = std.ArrayListUnmanaged(u8){};
-    defer snippet.deinit(allocator);
-    var writer = snippet.writer(allocator);
-
-    const start_index = 1 + std.mem.indexOfScalar(u8, signature, '(').?;
-    try writer.writeAll(signature[0..start_index]);
-
-    var argument_start: usize = start_index;
-    var index: usize = start_index;
-    var i: u32 = 1;
-    while (std.mem.indexOfAnyPos(u8, signature, index, ":()")) |token_index| {
-        if (signature[token_index] == '(') {
-            argument_start = index;
-            index = 1 + std.mem.indexOfScalarPos(u8, signature, token_index + 1, ')').?;
-            continue;
+    var tokenizer: std.zig.Tokenizer = .init(signature);
+    var documentation: std.ArrayList(u8) = .empty;
+    defer documentation.deinit(allocator);
+    var argument_start: ?usize = null;
+    while (true) {
+        const token = tokenizer.next();
+        switch (token.tag) {
+            .eof => unreachable,
+            .l_paren => {
+                var paren_depth: usize = 1;
+                while (paren_depth > 0) {
+                    switch (tokenizer.next().tag) {
+                        .l_paren => paren_depth += 1,
+                        .r_paren => paren_depth -= 1,
+                        else => {},
+                    }
+                }
+                continue;
+            },
+            .comma, .r_paren => |tag| {
+                if (argument_start) |start| {
+                    try parameters.append(allocator, .{
+                        .documentation = if (documentation.items.len != 0) try documentation.toOwnedSlice(allocator) else null,
+                        .signature = std.mem.trim(u8, signature[start..token.loc.start], &std.ascii.whitespace),
+                    });
+                }
+                argument_start = null;
+                if (tag == .r_paren) break;
+            },
+            .doc_comment, .container_doc_comment => {
+                try documentation.print(allocator, "{s}\n", .{signature[token.loc.start + "///".len .. token.loc.end]});
+            },
+            else => {
+                if (argument_start == null) {
+                    argument_start = token.loc.start;
+                }
+            },
         }
-        const argument = std.mem.trim(u8, signature[argument_start..token_index], &std.ascii.whitespace);
-        if (argument.len != 0) {
-            if (i != 1) try writer.writeAll(", ");
-            try writer.print("${{{d}:{s}}}", .{ i, argument });
-        }
-        if (signature[token_index] == ')') break;
-        const r_paren_idx = std.mem.indexOfScalarPos(u8, signature, token_index, ')');
-        index = std.mem.indexOfScalarPos(u8, signature, token_index, ',') orelse break;
-        // Some builtins have complex return types, eg `@addWithOverflow(a: anytype, b: anytype) struct { @TypeOf(a, b), u1 }`
-        // check if we've moved past a ')'
-        if (r_paren_idx) |rpi| if (rpi < index) break;
-        argument_start = index + 1;
-        i += 1;
     }
-    try writer.writeByte(')');
 
-    return snippet.toOwnedSlice(allocator);
+    const return_type = signature[tokenizer.index + 1 ..];
+    return .{ try parameters.toOwnedSlice(allocator), return_type };
 }
 
 /// Generates data files from the Zig language Reference (https://ziglang.org/documentation/master/)
 /// Output example: https://github.com/zigtools/zls/blob/0.11.0/src/data/master.zig
-fn generateVersionDataFile(allocator: std.mem.Allocator, version: []const u8, output_path: []const u8, langref_path: []const u8) !void {
+fn generateVersionDataFile(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    version: []const u8,
+    output_path: []const u8,
+    langref_path: []const u8,
+) !void {
     // const langref_source: []const u8 = @embedFile("langref.html.in");
-    const langref_source = try std.fs.cwd().readFileAlloc(allocator, langref_path, std.math.maxInt(u32));
+    const langref_source = try std.Io.Dir.cwd().readFileAlloc(io, langref_path, allocator, .limited(16 * 1024 * 1024));
     defer allocator.free(langref_source);
 
     const builtins = try collectBuiltinData(allocator, version, langref_source);
@@ -852,11 +879,12 @@ fn generateVersionDataFile(allocator: std.mem.Allocator, version: []const u8, ou
         allocator.free(builtins);
     }
 
-    var builtin_file = try std.fs.cwd().createFile(output_path, .{});
-    defer builtin_file.close();
+    var builtin_file = try std.Io.Dir.cwd().createFile(io, output_path, .{});
+    defer builtin_file.close(io);
 
-    var buffered_writer = std.io.bufferedWriter(builtin_file.writer());
-    var writer = buffered_writer.writer();
+    var buffer: [4096]u8 = undefined;
+    var file_writer = builtin_file.writer(io, &buffer);
+    const writer = &file_writer.interface;
 
     try writer.writeAll(
         \\//! DO NOT EDIT
@@ -865,63 +893,81 @@ fn generateVersionDataFile(allocator: std.mem.Allocator, version: []const u8, ou
         \\const std = @import("std");
         \\
         \\pub const Builtin = struct {
-        \\    signature: []const u8,
-        \\    snippet: []const u8,
+        \\    return_type: []const u8,
         \\    documentation: []const u8,
-        \\    arguments: []const []const u8,
+        \\    parameters: []const Parameter,
+        \\
+        \\    pub const Parameter = struct {
+        \\        signature: []const u8,
+        \\        documentation: ?[]const u8,
+        \\    };
         \\};
         \\
-        \\pub const builtins = std.StaticStringMap(Builtin).initComptime(&.{
+        \\pub const builtins: std.StaticStringMap(Builtin) = .initComptime(&[_]struct { []const u8, Builtin }{
         \\
     );
 
     for (builtins) |builtin| {
-        const signature = try std.mem.replaceOwned(u8, allocator, builtin.signature, "\n", "");
+        const signature = try std.mem.replaceOwned(u8, allocator, builtin.signature[builtin.name.len + 1 ..], "std.builtin.", "");
         defer allocator.free(signature);
+        const signature_with_sentinel = try allocator.dupeZ(u8, signature);
+        defer allocator.free(signature_with_sentinel);
 
-        const snippet = try extractSnippetFromSignature(allocator, signature);
-        defer allocator.free(snippet);
-
-        const arguments = try extractArgumentsFromSignature(allocator, signature[builtin.name.len + 1 ..]);
-        defer allocator.free(arguments);
+        const parameters, const return_type = try extractParametersAndReturnTypeFromSignature(allocator, signature_with_sentinel);
+        defer {
+            for (parameters) |*param| param.deinit(allocator);
+            defer allocator.free(parameters);
+        }
 
         try writer.print(
             \\    .{{
-            \\        "{}",
-            \\        Builtin{{
-            \\            .signature = "{}",
-            \\            .snippet = "{}",
+            \\        "{f}",
+            \\        .{{
+            \\            .return_type = "{f}",
             \\
         , .{
-            std.zig.fmtEscapes(builtin.name),
-            std.zig.fmtEscapes(signature),
-            std.zig.fmtEscapes(snippet),
+            std.zig.fmtString(builtin.name),
+            std.zig.fmtString(return_type),
         });
 
         const html = builtin.documentation.items["</pre>".len..];
-        var markdown = std.ArrayListUnmanaged(u8){};
-        defer markdown.deinit(allocator);
-        try writeMarkdownFromHtml(html, markdown.writer(allocator));
+        var markdown: std.Io.Writer.Allocating = .init(allocator);
+        defer markdown.deinit();
+        writeMarkdownFromHtml(html, &markdown.writer) catch return error.OutOfMemory;
 
         try writer.writeAll("            .documentation =\n");
-        var line_it = std.mem.splitScalar(u8, std.mem.trim(u8, markdown.items, "\n"), '\n');
+        var line_it = std.mem.splitScalar(u8, std.mem.trim(u8, markdown.written(), "\n"), '\n');
         while (line_it.next()) |line| {
-            try writer.print("            \\\\{s}\n", .{std.mem.trimRight(u8, line, " ")});
+            try writer.print("            \\\\{s}\n", .{std.mem.trimEnd(u8, line, " ")});
         }
 
         try writer.writeAll(
             \\            ,
-            \\            .arguments = &[_][]const u8{
+            \\            .parameters = &.{
         );
 
-        if (arguments.len != 0) {
+        if (parameters.len != 0) {
             try writer.writeByte('\n');
-            for (arguments) |arg| {
-                try writer.print("                \"{}\",\n", .{std.zig.fmtEscapes(arg)});
+            for (parameters) |param| {
+                try writer.print(
+                    \\                .{{
+                    \\                    .signature = "{f}",
+                    \\
+                , .{
+                    std.zig.fmtString(param.signature),
+                });
+                if (param.documentation) |doc| {
+                    try writer.print("                    .documentation = \"{f}\",\n", .{
+                        std.zig.fmtString(doc),
+                    });
+                } else {
+                    try writer.writeAll("                    .documentation = null,\n");
+                }
+                try writer.writeAll("                },\n");
             }
-            try writer.writeAll("            },");
+            try writer.writeAll("            },\n");
         } else {
-            try writer.writeAll("},");
+            try writer.writeAll("},\n");
         }
 
         try writer.writeAll(
@@ -937,19 +983,19 @@ fn generateVersionDataFile(allocator: std.mem.Allocator, version: []const u8, ou
         \\// DO NOT EDIT
         \\
     );
-    try buffered_writer.flush();
+    try file_writer.end();
 }
 
-pub fn main() !void {
-    var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(general_purpose_allocator.deinit() == .ok);
-    const gpa = general_purpose_allocator.allocator();
+pub fn main(init: std.process.Init.Minimal) !void {
+    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = debug_allocator.deinit();
+    const gpa = debug_allocator.allocator();
 
-    var stderr = std.io.getStdErr().writer();
+    var threaded: std.Io.Threaded = .init_single_threaded;
+    const io = threaded.io();
 
-    var args_it = try std.process.argsWithAllocator(gpa);
+    var args_it = try init.args.iterateAllocator(gpa);
     defer args_it.deinit();
-
     _ = args_it.skip();
 
     var config_path: ?[]const u8 = null;
@@ -961,7 +1007,7 @@ pub fn main() !void {
 
     while (args_it.next()) |argname| {
         if (std.mem.eql(u8, argname, "--help")) {
-            try std.io.getStdOut().writeAll(
+            try std.Io.File.stdout().writeStreamingAll(io,
                 \\Usage: zig build gen -- [command]
                 \\
                 \\Commands:
@@ -974,36 +1020,30 @@ pub fn main() !void {
                 \\  --langref-version [version]      Input langref.html.in version
                 \\
             );
-            return std.process.cleanExit();
+            return std.process.cleanExit(io);
         } else if (std.mem.eql(u8, argname, "--generate-config")) {
             config_path = args_it.next() orelse {
-                try stderr.print("Expected output path after --generate-config argument.\n", .{});
-                return;
+                std.process.fatal("Expected output path after --generate-config argument.\n", .{});
             };
         } else if (std.mem.eql(u8, argname, "--generate-schema")) {
             schema_path = args_it.next() orelse {
-                try stderr.print("Expected output path after --generate-schema argument.\n", .{});
-                return;
+                std.process.fatal("Expected output path after --generate-schema argument.\n", .{});
             };
         } else if (std.mem.eql(u8, argname, "--generate-vscode-config")) {
             vscode_config_path = args_it.next() orelse {
-                try stderr.print("Expected output path after --generate-vscode-config argument.\n", .{});
-                return;
+                std.process.fatal("Expected output path after --generate-vscode-config argument.\n", .{});
             };
         } else if (std.mem.eql(u8, argname, "--generate-version-data")) {
             version_data_path = args_it.next() orelse {
-                try stderr.print("Expected output path after --generate-version-data argument.\n", .{});
-                return;
+                std.process.fatal("Expected output path after --generate-version-data argument.\n", .{});
             };
         } else if (std.mem.eql(u8, argname, "--langref-path")) {
             langref_path = args_it.next() orelse {
-                try stderr.print("Expected output path after --langref-path argument.\n", .{});
-                return;
+                std.process.fatal("Expected output path after --langref-path argument.\n", .{});
             };
         } else if (std.mem.eql(u8, argname, "--langref-version")) {
             langref_version = args_it.next() orelse {
-                try stderr.print("Expected version after --langref-version argument.\n", .{});
-                return;
+                std.process.fatal("Expected version after --langref-version argument.\n", .{});
             };
             const is_valid_version = blk: {
                 if (std.mem.eql(u8, langref_version.?, "master")) break :blk true;
@@ -1011,12 +1051,10 @@ pub fn main() !void {
                 break :blk true;
             };
             if (!is_valid_version) {
-                try stderr.print("'{s}' is not a valid argument after --langref-version.\n", .{langref_version.?});
-                return;
+                std.process.fatal("'{s}' is not a valid argument after --langref-version.\n", .{langref_version.?});
             }
         } else {
-            try stderr.print("Unrecognized argument '{s}'.\n", .{argname});
-            return;
+            std.process.fatal("Unrecognized argument '{s}'.\n", .{argname});
         }
     }
 
@@ -1025,14 +1063,14 @@ pub fn main() !void {
     const config = config_json.value;
 
     if (config_path) |output_path| {
-        try generateConfigFile(gpa, config, output_path);
+        try generateConfigFile(io, gpa, config, output_path);
     }
     if (schema_path) |output_path| {
-        try generateSchemaFile(gpa, config, output_path);
+        try generateSchemaFile(io, gpa, config, output_path);
     }
     if (vscode_config_path) |output_path| {
-        try generateVSCodeConfigFile(gpa, config, output_path);
-        try stderr.writeAll(
+        try generateVSCodeConfigFile(io, gpa, config, output_path);
+        try std.Io.File.stderr().writeStreamingAll(io,
             \\Changing configuration options may also require editing the `package.json` from ziglang/vscode-zig at https://github.com/ziglang/vscode-zig/blob/master/package.json
             \\You can use `zig build gen -- --vscode-config-path /path/to/output/file.json` to generate the new configuration properties which you can then copy into `package.json`
             \\
@@ -1040,10 +1078,11 @@ pub fn main() !void {
     }
     if (version_data_path) |output_path| {
         try generateVersionDataFile(
+            io,
             gpa,
-            langref_version orelse return try stderr.writeAll("--generate-version-data requires --langref-version to be specified"),
+            langref_version orelse std.process.fatal("--generate-version-data requires --langref-version to be specified", .{}),
             output_path,
-            langref_path orelse return try stderr.writeAll("--generate-version-data requires --langref-path to be specified"),
+            langref_path orelse std.process.fatal("--generate-version-data requires --langref-path to be specified", .{}),
         );
     }
 }

@@ -1,28 +1,47 @@
 .{
-    .name = .zigscient,
-    // Must match the `proj_version` in `build.zig`
-    .version = "0.15.0-dev",
-    // Must match the `minimum_build_zig_version` in `build.zig`
-    .minimum_zig_version = "0.14.0",
+    .name = .Zigscient,
+    // Remove `-dev` when tagging a new ZLS release and add it back on the next development cycle.
+    .version = "0.16.0-dev",
+    // Specifies the minimum Zig version that is required to compile and test ZLS.
+    // Must be a Zig version that is downloadable from https://ziglang.org/download/ or a mirror.
+    //
+    // Whenever this version is increased, run the following command:
+    // ```bash
+    // nix flake update --commit-lock-file
+    // ```
+    // If you do not use Nix, a ZLS maintainer can take care of this.
+    .minimum_zig_version = "0.16.0-dev.2255+d417441f4",
+    // If you do not use Nix, a ZLS maintainer can take care of this.
+    // Whenever the dependencies are updated, run the following command:
+    // ```bash
+    // nix run github:nix-community/zon2nix#default_0_14 > deps.nix
+    // ```
+    // The `deps.nix` should also be updated to not fetch `tracy`.
     .dependencies = .{
         .known_folders = .{
-            .url = "https://github.com/ziglibs/known-folders/archive/aa24df42183ad415d10bc0a33e6238c437fc0f59.tar.gz",
-            .hash = "known_folders-0.0.0-Fy-PJtLDAADGDOwYwMkVydMSTp_aN-nfjCZw6qPQ2ECL",
+            .url = "https://github.com/ziglibs/known-folders/archive/82027007c0eb199a3242c167a5cffd83b6ee571b.tar.gz",
+            .hash = "known_folders-0.0.0-Fy-PJqHJAAB43zDJmOdlr3nViu69IFI9pNFt7hkHjKk4",
         },
         .diffz = .{
-            .url = "https://github.com/ziglibs/diffz/archive/420fcb22306ffd4c9c3c761863dfbb6bdbb18a73.tar.gz",
-            .hash = "diffz-0.0.1-AAAAAOLCAQA7XaOIAD5RPaSkjRxSqO9L9EAeJ-5UvU25",
+            .url = "https://github.com/ziglibs/diffz/archive/669e6ed7470100bfd9d2aa9f6f96b93c45996179.tar.gz",
+            .hash = "diffz-0.0.1-G2tlISLPAQDzXkUIRWWUfdgIsIb1dAyVwRPXMt5kRpui",
         },
-        .lsp_codegen = .{
-            .url = "https://github.com/zigtools/zig-lsp-codegen/archive/063a98c13a2293d8654086140813bdd1de6501bc.tar.gz",
-            .hash = "lsp_codegen-0.1.0-CMjjo0ZXCQB-rAhPYrlfzzpU0u0u2MeGvUucZ-_g32eg",
+        .lsp_kit = .{
+            .url = "https://github.com/zigtools/lsp-kit/archive/922e9c2fc00741b167a19277d737b8eb890f0253.tar.gz",
+            .hash = "lsp_kit-0.1.0-bi_PL94yDABlKrIbUTtVALYWLeFt6XAzHS6R12Tp83_Z",
+        },
+        .extended_zccs = .{
+            .url = "https://github.com/llogick/extended-zccs/archive/d83f4833a7469ba44cdcf7b237bb9a612d83d0fb.tar.gz",
+            .hash = "extended_zccs-0.16.0-dev-zEaUNhXQDgDMfl6nMCtSo23xiYiVAke02u0VdMQnkIM8",
+            // For local dev
+            // .path = "../extended-zccs",
         },
         .tracy = .{
-            .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.11.1.tar.gz",
-            .hash = "N-V-__8AAMeOlQEipHjcyu0TCftdAi9AQe7EXUDJOoVe0k-t",
+            .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.13.1.tar.gz",
+            .hash = "N-V-__8AAOncKwEm1F9c5LrT7HMNmRMYX8-fAoqpc6YyTu9X",
             .lazy = true,
         },
     },
     .paths = .{""},
-    .fingerprint = 0xf531a4a2475aa009,
+    .fingerprint = 0x77c02601c0deba5e,
 }

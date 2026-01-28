@@ -1,3 +1,7 @@
+//! This file implements a standalone executable that is used by
+//! `add_analysis_cases.zig` to run code analysis tests.
+//! See the `./analysis` subdirectory.
+
 const std = @import("std");
 const zls = @import("zls");
 const builtin = @import("builtin");
@@ -5,6 +9,9 @@ const builtin = @import("builtin");
 const helper = @import("helper.zig");
 const ErrorBuilder = @import("ErrorBuilder.zig");
 
+const InternPool = zls.analyser.InternPool;
+const Index = InternPool.Index;
+const Key = InternPool.Key;
 const Analyser = zls.Analyser;
 const offsets = zls.offsets;
 
@@ -13,22 +20,16 @@ pub const std_options: std.Options = .{
 };
 
 const Error = error{
-    FailedToCreateServer,
     OutOfMemory,
     InvalidTestItem,
+    CheckFailed,
+    Unexpected,
+} || std.mem.Allocator.Error || std.Io.Cancelable;
 
-    IdentifierNotFound,
-    ResolveTypeFailed,
-    WrongType,
-    WrongValue,
-};
-
-pub fn main() Error!void {
-    var general_purpose_allocator: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = general_purpose_allocator.deinit();
-    const gpa = general_purpose_allocator.allocator();
-
-    var arg_it = std.process.argsWithAllocator(gpa) catch |err| std.debug.panic("failed to collect args: {}", .{err});
+pub fn main(init: std.process.Init) Error!void {
+    const io = init.io;
+    const gpa = init.gpa;
+    var arg_it = init.minimal.args.iterateAllocator(gpa) catch |err| std.debug.panic("failed to collect args: {}", .{err});
     defer arg_it.deinit();
 
     _ = arg_it.skip();
@@ -38,7 +39,8 @@ pub fn main() Error!void {
 
     const arena = arena_allocator.allocator();
 
-    var config: zls.Config = .{};
+    var zig_exe_path: ?[]const u8 = null;
+    var zig_lib_dir: ?std.Build.Cache.Directory = null;
 
     var opt_file_path: ?[]const u8 = null;
 
@@ -51,41 +53,96 @@ pub fn main() Error!void {
                 opt_file_path = try arena.dupe(u8, arg);
             }
         } else if (std.mem.eql(u8, arg, "--zig-exe-path")) {
-            const zig_exe_path = arg_it.next() orelse {
+            const temp_zig_exe_path = arg_it.next() orelse {
                 std.log.err("expected argument after '--zig-exe-path'.", .{});
                 std.process.exit(1);
             };
-            config.zig_exe_path = try arena.dupe(u8, zig_exe_path);
+            zig_exe_path = try arena.dupe(u8, temp_zig_exe_path);
         } else if (std.mem.eql(u8, arg, "--zig-lib-path")) {
+            std.debug.assert(builtin.target.os.tag != .wasi);
             const zig_lib_path = arg_it.next() orelse {
                 std.log.err("expected argument after '--zig-lib-path'.", .{});
                 std.process.exit(1);
             };
-            config.zig_lib_path = try arena.dupe(u8, zig_lib_path);
+            const cwd = std.process.getCwdAlloc(arena) catch |err| {
+                std.log.err("failed to get current working directory: {}", .{err});
+                std.process.exit(1);
+            };
+            const resolved_zig_lib_path = std.fs.path.resolve(arena, &.{ cwd, zig_lib_path }) catch |err| {
+                std.log.err("failed to resolve zig library directory '{s}/{s}': {}", .{ cwd, zig_lib_path, err });
+                std.process.exit(1);
+            };
+
+            var handle = std.Io.Dir.cwd().openDir(io, resolved_zig_lib_path, .{}) catch |err| {
+                std.log.err("failed to open zig library directory '{s}: {}'", .{ resolved_zig_lib_path, err });
+                std.process.exit(1);
+            };
+            errdefer handle.close(io);
+
+            zig_lib_dir = .{
+                .handle = handle,
+                .path = try arena.dupe(u8, resolved_zig_lib_path),
+            };
         } else {
             std.log.err("Unrecognized argument '{s}'.", .{arg});
             std.process.exit(1);
         }
     }
 
-    const server = zls.Server.create(gpa) catch return error.FailedToCreateServer;
-    defer server.destroy();
+    var ip: InternPool = try .init(gpa);
+    defer ip.deinit(gpa);
+
+    var diagnostics_collection: zls.DiagnosticsCollection = .{
+        .io = io,
+        .allocator = gpa,
+    };
+    defer diagnostics_collection.deinit();
+
+    var environ_map: std.process.Environ.Map = .init(std.testing.failing_allocator);
+
+    var config: zls.DocumentStore.Config = .{
+        .environ_map = &environ_map,
+        .zig_exe_path = zig_exe_path,
+        .zig_lib_dir = zig_lib_dir,
+        .build_runner_path = null,
+        .builtin_path = null,
+        .global_cache_dir = null,
+        .wasi_preopens = switch (builtin.target.os.tag) {
+            .wasi => try std.process.Preopens.init(arena),
+            else => {},
+        },
+    };
+
+    if (builtin.target.os.tag == .wasi) {
+        const zig_lib_dir_fd = config.wasi_preopens.get("/lib") orelse {
+            std.log.err("failed to resolve '/lib' WASI preopen", .{});
+            std.process.exit(1);
+        };
+        config.zig_lib_dir = .{ .handle = zig_lib_dir_fd.dir, .path = "/lib" };
+    }
+
+    var workspaces: std.ArrayList(zls.Server.Workspace) = .empty;
+    var document_store: zls.DocumentStore = .{
+        .io = io,
+        .allocator = gpa,
+        .config = config,
+        .diagnostics_collection = &diagnostics_collection,
+        .workspaces = &workspaces,
+    };
+    defer document_store.deinit();
 
     const file_path = opt_file_path orelse {
         std.log.err("Missing source file path argument", .{});
         std.process.exit(1);
     };
 
-    const file = std.fs.openFileAbsolute(file_path, .{}) catch |err| std.debug.panic("failed to open {s}: {}", .{ file_path, err });
-    defer file.close();
-
-    const source = file.readToEndAllocOptions(gpa, std.math.maxInt(usize), null, @alignOf(u8), 0) catch |err|
+    const source = std.Io.Dir.cwd().readFileAllocOptions(io, file_path, gpa, .limited(16 * 1024 * 1024), .of(u8), 0) catch |err|
         std.debug.panic("failed to read from {s}: {}", .{ file_path, err });
     defer gpa.free(source);
 
     const handle_uri = try zls.URI.fromPath(arena, file_path);
-    try server.document_store.openDocument(handle_uri, source);
-    const handle: *zls.DocumentStore.Handle = server.document_store.handles.get(handle_uri).?;
+    try document_store.openLspSyncedDocument(handle_uri, source);
+    const handle: *zls.DocumentStore.Handle = document_store.handles.get(handle_uri).?;
 
     var error_builder: ErrorBuilder = .init(gpa);
     defer error_builder.deinit();
@@ -96,16 +153,29 @@ pub fn main() Error!void {
 
     const annotations = helper.collectAnnotatedSourceLocations(gpa, handle.tree.source) catch |err| switch (err) {
         error.InvalidSourceLoc => std.debug.panic("{s} contains invalid annotated source locations: {}", .{ file_path, err }),
-        error.OutOfMemory => |e| return e,
+        error.OutOfMemory => return error.OutOfMemory,
     };
     defer gpa.free(annotations);
 
-    var analyser = zls.Analyser.init(gpa, &server.document_store, &server.ip, handle);
+    var analyser = zls.Analyser.init(gpa, arena, &document_store, &ip, handle);
     defer analyser.deinit();
 
     for (annotations) |annotation| {
-        const identifier_loc = annotation.loc;
-        const identifier = offsets.locToSlice(handle.tree.source, identifier_loc);
+        var ctx: enum {
+            global,
+            enum_literal,
+            struct_init,
+        } = .global;
+        var identifier_loc = annotation.loc;
+        var identifier = offsets.locToSlice(handle.tree.source, annotation.loc);
+
+        if (std.mem.eql(u8, identifier, ".")) {
+            ctx = .struct_init;
+        } else if (identifier[0] == '.') {
+            ctx = .enum_literal;
+            identifier_loc.start += 1;
+            identifier = identifier[1..];
+        }
 
         const test_item = parseAnnotatedSourceLoc(annotation) catch |err| {
             try error_builder.msgAtLoc("invalid annotated source location '{s}'", file_path, annotation.loc, .err, .{
@@ -114,35 +184,43 @@ pub fn main() Error!void {
             return err;
         };
 
-        const decl = try analyser.lookupSymbolGlobal(handle, identifier, identifier_loc.start) orelse {
-            try error_builder.msgAtLoc("failed to find identifier '{s}' here", file_path, annotation.loc, .err, .{
-                annotation.content,
-            });
-            return error.IdentifierNotFound;
-        };
-
         const expect_unknown = (if (test_item.expected_type) |expected_type| std.mem.eql(u8, expected_type, "unknown") else false) and
             (if (test_item.expected_value) |expected_value| std.mem.eql(u8, expected_value, "unknown") else true) and
             test_item.expected_error == null;
 
-        const ty = try decl.resolveType(&analyser) orelse {
+        const ty = blk: {
+            const decl_maybe = switch (ctx) {
+                .global => try analyser.lookupSymbolGlobal(handle, identifier, identifier_loc.start),
+                .enum_literal => try analyser.getSymbolEnumLiteral(handle, identifier_loc.start, identifier),
+                .struct_init => break :blk try analyser.resolveStructInitType(handle, identifier_loc.start),
+            };
+
+            const decl = decl_maybe orelse {
+                try error_builder.msgAtLoc("failed to find identifier '{s}' here", file_path, annotation.loc, .err, .{
+                    annotation.content,
+                });
+                continue;
+            };
+
+            break :blk try decl.resolveType(&analyser);
+        } orelse {
             if (expect_unknown) continue;
             try error_builder.msgAtLoc("failed to resolve type of '{s}'", file_path, annotation.loc, .err, .{
                 identifier,
             });
-            return error.ResolveTypeFailed;
+            continue;
         };
 
         if (expect_unknown) {
-            const actual_type = try std.fmt.allocPrint(gpa, "{}", .{ty.fmt(&analyser, .{
-                .truncate_container_decls = false,
-            })});
-            defer gpa.free(actual_type);
+            const actual_type = try ty.stringifyTypeOf(
+                &analyser,
+                .{ .truncate_container_decls = false },
+            );
 
             try error_builder.msgAtLoc("expected unknown but got `{s}`", file_path, identifier_loc, .err, .{
                 actual_type,
             });
-            return error.WrongType;
+            continue;
         }
 
         if (test_item.expected_error) |_| {
@@ -150,17 +228,17 @@ pub fn main() Error!void {
         }
 
         if (test_item.expected_type) |expected_type| {
-            const actual_type = try std.fmt.allocPrint(gpa, "{}", .{ty.fmt(&analyser, .{
-                .truncate_container_decls = false,
-            })});
-            defer gpa.free(actual_type);
+            const actual_type = try ty.stringifyTypeOf(
+                &analyser,
+                .{ .truncate_container_decls = false },
+            );
 
             if (!std.mem.eql(u8, expected_type, actual_type)) {
                 try error_builder.msgAtLoc("expected type `{s}` but got `{s}`", file_path, identifier_loc, .err, .{
                     expected_type,
                     actual_type,
                 });
-                return error.WrongType;
+                continue;
             }
         }
 
@@ -169,22 +247,26 @@ pub fn main() Error!void {
                 try error_builder.msgAtLoc("unsupported value check `{s}`", file_path, identifier_loc, .err, .{
                     expected_value,
                 });
-                return error.WrongValue;
+                continue;
             }
 
-            const actual_value = try std.fmt.allocPrint(gpa, "{}", .{ty.fmtTypeVal(&analyser, .{
-                .truncate_container_decls = false,
-            })});
-            defer gpa.free(actual_value);
+            const actual_value = try ty.stringifyTypeVal(
+                &analyser,
+                .{ .truncate_container_decls = false },
+            );
 
             if (!std.mem.eql(u8, expected_value, actual_value)) {
                 try error_builder.msgAtLoc("expected value `{s}` but got `{s}`", file_path, identifier_loc, .err, .{
                     expected_value,
                     actual_value,
                 });
-                return error.WrongValue;
+                continue;
             }
         }
+    }
+
+    if (error_builder.hasMessages()) {
+        return error.CheckFailed;
     }
 }
 

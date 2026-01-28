@@ -2,10 +2,8 @@ const std = @import("std");
 const zls = @import("zls");
 
 const helper = @import("../helper.zig");
-const Context = @import("../context.zig").Context;
 const ErrorBuilder = @import("../ErrorBuilder.zig");
 
-const types = zls.types;
 const offsets = zls.offsets;
 const ast = zls.ast;
 
@@ -81,25 +79,25 @@ fn testNodesAtLoc(source: []const u8) !void {
     std.debug.assert(std.mem.eql(u8, offsets.locToSlice(source, old_locs[2]), "<inner>"));
     std.debug.assert(std.mem.eql(u8, offsets.locToSlice(source, old_locs[3]), "<outer>"));
 
-    const inner_loc = offsets.Loc{ .start = locs[1].start, .end = locs[2].start };
-    const outer_loc = offsets.Loc{ .start = locs[0].start, .end = locs[3].end };
+    const inner_loc: offsets.Loc = .{ .start = locs[1].start, .end = locs[2].start };
+    const outer_loc: offsets.Loc = .{ .start = locs[0].start, .end = locs[3].end };
 
     const new_source = try allocator.dupeZ(u8, ccp.new_source);
     defer allocator.free(new_source);
 
-    var tree = try std.zig.Ast.parse(allocator, new_source, .zig);
+    var tree: std.zig.Ast = try .parse(allocator, new_source, .zig);
     defer tree.deinit(allocator);
 
-    const nodes = try ast.nodesAtLoc(allocator, tree, inner_loc);
+    const nodes = try ast.nodesAtLoc(allocator, &tree, inner_loc);
     defer allocator.free(nodes);
 
-    const actual_loc = offsets.Loc{
-        .start = offsets.nodeToLoc(tree, nodes[0]).start,
-        .end = offsets.nodeToLoc(tree, nodes[nodes.len - 1]).end,
+    const actual_loc: offsets.Loc = .{
+        .start = offsets.nodeToLoc(&tree, nodes[0]).start,
+        .end = offsets.nodeToLoc(&tree, nodes[nodes.len - 1]).end,
     };
 
     const uri = "file.zig";
-    var error_builder = ErrorBuilder.init(allocator);
+    var error_builder: ErrorBuilder = .init(allocator);
     defer error_builder.deinit();
     errdefer error_builder.writeDebug();
 

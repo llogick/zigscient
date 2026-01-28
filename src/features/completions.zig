@@ -5,7 +5,6 @@ const Ast = std.zig.Ast;
 const log = std.log.scoped(.completions);
 
 const Server = @import("../Server.zig");
-const Config = @import("../Config.zig");
 const DocumentStore = @import("../DocumentStore.zig");
 const types = @import("lsp").types;
 const Analyser = @import("../analysis.zig");
@@ -16,8 +15,8 @@ const URI = @import("../uri.zig");
 const DocumentScope = @import("../DocumentScope.zig");
 const analyser_completions = @import("../analyser/completions.zig");
 
-const data = @import("version_data");
-const snipped_data = @import("../snippets.zig");
+const version_data = @import("version_data");
+const snippets = @import("../snippets.zig");
 
 const Builder = struct {
     server: *Server,
@@ -25,10 +24,11 @@ const Builder = struct {
     arena: std.mem.Allocator,
     orig_handle: *DocumentStore.Handle,
     source_index: usize,
-    completions: std.ArrayListUnmanaged(types.CompletionItem),
+    completions: std.ArrayList(types.completion.Item),
+    cached_prepare_function_completion_result: ?PrepareFunctionCompletionResult = null,
 };
 
-fn typeToCompletion(builder: *Builder, ty: Analyser.Type) error{OutOfMemory}!void {
+fn typeToCompletion(builder: *Builder, ty: Analyser.Type) Analyser.Error!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -42,22 +42,14 @@ fn typeToCompletion(builder: *Builder, ty: Analyser.Type) error{OutOfMemory}!voi
                 builder.completions.appendAssumeCapacity(.{
                     .label = "*",
                     .kind = .Operator,
-                    .detail = try std.fmt.allocPrint(
-                        builder.arena,
-                        "{}",
-                        .{info.elem_ty.fmtTypeVal(builder.analyser, .{ .truncate_container_decls = false })},
-                    ),
+                    .detail = try info.elem_ty.stringifyTypeVal(builder.analyser, .{ .truncate_container_decls = false }),
                 });
 
                 if (info.size == .c) {
                     builder.completions.appendAssumeCapacity(.{
                         .label = "?",
                         .kind = .Operator,
-                        .detail = try std.fmt.allocPrint(
-                            builder.arena,
-                            "{}",
-                            .{ty.fmt(builder.analyser, .{ .truncate_container_decls = false })},
-                        ),
+                        .detail = try ty.stringifyTypeOf(builder.analyser, .{ .truncate_container_decls = false }),
                     });
                     return;
                 }
@@ -81,11 +73,7 @@ fn typeToCompletion(builder: *Builder, ty: Analyser.Type) error{OutOfMemory}!voi
                 builder.completions.appendAssumeCapacity(.{
                     .label = "ptr",
                     .kind = .Field,
-                    .detail = try std.fmt.allocPrint(
-                        builder.arena,
-                        "{}",
-                        .{many_ptr_ty.fmtTypeVal(builder.analyser, .{ .truncate_container_decls = false })},
-                    ),
+                    .detail = try many_ptr_ty.stringifyTypeVal(builder.analyser, .{ .truncate_container_decls = false }),
                 });
             },
             .many => {},
@@ -108,11 +96,7 @@ fn typeToCompletion(builder: *Builder, ty: Analyser.Type) error{OutOfMemory}!voi
                 builder.completions.appendAssumeCapacity(.{
                     .label = try std.fmt.allocPrint(builder.arena, "@\"{}\"", .{i}),
                     .kind = .Field,
-                    .detail = try std.fmt.allocPrint(
-                        builder.arena,
-                        "{}",
-                        .{elem_ty.fmtTypeVal(builder.analyser, .{ .truncate_container_decls = false })},
-                    ),
+                    .detail = try elem_ty.stringifyTypeVal(builder.analyser, .{ .truncate_container_decls = false }),
                 });
             }
         },
@@ -121,60 +105,16 @@ fn typeToCompletion(builder: *Builder, ty: Analyser.Type) error{OutOfMemory}!voi
             builder.completions.appendAssumeCapacity(.{
                 .label = "?",
                 .kind = .Operator,
-                .detail = try std.fmt.allocPrint(
-                    builder.arena,
-                    "{}",
-                    .{child_ty.fmtTypeVal(builder.analyser, .{ .truncate_container_decls = false })},
-                ),
+                .detail = try child_ty.stringifyTypeVal(builder.analyser, .{ .truncate_container_decls = false }),
             });
         },
-        .container => |scope_handle| {
-            var decls: std.ArrayListUnmanaged(Analyser.DeclWithHandle) = .{};
-
-            if (scope_handle.handle.tree.mode == .zon) {
-                const tree = scope_handle.handle.tree;
-                const tags = tree.tokens.items(.tag);
-
-                var buf: [2]Ast.Node.Index = undefined;
-                const struct_init = tree.fullStructInit(&buf, scope_handle.toNode()) orelse return;
-
-                try builder.completions.ensureUnusedCapacity(builder.arena, struct_init.ast.fields.len);
-
-                for (struct_init.ast.fields) |value_node| { // the node of `value` in `.name = value`
-                    const name_token = tree.firstToken(value_node) - 2; // math our way two token indexes back to get the `name`
-                    if (tags[name_token] != .identifier) continue; // cause: `.{ .name =<insert dot here> .some`
-                    builder.completions.appendAssumeCapacity(.{
-                        .label = tree.tokenSlice(name_token),
-                        .kind = .Field,
-                        .detail = try std.fmt.allocPrint(
-                            builder.arena,
-                            "{s}",
-                            .{offsets.nodeToSlice(tree, value_node)},
-                        ),
-                    });
-                }
-                return;
-            }
-
-            try builder.analyser.collectDeclarationsOfContainer(scope_handle, builder.orig_handle, !ty.is_type_val, &decls);
+        .container => {
+            var decls: std.ArrayList(Analyser.DeclWithHandle) = .empty;
+            try builder.analyser.collectDeclarationsOfContainer(ty, builder.orig_handle, !ty.is_type_val, &decls);
 
             for (decls.items) |decl_with_handle| {
-                try declToCompletion(builder, decl_with_handle, .{
-                    .parent_container_ty = ty,
-                });
+                try declToCompletion(builder, decl_with_handle);
             }
-        },
-        .other => |node_handle| switch (node_handle.handle.tree.nodes.items(.tag)[node_handle.node]) {
-            .merge_error_sets => {
-                const node_data = node_handle.handle.tree.nodes.items(.data)[node_handle.node];
-                if (try builder.analyser.resolveTypeOfNode(.{ .node = node_data.lhs, .handle = node_handle.handle })) |lhs_ty| {
-                    try typeToCompletion(builder, lhs_ty);
-                }
-                if (try builder.analyser.resolveTypeOfNode(.{ .node = node_data.rhs, .handle = node_handle.handle })) |rhs_ty| {
-                    try typeToCompletion(builder, rhs_ty);
-                }
-            },
-            else => {},
         },
         .ip_index => |payload| try analyser_completions.dotCompletions(
             builder.arena,
@@ -184,22 +124,25 @@ fn typeToCompletion(builder: *Builder, ty: Analyser.Type) error{OutOfMemory}!voi
         ),
         .either => |either_entries| {
             for (either_entries) |entry| {
-                const entry_ty = Analyser.Type{ .data = entry.type_data, .is_type_val = ty.is_type_val };
+                const entry_ty: Analyser.Type = .{ .data = entry.type_data, .is_type_val = ty.is_type_val };
                 try typeToCompletion(builder, entry_ty);
             }
         },
+        .anytype_parameter => |info| {
+            if (info.type_from_callsite_references) |t| {
+                try typeToCompletion(builder, t.*);
+            }
+        },
+        .function,
         .error_union,
         .union_tag,
         .compile_error,
+        .type_parameter,
         => {},
     }
 }
 
-const DeclToCompletionOptions = struct {
-    parent_container_ty: ?Analyser.Type = null,
-};
-
-fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle, options: DeclToCompletionOptions) error{OutOfMemory}!void {
+fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle) Analyser.Error!void {
     const name = decl_handle.handle.tree.tokenSlice(decl_handle.nameToken());
 
     const is_cimport = std.mem.eql(u8, std.fs.path.basename(decl_handle.handle.uri), "cimport.zig");
@@ -207,7 +150,7 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle, opt
         if (std.mem.startsWith(u8, name, "_")) return;
         // TODO figuring out which declarations should be excluded could be made more complete and accurate
         // by translating an empty file to acquire all exclusions
-        const exclusions = std.StaticStringMap(void).initComptime(.{
+        const exclusions: std.StaticStringMap(void) = .initComptime(.{
             .{ "linux", {} },
             .{ "unix", {} },
             .{ "WIN32", {} },
@@ -217,7 +160,8 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle, opt
         if (exclusions.has(name)) return;
     }
 
-    var doc_comments: std.BoundedArray([]const u8, 2) = .{};
+    var doc_comments_buffer: [2][]const u8 = undefined;
+    var doc_comments: std.ArrayList([]const u8) = .initBuffer(&doc_comments_buffer);
     if (try decl_handle.docComments(builder.arena)) |docs| {
         doc_comments.appendAssumeCapacity(docs);
     }
@@ -230,13 +174,12 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle, opt
         }
     }
 
-    const documentation: std.meta.FieldType(types.CompletionItem, .documentation) =
-        .{
-            .MarkupContent = types.MarkupContent{
-                .kind = if (builder.server.client_capabilities.completion_doc_supports_md) .markdown else .plaintext,
-                .value = try std.mem.join(builder.arena, "\n\n", doc_comments.constSlice()),
-            },
-        };
+    const documentation: @FieldType(types.completion.Item, "documentation") = .{
+        .markup_content = .{
+            .kind = if (builder.server.client_capabilities.completion_doc_supports_md) .markdown else .plaintext,
+            .value = try std.mem.join(builder.arena, "\n\n", doc_comments.items),
+        },
+    };
 
     try builder.completions.ensureUnusedCapacity(builder.arena, 1);
 
@@ -248,14 +191,14 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle, opt
         if (resolved_ty.data != .compile_error) break :blk null;
 
         const node_with_handle = resolved_ty.data.compile_error;
-        const tree = node_with_handle.handle.tree;
+        const tree = &node_with_handle.handle.tree;
 
         var buffer: [2]Ast.Node.Index = undefined;
-        const params = ast.builtinCallParams(tree, node_with_handle.node, &buffer) orelse break :blk null;
+        const params = tree.builtinCallParams(&buffer, node_with_handle.node) orelse break :blk null;
         if (params.len != 1) break :blk null;
 
-        if (tree.nodes.items(.tag)[params[0]] == .string_literal) {
-            const literal = tree.tokenSlice(tree.nodes.items(.main_token)[params[0]]);
+        if (tree.nodeTag(params[0]) == .string_literal) {
+            const literal = tree.tokenSlice(tree.nodeMainToken(params[0]));
             break :blk literal[1 .. literal.len - 1];
         }
         break :blk "";
@@ -270,17 +213,27 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle, opt
         .for_loop_payload,
         .assign_destructure,
         .switch_payload,
+        .switch_inline_tag_payload,
         => {
-            var kind: types.CompletionItemKind = blk: {
-                const parent_is_type_val = if (options.parent_container_ty) |container_ty| container_ty.is_type_val else null;
-                if (!(parent_is_type_val orelse true)) break :blk .Field;
+            var kind: types.completion.Item.Kind = blk: {
+                const parent_is_type_val = if (decl_handle.container_type) |container_ty| container_ty.is_type_val else null;
+                if (decl_handle.decl == .ast_node)
+                    switch (decl_handle.handle.tree.nodeTag(decl_handle.decl.ast_node)) {
+                        .container_field_init,
+                        .container_field_align,
+                        .container_field,
+                        => {
+                            if (!(parent_is_type_val orelse true)) break :blk .Field;
+                        },
+                        else => {},
+                    };
                 break :blk if (decl_handle.isConst()) .Constant else .Variable;
             };
 
             var is_deprecated: bool = false;
             if (maybe_resolved_ty) |ty| {
                 if (try builder.analyser.resolveFuncProtoOfCallable(ty)) |func_ty| blk: {
-                    var item = try functionTypeCompletion(builder, name, options.parent_container_ty, func_ty) orelse break :blk;
+                    var item = try functionTypeCompletion(builder, name, decl_handle.container_type, func_ty) orelse break :blk;
                     item.documentation = documentation;
                     builder.completions.appendAssumeCapacity(item);
                     return;
@@ -290,7 +243,7 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle, opt
                     } else {
                         kind = .EnumMember;
                     }
-                } else if (ty.isStructType() or ty.isUnionType()) {
+                } else if (ty.is_type_val and ty.isStructType() or ty.isUnionType()) {
                     kind = .Struct;
                 } else if (decl_handle.decl == .function_parameter and ty.isMetaType()) {
                     kind = .TypeParameter;
@@ -303,13 +256,13 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle, opt
 
             const detail = if (maybe_resolved_ty) |ty| blk: {
                 if (ty.is_type_val and ty.data == .ip_index and ty.data.ip_index.index != null and !builder.analyser.ip.isUnknown(ty.data.ip_index.index.?)) {
-                    break :blk try std.fmt.allocPrint(builder.arena, "{}", .{ty.fmtTypeVal(builder.analyser, .{ .truncate_container_decls = false })});
+                    break :blk try ty.stringifyTypeVal(builder.analyser, .{ .truncate_container_decls = false });
                 } else {
-                    break :blk try std.fmt.allocPrint(builder.arena, "{}", .{ty.fmt(builder.analyser, .{ .truncate_container_decls = false })});
+                    break :blk try ty.stringifyTypeOf(builder.analyser, .{ .truncate_container_decls = false });
                 }
             } else null;
 
-            const label_details: ?types.CompletionItemLabelDetails = blk: {
+            const label_details: ?types.completion.Item.LabelDetails = blk: {
                 if (!builder.server.client_capabilities.label_details_support) break :blk null;
 
                 break :blk .{ .description = detail };
@@ -319,7 +272,7 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle, opt
                 .label = name,
                 .kind = kind,
                 .documentation = if (compile_error_message) |message| .{
-                    .MarkupContent = types.MarkupContent{
+                    .markup_content = .{
                         .kind = if (builder.server.client_capabilities.completion_doc_supports_md) .markdown else .plaintext,
                         .value = message,
                     },
@@ -352,33 +305,30 @@ fn functionTypeCompletion(
     func_name: []const u8,
     parent_container_ty: ?Analyser.Type,
     func_ty: Analyser.Type,
-) error{OutOfMemory}!?types.CompletionItem {
+) error{OutOfMemory}!?types.completion.Item {
     std.debug.assert(func_ty.isFunc());
 
-    const node_handle = func_ty.data.other; // this assumes that function types can only be Ast nodes
-    const tree = node_handle.handle.tree;
+    const info = func_ty.data.function;
 
-    var buf: [1]Ast.Node.Index = undefined;
-    const func = tree.fullFnProto(&buf, node_handle.node).?;
-
-    const use_snippets = builder.server.config.enable_snippets and builder.server.client_capabilities.supports_snippets;
+    const config = &builder.server.config_manager.config;
+    const use_snippets = config.enable_snippets and builder.server.client_capabilities.supports_snippets;
 
     const has_self_param = if (parent_container_ty) |container_ty| blk: {
         if (container_ty.is_type_val) break :blk false;
         if (container_ty.isNamespace()) break :blk false;
-        break :blk try builder.analyser.firstParamIs(func_ty, container_ty.typeOf(builder.analyser));
+        break :blk builder.analyser.firstParamIs(func_ty, try container_ty.typeOf(builder.analyser));
     } else false;
 
     const insert_range, const replace_range, const new_text_format = prepareFunctionCompletion(builder);
 
     const new_text = switch (new_text_format) {
         .only_name => func_name,
-        .snippet => blk: {
-            if (use_snippets and builder.server.config.enable_argument_placeholders) {
-                break :blk try std.fmt.allocPrint(builder.arena, "{}", .{Analyser.fmtFunction(.{
-                    .fn_proto = func,
-                    .tree = &tree,
+        .snippet => snippet: {
+            std.debug.assert(use_snippets);
 
+            if (config.enable_argument_placeholders) {
+                break :snippet try builder.analyser.stringifyFunction(.{
+                    .info = info,
                     .include_fn_keyword = false,
                     .include_name = true,
                     .override_name = func_name,
@@ -386,53 +336,41 @@ fn functionTypeCompletion(
                     .parameters = .{ .show = .{
                         .include_modifiers = true,
                         .include_names = true,
-                        .include_types = false,
+                        .include_types = true,
                     } },
                     .include_return_type = false,
                     .snippet_placeholders = true,
-                })});
+                });
             }
 
-            if (!use_snippets) break :blk func_name;
-
-            switch (func.ast.params.len) {
-                // No arguments, leave cursor at the end
-                0 => break :blk try std.fmt.allocPrint(builder.arena, "{s}()", .{func_name}),
-                1 => {
-                    if (has_self_param) {
-                        // The one argument is a self parameter, leave cursor at the end
-                        break :blk try std.fmt.allocPrint(builder.arena, "{s}()", .{func_name});
-                    }
-
-                    // Non-self parameter, leave the cursor in the parentheses
-                    break :blk try std.fmt.allocPrint(builder.arena, "{s}(${{1:}})", .{func_name});
-                },
-                else => {
-                    // At least one non-self parameter, leave the cursor in the parentheses
-                    break :blk try std.fmt.allocPrint(builder.arena, "{s}(${{1:}})", .{func_name});
-                },
+            if (info.parameters.len -| @intFromBool(has_self_param) == 0) {
+                break :snippet try std.fmt.allocPrint(builder.arena, "{f}()", .{Analyser.fmtEscapedSnippet(func_name)});
+            } else {
+                break :snippet try std.fmt.allocPrint(builder.arena, "{f}(${{1:}})", .{Analyser.fmtEscapedSnippet(func_name)});
             }
         },
     };
+    const insert_text_format: types.InsertTextFormat = switch (new_text_format) {
+        .only_name => .PlainText,
+        .snippet => .Snippet,
+    };
 
-    const kind: types.CompletionItemKind = if (func_ty.isTypeFunc())
+    const kind: types.completion.Item.Kind = if (func_ty.isTypeFunc())
         .Struct
     else if (has_self_param)
         .Method
     else
         .Function;
 
-    const label_details: ?types.CompletionItemLabelDetails = blk: {
+    const label_details: ?types.completion.Item.LabelDetails = blk: {
         if (!builder.server.client_capabilities.label_details_support) break :blk null;
 
-        const detail = try std.fmt.allocPrint(builder.arena, "{}", .{Analyser.fmtFunction(.{
-            .fn_proto = func,
-            .tree = &tree,
-
+        const detail = try builder.analyser.stringifyFunction(.{
+            .info = info,
             .include_fn_keyword = false,
             .include_name = false,
             .skip_first_param = has_self_param,
-            .parameters = if (builder.server.config.completion_label_details)
+            .parameters = if (config.completion_label_details)
                 .{ .show = .{
                     .include_modifiers = true,
                     .include_names = true,
@@ -442,17 +380,12 @@ fn functionTypeCompletion(
                 .collapse,
             .include_return_type = false,
             .snippet_placeholders = false,
-        })});
+        });
 
-        const description = description: {
-            if (func.ast.return_type == 0) break :description null;
-            const return_type_str = offsets.nodeToSlice(tree, func.ast.return_type);
-
-            break :description if (ast.hasInferredError(tree, func))
-                try std.fmt.allocPrint(builder.arena, "!{s}", .{return_type_str})
-            else
-                return_type_str;
-        };
+        const description = try info.return_value.stringifyTypeOf(
+            builder.analyser,
+            .{ .truncate_container_decls = true },
+        );
 
         break :blk .{
             .detail = detail,
@@ -460,10 +393,8 @@ fn functionTypeCompletion(
         };
     };
 
-    const details = try std.fmt.allocPrint(builder.arena, "{}", .{Analyser.fmtFunction(.{
-        .fn_proto = func,
-        .tree = &tree,
-
+    const details = try builder.analyser.stringifyFunction(.{
+        .info = info,
         .include_fn_keyword = true,
         .include_name = false,
         .parameters = .{ .show = .{
@@ -473,22 +404,22 @@ fn functionTypeCompletion(
         } },
         .include_return_type = true,
         .snippet_placeholders = false,
-    })});
+    });
 
     return .{
         .label = func_name,
         .labelDetails = label_details,
         .kind = kind,
         .detail = details,
-        .insertTextFormat = if (use_snippets) .Snippet else .PlainText,
+        .insertTextFormat = insert_text_format,
         .textEdit = if (builder.server.client_capabilities.supports_completion_insert_replace_support)
-            .{ .InsertReplaceEdit = .{ .newText = new_text, .insert = insert_range, .replace = replace_range } }
+            .{ .insert_replace_edit = .{ .newText = new_text, .insert = insert_range, .replace = replace_range } }
         else
-            .{ .TextEdit = .{ .newText = new_text, .range = insert_range } },
+            .{ .text_edit = .{ .newText = new_text, .range = insert_range } },
     };
 }
 
-fn labelDeclToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle) !void {
+fn labelDeclToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle) error{OutOfMemory}!void {
     std.debug.assert(decl_handle.decl == .label);
 
     try builder.completions.append(builder.arena, .{
@@ -497,34 +428,62 @@ fn labelDeclToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle
     });
 }
 
-fn completeLabel(builder: *Builder) error{OutOfMemory}!void {
+fn completeLabel(builder: *Builder) Analyser.Error!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
     try Analyser.iterateLabels(builder.orig_handle, builder.source_index, labelDeclToCompletion, builder);
 }
 
-fn populateSnippedCompletions(builder: *Builder, snippets: []const snipped_data.Snipped) error{OutOfMemory}!void {
-    try builder.completions.ensureUnusedCapacity(builder.arena, snippets.len);
+fn populateSnippedCompletions(builder: *Builder, kind: enum { generic, top_level }) error{OutOfMemory}!void {
+    const config = &builder.server.config_manager.config;
+    const use_snippets = config.enable_snippets and builder.server.client_capabilities.supports_snippets;
 
-    const use_snippets = builder.server.config.enable_snippets and builder.server.client_capabilities.supports_snippets;
-    for (snippets) |snipped| {
-        if (!use_snippets and snipped.kind == .Snippet) continue;
+    const items: []const snippets.Item = if (use_snippets) switch (kind) {
+        .generic => snippets.generic,
+        .top_level => snippets.top_level,
+    } else &.{};
 
+    try builder.completions.ensureUnusedCapacity(builder.arena, items.len + std.zig.Token.keywords.keys().len + std.zig.primitives.names.keys().len);
+
+    for (items) |item| {
+        std.debug.assert(use_snippets);
         builder.completions.appendAssumeCapacity(.{
-            .label = snipped.label,
-            .kind = snipped.kind,
-            .detail = if (use_snippets) snipped.text else null,
-            .insertText = if (use_snippets) snipped.text else null,
-            .insertTextFormat = if (use_snippets and snipped.text != null) .Snippet else .PlainText,
+            .label = item.label,
+            .kind = .Snippet,
+            .detail = item.snippet,
+            .insertText = item.snippet,
+            .insertTextFormat = .Snippet,
+        });
+    }
+
+    for (std.zig.Token.keywords.keys(), std.zig.Token.keywords.values()) |name, tag| {
+        const keyword_snippet = if (use_snippets) snippets.keywords.get(tag) else null;
+        builder.completions.appendAssumeCapacity(.{
+            .label = name,
+            .kind = .Keyword,
+            .detail = keyword_snippet,
+            .insertText = keyword_snippet,
+            .insertTextFormat = if (keyword_snippet != null) .Snippet else null,
+        });
+    }
+
+    for (std.zig.primitives.names.keys()) |name| {
+        builder.completions.appendAssumeCapacity(.{
+            .label = name,
+            .kind = .Keyword,
         });
     }
 }
 
 const FunctionCompletionFormat = enum { snippet, only_name };
+const PrepareFunctionCompletionResult = struct { types.Range, types.Range, FunctionCompletionFormat };
 
-fn prepareFunctionCompletion(builder: *Builder) struct { types.Range, types.Range, FunctionCompletionFormat } {
-    const use_snippets = builder.server.config.enable_snippets and builder.server.client_capabilities.supports_snippets;
+fn prepareFunctionCompletion(builder: *Builder) PrepareFunctionCompletionResult {
+    if (builder.cached_prepare_function_completion_result) |result| return result;
+
+    const config = &builder.server.config_manager.config;
+    const use_snippets = config.enable_snippets and builder.server.client_capabilities.supports_snippets;
     const source = builder.orig_handle.tree.source;
 
     var start_index = builder.source_index;
@@ -537,8 +496,8 @@ fn prepareFunctionCompletion(builder: *Builder) struct { types.Range, types.Rang
         end_index += 1;
     }
 
-    var insert_loc = offsets.Loc{ .start = start_index, .end = builder.source_index };
-    var replace_loc = offsets.Loc{ .start = start_index, .end = end_index };
+    var insert_loc: offsets.Loc = .{ .start = start_index, .end = builder.source_index };
+    var replace_loc: offsets.Loc = .{ .start = start_index, .end = end_index };
 
     var format: FunctionCompletionFormat = .only_name;
 
@@ -558,43 +517,66 @@ fn prepareFunctionCompletion(builder: *Builder) struct { types.Range, types.Rang
     const insert_range = offsets.locToRange(source, insert_loc, builder.server.offset_encoding);
     const replace_range = offsets.locToRange(source, replace_loc, builder.server.offset_encoding);
 
-    return .{ insert_range, replace_range, format };
+    builder.cached_prepare_function_completion_result = .{ insert_range, replace_range, format };
+    return builder.cached_prepare_function_completion_result.?;
 }
 
 fn completeBuiltin(builder: *Builder) error{OutOfMemory}!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    const use_snippets = builder.server.config.enable_snippets and builder.server.client_capabilities.supports_snippets;
-    const use_placeholders = use_snippets and builder.server.config.enable_argument_placeholders;
+    const config = &builder.server.config_manager.config;
+    const use_snippets = config.enable_snippets and builder.server.client_capabilities.supports_snippets;
+    const use_placeholders = use_snippets and config.enable_argument_placeholders;
 
     const insert_range, const replace_range, const new_text_format = prepareFunctionCompletion(builder);
 
-    try builder.completions.ensureUnusedCapacity(builder.arena, data.builtins.kvs.len);
-    for (data.builtins.keys(), data.builtins.values()) |name, builtin| {
-        const new_text, const insertTextFormat: types.InsertTextFormat = switch (new_text_format) {
-            .only_name => .{ name, .PlainText },
-            .snippet => blk: {
+    try builder.completions.ensureUnusedCapacity(builder.arena, version_data.builtins.kvs.len);
+    for (version_data.builtins.keys(), version_data.builtins.values()) |name, builtin| {
+        const new_text = switch (new_text_format) {
+            .only_name => name,
+            .snippet => snippet: {
                 std.debug.assert(use_snippets);
-                if (builtin.arguments.len == 0) break :blk .{ try std.fmt.allocPrint(builder.arena, "{s}()", .{name}), .PlainText };
-                if (use_placeholders) break :blk .{ builtin.snippet, .Snippet };
-                break :blk .{ try std.fmt.allocPrint(builder.arena, "{s}(${{1:}})", .{name}), .Snippet };
+                // The generated snippet is not being escaped here because we can
+                // assume that the builtin name has no characters that need to be escaped.
+                if (builtin.parameters.len == 0) break :snippet try std.fmt.allocPrint(builder.arena, "{s}()", .{name});
+                if (use_placeholders) {
+                    var snippet: std.ArrayList(u8) = .empty;
+                    try snippet.print(builder.arena, "{s}(", .{name});
+                    for (builtin.parameters, 1..) |param, i| {
+                        if (i != 1) try snippet.appendSlice(builder.arena, ", ");
+                        try snippet.print(builder.arena, "${{{d}:{f}}}", .{ i, Analyser.fmtEscapedSnippet(param.signature) });
+                    }
+                    try snippet.append(builder.arena, ')');
+                    break :snippet snippet.items;
+                }
+                break :snippet try std.fmt.allocPrint(builder.arena, "{s}(${{1:}})", .{name});
             },
         };
+        const insert_text_format: types.InsertTextFormat = switch (new_text_format) {
+            .only_name => .PlainText,
+            .snippet => .Snippet,
+        };
+        const detail = try Analyser.renderBuiltinFunctionSignature(
+            builder.arena,
+            name,
+            builtin,
+            builtin.parameters.len > 3,
+        );
 
         builder.completions.appendAssumeCapacity(.{
             .label = name,
             .kind = .Function,
             .filterText = name[1..],
-            .detail = builtin.signature,
-            .insertTextFormat = insertTextFormat,
+            .detail = detail,
+            .insertTextFormat = insert_text_format,
             .textEdit = if (builder.server.client_capabilities.supports_completion_insert_replace_support)
-                .{ .InsertReplaceEdit = .{ .newText = new_text[1..], .insert = insert_range, .replace = replace_range } }
+                .{ .insert_replace_edit = .{ .newText = new_text[1..], .insert = insert_range, .replace = replace_range } }
             else
-                .{ .TextEdit = .{ .newText = new_text[1..], .range = insert_range } },
+                .{ .text_edit = .{ .newText = new_text[1..], .range = insert_range } },
             .documentation = .{
-                .MarkupContent = .{
-                    .kind = .markdown,
+                .markup_content = .{
+                    .kind = if (builder.server.client_capabilities.completion_doc_supports_md) .markdown else .plaintext,
                     .value = builtin.documentation,
                 },
             },
@@ -602,19 +584,19 @@ fn completeBuiltin(builder: *Builder) error{OutOfMemory}!void {
     }
 }
 
-fn completeGlobal(builder: *Builder) error{OutOfMemory}!void {
+fn completeGlobal(builder: *Builder) Analyser.Error!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    var decls: std.ArrayListUnmanaged(Analyser.DeclWithHandle) = .{};
+    var decls: std.ArrayList(Analyser.DeclWithHandle) = .empty;
     try builder.analyser.collectAllSymbolsAtSourceIndex(builder.orig_handle, builder.source_index, &decls);
     for (decls.items) |decl_with_handle| {
-        try declToCompletion(builder, decl_with_handle, .{});
+        try declToCompletion(builder, decl_with_handle);
     }
-    try populateSnippedCompletions(builder, &snipped_data.generic);
+    try populateSnippedCompletions(builder, .generic);
 }
 
-fn completeFieldAccess(builder: *Builder, loc: offsets.Loc) error{OutOfMemory}!void {
+fn completeFieldAccess(builder: *Builder, loc: offsets.Loc) Analyser.Error!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -622,7 +604,7 @@ fn completeFieldAccess(builder: *Builder, loc: offsets.Loc) error{OutOfMemory}!v
     try typeToCompletion(builder, ty);
 }
 
-fn kindToSortScore(kind: types.CompletionItemKind) []const u8 {
+fn kindToSortScore(kind: types.completion.Item.Kind) []const u8 {
     return switch (kind) {
         .Module => "1", // used for packages
         .Folder => "2",
@@ -646,27 +628,79 @@ fn kindToSortScore(kind: types.CompletionItemKind) []const u8 {
     };
 }
 
-fn completeDot(builder: *Builder, loc: offsets.Loc) error{OutOfMemory}!void {
+fn collectUsedMembersSet(builder: *Builder, likely: EnumLiteralContext.Likely, dot_token_index: Ast.TokenIndex) error{OutOfMemory}!std.BufSet {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    const tree = builder.orig_handle.tree;
-    const token_tags = tree.tokens.items(.tag);
+    switch (likely) {
+        .struct_field, .switch_case => {},
+        else => return .init(builder.arena),
+    }
+    const tree = &builder.orig_handle.tree;
 
-    const dot_token_index = offsets.sourceIndexToTokenIndex(tree, loc.start);
+    var used_members_set: std.BufSet = .init(builder.arena);
+
+    var depth: usize = 0;
+    var i: Ast.TokenIndex = @max(dot_token_index, 2);
+    while (i > 0) : (i -= 1) {
+        switch (tree.tokenTag(i)) {
+            .r_brace => {
+                depth += 1;
+            },
+            .l_brace => {
+                if (depth == 0) break;
+                depth -= 1;
+            },
+            .equal, .equal_angle_bracket_right, .comma => {
+                if (depth > 0) continue;
+                if (tree.tokenTag(i - 1) == .identifier and tree.tokenTag(i - 2) == .period) {
+                    try used_members_set.insert(tree.tokenSlice(i - 1));
+                    i -= 1;
+                }
+            },
+            else => {},
+        }
+    }
+    depth = 0;
+    i = @max(dot_token_index, 2);
+    while (i < tree.tokens.len) : (i += 1) {
+        switch (tree.tokenTag(i)) {
+            .l_brace => {
+                depth += 1;
+            },
+            .r_brace => {
+                if (depth == 0) break;
+                depth -= 1;
+            },
+            .equal, .equal_angle_bracket_right, .comma => {
+                if (depth > 0) continue;
+                if (tree.tokenTag(i - 1) == .identifier and tree.tokenTag(i - 2) == .period) {
+                    try used_members_set.insert(tree.tokenSlice(i - 1));
+                }
+            },
+            else => {},
+        }
+    }
+
+    return used_members_set;
+}
+
+fn completeDot(builder: *Builder, loc: offsets.Loc) Analyser.Error!void {
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
+
+    const tree = &builder.orig_handle.tree;
+
+    const dot_token_index = offsets.sourceIndexToTokenIndex(tree, loc.start).pickPreferred(&.{.period}, tree) orelse return;
     if (dot_token_index < 2) return;
 
     blk: {
-        const dot_context = getEnumLiteralContext(builder, dot_token_index) orelse break :blk;
-        const containers = try collectContainerNodes(
-            builder,
-            builder.orig_handle,
-            offsets.tokenToLoc(tree, dot_context.identifier_token_index).end,
-            dot_context,
-            loc.start,
-        );
+        const nodes = try ast.nodesOverlappingIndexIncludingParseErrors(builder.arena, tree, loc.start);
+        const dot_context = getEnumLiteralContext(tree, dot_token_index, nodes) orelse break :blk;
+        const used_members_set = try collectUsedMembersSet(builder, dot_context.likely, dot_token_index);
+        const containers = try collectContainerNodes(builder, builder.orig_handle, dot_context);
         for (containers) |container| {
-            try collectContainerFields(builder, dot_context.likely, container);
+            try collectContainerFields(builder, dot_context.likely, container, used_members_set);
         }
     }
 
@@ -675,32 +709,72 @@ fn completeDot(builder: *Builder, loc: offsets.Loc) error{OutOfMemory}!void {
     // Prevent compl for float numbers, eg `1.`
     //  Ideally this would also `or token_tags[dot_token_index - 1] != .equal`,
     //  which would mean the only possibility left would be `var enum_val = .`.
-    if (token_tags[dot_token_index - 1] == .number_literal or token_tags[dot_token_index - 1] != .equal) return;
+    if (tree.tokenTag(dot_token_index - 1) == .number_literal or tree.tokenTag(dot_token_index - 1) != .equal) return;
 
     // `var enum_val = .` or the get*Context logic failed because of syntax errors (parser didn't create the necessary node(s))
     try globalSetCompletions(builder, .enum_set);
 }
 
-/// asserts that `pos_context` is one of the following:
+/// Handles `error.` completions
+/// If unable to -> returns null => let globalSetCompletions handle it
+fn completeError(builder: *Builder, token_index: std.zig.Ast.TokenIndex) Analyser.Error!?void {
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
+
+    const tree = builder.orig_handle.tree;
+    const token_tags = tree.tokens.items(.tag);
+    const token_starts = tree.tokens.items(.start);
+
+    std.debug.assert(token_tags[token_index] == .keyword_error);
+    if (token_index < 1 or token_index > token_tags.len - 2) return null;
+
+    const dot_token_index = token_index + 1;
+    if (token_tags[dot_token_index] != .period) return null;
+
+    if (token_tags[token_index - 1] == .keyword_return) {
+        const doc_scope = try builder.orig_handle.getDocumentScope();
+        const fn_scope = Analyser.innermostScopeAtIndexWithTag(doc_scope, token_starts[token_index], .initOne(.function)).unwrap() orelse return null;
+        const fn_node = doc_scope.getScopeAstNode(fn_scope).?;
+        const fn_type = try builder.analyser.resolveTypeOfNode(.of(fn_node, builder.orig_handle)) orelse return null;
+        const ret_type = try builder.analyser.resolveReturnType(fn_type) orelse return null;
+        const err_type = try builder.analyser.resolveUnwrapErrorUnionType(ret_type, .error_set) orelse return null;
+        return collectErrorSetTypeFields(builder, err_type);
+    }
+
+    const nodes = try ast.nodesOverlappingIndexIncludingParseErrors(builder.arena, &tree, token_starts[token_index]);
+    var dot_context = getSwitchOrStructInitContext(&tree, dot_token_index, nodes) orelse return null;
+    if (dot_context.likely != .switch_case) return null;
+
+    const name_loc = offsets.tokenToLoc(&tree, dot_context.type_info.identifier_token_index);
+    var types_list: Analyser.Type.ArraySet = .empty;
+    try collectVarAccessContainerNodes(builder, builder.orig_handle, name_loc, dot_context, &types_list);
+
+    if (types_list.entries.len == 0) return null;
+
+    for (types_list.keys()) |ty| {
+        _ = try collectErrorSetTypeFields(builder, ty);
+    }
+}
+
+/// Asserts that `pos_context` is one of the following:
 ///  - `.import_string_literal`
 ///  - `.cinclude_string_literal`
 ///  - `.embedfile_string_literal`
 ///  - `.string_literal`
-fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.PositionContext) !void {
-    var completions: CompletionSet = .{};
+fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.PositionContext) Analyser.Error!void {
+    const io = builder.server.io;
+
+    var completions: CompletionSet = .empty;
     const store = &builder.server.document_store;
     const source = builder.orig_handle.tree.source;
 
-    const string_content_loc: offsets.Loc = switch (pos_context) {
-        .import_string_literal,
-        .cinclude_string_literal,
-        .embedfile_string_literal,
-        .string_literal,
-        => |loc| .{ .start = loc.start + 1, .end = loc.end },
-        else => unreachable,
-    };
-
     if (pos_context == .string_literal and !DocumentStore.isBuildFile(builder.orig_handle.uri)) return;
+
+    var string_content_loc = pos_context.stringLiteralContentLoc(source);
+
+    // the position context is without lookahead so we have to do it ourself
+    string_content_loc.end = std.mem.findAnyPos(u8, source, string_content_loc.end, &.{ 0, '\n', '\r', '"' }) orelse source.len;
+
     if (builder.source_index < string_content_loc.start or string_content_loc.end < builder.source_index) return;
 
     const previous_separator_index: ?usize = blk: {
@@ -716,16 +790,23 @@ fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.Posi
 
     const completing = offsets.locToSlice(source, .{ .start = string_content_loc.start, .end = previous_separator_index orelse string_content_loc.start });
 
-    var search_paths: std.ArrayListUnmanaged([]const u8) = .{};
+    var search_paths: std.ArrayList([]const u8) = .empty;
     if (std.fs.path.isAbsolute(completing) and pos_context != .import_string_literal) {
         try search_paths.append(builder.arena, completing);
     } else if (pos_context == .cinclude_string_literal) {
-        _ = store.collectIncludeDirs(builder.arena, builder.orig_handle, &search_paths) catch |err| {
-            log.err("failed to resolve include paths: {}", .{err});
-            return;
+        if (!DocumentStore.supports_build_system) return;
+        _ = store.collectIncludeDirs(builder.arena, builder.orig_handle, &search_paths) catch |err| switch (err) {
+            error.Canceled => return error.Canceled,
+            else => {
+                log.err("failed to resolve include paths: {}", .{err});
+                return;
+            },
         };
-    } else {
-        const document_path = try URI.parse(builder.arena, builder.orig_handle.uri);
+    } else blk: {
+        const document_path = URI.toFsPath(builder.arena, builder.orig_handle.uri) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => break :blk,
+        };
         try search_paths.append(builder.arena, std.fs.path.dirname(document_path).?);
     }
 
@@ -736,29 +817,30 @@ fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.Posi
     const insert_range = offsets.locToRange(source, insert_loc, builder.server.offset_encoding);
     const replace_range = offsets.locToRange(source, replace_loc, builder.server.offset_encoding);
 
-    const expected_extension = switch (pos_context) {
-        .import_string_literal => &[_][]const u8{ ".zig", ".zon" },
-        .cinclude_string_literal => &[_][]const u8{".h"},
-        .embedfile_string_literal => null,
-        .string_literal => null,
-        else => unreachable,
-    };
-
     for (search_paths.items) |path| {
         if (!std.fs.path.isAbsolute(path)) continue;
         const dir_path = if (std.fs.path.isAbsolute(completing)) path else try std.fs.path.join(builder.arena, &.{ path, completing });
 
-        var iterable_dir = std.fs.openDirAbsolute(dir_path, .{ .iterate = true }) catch continue;
-        defer iterable_dir.close();
+        var iterable_dir = std.Io.Dir.openDirAbsolute(io, dir_path, .{ .iterate = true }) catch |err| switch (err) {
+            error.Canceled => return error.Canceled,
+            else => continue,
+        };
+        defer iterable_dir.close(io);
         var it = iterable_dir.iterateAssumeFirstIteration();
 
-        while (it.next() catch null) |entry| {
+        while (it.next(io)) |opt_entry| {
+            const entry = opt_entry orelse break;
+            const expected_extension = switch (pos_context) {
+                .import_string_literal => ".zig",
+                .cinclude_string_literal => ".h",
+                .embedfile_string_literal => null,
+                .string_literal => null,
+                else => unreachable,
+            };
             switch (entry.kind) {
                 .file => if (expected_extension) |expected| {
                     const actual_extension = std.fs.path.extension(entry.name);
-                    for (expected) |ext| {
-                        if (std.mem.eql(u8, actual_extension, ext)) break;
-                    } else continue;
+                    if (!std.mem.eql(u8, actual_extension, expected)) continue;
                 },
                 .directory => {},
                 else => continue,
@@ -770,53 +852,60 @@ fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.Posi
             else
                 label;
 
-            _ = try completions.getOrPut(builder.arena, types.CompletionItem{
+            _ = try completions.getOrPut(builder.arena, .{
                 .label = label,
                 .kind = if (entry.kind == .file) .File else .Folder,
                 .detail = if (pos_context == .cinclude_string_literal) path else null,
                 .textEdit = if (builder.server.client_capabilities.supports_completion_insert_replace_support)
-                    .{ .InsertReplaceEdit = .{ .newText = insert_text, .insert = insert_range, .replace = replace_range } }
+                    .{ .insert_replace_edit = .{ .newText = insert_text, .insert = insert_range, .replace = replace_range } }
                 else
-                    .{ .TextEdit = .{ .newText = insert_text, .range = insert_range } },
+                    .{ .text_edit = .{ .newText = insert_text, .range = insert_range } },
             });
+        } else |err| switch (err) {
+            error.Canceled => return error.Canceled,
+            else => {},
         }
     }
 
     if (completing.len == 0 and pos_context == .import_string_literal) {
-        if (try builder.orig_handle.getAssociatedBuildFileUri(store)) |uri| blk: {
-            const build_file = store.getBuildFile(uri).?;
-            const build_config = build_file.tryLockConfig() orelse break :blk;
-            defer build_file.unlockConfig();
+        no_modules: {
+            if (!DocumentStore.supports_build_system) break :no_modules;
 
-            try completions.ensureUnusedCapacity(builder.arena, build_config.packages.len);
-            for (build_config.packages) |pkg| {
-                completions.putAssumeCapacity(.{
-                    .label = pkg.name,
-                    .kind = .Module,
-                    .detail = pkg.path,
-                }, {});
-            }
-        } else if (DocumentStore.isBuildFile(builder.orig_handle.uri)) blk: {
-            const build_file = store.getBuildFile(builder.orig_handle.uri) orelse break :blk;
-            const build_config = build_file.tryLockConfig() orelse break :blk;
-            defer build_file.unlockConfig();
+            if (DocumentStore.isBuildFile(builder.orig_handle.uri)) {
+                const build_file = store.getBuildFile(builder.orig_handle.uri) orelse break :no_modules;
+                const build_config = build_file.tryLockConfig(store.io) orelse break :no_modules;
+                defer build_file.unlockConfig(store.io);
 
-            try completions.ensureUnusedCapacity(builder.arena, build_config.deps_build_roots.len);
-            for (build_config.deps_build_roots) |dbr| {
-                completions.putAssumeCapacity(.{
-                    .label = dbr.name,
-                    .kind = .Module,
-                    .detail = dbr.path,
-                }, {});
+                try completions.ensureUnusedCapacity(builder.arena, build_config.deps_build_roots.len);
+                for (build_config.deps_build_roots) |dbr| {
+                    completions.putAssumeCapacity(.{
+                        .label = dbr.name,
+                        .kind = .Module,
+                        .detail = dbr.path,
+                    }, {});
+                }
+            } else if (try builder.orig_handle.getAssociatedBuildFileUri(store)) |uri| {
+                const build_file = store.getBuildFile(uri).?;
+                const build_config = build_file.tryLockConfig(store.io) orelse break :no_modules;
+                defer build_file.unlockConfig(store.io);
+
+                try completions.ensureUnusedCapacity(builder.arena, build_config.packages.len);
+                for (build_config.packages) |pkg| {
+                    completions.putAssumeCapacity(.{
+                        .label = pkg.name,
+                        .kind = .Module,
+                        .detail = pkg.path,
+                    }, {});
+                }
             }
         }
 
         try completions.ensureUnusedCapacity(builder.arena, 2);
-        if (store.config.zig_lib_path) |zig_lib_path| {
+        if (store.config.zig_lib_dir) |zig_lib_dir| {
             completions.putAssumeCapacity(.{
                 .label = "std",
                 .kind = .Module,
-                .detail = zig_lib_path,
+                .detail = zig_lib_dir.path,
             }, {});
         }
         if (store.config.builtin_path) |builtin_path| {
@@ -833,88 +922,14 @@ fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.Posi
         for (completions.keys()) |*item| {
             if (item.kind == .Module and item.textEdit == null) {
                 item.textEdit = if (builder.server.client_capabilities.supports_completion_insert_replace_support)
-                    .{ .InsertReplaceEdit = .{ .newText = item.label, .insert = insert_range, .replace = string_content_range } }
+                    .{ .insert_replace_edit = .{ .newText = item.label, .insert = insert_range, .replace = string_content_range } }
                 else
-                    .{ .TextEdit = .{ .newText = item.label, .range = insert_range } };
+                    .{ .text_edit = .{ .newText = item.label, .range = insert_range } };
             }
         }
     }
 
     try builder.completions.appendSlice(builder.arena, completions.keys());
-}
-
-fn completeError(builder: *Builder, loc: offsets.Loc) error{OutOfMemory}!?void {
-    const tracy_zone = tracy.trace(@src());
-    defer tracy_zone.end();
-
-    const tree = builder.orig_handle.tree;
-    const token_tags = tree.tokens.items(.tag);
-
-    const kw_err_tok_i = offsets.sourceIndexToTokenIndex(tree, loc.start);
-    if (kw_err_tok_i < 1 or kw_err_tok_i > tree.tokens.len - 2) return null;
-    const dot_token_index = kw_err_tok_i + 1;
-    if (token_tags[dot_token_index] != .period) return null;
-    if (token_tags[kw_err_tok_i] != .keyword_error) return null;
-
-    if (token_tags[kw_err_tok_i - 1] == .keyword_return) {
-        const doc_scope = try builder.orig_handle.getDocumentScope();
-        const fn_scope = Analyser.innermostFunctionScopeAtIndex(doc_scope, loc.start).unwrap() orelse return null;
-        const fn_node = doc_scope.getScopeAstNode(fn_scope).?;
-        var buf: [1]Ast.Node.Index = undefined;
-        const func = tree.fullFnProto(&buf, fn_node).?;
-        const ret_type = try builder.analyser.resolveReturnType(func, builder.orig_handle, null) orelse return null;
-        const err_type = try builder.analyser.resolveUnwrapErrorUnionType(ret_type, .error_set) orelse return null;
-        return collectErrorTypeFields(builder, err_type);
-    }
-    var dot_context = getSwitchOrStructInitContext(builder, dot_token_index) orelse return null;
-    if (dot_context.likely != .switch_case) return null;
-
-    // ```zig
-    //  fcall() catch |err| {
-    //      const .. = switch (err) {
-    //  }
-    // ```
-    const name_loc = offsets.tokenToLoc(tree, dot_context.identifier_token_index);
-    var types_list = std.ArrayListUnmanaged(Analyser.Type){};
-    try collectVarAccessContainerNodes(builder, builder.orig_handle, name_loc, dot_context, &types_list);
-    if (types_list.items.len != 0) {
-        for (types_list.items) |ty| {
-            _ = try collectErrorTypeFields(builder, ty);
-        }
-        return;
-    }
-
-    // The std parser can't handle `fcall() catch |err| switch (err) {error.}` => find the fn manually
-    if (token_tags[dot_context.identifier_token_index - 6] != .keyword_catch) return null;
-    dot_context.identifier_token_index -= 7;
-    if (token_tags[dot_context.identifier_token_index] != .r_paren) return null;
-
-    var depth: usize = 0;
-    while (dot_context.identifier_token_index > 0) : (dot_context.identifier_token_index -= 1) {
-        switch (token_tags[dot_context.identifier_token_index]) {
-            .r_paren => depth += 1,
-            .l_paren => {
-                depth -= 1;
-                if (depth != 0) continue;
-                dot_context.identifier_token_index -= 1;
-                dot_context.need_ret_type = true;
-                dot_context.likely = .err_switch_case;
-                break;
-            },
-            .semicolon => return null,
-            else => {},
-        }
-    }
-    const containers = try collectContainerNodes(
-        builder,
-        builder.orig_handle,
-        offsets.tokenToLoc(tree, dot_context.identifier_token_index).end,
-        dot_context,
-        0,
-    );
-    for (containers) |container| {
-        try collectContainerFields(builder, dot_context.likely, container);
-    }
 }
 
 pub fn completionAtIndex(
@@ -923,7 +938,7 @@ pub fn completionAtIndex(
     arena: std.mem.Allocator,
     handle: *DocumentStore.Handle,
     source_index: usize,
-) error{OutOfMemory}!?types.CompletionList {
+) Analyser.Error!?types.completion.List {
     std.debug.assert(source_index <= handle.tree.source.len);
 
     var builder: Builder = .{
@@ -932,28 +947,26 @@ pub fn completionAtIndex(
         .arena = arena,
         .orig_handle = handle,
         .source_index = source_index,
-        .completions = .{},
+        .completions = .empty,
     };
     const source = handle.tree.source;
 
-    // Provide `top_level_decl_data` only if `offsets.lineSliceUntilIndex(handle.tree.source, source_index).len` is
-    // 0 => Empty new line, manually triggered
-    // 1 => This is the very first char on a given line
-    const at_line_start = offsets.lineSliceUntilIndex(source, source_index).len < 2;
-    if (at_line_start) {
-        try populateSnippedCompletions(&builder, &snipped_data.top_level_decl_data);
+    const line_until_index = offsets.lineSliceUntilIndex(source, source_index);
+
+    if (line_until_index.len == 0 or std.zig.isValidId(line_until_index)) {
+        try populateSnippedCompletions(&builder, .top_level);
         return .{ .isIncomplete = false, .items = builder.completions.items };
     }
 
-    const pos_context = try Analyser.getPositionContext(arena, handle.tree, source_index, false);
+    const pos_context = try Analyser.getPositionContext(arena, &handle.tree, source_index, false);
 
     switch (pos_context) {
         .builtin => try completeBuiltin(&builder),
         .var_access, .empty => try completeGlobal(&builder),
         .field_access => |loc| try completeFieldAccess(&builder, loc),
-        .global_error_set => |loc| try completeError(&builder, loc) orelse try globalSetCompletions(&builder, .error_set),
+        .error_access => |token_index| try completeError(&builder, token_index) orelse try globalSetCompletions(&builder, .error_set),
         .enum_literal => |loc| try completeDot(&builder, loc),
-        .label => try completeLabel(&builder),
+        .label_access, .label_decl => try completeLabel(&builder),
         .import_string_literal,
         .cinclude_string_literal,
         .embedfile_string_literal,
@@ -984,11 +997,13 @@ pub fn completionAtIndex(
     for (completions) |*item| {
         if (item.textEdit == null) {
             item.textEdit = if (server.client_capabilities.supports_completion_insert_replace_support)
-                .{ .InsertReplaceEdit = .{ .newText = item.insertText orelse item.label, .insert = insert_range, .replace = replace_range } }
+                .{ .insert_replace_edit = .{ .newText = item.insertText orelse item.label, .insert = insert_range, .replace = replace_range } }
             else
-                .{ .TextEdit = .{ .newText = item.insertText orelse item.label, .range = insert_range } };
+                .{ .text_edit = .{ .newText = item.insertText orelse item.label, .range = insert_range } };
         }
         item.insertText = null;
+        // https://github.com/microsoft/language-server-protocol/issues/898#issuecomment-593968008
+        item.filterText = item.filterText orelse item.label;
 
         if (item.detail) |det| {
             if (det.len > server.client_capabilities.max_detail_length) {
@@ -1007,15 +1022,15 @@ pub fn completionAtIndex(
 //                    global error set / enum field set
 // <--------------------------------------------------------------------------->
 
-const CompletionSet = std.ArrayHashMapUnmanaged(types.CompletionItem, void, CompletionContext, false);
+const CompletionSet = std.ArrayHashMapUnmanaged(types.completion.Item, void, CompletionContext, false);
 
 const CompletionContext = struct {
-    pub fn hash(self: @This(), item: types.CompletionItem) u32 {
+    pub fn hash(self: @This(), item: types.completion.Item) u32 {
         _ = self;
         return std.array_hash_map.hashString(item.label);
     }
 
-    pub fn eql(self: @This(), a: types.CompletionItem, b: types.CompletionItem, b_index: usize) bool {
+    pub fn eql(self: @This(), a: types.completion.Item, b: types.completion.Item, b_index: usize) bool {
         _ = self;
         _ = b_index;
         return std.mem.eql(u8, a.label, b.label);
@@ -1028,7 +1043,7 @@ const CompletionNameAdapter = struct {
         return std.array_hash_map.hashString(name);
     }
 
-    pub fn eql(ctx: @This(), a: []const u8, b: types.CompletionItem, b_map_index: usize) bool {
+    pub fn eql(ctx: @This(), a: []const u8, b: types.completion.Item, b_map_index: usize) bool {
         _ = ctx;
         _ = b_map_index;
         return std.mem.eql(u8, a, b.label);
@@ -1037,18 +1052,18 @@ const CompletionNameAdapter = struct {
 
 /// Every `DocumentScope` store a set of all error names and a set of all enum field names.
 /// This function collects all of these sets from all dependencies and returns them as completions.
-fn globalSetCompletions(builder: *Builder, kind: enum { error_set, enum_set }) error{OutOfMemory}!void {
+fn globalSetCompletions(builder: *Builder, kind: enum { error_set, enum_set }) Analyser.Error!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
     const store = &builder.server.document_store;
 
-    var dependencies = std.ArrayListUnmanaged(DocumentStore.Uri){};
+    var dependencies: std.ArrayList(DocumentStore.Uri) = .empty;
     try dependencies.append(builder.arena, builder.orig_handle.uri);
     try store.collectDependencies(builder.arena, builder.orig_handle, &dependencies);
 
     // TODO Better solution for deciding what tags to include
-    var result_set = CompletionSet{};
+    var result_set: CompletionSet = .empty;
 
     for (dependencies.items) |uri| {
         // not every dependency is loaded which results in incomplete completion
@@ -1060,7 +1075,7 @@ fn globalSetCompletions(builder: *Builder, kind: enum { error_set, enum_set }) e
         };
         try result_set.ensureUnusedCapacity(builder.arena, curr_set.count());
         for (curr_set.keys()) |identifier_token| {
-            const name = offsets.identifierTokenToNameSlice(dependency_handle.tree, identifier_token);
+            const name = offsets.identifierTokenToNameSlice(&dependency_handle.tree, identifier_token);
 
             const gop = result_set.getOrPutAssumeCapacityAdapted(
                 name,
@@ -1068,10 +1083,10 @@ fn globalSetCompletions(builder: *Builder, kind: enum { error_set, enum_set }) e
             );
 
             if (!gop.found_existing) {
-                gop.key_ptr.* = types.CompletionItem{
+                gop.key_ptr.* = .{
                     .label = name,
                     .detail = switch (kind) {
-                        .error_set => try std.fmt.allocPrint(builder.arena, "error.{}", .{std.zig.fmtId(name)}),
+                        .error_set => try std.fmt.allocPrint(builder.arena, "error.{f}", .{std.zig.fmtId(name)}),
                         .enum_set => null,
                     },
                     .kind = switch (kind) {
@@ -1083,9 +1098,9 @@ fn globalSetCompletions(builder: *Builder, kind: enum { error_set, enum_set }) e
             }
 
             if (gop.key_ptr.documentation == null) {
-                if (try Analyser.getDocCommentsBeforeToken(builder.arena, dependency_handle.tree, identifier_token)) |documentation| {
+                if (try Analyser.getDocCommentsBeforeToken(builder.arena, &dependency_handle.tree, identifier_token)) |documentation| {
                     gop.key_ptr.documentation = .{
-                        .MarkupContent = types.MarkupContent{
+                        .markup_content = .{
                             // TODO check if client supports markdown
                             .kind = .markdown,
                             .value = documentation,
@@ -1104,33 +1119,24 @@ fn globalSetCompletions(builder: *Builder, kind: enum { error_set, enum_set }) e
 // <--------------------------------------------------------------------------->
 
 const EnumLiteralContext = struct {
-    likely: Likely,
-    identifier_token_index: Ast.TokenIndex,
-    fn_arg_index: usize,
-    need_ret_type: bool,
-
     const Likely = enum { // TODO: better name, tagged union?
+        /// `mye: Enum = .`, `abc.field = .`, `f(.{.field = .`
         enum_literal,
-        /// `e: Enum = .`
-        /// `s.field = .`
-        /// `f(.{.a1 = .`
-        /// If the type of the lhs value is an optional it should be unwrapped
-        assignment,
-        /// `==`, `!=`
-        comparison,
-        /// `f(.`
-        /// `fn_arg_index` indicates position
-        fn_arg,
-        /// `S{.`
-        /// `var s:S = .{.`
-        /// `f(.{.`
-        /// `a.f(.{.`
-        /// If the type of the lhs value is an optional it should be unwrapped
-        field,
+        /// Same as above, but`f() = .` or `identifier.f() = .` are ignored, ie lhs of `=` is a fn call
+        enum_assignment,
+        /// `return .`
+        enum_return,
+        /// `break .` or `break :blk .`
+        enum_break,
+        /// `continue :blk .`
+        enum_continue,
+        // `==`, `!=`
+        enum_comparison,
+        /// the enum is a fn arg, eg `f(.`
+        enum_arg,
+        /// `S{.`, `var s:S = .{.`, `f(.{.` or `a.f(.{.`
+        struct_field,
         switch_case,
-        err_switch_case,
-        /// `const v: T = try .`
-        trycall_decl_literal,
         // TODO Abort, don't list any enums
         //  - lhs of `=` is a fn call
         //  - able to resolve the type of a switch condition, but it is a struct
@@ -1138,107 +1144,87 @@ const EnumLiteralContext = struct {
         // / Abort, don't list any enums
         // invalid,
 
-        pub fn shouldUnwrapOptional(self: *const @This()) bool {
-            return switch (self.*) {
-                .assignment, // eg `maybe_enum_val: ?Enum = .` or `some.opt_enum_type_field = .` or `fn f() ?T {return .}`
-                .field, // eg `some.opt_type_container_field = .{.`
-                .trycall_decl_literal,
-                => true,
-                else => false,
-            };
-        }
-
-        pub fn requiresDecor(self: *const @This(), kind: enum { braces, assignment_operator }) bool {
-            return switch (kind) {
-                .braces => switch (self.*) {
-                    .field,
-                    .comparison,
-                    .switch_case,
-                    .trycall_decl_literal,
-                    => false,
-                    else => true,
-                },
-                .assignment_operator => switch (self.*) {
-                    .comparison,
-                    .switch_case,
-                    .trycall_decl_literal,
-                    => false,
-                    else => true,
-                },
-            };
-        }
-        pub fn omitDecl(self: *const @This()) bool {
-            return switch (self.*) {
-                .field,
-                .comparison,
-                .switch_case,
-                .trycall_decl_literal,
+        fn allowsDeclLiterals(likely: Likely) bool {
+            return switch (likely) {
+                .enum_assignment,
+                .enum_return,
+                .enum_break,
+                .enum_continue,
+                .enum_arg,
                 => true,
                 else => false,
             };
         }
     };
-
-    const default: @This() = .{
-        .likely = .assignment,
-        .identifier_token_index = 0,
-        .fn_arg_index = 0,
-        .need_ret_type = false,
-    };
+    likely: Likely,
+    type_info: union(enum) {
+        identifier_token_index: Ast.TokenIndex,
+        expr_node_index: Ast.Node.Index,
+    } = .{ .identifier_token_index = 0 },
+    fn_arg_index: usize = 0,
+    need_ret_type: bool = false,
 };
 
 fn getEnumLiteralContext(
-    builder: *Builder,
+    tree: *const Ast,
     dot_token_index: Ast.TokenIndex,
+    nodes: []const Ast.Node.Index,
 ) ?EnumLiteralContext {
-    const tree = builder.orig_handle.tree;
-    const token_tags = tree.tokens.items(.tag);
-
     // Allow using `1.` (parser workaround)
-    var token_index = if (token_tags[dot_token_index - 1] == .number_literal)
+    var token_index = if (tree.tokenTag(dot_token_index - 1) == .number_literal)
         (dot_token_index - 2)
     else
         (dot_token_index - 1);
     if (token_index == 0) return null;
 
-    var dot_context = EnumLiteralContext.default;
+    var dot_context: EnumLiteralContext = .{ .likely = .enum_literal };
 
-    switch (token_tags[token_index]) {
+    switch (tree.tokenTag(token_index)) {
         .equal => {
             token_index -= 1;
-            // if ((token_tags[token_index] == .r_paren)) return null; // `..) = .`, ie lhs is a fn call
-            dot_context.likely = .assignment;
-            dot_context.identifier_token_index = token_index;
+            dot_context.need_ret_type = tree.tokenTag(token_index) == .r_paren;
+            dot_context.likely = .enum_assignment;
+            dot_context.type_info = .{ .identifier_token_index = token_index };
+        },
+        .keyword_return => {
+            dot_context.type_info = .{ .expr_node_index = getReturnTypeNode(tree, nodes) orelse return null };
+            dot_context.likely = .enum_return;
+        },
+        .keyword_break => {
+            const i = ast.indexOfBreakTarget(tree, nodes, null) orelse return null;
+            dot_context = getEnumLiteralContext(tree, tree.firstToken(nodes[i]), nodes[i + 1 ..]) orelse return null;
+            dot_context.likely = .enum_break;
+        },
+        .identifier => {
+            if (tree.isTokenPrecededByTags(token_index, &.{ .keyword_break, .colon })) {
+                const break_label = tree.tokenSlice(token_index);
+                const i = ast.indexOfBreakTarget(tree, nodes, break_label) orelse return null;
+                dot_context = getEnumLiteralContext(tree, tree.firstToken(nodes[i]), nodes[i + 1 ..]) orelse return null;
+                dot_context.likely = .enum_break;
+            } else if (tree.isTokenPrecededByTags(token_index, &.{ .keyword_continue, .colon })) {
+                const continue_label = tree.tokenSlice(token_index);
+                const ancestor_switch = for (nodes) |node| {
+                    if (tree.fullSwitch(node)) |switch_node| {
+                        const switch_label_token = switch_node.label_token orelse continue;
+                        const switch_label = tree.tokenSlice(switch_label_token);
+                        if (std.mem.eql(u8, continue_label, switch_label)) {
+                            break switch_node;
+                        }
+                    }
+                } else {
+                    return null;
+                };
+                dot_context.type_info = .{ .expr_node_index = ancestor_switch.ast.condition };
+                dot_context.likely = .enum_continue;
+            }
         },
         .equal_equal, .bang_equal => {
             token_index -= 1;
-            dot_context.likely = .comparison;
-            dot_context.need_ret_type = true; // Ok if lhs is a fn result value
-            dot_context.identifier_token_index = token_index;
+            dot_context.likely = .enum_comparison;
+            dot_context.type_info = .{ .identifier_token_index = token_index };
         },
         .l_brace, .comma, .l_paren => {
-            dot_context = getSwitchOrStructInitContext(builder, dot_token_index) orelse return null;
-        },
-        .identifier => {
-            token_index -= 1;
-            if (token_tags[token_index] != .colon) return null;
-            dot_context.likely = .assignment;
-            dot_context.identifier_token_index = token_index;
-        },
-        .keyword_return => {
-            const doc_scope = builder.orig_handle.getDocumentScope() catch return null;
-            const fn_scope = Analyser.innermostFunctionScopeAtIndex(doc_scope, tree.tokens.items(.start)[token_index]).unwrap() orelse return null;
-            const fn_node = doc_scope.getScopeAstNode(fn_scope).?;
-            dot_context.need_ret_type = true;
-            // indicate opt ret type should be unwrapped (technically a fn's (enum) result is being assigned (even if `_ = f();`))
-            dot_context.likely = .assignment;
-            dot_context.identifier_token_index = builder.orig_handle.tree.nodes.items(.main_token)[fn_node] + 1;
-        },
-        .keyword_try => { // `const v: T = try .`
-            token_index -= 1;
-            if (token_tags[token_index] != .equal) return null;
-            dot_context.likely = .trycall_decl_literal;
-            dot_context.identifier_token_index = token_index - 1;
+            dot_context = getSwitchOrStructInitContext(tree, dot_token_index, nodes) orelse return null;
         },
         else => return null,
     }
@@ -1249,23 +1235,22 @@ fn getEnumLiteralContext(
 /// Returns the token index of the identifier
 /// If the identifier is a `fn_name`, `fn_arg_index` is the index of the fn's param
 fn getSwitchOrStructInitContext(
-    builder: *Builder,
+    tree: *const Ast,
     dot_index: Ast.TokenIndex,
+    nodes: []const Ast.Node.Index,
 ) ?EnumLiteralContext {
     // at least 3 tokens should be present, `x{.`
     if (dot_index < 2) return null;
-    const tree = builder.orig_handle.tree;
-    const token_tags = tree.tokens.items(.tag);
     // pedantic check (can be removed if the "generic exit" conditions below are made to cover more/all cases)
-    if (token_tags[dot_index] != .period) return null;
+    if (tree.tokenTag(dot_index) != .period) return null;
     var upper_index = dot_index - 1;
     // This prevents completions popping up for `x{.field.`
-    if (token_tags[upper_index] == .identifier) return null;
+    if (tree.tokenTag(upper_index) == .identifier) return null;
     // This prevents completions popping up for `x{.field = .`, ie it would suggest `field` again
     // in this case `fn completeDot` would still provide enum completions
-    if (token_tags[upper_index] == .equal) return null;
+    if (tree.tokenTag(upper_index) == .equal) return null;
 
-    var likely: EnumLiteralContext.Likely = .field;
+    var likely: EnumLiteralContext.Likely = .struct_field;
 
     var fn_arg_index: usize = 0;
     var need_ret_type: bool = false;
@@ -1279,47 +1264,78 @@ fn getSwitchOrStructInitContext(
     var braces_depth: i32 = even;
     var parens_depth: i32 = even;
     find_identifier: while (upper_index > 0) : (upper_index -= 1) {
-        switch (token_tags[upper_index]) {
+        switch (tree.tokenTag(upper_index)) {
             .r_brace => braces_depth += 1,
             .l_brace => {
                 braces_depth -= 1;
                 if (braces_depth != one_opening) continue;
                 upper_index -= 1;
-                switch (token_tags[upper_index]) {
+                switch (tree.tokenTag(upper_index)) {
                     // `S{.`
                     .identifier => break :find_identifier,
                     // anon struct init `.{.`
                     .period => {
                         if (upper_index < 3) return null;
                         upper_index -= 1;
-                        if (token_tags[upper_index] == .keyword_return) {
-                            const doc_scope = builder.orig_handle.getDocumentScope() catch return null;
-                            const fn_scope = Analyser.innermostFunctionScopeAtIndex(doc_scope, tree.tokens.items(.start)[upper_index]).unwrap() orelse return null;
-                            const fn_node = doc_scope.getScopeAstNode(fn_scope).?;
-                            need_ret_type = true;
-                            upper_index = builder.orig_handle.tree.nodes.items(.main_token)[fn_node] + 1;
-                            break :find_identifier;
+                        if (tree.tokenTag(upper_index) == .ampersand) upper_index -= 1; // `&.{.`
+                        switch (tree.tokenTag(upper_index)) {
+                            .keyword_break => { // `break .{.`
+                                const i = ast.indexOfBreakTarget(tree, nodes, null) orelse return null;
+                                upper_index = tree.firstToken(nodes[i]);
+                                upper_index -= 1;
+                            },
+                            .identifier => {
+                                if (tree.isTokenPrecededByTags(upper_index, &.{ .keyword_break, .colon })) { // `break :blk .{.`
+                                    const break_label = tree.tokenSlice(upper_index);
+                                    const i = ast.indexOfBreakTarget(tree, nodes, break_label) orelse return null;
+                                    upper_index = tree.firstToken(nodes[i]);
+                                    upper_index -= 1;
+                                } else if (tree.isTokenPrecededByTags(upper_index, &.{ .keyword_continue, .colon })) { // `continue :blk .{.`
+                                    const continue_label = tree.tokenSlice(upper_index);
+                                    const ancestor_switch = for (nodes) |node| {
+                                        if (tree.fullSwitch(node)) |switch_node| {
+                                            const switch_label_token = switch_node.label_token orelse continue;
+                                            const switch_label = tree.tokenSlice(switch_label_token);
+                                            if (std.mem.eql(u8, continue_label, switch_label)) {
+                                                break switch_node;
+                                            }
+                                        }
+                                    } else {
+                                        return null;
+                                    };
+                                    return .{
+                                        .likely = likely,
+                                        .type_info = .{ .expr_node_index = ancestor_switch.ast.condition },
+                                        .fn_arg_index = fn_arg_index,
+                                        .need_ret_type = need_ret_type,
+                                    };
+                                }
+                            },
+                            else => {},
                         }
-                        if (token_tags[upper_index] == .ampersand) upper_index -= 1; // `&.{.`
-                        if (token_tags[upper_index] == .equal) { // `= .{.`
+                        if (tree.tokenTag(upper_index) == .equal) { // `= .{.`
                             upper_index -= 1; // eat the `=`
-                            switch (token_tags[upper_index]) {
+                            switch (tree.tokenTag(upper_index)) {
                                 .identifier, // `const s: S = .{.`, `S{.name = .`
                                 .period_asterisk, //  `s.* = .{.`
-                                .r_paren, // allow `const v: @This() = .{.}`
                                 => break :find_identifier,
                                 else => return null,
                             }
                         }
-                        if (token_tags[upper_index] == .identifier and token_tags[upper_index - 1] == .colon) { // `:label .{.`
-                            break :find_identifier;
+                        if (tree.tokenTag(upper_index) == .keyword_return) { // `return .{.`
+                            return .{
+                                .likely = likely,
+                                .type_info = .{ .expr_node_index = getReturnTypeNode(tree, nodes) orelse return null },
+                                .fn_arg_index = fn_arg_index,
+                                .need_ret_type = need_ret_type,
+                            };
                         }
                         // We never return from this branch/condition to the `find_identifier: while ..` loop, so reset and reuse these
                         fn_arg_index = 0;
                         braces_depth = even; // not actually looking for/expecting an uneven number of braces, just making use of the helpful const
                         parens_depth = even;
                         while (upper_index > 0) : (upper_index -= 1) {
-                            switch (token_tags[upper_index]) {
+                            switch (tree.tokenTag(upper_index)) {
                                 .r_brace => braces_depth += 1,
                                 .l_brace => {
                                     braces_depth -= 1;
@@ -1328,10 +1344,9 @@ fn getSwitchOrStructInitContext(
                                 .r_paren => parens_depth += 1,
                                 .l_paren => {
                                     parens_depth -= 1;
-                                    if (parens_depth == one_opening and switch (token_tags[upper_index - 1]) {
+                                    if (parens_depth == one_opening and switch (tree.tokenTag(upper_index - 1)) {
                                         .identifier,
                                         .builtin,
-                                        .keyword_callconv,
                                         => true,
                                         else => false,
                                     }) {
@@ -1355,12 +1370,12 @@ fn getSwitchOrStructInitContext(
                         parens_depth = even;
                         // Walk backwards counting parens until one_opening then check the preceding token's tag
                         while (token_index > 0) : (token_index -= 1) {
-                            switch (token_tags[token_index]) {
+                            switch (tree.tokenTag(token_index)) {
                                 .r_paren => parens_depth += 1,
                                 .l_paren => {
                                     parens_depth -= 1;
                                     if (parens_depth == one_opening)
-                                        switch (token_tags[token_index - 1]) {
+                                        switch (tree.tokenTag(token_index - 1)) {
                                             .keyword_switch => {
                                                 likely = .switch_case;
                                                 upper_index -= 1; // eat the switch's .r_paren
@@ -1390,14 +1405,14 @@ fn getSwitchOrStructInitContext(
                 if (parens_depth != one_opening) continue;
                 if (braces_depth != even) return null;
                 upper_index -= 1;
-                switch (token_tags[upper_index]) {
+                switch (tree.tokenTag(upper_index)) {
                     // `f(.`
                     .identifier,
                     .builtin,
                     .keyword_addrspace,
                     .keyword_callconv,
                     => {
-                        likely = .fn_arg;
+                        likely = .enum_arg;
                         break :find_identifier;
                     },
                     else => return null,
@@ -1405,6 +1420,15 @@ fn getSwitchOrStructInitContext(
             },
             .comma => if (braces_depth == even and parens_depth == even) { // those only matter when outside of braces and before final '('
                 fn_arg_index += 1;
+            },
+            // Have we arrived at an .identifier matching the criteria?
+            .identifier => switch (tree.tokenTag(upper_index + 1)) {
+                .l_brace => if (braces_depth == one_opening) break :find_identifier, // `S{.`
+                .l_paren => if (braces_depth == even and parens_depth == one_opening) { // `f(.`
+                    likely = .enum_arg;
+                    break :find_identifier;
+                },
+                else => {},
             },
             // Exit conditions; generic exit, maybe also .keyword_(var/const)
             .semicolon => if (braces_depth < even) return null, // the braces_depth check handles switch case blocks, ie `.a => {..;}, .`
@@ -1417,10 +1441,19 @@ fn getSwitchOrStructInitContext(
 
     return .{
         .likely = likely,
-        .identifier_token_index = upper_index,
+        .type_info = .{ .identifier_token_index = upper_index },
         .fn_arg_index = fn_arg_index,
         .need_ret_type = need_ret_type,
     };
+}
+
+fn getReturnTypeNode(tree: *const Ast, nodes: []const Ast.Node.Index) ?Ast.Node.Index {
+    var func_buf: [1]Ast.Node.Index = undefined;
+    for (nodes) |node| {
+        const func = tree.fullFnProto(&func_buf, node) orelse continue;
+        return func.ast.return_type.unwrap();
+    }
+    return null;
 }
 
 /// Given a Type that is a container, adds it's `.container_field*`s to completions
@@ -1428,142 +1461,136 @@ fn collectContainerFields(
     builder: *Builder,
     likely: EnumLiteralContext.Likely,
     container: Analyser.Type,
-) error{OutOfMemory}!void {
-    const use_snippets = builder.server.config.enable_snippets and builder.server.client_capabilities.supports_snippets;
-    const container_scope = switch (container.data) {
-        .container => |s| s,
+    omit_members: std.BufSet,
+) Analyser.Error!void {
+    const info = switch (container.data) {
+        .container => |info| info,
         else => return,
     };
-    const node = container_scope.toNode();
-    const handle = container_scope.handle;
-    var buffer1: [1]Ast.Node.Index = undefined;
-    var buffer2: [2]Ast.Node.Index = undefined;
-    const container_decl = Ast.fullContainerDecl(handle.tree, &buffer2, node) orelse return;
-    for (container_decl.ast.members) |member| {
-        if (handle.tree.fullContainerField(member)) |field| {
-            if (likely == .trycall_decl_literal) continue;
-            const name = handle.tree.tokenSlice(field.ast.main_token);
-            if (!field.ast.tuple_like and likely.requiresDecor(.braces)) {
-                try builder.completions.append(builder.arena, .{
+
+    const scope_handle = info.scope_handle;
+    const document_scope = try scope_handle.handle.getDocumentScope();
+    const scope_decls = document_scope.getScopeDeclarationsConst(scope_handle.scope);
+
+    const config = &builder.server.config_manager.config;
+    const use_snippets = config.enable_snippets and builder.server.client_capabilities.supports_snippets;
+    for (scope_decls) |decl_index| {
+        const decl = document_scope.declarations.get(@intFromEnum(decl_index));
+        if (decl != .ast_node) continue;
+        const decl_handle: Analyser.DeclWithHandle = .{ .decl = decl, .handle = scope_handle.handle, .container_type = container };
+        const maybe_resolved_ty = try decl_handle.resolveType(builder.analyser);
+        const tree = &scope_handle.handle.tree;
+
+        const name = offsets.tokenToSlice(tree, decl.nameToken(tree));
+        if (omit_members.contains(name)) continue;
+
+        const completion_item: types.completion.Item = switch (tree.nodeTag(decl.ast_node)) {
+            .container_field_init,
+            .container_field_align,
+            .container_field,
+            => blk: {
+                const field = tree.fullContainerField(decl.ast_node).?;
+
+                const insert_text, const insert_text_format: types.InsertTextFormat = insert_text: {
+                    if (likely != .struct_field and likely != .enum_comparison and likely != .switch_case and !field.ast.tuple_like) {
+                        if (container.isTaggedUnion() and
+                            maybe_resolved_ty != null and
+                            maybe_resolved_ty.?.data == .ip_index and
+                            maybe_resolved_ty.?.data.ip_index.type != .unknown_type and
+                            builder.analyser.ip.onePossibleValue(maybe_resolved_ty.?.data.ip_index.type) != .none)
+                        {
+                            break :insert_text .{ name, .PlainText };
+                        }
+
+                        if (!use_snippets) {
+                            break :insert_text .{
+                                try std.fmt.allocPrint(builder.arena, "{{ .{s} = ", .{name}),
+                                .PlainText,
+                            };
+                        }
+
+                        break :insert_text .{
+                            try std.fmt.allocPrint(builder.arena, "{{ .{f} = $1 \\}}$0", .{Analyser.fmtEscapedSnippet(name)}),
+                            .Snippet,
+                        };
+                    }
+
+                    if (!use_snippets)
+                        break :insert_text .{ name, .PlainText };
+
+                    if (field.ast.tuple_like or likely == .enum_comparison or likely == .switch_case)
+                        break :insert_text .{ name, .PlainText };
+
+                    const is_following_by_equal_token = switch (offsets.sourceIndexToTokenIndex(&builder.orig_handle.tree, builder.source_index)) {
+                        .none => |data| if (data.right) |right| builder.orig_handle.tree.tokenTag(right) == .equal else false,
+                        .one => |token| token + 1 < builder.orig_handle.tree.tokens.len and builder.orig_handle.tree.tokenTag(token + 1) == .equal,
+                        .between => |data| builder.orig_handle.tree.tokenTag(data.right) == .equal,
+                    };
+                    if (is_following_by_equal_token)
+                        break :insert_text .{ name, .PlainText };
+
+                    break :insert_text .{
+                        try std.fmt.allocPrint(builder.arena, "{f} = ", .{Analyser.fmtEscapedSnippet(name)}),
+                        .Snippet,
+                    };
+                };
+
+                const detail = if (maybe_resolved_ty) |ty| detail: {
+                    const type_str = try ty.stringifyTypeOf(builder.analyser, .{ .truncate_container_decls = false });
+                    if (field.ast.value_expr.unwrap()) |value_expr| {
+                        const value_str = offsets.nodeToSlice(tree, value_expr);
+                        break :detail try std.fmt.allocPrint(builder.arena, "{s} = {s}", .{ type_str, value_str });
+                    } else {
+                        break :detail try std.fmt.allocPrint(builder.arena, "{s}", .{type_str});
+                    }
+                } else if (Analyser.getContainerFieldSignature(tree, field)) |signature| detail: {
+                    if (std.mem.eql(u8, name, signature) and field.ast.tuple_like) break :detail null;
+                    break :detail signature;
+                } else null;
+
+                break :blk .{
                     .label = name,
                     .kind = if (field.ast.tuple_like) .EnumMember else .Field,
-                    .detail = Analyser.getContainerFieldSignature(handle.tree, field),
-                    .insertText = if (use_snippets)
-                        try std.fmt.allocPrint(builder.arena, "{{ .{s} = $1 }}$0", .{name})
-                    else
-                        try std.fmt.allocPrint(builder.arena, "{{ .{s} = ", .{name}),
-                    .insertTextFormat = if (use_snippets) .Snippet else .PlainText,
-                });
-            } else try builder.completions.append(builder.arena, .{
-                .label = name,
-                .kind = if (field.ast.tuple_like) .EnumMember else .Field,
-                .detail = Analyser.getContainerFieldSignature(handle.tree, field),
-                .insertText = if (field.ast.tuple_like or !likely.requiresDecor(.assignment_operator))
-                    name
-                else
-                    try std.fmt.allocPrint(builder.arena, "{s} = ", .{name}),
-            });
-        } else if (handle.tree.fullVarDecl(member)) |full_var_decl| {
-            if (likely == .trycall_decl_literal or likely.omitDecl()) continue;
-            const resolved_var_ty =
-                try builder.analyser.resolveTypeOfNode(.{
-                    .handle = handle,
-                    .node = full_var_decl.ast.type_node,
-                }) orelse continue;
-            if (resolved_var_ty.data != .container) continue;
-            if (resolved_var_ty.data.container.handle != handle or
-                resolved_var_ty.data.container.scope != container_scope.scope) continue;
-            const name = handle.tree.tokenSlice(full_var_decl.ast.mut_token + 1);
-            try builder.completions.append(builder.arena, .{
-                .label = name,
-                .kind = .Constant,
-                .detail = Analyser.getVariableSignature(builder.arena, handle.tree, full_var_decl, false) catch null,
-                .insertText = name,
-                .insertTextFormat = .PlainText,
-            });
-        } else if (handle.tree.fullFnProto(&buffer1, member)) |full_fn_proto| {
-            if (likely == .field) continue;
-            const func_ty: Analyser.Type = .typeVal(.{ .handle = handle, .node = member });
-            const has_self_param = try builder.analyser.firstParamIs(func_ty, .{
-                .data = .{
-                    .container = container_scope,
-                },
-                .is_type_val = true,
-            });
-            if (has_self_param) continue;
-            const ret_ty = try builder.analyser.resolveReturnType(full_fn_proto, handle, null) orelse continue;
-            if (likely == .trycall_decl_literal and ret_ty.data != .error_union) continue;
-            var resolved_ret_ty = try builder.analyser.resolveUnwrapErrorUnionType(ret_ty, .payload) orelse ret_ty;
-            // TODO better type matching
-            if (try builder.analyser.resolveDerefType(resolved_ret_ty)) |ty| resolved_ret_ty = ty; // single pointer .payload
-            if (resolved_ret_ty.data != .container) continue;
-            if (resolved_ret_ty.data.container.handle != container_scope.handle or
-                resolved_ret_ty.data.container.scope != container_scope.scope) continue;
-            const name = handle.tree.tokenSlice(full_fn_proto.name_token orelse continue);
-            if (try functionTypeCompletion(builder, name, container, func_ty)) |completion| try builder.completions.append(builder.arena, completion);
-        }
-    }
-}
-
-fn collectErrorTypeFields(
-    builder: *Builder,
-    err_type: Analyser.Type,
-) error{OutOfMemory}!?void {
-    return switch (err_type.data) {
-        .container => try collectErrorNodeFields(
-            builder,
-            err_type.data.container.handle,
-            err_type.data.container.toNode(),
-        ) orelse try collectContainerFields(builder, .enum_literal, err_type),
-        .other => try collectErrorNodeFields(
-            builder,
-            err_type.data.other.handle,
-            err_type.data.other.node,
-        ),
-        else => null,
-    };
-}
-
-fn collectErrorNodeFields(
-    builder: *Builder,
-    handle: *DocumentStore.Handle,
-    node: Ast.Node.Index,
-) error{OutOfMemory}!?void {
-    const tree = handle.tree;
-    const ntags = tree.nodes.items(.tag);
-    const ndata = tree.nodes.items(.data);
-    switch (ntags[node]) {
-        .error_set_decl => {
-            var it = ast.ErrorSetIterator.init(tree, node);
-            while (it.next()) |identifier_token| {
-                const name = tree.tokenSlice(identifier_token);
-                try builder.completions.append(builder.arena, .{
-                    .label = name,
-                    .kind = .EnumMember,
-                    .insertText = name,
-                });
-            }
-        },
-        .merge_error_sets => {
-            _ = try collectErrorNodeFields(
-                builder,
-                handle,
-                ndata[node].lhs,
-            );
-            _ = try collectErrorNodeFields(
-                builder,
-                handle,
-                ndata[node].rhs,
-            );
-        },
-        // const Error = error{OOM} || OtherError || some.T.Error;
-        .identifier,
-        .field_access,
-        => {
-            const ty = try builder.analyser.resolveTypeOfNode(.{ .node = node, .handle = handle }) orelse return;
-            _ = try collectErrorTypeFields(builder, ty);
-        },
-        else => return null,
+                    .detail = detail,
+                    .insertTextFormat = insert_text_format,
+                    .insertText = insert_text,
+                };
+            },
+            .global_var_decl,
+            .local_var_decl,
+            .simple_var_decl,
+            .aligned_var_decl,
+            => {
+                if (container.data != .container) continue;
+                if (!likely.allowsDeclLiterals()) continue;
+                // decl literal
+                var expected_ty = maybe_resolved_ty orelse continue;
+                expected_ty = try expected_ty.typeOf(builder.analyser);
+                expected_ty = expected_ty.resolveDeclLiteralResultType();
+                if (expected_ty.data != .container) continue;
+                if (!expected_ty.data.container.scope_handle.eql(container.data.container.scope_handle)) continue;
+                try declToCompletion(builder, decl_handle);
+                continue;
+            },
+            .fn_proto,
+            .fn_proto_multi,
+            .fn_proto_one,
+            .fn_proto_simple,
+            .fn_decl,
+            => blk: {
+                if (container.data != .container) continue;
+                if (!likely.allowsDeclLiterals()) continue;
+                // decl literal
+                const resolved_ty = maybe_resolved_ty orelse continue;
+                var expected_ty = try builder.analyser.resolveReturnType(resolved_ty) orelse continue;
+                expected_ty = expected_ty.resolveDeclLiteralResultType();
+                if (expected_ty.data != .container) continue;
+                if (!expected_ty.data.container.scope_handle.eql(container.data.container.scope_handle)) continue;
+                break :blk try functionTypeCompletion(builder, name, container, resolved_ty) orelse continue;
+            },
+            else => continue,
+        };
+        try builder.completions.append(builder.arena, completion_item);
     }
 }
 
@@ -1574,159 +1601,102 @@ fn collectErrorNodeFields(
 fn collectContainerNodes(
     builder: *Builder,
     handle: *DocumentStore.Handle,
-    source_index: usize,
     dot_context: EnumLiteralContext,
-    dot_src_i: usize,
-) error{OutOfMemory}![]Analyser.Type {
+) Analyser.Error![]Analyser.Type {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    var types_with_handles = std.ArrayListUnmanaged(Analyser.Type){};
-    const position_context = try Analyser.getPositionContext(builder.arena, handle.tree, source_index, false);
-    switch (position_context) {
-        .var_access => |loc| try collectVarAccessContainerNodes(builder, handle, loc, dot_context, &types_with_handles),
-        .field_access => |loc| try collectFieldAccessContainerNodes(builder, handle, loc, dot_context, &types_with_handles),
-        .enum_literal => |loc| try collectEnumLiteralContainerNodes(builder, handle, loc, &types_with_handles),
-        .builtin => |loc| try collectBuiltinContainerNodes(builder, handle, loc, dot_context, &types_with_handles),
-        .kwcall => |tag| try collectKeywordFnContainerNodes(builder, tag, dot_context, &types_with_handles),
-        .label => blk: {
-            const nodes = try ast.nodesOverlappingIndex(
-                builder.arena,
-                handle.tree,
-                dot_src_i,
-            );
-            if (nodes.len == 0) break :blk;
-            var container_type = (try builder.analyser.resolveExpressionType(
-                handle,
-                nodes[0],
-                nodes[1..],
-            )) orelse break :blk;
-            if (try builder.analyser.resolveDerefType(container_type)) |unwrapped|
-                container_type = unwrapped;
-            container_type.is_type_val = false; // `resolveOptionalUnwrap` expects an "instance"
-            if (try builder.analyser.resolveOptionalUnwrap(container_type)) |unwrapped|
-                container_type = unwrapped;
-            try container_type.getAllTypesWithHandlesArrayList(
-                builder.arena,
-                &types_with_handles,
-            );
+    const gpa = builder.analyser.gpa;
+
+    var types_with_handles: Analyser.Type.ArraySet = .empty;
+    const token_index = switch (dot_context.type_info) {
+        .identifier_token_index => |token| token,
+        .expr_node_index => |node| {
+            if (try builder.analyser.resolveTypeOfNode(.of(node, handle))) |ty| {
+                _ = try ty.getAllTypesWithHandlesArraySet(builder.analyser, &types_with_handles);
+            }
+            return types_with_handles.keys();
+        },
+    };
+    const source_index = offsets.tokenToLoc(&handle.tree, token_index).end;
+    const nodes = try ast.nodesOverlappingIndexIncludingParseErrors(gpa, &handle.tree, source_index);
+    defer gpa.free(nodes);
+
+    switch (handle.tree.nodeTag(nodes[0])) {
+        .field_access => {
+            if (try builder.analyser.resolveTypeOfNode(.of(nodes[0], handle))) |ty| {
+                try collectFieldAccessTypes(builder, dot_context, ty, &types_with_handles);
+                return types_with_handles.keys();
+            }
         },
         else => {},
     }
-    return types_with_handles.toOwnedSlice(builder.arena);
+
+    if (nodes.len > 1) {
+        switch (handle.tree.nodeTag(nodes[1])) {
+            .global_var_decl,
+            .local_var_decl,
+            .simple_var_decl,
+            .aligned_var_decl,
+            => {
+                const var_decl = handle.tree.fullVarDecl(nodes[1]).?;
+                if (nodes[0].toOptional() == var_decl.ast.type_node) {
+                    if (try builder.analyser.resolveTypeOfNode(.of(nodes[0], handle))) |ty| {
+                        _ = try ty.getAllTypesWithHandlesArraySet(builder.analyser, &types_with_handles);
+                        return types_with_handles.keys();
+                    }
+                }
+            },
+            else => {},
+        }
+    }
+
+    const position_context = try Analyser.getPositionContext(builder.arena, &handle.tree, source_index, false);
+    switch (position_context) {
+        .var_access => |loc| try collectVarAccessContainerNodes(builder, handle, loc, dot_context, &types_with_handles),
+        .field_access => |loc| try collectFieldAccessContainerNodes(builder, handle, loc, dot_context, &types_with_handles),
+        .enum_literal => |loc| try collectEnumLiteralContainerNodes(builder, handle, loc, nodes, &types_with_handles),
+        .builtin => |loc| try collectBuiltinContainerNodes(builder, handle, loc, dot_context, &types_with_handles),
+        .keyword => |token| try collectKeywordFnContainerNodes(builder, token, dot_context, &types_with_handles),
+        else => {},
+    }
+    return types_with_handles.keys();
+}
+
+fn collectErrorSetTypeFields(
+    builder: *Builder,
+    err_type: Analyser.Type,
+) error{OutOfMemory}!?void {
+    if (err_type.data != .ip_index) return null;
+    const ip = builder.analyser.ip;
+    const key = ip.indexToKey(err_type.data.ip_index.type);
+    if (key != .error_set_type) return null;
+    if (key.error_set_type.names.len == 0) return;
+
+    ip.string_pool.mutex.lock();
+    defer ip.string_pool.mutex.unlock();
+
+    for (0..key.error_set_type.names.len) |name_idx| {
+        const err_name = ip.string_pool.stringToSliceUnsafe(key.error_set_type.names.at(@intCast(name_idx), ip));
+        try builder.completions.append(builder.arena, .{
+            .label = err_name,
+            .kind = .EnumMember,
+            .insertText = err_name,
+        });
+    }
 }
 
 fn resolveBuiltinFnArg(
     analyser: *Analyser,
-    handle: *DocumentStore.Handle,
-    loc: offsets.Loc,
     arg_index: usize,
     /// Includes leading `@`
     name: []const u8,
-) std.mem.Allocator.Error!?Analyser.Type {
-    if (std.mem.eql(u8, name, "@This")) {
-        const tree = handle.tree;
-        const nodes = try ast.nodesOverlappingIndex(analyser.arena.allocator(), tree, loc.start);
-        if (nodes.len == 0) return null;
-        return try Analyser.innermostContainer(handle, tree.tokens.items(.start)[tree.firstToken(nodes[0])]);
-    }
-
-    const builtin_name: []const u8 = name: {
-        if (std.mem.eql(u8, name, "@Type")) {
-            switch (arg_index) {
-                0 => break :name "Type",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@setFloatMode")) {
-            switch (arg_index) {
-                0 => break :name "FloatMode",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@prefetch")) {
-            switch (arg_index) {
-                1 => break :name "PrefetchOptions",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@reduce")) {
-            switch (arg_index) {
-                0 => break :name "ReduceOp",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@export")) {
-            switch (arg_index) {
-                1 => break :name "ExportOptions",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@extern")) {
-            switch (arg_index) {
-                1 => break :name "ExternOptions",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@fence")) {
-            switch (arg_index) {
-                0 => break :name "AtomicOrder",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@cmpxchgWeak") or std.mem.eql(u8, name, "@cmpxchgStrong")) {
-            switch (arg_index) {
-                4, 5 => break :name "AtomicOrder",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@atomicLoad")) {
-            switch (arg_index) {
-                2 => break :name "AtomicOrder",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@atomicStore")) {
-            switch (arg_index) {
-                3 => break :name "AtomicOrder",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@atomicRmw")) {
-            switch (arg_index) {
-                2 => break :name "AtomicRmwOp",
-                4 => break :name "AtomicOrder",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@call")) {
-            switch (arg_index) {
-                0 => break :name "CallModifier",
-                else => return null,
-            }
-        }
-
-        if (std.mem.eql(u8, name, "@branchHint")) {
-            switch (arg_index) {
-                0 => break :name "BranchHint",
-                else => return null,
-            }
-        }
-
-        return null;
-    };
-
+) Analyser.Error!?Analyser.Type {
+    const builtin = version_data.builtins.get(name) orelse return null;
+    if (arg_index >= builtin.parameters.len) return null;
+    const param = builtin.parameters[arg_index];
+    const colon_index = std.mem.findScalar(u8, param.signature, ':') orelse return null;
+    const builtin_name = param.signature[colon_index + 2 ..];
     return analyser.instanceStdBuiltinType(builtin_name);
 }
 
@@ -1735,27 +1705,15 @@ fn collectBuiltinContainerNodes(
     handle: *DocumentStore.Handle,
     loc: offsets.Loc,
     dot_context: EnumLiteralContext,
-    types_with_handles: *std.ArrayListUnmanaged(Analyser.Type),
-) error{OutOfMemory}!void {
-    if (dot_context.need_ret_type) {
-        const name = handle.tree.source[loc.start..loc.end];
-        const ty = blk: {
-            if (std.mem.eql(u8, name, "@typeInfo")) {
-                break :blk try builder.analyser.instanceStdBuiltinType("Type") orelse return;
-            }
-            return;
-        };
-        try types_with_handles.append(builder.arena, ty);
-        return;
-    }
+    types_with_handles: *Analyser.Type.ArraySet,
+) Analyser.Error!void {
+    if (dot_context.need_ret_type) return;
     if (try resolveBuiltinFnArg(
         builder.analyser,
-        handle,
-        loc,
         dot_context.fn_arg_index,
         handle.tree.source[loc.start..loc.end],
     )) |ty| {
-        try types_with_handles.append(builder.arena, ty);
+        _ = try ty.getAllTypesWithHandlesArraySet(builder.analyser, types_with_handles);
     }
 }
 
@@ -1764,51 +1722,64 @@ fn collectVarAccessContainerNodes(
     handle: *DocumentStore.Handle,
     loc: offsets.Loc,
     dot_context: EnumLiteralContext,
-    types_with_handles: *std.ArrayListUnmanaged(Analyser.Type),
-) error{OutOfMemory}!void {
+    types_with_handles: *Analyser.Type.ArraySet,
+) Analyser.Error!void {
     const analyser = builder.analyser;
-    const arena = builder.arena;
 
-    const name = if (handle.tree.source[loc.start] == '@' and handle.tree.source[loc.end - 1] == '"') handle.tree.source[loc.start + 2 .. loc.end - 1] else handle.tree.source[loc.start..loc.end];
-    const symbol_decl = try analyser.lookupSymbolGlobal(handle, name, loc.end) orelse return;
+    const symbol_decl = try analyser.lookupSymbolGlobal(handle, handle.tree.source[loc.start..loc.end], loc.end) orelse return;
     const result = try symbol_decl.resolveType(analyser) orelse return;
     const type_expr = try analyser.resolveDerefType(result) orelse result;
-    if (type_expr.isFunc()) {
-        const fn_proto_node_handle = type_expr.data.other; // this assumes that function types can only be Ast nodes
-        const fn_proto_node = fn_proto_node_handle.node;
-        const fn_proto_handle = fn_proto_node_handle.handle;
-        if (dot_context.need_ret_type) {
-            var buf: [1]Ast.Node.Index = undefined;
-            const full_fn_proto = fn_proto_handle.tree.fullFnProto(&buf, fn_proto_node).?;
-            const has_body = fn_proto_handle.tree.nodes.items(.tag)[fn_proto_node] == .fn_decl;
-            const body = fn_proto_handle.tree.nodes.items(.data)[fn_proto_node].rhs;
-            var node_type = try analyser.resolveReturnType(full_fn_proto, fn_proto_handle, if (has_body) body else null) orelse return;
-            switch (dot_context.likely) {
-                .err_switch_case => {
-                    const ret_type = try builder.analyser.resolveReturnType(full_fn_proto, fn_proto_handle, null) orelse return;
-                    const err_type = try builder.analyser.resolveUnwrapErrorUnionType(ret_type, .error_set) orelse return;
-                    _ = try collectErrorTypeFields(builder, err_type);
-                    return;
-                },
-                else => {},
-            }
-            if (try analyser.resolveUnwrapErrorUnionType(node_type, .payload)) |unwrapped| node_type = unwrapped;
-            if (dot_context.likely.shouldUnwrapOptional()) {
-                if (try analyser.resolveOptionalUnwrap(node_type)) |unwrapped| node_type = unwrapped;
-            }
-            try node_type.getAllTypesWithHandlesArrayList(arena, types_with_handles);
-            return;
-        }
-        const fn_param_decl = Analyser.Declaration{ .function_parameter = .{
-            .func = fn_proto_node,
-            .param_index = @intCast(dot_context.fn_arg_index),
-        } };
-        const fn_param_decl_with_handle = Analyser.DeclWithHandle{ .decl = fn_param_decl, .handle = fn_proto_handle };
-        const param_type = try fn_param_decl_with_handle.resolveType(analyser) orelse return;
-        try types_with_handles.append(arena, param_type);
+    if (!type_expr.isFunc()) {
+        _ = try type_expr.getAllTypesWithHandlesArraySet(analyser, types_with_handles);
         return;
     }
-    try type_expr.getAllTypesWithHandlesArrayList(arena, types_with_handles);
+
+    const info = type_expr.data.function;
+
+    if (dot_context.likely == .enum_comparison or dot_context.need_ret_type) { // => we need f()'s return type
+        var node_type = info.return_value.*;
+        if (try analyser.resolveUnwrapErrorUnionType(node_type, .payload)) |unwrapped| node_type = unwrapped;
+        _ = try node_type.getAllTypesWithHandlesArraySet(analyser, types_with_handles);
+        return;
+    }
+    const param_index = dot_context.fn_arg_index;
+    if (param_index >= info.parameters.len) return;
+    const param_type = info.parameters[param_index].type;
+    _ = try param_type.getAllTypesWithHandlesArraySet(analyser, types_with_handles);
+}
+
+fn collectFieldAccessTypes(
+    builder: *Builder,
+    dot_context: EnumLiteralContext,
+    ty: Analyser.Type,
+    types_with_handles: *Analyser.Type.ArraySet,
+) error{OutOfMemory}!void {
+    const analyser = builder.analyser;
+
+    var node_type = ty;
+    // Unwrap `identifier.opt_enum_field = .` or `identifier.opt_cont_field = .{.`
+    if (dot_context.likely == .enum_assignment or dot_context.likely == .struct_field) {
+        if (try analyser.resolveOptionalUnwrap(node_type)) |unwrapped| node_type = unwrapped;
+    }
+    if (!node_type.isFunc()) {
+        _ = try node_type.getAllTypesWithHandlesArraySet(analyser, types_with_handles);
+        return;
+    }
+
+    const info = node_type.data.function;
+
+    if (dot_context.need_ret_type) { // => we need f()'s return type
+        node_type = info.return_value.*;
+        if (try analyser.resolveUnwrapErrorUnionType(node_type, .payload)) |unwrapped| node_type = unwrapped;
+        _ = try node_type.getAllTypesWithHandlesArraySet(analyser, types_with_handles);
+        return;
+    }
+    const has_self_param = try analyser.hasSelfParam(node_type);
+    const params = info.parameters;
+    const param_index = dot_context.fn_arg_index + @intFromBool(has_self_param);
+    if (param_index >= params.len) return;
+    const param_type = params[param_index].type;
+    _ = try param_type.getAllTypesWithHandlesArraySet(analyser, types_with_handles);
 }
 
 fn collectFieldAccessContainerNodes(
@@ -1816,8 +1787,8 @@ fn collectFieldAccessContainerNodes(
     handle: *DocumentStore.Handle,
     loc: offsets.Loc,
     dot_context: EnumLiteralContext,
-    types_with_handles: *std.ArrayListUnmanaged(Analyser.Type),
-) error{OutOfMemory}!void {
+    types_with_handles: *Analyser.Type.ArraySet,
+) Analyser.Error!void {
     const analyser = builder.analyser;
     const arena = builder.arena;
 
@@ -1825,80 +1796,24 @@ fn collectFieldAccessContainerNodes(
     // inconsistent at returning name_loc for methods, ie
     // `abc.method() == .` => fails, `abc.method(.{}){.}` => ok
     // it also fails for `abc.xyz.*` ... currently we take advantage of this quirk
-    const name_loc = Analyser.identifierLocFromIndex(handle.tree, loc.end) orelse {
+    const name_loc = Analyser.identifierLocFromIndex(&handle.tree, loc.end) orelse {
         const result = try analyser.getFieldAccessType(handle, loc.end, loc) orelse return;
         const container = try analyser.resolveDerefType(result) orelse result;
         if (try analyser.resolveUnwrapErrorUnionType(container, .payload)) |unwrapped| {
             if (unwrapped.isEnumType() or unwrapped.isUnionType()) {
-                try types_with_handles.append(arena, unwrapped);
+                _ = try unwrapped.getAllTypesWithHandlesArraySet(analyser, types_with_handles);
                 return;
             }
         }
         // if (dot_context.likely == .enum_literal and !(container.isEnumType() or container.isUnionType())) return;
-        try container.getAllTypesWithHandlesArrayList(arena, types_with_handles);
+        _ = try container.getAllTypesWithHandlesArraySet(analyser, types_with_handles);
         return;
     };
     const name = offsets.locToSlice(handle.tree.source, name_loc);
     const decls = try analyser.getSymbolFieldAccesses(arena, handle, loc.end, loc, name) orelse return;
     for (decls) |decl| {
-        var node_type = try decl.resolveType(analyser) orelse continue;
-        if (dot_context.likely.shouldUnwrapOptional()) {
-            if (try analyser.resolveOptionalUnwrap(node_type)) |unwrapped| node_type = unwrapped;
-        }
-        if (node_type.isFunc()) {
-            const fn_proto_node_handle = node_type.data.other; // this assumes that function types can only be Ast nodes
-            const fn_proto_node = fn_proto_node_handle.node;
-            const fn_proto_handle = fn_proto_node_handle.handle;
-            var buf: [1]Ast.Node.Index = undefined;
-            const full_fn_proto = fn_proto_handle.tree.fullFnProto(&buf, fn_proto_node).?;
-            if (dot_context.need_ret_type) { // => we need f()'s return type
-                const has_body = fn_proto_handle.tree.nodes.items(.tag)[fn_proto_node] == .fn_decl;
-                const body = fn_proto_handle.tree.nodes.items(.data)[fn_proto_node].rhs;
-                node_type = try analyser.resolveReturnType(full_fn_proto, fn_proto_handle, if (has_body) body else null) orelse continue;
-                switch (dot_context.likely) {
-                    .err_switch_case => {
-                        const ret_type = try builder.analyser.resolveReturnType(full_fn_proto, fn_proto_handle, null) orelse return;
-                        const err_type = try builder.analyser.resolveUnwrapErrorUnionType(ret_type, .error_set) orelse return;
-                        _ = try collectErrorTypeFields(builder, err_type);
-                        return;
-                    },
-                    else => {},
-                }
-                if (try analyser.resolveUnwrapErrorUnionType(node_type, .payload)) |unwrapped| node_type = unwrapped;
-                try node_type.getAllTypesWithHandlesArrayList(arena, types_with_handles);
-                continue;
-            }
-            var maybe_fn_param: ?Ast.full.FnProto.Param = undefined;
-            var fn_param_iter = full_fn_proto.iterate(&fn_proto_handle.tree);
-            // don't have the luxury of referencing an `Ast.full.Call`
-            // check if the first symbol is a `T` or an instance_of_T
-            const additional_index: usize = blk: {
-                // `loc` points to offsets within `handle`, not `node_type.decl.handle`
-                const field_access_slice = handle.tree.source[loc.start..loc.end];
-                if (field_access_slice[0] == '@') break :blk 1; // assume `@import("..").some.Other{.}`
-                var symbol_iter = std.mem.tokenizeScalar(u8, field_access_slice, '.');
-                const first_symbol = symbol_iter.next() orelse continue;
-                const symbol_decl = try analyser.lookupSymbolGlobal(handle, first_symbol, loc.start) orelse continue;
-                const symbol_type = try symbol_decl.resolveType(analyser) orelse continue;
-                if (!symbol_type.is_type_val) { // then => instance_of_T
-                    if (try analyser.hasSelfParam(node_type)) break :blk 2;
-                }
-                break :blk 1; // is `T`, no SelfParam
-            };
-            for (0..dot_context.fn_arg_index + additional_index) |_| maybe_fn_param = ast.nextFnParam(&fn_param_iter);
-            const param = maybe_fn_param orelse continue;
-            if (param.type_expr == 0) continue;
-            const param_rcts = try collectContainerNodes(
-                builder,
-                fn_proto_handle,
-                offsets.nodeToLoc(fn_proto_handle.tree, param.type_expr).end,
-                dot_context,
-                0,
-            );
-            for (param_rcts) |prct| try types_with_handles.append(arena, prct);
-            continue;
-        }
-        try node_type.getAllTypesWithHandlesArrayList(arena, types_with_handles);
+        const ty = try decl.resolveType(analyser) orelse continue;
+        try collectFieldAccessTypes(builder, dot_context, ty, types_with_handles);
     }
 }
 
@@ -1906,38 +1821,32 @@ fn collectEnumLiteralContainerNodes(
     builder: *Builder,
     handle: *DocumentStore.Handle,
     loc: offsets.Loc,
-    types_with_handles: *std.ArrayListUnmanaged(Analyser.Type),
-) error{OutOfMemory}!void {
+    nodes: []const Ast.Node.Index,
+    types_with_handles: *Analyser.Type.ArraySet,
+) Analyser.Error!void {
     const analyser = builder.analyser;
-    const arena = builder.arena;
-    const alleged_field_name = offsets.identifierIndexToNameSlice(handle.tree.source, loc.start + 1);
-    const dot_index = offsets.sourceIndexToTokenIndex(handle.tree, loc.start);
-    const el_dot_context = getSwitchOrStructInitContext(builder, dot_index) orelse return;
-    const containers = try collectContainerNodes(
-        builder,
-        handle,
-        offsets.tokenToLoc(handle.tree, el_dot_context.identifier_token_index).end,
-        el_dot_context,
-        loc.start,
-    );
+    const alleged_field_name = offsets.locToSlice(handle.tree.source, offsets.identifierIndexToLoc(handle.tree.source, loc.start + 1, .name));
+    const dot_index = offsets.sourceIndexToTokenIndex(&handle.tree, loc.start).pickPreferred(&.{.period}, &handle.tree) orelse return;
+    const el_dot_context = getSwitchOrStructInitContext(&handle.tree, dot_index, nodes) orelse return;
+    const containers = try collectContainerNodes(builder, handle, el_dot_context);
     for (containers) |container| {
-        const container_instance = container.instanceTypeVal(analyser) orelse container;
+        const container_instance = try container.instanceTypeVal(analyser) orelse container;
         const member_decl = try container_instance.lookupSymbol(analyser, alleged_field_name) orelse continue;
         var member_type = try member_decl.resolveType(analyser) orelse continue;
         // Unwrap `x{ .fld_w_opt_type =`
         if (try analyser.resolveOptionalUnwrap(member_type)) |unwrapped| member_type = unwrapped;
-        try types_with_handles.append(arena, member_type);
+        _ = try member_type.getAllTypesWithHandlesArraySet(analyser, types_with_handles);
     }
 }
 
 fn collectKeywordFnContainerNodes(
     builder: *Builder,
-    tag: std.zig.Token.Tag,
+    token: Ast.TokenIndex,
     dot_context: EnumLiteralContext,
-    types_with_handles: *std.ArrayListUnmanaged(Analyser.Type),
-) error{OutOfMemory}!void {
+    types_with_handles: *Analyser.Type.ArraySet,
+) Analyser.Error!void {
     const builtin_type_name: []const u8 = name: {
-        switch (tag) {
+        switch (builder.orig_handle.tree.tokenTag(token)) {
             .keyword_addrspace => switch (dot_context.fn_arg_index) {
                 0 => break :name "AddressSpace",
                 else => return,
@@ -1950,5 +1859,5 @@ fn collectKeywordFnContainerNodes(
         }
     };
     const ty = try builder.analyser.instanceStdBuiltinType(builtin_type_name) orelse return;
-    try types_with_handles.append(builder.arena, ty);
+    _ = try ty.getAllTypesWithHandlesArraySet(builder.analyser, types_with_handles);
 }

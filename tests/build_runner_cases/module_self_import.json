@@ -1,0 +1,22 @@
+{
+  "roots_info_file": "",
+  "deps_build_roots": [],
+  "roots": [],
+  "packages": [
+    {
+      "name": "bar",
+      "path": "root.zig"
+    },
+    {
+      "name": "root",
+      "path": "root.zig"
+    }
+  ],
+  "include_dirs": [],
+  "top_level_steps": [
+    "install",
+    "uninstall"
+  ],
+  "available_options": {},
+  "c_macros": []
+}

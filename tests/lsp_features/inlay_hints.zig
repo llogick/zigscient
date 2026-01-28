@@ -1,12 +1,11 @@
 const std = @import("std");
 const zls = @import("zls");
-const builtin = @import("builtin");
 
 const helper = @import("../helper.zig");
 const Context = @import("../context.zig").Context;
 const ErrorBuilder = @import("../ErrorBuilder.zig");
 
-const types = zls.types;
+const types = zls.lsp.types;
 const offsets = zls.offsets;
 
 const allocator: std.mem.Allocator = std.testing.allocator;
@@ -19,21 +18,21 @@ test "empty" {
 test "function call" {
     try testInlayHints(
         \\fn foo(alpha: u32) void {}
-        \\const _ = foo(<u32>5);
+        \\const _ = foo(<alpha>5);
     , .{ .kind = .Parameter });
     try testInlayHints(
         \\fn foo(alpha: u32, beta: u64) void {}
-        \\const _ = foo(<u32>5,<u64>4);
+        \\const _ = foo(<alpha>5,<beta>4);
     , .{ .kind = .Parameter });
     try testInlayHints(
         \\fn foo(alpha: u32, beta: u64) void {}
-        \\const _ = foo(  <u32>3 + 2 ,  <u64>(3 - 2));
+        \\const _ = foo(  <alpha>3 + 2 ,  <beta>(3 - 2));
     , .{ .kind = .Parameter });
     try testInlayHints(
         \\fn foo(alpha: u32, beta: u64) void {}
         \\const _ = foo(
-        \\    <u32>3 + 2,
-        \\    <u64>(3 - 2),
+        \\    <alpha>3 + 2,
+        \\    <beta>(3 - 2),
         \\);
     , .{ .kind = .Parameter });
 }
@@ -41,7 +40,7 @@ test "function call" {
 test "function call with multiline string literal" {
     try testInlayHints(
         \\fn foo(bar: []const u8) void {}
-        \\const _ = foo(<[]const u8>
+        \\const _ = foo(<bar>
         \\    \\alpha
         \\    \\beta
         \\);
@@ -51,60 +50,47 @@ test "function call with multiline string literal" {
 test "extern function call" {
     try testInlayHints(
         \\extern fn foo(u32, beta: bool, []const u8) void;
-        \\const _ = foo(<u32>5, <bool>true, <[]const u8>"");
+        \\const _ = foo(5, <beta>true, "");
     , .{ .kind = .Parameter });
-}
-
-test "function's callconv" {
-    try testInlayHints(
-        \\fn foo() callconv(.{ .x86_64_sysv<CommonOptions> = .{ .incoming_stack_alignment<?u64> = 8} }) void {};
-    , .{ .kind = .Type });
 }
 
 test "function self parameter" {
     try testInlayHints(
         \\const Foo = struct { pub fn bar(self: *Foo, alpha: u32) void {} };
         \\const foo: Foo = .{};
-        \\const _ = foo.bar(<u32>5);
+        \\const _ = foo.bar(<alpha>5);
     , .{ .kind = .Parameter });
     try testInlayHints(
         \\const Foo = struct { pub fn bar(self: *Foo, alpha: u32) void {} };
         \\const foo: *Foo = undefined;
-        \\const _ = foo.bar(<u32>5);
+        \\const _ = foo.bar(<alpha>5);
     , .{ .kind = .Parameter });
     try testInlayHints(
         \\const Foo = struct { pub fn bar(_: Foo, alpha: u32, beta: []const u8) void {} };
         \\const foo: Foo = .{};
-        \\const _ = foo.bar(<u32>5,<[]const u8>"");
+        \\const _ = foo.bar(<alpha>5,<beta>"");
     , .{ .kind = .Parameter });
     try testInlayHints(
         \\const Foo = struct { pub fn bar(self: Foo, alpha: u32, beta: anytype) void {} };
         \\const foo: Foo = .{};
-        \\const _ = foo.bar(<u32>5,<beta>4);
+        \\const _ = foo.bar(<alpha>5,<beta>4);
     , .{ .kind = .Parameter });
     try testInlayHints(
         \\const Foo = struct { pub fn bar(self: Foo, alpha: u32, beta: anytype) void {} };
         \\const foo: *Foo = undefined;
-        \\const _ = foo.bar(<u32>5,<beta>4);
+        \\const _ = foo.bar(<alpha>5,<beta>4);
     , .{ .kind = .Parameter });
     try testInlayHints(
         \\const Foo = struct { pub fn bar(self: Foo, alpha: u32, beta: []const u8) void {} };
-        \\const _ = Foo.bar(<Foo>undefined,<u32>5,<[]const u8>"");
+        \\const _ = Foo.bar(<self>undefined,<alpha>5,<beta>"");
     , .{ .kind = .Parameter });
     try testInlayHints(
         \\const Foo = struct {
         \\  pub fn bar(self: Foo, alpha: u32, beta: []const u8) void {}
         \\  pub fn foo() void {
-        \\      bar(<Foo>undefined,<u32>5,<[]const u8>"");
+        \\      bar(<self>undefined,<alpha>5,<beta>"");
         \\  }
         \\};
-    , .{ .kind = .Parameter });
-}
-
-test "fncall decl lit init" {
-    try testInlayHints(
-        \\const Foo = struct { pub fn bar(alpha: u32, beta: []const u8) void {} };
-        \\const foo: Foo = .bar(<u32>5,<[]const u8>"");
     , .{ .kind = .Parameter });
 }
 
@@ -112,7 +98,7 @@ test "function self parameter with pointer type in type declaration" {
     try testInlayHints(
         \\const Foo = *opaque { pub fn bar(self: Foo, alpha: u32) void {} };
         \\const foo: Foo = undefined;
-        \\const _ = foo.bar(<u32>5);
+        \\const _ = foo.bar(<alpha>5);
     , .{ .kind = .Parameter });
 }
 
@@ -120,16 +106,15 @@ test "resolve alias" {
     try testInlayHints(
         \\fn foo(alpha: u32) void {}
         \\const bar = foo;
-        \\const _ = bar(<u32>5);
+        \\const _ = bar(<alpha>5);
     , .{ .kind = .Parameter });
 }
 
 test "builtin call" {
-    // XXX missing types for @memcpy args
     try testInlayHints(
-        // \\const _ = @memcpy(<dest>"",<source>"");
-        \\const _ = @Vector(<comptime_int>4,<type>u32);
-        \\const _ = @compileError(<[]const u8>"");
+        \\const _ = @memcpy(<dest>"",<source>"");
+        \\const _ = @Vector(<len>4,<Element>u32);
+        \\const _ = @compileError(<msg>"");
     , .{ .kind = .Parameter });
 
     // exclude variadics
@@ -157,7 +142,7 @@ test "builtin call" {
 
 test "builtin call with multiline string literal" {
     try testInlayHints(
-        \\const _ = @compileError(<[]const u8>
+        \\const _ = @compileError(<msg>
         \\    \\foo
         \\    \\bar
         \\);
@@ -170,7 +155,7 @@ test "exclude single argument" {
         \\fn func2(alpha: u32, beta: u32) void {}
         \\test {
         \\    func1(1);
-        \\    func2(<u32>1, <u32>2);
+        \\    func2(<alpha>1, <beta>2);
         \\}
     , .{
         .kind = .Parameter,
@@ -185,18 +170,61 @@ test "exclude single argument" {
         \\};
         \\test {
         \\    S.method1(undefined);
-        \\    S.method2(<S>undefined, <u32>1);
-        \\    S.method3(<S>undefined, <u32>1, <u32>2);
-        \\    S.method4(<u32>1, <u32>2);
+        \\    S.method2(<self>undefined, <alpha>1);
+        \\    S.method3(<self>undefined, <alpha>1, <beta>2);
+        \\    S.method4(<alpha>1, <beta>2);
         \\
         \\    const s: S = undefined;
         \\    s.method1();
         \\    s.method2(1);
-        \\    s.method3(<u32>1, <u32>2);
+        \\    s.method3(<alpha>1, <beta>2);
         \\}
     , .{
         .kind = .Parameter,
         .exclude_single_argument = true,
+    });
+}
+
+test "hide redundant parameter names" {
+    try testInlayHints(
+        \\fn func(alpha: u32) void {}
+        \\test {
+        \\    const alpha: u32 = 5;
+        \\    const beta: u32 = 5;
+        \\    const s = .{ .alpha = 5, .beta = 5 };
+        \\
+        \\    func(alpha);
+        \\
+        \\    func(<alpha>&alpha);
+        \\    func(<alpha>s.alpha);
+        \\    func(<alpha>beta);
+        \\    func(<alpha>&beta);
+        \\    func(<alpha>s.beta);
+        \\}
+    , .{
+        .kind = .Parameter,
+        .hide_redundant_param_names = true,
+        .hide_redundant_param_names_last_token = false,
+    });
+    try testInlayHints(
+        \\fn func(alpha: u32) void {}
+        \\test {
+        \\    const alpha: u32 = 5;
+        \\    const beta: u32 = 5;
+        \\    const s = .{ .alpha = 5, .beta = 5 };
+        \\
+        \\    func(alpha);
+        \\    func(&alpha);
+        \\    func(s.alpha);
+        \\
+        \\    func(<alpha>beta);
+        \\    func(<alpha>&beta);
+        \\    func(<alpha>s.beta);
+        \\}
+    , .{
+        .kind = .Parameter,
+        .hide_redundant_param_names = true,
+        .hide_redundant_param_names_last_token = true,
     });
 }
 
@@ -215,11 +243,11 @@ test "var decl" {
         \\const foo<@TypeOf(undefined)> = undefined;
     , .{ .kind = .Type });
     try testInlayHints(
-        \\const foo<**const [3:0]u8> = &"Bar";
+        \\const foo<*const *const [3:0]u8> = &"Bar";
     , .{ .kind = .Type });
     try testInlayHints(
         \\const foo: *[]const u8 = &"Bar";
-        \\const baz<**[]const u8> = &foo;
+        \\const baz<*const *[]const u8> = &foo;
     , .{ .kind = .Type });
     try testInlayHints(
         \\const Foo<type> = struct { bar: u32 };
@@ -228,7 +256,7 @@ test "var decl" {
         \\    const baz: ?Foo = Foo{ .bar<u32> = 42 };
         \\    if (baz) |b<Foo>| {
         \\        const d: Error!?Foo = b;
-        \\        const e<*Error!?Foo> = &d;
+        \\        const e<*const error{e}!?Foo> = &d;
         \\        const f<Foo> = (try e.*).?;
         \\        _ = f;
         \\    }
@@ -258,6 +286,42 @@ test "var decl" {
     , .{ .kind = .Type });
 }
 
+test "comptime return types" {
+    try testInlayHints(
+        \\fn Box(comptime T: type) type {
+        \\    return struct {
+        \\        value: T,
+        \\    };
+        \\}
+        \\const list: Box(Box(i32)) = undefined;
+        \\const innerList: Box(i32) = list.value;
+        \\const nested: i32 = list.value.value;
+    , .{ .kind = .Type });
+
+    try testInlayHints(
+        \\fn concat(comptime T: type, slices: []const []const T) error{OutOfMemory}![]T {}
+        \\const str<[]u8> = try concat(u8, .{ "foo", "bar" });
+        \\const int<[]i32> = try concat(i32, .{ .{ 1, 2, 3 }, .{ 4, 5, 6 } });
+    , .{ .kind = .Type });
+}
+
+test "comptime return types - HashMap" {
+    try testInlayHints(
+        \\const std<type> = @import("std");
+        \\const boolMap<HashMap(i32,bool,AutoContext(i32))> = std.AutoHashMap(i32, bool).init(allocator);
+        \\const u32Map<HashMap(i32,u32,AutoContext(i32))> = std.AutoHashMap(i32, u32).init(allocator);
+        \\const boolPtr<?*bool> = boolMap.getPtr(123);
+        \\const u32Ptr<?*u32> = u32Map.getPtr(123);
+    , .{ .kind = .Type });
+
+    try testInlayHints(
+        \\const std<type> = @import("std");
+        \\const map<HashMap(i32,HashMap(i32,void,AutoContext(i32)),AutoContext(i32))> = std.AutoHashMap(i32, std.AutoHashMap(i32, void)).init(allocator);
+        \\const value<?*HashMap(i32,void,AutoContext(i32))> = map.getPtr(123);
+        \\const double<?*void> = map.getPtr(123).?.*.getPtr(456);
+    , .{ .kind = .Type });
+}
+
 test "assign destructure" {
     try testInlayHints(
         \\test {
@@ -283,30 +347,12 @@ test "assign destructure" {
     , .{ .kind = .Type });
 }
 
-test "function with an optional return type" {
-    try testInlayHints(
-        \\const T<type> = struct { a: u8 };
-        \\ fn thing(a: u32, b: i32) ?T {
-        \\     return .{ .a<u8> = 1 };
-        \\}
-    , .{ .kind = .Type });
-}
-
-test "function with an inferred error(set) and an optional return type" {
-    try testInlayHints(
-        \\const T<type> = struct { a: u8 };
-        \\ fn thing(a: u32, b: i32) !?T {
-        \\     return .{ .a<u8> = 1 };
-        \\}
-    , .{ .kind = .Type });
-}
-
 test "function alias" {
     try testInlayHints(
         \\fn foo(alpha: u32) void {
         \\    return alpha;
         \\}
-        \\const bar<fn (alpha: u32) void> = foo;
+        \\const bar<fn (u32) void> = foo;
     , .{ .kind = .Type });
     try testInlayHints(
         \\pub fn foo(
@@ -315,7 +361,7 @@ test "function alias" {
         \\) u32 {
         \\    return alpha;
         \\}
-        \\const bar<*fn (comptime alpha: u32) u32> = &foo;
+        \\const bar<*const fn (comptime u32) u32> = &foo;
     , .{ .kind = .Type });
 }
 
@@ -330,7 +376,7 @@ test "function with error union" {
         \\const Error<type> = error{OutOfMemory};
         \\fn foo() Error!u32 {}
         \\test {
-        \\    const val<Error!u32> = foo();
+        \\    const val<error{OutOfMemory}!u32> = foo();
         \\}
     , .{ .kind = .Type });
     try testInlayHints(
@@ -363,10 +409,9 @@ test "function with error union" {
 }
 
 test "generic function parameter" {
-    // TODO there should be an inlay hint that shows `T`
     try testInlayHints(
         \\fn foo(comptime T: type, param: T) void {
-        \\    const val = param;
+        \\    const val: T = param;
         \\}
     , .{ .kind = .Type });
 }
@@ -384,7 +429,7 @@ test "capture values with if" {
         \\               _ = c;
         \\            }
         \\        }
-        \\    } else |e<FooError>| {
+        \\    } else |e<error{Err1}>| {
         \\        _ = e;
         \\    }
         \\}
@@ -438,14 +483,13 @@ test "capture values with while loop" {
         \\  Err1,
         \\};
         \\const Iterator<type> = struct {
-        \\    state: void,
-        \\    pub fn next(self: *Foo) Error!?usize {}
+        \\    pub fn next(self: *Iterator) Error!?usize {}
         \\};
         \\test {
         \\    var it: Iterator = .{};
         \\    while (it.next()) |val<?usize>| {
         \\        if (val) |v<usize>| { _ = v; }
-        \\    } else |e<Error>| { _ = e; }
+        \\    } else |e<error{Err1}>| { _ = e; }
         \\}
     , .{ .kind = .Type });
 }
@@ -476,7 +520,7 @@ test "capture value with catch" {
         \\const Error<type> = error{OutOfMemory};
         \\fn foo() Error!u32 {}
         \\test {
-        \\    foo() catch |err<Error>| {}
+        \\    foo() catch |err<error{OutOfMemory}>| {}
         \\}
     , .{ .kind = .Type });
     try testInlayHints(
@@ -507,19 +551,7 @@ test "truncate anonymous error sets" {
 
 test "truncate merged error sets" {
     try testInlayHints(
-        \\const A<error{...}> =  @as(error{ Foo } || error{ Bar }, undefined);
-    , .{ .kind = .Type });
-}
-
-test "struct field" {
-    try testInlayHints(
-        \\const S<type> = struct {
-        \\    @"n a m e": S,
-        \\    @"struct": S,
-        \\};
-        \\test {
-        \\    const s: S = .{ .@"struct"<S> = .{ .@"n a m e"<S> = .{}}}
-        \\}
+        \\const A<error{Foo,Bar}> =  @as(error{ Foo } || error{ Bar }, undefined);
     , .{ .kind = .Type });
 }
 
@@ -552,33 +584,45 @@ test "tuple fields" {
     , .{ .kind = .Type });
 }
 
+test "declaration literals" {
+    try testInlayHints(
+        \\const X = opaque { fn init(a_thing: u32, b_thing: u32) *X { _ = .{a_thing, b_thing}; const ignore: void = {}; return @ptrCast(&ignore); } };
+        \\test {
+        \\    const x: *X = .init(<a_thing>0, <b_thing>1);
+        \\}
+    , .{ .kind = .Parameter });
+}
+
 const Options = struct {
-    kind: types.InlayHintKind,
+    kind: types.InlayHint.Kind,
     show_builtin: bool = true,
     exclude_single_argument: bool = false,
+    hide_redundant_param_names: bool = false,
+    hide_redundant_param_names_last_token: bool = false,
 };
 
 fn testInlayHints(source: []const u8, options: Options) !void {
     var phr = try helper.collectClearPlaceholders(allocator, source);
     defer phr.deinit(allocator);
 
-    var ctx = try Context.init();
+    var ctx: Context = try .init();
     defer ctx.deinit();
 
-    ctx.server.config.inlay_hints_show_parameter_name = options.kind == .Parameter;
-    ctx.server.config.inlay_hints_show_variable_type_hints = options.kind == .Type;
-    ctx.server.config.inlay_hints_show_builtin = options.show_builtin;
-    ctx.server.config.inlay_hints_exclude_single_argument = options.exclude_single_argument;
-    ctx.server.config.inlay_hints_param_hint_kind = .type;
+    ctx.server.config_manager.config.inlay_hints_show_parameter_name = options.kind == .Parameter;
+    ctx.server.config_manager.config.inlay_hints_show_variable_type_hints = options.kind == .Type;
+    ctx.server.config_manager.config.inlay_hints_show_builtin = options.show_builtin;
+    ctx.server.config_manager.config.inlay_hints_exclude_single_argument = options.exclude_single_argument;
+    ctx.server.config_manager.config.inlay_hints_hide_redundant_param_names = options.hide_redundant_param_names;
+    ctx.server.config_manager.config.inlay_hints_hide_redundant_param_names_last_token = options.hide_redundant_param_names_last_token;
 
     const test_uri = try ctx.addDocument(.{ .source = phr.new_source });
 
-    const range = types.Range{
-        .start = types.Position{ .line = 0, .character = 0 },
+    const range: types.Range = .{
+        .start = .{ .line = 0, .character = 0 },
         .end = offsets.indexToPosition(phr.new_source, phr.new_source.len, .@"utf-16"),
     };
 
-    const params = types.InlayHintParams{
+    const params: types.InlayHint.Params = .{
         .textDocument = .{ .uri = test_uri },
         .range = range,
     };
@@ -589,10 +633,10 @@ fn testInlayHints(source: []const u8, options: Options) !void {
         return error.InvalidResponse;
     };
 
-    var visited = try std.DynamicBitSetUnmanaged.initEmpty(allocator, hints.len);
+    var visited: std.DynamicBitSetUnmanaged = try .initEmpty(allocator, hints.len);
     defer visited.deinit(allocator);
 
-    var error_builder = ErrorBuilder.init(allocator);
+    var error_builder: ErrorBuilder = .init(allocator);
     defer error_builder.deinit();
     errdefer error_builder.writeDebug();
 

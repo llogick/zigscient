@@ -1,12 +1,11 @@
 const std = @import("std");
 const zls = @import("zls");
-const builtin = @import("builtin");
 
 const helper = @import("../helper.zig");
 const Context = @import("../context.zig").Context;
 const ErrorBuilder = @import("../ErrorBuilder.zig");
 
-const types = zls.types;
+const types = zls.lsp.types;
 const offsets = zls.offsets;
 
 const allocator: std.mem.Allocator = std.testing.allocator;
@@ -91,11 +90,27 @@ test "function parameter" {
     );
 }
 
+test "inferred struct init" {
+    try testDefinition(
+        \\const S = <def>struct</def> { alpha: u32 };
+        \\const foo: S = .<>{ .alpha = 5 };
+    );
+    try testDefinition(
+        \\const S = <def>struct</def> { alpha: u32 };
+        \\fn f(_: S) void {}
+        \\const foo = f(<>.{ .alpha = 5 });
+    );
+}
+
 test "field access" {
     try testDefinition(
         \\const S = struct { <def><decl>alpha</decl></def>: <tdef>u32</tdef> };
         \\var s: S = undefined;
         \\const foo = s.<>alpha;
+    );
+    try testDefinition(
+        \\const S = struct { <def><decl>alpha</decl></def>: <tdef>u32</tdef> };
+        \\const foo = (S{ .alpha = undefined }).<>alpha;
     );
 }
 
@@ -103,6 +118,43 @@ test "struct init" {
     try testDefinition(
         \\const S = struct { <def><decl>alpha</decl></def>: <tdef>u32</tdef> };
         \\var s = S{ .<>alpha = 5};
+    );
+}
+
+test "decl literal on generic type" {
+    try testDefinition(
+        \\fn Box(comptime T: type) type {
+        \\    return <tdef>struct</tdef> {
+        \\        item: T,
+        \\        const <def><decl>init</decl></def>: @This() = undefined;
+        \\    };
+        \\};
+        \\test {
+        \\    const box: Box(u8) = .in<>it;
+        \\}
+    );
+}
+
+test "decl literal pointer" {
+    try testDefinition(
+        \\const S = struct {
+        \\    const value: S = .{};
+        \\    const <def><decl>ptr</decl></def>: *const S = &value;
+        \\};
+        \\test {
+        \\    const ptr: *const S = .<>ptr;
+        \\}
+    );
+    try testDefinition(
+        \\const S = struct {
+        \\    const value: S = .{};
+        \\    fn <def><decl>pointerFn</decl></def>() *const S {
+        \\        return &value;
+        \\    }
+        \\};
+        \\test {
+        \\    const ptr: *const S = .poi<>nterFn();
+        \\}
     );
 }
 
@@ -133,6 +185,13 @@ test "label" {
         \\    }
         \\}
     );
+    try testDefinition(
+        \\comptime {
+        \\    <def><decl>sw</decl></def>: switch (0) {
+        \\        else => break :<>sw,
+        \\    }
+        \\}
+    );
 }
 
 test "different cursor position" {
@@ -148,12 +207,19 @@ test "different cursor position" {
         \\    _ = f<>oo;
         \\}
     );
-    // try testDefinition(
-    //     \\const <def><decl>foo</decl></def> = 5;
-    //     \\comptime {
-    //     \\    _ = foo<>;
-    //     \\}
-    // );
+    try testDefinition(
+        \\const <def><decl>foo</decl></def> = 5;
+        \\comptime {
+        \\    _ = foo<>;
+        \\}
+    );
+    try testDefinition(
+        \\const <def><decl>foo</decl></def> = 5;
+        \\comptime {
+        \\    _ =
+        \\<>foo;
+        \\}
+    );
 }
 
 test "alias" {
@@ -162,6 +228,40 @@ test "alias" {
         \\const <decl>Bar</decl> = Foo;
         \\fn baz(_: <>Bar) void {
         \\}
+    );
+}
+
+test "escaped identifier - label" {
+    try testDefinition(
+        \\comptime {
+        \\    <def><decl>@"foo bar"</decl></def>: {
+        \\        break :<origin><>@"foo bar"</origin> {};
+        \\    }
+        \\}
+    );
+}
+
+test "escaped identifier - global" {
+    try testDefinition(
+        \\const <def><decl>@"foo bar"</decl></def> = 42;
+        \\comptime {
+        \\    _ = <origin><>@"foo bar"</origin>;
+        \\}
+    );
+}
+
+test "escaped identifier - enum literal" {
+    try testDefinition(
+        \\const E = enum { <def><decl>@"foo bar"</decl></def> };
+        \\const e: E = .<origin><>@"foo bar"</origin>;
+    );
+}
+
+test "escaped identifier - field access" {
+    try testDefinition(
+        \\const S = struct { <def><decl>@"foo bar"</decl></def>: <tdef>u32</tdef> };
+        \\var s: S = undefined;
+        \\const foo = s.<origin><>@"foo bar"</origin>;
     );
 }
 
@@ -181,7 +281,7 @@ test "multiline builder pattern" {
         \\        .process()
         \\        // Comments should
         \\        // get ignored
-        \\        .finaliz<>e();
+        \\        .finalize<>();
         \\}
     );
 }
@@ -216,7 +316,7 @@ test "non labeled break" {
         \\    while (true) {
         \\        break {
         \\            const <def><decl>foo</decl></def> = 5;
-        \\            return fo<>o;
+        \\            return foo<>;
         \\        };
         \\    }
         \\}
@@ -224,7 +324,34 @@ test "non labeled break" {
     try testDefinition(
         \\const <def><decl>num</decl></def>: usize = 5;
         \\return while (true) {
-        \\    break nu<>m;
+        \\    break num<>;
+        \\};
+    );
+}
+
+test "type definition unwraps error unions, optionals, pointers" {
+    try testDefinition(
+        \\const S = <tdef>struct</tdef> {};
+        \\const <>foo: error{}!S = .{};
+    );
+    try testDefinition(
+        \\const S = <tdef>struct</tdef> {};
+        \\const <>foo: ?S = .{};
+    );
+    try testDefinition(
+        \\const S = <tdef>struct</tdef> {};
+        \\const <>foo: *const S = &.{};
+    );
+    try testDefinition(
+        \\const S = <tdef>struct</tdef> {};
+        \\const <>foo: error{}!?*const S = &.{};
+    );
+}
+
+test "builtins" {
+    try testDefinition(
+        \\const S = <def><decl>struct</decl></def> {
+        \\    const Self = <>@This();
         \\};
     );
 }
@@ -239,12 +366,14 @@ fn testDefinition(source: []const u8) !void {
     var phr = try helper.collectClearPlaceholders(allocator, source);
     defer phr.deinit(allocator);
 
-    var ctx = try Context.init();
+    var ctx: Context = try .init();
     defer ctx.deinit();
+
+    ctx.server.client_capabilities.supports_textDocument_definition_linkSupport = true;
 
     const test_uri = try ctx.addDocument(.{ .source = phr.new_source });
 
-    var error_builder = ErrorBuilder.init(allocator);
+    var error_builder: ErrorBuilder = .init(allocator);
     defer error_builder.deinit();
     errdefer error_builder.writeDebug();
 
@@ -284,6 +413,7 @@ fn testDefinition(source: []const u8) !void {
         if (std.mem.eql(u8, tag_name, "decl")) continue;
         if (std.mem.eql(u8, tag_name, "def")) continue;
         if (std.mem.eql(u8, tag_name, "tdef")) continue;
+        if (std.mem.eql(u8, tag_name, "origin")) continue;
         std.debug.print("unknown placeholder '{s}'\n", .{str});
         return error.UnknownPlaceholder;
     }
@@ -291,6 +421,7 @@ fn testDefinition(source: []const u8) !void {
     const declaration_loc: ?offsets.Loc = try parseTaggedLoc(source, phr, "decl");
     const definition_loc: ?offsets.Loc = try parseTaggedLoc(source, phr, "def");
     const type_definition_loc: ?offsets.Loc = try parseTaggedLoc(source, phr, "tdef");
+    const origin_loc: ?offsets.Loc = try parseTaggedLoc(source, phr, "origin");
 
     if (declaration_loc == null and
         definition_loc == null and
@@ -302,9 +433,9 @@ fn testDefinition(source: []const u8) !void {
 
     const cursor_position = offsets.indexToPosition(phr.new_source, cursor_index, ctx.server.offset_encoding);
 
-    const declaration_params = types.DeclarationParams{ .textDocument = .{ .uri = test_uri }, .position = cursor_position };
-    const definition_params = types.DefinitionParams{ .textDocument = .{ .uri = test_uri }, .position = cursor_position };
-    const type_definition_params = types.TypeDefinitionParams{ .textDocument = .{ .uri = test_uri }, .position = cursor_position };
+    const declaration_params: types.declaration.Params = .{ .textDocument = .{ .uri = test_uri }, .position = cursor_position };
+    const definition_params: types.Definition.Params = .{ .textDocument = .{ .uri = test_uri }, .position = cursor_position };
+    const type_definition_params: types.type_definition.Params = .{ .textDocument = .{ .uri = test_uri }, .position = cursor_position };
 
     const maybe_declaration_response = if (declaration_loc != null)
         try ctx.server.sendRequestSync(ctx.arena.allocator(), "textDocument/declaration", declaration_params)
@@ -322,14 +453,21 @@ fn testDefinition(source: []const u8) !void {
         null;
 
     if (maybe_declaration_response) |response| {
-        try std.testing.expect(response == .Declaration);
-        try std.testing.expect(response.Declaration == .Location);
-        try std.testing.expectEqualStrings(test_uri, response.Declaration.Location.uri);
-        const actual_loc = offsets.rangeToLoc(phr.new_source, response.Declaration.Location.range, ctx.server.offset_encoding);
+        try std.testing.expect(response == .definition_links);
+        try std.testing.expect(response.definition_links.len == 1);
+        try std.testing.expectEqualStrings(test_uri, response.definition_links[0].targetUri);
+        const actual_loc = offsets.rangeToLoc(phr.new_source, response.definition_links[0].targetSelectionRange, ctx.server.offset_encoding);
         if (declaration_loc) |expected_loc| {
             if (!std.meta.eql(expected_loc, actual_loc)) {
                 try error_builder.msgAtLoc("expected declaration here!", test_uri, expected_loc, .err, .{});
                 try error_builder.msgAtLoc("actual declaration here", test_uri, actual_loc, .err, .{});
+            }
+        }
+        const actual_origin_loc = offsets.rangeToLoc(phr.new_source, response.definition_links[0].originSelectionRange.?, ctx.server.offset_encoding);
+        if (origin_loc) |expected_origin_loc| {
+            if (!std.meta.eql(expected_origin_loc, actual_origin_loc)) {
+                try error_builder.msgAtLoc("expected declaration origin here!", test_uri, expected_origin_loc, .err, .{});
+                try error_builder.msgAtLoc("actual declaration origin here", test_uri, actual_origin_loc, .err, .{});
             }
         }
     } else if (declaration_loc) |expected_loc| {
@@ -337,14 +475,21 @@ fn testDefinition(source: []const u8) !void {
     }
 
     if (maybe_definition_response) |response| {
-        try std.testing.expect(response == .Definition);
-        try std.testing.expect(response.Definition == .Location);
-        try std.testing.expectEqualStrings(test_uri, response.Definition.Location.uri);
-        const actual_loc = offsets.rangeToLoc(phr.new_source, response.Definition.Location.range, ctx.server.offset_encoding);
+        try std.testing.expect(response == .definition_links);
+        try std.testing.expect(response.definition_links.len == 1);
+        try std.testing.expectEqualStrings(test_uri, response.definition_links[0].targetUri);
+        const actual_loc = offsets.rangeToLoc(phr.new_source, response.definition_links[0].targetSelectionRange, ctx.server.offset_encoding);
         if (definition_loc) |expected_loc| {
             if (!std.meta.eql(expected_loc, actual_loc)) {
                 try error_builder.msgAtLoc("expected definition here!", test_uri, expected_loc, .err, .{});
                 try error_builder.msgAtLoc("actual definition here", test_uri, actual_loc, .err, .{});
+            }
+        }
+        const actual_origin_loc = offsets.rangeToLoc(phr.new_source, response.definition_links[0].originSelectionRange.?, ctx.server.offset_encoding);
+        if (origin_loc) |expected_origin_loc| {
+            if (!std.meta.eql(expected_origin_loc, actual_origin_loc)) {
+                try error_builder.msgAtLoc("expected definition origin here!", test_uri, expected_origin_loc, .err, .{});
+                try error_builder.msgAtLoc("actual definition origin here", test_uri, actual_origin_loc, .err, .{});
             }
         }
     } else if (definition_loc) |expected_loc| {
@@ -352,14 +497,21 @@ fn testDefinition(source: []const u8) !void {
     }
 
     if (maybe_type_definition_response) |response| {
-        try std.testing.expect(response == .Definition);
-        try std.testing.expect(response.Definition == .Location);
-        try std.testing.expectEqualStrings(test_uri, response.Definition.Location.uri);
-        const actual_loc = offsets.rangeToLoc(phr.new_source, response.Definition.Location.range, ctx.server.offset_encoding);
+        try std.testing.expect(response == .definition_links);
+        try std.testing.expect(response.definition_links.len == 1);
+        try std.testing.expectEqualStrings(test_uri, response.definition_links[0].targetUri);
+        const actual_loc = offsets.rangeToLoc(phr.new_source, response.definition_links[0].targetSelectionRange, ctx.server.offset_encoding);
         if (type_definition_loc) |expected_loc| {
             if (!std.meta.eql(expected_loc, actual_loc)) {
                 try error_builder.msgAtLoc("expected type definition here!", test_uri, expected_loc, .err, .{});
                 try error_builder.msgAtLoc("actual type definition here", test_uri, actual_loc, .err, .{});
+            }
+        }
+        const actual_origin_loc = offsets.rangeToLoc(phr.new_source, response.definition_links[0].originSelectionRange.?, ctx.server.offset_encoding);
+        if (origin_loc) |expected_origin_loc| {
+            if (!std.meta.eql(expected_origin_loc, actual_origin_loc)) {
+                try error_builder.msgAtLoc("expected type definition origin here!", test_uri, expected_origin_loc, .err, .{});
+                try error_builder.msgAtLoc("actual type definition origin here", test_uri, actual_origin_loc, .err, .{});
             }
         }
     } else if (type_definition_loc) |expected_loc| {

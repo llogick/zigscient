@@ -3,7 +3,7 @@ const zls = @import("zls");
 
 const Context = @import("../context.zig").Context;
 
-const types = zls.types;
+const types = zls.lsp.types;
 const offsets = zls.offsets;
 
 const allocator: std.mem.Allocator = std.testing.allocator;
@@ -52,6 +52,14 @@ test "simple" {
         \\    foo(0, 1, <cursor>)
         \\}
     , "fn foo(a: u32, b: u32, c: u32) void", 2);
+    // first character on line
+    try testSignatureHelp(
+        \\fn foo(a: u32) void {
+        \\    foo(
+        \\<cursor>
+        \\    )
+        \\}
+    , "fn foo(a: u32) void", 0);
 }
 
 test "no right paren" {
@@ -102,11 +110,7 @@ test "multiline" {
         \\    foo(<cursor>)
         \\}
     ,
-        \\fn foo(
-        \\    /// a is important
-        \\    a: u32,
-        \\    b: u32,
-        \\) void
+        \\fn foo(a: u32, b: u32) void
     , 0);
     try testSignatureHelp(
         \\fn foo(
@@ -117,11 +121,7 @@ test "multiline" {
         \\    foo(<cursor>,0)
         \\}
     ,
-        \\fn foo(
-        \\    /// a is important
-        \\    a: u32,
-        \\    b: u32,
-        \\) void
+        \\fn foo(a: u32, b: u32) void
     , 0);
     try testSignatureHelp(
         \\fn foo(
@@ -132,11 +132,7 @@ test "multiline" {
         \\    foo(0,<cursor>)
         \\}
     ,
-        \\fn foo(
-        \\    /// a is important
-        \\    a: u32,
-        \\    b: u32,
-        \\) void
+        \\fn foo(a: u32, b: u32) void
     , 1);
 }
 
@@ -221,21 +217,21 @@ test "function pointer container field" {
         \\};
         \\const s: S = undefined;
         \\const foo = s.foo(<cursor>);
-    , "fn(a: u32, b: void) bool", 0);
+    , "fn (a: u32, b: void) bool", 0);
     try testSignatureHelp(
         \\const S = struct {
         \\    foo: *const fn(a: u32, b: void) bool {}
         \\};
         \\const s: S = undefined;
         \\const foo = s.foo(<cursor>);
-    , "fn(a: u32, b: void) bool", 0);
+    , "fn (a: u32, b: void) bool", 0);
     try testSignatureHelp(
         \\const S = struct {
         \\    foo: *const fn(a: u32, b: void) bool {}
         \\};
         \\const s: S = undefined;
         \\const foo = s.foo.*(<cursor>);
-    , "fn(a: u32, b: void) bool", 0);
+    , "fn (a: u32, b: void) bool", 0);
 }
 
 test "self parameter" {
@@ -248,14 +244,14 @@ test "self parameter" {
         \\};
         \\const s: S = undefined;
         \\const foo = s.foo(3,<cursor>);
-    , "fn foo(self: @This(), a: u32, b: void) bool", 2);
+    , "fn foo(self: S, a: u32, b: void) bool", 2);
     try testSignatureHelp(
         \\const S = struct {
         \\    alpha: u32,
         \\    fn foo(self: @This(), a: u32, b: void) bool {}
         \\};
         \\const foo = S.foo(undefined,<cursor>);
-    , "fn foo(self: @This(), a: u32, b: void) bool", 1);
+    , "fn foo(self: S, a: u32, b: void) bool", 1);
 
     // parameter: *S
     // argument: S
@@ -266,14 +262,14 @@ test "self parameter" {
         \\};
         \\const s: S = undefined;
         \\const foo = s.foo(3,<cursor>);
-    , "fn foo(self: *@This(), a: u32, b: void) bool", 2);
+    , "fn foo(self: *S, a: u32, b: void) bool", 2);
     try testSignatureHelp(
         \\const S = struct {
         \\    alpha: u32,
         \\    fn foo(self: *@This(), a: u32, b: void) bool {}
         \\};
         \\const foo = S.foo(undefined,<cursor>);
-    , "fn foo(self: *@This(), a: u32, b: void) bool", 1);
+    , "fn foo(self: *S, a: u32, b: void) bool", 1);
 
     // parameter: S
     // argument: *S
@@ -284,7 +280,7 @@ test "self parameter" {
         \\};
         \\const s: *S = undefined;
         \\const foo = s.foo(3,<cursor>);
-    , "fn foo(self: @This(), a: u32, b: void) bool", 2);
+    , "fn foo(self: S, a: u32, b: void) bool", 2);
 
     // parameter: *S
     // argument: *S
@@ -295,7 +291,7 @@ test "self parameter" {
         \\};
         \\const s: *S = undefined;
         \\const foo = s.foo(3,<cursor>);
-    , "fn foo(self: *@This(), a: u32, b: void) bool", 2);
+    , "fn foo(self: *S, a: u32, b: void) bool", 2);
 }
 
 test "self parameter is anytype" {
@@ -326,6 +322,17 @@ test "nested function call" {
     , "fn bar(c: bool) bool", 0);
 }
 
+test "decl literal" {
+    try testSignatureHelp(
+        \\const S = struct {
+        \\    fn foo(a: u32, b: u32) S {}
+        \\};
+        \\test {
+        \\    const s: S = .foo(<cursor>);
+        \\}
+    , "fn foo(a: u32, b: u32) S", 0);
+}
+
 test "builtin" {
     try testSignatureHelp(
         \\test {
@@ -345,16 +352,16 @@ test "builtin" {
 }
 
 fn testSignatureHelp(source: []const u8, expected_label: []const u8, expected_active_parameter: ?u32) !void {
-    const cursor_idx = std.mem.indexOf(u8, source, "<cursor>").?;
+    const cursor_idx = std.mem.find(u8, source, "<cursor>").?;
     const text = try std.mem.concat(allocator, u8, &.{ source[0..cursor_idx], source[cursor_idx + "<cursor>".len ..] });
     defer allocator.free(text);
 
-    var ctx = try Context.init();
+    var ctx: Context = try .init();
     defer ctx.deinit();
 
     const test_uri = try ctx.addDocument(.{ .source = text });
 
-    const params = types.SignatureHelpParams{
+    const params: types.SignatureHelp.Params = .{
         .textDocument = .{ .uri = test_uri },
         .position = offsets.indexToPosition(text, cursor_idx, ctx.server.offset_encoding),
     };

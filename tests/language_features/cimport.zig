@@ -8,6 +8,7 @@ const Context = @import("../context.zig").Context;
 const offsets = zls.offsets;
 const translate_c = zls.translate_c;
 
+const io = std.testing.io;
 const allocator: std.mem.Allocator = std.testing.allocator;
 
 test "zig compile server - translate c" {
@@ -68,10 +69,10 @@ test "cUndef" {
 }
 
 fn testConvertCInclude(cimport_source: []const u8, expected: []const u8) !void {
-    const source: [:0]u8 = try std.fmt.allocPrintZ(allocator, "const c = {s};", .{cimport_source});
+    const source: [:0]u8 = try std.fmt.allocPrintSentinel(allocator, "const c = {s};", .{cimport_source}, 0);
     defer allocator.free(source);
 
-    var tree = try Ast.parse(allocator, source, .zig);
+    var tree: Ast = try .parse(allocator, source, .zig);
     defer tree.deinit(allocator);
 
     const node_tags = tree.nodes.items(.tag);
@@ -88,17 +89,17 @@ fn testConvertCInclude(cimport_source: []const u8, expected: []const u8) !void {
                 else => continue,
             }
 
-            if (!std.mem.eql(u8, offsets.tokenToSlice(tree, token), "@cImport")) continue;
+            if (!std.mem.eql(u8, offsets.tokenToSlice(&tree, token), "@cImport")) continue;
 
-            break :blk @intCast(i);
+            break :blk @enumFromInt(i);
         }
         return error.TestUnexpectedResult; // source doesn't contain a cImport
     };
 
-    const output = try translate_c.convertCInclude(allocator, tree, node);
+    const output = try translate_c.convertCInclude(allocator, &tree, node);
     defer allocator.free(output);
 
-    const trimmed_output = std.mem.trimRight(u8, output, &.{'\n'});
+    const trimmed_output = std.mem.trimEnd(u8, output, &.{'\n'});
 
     try std.testing.expectEqualStrings(expected, trimmed_output);
 }
@@ -106,12 +107,13 @@ fn testConvertCInclude(cimport_source: []const u8, expected: []const u8) !void {
 fn testTranslate(c_source: []const u8) !translate_c.Result {
     if (!std.process.can_spawn) return error.SkipZigTest;
 
-    var ctx = try Context.init();
+    var ctx: Context = try .init();
     defer ctx.deinit();
 
     var result = (try translate_c.translate(
+        io,
         allocator,
-        zls.DocumentStore.Config.fromMainConfig(ctx.server.config),
+        ctx.server.document_store.config,
         &.{},
         &.{},
         c_source,
@@ -120,10 +122,10 @@ fn testTranslate(c_source: []const u8) !translate_c.Result {
 
     switch (result) {
         .success => |uri| {
-            const path = try zls.URI.parse(allocator, uri);
+            const path = try zls.URI.toFsPath(allocator, uri);
             defer allocator.free(path);
             try std.testing.expect(std.fs.path.isAbsolute(path));
-            try std.fs.accessAbsolute(path, .{});
+            try std.Io.Dir.accessAbsolute(io, path, .{});
         },
         .failure => |message| {
             try std.testing.expect(message.errorMessageCount() != 0);

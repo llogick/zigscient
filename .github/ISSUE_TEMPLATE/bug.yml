@@ -13,15 +13,15 @@ body:
     id: zig-version
     attributes:
       label: Zig Version
-      description: "The output of `zig version`"
-      placeholder: "0.9.0-dev.1275+ac52e0056"
+      description: "The output of `zig version` or git commit hash"
+      placeholder: "0.16.0-dev.2275+ac52e0056"
     validations:
       required: true
   - type: input
-    id: project-version
+    id: server-version
     attributes:
-      label: This Project's Version
-      description: "a tagged release version or a commit hash"
+      label: Server's Version
+      description: "The output of `zigscient --version` or git commit hash"
       placeholder: "b21039d51261923c665d3bc58fadc4b4d5e221ea"
     validations:
       required: true
@@ -50,8 +50,8 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Relevant log output
-      description: If applicable, include a log output [Guide](https://github.com/zigtools/zls/wiki/Guide:-How-to-view-ZLS-log-output). This will be automatically formatted into monospace, so no need for backticks.
+      label: Log Output
+      description: Include the server's log output [Guide](https://zigtools.org/zls/guides/view-logs/), if applicable. This will be automatically formatted into monospace, so no need for backticks.
       render: shell
     validations:
       required: false

@@ -1,11 +1,10 @@
 const std = @import("std");
 const zls = @import("zls");
-const builtin = @import("builtin");
 
 const Context = @import("../context.zig").Context;
 const ErrorBuilder = @import("../ErrorBuilder.zig");
 
-const types = zls.types;
+const types = zls.lsp.types;
 const offsets = zls.offsets;
 
 const allocator: std.mem.Allocator = std.testing.allocator;
@@ -40,7 +39,7 @@ test "comment" {
     , &.{
         .{ "/// hello world", .comment, .{ .documentation = true } },
         .{ "const", .keyword, .{} },
-        .{ "a", .variable, .{ .declaration = true } },
+        .{ "a", .variable, .{ .declaration = true, .static = true } },
     });
 }
 test "doc comment" {
@@ -69,7 +68,7 @@ test "string literals" {
         \\const alpha = "";
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "\"\"", .string, .{} },
     });
@@ -77,7 +76,7 @@ test "string literals" {
         \\const beta = "hello";
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "beta", .variable, .{ .declaration = true } },
+        .{ "beta", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "\"hello\"", .string, .{} },
     });
@@ -89,13 +88,39 @@ test "string literals" {
         \\;
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "gamma", .variable, .{ .declaration = true } },
+        .{ "gamma", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
-        // TODO remove the newline
         .{ "\\\\hello", .string, .{} },
         .{ "\\\\world", .string, .{} },
         .{ "\\\\", .string, .{} },
     });
+}
+
+test "string literal escape sequences" {
+    try testSemanticTokensOptions(
+        \\const omega = "Hello, \u{1f30e}!\n";
+    ,
+        &.{
+            .{ "const", .keyword, .{} },
+            .{ "omega", .variable, .{ .declaration = true, .static = true } },
+            .{ "=", .operator, .{} },
+            .{ "\"Hello, \\u{1f30e}!\\n\"", .string, .{} },
+        },
+        .{ .overlapping_token_support = false },
+    );
+    try testSemanticTokensOptions(
+        \\const omega = "Hello, \u{1f30e}!\n";
+    ,
+        &.{
+            .{ "const", .keyword, .{} },
+            .{ "omega", .variable, .{ .declaration = true, .static = true } },
+            .{ "=", .operator, .{} },
+            .{ "\"Hello, \\u{1f30e}!\\n\"", .string, .{} },
+            .{ "\\u{1f30e}", .escapeSequence, .{} },
+            .{ "\\n", .escapeSequence, .{} },
+        },
+        .{ .overlapping_token_support = true },
+    );
 }
 
 test "type literals" {
@@ -135,10 +160,36 @@ test "char literals" {
         \\var alpha = ' ';
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "' '", .string, .{} },
     });
+}
+
+test "char literal escape sequences" {
+    try testSemanticTokensOptions(
+        \\var alpha = '\n';
+    ,
+        &.{
+            .{ "var", .keyword, .{} },
+            .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
+            .{ "=", .operator, .{} },
+            .{ "'\\n'", .string, .{} },
+        },
+        .{ .overlapping_token_support = false },
+    );
+    try testSemanticTokensOptions(
+        \\var alpha = '\n';
+    ,
+        &.{
+            .{ "var", .keyword, .{} },
+            .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
+            .{ "=", .operator, .{} },
+            .{ "'\\n'", .string, .{} },
+            .{ "\\n", .escapeSequence, .{} },
+        },
+        .{ .overlapping_token_support = true },
+    );
 }
 
 test "var decl" {
@@ -146,7 +197,7 @@ test "var decl" {
         \\var alpha = 3;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "3", .number, .{} },
     });
@@ -155,17 +206,24 @@ test "var decl" {
     , &.{
         .{ "threadlocal", .keyword, .{} },
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "3", .number, .{} },
     });
     try testSemanticTokens(
-        \\extern var alpha: u32;
+        \\extern "c" var alpha: u32 align(4) addrspace(.generic) linksection(".data");
     , &.{
         .{ "extern", .keyword, .{} },
+        .{ "\"c\"", .string, .{} },
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "u32", .type, .{} },
+        .{ "align", .keyword, .{} },
+        .{ "4", .number, .{} },
+        .{ "addrspace", .keyword, .{} },
+        .{ "generic", .enumMember, .{} },
+        .{ "linksection", .keyword, .{} },
+        .{ "\".data\"", .string, .{} },
     });
     try testSemanticTokens(
         \\pub extern var alpha = 3;
@@ -173,7 +231,7 @@ test "var decl" {
         .{ "pub", .keyword, .{} },
         .{ "extern", .keyword, .{} },
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "3", .number, .{} },
     });
@@ -181,7 +239,7 @@ test "var decl" {
         \\var alpha;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
     });
 }
 
@@ -194,11 +252,11 @@ test "assign destructure" {
         .{ "test", .keyword, .{} },
 
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .mutable = true } },
         .{ "bool", .type, .{} },
 
         .{ "var", .keyword, .{} },
-        .{ "beta", .variable, .{ .declaration = true } },
+        .{ "beta", .variable, .{ .declaration = true, .mutable = true } },
 
         .{ "=", .operator, .{} },
         .{ "1", .number, .{} },
@@ -214,19 +272,19 @@ test "assign destructure" {
         .{ "test", .keyword, .{} },
 
         .{ "var", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .mutable = true } },
         .{ "u32", .type, .{} },
         .{ "=", .operator, .{} },
         .{ "undefined", .keywordLiteral, .{} },
 
         .{ "var", .keyword, .{} },
-        .{ "bar", .variable, .{ .declaration = true } },
+        .{ "bar", .variable, .{ .declaration = true, .mutable = true } },
         .{ "u64", .type, .{} },
         .{ "=", .operator, .{} },
         .{ "undefined", .keywordLiteral, .{} },
 
-        .{ "foo", .variable, .{} },
-        .{ "bar", .variable, .{} },
+        .{ "foo", .variable, .{ .mutable = true } },
+        .{ "bar", .variable, .{ .mutable = true } },
         .{ "=", .operator, .{} },
 
         .{ "3", .number, .{} },
@@ -242,11 +300,11 @@ test "local var decl" {
         \\
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "comptime", .keyword, .{} },
         .{ "var", .keyword, .{} },
-        .{ "beta", .variable, .{ .declaration = true } },
+        .{ "beta", .variable, .{ .declaration = true, .mutable = true } },
         .{ "u32", .type, .{} },
         .{ "=", .operator, .{} },
         .{ "3", .number, .{} },
@@ -258,7 +316,15 @@ test "escaped identifier" {
         \\var @"@" = 3;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "@\"@\"", .variable, .{ .declaration = true } },
+        .{ "@\"@\"", .variable, .{ .declaration = true, .static = true, .mutable = true } },
+        .{ "=", .operator, .{} },
+        .{ "3", .number, .{} },
+    });
+    try testSemanticTokens(
+        \\var @"\"" = 3;
+    , &.{
+        .{ "var", .keyword, .{} },
+        .{ "@\"\\\"\"", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "3", .number, .{} },
     });
@@ -269,7 +335,7 @@ test "operators" {
         \\var alpha = 3 + 3;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "3", .number, .{} },
         .{ "+", .operator, .{} },
@@ -279,7 +345,7 @@ test "operators" {
         \\var alpha = 3 orelse 3;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "3", .number, .{} },
         .{ "orelse", .keyword, .{} },
@@ -289,7 +355,7 @@ test "operators" {
         \\var alpha = true and false;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "true", .keywordLiteral, .{} },
         .{ "and", .keyword, .{} },
@@ -299,7 +365,7 @@ test "operators" {
         \\var alpha = (undefined).?.*;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "undefined", .keywordLiteral, .{} },
         // TODO these should be either (.? and .*) or (? and *)
@@ -309,17 +375,7 @@ test "operators" {
 }
 
 test "field access with @import" {
-    if (!std.process.can_spawn) return error.SkipZigTest;
     // this will make sure that the std module can be resolved
-    try testSemanticTokens(
-        \\const std = @import("std");
-    , &.{
-        .{ "const", .keyword, .{} },
-        .{ "std", .namespace, .{ .declaration = true } },
-        .{ "=", .operator, .{} },
-        .{ "@import", .builtin, .{} },
-        .{ "\"std\"", .string, .{} },
-    });
     try testSemanticTokens(
         \\const std = @import("std");
         \\const Ast = std.zig.Ast;
@@ -351,15 +407,83 @@ test "field access" {
         .{ "=", .operator, .{} },
         .{ "struct", .keyword, .{} },
         .{ "const", .keyword, .{} },
-        .{ "@\"u32\"", .variable, .{ .declaration = true } },
+        .{ "@\"u32\"", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "5", .number, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "S", .namespace, .{} },
-        .{ "u32", .variable, .{} },
+        .{ "u32", .variable, .{ .static = true } },
+    });
+    try testSemanticTokens(
+        \\const S = struct {
+        \\    var foo = true;
+        \\};
+        \\const alpha = S.foo;
+    , &.{
+        .{ "const", .keyword, .{} },
+        .{ "S", .namespace, .{ .declaration = true } },
+        .{ "=", .operator, .{} },
+        .{ "struct", .keyword, .{} },
+        .{ "var", .keyword, .{} },
+        .{ "foo", .variable, .{ .declaration = true, .static = true, .mutable = true } },
+        .{ "=", .operator, .{} },
+        .{ "true", .keywordLiteral, .{} },
+
+        .{ "const", .keyword, .{} },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true } },
+        .{ "=", .operator, .{} },
+        .{ "S", .namespace, .{} },
+        .{ "foo", .variable, .{ .mutable = true, .static = true } },
+    });
+    try testSemanticTokens(
+        \\comptime {
+        \\    const slice: []const u8 = undefined;
+        \\    _ = slice.ptr;
+        \\    _ = slice.len;
+        \\   const array: [4]u8 = undefined;
+        \\   _ = array.len;
+        \\   const tuple: struct { u8, u8 } = undefined;
+        \\   _ = tuple.len;
+        \\}
+    , &.{
+        .{ "comptime", .keyword, .{} },
+
+        .{ "const", .keyword, .{} },
+        .{ "slice", .variable, .{ .declaration = true } },
+        .{ "const", .keyword, .{} },
+        .{ "u8", .type, .{} },
+        .{ "=", .operator, .{} },
+        .{ "undefined", .keywordLiteral, .{} },
+        .{ "=", .operator, .{} },
+        .{ "slice", .variable, .{} },
+        .{ "ptr", .property, .{} },
+        .{ "=", .operator, .{} },
+        .{ "slice", .variable, .{} },
+        .{ "len", .property, .{} },
+
+        .{ "const", .keyword, .{} },
+        .{ "array", .variable, .{ .declaration = true } },
+        .{ "4", .number, .{} },
+        .{ "u8", .type, .{} },
+        .{ "=", .operator, .{} },
+        .{ "undefined", .keywordLiteral, .{} },
+        .{ "=", .operator, .{} },
+        .{ "array", .variable, .{} },
+        .{ "len", .property, .{} },
+
+        .{ "const", .keyword, .{} },
+        .{ "tuple", .variable, .{ .declaration = true } },
+        .{ "struct", .keyword, .{} },
+        .{ "u8", .type, .{} },
+        .{ "u8", .type, .{} },
+        .{ "=", .operator, .{} },
+        .{ "undefined", .keywordLiteral, .{} },
+        .{ "=", .operator, .{} },
+        .{ "tuple", .variable, .{} },
+        .{ "len", .property, .{} },
     });
 }
 
@@ -368,7 +492,7 @@ test "field access on unknown" {
         \\const alpha = Unknown.foo;
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "Unknown", .variable, .{} },
         .{ "foo", .variable, .{} },
@@ -383,7 +507,7 @@ test "field access on unknown" {
         .{ "struct", .keyword, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "S", .namespace, .{} },
         .{ "unknown", .variable, .{} },
@@ -417,7 +541,7 @@ test "call" {
         .{ "void", .type, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "foo", .function, .{} },
     });
@@ -436,7 +560,7 @@ test "call" {
         .{ "void", .type, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "ns", .namespace, .{} },
         .{ "foo", .function, .{} },
@@ -457,35 +581,37 @@ test "call" {
         .{ "a", .parameter, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "foo", .function, .{ .generic = true } },
         .{ "0", .number, .{} },
     });
 }
 
-test "function call on return value of generic function" {
+test "method call on return value of generic function" {
     try testSemanticTokens(
         \\const S = struct {
-        \\    fn foo() void {}
+        \\    fn foo(self: S) void {}
         \\};
         \\fn Map(comptime V: type) type {
         \\    return struct {
-        \\        fn getValue() V {}
+        \\        fn getValue(self: @This()) V {}
         \\    };
         \\}
         \\const map = Map(S){};
         \\const value = map.getValue();
         \\const foo = value.foo();
-        //                  ^^^ resolving foo as a function here requires thatthe `V`
-        //                      function parameter of `Map` is still bound to `S`
+        //                  ^^^ resolving foo as a method here requires that the `V`
+        //                      type parameter of `Map` is still bound to `S`
     , &.{
         .{ "const", .keyword, .{} },
         .{ "S", .namespace, .{ .declaration = true } },
         .{ "=", .operator, .{} },
         .{ "struct", .keyword, .{} },
         .{ "fn", .keyword, .{} },
-        .{ "foo", .function, .{ .declaration = true } },
+        .{ "foo", .method, .{ .declaration = true } },
+        .{ "self", .parameter, .{ .declaration = true } },
+        .{ "S", .namespace, .{} },
         .{ "void", .type, .{} },
 
         .{ "fn", .keyword, .{} },
@@ -498,26 +624,79 @@ test "function call on return value of generic function" {
         .{ "return", .keyword, .{} },
         .{ "struct", .keyword, .{} },
         .{ "fn", .keyword, .{} },
-        .{ "getValue", .function, .{ .declaration = true } },
+        .{ "getValue", .method, .{ .declaration = true } },
+        .{ "self", .parameter, .{ .declaration = true } },
+        .{ "@This", .builtin, .{} },
         .{ "V", .typeParameter, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "map", .variable, .{ .declaration = true } },
+        .{ "map", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "Map", .type, .{} },
         .{ "S", .namespace, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "value", .variable, .{ .declaration = true } },
+        .{ "value", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
-        .{ "map", .variable, .{} },
+        .{ "map", .variable, .{ .static = true } },
         .{ "getValue", .function, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
-        .{ "value", .variable, .{} },
+        .{ "value", .variable, .{ .static = true } },
         .{ "foo", .function, .{} },
+    });
+}
+
+test "generic method - @This() parameter" {
+    try testSemanticTokens(
+        \\fn Foo(comptime T: type) type {
+        \\    return struct {
+        \\        fn bar(self: @This()) void {}
+        \\    };
+        \\}
+    , &.{
+        .{ "fn", .keyword, .{} },
+        .{ "Foo", .type, .{ .declaration = true, .generic = true } },
+        .{ "comptime", .keyword, .{} },
+        .{ "T", .typeParameter, .{ .declaration = true } },
+        .{ "type", .type, .{} },
+        .{ "type", .type, .{} },
+
+        .{ "return", .keyword, .{} },
+        .{ "struct", .keyword, .{} },
+        .{ "fn", .keyword, .{} },
+        .{ "bar", .method, .{ .declaration = true } },
+        .{ "self", .parameter, .{ .declaration = true } },
+        .{ "@This", .builtin, .{} },
+        .{ "void", .type, .{} },
+    });
+}
+
+test "generic method - recursive self parameter" {
+    try testSemanticTokens(
+        \\fn Foo(comptime T: type) type {
+        \\    return struct {
+        \\        fn bar(self: Foo(T)) void {}
+        \\    };
+        \\}
+    , &.{
+        .{ "fn", .keyword, .{} },
+        .{ "Foo", .type, .{ .declaration = true, .generic = true } },
+        .{ "comptime", .keyword, .{} },
+        .{ "T", .typeParameter, .{ .declaration = true } },
+        .{ "type", .type, .{} },
+        .{ "type", .type, .{} },
+
+        .{ "return", .keyword, .{} },
+        .{ "struct", .keyword, .{} },
+        .{ "fn", .keyword, .{} },
+        .{ "bar", .method, .{ .declaration = true } },
+        .{ "self", .parameter, .{ .declaration = true } },
+        .{ "Foo", .type, .{} },
+        .{ "T", .typeParameter, .{} },
+        .{ "void", .type, .{} },
     });
 }
 
@@ -526,7 +705,7 @@ test "catch" {
         \\var alpha = a catch b;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "a", .variable, .{} },
         .{ "catch", .keyword, .{} },
@@ -536,7 +715,7 @@ test "catch" {
         \\var alpha = a catch |err| b;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "a", .variable, .{} },
         .{ "catch", .keyword, .{} },
@@ -550,7 +729,7 @@ test "try" {
         \\var alpha = try undefined;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "try", .keyword, .{} },
         .{ "undefined", .keywordLiteral, .{} },
@@ -562,7 +741,7 @@ test "slicing" {
         \\var alpha = a[0..1];
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "a", .variable, .{} },
         .{ "0", .number, .{} },
@@ -572,7 +751,7 @@ test "slicing" {
         \\var alpha = a[0..1: 2];
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "a", .variable, .{} },
         .{ "0", .number, .{} },
@@ -586,9 +765,33 @@ test "enum literal" {
         \\var alpha = .beta;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "beta", .enumMember, .{} },
+    });
+}
+
+test "decl literal" {
+    try testSemanticTokens(
+        \\const S = struct {
+        \\    fn foo() S {}
+        \\};
+        \\const foo: S = .foo();
+    , &.{
+        .{ "const", .keyword, .{} },
+        .{ "S", .namespace, .{ .declaration = true } },
+        .{ "=", .operator, .{} },
+        .{ "struct", .keyword, .{} },
+
+        .{ "fn", .keyword, .{} },
+        .{ "foo", .function, .{ .declaration = true } },
+        .{ "S", .namespace, .{} },
+
+        .{ "const", .keyword, .{} },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
+        .{ "S", .namespace, .{} },
+        .{ "=", .operator, .{} },
+        .{ "foo", .function, .{} },
     });
 }
 
@@ -597,7 +800,7 @@ test "error literal" {
         \\var alpha = error.OutOfMemory;
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "error", .keyword, .{} },
         .{ "OutOfMemory", .errorTag, .{} },
@@ -609,7 +812,7 @@ test "array literal" {
         \\var alpha = [_]u32{ 1, 2 };
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "u32", .type, .{} },
         .{ "1", .number, .{} },
@@ -619,7 +822,7 @@ test "array literal" {
         \\var alpha = [_:3]u32{};
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "3", .number, .{} },
         .{ "u32", .type, .{} },
@@ -631,14 +834,14 @@ test "struct literal" {
         \\var alpha = .{};
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
     });
     try testSemanticTokens(
         \\var alpha = .{1,2};
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "1", .number, .{} },
         .{ "2", .number, .{} },
@@ -647,7 +850,7 @@ test "struct literal" {
         \\var alpha = Unknown{1,2};
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
         .{ "Unknown", .variable, .{} },
         .{ "1", .number, .{} },
@@ -657,15 +860,13 @@ test "struct literal" {
         \\var alpha = .{ .foo = 1, .bar = 2 };
     , &.{
         .{ "var", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true, .mutable = true } },
         .{ "=", .operator, .{} },
 
-        .{ ".", .property, .{} },
         .{ "foo", .property, .{} },
         .{ "=", .operator, .{} },
         .{ "1", .number, .{} },
 
-        .{ ".", .property, .{} },
         .{ "bar", .property, .{} },
         .{ "=", .operator, .{} },
         .{ "2", .number, .{} },
@@ -782,40 +983,6 @@ test "error union types" {
     });
 }
 
-test "usingnamespace" {
-    try testSemanticTokens(
-        \\const Foo = struct {
-        \\    usingnamespace {};
-        \\    pub usingnamespace {};
-        \\    /// aaa
-        \\    /// bbb
-        \\    pub usingnamespace {};
-        \\    /// ccc
-        \\    /// ddd
-        \\    usingnamespace {};
-        \\};
-    , &.{
-        .{ "const", .keyword, .{} },
-        .{ "Foo", .namespace, .{ .declaration = true } },
-        .{ "=", .operator, .{} },
-        .{ "struct", .keyword, .{} },
-
-        .{ "usingnamespace", .keyword, .{} },
-
-        .{ "pub", .keyword, .{} },
-        .{ "usingnamespace", .keyword, .{} },
-
-        .{ "/// aaa", .comment, .{ .documentation = true } },
-        .{ "/// bbb", .comment, .{ .documentation = true } },
-        .{ "pub", .keyword, .{} },
-        .{ "usingnamespace", .keyword, .{} },
-
-        .{ "/// ccc", .comment, .{ .documentation = true } },
-        .{ "/// ddd", .comment, .{ .documentation = true } },
-        .{ "usingnamespace", .keyword, .{} },
-    });
-}
-
 test "container declarations" {
     try testSemanticTokens(
         \\const Foo = struct {
@@ -882,6 +1049,23 @@ test "root struct" {
         .{ "bar", .variable, .{} },
         .{ "=", .operator, .{} },
         .{ "undefined", .keywordLiteral, .{} },
+    });
+    // field access
+    try testSemanticTokens(
+        \\alpha: u32,
+        \\const beta: @This() = undefined;
+        \\_ = beta.alpha;
+    , &.{
+        .{ "alpha", .property, .{ .declaration = true } },
+        .{ "u32", .type, .{} },
+        .{ "const", .keyword, .{} },
+        .{ "beta", .variable, .{ .declaration = true, .static = true } },
+        .{ "@This", .builtin, .{} },
+        .{ "=", .operator, .{} },
+        .{ "undefined", .keywordLiteral, .{} },
+        .{ "=", .operator, .{} },
+        .{ "beta", .variable, .{ .static = true } },
+        .{ "alpha", .property, .{} },
     });
 }
 
@@ -1108,13 +1292,13 @@ test "enum member" {
         .{ "baz", .enumMember, .{ .declaration = true } },
 
         .{ "const", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "Foo", .@"enum", .{} },
         .{ "bar", .enumMember, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "beta", .variable, .{ .declaration = true } },
+        .{ "beta", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "baz", .enumMember, .{} },
     });
@@ -1156,7 +1340,7 @@ test "error set member" {
         .{ "OutOfMemory", .errorTag, .{ .declaration = true } },
 
         .{ "const", .keyword, .{} },
-        .{ "bar", .variable, .{ .declaration = true } },
+        .{ "bar", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "Foo", .type, .{} },
         .{ "OutOfMemory", .errorTag, .{} },
@@ -1171,6 +1355,21 @@ test "opaque" {
         .{ "Foo", .type, .{ .declaration = true } },
         .{ "=", .operator, .{} },
         .{ "opaque", .keyword, .{} },
+    });
+}
+
+test "opaque with container field" {
+    try testSemanticTokens(
+        \\const Foo = opaque {
+        \\    invalid: u32,
+        \\};
+    , &.{
+        .{ "const", .keyword, .{} },
+        .{ "Foo", .type, .{ .declaration = true } },
+        .{ "=", .operator, .{} },
+        .{ "opaque", .keyword, .{} },
+        .{ "invalid", .property, .{ .declaration = true } },
+        .{ "u32", .type, .{} },
     });
 }
 
@@ -1216,13 +1415,18 @@ test "function" {
         .{ "void", .type, .{} },
     });
     try testSemanticTokens(
-        \\extern fn foo() align(4) callconv(.C) void;
+        \\extern "c" fn foo() align(4) addrspace(.generic) linksection(".text") callconv(.C) void;
     , &.{
         .{ "extern", .keyword, .{} },
+        .{ "\"c\"", .string, .{} },
         .{ "fn", .keyword, .{} },
         .{ "foo", .function, .{ .declaration = true } },
         .{ "align", .keyword, .{} },
         .{ "4", .number, .{} },
+        .{ "addrspace", .keyword, .{} },
+        .{ "generic", .enumMember, .{} },
+        .{ "linksection", .keyword, .{} },
+        .{ "\".text\"", .string, .{} },
         .{ "callconv", .keyword, .{} },
         .{ "C", .enumMember, .{} },
         .{ "void", .type, .{} },
@@ -1343,7 +1547,7 @@ test "block" {
         \\const foo = blk: {};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "blk", .label, .{ .declaration = true } },
     });
@@ -1353,7 +1557,7 @@ test "block" {
         \\};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "blk", .label, .{ .declaration = true } },
         .{ "break", .keyword, .{} },
@@ -1367,7 +1571,7 @@ test "if" {
         \\const foo = if (false) {};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "if", .keyword, .{} },
         .{ "false", .keywordLiteral, .{} },
@@ -1376,7 +1580,7 @@ test "if" {
         \\const foo = if (false) 1 else 2;
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "if", .keyword, .{} },
         .{ "false", .keywordLiteral, .{} },
@@ -1388,7 +1592,7 @@ test "if" {
         \\const foo = if (false) |val| val else |err| err;
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "if", .keyword, .{} },
         .{ "false", .keywordLiteral, .{} },
@@ -1402,7 +1606,7 @@ test "if" {
         \\const foo = if (null) |*value| {};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "if", .keyword, .{} },
         .{ "null", .keywordLiteral, .{} },
@@ -1418,7 +1622,7 @@ test "if error union with invalid then expression" {
         \\  } else |err| {};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
 
         .{ "if", .keyword, .{} },
@@ -1440,7 +1644,7 @@ test "while" {
         \\const foo = while (false) {};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "while", .keyword, .{} },
         .{ "false", .keywordLiteral, .{} },
@@ -1449,7 +1653,7 @@ test "while" {
         \\const foo = inline while (false) |*val| {};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "inline", .keyword, .{} },
         .{ "while", .keyword, .{} },
@@ -1460,7 +1664,7 @@ test "while" {
         \\const foo = while (false) false else true;
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "while", .keyword, .{} },
         .{ "false", .keywordLiteral, .{} },
@@ -1474,7 +1678,7 @@ test "while" {
         \\} else |err| return err;
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "blk", .label, .{ .declaration = true } },
         .{ "while", .keyword, .{} },
@@ -1493,7 +1697,7 @@ test "for" {
         \\const foo = for ("") {};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "for", .keyword, .{} },
         .{ "\"\"", .string, .{} },
@@ -1502,7 +1706,7 @@ test "for" {
         \\const foo = inline for ("") |val| {};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "inline", .keyword, .{} },
         .{ "for", .keyword, .{} },
@@ -1515,7 +1719,7 @@ test "for" {
         \\};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "blk", .label, .{ .declaration = true } },
         .{ "for", .keyword, .{} },
@@ -1564,7 +1768,7 @@ test "switch" {
         \\const foo = switch (3) {};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "switch", .keyword, .{} },
         .{ "3", .number, .{} },
@@ -1576,7 +1780,7 @@ test "switch" {
         \\};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "switch", .keyword, .{} },
         .{ "3", .number, .{} },
@@ -1591,7 +1795,7 @@ test "switch" {
         \\};
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true } },
+        .{ "foo", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "switch", .keyword, .{} },
         .{ "3", .number, .{} },
@@ -1600,6 +1804,24 @@ test "switch" {
         .{ "val", .variable, .{ .declaration = true } },
         .{ "val", .variable, .{} },
     });
+    try testSemanticTokens(
+        \\const foo = sw: switch (0) {
+        \\    else => break :sw 0,
+        \\};
+    ,
+        &.{
+            .{ "const", .keyword, .{} },
+            .{ "foo", .variable, .{ .declaration = true, .static = true } },
+            .{ "=", .operator, .{} },
+            .{ "sw", .label, .{ .declaration = true } },
+            .{ "switch", .keyword, .{} },
+            .{ "0", .number, .{} },
+            .{ "else", .keyword, .{} },
+            .{ "break", .keyword, .{} },
+            .{ "sw", .label, .{} },
+            .{ "0", .number, .{} },
+        },
+    );
 }
 
 test "defer" {
@@ -1670,14 +1892,14 @@ test "test decl" {
     });
 }
 
-test "assembly" {
+test "asm" {
     try testSemanticTokens(
         \\fn syscall1(number: usize, arg1: usize) usize {
         \\    return asm volatile ("syscall"
         \\        : [ret] "={rax}" (-> usize),
         \\        : [number] "{rax}" (number),
         \\          [arg1] "{rdi}" (arg1),
-        \\        : "rcx", "r11"
+        \\        : .{ .rcx = true, .@"r11" = true }
         \\    );
         \\}
     , &.{
@@ -1706,35 +1928,41 @@ test "assembly" {
         .{ "\"{rdi}\"", .string, .{} },
         .{ "arg1", .parameter, .{} },
 
-        .{ "\"rcx\"", .string, .{} },
-        .{ "\"r11\"", .string, .{} },
+        .{ "rcx", .property, .{} },
+        .{ "=", .operator, .{} },
+        .{ "true", .keywordLiteral, .{} },
+
+        .{ "@\"r11\"", .property, .{} },
+        .{ "=", .operator, .{} },
+        .{ "true", .keywordLiteral, .{} },
     });
     try testSemanticTokens(
-        \\const alpha = asm volatile ("foo" ::: "a", "b",);
+        \\const alpha = asm volatile ("foo" ::: .{ .a = true, .b = false });
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "alpha", .variable, .{ .declaration = true } },
+        .{ "alpha", .variable, .{ .declaration = true, .static = true } },
         .{ "=", .operator, .{} },
 
         .{ "asm", .keyword, .{} },
         .{ "volatile", .keyword, .{} },
         .{ "\"foo\"", .string, .{} },
-        .{ "\"a\"", .string, .{} },
-        .{ "\"b\"", .string, .{} },
+
+        .{ "a", .property, .{} },
+        .{ "=", .operator, .{} },
+        .{ "true", .keywordLiteral, .{} },
+
+        .{ "b", .property, .{} },
+        .{ "=", .operator, .{} },
+        .{ "false", .keywordLiteral, .{} },
     });
 }
-
-const S = struct {
-    const foo = @compileError("some message");
-};
-const bar = S.foo;
 
 test "deprecated" {
     try testSemanticTokens(
         \\const foo = @compileError("some message");
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true, .deprecated = true } },
+        .{ "foo", .variable, .{ .declaration = true, .deprecated = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "@compileError", .builtin, .{} },
         .{ "\"some message\"", .string, .{} },
@@ -1744,15 +1972,15 @@ test "deprecated" {
         \\const bar = foo;
     , &.{
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true, .deprecated = true } },
+        .{ "foo", .variable, .{ .declaration = true, .deprecated = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "@compileError", .builtin, .{} },
         .{ "\"some message\"", .string, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "bar", .variable, .{ .declaration = true, .deprecated = true } },
+        .{ "bar", .variable, .{ .declaration = true, .deprecated = true, .static = true } },
         .{ "=", .operator, .{} },
-        .{ "foo", .variable, .{ .deprecated = true } },
+        .{ "foo", .variable, .{ .deprecated = true, .static = true } },
     });
     try testSemanticTokens(
         \\const S = struct {
@@ -1766,16 +1994,16 @@ test "deprecated" {
         .{ "struct", .keyword, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "foo", .variable, .{ .declaration = true, .deprecated = true } },
+        .{ "foo", .variable, .{ .declaration = true, .deprecated = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "@compileError", .builtin, .{} },
         .{ "\"some message\"", .string, .{} },
 
         .{ "const", .keyword, .{} },
-        .{ "bar", .variable, .{ .declaration = true, .deprecated = true } },
+        .{ "bar", .variable, .{ .declaration = true, .deprecated = true, .static = true } },
         .{ "=", .operator, .{} },
         .{ "S", .namespace, .{} },
-        .{ "foo", .variable, .{ .deprecated = true } },
+        .{ "foo", .variable, .{ .deprecated = true, .static = true } },
     });
 }
 
@@ -1786,32 +2014,14 @@ test "zon file" {
         \\    .baz = true,
         \\}
     , &.{
-        .{ ".", .property, .{} },
         .{ "foo", .property, .{} },
         .{ "=", .operator, .{} },
         .{ "\"bar\"", .string, .{} },
 
-        .{ ".", .property, .{} },
         .{ "baz", .property, .{} },
         .{ "=", .operator, .{} },
         .{ "true", .keywordLiteral, .{} },
     }, .{ .mode = .zon });
-}
-
-test "recursive usingnamespace" {
-    // this test is supposed to check against infinite recursion when resolving usingnamespace
-    try testSemanticTokens(
-        \\const A = struct {
-        \\    usingnamespace A;
-        \\};
-    , &.{
-        .{ "const", .keyword, .{} },
-        .{ "A", .namespace, .{ .declaration = true } },
-        .{ "=", .operator, .{} },
-        .{ "struct", .keyword, .{} },
-        .{ "usingnamespace", .keyword, .{} },
-        .{ "A", .namespace, .{} },
-    });
 }
 
 test "weird code" {
@@ -1832,16 +2042,8 @@ test "weird code" {
         .{ "bar", .function, .{ .declaration = true } },
     });
     try testSemanticTokens(
-        \\_ = async bar
-    , &.{
-        .{ "bar", .variable, .{} },
-    });
-    try testSemanticTokens(
         \\error. .foo
-    , &.{
-        .{ "error", .keyword, .{} },
-        .{ "foo", .variable, .{} },
-    });
+    , &.{});
     try testSemanticTokens(
         \\const foo = union {
         \\    .bar = 5,
@@ -1871,6 +2073,45 @@ test "weird code" {
     try testSemanticTokensOptions(
         \\{}
     , &.{}, .{ .mode = .zon });
+}
+
+test "generic function with @This() as self param" {
+    try testSemanticTokens(
+        \\const Demo = struct {
+        \\    fn bar(_: *@This(), comptime _: type) void {}
+        \\};
+        \\test {
+        \\    var demo: Demo = .{};
+        \\    Demo.bar(&demo, usize);
+        \\    demo.bar(usize);
+        \\}
+    , &.{
+        .{ "const", .keyword, .{} },
+        .{ "Demo", .namespace, .{ .declaration = true } },
+        .{ "=", .operator, .{} },
+        .{ "struct", .keyword, .{} },
+        .{ "fn", .keyword, .{} },
+        .{ "bar", .method, .{ .declaration = true, .generic = true } },
+        .{ "_", .parameter, .{ .declaration = true } },
+        .{ "@This", .builtin, .{} },
+        .{ "comptime", .keyword, .{} },
+        .{ "_", .typeParameter, .{ .declaration = true } },
+        .{ "type", .type, .{} },
+        .{ "void", .type, .{} },
+        .{ "test", .keyword, .{} },
+        .{ "var", .keyword, .{} },
+        .{ "demo", .variable, .{ .declaration = true, .mutable = true } },
+        .{ "Demo", .namespace, .{} },
+        .{ "=", .operator, .{} },
+        .{ "Demo", .namespace, .{} },
+        .{ "bar", .function, .{ .generic = true } },
+        .{ "&", .operator, .{} },
+        .{ "demo", .variable, .{ .mutable = true } },
+        .{ "usize", .type, .{} },
+        .{ "demo", .variable, .{ .mutable = true } },
+        .{ "bar", .function, .{ .generic = true } },
+        .{ "usize", .type, .{} },
+    });
 }
 
 const TokenData = struct {
@@ -1931,17 +2172,20 @@ fn testSemanticTokensOptions(
     expected_tokens: []const TokenData,
     options: struct {
         mode: std.zig.Ast.Mode = .zig,
+        overlapping_token_support: bool = false,
     },
 ) !void {
-    var ctx = try Context.init();
+    var ctx: Context = try .init();
     defer ctx.deinit();
+
+    ctx.server.client_capabilities.supports_semantic_tokens_overlapping = options.overlapping_token_support;
 
     const uri = try ctx.addDocument(.{
         .source = source,
         .mode = options.mode,
     });
 
-    const params = types.SemanticTokensParams{
+    const params: types.semantic_tokens.Params = .{
         .textDocument = .{ .uri = uri },
     };
     const response = try ctx.server.sendRequestSync(ctx.arena.allocator(), "textDocument/semanticTokens/full", params) orelse {
@@ -1952,21 +2196,21 @@ fn testSemanticTokensOptions(
     const actual = response.data;
     try std.testing.expect(actual.len % 5 == 0); // every token is represented by 5 integers
 
-    var error_builder = ErrorBuilder.init(allocator);
+    var error_builder: ErrorBuilder = .init(allocator);
     defer error_builder.deinit();
     errdefer error_builder.writeDebug();
 
     try error_builder.addFile(uri, source);
 
-    var token_it = TokenIterator.init(source, actual);
-    var last_token_end: usize = 0;
+    var token_it: TokenIterator = .init(source, actual);
+    var last_token_index: usize = 0; // should only be used for error messages
 
     for (expected_tokens) |expected_token| {
         const token = token_it.next() orelse {
-            try error_builder.msgAtIndex("expected a `{s}` token here", uri, last_token_end, .err, .{expected_token.@"0"});
+            try error_builder.msgAtIndex("expected a `{s}` token here", uri, last_token_index, .err, .{expected_token.@"0"});
             return error.ExpectedToken;
         };
-        last_token_end = token.loc.end;
+        last_token_index = if (options.overlapping_token_support) token.loc.start else token.loc.end;
 
         const token_source = offsets.locToSlice(source, token.loc);
 
@@ -1978,10 +2222,10 @@ fn testSemanticTokensOptions(
             try error_builder.msgAtLoc("expected `{s}` as the next token but got `{s}` here", uri, token.loc, .err, .{ expected_token_source, token_source });
             return error.UnexpectedTokenContent;
         } else if (expected_token_type != token.type) {
-            try error_builder.msgAtLoc("expected token type `{s}` but got `{s}`", uri, token.loc, .err, .{ @tagName(expected_token_type), @tagName(token.type) });
+            try error_builder.msgAtLoc("expected token type `{t}` but got `{t}`", uri, token.loc, .err, .{ expected_token_type, token.type });
             return error.UnexpectedTokenType;
         } else if (!std.meta.eql(expected_token_modifiers, token.modifiers)) {
-            try error_builder.msgAtLoc("expected token modifiers `{}` but got `{}`", uri, token.loc, .err, .{ expected_token_modifiers, token.modifiers });
+            try error_builder.msgAtLoc("expected token modifiers `{f}` but got `{f}`", uri, token.loc, .err, .{ expected_token_modifiers, token.modifiers });
             return error.UnexpectedTokenModifiers;
         }
     }

@@ -2,8 +2,9 @@ const std = @import("std");
 const zls = @import("zls");
 
 const Context = @import("../context.zig").Context;
+const helper = @import("../helper.zig");
 
-const types = zls.types;
+const types = zls.lsp.types;
 const offsets = zls.offsets;
 
 const allocator: std.mem.Allocator = std.testing.allocator;
@@ -52,6 +53,25 @@ test "discard value with comments" {
         \\    const d // a comment
         \\    = {};
         \\    _ = d; // autofix
+        \\}
+        \\
+    );
+}
+
+test "discard value with escaped identifier" {
+    try testAutofix(
+        \\test {
+        \\    var @"struct" = {};
+        \\    const bar, var @"union" = .{ 1, 2 };
+        \\}
+        \\
+    ,
+        \\test {
+        \\    var @"struct" = {};
+        \\    _ = @"struct"; // autofix
+        \\    const bar, var @"union" = .{ 1, 2 };
+        \\    _ = @"union"; // autofix
+        \\    _ = bar; // autofix
         \\}
         \\
     );
@@ -110,20 +130,21 @@ test "discard function parameter with comments" {
 test "discard captures" {
     try testAutofix(
         \\test {
-        \\    for (0..10, 0..10, 0..10) |i, j, k| {}
+        \\    for (0..10, 0..10, 0..10) |i, @"test", k| {}
         \\    switch (union(enum) {}{}) {
         \\        inline .a => |cap, tag| {},
         \\    }
         \\    if (null) |x| {}
         \\    if (null) |v| {} else |e| {}
         \\    _ = null catch |e| {};
+        \\    _ = null catch |_| {};
         \\}
         \\
     ,
         \\test {
-        \\    for (0..10, 0..10, 0..10) |i, j, k| {
+        \\    for (0..10, 0..10, 0..10) |i, @"test", k| {
         \\        _ = i; // autofix
-        \\        _ = j; // autofix
+        \\        _ = @"test"; // autofix
         \\        _ = k; // autofix
         \\    }
         \\    switch (union(enum) {}{}) {
@@ -143,6 +164,7 @@ test "discard captures" {
         \\    _ = null catch |e| {
         \\        _ = e; // autofix
         \\    };
+        \\    _ = null catch |_| {};
         \\}
         \\
     );
@@ -281,9 +303,9 @@ test "remove pointless discard" {
     try testAutofix(
         \\fn foo(a: u32) u32 {
         \\    _ = a; // autofix
-        \\    const b: ?u32 = a;
-        \\    _ = b; // autofix
-        \\    const c = b;
+        \\    const @"struct": ?u32 = a;
+        \\    _ = @"struct"; // autofix
+        \\    const c = @"struct";
         \\    _ = c; // autofix
         \\    if (c) |d| {
         \\        _ = d; // autofix
@@ -294,8 +316,8 @@ test "remove pointless discard" {
         \\
     ,
         \\fn foo(a: u32) u32 {
-        \\    const b: ?u32 = a;
-        \\    const c = b;
+        \\    const @"struct": ?u32 = a;
+        \\    const c = @"struct";
         \\    if (c) |d| {
         \\        return d;
         \\    }
@@ -309,6 +331,16 @@ test "remove discard of unknown identifier" {
     try testAutofix(
         \\fn foo() void {
         \\    _ = a; // autofix
+        \\}
+        \\
+    ,
+        \\fn foo() void {
+        \\}
+        \\
+    );
+    try testAutofix(
+        \\fn foo() void {
+        \\    _ = @"struct"; // autofix
         \\}
         \\
     ,
@@ -351,7 +383,7 @@ test "ignore autofix comment whitespace" {
     );
     try testAutofix(
         \\fn foo() void {
-        \\    _ = a;   //   autofix
+        \\    _ = @"struct";   //   autofix
         \\}
         \\
     ,
@@ -369,7 +401,7 @@ test "remove function parameter" {
     , .{ .filter_title = "remove function parameter" });
     try testDiagnostic(
         \\fn foo(
-        \\    alpha: u32,
+        \\    @"struct": u32,
         \\) void {}
     ,
         \\fn foo() void {}
@@ -386,6 +418,17 @@ test "variable never mutated" {
         \\test {
         \\    const foo = 5;
         \\    _ = foo;
+        \\}
+    , .{ .filter_title = "use 'const'" });
+    try testDiagnostic(
+        \\test {
+        \\    var @"struct" = 5;
+        \\    _ = @"struct";
+        \\}
+    ,
+        \\test {
+        \\    const @"struct" = 5;
+        \\    _ = @"struct";
         \\}
     , .{ .filter_title = "use 'const'" });
 }
@@ -479,12 +522,89 @@ test "organize imports - bubbles up" {
         \\const std = @import("std");
         \\fn main() void {}
         \\const abc = @import("abc.zig");
+        \\fn foo() void {}
     ,
         \\const std = @import("std");
         \\
         \\const abc = @import("abc.zig");
         \\
         \\fn main() void {}
+        \\fn foo() void {}
+    );
+}
+
+test "organize imports - bottom placement" {
+    // When imports are at the bottom, they should stay at the bottom
+    try testOrganizeImports(
+        \\fn main() void {
+        \\    std.debug.print("Hello\n", .{});
+        \\}
+        \\
+        \\const xyz = @import("xyz.zig");
+        \\const abc = @import("abc.zig");
+        \\const std = @import("std");
+    ,
+        \\fn main() void {
+        \\    std.debug.print("Hello\n", .{});
+        \\}
+        \\
+        \\
+        \\const std = @import("std");
+        \\
+        \\const abc = @import("abc.zig");
+        \\const xyz = @import("xyz.zig");
+        \\
+        \\
+    );
+}
+
+test "organize imports - bottom placement with multiple functions" {
+    // Bottom imports with multiple declarations
+    try testOrganizeImports(
+        \\fn foo() void {}
+        \\
+        \\fn bar() void {}
+        \\
+        \\const test_input = "test";
+        \\
+        \\const xyz = @import("xyz.zig");
+        \\const abc = @import("abc.zig");
+        \\const std = @import("std");
+    ,
+        \\fn foo() void {}
+        \\
+        \\fn bar() void {}
+        \\
+        \\const test_input = "test";
+        \\
+        \\
+        \\const std = @import("std");
+        \\
+        \\const abc = @import("abc.zig");
+        \\const xyz = @import("xyz.zig");
+        \\
+        \\
+    );
+}
+
+test "organize imports - mixed placement defaults to bottom" {
+    // When imports are mixed (both top and bottom), consolidate at bottom
+    try testOrganizeImports(
+        \\const std = @import("std");
+        \\
+        \\fn main() void {}
+        \\
+        \\const xyz = @import("xyz.zig");
+        \\const abc = @import("abc.zig");
+    ,
+        \\fn main() void {}
+        \\
+        \\
+        \\const std = @import("std");
+        \\
+        \\const abc = @import("abc.zig");
+        \\const xyz = @import("xyz.zig");
+        \\
         \\
     );
 }
@@ -617,37 +737,12 @@ test "organize imports - @embedFile" {
     try testOrganizeImports(
         \\const foo = @embedFile("foo.zig");
         \\const abc = @import("abc.zig");
+        \\const bar = @embedFile("bar.zig");
     ,
         \\const abc = @import("abc.zig");
         \\
         \\const foo = @embedFile("foo.zig");
-        \\
-    );
-}
-
-test "organize imports - fields first" {
-    try testOrganizeImports(
-        \\const std = @import("std");
-        \\const abc = @import("abc.zig");
-        \\/// a
-        \\a: bool,
-        \\/// b
-        \\b: u8 = 1,
-        \\/// c
-        \\c: i8 align(8),
-    ,
-        \\/// a
-        \\a: bool,
-        \\/// b
-        \\b: u8 = 1,
-        \\/// c
-        \\c: i8 align(8),
-        \\
-        \\const std = @import("std");
-        \\
-        \\const abc = @import("abc.zig");
-        \\
-        \\
+        \\const bar = @embedFile("bar.zig");
     );
 }
 
@@ -667,8 +762,197 @@ test "organize imports - edge cases" {
     );
 }
 
+test "convert multiline string literal" {
+    try testConvertString(
+        \\const foo = \\Hell<cursor>o
+        \\            \\World
+        \\;
+    ,
+        \\const foo = "Hello\nWorld";
+    );
+    // Empty
+    try testConvertString(
+        \\const foo = \\<cursor>
+        \\;
+    ,
+        \\const foo = "";
+    );
+    // Multi-byte characters
+    try testConvertString(
+        \\const foo = \\He😂ll<cursor>o
+        \\            \\Wo🤓rld
+        \\;
+    ,
+        \\const foo = "He😂llo\nWo🤓rld";
+    );
+    // Quotes
+    try testConvertString(
+        \\const foo = \\The<cursor> "cure"
+        \\;
+    ,
+        \\const foo = "The \"cure\"";
+    );
+    try testConvertString(
+        \\const foo = \\<cursor>\x49 \u{0033}
+        \\            \\\n'
+        \\            \\
+        \\;
+    ,
+        \\const foo = "\\x49 \\u{0033}\n\\n'\n";
+    );
+    // The control characters TAB and CR are rejected by the grammar inside multi-line string literals,
+    // except if CR is directly before NL.
+    try testConvertString( // (force format)
+        "const foo = \\\\<cursor>Hello\r\n;",
+        \\const foo = "Hello";
+    );
+}
+
+test "convert string literal to multiline" {
+    try testConvertString(
+        \\const foo = "He<cursor>llo\nWorld";
+    ,
+        \\const foo = \\Hello
+        \\    \\World
+        \\;
+    );
+    // Empty
+    try testConvertString(
+        \\const foo = "<cursor>";
+    ,
+        \\const foo = \\
+        \\;
+    );
+    // In function
+    try testConvertString(
+        \\const x = foo("<cursor>bar\nbaz");
+    ,
+        \\const x = foo(\\bar
+        \\    \\baz
+        \\);
+    );
+}
+
+test "convert string literal to multiline - cursor outside of string literal" {
+    try testConvertString(
+        \\const foo = <cursor> "hello";
+    ,
+        \\const foo =  "hello";
+    );
+    try testConvertString(
+        \\const foo = <cursor>"hello";
+    ,
+        \\const foo = \\hello
+        \\;
+    );
+    try testConvertString(
+        \\const foo = "hello"<cursor>;
+    ,
+        \\const foo = \\hello
+        \\;
+    );
+    // TODO
+    // try testConvertString(
+    //     \\const foo = "hello" <cursor>;
+    // ,
+    //     \\const foo = "hello" <cursor>;
+    // );
+}
+
+test "convert string literal to multiline - escapes" {
+    // Hex escapes
+    try testConvertString(
+        \\const foo = "<cursor>\x41\x42\x43";
+    ,
+        \\const foo = \\ABC
+        \\;
+    );
+    // Hex escapes that form a unicode character in utf-8
+    try testConvertString(
+        \\const foo = "<cursor>\xE2\x9C\x85";
+    ,
+        \\const foo = \\✅
+        \\;
+    );
+    // Newlines
+    try testConvertString(
+        \\const foo = "<cursor>\nhello\n\n";
+    ,
+        \\const foo = \\
+        \\    \\hello
+        \\    \\
+        \\    \\
+        \\;
+    );
+    // Quotes and slashes
+    try testConvertString(
+        \\const foo = "<cursor>A slash: \'\\\'";
+    ,
+        \\const foo = \\A slash: '\'
+        \\;
+    );
+    // Unicode
+    try testConvertString(
+        \\const foo = "<cursor>Smile: \u{1F913}";
+    ,
+        \\const foo = \\Smile: 🤓
+        \\;
+    );
+}
+
+test "convert string literal to multiline - invalid" {
+    // Invalid unicode
+    try testConvertString(
+        \\const foo = "<cursor>Smile: \u{1F9131}";
+    ,
+        \\const foo = "Smile: \u{1F9131}";
+    );
+    // Invalid utf-8
+    try testConvertString(
+        \\const foo = "<cursor>\xaa";
+    ,
+        \\const foo = "\xaa";
+    );
+    // Hex escaped unprintable character
+    try testConvertString(
+        \\const foo = "<cursor>\x7f";
+    ,
+        \\const foo = "\x7f";
+    );
+    // Tabs are invalid too
+    try testConvertString(
+        \\const foo = "<cursor>\tWe use tabs";
+    ,
+        \\const foo = "\tWe use tabs";
+    );
+    // A Multi-Line String Literals can't contain carriage returns
+    try testConvertString(
+        \\const foo = "<cursor>\r";
+    ,
+        \\const foo = "\r";
+    );
+    // Not in @import
+    try testConvertString(
+        \\const std = @import("<cursor>std");
+    ,
+        \\const std = @import("std");
+    );
+    // Not in test
+    try testConvertString(
+        \\test "<cursor>addition" { }
+    ,
+        \\test "addition" { }
+    );
+    // Not in extern
+    try testConvertString(
+        \\pub extern "<cursor>c" fn printf(format: [*:0]const u8) c_int;
+    ,
+        \\pub extern "c" fn printf(format: [*:0]const u8) c_int;
+    );
+}
+
 fn testAutofix(before: []const u8, after: []const u8) !void {
-    try testDiagnostic(before, after, .{ .filter_kind = .@"source.fixAll", .want_zir = true }); // diagnostics come from our AstGen fork
+    try testDiagnostic(before, after, .{ .filter_kind = .@"source.fixAll", .want_zir = true }); // diagnostics come from std.zig.AstGen
     try testDiagnostic(before, after, .{ .filter_kind = .@"source.fixAll", .want_zir = false }); // diagnostics come from calling zig ast-check
 }
 
@@ -676,30 +960,50 @@ fn testOrganizeImports(before: []const u8, after: []const u8) !void {
     try testDiagnostic(before, after, .{ .filter_kind = .@"source.organizeImports" });
 }
 
+fn testConvertString(before: []const u8, after: []const u8) !void {
+    try testDiagnostic(before, after, .{ .filter_kind = .refactor });
+}
+
 fn testDiagnostic(
     before: []const u8,
     after: []const u8,
     options: struct {
-        filter_kind: ?types.CodeActionKind = null,
+        filter_kind: ?types.CodeAction.Kind = null,
         filter_title: ?[]const u8 = null,
         want_zir: bool = true,
     },
 ) !void {
-    var ctx = try Context.init();
+    var ctx: Context = try .init();
     defer ctx.deinit();
-    ctx.server.config.enable_autofix = true;
-    ctx.server.config.prefer_ast_check_as_child_process = !options.want_zir;
+    ctx.server.config_manager.config.prefer_ast_check_as_child_process = !options.want_zir;
 
-    const uri = try ctx.addDocument(.{ .source = before });
-    // const handle = ctx.server.document_store.getHandle(uri).?;
+    var phr = try helper.collectClearPlaceholders(allocator, before);
+    defer phr.deinit(allocator);
+    const placeholders = phr.locations.items(.new);
+    const source = phr.new_source;
 
-    const params: types.CodeActionParams = .{
-        .textDocument = .{ .uri = uri },
-        .range = .{
+    const range: types.Range = switch (placeholders.len) {
+        0 => .{
             .start = .{ .line = 0, .character = 0 },
             .end = offsets.indexToPosition(before, before.len, ctx.server.offset_encoding),
         },
-        .context = .{ .diagnostics = &.{} },
+        1 => blk: {
+            const point = offsets.indexToPosition(before, placeholders[0].start, ctx.server.offset_encoding);
+            break :blk .{ .start = point, .end = point };
+        },
+        else => unreachable,
+    };
+
+    const uri = try ctx.addDocument(.{ .source = source });
+    const handle = ctx.server.document_store.getHandle(uri).?;
+
+    const params: types.CodeAction.Params = .{
+        .textDocument = .{ .uri = uri },
+        .range = range,
+        .context = .{
+            .diagnostics = &.{},
+            .only = if (options.filter_kind) |kind| &.{kind} else null,
+        },
     };
 
     @setEvalBranchQuota(5000);
@@ -708,14 +1012,19 @@ fn testDiagnostic(
         return error.InvalidResponse;
     };
 
-    var text_edits: std.ArrayListUnmanaged(types.TextEdit) = .{};
+    var text_edits: std.ArrayList(types.TextEdit) = .empty;
     defer text_edits.deinit(allocator);
 
     for (response) |action| {
-        const code_action: types.CodeAction = action.CodeAction;
+        const code_action: types.CodeAction = action.code_action;
 
-        if (options.filter_kind) |kind| if (!code_action.kind.?.eql(kind)) continue;
-        if (options.filter_title) |title| if (!std.mem.eql(u8, title, code_action.title)) continue;
+        if (options.filter_kind) |kind| {
+            // check that `types.CodeActionContext.only` is being respected
+            try std.testing.expectEqual(code_action.kind.?, kind);
+        }
+        if (options.filter_title) |title| {
+            if (!std.mem.eql(u8, title, code_action.title)) continue;
+        }
 
         const workspace_edit = code_action.edit.?;
         const changes = workspace_edit.changes.?.map;
@@ -725,9 +1034,9 @@ fn testDiagnostic(
         try text_edits.appendSlice(allocator, changes.get(uri).?);
     }
 
-    const actual = try zls.diff.applyTextEdits(allocator, before, text_edits.items, ctx.server.offset_encoding);
+    const actual = try zls.diff.applyTextEdits(allocator, source, text_edits.items, ctx.server.offset_encoding);
     defer allocator.free(actual);
-    // try ctx.server.document_store.refreshDocument(uri, try allocator.dupeZ(u8, actual));
+    try ctx.server.document_store.refreshLspSyncedDocument(uri, try allocator.dupeZ(u8, actual));
 
-    try std.testing.expectEqualStrings(after, actual);
+    try zls.testing.expectEqualStrings(after, handle.tree.source);
 }

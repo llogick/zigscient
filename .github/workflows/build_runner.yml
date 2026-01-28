@@ -15,25 +15,23 @@ on:
 
 jobs:
   check_build_runner:
+    if: false
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        zig:
-          - version: master
-            build-runner-file: 0.14.0.zig
-          # - version: 0.13.0
-          #   build-runner-file: legacy.zig
-          # - version: 0.12.0
-          #   build-runner-file: legacy.zig
-    runs-on: ${{ matrix.os }}
+        include:
+          - zig-version: 0.16.0
+          # - zig-version: mach-latest
+          # Zig master is handled by 'zig build test' in the main CI
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: mlugg/setup-zig@v1
+      - uses: mlugg/setup-zig@v2
         with:
-          version: ${{ matrix.zig.version }}
+          version: ${{ matrix.zig-version }}
 
       - name: Create temp zig project
         run: |
@@ -44,4 +42,4 @@ jobs:
       - name: Check build_runner builds
         run: |
           cd $RUNNER_TEMP/TEMP_ZIG_PROJECT
-          zig build --build-runner ${{ github.workspace }}/src/build_runner/${{ matrix.zig.build-runner-file }}
+          zig build --build-runner $GITHUB_WORKSPACE/src/build_runner/build_runner.zig

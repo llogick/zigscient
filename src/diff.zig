@@ -6,24 +6,21 @@ const offsets = @import("offsets.zig");
 const tracy = @import("tracy");
 const DiffMatchPatch = @import("diffz");
 
-const dmp = DiffMatchPatch{
-    .diff_timeout = 250,
+const dmp: DiffMatchPatch = .{
+    .diff_timeout = .fromMilliseconds(250),
 };
-
-pub const Error = error{OutOfMemory};
 
 pub fn edits(
     allocator: std.mem.Allocator,
     before: []const u8,
     after: []const u8,
     encoding: offsets.Encoding,
-) Error!std.ArrayListUnmanaged(types.TextEdit) {
+) error{OutOfMemory}!std.ArrayList(types.TextEdit) {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const diffs = try dmp.diff(arena.allocator(), before, after, true);
+    var diffs = try dmp.diff(allocator, before, after, true);
+    defer DiffMatchPatch.deinitDiffList(allocator, &diffs);
 
     var edit_count: usize = 0;
     for (diffs.items) |diff| {
@@ -34,8 +31,7 @@ pub fn edits(
         }
     }
 
-    var eds = std.ArrayListUnmanaged(types.TextEdit){};
-    try eds.ensureTotalCapacity(allocator, edit_count);
+    var eds: std.ArrayList(types.TextEdit) = try .initCapacity(allocator, edit_count);
     errdefer {
         for (eds.items) |edit| allocator.free(edit.newText);
         eds.deinit(allocator);
@@ -66,22 +62,13 @@ pub fn edits(
     return eds;
 }
 
-pub const ContentChanges = struct {
-    /// New contents
-    text: [:0]const u8,
-    /// Lowest index affected by the change(s)
-    idx_lo: u32,
-    /// Highest index affected by the change(s)
-    idx_hi: u32,
-};
-
 /// Caller owns returned memory.
 pub fn applyContentChanges(
     allocator: std.mem.Allocator,
     text: []const u8,
-    content_changes: []const types.TextDocumentContentChangeEvent,
+    content_changes: []const types.TextDocument.ContentChangeEvent,
     encoding: offsets.Encoding,
-) error{OutOfMemory}!ContentChanges {
+) error{OutOfMemory}![:0]const u8 {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -90,14 +77,14 @@ pub fn applyContentChanges(
         while (i != 0) {
             i -= 1;
             switch (content_changes[i]) {
-                .literal_1 => |content_change| break :blk .{ i, content_change.text }, // TextDocumentContentChangeWholeDocument
-                .literal_0 => continue, // TextDocumentContentChangePartial
+                .text_document_content_change_whole_document => |content_change| break :blk .{ i, content_change.text },
+                .text_document_content_change_partial => continue,
             }
         }
         break :blk .{ null, text };
     };
 
-    var text_array = std.ArrayListUnmanaged(u8){};
+    var text_array: std.ArrayList(u8) = .empty;
     errdefer text_array.deinit(allocator);
 
     try text_array.appendSlice(allocator, last_full_text);
@@ -105,42 +92,20 @@ pub fn applyContentChanges(
     // don't even bother applying changes before a full text change
     const changes = content_changes[if (last_full_text_index) |index| index + 1 else 0..];
 
-    // lowest and highest indexes affected by the change(s)
-    var idx_lo: usize = last_full_text.len;
-    var idx_hi: usize = 0;
-
     for (changes) |item| {
-        const content_change = item.literal_0; // TextDocumentContentChangePartial
+        const content_change = item.text_document_content_change_partial;
 
-        const head = offsets.positionToIndex(
-            text_array.items,
-            content_change.range.start,
-            encoding,
-        );
-        if (head < idx_lo) idx_lo = head;
-
-        const tail = offsets.positionToIndex(
-            text_array.items,
-            content_change.range.end,
-            encoding,
-        );
-        const upper_index = @max(tail, head + content_change.text.len);
-        if (idx_hi < upper_index) idx_hi = upper_index;
-
-        try text_array.replaceRange(allocator, head, tail - head, content_change.text);
+        const loc = offsets.rangeToLoc(text_array.items, content_change.range, encoding);
+        try text_array.replaceRange(allocator, loc.start, loc.end - loc.start, content_change.text);
     }
 
-    return .{
-        .text = try text_array.toOwnedSliceSentinel(allocator, 0),
-        .idx_lo = @intCast(idx_lo),
-        .idx_hi = @intCast(idx_hi),
-    };
+    return try text_array.toOwnedSliceSentinel(allocator, 0);
 }
 
 // https://cs.opensource.google/go/x/tools/+/master:internal/lsp/diff/diff.go;l=40
 
 fn textEditLessThan(_: void, lhs: types.TextEdit, rhs: types.TextEdit) bool {
-    return offsets.rangeLessThan(lhs.range, rhs.range);
+    return offsets.orderPosition(lhs.range.start, rhs.range.start) == .lt or offsets.orderPosition(lhs.range.end, rhs.range.end) == .lt;
 }
 
 /// Caller owns returned memory.
@@ -149,7 +114,7 @@ pub fn applyTextEdits(
     text: []const u8,
     text_edits: []const types.TextEdit,
     encoding: offsets.Encoding,
-) ![]const u8 {
+) error{OutOfMemory}![]const u8 {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -158,7 +123,7 @@ pub fn applyTextEdits(
 
     std.mem.sort(types.TextEdit, text_edits_sortable, {}, textEditLessThan);
 
-    var final_text = std.ArrayListUnmanaged(u8){};
+    var final_text: std.ArrayList(u8) = .empty;
     errdefer final_text.deinit(allocator);
 
     var last: usize = 0;

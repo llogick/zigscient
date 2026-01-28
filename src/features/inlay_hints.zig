@@ -1,7 +1,6 @@
 //! Implementation of [`textDocument/inlayHint`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_inlayHint)
 
 const std = @import("std");
-const zig_builtin = @import("builtin");
 const Ast = std.zig.Ast;
 const log = std.log.scoped(.inlay_hint);
 
@@ -17,9 +16,9 @@ const data = @import("version_data");
 
 /// don't show inlay hints for builtin functions whose parameter names carry no
 /// meaningful information or are trivial deductible based on the builtin name.
-const excluded_builtins_set = blk: {
+const excluded_builtins_set: std.StaticStringMap(void) = blk: {
     @setEvalBranchQuota(2000);
-    break :blk std.StaticStringMap(void).initComptime(.{
+    break :blk .initComptime(.{
         .{"addrSpaceCast"},
         .{"addWithOverflow"},
         .{"alignCast"},
@@ -64,9 +63,9 @@ const excluded_builtins_set = blk: {
         .{"errorCast"},
         // .{"export"},
         // .{"extern"},
-        // .{"fence"},
         // .{"field"},
         // .{"fieldParentPtr"},
+        // .{"FieldType"},
         .{"floatCast"},
         .{"floatFromInt"},
         .{"frameAddress"}, // no parameters
@@ -96,7 +95,6 @@ const excluded_builtins_set = blk: {
         .{"rem"},
         .{"returnAddress"}, // no parameters
         // .{"select"},
-        // .{"setAlignStack"},
         .{"setEvalBranchQuota"},
         .{"setFloatMode"},
         .{"setRuntimeSafety"},
@@ -143,7 +141,7 @@ const excluded_builtins_set = blk: {
 pub const InlayHint = struct {
     index: usize,
     label: []const u8,
-    kind: types.InlayHintKind,
+    kind: types.InlayHint.Kind,
     tooltip: ?types.MarkupContent,
 
     fn lessThan(_: void, lhs: InlayHint, rhs: InlayHint) bool {
@@ -156,7 +154,7 @@ const Builder = struct {
     analyser: *Analyser,
     config: *const Config,
     handle: *DocumentStore.Handle,
-    hints: std.ArrayListUnmanaged(InlayHint) = .{},
+    hints: std.ArrayList(InlayHint) = .empty,
     hover_kind: types.MarkupKind,
 
     fn appendParameterHint(
@@ -164,33 +162,34 @@ const Builder = struct {
         node_tag: Ast.Node.Tag,
         token_index: Ast.TokenIndex,
         label: []const u8,
-        tooltip: []const u8,
+        tooltip_text: []const u8,
         tooltip_noalias: bool,
         tooltip_comptime: bool,
-    ) !void {
+    ) error{OutOfMemory}!void {
         // adding tooltip_noalias & tooltip_comptime to InlayHint should be enough
-        const tooltip_text = blk: {
-            if (tooltip.len == 0) break :blk "";
-            const prefix = if (tooltip_noalias) if (tooltip_comptime) "noalias comptime " else "noalias " else if (tooltip_comptime) "comptime " else "";
+        const tooltip: ?types.MarkupContent = tooltip: {
+            if (tooltip_text.len == 0) break :tooltip null;
+            const prefix = if (tooltip_noalias) "noalias " else if (tooltip_comptime) "comptime " else "";
 
-            if (self.hover_kind == .markdown) {
-                break :blk try std.fmt.allocPrint(self.arena, "```zig\n{s}{s}\n```", .{ prefix, tooltip });
-            }
+            const text = switch (self.hover_kind) {
+                .markdown => try std.fmt.allocPrint(self.arena, "```zig\n{s}{s}\n```", .{ prefix, tooltip_text }),
+                .plaintext, .unknown_value => try std.fmt.allocPrint(self.arena, "{s}{s}", .{ prefix, tooltip_text }),
+            };
 
-            break :blk try std.fmt.allocPrint(self.arena, "{s}{s}", .{ prefix, tooltip });
+            break :tooltip .{
+                .kind = self.hover_kind,
+                .value = text,
+            };
         };
 
         try self.hints.append(self.arena, .{
             .index = if (node_tag == .multiline_string_literal)
-                offsets.tokenToLoc(self.handle.tree, token_index - 1).end
+                offsets.tokenToLoc(&self.handle.tree, token_index - 1).end
             else
-                offsets.tokenToIndex(self.handle.tree, token_index),
+                self.handle.tree.tokenStart(token_index),
             .label = try std.fmt.allocPrint(self.arena, "{s}:", .{label}),
             .kind = .Parameter,
-            .tooltip = .{
-                .kind = self.hover_kind,
-                .value = tooltip_text,
-            },
+            .tooltip = tooltip,
         });
     }
 
@@ -216,7 +215,7 @@ const Builder = struct {
                 .position = position,
                 .label = .{ .string = hint.label },
                 .kind = hint.kind,
-                .tooltip = if (hint.tooltip) |tooltip| .{ .MarkupContent = tooltip } else null,
+                .tooltip = if (hint.tooltip) |tooltip| .{ .markup_content = tooltip } else null,
                 .paddingLeft = false,
                 .paddingRight = hint.kind == .Parameter,
             };
@@ -231,93 +230,52 @@ fn writeCallHint(
     builder: *Builder,
     /// The function call.
     call: Ast.full.Call,
-) !void {
+) Analyser.Error!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
     const handle = builder.handle;
-    const tree = handle.tree;
 
-    const ty = try builder.analyser.resolveTypeOfNode(.{ .node = call.ast.fn_expr, .handle = handle }) orelse return;
+    const ty = try builder.analyser.resolveTypeOfNode(.of(call.ast.fn_expr, handle)) orelse return;
     const fn_ty = try builder.analyser.resolveFuncProtoOfCallable(ty) orelse return;
-    const fn_node = fn_ty.data.other; // this assumes that function types can only be Ast nodes
+    const fn_info = fn_ty.data.function;
 
-    var buffer: [1]Ast.Node.Index = undefined;
-    const fn_proto = fn_node.handle.tree.fullFnProto(&buffer, fn_node.node).?;
-
-    var params = try std.ArrayListUnmanaged(Ast.full.FnProto.Param).initCapacity(builder.arena, fn_proto.ast.params.len);
-    defer params.deinit(builder.arena);
-
-    const fnh_ast = fn_node.handle.tree;
-    const fnh_ast_ttags = fnh_ast.tokens.items(.tag);
-
-    var it = fn_proto.iterate(&fnh_ast);
-    while (ast.nextFnParam(&it)) |param| {
-        try params.append(builder.arena, param);
-    }
-
-    const has_self_param = call.ast.params.len + 1 == params.items.len and
+    const has_self_param = call.ast.params.len + 1 == fn_info.parameters.len and
         try builder.analyser.isInstanceCall(handle, call, fn_ty);
 
-    const parameters = params.items[@intFromBool(has_self_param)..];
+    const parameters = fn_info.parameters[@intFromBool(has_self_param)..];
     const arguments = call.ast.params;
     const min_len = @min(parameters.len, arguments.len);
     for (parameters[0..min_len], arguments[0..min_len]) |param, arg| {
-        const hint = switch (builder.config.inlay_hints_param_hint_kind) {
-            .name => blk: {
-                const parameter_name_token = param.name_token orelse continue;
-                const parameter_name = offsets.identifierTokenToNameSlice(
-                    fn_node.handle.tree,
-                    parameter_name_token,
-                );
+        const parameter_name = param.name orelse continue;
 
-                if (builder.config.inlay_hints_hide_redundant_param_names or builder.config.inlay_hints_hide_redundant_param_names_last_token) dont_skip: {
-                    const arg_token = if (builder.config.inlay_hints_hide_redundant_param_names_last_token)
-                        ast.lastToken(tree, arg)
-                    else if (builder.config.inlay_hints_hide_redundant_param_names)
-                        tree.nodes.items(.main_token)[arg]
-                    else
-                        unreachable;
+        if (builder.config.inlay_hints_hide_redundant_param_names or builder.config.inlay_hints_hide_redundant_param_names_last_token) dont_skip: {
+            const arg_token = if (builder.config.inlay_hints_hide_redundant_param_names_last_token)
+                ast.lastToken(&handle.tree, arg)
+            else if (builder.config.inlay_hints_hide_redundant_param_names)
+                handle.tree.nodeMainToken(arg)
+            else
+                unreachable;
 
-                    if (tree.tokens.items(.tag)[arg_token] != .identifier) break :dont_skip;
-                    const arg_token_name = offsets.identifierTokenToNameSlice(tree, arg_token);
-                    if (!std.mem.eql(u8, parameter_name, arg_token_name)) break :dont_skip;
+            if (handle.tree.tokenTag(arg_token) != .identifier) break :dont_skip;
+            const arg_token_name = offsets.identifierTokenToNameSlice(&handle.tree, arg_token);
+            if (!std.mem.eql(u8, parameter_name, arg_token_name)) break :dont_skip;
 
-                    continue;
-                }
-                break :blk parameter_name;
-            },
-            .type => if (param.type_expr != 0) blk: {
-                const f_tok_i = fnh_ast.firstToken(param.type_expr);
-                break :blk switch (fnh_ast_ttags[f_tok_i]) {
-                    .keyword_struct,
-                    .keyword_union, // FLLW-UP Consider including `(..)`
-                    .keyword_enum,
-                    .keyword_fn,
-                    => fnh_ast.tokenSlice(f_tok_i),
-                    else => offsets.nodeToSlice(
-                        fnh_ast,
-                        param.type_expr,
-                    ),
-                };
-            } else offsets.identifierTokenToNameSlice(
-                fnh_ast,
-                param.name_token orelse continue,
-            ),
-        };
+            continue;
+        }
 
-        const no_alias = if (param.comptime_noalias) |t| fnh_ast_ttags[t] == .keyword_noalias or fnh_ast_ttags[t - 1] == .keyword_noalias else false;
-        const comp_time = if (param.comptime_noalias) |t| fnh_ast_ttags[t] == .keyword_comptime or fnh_ast_ttags[t - 1] == .keyword_comptime else false;
+        const no_alias = if (param.modifier) |m| m == .noalias_param else false;
+        const comp_time = if (param.modifier) |m| m == .comptime_param else false;
 
-        const tooltip = if (param.anytype_ellipsis3) |token|
-            if (fnh_ast_ttags[token] == .keyword_anytype) "anytype" else ""
-        else
-            offsets.nodeToSlice(fn_node.handle.tree, param.type_expr);
+        const tooltip = try param.type.stringifyTypeVal(
+            builder.analyser,
+            .{ .truncate_container_decls = true },
+        );
 
         try builder.appendParameterHint(
-            tree.nodes.items(.tag)[arg],
-            tree.firstToken(arg),
-            hint,
+            handle.tree.nodeTag(arg),
+            handle.tree.firstToken(arg),
+            parameter_name,
             tooltip,
             no_alias,
             comp_time,
@@ -325,92 +283,75 @@ fn writeCallHint(
     }
 }
 
-/// takes parameter nodes from the ast and function parameter names from `Builtin.arguments` and writes parameter hints into `builder.hints`
-fn writeBuiltinHint(builder: *Builder, parameters: []const Ast.Node.Index, arguments: []const []const u8) !void {
+/// takes parameter nodes from the ast and function parameter names from `Builtin.parameters` and writes parameter hints into `builder.hints`
+fn writeBuiltinHint(builder: *Builder, parameters: []const Ast.Node.Index, params: []const data.Builtin.Parameter) error{OutOfMemory}!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
     const handle = builder.handle;
-    const tree = handle.tree;
+    const tree = &handle.tree;
 
-    const len = @min(arguments.len, parameters.len);
-    for (arguments[0..len], parameters[0..len]) |arg, parameter| {
-        if (arg.len == 0) continue;
+    const len = @min(params.len, parameters.len);
+    for (params[0..len], parameters[0..len]) |param, parameter| {
+        var signature = param.signature;
+        if (std.mem.eql(u8, signature, "...")) return;
 
-        const colonIndex = std.mem.indexOfScalar(u8, arg, ':');
-        const type_expr: []const u8 = if (colonIndex) |index| arg[index + 1 ..] else &.{};
-
-        var maybe_label: ?[]const u8 = null;
-        var no_alias = false;
-        var comp_time = false;
-
-        var it = std.mem.splitScalar(u8, arg[0 .. colonIndex orelse arg.len], ' ');
-        while (it.next()) |item| {
-            if (item.len == 0) continue;
-            maybe_label = item;
-
-            no_alias = no_alias or std.mem.eql(u8, item, "noalias");
-            comp_time = comp_time or std.mem.eql(u8, item, "comptime");
+        var is_comptime = false;
+        var is_noalias = false;
+        if (std.mem.cutPrefix(u8, signature, "comptime")) |rest| {
+            signature = rest;
+            is_comptime = true;
+        } else if (std.mem.cutPrefix(u8, signature, "noalias")) |rest| {
+            signature = rest;
+            is_noalias = true;
         }
+        signature = std.mem.trimStart(u8, signature, &std.ascii.whitespace);
 
-        const label = maybe_label orelse return;
-        if (label.len == 0 or std.mem.eql(u8, label, "...")) return;
+        const colon_index = std.mem.findScalar(u8, signature, ':');
+        const label = signature[0 .. colon_index orelse signature.len];
+        const tooltip = if (colon_index) |i| signature[i + 1 ..] else "";
 
         try builder.appendParameterHint(
-            tree.nodes.items(.tag)[parameter],
+            tree.nodeTag(parameter),
             tree.firstToken(parameter),
-            std.mem.trim(u8, type_expr, " \t\r\n"),
             label,
-            no_alias,
-            comp_time,
+            tooltip,
+            is_noalias,
+            is_comptime,
         );
     }
 }
 
-fn typeStrOfNode(builder: *Builder, node: Ast.Node.Index) !?[]const u8 {
-    const resolved_type = try builder.analyser.resolveTypeOfNode(.{ .handle = builder.handle, .node = node }) orelse return null;
-
-    const type_str: []const u8 =
-        if (resolved_type.is_type_val and resolved_type.isNamespace())
-            "namespace"
-        else
-            try std.fmt.allocPrint(
-                builder.arena,
-                "{}",
-                .{resolved_type.fmt(builder.analyser, .{ .truncate_container_decls = true })},
-            );
-    if (type_str.len == 0) return null;
-
-    return type_str;
+fn typeStrOfNode(builder: *Builder, node: Ast.Node.Index) Analyser.Error!?[]const u8 {
+    const resolved_type = try builder.analyser.resolveTypeOfNode(.of(node, builder.handle)) orelse return null;
+    return try resolved_type.stringifyTypeOf(
+        builder.analyser,
+        .{ .truncate_container_decls = true },
+    );
 }
 
-fn typeStrOfToken(builder: *Builder, token: Ast.TokenIndex) !?[]const u8 {
+fn typeStrOfToken(builder: *Builder, token: Ast.TokenIndex) Analyser.Error!?[]const u8 {
     const things = try builder.analyser.lookupSymbolGlobal(
         builder.handle,
-        offsets.tokenToSlice(builder.handle.tree, token),
-        offsets.tokenToIndex(builder.handle.tree, token),
+        offsets.tokenToSlice(&builder.handle.tree, token),
+        builder.handle.tree.tokenStart(token),
     ) orelse return null;
     const resolved_type = try things.resolveType(builder.analyser) orelse return null;
-
-    const type_str: []const u8 = try std.fmt.allocPrint(
-        builder.arena,
-        "{}",
-        .{resolved_type.fmt(builder.analyser, .{ .truncate_container_decls = true })},
+    return try resolved_type.stringifyTypeOf(
+        builder.analyser,
+        .{ .truncate_container_decls = true },
     );
-    if (type_str.len == 0) return null;
-
-    return type_str;
 }
 
 /// Append a hint in the form `: hint`
-fn appendTypeHintString(builder: *Builder, type_token_index: Ast.TokenIndex, hint: []const u8) !void {
-    const name = offsets.tokenToSlice(builder.handle.tree, type_token_index);
+fn appendTypeHintString(builder: *Builder, type_token_index: Ast.TokenIndex, hint: []const u8) error{OutOfMemory}!void {
+    const name = offsets.tokenToSlice(&builder.handle.tree, type_token_index);
     if (std.mem.eql(u8, name, "_")) {
         return;
     }
 
     try builder.hints.append(builder.arena, .{
-        .index = offsets.tokenToLoc(builder.handle.tree, type_token_index).end,
+        .index = offsets.tokenToLoc(&builder.handle.tree, type_token_index).end,
         .label = try std.fmt.allocPrint(builder.arena, ": {s}", .{hint}),
         // TODO: Implement on-hover stuff.
         .tooltip = null,
@@ -418,22 +359,21 @@ fn appendTypeHintString(builder: *Builder, type_token_index: Ast.TokenIndex, hin
     });
 }
 
-fn inferAppendTypeStr(builder: *Builder, token: Ast.TokenIndex) !void {
+fn inferAppendTypeStr(builder: *Builder, token: Ast.TokenIndex) Analyser.Error!void {
     const type_str = try typeStrOfToken(builder, token) orelse return;
     try appendTypeHintString(builder, token, type_str);
 }
 
-fn writeForCaptureHint(builder: *Builder, for_node: Ast.Node.Index) !void {
+fn writeForCaptureHint(builder: *Builder, for_node: Ast.Node.Index) Analyser.Error!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    const tree = builder.handle.tree;
+    const tree = &builder.handle.tree;
     const full_for = ast.fullFor(tree, for_node).?;
-    const token_tags = tree.tokens.items(.tag);
     var capture_token = full_for.payload_token;
     for (full_for.ast.inputs) |_| {
         if (capture_token + 1 >= tree.tokens.len) break;
-        const capture_is_ref = token_tags[capture_token] == .asterisk;
+        const capture_is_ref = tree.tokenTag(capture_token) == .asterisk;
         const name_token = capture_token + @intFromBool(capture_is_ref);
         capture_token = name_token + 2;
 
@@ -444,7 +384,7 @@ fn writeForCaptureHint(builder: *Builder, for_node: Ast.Node.Index) !void {
 }
 
 /// takes a Ast.full.Call (a function call), analysis its function expression, finds its declaration and writes parameter hints into `builder.hints`
-fn writeCallNodeHint(builder: *Builder, call: Ast.full.Call) !void {
+fn writeCallNodeHint(builder: *Builder, call: Ast.full.Call) Analyser.Error!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -452,37 +392,27 @@ fn writeCallNodeHint(builder: *Builder, call: Ast.full.Call) !void {
     if (builder.config.inlay_hints_exclude_single_argument and call.ast.params.len == 1) return;
 
     const handle = builder.handle;
-    const tree = handle.tree;
-    const node_tags = tree.nodes.items(.tag);
+    const tree = &handle.tree;
 
-    switch (node_tags[call.ast.fn_expr]) {
+    switch (tree.nodeTag(call.ast.fn_expr)) {
         .identifier, .field_access, .enum_literal => try writeCallHint(builder, call),
         else => {
-            log.debug("cannot deduce fn expression with tag '{}'", .{node_tags[call.ast.fn_expr]});
+            // This becomes a very bandwith intensive warning
+            // log.debug("cannot deduce fn expression with tag '{}'", .{tree.nodeTag(call.ast.fn_expr)});
         },
     }
 }
 
 fn writeNodeInlayHint(
     builder: *Builder,
-    tree: Ast,
+    tree: *const Ast,
     node: Ast.Node.Index,
-) error{OutOfMemory}!void {
-    const node_tags = tree.nodes.items(.tag);
-    const main_tokens = tree.nodes.items(.main_token);
-    const token_tags = tree.tokens.items(.tag);
-
-    const tag = node_tags[node];
-
-    switch (tag) {
+) Analyser.Error!void {
+    switch (tree.nodeTag(node)) {
         .call_one,
         .call_one_comma,
-        .async_call_one,
-        .async_call_one_comma,
         .call,
         .call_comma,
-        .async_call,
-        .async_call_comma,
         => {
             if (!builder.config.inlay_hints_show_parameter_name) return;
 
@@ -497,7 +427,7 @@ fn writeNodeInlayHint(
         => {
             if (!builder.config.inlay_hints_show_variable_type_hints) return;
             const var_decl = builder.handle.tree.fullVarDecl(node).?;
-            if (var_decl.ast.type_node != 0) return;
+            if (var_decl.ast.type_node != .none) return;
 
             try appendTypeHintString(
                 builder,
@@ -505,32 +435,12 @@ fn writeNodeInlayHint(
                 try typeStrOfNode(builder, node) orelse return,
             );
         },
-        .assign => {
-            const ndata = tree.nodes.items(.data)[node];
-            if (ndata.lhs == 0) return;
-            const decl = Analyser.DeclWithHandle{ .decl = .{ .ast_node = ndata.lhs }, .handle = builder.handle };
-            const ty = try decl.resolveType(builder.analyser) orelse return;
-            const type_str: []const u8 = try std.fmt.allocPrint(
-                builder.arena,
-                "{}",
-                .{ty.fmt(builder.analyser, .{ .truncate_container_decls = true })},
-            );
-            if (type_str.len != 0)
-                try appendTypeHintString(
-                    builder,
-                    tree.lastToken(ndata.lhs),
-                    type_str,
-                );
-        },
         .assign_destructure => {
             if (!builder.config.inlay_hints_show_variable_type_hints) return;
-            const dat = tree.nodes.items(.data);
-            const lhs_count = tree.extra_data[dat[node].lhs];
-            const lhs_exprs = tree.extra_data[dat[node].lhs + 1 ..][0..lhs_count];
-
-            for (lhs_exprs) |lhs_node| {
+            const assign_destructure = tree.assignDestructure(node);
+            for (assign_destructure.ast.variables) |lhs_node| {
                 const var_decl = tree.fullVarDecl(lhs_node) orelse continue;
-                if (var_decl.ast.type_node != 0) continue;
+                if (var_decl.ast.type_node != .none) continue;
                 try inferAppendTypeStr(builder, var_decl.ast.mut_token + 1);
             }
         },
@@ -569,10 +479,10 @@ fn writeNodeInlayHint(
         .@"catch" => {
             if (!builder.config.inlay_hints_show_variable_type_hints) return;
 
-            const catch_token = main_tokens[node] + 2;
+            const catch_token = tree.nodeMainToken(node) + 2;
             if (catch_token < tree.tokens.len and
-                token_tags[catch_token - 1] == .pipe and
-                token_tags[catch_token] == .identifier)
+                tree.tokenTag(catch_token - 1) == .pipe and
+                tree.tokenTag(catch_token) == .identifier)
             {
                 try inferAppendTypeStr(builder, catch_token);
             }
@@ -584,16 +494,16 @@ fn writeNodeInlayHint(
         => {
             if (!builder.config.inlay_hints_show_parameter_name or !builder.config.inlay_hints_show_builtin) return;
 
-            const name = tree.tokenSlice(main_tokens[node]);
+            const name = tree.tokenSlice(tree.nodeMainToken(node));
             if (name.len < 2 or excluded_builtins_set.has(name[1..])) return;
 
             var buffer: [2]Ast.Node.Index = undefined;
-            const params = ast.builtinCallParams(tree, node, &buffer).?;
+            const params = tree.builtinCallParams(&buffer, node).?;
 
             if (params.len == 0) return;
 
             if (data.builtins.get(name)) |builtin| {
-                try writeBuiltinHint(builder, params, builtin.arguments);
+                try writeBuiltinHint(builder, params, builtin.parameters);
             }
         },
         .struct_init_one,
@@ -610,16 +520,11 @@ fn writeNodeInlayHint(
             const struct_init = tree.fullStructInit(&buffer, node).?;
             for (struct_init.ast.fields) |value_node| { // the node of `value` in `.name = value`
                 const name_token = tree.firstToken(value_node) - 2; // math our way two token indexes back to get the `name`
-                if (token_tags[name_token] != .identifier) continue; // cause: `.{ .name =<insert dot here> .some`
                 const name_loc = offsets.tokenToLoc(tree, name_token);
-                const name = offsets.identifierTokenToNameSlice(tree, name_token);
-                const decl = (try builder.analyser.getSymbolEnumLiteral(builder.arena, builder.handle, name_loc.start, name)) orelse continue;
+                const name = offsets.locToSlice(tree.source, name_loc);
+                const decl = (try builder.analyser.getSymbolEnumLiteral(builder.handle, name_loc.start, name)) orelse continue;
                 const ty = try decl.resolveType(builder.analyser) orelse continue;
-                const type_str: []const u8 = try std.fmt.allocPrint(
-                    builder.arena,
-                    "{}",
-                    .{ty.fmt(builder.analyser, .{ .truncate_container_decls = true })},
-                );
+                const type_str = try ty.stringifyTypeOf(builder.analyser, .{ .truncate_container_decls = true });
                 if (type_str.len == 0) continue;
                 try appendTypeHintString(
                     builder,
@@ -628,31 +533,6 @@ fn writeNodeInlayHint(
                 );
             }
         },
-        // .field_access => {
-        //     const last_tok = tree.lastToken(node);
-        //     if (!(last_tok < token_tags.len - 1)) return;
-        //     switch (token_tags[last_tok + 1]) {
-        //         // Play with these two
-        //         // .equal_equal,
-        //         // .bang_equal,
-        //         => {},
-        //         // .equal, // wrong -- see the `.assign` switch case ^
-        //         else => return,
-        //     }
-        //     const decl = Analyser.DeclWithHandle{ .decl = .{ .ast_node = node }, .handle = builder.handle };
-        //     const ty = try decl.resolveType(builder.analyser) orelse return;
-        //     const type_str: []const u8 = try std.fmt.allocPrint(
-        //         builder.arena,
-        //         "{}",
-        //         .{ty.fmt(builder.analyser, .{ .truncate_container_decls = true })},
-        //     );
-        //     if (type_str.len != 0)
-        //         try appendTypeHintString(
-        //             builder,
-        //             last_tok,
-        //             type_str,
-        //         );
-        // },
         else => {},
     }
 }
@@ -662,26 +542,31 @@ fn writeNodeInlayHint(
 /// only hints in the given loc are created
 pub fn writeRangeInlayHint(
     arena: std.mem.Allocator,
-    config: Config,
+    config: *const Config,
     analyser: *Analyser,
     handle: *DocumentStore.Handle,
     loc: offsets.Loc,
     hover_kind: types.MarkupKind,
     offset_encoding: offsets.Encoding,
-) error{OutOfMemory}![]types.InlayHint {
+) Analyser.Error![]types.InlayHint {
     var builder: Builder = .{
         .arena = arena,
         .analyser = analyser,
-        .config = &config,
+        .config = config,
         .handle = handle,
         .hover_kind = hover_kind,
     };
 
-    const nodes = try ast.nodesAtLoc(arena, handle.tree, loc);
+    const nodes = try ast.nodesAtLoc(arena, &handle.tree, loc);
 
     for (nodes) |child| {
-        try writeNodeInlayHint(&builder, handle.tree, child);
-        try ast.iterateChildrenRecursive(handle.tree, child, &builder, error{OutOfMemory}, writeNodeInlayHint);
+        try writeNodeInlayHint(&builder, &handle.tree, child);
+
+        var walker: ast.Walker = try .init(arena, &handle.tree, child);
+        defer walker.deinit(arena);
+        while (try walker.nextIgnoreClose(arena, &handle.tree)) |node| {
+            try writeNodeInlayHint(&builder, &handle.tree, node);
+        }
     }
 
     return try builder.getInlayHints(offset_encoding);
