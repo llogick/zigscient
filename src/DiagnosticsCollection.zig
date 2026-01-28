@@ -1,10 +1,12 @@
 const std = @import("std");
 const lsp = @import("lsp");
+const tracy = @import("tracy");
 const offsets = @import("offsets.zig");
 const URI = @import("uri.zig");
 
+io: std.Io,
 allocator: std.mem.Allocator,
-mutex: std.Thread.Mutex = .{},
+mutex: std.Io.Mutex = .init,
 tag_set: std.AutoArrayHashMapUnmanaged(Tag, struct {
     version: u32 = 0,
     error_bundle_src_base_path: ?[]const u8 = null,
@@ -18,21 +20,23 @@ tag_set: std.AutoArrayHashMapUnmanaged(Tag, struct {
     }) = .empty,
 }) = .empty,
 outdated_files: std.StringArrayHashMapUnmanaged(void) = .empty,
-transport: ?lsp.AnyTransport = null,
+transport: ?*lsp.Transport = null,
 offset_encoding: offsets.Encoding = .@"utf-16",
 
 const DiagnosticsCollection = @This();
 
-/// Diangostics with different tags are treated independently.
+/// Diagnostics with different tags are treated independently.
 /// This enables the DiagnosticsCollection to differentiate syntax level errors from build-on-save errors.
 /// Build on Save diagnostics have an tag that is the hash of the build step and the path to the `build.zig`
 pub const Tag = enum(u32) {
-    /// * `std.zig.Ast.parse`
-    /// * ast-check
-    /// * warn_style
+    /// - `std.zig.Ast.parse`
+    /// - ast-check
+    /// - warn_style
     parse,
     /// errors from `@cImport`
     cimport,
+    /// - Build On Save
+    /// - Build Runner
     _,
 };
 
@@ -68,8 +72,11 @@ pub fn pushSingleDocumentDiagnostics(
         error_bundle: std.zig.ErrorBundle,
     },
 ) error{OutOfMemory}!void {
-    collection.mutex.lock();
-    defer collection.mutex.unlock();
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
+
+    collection.mutex.lockUncancelable(collection.io);
+    defer collection.mutex.unlock(collection.io);
 
     const gop_tag = try collection.tag_set.getOrPutValue(collection.allocator, tag, .{});
 
@@ -117,12 +124,15 @@ pub fn pushErrorBundle(
     src_base_path: ?[]const u8,
     error_bundle: std.zig.ErrorBundle,
 ) error{OutOfMemory}!void {
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
+
     var new_error_bundle: std.zig.ErrorBundle.Wip = undefined;
     try new_error_bundle.init(collection.allocator);
     defer new_error_bundle.deinit();
 
-    collection.mutex.lock();
-    defer collection.mutex.unlock();
+    collection.mutex.lockUncancelable(collection.io);
+    defer collection.mutex.unlock(collection.io);
 
     const gop = try collection.tag_set.getOrPutValue(collection.allocator, tag, .{});
     const version_order = std.math.order(version, gop.value_ptr.version);
@@ -135,20 +145,27 @@ pub fn pushErrorBundle(
 
     if (error_bundle.errorMessageCount() == 0 and gop.value_ptr.error_bundle.errorMessageCount() == 0) return;
 
-    try collectUrisFromErrorBundle(collection.allocator, error_bundle, src_base_path, &collection.outdated_files);
     if (error_bundle.errorMessageCount() != 0) {
+        try collectUrisFromErrorBundle(collection.allocator, error_bundle, src_base_path, &collection.outdated_files);
         try new_error_bundle.addBundleAsRoots(error_bundle);
     }
 
     if (version_order == .gt) {
-        try collectUrisFromErrorBundle(collection.allocator, gop.value_ptr.error_bundle, src_base_path, &collection.outdated_files);
+        try collectUrisFromErrorBundle(
+            collection.allocator,
+            gop.value_ptr.error_bundle,
+            gop.value_ptr.error_bundle_src_base_path,
+            &collection.outdated_files,
+        );
     } else {
         if (gop.value_ptr.error_bundle.errorMessageCount() != 0) {
             try new_error_bundle.addBundleAsRoots(gop.value_ptr.error_bundle);
         }
     }
 
-    var owned_error_bundle = try new_error_bundle.toOwnedBundle("");
+    const compile_log_text = if (error_bundle.errorMessageCount() == 0) "" else error_bundle.getCompileLogOutput();
+
+    var owned_error_bundle = try new_error_bundle.toOwnedBundle(compile_log_text);
     errdefer owned_error_bundle.deinit(collection.allocator);
 
     const duped_error_bundle_src_base_path = if (src_base_path) |base_path| try collection.allocator.dupe(u8, base_path) else null;
@@ -169,8 +186,11 @@ pub fn pushErrorBundle(
 }
 
 pub fn clearErrorBundle(collection: *DiagnosticsCollection, tag: Tag) void {
-    collection.mutex.lock();
-    defer collection.mutex.unlock();
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
+
+    collection.mutex.lockUncancelable(collection.io);
+    defer collection.mutex.unlock(collection.io);
 
     const item = collection.tag_set.getPtr(tag) orelse return;
 
@@ -189,6 +209,26 @@ pub fn clearErrorBundle(collection: *DiagnosticsCollection, tag: Tag) void {
     }
     item.error_bundle.deinit(collection.allocator);
     item.error_bundle = .empty;
+}
+
+pub fn clearSingleDocumentDiagnostics(collection: *DiagnosticsCollection, document_uri: []const u8) void {
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
+
+    collection.mutex.lockUncancelable(collection.io);
+    defer collection.mutex.unlock(collection.io);
+
+    for (collection.tag_set.values()) |*item| {
+        var kv = item.diagnostics_set.fetchSwapRemove(document_uri) orelse continue;
+        kv.value.arena.promote(collection.allocator).deinit();
+        kv.value.error_bundle.deinit(collection.allocator);
+
+        const gop = collection.outdated_files.getOrPut(collection.allocator, kv.key) catch {
+            collection.allocator.free(kv.key);
+            continue;
+        };
+        if (gop.found_existing) collection.allocator.free(kv.key);
+    }
 }
 
 fn collectUrisFromErrorBundle(
@@ -223,16 +263,17 @@ pub fn pathToUri(allocator: std.mem.Allocator, base_path: ?[]const u8, src_path:
     return try URI.fromPath(allocator, absolute_src_path);
 }
 
-pub fn publishDiagnostics(collection: *DiagnosticsCollection) (std.mem.Allocator.Error || lsp.AnyTransport.WriteError)!void {
+pub fn publishDiagnostics(collection: *DiagnosticsCollection) (std.mem.Allocator.Error || std.Io.File.Writer.Error)!void {
     const transport = collection.transport orelse return;
+    const io = collection.io;
 
     var arena_allocator: std.heap.ArenaAllocator = .init(collection.allocator);
     defer arena_allocator.deinit();
 
     while (true) {
         const json_message = blk: {
-            collection.mutex.lock();
-            defer collection.mutex.unlock();
+            try collection.mutex.lock(io);
+            defer collection.mutex.unlock(io);
 
             const entry = collection.outdated_files.pop() orelse break;
             defer collection.allocator.free(entry.key);
@@ -240,10 +281,10 @@ pub fn publishDiagnostics(collection: *DiagnosticsCollection) (std.mem.Allocator
 
             _ = arena_allocator.reset(.retain_capacity);
 
-            var diagnostics: std.ArrayListUnmanaged(lsp.types.Diagnostic) = .empty;
+            var diagnostics: std.ArrayList(lsp.types.Diagnostic) = .empty;
             try collection.collectLspDiagnosticsForDocument(document_uri, collection.offset_encoding, arena_allocator.allocator(), &diagnostics);
 
-            const notification: lsp.TypedJsonRPCNotification(lsp.types.PublishDiagnosticsParams) = .{
+            const notification: lsp.TypedJsonRPCNotification(lsp.types.publish_diagnostics.Params) = .{
                 .method = "textDocument/publishDiagnostics",
                 .params = .{
                     .uri = document_uri,
@@ -252,11 +293,14 @@ pub fn publishDiagnostics(collection: *DiagnosticsCollection) (std.mem.Allocator
             };
 
             // TODO make the diagnostics serializable without requiring the mutex to be locked
-            break :blk try std.json.stringifyAlloc(collection.allocator, notification, .{ .emit_null_optional_fields = false });
+            break :blk try std.json.Stringify.valueAlloc(collection.allocator, notification, .{ .emit_null_optional_fields = false });
         };
         defer collection.allocator.free(json_message);
 
-        try transport.writeJsonMessage(json_message);
+        const old_cancel_protect = io.swapCancelProtection(.blocked);
+        defer _ = io.swapCancelProtection(old_cancel_protect);
+
+        try transport.writeJsonMessageUncancelable(io, json_message);
     }
 }
 
@@ -265,7 +309,7 @@ fn collectLspDiagnosticsForDocument(
     document_uri: []const u8,
     offset_encoding: offsets.Encoding,
     arena: std.mem.Allocator,
-    diagnostics: *std.ArrayListUnmanaged(lsp.types.Diagnostic),
+    diagnostics: *std.ArrayList(lsp.types.Diagnostic),
 ) error{OutOfMemory}!void {
     for (collection.tag_set.values()) |entry| {
         if (entry.diagnostics_set.get(document_uri)) |per_document| {
@@ -294,13 +338,15 @@ fn collectLspDiagnosticsForDocument(
     }
 }
 
+pub const collectLspDiagnosticsForDocumentTesting = if (@import("builtin").is_test) collectLspDiagnosticsForDocument else {};
+
 fn convertErrorBundleToLSPDiangostics(
     eb: std.zig.ErrorBundle,
     error_bundle_src_base_path: ?[]const u8,
     document_uri: []const u8,
     offset_encoding: offsets.Encoding,
     arena: std.mem.Allocator,
-    diagnostics: *std.ArrayListUnmanaged(lsp.types.Diagnostic),
+    diagnostics: *std.ArrayList(lsp.types.Diagnostic),
     is_single_document: bool,
 ) error{OutOfMemory}!void {
     if (eb.errorMessageCount() == 0) return; // `getMessages` can't be called on an empty ErrorBundle
@@ -320,7 +366,7 @@ fn convertErrorBundleToLSPDiangostics(
 
         const eb_notes = eb.getNotes(msg_index);
         const relatedInformation = if (eb_notes.len == 0) null else blk: {
-            const lsp_notes = try arena.alloc(lsp.types.DiagnosticRelatedInformation, eb_notes.len);
+            const lsp_notes = try arena.alloc(lsp.types.Diagnostic.RelatedInformation, eb_notes.len);
             for (lsp_notes, eb_notes) |*lsp_note, eb_note_index| {
                 const eb_note = eb.getErrorMessage(eb_note_index);
                 if (eb_note.src_loc == .none) continue;
@@ -345,17 +391,29 @@ fn convertErrorBundleToLSPDiangostics(
             break :blk lsp_notes;
         };
 
+        var tags: std.ArrayList(lsp.types.Diagnostic.Tag) = .empty;
+
+        var message: []const u8 = eb.nullTerminatedString(err.msg);
+
+        if (std.mem.startsWith(u8, message, "unused ")) {
+            try tags.append(arena, .Unnecessary);
+        }
+        if (std.mem.eql(u8, message, "found compile log statement")) {
+            message = try std.fmt.allocPrint(arena, "{s}\n\nCompile Log Output:\n{s}", .{ message, eb.getCompileLogOutput() });
+        }
+
         try diagnostics.append(arena, .{
             .range = src_range,
             .severity = .Error,
             .source = "zigscient",
-            .message = eb.nullTerminatedString(err.msg),
+            .message = message,
+            .tags = if (tags.items.len != 0) tags.items else null,
             .relatedInformation = relatedInformation,
         });
     }
 }
 
-pub fn errorBundleSourceLocationToRange(
+fn errorBundleSourceLocationToRange(
     error_bundle: std.zig.ErrorBundle,
     src_loc: std.zig.ErrorBundle.SourceLocation,
     offset_encoding: offsets.Encoding,
@@ -410,7 +468,7 @@ test errorBundleSourceLocationToRange {
                 .source_line = null,
             },
         },
-    });
+    }, "");
     defer eb.deinit(std.testing.allocator);
 
     const src_loc0 = eb.getSourceLocation(eb.getErrorMessage(eb.getMessages()[0]).src_loc);
@@ -433,16 +491,19 @@ test DiagnosticsCollection {
 
     const arena = arena_allocator.allocator();
 
-    var collection: DiagnosticsCollection = .{ .allocator = std.testing.allocator };
+    var collection: DiagnosticsCollection = .{
+        .io = std.testing.io,
+        .allocator = std.testing.allocator,
+    };
     defer collection.deinit();
 
     try std.testing.expectEqual(0, collection.outdated_files.count());
 
-    var eb1 = try createTestingErrorBundle(&.{.{ .message = "Living For The City" }});
+    var eb1 = try createTestingErrorBundle(&.{.{ .message = "Living For The City" }}, "");
     defer eb1.deinit(std.testing.allocator);
-    var eb2 = try createTestingErrorBundle(&.{.{ .message = "You Haven't Done Nothin'" }});
+    var eb2 = try createTestingErrorBundle(&.{.{ .message = "You Haven't Done Nothin'" }}, "");
     defer eb2.deinit(std.testing.allocator);
-    var eb3 = try createTestingErrorBundle(&.{.{ .message = "As" }});
+    var eb3 = try createTestingErrorBundle(&.{.{ .message = "As" }}, "");
     defer eb3.deinit(std.testing.allocator);
 
     const uri = try URI.fromPath(std.testing.allocator, testing_src_path);
@@ -453,11 +514,11 @@ test DiagnosticsCollection {
         try std.testing.expectEqual(1, collection.outdated_files.count());
         try std.testing.expectEqualStrings(uri, collection.outdated_files.keys()[0]);
 
-        var diagnostics: std.ArrayListUnmanaged(lsp.types.Diagnostic) = .empty;
+        var diagnostics: std.ArrayList(lsp.types.Diagnostic) = .empty;
         try collection.collectLspDiagnosticsForDocument(uri, .@"utf-8", arena, &diagnostics);
 
         try std.testing.expectEqual(1, diagnostics.items.len);
-        try std.testing.expectEqual(lsp.types.DiagnosticSeverity.Error, diagnostics.items[0].severity);
+        try std.testing.expectEqual(lsp.types.Diagnostic.Severity.Error, diagnostics.items[0].severity);
         try std.testing.expectEqualStrings("Living For The City", diagnostics.items[0].message);
         try std.testing.expectEqual(null, diagnostics.items[0].relatedInformation);
     }
@@ -465,7 +526,7 @@ test DiagnosticsCollection {
     {
         try collection.pushErrorBundle(.parse, 0, null, eb2);
 
-        var diagnostics: std.ArrayListUnmanaged(lsp.types.Diagnostic) = .empty;
+        var diagnostics: std.ArrayList(lsp.types.Diagnostic) = .empty;
         try collection.collectLspDiagnosticsForDocument(uri, .@"utf-8", arena, &diagnostics);
 
         try std.testing.expectEqual(1, diagnostics.items.len);
@@ -475,7 +536,7 @@ test DiagnosticsCollection {
     {
         try collection.pushErrorBundle(.parse, 2, null, eb2);
 
-        var diagnostics: std.ArrayListUnmanaged(lsp.types.Diagnostic) = .empty;
+        var diagnostics: std.ArrayList(lsp.types.Diagnostic) = .empty;
         try collection.collectLspDiagnosticsForDocument(uri, .@"utf-8", arena, &diagnostics);
 
         try std.testing.expectEqual(1, diagnostics.items.len);
@@ -485,7 +546,7 @@ test DiagnosticsCollection {
     {
         try collection.pushErrorBundle(.parse, 3, null, .empty);
 
-        var diagnostics: std.ArrayListUnmanaged(lsp.types.Diagnostic) = .empty;
+        var diagnostics: std.ArrayList(lsp.types.Diagnostic) = .empty;
         try collection.collectLspDiagnosticsForDocument(uri, .@"utf-8", arena, &diagnostics);
 
         try std.testing.expectEqual(0, diagnostics.items.len);
@@ -495,7 +556,7 @@ test DiagnosticsCollection {
         try collection.pushErrorBundle(@enumFromInt(16), 4, null, eb2);
         try collection.pushErrorBundle(@enumFromInt(17), 4, null, eb3);
 
-        var diagnostics: std.ArrayListUnmanaged(lsp.types.Diagnostic) = .empty;
+        var diagnostics: std.ArrayList(lsp.types.Diagnostic) = .empty;
         try collection.collectLspDiagnosticsForDocument(uri, .@"utf-8", arena, &diagnostics);
 
         try std.testing.expectEqual(2, diagnostics.items.len);
@@ -504,24 +565,64 @@ test DiagnosticsCollection {
     }
 }
 
+test "DiagnosticsCollection - compile_log_text" {
+    var collection: DiagnosticsCollection = .{
+        .io = std.testing.io,
+        .allocator = std.testing.allocator,
+    };
+    defer collection.deinit();
+
+    var eb = try createTestingErrorBundle(&.{.{ .message = "found compile log statement" }}, "@as(comptime_int, 7)\n@as(comptime_int, 13)");
+    defer eb.deinit(std.testing.allocator);
+
+    const uri = try URI.fromPath(std.testing.allocator, testing_src_path);
+    defer std.testing.allocator.free(uri);
+
+    try collection.pushErrorBundle(.parse, 1, null, eb);
+    try std.testing.expectEqual(1, collection.outdated_files.count());
+    try std.testing.expectEqualStrings(uri, collection.outdated_files.keys()[0]);
+
+    var arena_allocator: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_allocator.deinit();
+
+    const arena = arena_allocator.allocator();
+
+    var diagnostics: std.ArrayListUnmanaged(lsp.types.Diagnostic) = .empty;
+    try collection.collectLspDiagnosticsForDocument(uri, .@"utf-8", arena, &diagnostics);
+
+    try std.testing.expectEqual(1, diagnostics.items.len);
+    try std.testing.expectEqual(lsp.types.Diagnostic.Severity.Error, diagnostics.items[0].severity);
+    try std.testing.expectEqualStrings(
+        \\found compile log statement
+        \\
+        \\Compile Log Output:
+        \\@as(comptime_int, 7)
+        \\@as(comptime_int, 13)
+    , diagnostics.items[0].message);
+    try std.testing.expectEqual(null, diagnostics.items[0].relatedInformation);
+}
+
 const testing_src_path = switch (@import("builtin").os.tag) {
     .windows => "C:\\sample.zig",
     else => "/sample.zig",
 };
 
-fn createTestingErrorBundle(messages: []const struct {
-    message: []const u8,
-    count: u32 = 1,
-    source_location: struct {
-        src_path: []const u8,
-        line: u32,
-        column: u32,
-        span_start: u32,
-        span_main: u32,
-        span_end: u32,
-        source_line: ?[]const u8,
-    } = .{ .src_path = testing_src_path, .line = 0, .column = 0, .span_start = 0, .span_main = 0, .span_end = 0, .source_line = "" },
-}) error{OutOfMemory}!std.zig.ErrorBundle {
+fn createTestingErrorBundle(
+    messages: []const struct {
+        message: []const u8,
+        count: u32 = 1,
+        source_location: struct {
+            src_path: []const u8,
+            line: u32,
+            column: u32,
+            span_start: u32,
+            span_main: u32,
+            span_end: u32,
+            source_line: ?[]const u8,
+        } = .{ .src_path = testing_src_path, .line = 0, .column = 0, .span_start = 0, .span_main = 0, .span_end = 0, .source_line = "" },
+    },
+    compile_log_text: []const u8,
+) error{OutOfMemory}!std.zig.ErrorBundle {
     var eb: std.zig.ErrorBundle.Wip = undefined;
     try eb.init(std.testing.allocator);
     errdefer eb.deinit();
@@ -542,5 +643,5 @@ fn createTestingErrorBundle(messages: []const struct {
         });
     }
 
-    return eb.toOwnedBundle("");
+    return eb.toOwnedBundle(compile_log_text);
 }

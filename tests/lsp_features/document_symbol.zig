@@ -1,10 +1,9 @@
 const std = @import("std");
 const zls = @import("zls");
-const builtin = @import("builtin");
 
 const Context = @import("../context.zig").Context;
 
-const types = zls.types;
+const types = zls.lsp.types;
 
 const allocator: std.mem.Allocator = std.testing.allocator;
 
@@ -15,7 +14,7 @@ test "container decl" {
         \\};
     ,
         \\Constant S
-        \\  Function f
+        \\  Function f (fn f() void)
     );
     try testDocumentSymbol(
         \\const S = struct {
@@ -24,8 +23,8 @@ test "container decl" {
         \\};
     ,
         \\Constant S
-        \\  Field alpha
-        \\  Function f
+        \\  Field alpha (S)
+        \\  Function f (fn f() void)
     );
 }
 
@@ -40,6 +39,19 @@ test "tuple" {
     );
 }
 
+test "union" {
+    try testDocumentSymbol(
+        \\const U = union {
+        \\    alpha: u32,
+        \\    beta,
+        \\};
+    ,
+        \\Constant U
+        \\  Field alpha (U)
+        \\  Field beta (U)
+    );
+}
+
 test "enum" {
     try testDocumentSymbol(
         \\const E = enum {
@@ -48,8 +60,39 @@ test "enum" {
         \\};
     ,
         \\Constant E
-        \\  EnumMember alpha
-        \\  EnumMember beta
+        \\  EnumMember alpha (E)
+        \\  EnumMember beta (E)
+    );
+}
+
+test "invalid tuple-like container" {
+    try testDocumentSymbol(
+        \\const E = enum {
+        \\    '=',
+        \\};
+    ,
+        \\Constant E
+    );
+    try testDocumentSymbol(
+        \\const E = enum {
+        \\    @src
+        \\};
+    ,
+        \\Constant E
+    );
+    try testDocumentSymbol(
+        \\const U = union {
+        \\    '=',
+        \\};
+    ,
+        \\Constant U
+    );
+    try testDocumentSymbol(
+        \\const U = union(enum) {
+        \\    '=',
+        \\};
+    ,
+        \\Constant U
     );
 }
 
@@ -61,6 +104,14 @@ test "test decl" {
     ,
         \\Method foo
         \\Method bar
+    );
+}
+
+test "root container field" {
+    try testDocumentSymbol(
+        \\foo: u32,
+    ,
+        \\Field foo
     );
 }
 
@@ -89,18 +140,44 @@ test "nested struct with self" {
     ,
         \\Constant Foo
         \\  Constant Self
-        \\  Function foo
+        \\  Function foo (fn foo() !Self)
         \\  Constant Bar
     );
 }
 
-fn testDocumentSymbol(source: []const u8, want: []const u8) !void {
-    var ctx = try Context.init();
+test "invalid top level enum literal" {
+    try testDocumentSymbol(
+        \\.foo: u32,
+    ,
+        \\
+    );
+}
+
+test "decl names that are empty or contain whitespace return non-empty document symbol" {
+    try testDocumentSymbol(
+        \\test "" {}
+        \\test "          " {}
+        \\test " a " {}
+        \\const @"" = 0;
+        \\const @"   " = 0;
+        \\const @" a " = 0;
+    ,
+        \\Method ""
+        \\Method "          "
+        \\Method " a "
+        \\Constant @""
+        \\Constant @"   "
+        \\Constant @" a "
+    );
+}
+
+fn testDocumentSymbol(source: []const u8, expected: []const u8) !void {
+    var ctx: Context = try .init();
     defer ctx.deinit();
 
     const test_uri = try ctx.addDocument(.{ .source = source });
 
-    const params = types.DocumentSymbolParams{
+    const params: types.DocumentSymbol.Params = .{
         .textDocument = .{ .uri = test_uri },
     };
 
@@ -109,28 +186,30 @@ fn testDocumentSymbol(source: []const u8, want: []const u8) !void {
         return error.InvalidResponse;
     };
 
-    var got = std.ArrayListUnmanaged(u8){};
-    defer got.deinit(allocator);
+    var actual: std.ArrayList(u8) = .empty;
+    defer actual.deinit(allocator);
 
-    var stack = std.BoundedArray([]const types.DocumentSymbol, 16){};
-    stack.appendAssumeCapacity(response.array_of_DocumentSymbol);
+    var stack_buffer: [16][]const types.DocumentSymbol = undefined;
+    var stack: std.ArrayList([]const types.DocumentSymbol) = .initBuffer(&stack_buffer);
+    stack.appendAssumeCapacity(response.document_symbols);
 
-    var writer = got.writer(allocator);
-    while (stack.len > 0) {
-        const depth = stack.len - 1;
-        const top = stack.get(depth);
+    while (stack.items.len > 0) {
+        const depth = stack.items.len - 1;
+        const top = stack.items[depth];
         if (top.len > 0) {
-            try writer.writeByteNTimes(' ', (depth) * 2);
-            try writer.print("{s} {s}\n", .{ @tagName(top[0].kind), top[0].name });
+            try actual.appendNTimes(allocator, ' ', depth * 2);
+            try actual.print(allocator, "{t} {s}", .{ top[0].kind, top[0].name });
+            if (top[0].detail) |detail| try actual.print(allocator, " ({s})", .{detail});
+            try actual.append(allocator, '\n');
             if (top[0].children) |children| {
-                try stack.append(children);
+                try stack.appendBounded(children);
             }
-            stack.set(depth, top[1..]);
+            stack.items[depth] = top[1..];
         } else {
             _ = stack.pop();
         }
     }
-    _ = got.pop(); // Final \n
+    _ = actual.pop(); // Final \n
 
-    try std.testing.expectEqualStrings(want, got.items);
+    try std.testing.expectEqualStrings(expected, actual.items);
 }

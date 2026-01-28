@@ -4,139 +4,21 @@
 
 const std = @import("std");
 const offsets = @import("offsets.zig");
-const assert = std.debug.assert;
 const Ast = std.zig.Ast;
 const Node = Ast.Node;
 const full = Ast.full;
 
-pub fn fullFnProto(tree: Ast, buffer: *[1]Ast.Node.Index, node: Node.Index) ?full.FnProto {
-    return switch (tree.nodes.items(.tag)[node]) {
-        .fn_proto => fnProto(tree, node),
-        .fn_proto_multi => fnProtoMulti(tree, node),
-        .fn_proto_one => fnProtoOne(tree, buffer, node),
-        .fn_proto_simple => fnProtoSimple(tree, buffer, node),
-        .fn_decl => fullFnProto(tree, buffer, tree.nodes.items(.data)[node].lhs),
-        else => null,
-    };
-}
-
-pub fn fnProtoSimple(tree: Ast, buffer: *[1]Node.Index, node: Node.Index) full.FnProto {
-    assert(tree.nodes.items(.tag)[node] == .fn_proto_simple);
-    const data = tree.nodes.items(.data)[node];
-    buffer[0] = data.lhs;
-    const params = if (data.lhs == 0) buffer[0..0] else buffer[0..1];
-    return fullFnProtoComponents(tree, .{
-        .proto_node = node,
-        .fn_token = tree.nodes.items(.main_token)[node],
-        .return_type = data.rhs,
-        .params = params,
-        .align_expr = 0,
-        .addrspace_expr = 0,
-        .section_expr = 0,
-        .callconv_expr = 0,
-    });
-}
-
-pub fn fnProtoMulti(tree: Ast, node: Node.Index) full.FnProto {
-    assert(tree.nodes.items(.tag)[node] == .fn_proto_multi);
-    const data = tree.nodes.items(.data)[node];
-    const params_range = tree.extraData(data.lhs, Node.SubRange);
-    const params = tree.extra_data[params_range.start..params_range.end];
-    return fullFnProtoComponents(tree, .{
-        .proto_node = node,
-        .fn_token = tree.nodes.items(.main_token)[node],
-        .return_type = data.rhs,
-        .params = params,
-        .align_expr = 0,
-        .addrspace_expr = 0,
-        .section_expr = 0,
-        .callconv_expr = 0,
-    });
-}
-
-pub fn fnProtoOne(tree: Ast, buffer: *[1]Node.Index, node: Node.Index) full.FnProto {
-    assert(tree.nodes.items(.tag)[node] == .fn_proto_one);
-    const data = tree.nodes.items(.data)[node];
-    const extra = tree.extraData(data.lhs, Node.FnProtoOne);
-    buffer[0] = extra.param;
-    const params = if (extra.param == 0) buffer[0..0] else buffer[0..1];
-    return fullFnProtoComponents(tree, .{
-        .proto_node = node,
-        .fn_token = tree.nodes.items(.main_token)[node],
-        .return_type = data.rhs,
-        .params = params,
-        .align_expr = extra.align_expr,
-        .addrspace_expr = extra.addrspace_expr,
-        .section_expr = extra.section_expr,
-        .callconv_expr = extra.callconv_expr,
-    });
-}
-
-pub fn fnProto(tree: Ast, node: Node.Index) full.FnProto {
-    assert(tree.nodes.items(.tag)[node] == .fn_proto);
-    const data = tree.nodes.items(.data)[node];
-    const extra = tree.extraData(data.lhs, Node.FnProto);
-    const params = tree.extra_data[extra.params_start..extra.params_end];
-    return fullFnProtoComponents(tree, .{
-        .proto_node = node,
-        .fn_token = tree.nodes.items(.main_token)[node],
-        .return_type = data.rhs,
-        .params = params,
-        .align_expr = extra.align_expr,
-        .addrspace_expr = extra.addrspace_expr,
-        .section_expr = extra.section_expr,
-        .callconv_expr = extra.callconv_expr,
-    });
-}
-
-fn fullFnProtoComponents(tree: Ast, info: full.FnProto.Components) full.FnProto {
-    const token_tags = tree.tokens.items(.tag);
-    var result: full.FnProto = .{
-        .ast = info,
-        .visib_token = null,
-        .extern_export_inline_token = null,
-        .lib_name = null,
-        .name_token = null,
-        .lparen = undefined,
-    };
-    var i = info.fn_token;
-    while (i > 0) {
-        i -= 1;
-        switch (token_tags[i]) {
-            .keyword_extern,
-            .keyword_export,
-            .keyword_inline,
-            .keyword_noinline,
-            => result.extern_export_inline_token = i,
-            .keyword_pub => result.visib_token = i,
-            .string_literal => result.lib_name = i,
-            else => break,
-        }
-    }
-    const after_fn_token = info.fn_token + 1;
-    if (token_tags[after_fn_token] == .identifier) {
-        result.name_token = after_fn_token;
-        result.lparen = after_fn_token + 1;
-    } else {
-        result.lparen = after_fn_token;
-    }
-    // This gets triggered badly if backspaced one char at a time given a `fn name() !T`
-    // assert(token_tags[result.lparen] == .l_paren);
-
-    return result;
-}
-fn fullPtrTypeComponents(tree: Ast, info: full.PtrType.Components) full.PtrType {
-    const token_tags = tree.tokens.items(.tag);
-    const size: std.builtin.Type.Pointer.Size = switch (token_tags[info.main_token]) {
+fn fullPtrTypeComponents(tree: *const Ast, info: full.PtrType.Components) full.PtrType {
+    const size: std.builtin.Type.Pointer.Size = switch (tree.tokenTag(info.main_token)) {
         .asterisk,
         .asterisk_asterisk,
-        => switch (token_tags[info.main_token + 1]) {
+        => switch (tree.tokenTag(info.main_token + 1)) {
             .r_bracket, .colon => .many,
-            .identifier => if (info.main_token != 0 and token_tags[info.main_token - 1] == .l_bracket) .c else .one,
+            .identifier => if (info.main_token != 0 and tree.tokenTag(info.main_token - 1) == .l_bracket) .c else .one,
             else => .one,
         },
-        .l_bracket => switch (token_tags[info.main_token + 1]) {
-            .asterisk => if (token_tags[info.main_token + 2] == .identifier) .c else .many,
+        .l_bracket => switch (tree.tokenTag(info.main_token + 1)) {
+            .asterisk => if (tree.tokenTag(info.main_token + 2) == .identifier) .c else .many,
             else => .slice,
         },
         else => unreachable,
@@ -152,23 +34,22 @@ fn fullPtrTypeComponents(tree: Ast, info: full.PtrType.Components) full.PtrType 
     // here while looking for modifiers as that could result in false
     // positives. Therefore, start after a sentinel if there is one and
     // skip over any align node and bit range nodes.
-    var i = if (info.sentinel != 0) tree.lastToken(info.sentinel) + 1 else switch (size) {
+    var i = if (info.sentinel.unwrap()) |sentinel| lastToken(tree, sentinel) + 1 else switch (size) {
         .many, .c => info.main_token + 1,
         else => info.main_token,
     };
     const end = tree.firstToken(info.child_type);
     while (i < end) : (i += 1) {
-        switch (token_tags[i]) {
+        switch (tree.tokenTag(i)) {
             .keyword_allowzero => result.allowzero_token = i,
             .keyword_const => result.const_token = i,
             .keyword_volatile => result.volatile_token = i,
             .keyword_align => {
-                std.debug.assert(info.align_node != 0);
-                if (info.bit_range_end != 0) {
-                    std.debug.assert(info.bit_range_start != 0);
-                    i = lastToken(tree, info.bit_range_end) + 1;
+                const align_node = info.align_node.unwrap().?;
+                if (info.bit_range_end.unwrap()) |bit_range_end| {
+                    i = lastToken(tree, bit_range_end) + 1;
                 } else {
-                    i = lastToken(tree, info.align_node) + 1;
+                    i = lastToken(tree, align_node) + 1;
                 }
             },
             else => {},
@@ -177,79 +58,76 @@ fn fullPtrTypeComponents(tree: Ast, info: full.PtrType.Components) full.PtrType 
     return result;
 }
 
-pub fn ptrTypeSimple(tree: Ast, node: Node.Index) full.PtrType {
-    std.debug.assert(tree.nodes.items(.tag)[node] == .ptr_type);
-    const data = tree.nodes.items(.data)[node];
-    const extra = tree.extraData(data.lhs, Node.PtrType);
+pub fn ptrTypeSimple(tree: *const Ast, node: Node.Index) full.PtrType {
+    std.debug.assert(tree.nodeTag(node) == .ptr_type);
+    const extra_index, const child_type = tree.nodeData(node).extra_and_node;
+    const extra = tree.extraData(extra_index, Node.PtrType);
     return fullPtrTypeComponents(tree, .{
-        .main_token = tree.nodes.items(.main_token)[node],
+        .main_token = tree.nodeMainToken(node),
         .align_node = extra.align_node,
         .addrspace_node = extra.addrspace_node,
         .sentinel = extra.sentinel,
-        .bit_range_start = 0,
-        .bit_range_end = 0,
-        .child_type = data.rhs,
+        .bit_range_start = .none,
+        .bit_range_end = .none,
+        .child_type = child_type,
     });
 }
 
-pub fn ptrTypeSentinel(tree: Ast, node: Node.Index) full.PtrType {
-    std.debug.assert(tree.nodes.items(.tag)[node] == .ptr_type_sentinel);
-    const data = tree.nodes.items(.data)[node];
+pub fn ptrTypeSentinel(tree: *const Ast, node: Node.Index) full.PtrType {
+    std.debug.assert(tree.nodeTag(node) == .ptr_type_sentinel);
+    const sentinel, const child_type = tree.nodeData(node).opt_node_and_node;
     return fullPtrTypeComponents(tree, .{
-        .main_token = tree.nodes.items(.main_token)[node],
-        .align_node = 0,
-        .addrspace_node = 0,
-        .sentinel = data.lhs,
-        .bit_range_start = 0,
-        .bit_range_end = 0,
-        .child_type = data.rhs,
+        .main_token = tree.nodeMainToken(node),
+        .align_node = .none,
+        .addrspace_node = .none,
+        .sentinel = sentinel,
+        .bit_range_start = .none,
+        .bit_range_end = .none,
+        .child_type = child_type,
     });
 }
 
-pub fn ptrTypeAligned(tree: Ast, node: Node.Index) full.PtrType {
-    std.debug.assert(tree.nodes.items(.tag)[node] == .ptr_type_aligned);
-    const data = tree.nodes.items(.data)[node];
+pub fn ptrTypeAligned(tree: *const Ast, node: Node.Index) full.PtrType {
+    std.debug.assert(tree.nodeTag(node) == .ptr_type_aligned);
+    const align_node, const child_type = tree.nodeData(node).opt_node_and_node;
     return fullPtrTypeComponents(tree, .{
-        .main_token = tree.nodes.items(.main_token)[node],
-        .align_node = data.lhs,
-        .addrspace_node = 0,
-        .sentinel = 0,
-        .bit_range_start = 0,
-        .bit_range_end = 0,
-        .child_type = data.rhs,
+        .main_token = tree.nodeMainToken(node),
+        .align_node = align_node,
+        .addrspace_node = .none,
+        .sentinel = .none,
+        .bit_range_start = .none,
+        .bit_range_end = .none,
+        .child_type = child_type,
     });
 }
 
-pub fn ptrTypeBitRange(tree: Ast, node: Node.Index) full.PtrType {
-    std.debug.assert(tree.nodes.items(.tag)[node] == .ptr_type_bit_range);
-    const data = tree.nodes.items(.data)[node];
-    const extra = tree.extraData(data.lhs, Node.PtrTypeBitRange);
+pub fn ptrTypeBitRange(tree: *const Ast, node: Node.Index) full.PtrType {
+    std.debug.assert(tree.nodeTag(node) == .ptr_type_bit_range);
+    const extra_index, const child_type = tree.nodeData(node).extra_and_node;
+    const extra = tree.extraData(extra_index, Node.PtrTypeBitRange);
     return fullPtrTypeComponents(tree, .{
-        .main_token = tree.nodes.items(.main_token)[node],
-        .align_node = extra.align_node,
+        .main_token = tree.nodeMainToken(node),
+        .align_node = extra.align_node.toOptional(),
         .addrspace_node = extra.addrspace_node,
         .sentinel = extra.sentinel,
-        .bit_range_start = extra.bit_range_start,
-        .bit_range_end = extra.bit_range_end,
-        .child_type = data.rhs,
+        .bit_range_start = extra.bit_range_start.toOptional(),
+        .bit_range_end = extra.bit_range_end.toOptional(),
+        .child_type = child_type,
     });
 }
 
-fn fullAsmComponents(tree: Ast, info: full.Asm.Components) full.Asm {
-    const token_tags = tree.tokens.items(.tag);
-    const node_tags = tree.nodes.items(.tag);
+fn fullAsmComponents(tree: *const Ast, info: full.Asm.Components) full.Asm {
     var result: full.Asm = .{
         .ast = info,
         .volatile_token = null,
         .inputs = &.{},
         .outputs = &.{},
-        .first_clobber = null,
     };
-    if (info.asm_token + 1 < tree.tokens.len and token_tags[info.asm_token + 1] == .keyword_volatile) {
+    if (info.asm_token + 1 < tree.tokens.len and tree.tokenTag(info.asm_token + 1) == .keyword_volatile) {
         result.volatile_token = info.asm_token + 1;
     }
     const outputs_end: usize = for (info.items, 0..) |item, i| {
-        switch (node_tags[item]) {
+        switch (tree.nodeTag(item)) {
             .asm_output => continue,
             else => break i,
         }
@@ -258,71 +136,34 @@ fn fullAsmComponents(tree: Ast, info: full.Asm.Components) full.Asm {
     result.outputs = info.items[0..outputs_end];
     result.inputs = info.items[outputs_end..];
 
-    if (info.items.len == 0) {
-        // asm ("foo" ::: "a", "b");
-        const template_token = lastToken(tree, info.template);
-        if (template_token + 4 < tree.tokens.len and
-            token_tags[template_token + 1] == .colon and
-            token_tags[template_token + 2] == .colon and
-            token_tags[template_token + 3] == .colon and
-            token_tags[template_token + 4] == .string_literal)
-        {
-            result.first_clobber = template_token + 4;
-        }
-    } else if (result.inputs.len != 0) {
-        // asm ("foo" :: [_] "" (y) : "a", "b");
-        const last_input = result.inputs[result.inputs.len - 1];
-        const rparen = lastToken(tree, last_input);
-        var i = rparen + 1;
-        // Allow a (useless) comma right after the closing parenthesis.
-        if (token_tags[i] == .comma) i += 1;
-        if (token_tags[i] == .colon and
-            token_tags[i + 1] == .string_literal)
-        {
-            result.first_clobber = i + 1;
-        }
-    } else {
-        // asm ("foo" : [_] "" (x) :: "a", "b");
-        const last_output = result.outputs[result.outputs.len - 1];
-        const rparen = lastToken(tree, last_output);
-        var i = rparen + 1;
-        // Allow a (useless) comma right after the closing parenthesis.
-        if (i + 1 < tree.tokens.len and token_tags[i] == .comma) i += 1;
-        if (i + 2 < tree.tokens.len and
-            token_tags[i] == .colon and
-            token_tags[i + 1] == .colon and
-            token_tags[i + 2] == .string_literal)
-        {
-            result.first_clobber = i + 2;
-        }
-    }
-
     return result;
 }
 
-pub fn asmSimple(tree: Ast, node: Node.Index) full.Asm {
-    const data = tree.nodes.items(.data)[node];
+pub fn asmSimple(tree: *const Ast, node: Node.Index) full.Asm {
+    const template, const rparen = tree.nodeData(node).node_and_token;
     return fullAsmComponents(tree, .{
-        .asm_token = tree.nodes.items(.main_token)[node],
-        .template = data.lhs,
+        .asm_token = tree.nodeMainToken(node),
+        .template = template,
         .items = &.{},
-        .rparen = data.rhs,
+        .rparen = rparen,
+        .clobbers = .none,
     });
 }
 
-pub fn asmFull(tree: Ast, node: Node.Index) full.Asm {
-    const data = tree.nodes.items(.data)[node];
-    const extra = tree.extraData(data.rhs, Node.Asm);
+pub fn asmFull(tree: *const Ast, node: Node.Index) full.Asm {
+    const template, const extra_index = tree.nodeData(node).node_and_extra;
+    const extra = tree.extraData(extra_index, Node.Asm);
+    const items = tree.extraDataSlice(.{ .start = extra.items_start, .end = extra.items_end }, Node.Index);
     return fullAsmComponents(tree, .{
-        .asm_token = tree.nodes.items(.main_token)[node],
-        .template = data.lhs,
-        .items = tree.extra_data[extra.items_start..extra.items_end],
+        .asm_token = tree.nodeMainToken(node),
+        .template = template,
+        .items = items,
+        .clobbers = extra.clobbers,
         .rparen = extra.rparen,
     });
 }
 
-fn fullIfComponents(tree: Ast, info: full.If.Components) full.If {
-    const token_tags = tree.tokens.items(.tag);
+fn fullIfComponents(tree: *const Ast, info: full.If.Components) full.If {
     var result: full.If = .{
         .ast = info,
         .payload_token = null,
@@ -332,22 +173,22 @@ fn fullIfComponents(tree: Ast, info: full.If.Components) full.If {
     // if (cond_expr) |x|
     //              ^  ^
     const possible_payload_token = lastToken(tree, info.cond_expr) + 3;
-    const possible_payload_identifier_token = possible_payload_token + @intFromBool(token_tags[possible_payload_token] == .asterisk);
+    const possible_payload_identifier_token = possible_payload_token + @intFromBool(tree.tokenTag(possible_payload_token) == .asterisk);
     if (possible_payload_token < tree.tokens.len and
-        token_tags[possible_payload_token - 1] == .pipe and
-        token_tags[possible_payload_identifier_token] == .identifier)
+        tree.tokenTag(possible_payload_token - 1) == .pipe and
+        tree.tokenTag(possible_payload_identifier_token) == .identifier)
     {
         result.payload_token = possible_payload_token;
     }
-    if (info.else_expr != 0) {
+    if (info.else_expr != .none) {
         // then_expr else |x|
         //           ^     ^
         const possible_else_token = lastToken(tree, info.then_expr) + 1;
-        if (token_tags[possible_else_token] == .keyword_else) {
+        if (tree.tokenTag(possible_else_token) == .keyword_else) {
             result.else_token = possible_else_token;
             if (result.else_token + 2 < tree.tokens.len and
-                token_tags[result.else_token + 1] == .pipe and
-                token_tags[result.else_token + 2] == .identifier)
+                tree.tokenTag(result.else_token + 1) == .pipe and
+                tree.tokenTag(result.else_token + 2) == .identifier)
             {
                 result.error_token = result.else_token + 2;
             }
@@ -356,31 +197,30 @@ fn fullIfComponents(tree: Ast, info: full.If.Components) full.If {
     return result;
 }
 
-pub fn ifFull(tree: Ast, node: Node.Index) full.If {
-    std.debug.assert(tree.nodes.items(.tag)[node] == .@"if");
-    const data = tree.nodes.items(.data)[node];
-    const extra = tree.extraData(data.rhs, Node.If);
+pub fn ifFull(tree: *const Ast, node: Node.Index) full.If {
+    std.debug.assert(tree.nodeTag(node) == .@"if");
+    const cond_expr, const extra_index = tree.nodeData(node).node_and_extra;
+    const extra = tree.extraData(extra_index, Node.If);
     return fullIfComponents(tree, .{
-        .cond_expr = data.lhs,
+        .cond_expr = cond_expr,
         .then_expr = extra.then_expr,
-        .else_expr = extra.else_expr,
-        .if_token = tree.nodes.items(.main_token)[node],
+        .else_expr = extra.else_expr.toOptional(),
+        .if_token = tree.nodeMainToken(node),
     });
 }
 
-pub fn ifSimple(tree: Ast, node: Node.Index) full.If {
-    std.debug.assert(tree.nodes.items(.tag)[node] == .if_simple);
-    const data = tree.nodes.items(.data)[node];
+pub fn ifSimple(tree: *const Ast, node: Node.Index) full.If {
+    std.debug.assert(tree.nodeTag(node) == .if_simple);
+    const cond_expr, const then_expr = tree.nodeData(node).node_and_node;
     return fullIfComponents(tree, .{
-        .cond_expr = data.lhs,
-        .then_expr = data.rhs,
-        .else_expr = 0,
-        .if_token = tree.nodes.items(.main_token)[node],
+        .cond_expr = cond_expr,
+        .then_expr = then_expr,
+        .else_expr = .none,
+        .if_token = tree.nodeMainToken(node),
     });
 }
 
-fn fullWhileComponents(tree: Ast, info: full.While.Components) full.While {
-    const token_tags = tree.tokens.items(.tag);
+fn fullWhileComponents(tree: *const Ast, info: full.While.Components) full.While {
     var result: full.While = .{
         .ast = info,
         .inline_token = null,
@@ -390,34 +230,34 @@ fn fullWhileComponents(tree: Ast, info: full.While.Components) full.While {
         .error_token = null,
     };
     var tok_i = info.while_token -| 1;
-    if (token_tags[tok_i] == .keyword_inline) {
+    if (tree.tokenTag(tok_i) == .keyword_inline) {
         result.inline_token = tok_i;
         tok_i -= 1;
     }
-    if (token_tags[tok_i] == .colon and
-        token_tags[tok_i -| 1] == .identifier)
+    if (tree.tokenTag(tok_i) == .colon and
+        tree.tokenTag(tok_i -| 1) == .identifier)
     {
         result.label_token = tok_i -| 1;
     }
     // while (cond_expr) |x|
     //                 ^  ^
     const possible_payload_token = lastToken(tree, info.cond_expr) + 3;
-    const possible_payload_identifier_token = possible_payload_token + @intFromBool(token_tags[possible_payload_token] == .asterisk);
+    const possible_payload_identifier_token = possible_payload_token + @intFromBool(tree.tokenTag(possible_payload_token) == .asterisk);
     if (possible_payload_token < tree.tokens.len and
-        token_tags[possible_payload_token - 1] == .pipe and
-        token_tags[possible_payload_identifier_token] == .identifier)
+        tree.tokenTag(possible_payload_token - 1) == .pipe and
+        tree.tokenTag(possible_payload_identifier_token) == .identifier)
     {
         result.payload_token = possible_payload_token;
     }
-    if (info.else_expr != 0) {
+    if (info.else_expr != .none) {
         // then_expr else |x|
         //           ^     ^
         const possible_else_token = lastToken(tree, info.then_expr) + 1;
-        if (token_tags[possible_else_token] == .keyword_else) {
+        if (tree.tokenTag(possible_else_token) == .keyword_else) {
             result.else_token = possible_else_token;
             if (result.else_token + 2 < tree.tokens.len and
-                token_tags[result.else_token + 1] == .pipe and
-                token_tags[result.else_token + 2] == .identifier)
+                tree.tokenTag(result.else_token + 1) == .pipe and
+                tree.tokenTag(result.else_token + 2) == .identifier)
             {
                 result.error_token = result.else_token + 2;
             }
@@ -426,8 +266,7 @@ fn fullWhileComponents(tree: Ast, info: full.While.Components) full.While {
     return result;
 }
 
-fn fullForComponents(tree: Ast, info: full.For.Components) full.For {
-    const token_tags = tree.tokens.items(.tag);
+fn fullForComponents(tree: *const Ast, info: full.For.Components) full.For {
     var result: full.For = .{
         .ast = info,
         .inline_token = null,
@@ -436,88 +275,86 @@ fn fullForComponents(tree: Ast, info: full.For.Components) full.For {
         .else_token = 0,
     };
     var tok_i = info.for_token -| 1;
-    if (token_tags[tok_i] == .keyword_inline) {
+    if (tree.tokenTag(tok_i) == .keyword_inline) {
         result.inline_token = tok_i;
         tok_i -|= 1;
     }
-    if (token_tags[tok_i] == .colon and
-        token_tags[tok_i -| 1] == .identifier)
+    if (tree.tokenTag(tok_i) == .colon and
+        tree.tokenTag(tok_i -| 1) == .identifier)
     {
         result.label_token = tok_i -| 1;
     }
     const last_cond_token = lastToken(tree, info.inputs[info.inputs.len - 1]);
-    result.payload_token = last_cond_token + 3 + @intFromBool(token_tags[last_cond_token + 1] == .comma);
-    if (info.else_expr != 0) {
+    result.payload_token = last_cond_token + 3 + @intFromBool(tree.tokenTag(last_cond_token + 1) == .comma);
+    if (info.else_expr != .none) {
         const possible_else_token = lastToken(tree, info.then_expr) + 1;
-        if (token_tags[possible_else_token] == .keyword_else) {
+        if (tree.tokenTag(possible_else_token) == .keyword_else) {
             result.else_token = possible_else_token;
         }
     }
     return result;
 }
 
-pub fn whileSimple(tree: Ast, node: Node.Index) full.While {
-    const data = tree.nodes.items(.data)[node];
+pub fn whileSimple(tree: *const Ast, node: Node.Index) full.While {
+    const cond_expr, const then_expr = tree.nodeData(node).node_and_node;
     return fullWhileComponents(tree, .{
-        .while_token = tree.nodes.items(.main_token)[node],
-        .cond_expr = data.lhs,
-        .cont_expr = 0,
-        .then_expr = data.rhs,
-        .else_expr = 0,
+        .while_token = tree.nodeMainToken(node),
+        .cond_expr = cond_expr,
+        .cont_expr = .none,
+        .then_expr = then_expr,
+        .else_expr = .none,
     });
 }
 
-pub fn whileCont(tree: Ast, node: Node.Index) full.While {
-    const data = tree.nodes.items(.data)[node];
-    const extra = tree.extraData(data.rhs, Node.WhileCont);
+pub fn whileCont(tree: *const Ast, node: Node.Index) full.While {
+    const cond_expr, const extra_index = tree.nodeData(node).node_and_extra;
+    const extra = tree.extraData(extra_index, Node.WhileCont);
     return fullWhileComponents(tree, .{
-        .while_token = tree.nodes.items(.main_token)[node],
-        .cond_expr = data.lhs,
+        .while_token = tree.nodeMainToken(node),
+        .cond_expr = cond_expr,
+        .cont_expr = extra.cont_expr.toOptional(),
+        .then_expr = extra.then_expr,
+        .else_expr = .none,
+    });
+}
+
+pub fn whileFull(tree: *const Ast, node: Node.Index) full.While {
+    const cond_expr, const extra_index = tree.nodeData(node).node_and_extra;
+    const extra = tree.extraData(extra_index, Node.While);
+    return fullWhileComponents(tree, .{
+        .while_token = tree.nodeMainToken(node),
+        .cond_expr = cond_expr,
         .cont_expr = extra.cont_expr,
         .then_expr = extra.then_expr,
-        .else_expr = 0,
+        .else_expr = extra.else_expr.toOptional(),
     });
 }
 
-pub fn whileFull(tree: Ast, node: Node.Index) full.While {
-    const data = tree.nodes.items(.data)[node];
-    const extra = tree.extraData(data.rhs, Node.While);
-    return fullWhileComponents(tree, .{
-        .while_token = tree.nodes.items(.main_token)[node],
-        .cond_expr = data.lhs,
-        .cont_expr = extra.cont_expr,
-        .then_expr = extra.then_expr,
-        .else_expr = extra.else_expr,
-    });
-}
-
-pub fn forSimple(tree: Ast, node: Node.Index) full.For {
-    const data = &tree.nodes.items(.data)[node];
-    const inputs: *[1]Node.Index = &data.lhs;
+pub fn forSimple(tree: *const Ast, node: Node.Index) full.For {
+    const data = &tree.nodes.items(.data)[@intFromEnum(node)].node_and_node;
     return fullForComponents(tree, .{
-        .for_token = tree.nodes.items(.main_token)[node],
-        .inputs = inputs[0..1],
-        .then_expr = data.rhs,
-        .else_expr = 0,
+        .for_token = tree.nodeMainToken(node),
+        .inputs = (&data[0])[0..1],
+        .then_expr = data[1],
+        .else_expr = .none,
     });
 }
 
-pub fn forFull(tree: Ast, node: Node.Index) full.For {
-    const data = tree.nodes.items(.data)[node];
-    const extra = @as(Node.For, @bitCast(data.rhs));
-    const inputs = tree.extra_data[data.lhs..][0..extra.inputs];
-    const then_expr = tree.extra_data[data.lhs + extra.inputs];
-    const else_expr = if (extra.has_else) tree.extra_data[data.lhs + extra.inputs + 1] else 0;
+pub fn forFull(tree: *const Ast, node: Node.Index) full.For {
+    const extra_index, const extra = tree.nodeData(node).@"for";
+    const inputs = tree.extraDataSliceWithLen(extra_index, extra.inputs, Node.Index);
+    const then_expr: Node.Index = @enumFromInt(tree.extra_data[@intFromEnum(extra_index) + extra.inputs]);
+    const else_expr: Node.OptionalIndex = if (extra.has_else) @enumFromInt(tree.extra_data[@intFromEnum(extra_index) + extra.inputs + 1]) else .none;
     return fullForComponents(tree, .{
-        .for_token = tree.nodes.items(.main_token)[node],
+        .for_token = tree.nodeMainToken(node),
         .inputs = inputs,
         .then_expr = then_expr,
         .else_expr = else_expr,
     });
 }
 
-pub fn fullPtrType(tree: Ast, node: Node.Index) ?full.PtrType {
-    return switch (tree.nodes.items(.tag)[node]) {
+pub fn fullPtrType(tree: *const Ast, node: Node.Index) ?full.PtrType {
+    return switch (tree.nodeTag(node)) {
         .ptr_type_aligned => ptrTypeAligned(tree, node),
         .ptr_type_sentinel => ptrTypeSentinel(tree, node),
         .ptr_type => ptrTypeSimple(tree, node),
@@ -526,16 +363,16 @@ pub fn fullPtrType(tree: Ast, node: Node.Index) ?full.PtrType {
     };
 }
 
-pub fn fullIf(tree: Ast, node: Node.Index) ?full.If {
-    return switch (tree.nodes.items(.tag)[node]) {
+pub fn fullIf(tree: *const Ast, node: Node.Index) ?full.If {
+    return switch (tree.nodeTag(node)) {
         .if_simple => ifSimple(tree, node),
         .@"if" => ifFull(tree, node),
         else => null,
     };
 }
 
-pub fn fullWhile(tree: Ast, node: Node.Index) ?full.While {
-    return switch (tree.nodes.items(.tag)[node]) {
+pub fn fullWhile(tree: *const Ast, node: Node.Index) ?full.While {
+    return switch (tree.nodeTag(node)) {
         .while_simple => whileSimple(tree, node),
         .while_cont => whileCont(tree, node),
         .@"while" => whileFull(tree, node),
@@ -543,136 +380,32 @@ pub fn fullWhile(tree: Ast, node: Node.Index) ?full.While {
     };
 }
 
-pub fn fullFor(tree: Ast, node: Node.Index) ?full.For {
-    return switch (tree.nodes.items(.tag)[node]) {
+pub fn fullFor(tree: *const Ast, node: Node.Index) ?full.For {
+    return switch (tree.nodeTag(node)) {
         .for_simple => forSimple(tree, node),
         .@"for" => forFull(tree, node),
         else => null,
     };
 }
 
-pub fn fullAsm(tree: Ast, node: Node.Index) ?full.Asm {
-    return switch (tree.nodes.items(.tag)[node]) {
+pub fn fullAsm(tree: *const Ast, node: Node.Index) ?full.Asm {
+    return switch (tree.nodeTag(node)) {
         .asm_simple => asmSimple(tree, node),
         .@"asm" => asmFull(tree, node),
         else => null,
     };
 }
 
-fn findMatchingRBrace(tree: Ast, start: Ast.TokenIndex) ?Ast.TokenIndex {
-    return if (std.mem.indexOfScalarPos(std.zig.Token.Tag, tree.tokens.items(.tag), start, .r_brace)) |index| @intCast(index) else null;
+fn findMatchingRBrace(tree: *const Ast, start: Ast.TokenIndex) ?Ast.TokenIndex {
+    return if (std.mem.findScalarPos(std.zig.Token.Tag, tree.tokens.items(.tag), start, .r_brace)) |index| @intCast(index) else null;
 }
 
-pub fn lastToken(tree: Ast, node: Ast.Node.Index) Ast.TokenIndex {
-    const TokenIndex = Ast.TokenIndex;
-    const tags = tree.nodes.items(.tag);
-    const datas = tree.nodes.items(.data);
-    const main_tokens = tree.nodes.items(.main_token);
-    const token_starts = tree.tokens.items(.start);
-    const token_tags = tree.tokens.items(.tag);
+/// Similar to `std.zig.Ast.lastToken` but also handles ASTs with syntax errors.
+pub fn lastToken(tree: *const Ast, node: Node.Index) Ast.TokenIndex {
     var n = node;
-    var end_offset: TokenIndex = 0;
-    while (true) switch (tags[n]) {
-        .root => return @as(TokenIndex, @intCast(tree.tokens.len - 1)),
-        .@"usingnamespace" => {
-            // lhs is the expression
-            if (datas[n].lhs == 0) {
-                return main_tokens[n] + end_offset;
-            } else {
-                n = datas[n].lhs;
-            }
-        },
-        .test_decl => {
-            // rhs is the block
-            // lhs is the name
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else if (datas[n].lhs != 0) {
-                n = datas[n].lhs;
-            } else {
-                return main_tokens[n] + end_offset;
-            }
-        },
-        .global_var_decl => {
-            // rhs is init node
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else {
-                const extra = tree.extraData(datas[n].lhs, Node.GlobalVarDecl);
-                if (extra.section_node != 0) {
-                    end_offset += 1; // for the rparen
-                    n = extra.section_node;
-                } else if (extra.align_node != 0) {
-                    end_offset += 1; // for the rparen
-                    n = extra.align_node;
-                } else if (extra.type_node != 0) {
-                    n = extra.type_node;
-                } else {
-                    end_offset += 1; // from mut token to name
-                    return main_tokens[n] + end_offset;
-                }
-            }
-        },
-        .local_var_decl => {
-            // rhs is init node
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else {
-                const extra = tree.extraData(datas[n].lhs, Node.LocalVarDecl);
-                if (extra.align_node != 0) {
-                    end_offset += 1; // for the rparen
-                    n = extra.align_node;
-                } else if (extra.type_node != 0) {
-                    n = extra.type_node;
-                } else {
-                    end_offset += 1; // from mut token to name
-                    return main_tokens[n] + end_offset;
-                }
-            }
-        },
-        .simple_var_decl => {
-            // rhs is init node
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else if (datas[n].lhs != 0) {
-                n = datas[n].lhs;
-            } else {
-                end_offset += 1; // from mut token to name
-                return main_tokens[n] + end_offset;
-            }
-        },
-        .aligned_var_decl => {
-            // rhs is init node, lhs is align node
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else if (datas[n].lhs != 0) {
-                end_offset += 1; // for the rparen
-                n = datas[n].lhs;
-            } else {
-                end_offset += 1; // from mut token to name
-                return main_tokens[n] + end_offset;
-            }
-        },
-        .@"errdefer" => {
-            // lhs is the token payload, rhs is the expression
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else if (datas[n].lhs != 0) {
-                // right pipe
-                end_offset += 1;
-                n = datas[n].lhs;
-            } else {
-                return main_tokens[n] + end_offset;
-            }
-        },
-        .@"defer" => {
-            // rhs is the deferred expr
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else {
-                return main_tokens[n] + end_offset;
-            }
-        },
+    var end_offset: u32 = 0;
+    const last_token = while (true) switch (tree.nodeTag(n)) {
+        .root => return @intCast(tree.tokens.len - 1),
 
         .bool_not,
         .negation,
@@ -680,12 +413,12 @@ pub fn lastToken(tree: Ast, node: Ast.Node.Index) Ast.TokenIndex {
         .negation_wrap,
         .address_of,
         .@"try",
-        .@"await",
         .optional_type,
+        .@"suspend",
         .@"resume",
         .@"nosuspend",
         .@"comptime",
-        => n = datas[n].lhs,
+        => n = tree.nodeData(n).node,
 
         .@"catch",
         .equal_equal,
@@ -700,6 +433,7 @@ pub fn lastToken(tree: Ast, node: Ast.Node.Index) Ast.TokenIndex {
         .assign_add,
         .assign_sub,
         .assign_shl,
+        .assign_shl_sat,
         .assign_shr,
         .assign_bit_and,
         .assign_bit_xor,
@@ -710,9 +444,7 @@ pub fn lastToken(tree: Ast, node: Ast.Node.Index) Ast.TokenIndex {
         .assign_mul_sat,
         .assign_add_sat,
         .assign_sub_sat,
-        .assign_shl_sat,
         .assign,
-        .assign_destructure,
         .merge_error_sets,
         .mul,
         .div,
@@ -736,42 +468,44 @@ pub fn lastToken(tree: Ast, node: Ast.Node.Index) Ast.TokenIndex {
         .@"orelse",
         .bool_and,
         .bool_or,
-        .anyframe_type,
         .error_union,
         .if_simple,
         .while_simple,
         .for_simple,
+        .fn_decl,
+        .array_type,
+        .switch_range,
+        => n = tree.nodeData(n).node_and_node[1],
+
+        .test_decl, .@"errdefer" => n = tree.nodeData(n).opt_token_and_node[1],
+        .@"defer" => n = tree.nodeData(n).node,
+        .anyframe_type => n = tree.nodeData(n).token_and_node[1],
+
+        .switch_case_one,
+        .switch_case_inline_one,
         .ptr_type_aligned,
         .ptr_type_sentinel,
+        => n = tree.nodeData(n).opt_node_and_node[1],
+
+        .assign_destructure,
         .ptr_type,
         .ptr_type_bit_range,
-        .array_type,
-        .switch_case_one,
         .switch_case,
-        .switch_case_inline_one,
         .switch_case_inline,
-        .switch_range,
-        => n = datas[n].rhs,
+        => n = tree.nodeData(n).extra_and_node[1],
+
+        .for_range => {
+            n = tree.nodeData(n).node_and_opt_node[1].unwrap() orelse break tree.nodeMainToken(n);
+        },
 
         .field_access,
         .unwrap_optional,
-        .grouped_expression,
-        .multiline_string_literal,
-        .error_set_decl,
         .asm_simple,
-        .asm_output,
-        .asm_input,
-        => return datas[n].rhs + end_offset,
-
-        .error_value => {
-            if (datas[n].rhs != 0) {
-                return datas[n].rhs + end_offset;
-            } else if (datas[n].lhs != 0) {
-                return datas[n].lhs + end_offset;
-            } else {
-                return main_tokens[n] + end_offset;
-            }
-        },
+        => break tree.nodeData(n).node_and_token[1],
+        .grouped_expression, .asm_input => break tree.nodeData(n).node_and_token[1],
+        .multiline_string_literal, .error_set_decl => break tree.nodeData(n).token_and_token[1],
+        .asm_output => break tree.nodeData(n).opt_node_and_token[1],
+        .error_value => break @min(tree.nodeMainToken(n) + 2, tree.tokens.len - 1),
 
         .anyframe_literal,
         .char_literal,
@@ -781,475 +515,307 @@ pub fn lastToken(tree: Ast, node: Ast.Node.Index) Ast.TokenIndex {
         .deref,
         .enum_literal,
         .string_literal,
-        => return main_tokens[n] + end_offset,
+        => break tree.nodeMainToken(n),
 
-        .@"return" => if (datas[n].lhs != 0) {
-            n = datas[n].lhs;
-        } else {
-            return main_tokens[n] + end_offset;
-        },
+        .@"return" => n = tree.nodeData(n).opt_node.unwrap() orelse break tree.nodeMainToken(n),
 
-        .for_range => if (datas[n].rhs != 0) {
-            n = datas[n].rhs;
-        } else {
-            return main_tokens[n] + end_offset;
-        },
-
-        .call, .async_call => {
-            end_offset += 1; // for the rparen
-            const params = tree.extraData(datas[n].rhs, Node.SubRange);
-            if (params.end - params.start == 0) {
-                return main_tokens[n] + end_offset;
-            }
-            n = tree.extra_data[params.end - 1]; // last parameter
-        },
-        .tagged_union_enum_tag => {
-            const members = tree.extraData(datas[n].rhs, Node.SubRange);
-            if (members.end - members.start == 0) {
-                end_offset += 4; // for the rparen + rparen + lbrace + rbrace
-                n = datas[n].lhs;
-            } else {
-                end_offset += 1; // for the rbrace
-                n = tree.extra_data[members.end - 1]; // last parameter
-            }
-        },
-        .call_comma,
-        .async_call_comma,
-        .tagged_union_enum_tag_trailing,
+        .global_var_decl,
+        .local_var_decl,
+        .simple_var_decl,
+        .aligned_var_decl,
         => {
-            end_offset += 2; // for the comma/semicolon + rparen/rbrace
-            const params = tree.extraData(datas[n].rhs, Node.SubRange);
-            if (params.end - params.start == 0) {
-                return main_tokens[n] + end_offset;
-            }
-            n = tree.extra_data[params.end - 1]; // last parameter
-        },
-        .@"switch" => {
-            const cases = tree.extraData(datas[n].rhs, Node.SubRange);
-            if (cases.end - cases.start == 0) {
-                const token = lastToken(tree, datas[n].lhs) + 3; // rparen, lbrace, rbrace
-                return end_offset + (findMatchingRBrace(tree, token) orelse token);
+            const var_decl = tree.fullVarDecl(n).?;
+            if (var_decl.ast.init_node.unwrap()) |init_node| {
+                n = init_node;
+            } else if (var_decl.ast.section_node.unwrap()) |section_node| {
+                end_offset += 1; // rparen
+                n = section_node;
+            } else if (var_decl.ast.align_node.unwrap()) |align_node| {
+                end_offset += 1; // rparen
+                n = align_node;
+            } else if (var_decl.ast.type_node.unwrap()) |type_node| {
+                n = type_node;
             } else {
-                const token = lastToken(tree, tree.extra_data[cases.end - 1]) + 1; // for the rbrace
-                return end_offset + (findMatchingRBrace(tree, token) orelse token);
-            }
-        },
-        .@"asm" => {
-            const extra = tree.extraData(datas[n].rhs, Node.Asm);
-            return extra.rparen + end_offset;
-        },
-        .array_init,
-        .struct_init,
-        => {
-            const elements = tree.extraData(datas[n].rhs, Node.SubRange);
-            std.debug.assert(elements.end - elements.start > 0);
-            end_offset += 1; // for the rbrace
-            n = tree.extra_data[elements.end - 1]; // last element
-        },
-        .array_init_comma,
-        .struct_init_comma,
-        .switch_comma,
-        => {
-            if (datas[n].rhs != 0) {
-                const members = tree.extraData(datas[n].rhs, Node.SubRange);
-                std.debug.assert(members.end - members.start > 0);
-                end_offset += 2; // for the comma + rbrace
-                n = tree.extra_data[members.end - 1]; // last parameter
-            } else {
-                end_offset += 1;
-                n = datas[n].lhs;
-            }
-        },
-        .array_init_dot,
-        .struct_init_dot,
-        .container_decl,
-        .tagged_union,
-        .builtin_call,
-        => {
-            std.debug.assert(datas[n].rhs - datas[n].lhs > 0);
-            end_offset += 1; // for the rbrace
-            n = tree.extra_data[datas[n].rhs - 1]; // last statement
-        },
-        .array_init_dot_comma,
-        .struct_init_dot_comma,
-        .block_semicolon,
-        .container_decl_trailing,
-        .tagged_union_trailing,
-        .builtin_call_comma,
-        => {
-            std.debug.assert(datas[n].rhs - datas[n].lhs > 0);
-            end_offset += 2; // for the comma/semicolon + rbrace/rparen
-            n = tree.extra_data[datas[n].rhs - 1]; // last member
-        },
-        .call_one,
-        .async_call_one,
-        .array_access,
-        => {
-            end_offset += 1; // for the rparen/rbracket
-            if (datas[n].rhs == 0) {
-                return main_tokens[n] + end_offset;
-            }
-            n = datas[n].rhs;
-        },
-        .block => {
-            std.debug.assert(datas[n].rhs - datas[n].lhs > 0);
-            const token = lastToken(tree, tree.extra_data[datas[n].rhs - 1]) + 1; // for the rbrace
-            return end_offset + (findMatchingRBrace(tree, token) orelse token);
-        },
-        .block_two, .container_decl_two => {
-            if (datas[n].rhs != 0) {
-                const token = lastToken(tree, datas[n].rhs) + 1; // for the rparen/rbrace
-                return end_offset + (findMatchingRBrace(tree, token) orelse token);
-            } else if (datas[n].lhs != 0) {
-                const token = lastToken(tree, datas[n].lhs) + 1; // for the rparen/rbrace
-                return end_offset + (findMatchingRBrace(tree, token) orelse token);
-            } else {
-                const token: TokenIndex = switch (tags[n]) {
-                    .block_two => main_tokens[n] + 1, // rbrace
-                    .container_decl_two => main_tokens[n] + 2, // lbrace + rbrace
-                    else => unreachable,
-                };
-                return end_offset + (findMatchingRBrace(tree, token) orelse token);
-            }
-        },
-        .container_decl_arg,
-        .container_decl_arg_trailing,
-        => {
-            const members = tree.extraData(datas[n].rhs, Node.SubRange);
-            if (members.end - members.start == 0) {
-                const token = lastToken(tree, datas[n].lhs) + 3; // // for the rparen + lbrace + rbrace
-                return end_offset + (findMatchingRBrace(tree, token) orelse token);
-            } else {
-                const token = lastToken(tree, tree.extra_data[members.end - 1]) + 1; // for the rbrace
-                return end_offset + (findMatchingRBrace(tree, token) orelse token);
-            }
-        },
-        .array_init_dot_two,
-        .builtin_call_two,
-        .struct_init_dot_two,
-        .tagged_union_two,
-        => {
-            if (datas[n].rhs != 0) {
-                end_offset += 1; // for the rparen/rbrace
-                n = datas[n].rhs;
-            } else if (datas[n].lhs != 0) {
-                end_offset += 1; // for the rparen/rbrace
-                n = datas[n].lhs;
-            } else {
-                switch (tags[n]) {
-                    .array_init_dot_two,
-                    .struct_init_dot_two,
-                    => end_offset += 1, // rbrace
-                    .builtin_call_two => end_offset += 2, // lparen/lbrace + rparen/rbrace
-                    .tagged_union_two => {
-                        var i: u32 = 5; // (enum) {}
-                        while (token_tags[main_tokens[n] + i] == .container_doc_comment) i += 1;
-                        end_offset += i;
-                    },
-                    else => unreachable,
-                }
-                return main_tokens[n] + end_offset;
-            }
-        },
-        .array_init_dot_two_comma,
-        .builtin_call_two_comma,
-        .block_two_semicolon,
-        .struct_init_dot_two_comma,
-        .tagged_union_two_trailing,
-        .container_decl_two_trailing,
-        => {
-            end_offset += 2; // for the comma/semicolon + rbrace/rparen
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else if (datas[n].lhs != 0) {
-                n = datas[n].lhs;
-            } else {
-                return main_tokens[n] + end_offset; // returns { }
-            }
-        },
-        .container_field_init => {
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else if (datas[n].lhs != 0) {
-                n = datas[n].lhs;
-            } else {
-                return main_tokens[n] + end_offset;
-            }
-        },
-        .container_field_align => {
-            if (datas[n].rhs != 0) {
-                end_offset += 1; // for the rparen
-                n = datas[n].rhs;
-            } else if (datas[n].lhs != 0) {
-                n = datas[n].lhs;
-            } else {
-                return main_tokens[n] + end_offset;
-            }
-        },
-        .container_field => {
-            const extra = tree.extraData(datas[n].rhs, Node.ContainerField);
-            if (extra.value_expr != 0) {
-                n = extra.value_expr;
-            } else if (extra.align_expr != 0) {
-                end_offset += 1; // for the rparen
-                n = extra.align_expr;
-            } else if (datas[n].lhs != 0) {
-                n = datas[n].lhs;
-            } else {
-                return main_tokens[n] + end_offset;
+                end_offset += 1; // from mut token to name
+                break tree.nodeMainToken(n);
             }
         },
 
-        .array_init_one,
-        .struct_init_one,
-        => {
-            end_offset += 1; // rbrace
-            if (datas[n].rhs == 0) {
-                return main_tokens[n] + end_offset;
-            } else {
-                n = datas[n].rhs;
-            }
+        .array_type_sentinel => {
+            _, const extra_index = tree.nodeData(n).node_and_extra;
+            const extra = tree.extraData(extra_index, Node.ArrayTypeSentinel);
+            n = extra.elem_type;
         },
+
         .slice_open,
-        .call_one_comma,
-        .async_call_one_comma,
-        .array_init_one_comma,
-        .struct_init_one_comma,
+        .slice,
+        .slice_sentinel,
         => {
-            end_offset += 2; // ellipsis2 + rbracket, or comma + rparen
-            n = datas[n].rhs;
-            std.debug.assert(n != 0);
-        },
-        .slice => {
-            const extra = tree.extraData(datas[n].rhs, Node.Slice);
-            std.debug.assert(extra.end != 0); // should have used slice_open
-            end_offset += 1; // rbracket
-            n = extra.end;
-        },
-        .slice_sentinel => {
-            const extra = tree.extraData(datas[n].rhs, Node.SliceSentinel);
-            if (extra.sentinel != 0) {
-                end_offset += 1; // right bracket
-                n = extra.sentinel;
-            } else if (extra.end != 0) {
-                end_offset += 2; // colon, right bracket
-                n = extra.end;
+            const slice = tree.fullSlice(n).?;
+            if (slice.ast.sentinel.unwrap()) |sentinel| {
+                end_offset += 1; // rbracket
+                n = sentinel;
+            } else if (slice.ast.end.unwrap()) |end| {
+                end_offset += 1; // rbracket
+                n = end;
             } else {
-                // Assume both sentinel and end are completely devoid of tokens
-                end_offset += 3; // ellipsis, colon, right bracket
-                n = extra.start;
+                end_offset += 2; // ellipsis2 + rbracket
+                n = slice.ast.start;
             }
         },
 
-        .@"continue" => {
-            if (datas[n].lhs != 0) {
-                return datas[n].lhs + end_offset;
+        .@"switch",
+        .switch_comma,
+        => |tag| {
+            const condition, const extra_index = tree.nodeData(n).node_and_extra;
+            const members = tree.extraDataSlice(tree.extraData(extra_index, Node.SubRange), Node.Index);
+            if (members.len == 0) {
+                const last_token = lastToken(tree, condition) + 3; // rparen + lbrace + rbrace
+                break findMatchingRBrace(tree, last_token) orelse last_token;
             } else {
-                return main_tokens[n] + end_offset;
+                const has_comma = tag == .switch_comma;
+                const last_member = members[members.len - 1];
+                const last_token = lastToken(tree, last_member) + @intFromBool(has_comma) + 1; // rbrace
+                break findMatchingRBrace(tree, last_token) orelse last_token;
             }
         },
-        .@"break" => {
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else if (datas[n].lhs != 0) {
-                return datas[n].lhs + end_offset;
-            } else {
-                return main_tokens[n] + end_offset;
-            }
-        },
-        .fn_decl => {
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else {
-                n = datas[n].lhs;
-            }
-        },
-        .fn_proto_multi => {
-            const extra = tree.extraData(datas[n].lhs, Node.SubRange);
-            // rhs can be 0 when no return type is provided
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else {
-                // Use the last argument and skip right paren
-                n = tree.extra_data[extra.end - 1];
-                end_offset += 1;
-            }
-        },
-        .fn_proto_simple => {
-            // rhs can be 0 when no return type is provided
-            // lhs can be 0 when no parameter is provided
-            if (datas[n].rhs != 0) {
-                n = datas[n].rhs;
-            } else if (datas[n].lhs != 0) {
-                n = datas[n].lhs;
-                // Skip right paren
-                end_offset += 1;
-            } else {
-                // Skip left and right paren
-                return main_tokens[n] + end_offset + 2;
-            }
-        },
-        .fn_proto_one => {
-            const extra = tree.extraData(datas[n].lhs, Node.FnProtoOne);
-            // addrspace, linksection, callconv, align can appear in any order, so we
-            // find the last one here.
-            // rhs can be zero if no return type is provided
-            var max_node: Node.Index = 0;
-            var max_start: u32 = 0;
-            if (datas[n].rhs != 0) {
-                max_node = datas[n].rhs;
-                max_start = token_starts[main_tokens[max_node]];
-            }
 
-            var max_offset: TokenIndex = 0;
-            if (extra.align_expr != 0) {
-                const start = token_starts[main_tokens[extra.align_expr]];
-                if (start > max_start) {
-                    max_node = extra.align_expr;
-                    max_start = start;
-                    max_offset = 1; // for the rparen
-                }
-            }
-            if (extra.addrspace_expr != 0) {
-                const start = token_starts[main_tokens[extra.addrspace_expr]];
-                if (start > max_start) {
-                    max_node = extra.addrspace_expr;
-                    max_start = start;
-                    max_offset = 1; // for the rparen
-                }
-            }
-            if (extra.section_expr != 0) {
-                const start = token_starts[main_tokens[extra.section_expr]];
-                if (start > max_start) {
-                    max_node = extra.section_expr;
-                    max_start = start;
-                    max_offset = 1; // for the rparen
-                }
-            }
-            if (extra.callconv_expr != 0) {
-                const start = token_starts[main_tokens[extra.callconv_expr]];
-                if (start > max_start) {
-                    max_node = extra.callconv_expr;
-                    max_start = start;
-                    max_offset = 1; // for the rparen
-                }
-            }
+        .array_access => {
+            end_offset += 1;
+            n = tree.nodeData(n).node_and_node[1];
+        },
 
-            if (max_node == 0) {
-                std.debug.assert(max_offset == 0);
-                // No linksection, callconv, align, return type
-                if (extra.param != 0) {
-                    n = extra.param;
-                    end_offset += 1;
-                } else {
-                    // Skip left and right parens
-                    return main_tokens[n] + end_offset + 2;
-                }
+        .@"continue", .@"break" => {
+            const opt_label, const opt_rhs = tree.nodeData(n).opt_token_and_opt_node;
+            if (opt_rhs.unwrap()) |rhs| {
+                n = rhs;
+            } else if (opt_label.unwrap()) |lhs| {
+                break lhs;
             } else {
-                n = max_node;
-                end_offset += max_offset;
+                break tree.nodeMainToken(n);
             }
         },
-        .fn_proto => {
-            const extra = tree.extraData(datas[n].lhs, Node.FnProto);
-            // addrspace, linksection, callconv, align can appear in any order, so we
-            // find the last one here.
-            // rhs can be zero if no return type is provided
-            var max_node: Node.Index = 0;
-            var max_start: u32 = 0;
-            if (datas[n].rhs != 0) {
-                max_node = datas[n].rhs;
-                max_start = token_starts[main_tokens[max_node]];
-            }
 
-            var max_offset: TokenIndex = 0;
-            if (extra.align_expr != 0) {
-                const start = token_starts[main_tokens[extra.align_expr]];
-                if (start > max_start) {
-                    max_node = extra.align_expr;
-                    max_start = start;
-                    max_offset = 1; // for the rparen
-                }
-            }
-            if (extra.addrspace_expr != 0) {
-                const start = token_starts[main_tokens[extra.addrspace_expr]];
-                if (start > max_start) {
-                    max_node = extra.addrspace_expr;
-                    max_start = start;
-                    max_offset = 1; // for the rparen
-                }
-            }
-            if (extra.section_expr != 0) {
-                const start = token_starts[main_tokens[extra.section_expr]];
-                if (start > max_start) {
-                    max_node = extra.section_expr;
-                    max_start = start;
-                    max_offset = 1; // for the rparen
-                }
-            }
-            if (extra.callconv_expr != 0) {
-                const start = token_starts[main_tokens[extra.callconv_expr]];
-                if (start > max_start) {
-                    max_node = extra.callconv_expr;
-                    max_start = start;
-                    max_offset = 1; // for the rparen
-                }
-            }
-            if (max_node == 0) {
-                std.debug.assert(max_offset == 0);
-                // No linksection, callconv, align, return type
-                // Use the last parameter and skip one extra token for the right paren
-                n = extra.params_end;
-                end_offset += 1;
-            } else {
-                n = max_node;
-                end_offset += max_offset;
-            }
-        },
         .while_cont => {
-            const extra = tree.extraData(datas[n].rhs, Node.WhileCont);
-            std.debug.assert(extra.then_expr != 0);
+            _, const extra_index = tree.nodeData(n).node_and_extra;
+            const extra = tree.extraData(extra_index, Node.WhileCont);
             n = extra.then_expr;
         },
         .@"while" => {
-            const extra = tree.extraData(datas[n].rhs, Node.While);
-            std.debug.assert(extra.else_expr != 0);
+            _, const extra_index = tree.nodeData(n).node_and_extra;
+            const extra = tree.extraData(extra_index, Node.While);
             n = extra.else_expr;
         },
         .@"if" => {
-            const extra = tree.extraData(datas[n].rhs, Node.If);
-            std.debug.assert(extra.else_expr != 0);
+            _, const extra_index = tree.nodeData(n).node_and_extra;
+            const extra = tree.extraData(extra_index, Node.If);
             n = extra.else_expr;
         },
         .@"for" => {
-            const extra = @as(Node.For, @bitCast(datas[n].rhs));
-            n = tree.extra_data[datas[n].lhs + extra.inputs + @intFromBool(extra.has_else)];
+            const extra_index, const extra = tree.nodeData(n).@"for";
+            const index = @intFromEnum(extra_index) + extra.inputs + @intFromBool(extra.has_else);
+            n = @enumFromInt(tree.extra_data[index]);
         },
-        .@"suspend" => {
-            if (datas[n].lhs != 0) {
-                n = datas[n].lhs;
+        .@"asm" => {
+            _, const extra_index = tree.nodeData(n).node_and_extra;
+            const extra = tree.extraData(extra_index, Node.Asm);
+            break extra.rparen;
+        },
+
+        .array_init_one,
+        .array_init_one_comma,
+        .array_init_dot_two,
+        .array_init_dot_two_comma,
+        .array_init_dot,
+        .array_init_dot_comma,
+        .array_init,
+        .array_init_comma,
+        => |tag| {
+            const has_comma = switch (tag) {
+                .array_init_one, .array_init_dot_two, .array_init_dot, .array_init => false,
+                .array_init_one_comma, .array_init_dot_two_comma, .array_init_dot_comma, .array_init_comma => true,
+                else => unreachable,
+            };
+            var buffer: [2]Node.Index = undefined;
+            const array_init = tree.fullArrayInit(&buffer, n).?;
+            const last_element = array_init.ast.elements[array_init.ast.elements.len - 1];
+            end_offset += @intFromBool(has_comma);
+            end_offset += 1; // rbrace
+            n = last_element;
+        },
+
+        .struct_init_one,
+        .struct_init_one_comma,
+        .struct_init_dot_two,
+        .struct_init_dot_two_comma,
+        .struct_init_dot,
+        .struct_init_dot_comma,
+        .struct_init,
+        .struct_init_comma,
+        => |tag| {
+            var buffer: [2]Node.Index = undefined;
+            const struct_init = tree.fullStructInit(&buffer, n).?;
+            end_offset += 1; // rbrace
+            if (struct_init.ast.fields.len == 0) {
+                break tree.nodeMainToken(n);
             } else {
-                return main_tokens[n] + end_offset;
+                const has_comma = switch (tag) {
+                    .struct_init_one, .struct_init_dot_two, .struct_init_dot, .struct_init => false,
+                    .struct_init_one_comma, .struct_init_dot_two_comma, .struct_init_dot_comma, .struct_init_comma => true,
+                    else => unreachable,
+                };
+                end_offset += @intFromBool(has_comma);
+                const last_field = struct_init.ast.fields[struct_init.ast.fields.len - 1];
+                n = last_field;
             }
         },
-        .array_type_sentinel => {
-            const extra = tree.extraData(datas[n].rhs, Node.ArrayTypeSentinel);
-            n = extra.elem_type;
+
+        .call_one,
+        .call_one_comma,
+        .call,
+        .call_comma,
+        => |tag| {
+            var buffer: [1]Node.Index = undefined;
+            const call = tree.fullCall(&buffer, n).?;
+            end_offset += 1; // rparen
+            if (call.ast.params.len == 0) {
+                break tree.nodeMainToken(n);
+            } else {
+                const has_comma = switch (tag) {
+                    .call_one, .call => false,
+                    .call_one_comma, .call_comma => true,
+                    else => unreachable,
+                };
+                end_offset += @intFromBool(has_comma);
+                const last_param = call.ast.params[call.ast.params.len - 1];
+                n = last_param;
+            }
+        },
+
+        .fn_proto_simple,
+        .fn_proto_multi,
+        .fn_proto_one,
+        .fn_proto,
+        => {
+            var buffer: [1]Ast.Node.Index = undefined;
+            const fn_proto = tree.fullFnProto(&buffer, n).?;
+            if (fn_proto.ast.return_type.unwrap()) |return_type| {
+                n = return_type;
+            } else {
+                // This is not correct
+                end_offset += 2; // rparen rparen
+                break tree.nodeMainToken(n);
+            }
+        },
+
+        .builtin_call_two,
+        .builtin_call_two_comma,
+        .builtin_call,
+        .builtin_call_comma,
+        => |tag| {
+            var buffer: [2]Node.Index = undefined;
+            const params = tree.builtinCallParams(&buffer, n).?;
+            if (params.len == 0) {
+                end_offset += 2; // lparen + rparen
+                break tree.nodeMainToken(n);
+            } else {
+                const has_comma = switch (tag) {
+                    .builtin_call_two, .builtin_call => false,
+                    .builtin_call_two_comma, .builtin_call_comma => true,
+                    else => unreachable,
+                };
+                end_offset += @intFromBool(has_comma);
+                end_offset += 1; // rparen
+                const last_param = params[params.len - 1];
+                n = last_param;
+            }
+        },
+
+        .container_decl,
+        .container_decl_trailing,
+        .container_decl_two,
+        .container_decl_two_trailing,
+        .container_decl_arg,
+        .container_decl_arg_trailing,
+        .tagged_union,
+        .tagged_union_trailing,
+        .tagged_union_two,
+        .tagged_union_two_trailing,
+        .tagged_union_enum_tag,
+        .tagged_union_enum_tag_trailing,
+        => |tag| {
+            var buffer: [2]Ast.Node.Index = undefined;
+            const container_decl = tree.fullContainerDecl(&buffer, n).?;
+            if (container_decl.ast.members.len == 0) {
+                if (container_decl.ast.arg.unwrap()) |arg| {
+                    end_offset += 4; // rparen + rparen + lbrace + rbrace
+                    n = arg;
+                } else {
+                    var i: u32 = switch (tag) {
+                        .container_decl_two, .container_decl_two_trailing => 2, // lbrace + rbrace
+                        .tagged_union_two, .tagged_union_two_trailing => 5, // (enum) {}
+                        else => unreachable,
+                    };
+                    while (tree.tokenTag(tree.nodeMainToken(n) + i) == .container_doc_comment) i += 1;
+                    end_offset += i;
+                    break tree.nodeMainToken(n);
+                }
+            } else {
+                const has_comma = switch (tag) {
+                    .container_decl, .container_decl_two, .container_decl_arg, .tagged_union, .tagged_union_two, .tagged_union_enum_tag => false,
+                    .container_decl_trailing, .container_decl_two_trailing, .container_decl_arg_trailing, .tagged_union_trailing, .tagged_union_two_trailing, .tagged_union_enum_tag_trailing => true,
+                    else => unreachable,
+                };
+                const last_member = container_decl.ast.members[container_decl.ast.members.len - 1];
+                const last_token = lastToken(tree, last_member) + @intFromBool(has_comma) + 1; // rbrace
+                break findMatchingRBrace(tree, last_token) orelse last_token;
+            }
+        },
+
+        .container_field_init,
+        .container_field_align,
+        .container_field,
+        => {
+            const container_field = tree.fullContainerField(n).?;
+            if (container_field.ast.value_expr.unwrap()) |value_expr| {
+                n = value_expr;
+            } else if (container_field.ast.align_expr.unwrap()) |align_expr| {
+                end_offset += 1; // rparen
+                n = align_expr;
+            } else {
+                n = container_field.ast.type_expr.unwrap().?;
+            }
+        },
+
+        .block_two,
+        .block_two_semicolon,
+        .block,
+        .block_semicolon,
+        => |tag| {
+            var buffer: [2]Ast.Node.Index = undefined;
+            const statements = tree.blockStatements(&buffer, n).?;
+            if (statements.len == 0) {
+                const last_token = tree.nodeMainToken(n) + 1; // rbrace
+                break findMatchingRBrace(tree, last_token) orelse last_token;
+            } else {
+                const has_comma = switch (tag) {
+                    .block_two, .block => false,
+                    .block_two_semicolon, .block_semicolon => true,
+                    else => unreachable,
+                };
+                const last_statement = statements[statements.len - 1];
+                const last_token = lastToken(tree, last_statement) + @intFromBool(has_comma) + 1; // rbrace
+                break findMatchingRBrace(tree, last_token) orelse last_token;
+            }
         },
     };
+    return last_token + end_offset;
 }
 
-pub fn testDeclNameToken(tree: Ast, test_decl_node: Ast.Node.Index) ?Ast.TokenIndex {
-    std.debug.assert(tree.nodes.items(.tag)[test_decl_node] == .test_decl);
-    const node_datas = tree.nodes.items(.data);
-    if (node_datas[test_decl_node].lhs == 0) return null;
-    return node_datas[test_decl_node].lhs;
-}
+pub fn testDeclNameAndToken(tree: *const Ast, test_decl_node: Ast.Node.Index) ?struct { Ast.TokenIndex, []const u8 } {
+    const test_name_token = tree.nodeData(test_decl_node).opt_token_and_node[0].unwrap() orelse return null;
 
-pub fn testDeclNameAndToken(tree: Ast, test_decl_node: Ast.Node.Index) ?struct { Ast.TokenIndex, []const u8 } {
-    const test_name_token = testDeclNameToken(tree, test_decl_node) orelse return null;
-
-    switch (tree.tokens.items(.tag)[test_name_token]) {
+    switch (tree.tokenTag(test_name_token)) {
         .string_literal => {
             const name = offsets.tokenToSlice(tree, test_name_token);
             return .{ test_name_token, name[1 .. name.len - 1] };
@@ -1267,54 +833,51 @@ pub fn testDeclNameAndToken(tree: Ast, test_decl_node: Ast.Node.Index) ?struct {
 /// @tagName
 /// ```
 /// TODO investigate the parser to figure out why.
-pub fn identifierTokenFromIdentifierNode(tree: Ast, node: Ast.Node.Index) ?Ast.TokenIndex {
-    const main_token = tree.nodes.items(.main_token)[node];
-    if (tree.tokens.items(.tag)[main_token] != .identifier) return null;
+pub fn identifierTokenFromIdentifierNode(tree: *const Ast, node: Ast.Node.Index) ?Ast.TokenIndex {
+    const main_token = tree.nodeMainToken(node);
+    if (tree.tokenTag(main_token) != .identifier) return null;
     return main_token;
 }
 
-pub fn hasInferredError(tree: Ast, fn_proto: Ast.full.FnProto) bool {
-    const token_tags = tree.tokens.items(.tag);
-    if (fn_proto.ast.return_type == 0) return false;
-    return token_tags[tree.firstToken(fn_proto.ast.return_type) - 1] == .bang;
+pub fn hasInferredError(tree: *const Ast, fn_proto: Ast.full.FnProto) bool {
+    const return_type = fn_proto.ast.return_type.unwrap() orelse return false;
+    return tree.tokenTag(tree.firstToken(return_type) - 1) == .bang;
 }
 
-pub fn paramFirstToken(tree: Ast, param: Ast.full.FnProto.Param, include_doc_comment: bool) Ast.TokenIndex {
+pub fn paramFirstToken(tree: *const Ast, param: Ast.full.FnProto.Param, include_doc_comment: bool) Ast.TokenIndex {
     return (if (include_doc_comment) param.first_doc_comment else null) orelse
         param.comptime_noalias orelse
         param.name_token orelse
-        tree.firstToken(param.type_expr);
+        tree.firstToken(param.type_expr.?);
 }
 
-pub fn paramLastToken(tree: Ast, param: Ast.full.FnProto.Param) Ast.TokenIndex {
-    return param.anytype_ellipsis3 orelse lastToken(tree, param.type_expr);
+pub fn paramLastToken(tree: *const Ast, param: Ast.full.FnProto.Param) Ast.TokenIndex {
+    return param.anytype_ellipsis3 orelse lastToken(tree, param.type_expr.?);
 }
 
-pub fn paramLoc(tree: Ast, param: Ast.full.FnProto.Param, include_doc_comment: bool) offsets.Loc {
+pub fn paramLoc(tree: *const Ast, param: Ast.full.FnProto.Param, include_doc_comment: bool) offsets.Loc {
     const first_token = paramFirstToken(tree, param, include_doc_comment);
     const last_token = paramLastToken(tree, param);
     return offsets.tokensToLoc(tree, first_token, last_token);
 }
 
-pub fn paramSlice(tree: Ast, param: Ast.full.FnProto.Param, include_doc_comment: bool) []const u8 {
+pub fn paramSlice(tree: *const Ast, param: Ast.full.FnProto.Param, include_doc_comment: bool) []const u8 {
     return offsets.locToSlice(tree.source, paramLoc(tree, param, include_doc_comment));
 }
 
-pub fn isTaggedUnion(tree: Ast, node: Ast.Node.Index) bool {
-    const main_tokens = tree.nodes.items(.main_token);
-    const tags = tree.tokens.items(.tag);
-    if (tags[main_tokens[node]] != .keyword_union)
+pub fn isTaggedUnion(tree: *const Ast, node: Ast.Node.Index) bool {
+    if (tree.tokenTag(tree.nodeMainToken(node)) != .keyword_union)
         return false;
 
     var buf: [2]Ast.Node.Index = undefined;
     const decl = tree.fullContainerDecl(&buf, node) orelse
         return false;
 
-    return decl.ast.enum_token != null or decl.ast.arg != 0;
+    return decl.ast.enum_token != null or decl.ast.arg != .none;
 }
 
-pub fn isContainer(tree: Ast, node: Ast.Node.Index) bool {
-    return switch (tree.nodes.items(.tag)[node]) {
+pub fn isContainer(tree: *const Ast, node: Ast.Node.Index) bool {
+    return switch (tree.nodeTag(node)) {
         .container_decl,
         .container_decl_trailing,
         .container_decl_arg,
@@ -1334,16 +897,8 @@ pub fn isContainer(tree: Ast, node: Ast.Node.Index) bool {
     };
 }
 
-pub fn rootDecls(tree: Ast) []const Node.Index {
-    const nodes_data = tree.nodes.items(.data);
-    switch (tree.mode) {
-        .zig => return tree.extra_data[nodes_data[0].lhs..nodes_data[0].rhs],
-        .zon => return (&nodes_data[0].lhs)[0..1],
-    }
-}
-
-pub fn isBuiltinCall(tree: Ast, node: Ast.Node.Index) bool {
-    return switch (tree.nodes.items(.tag)[node]) {
+pub fn isBuiltinCall(tree: *const Ast, node: Ast.Node.Index) bool {
+    return switch (tree.nodeTag(node)) {
         .builtin_call,
         .builtin_call_comma,
         .builtin_call_two,
@@ -1353,703 +908,740 @@ pub fn isBuiltinCall(tree: Ast, node: Ast.Node.Index) bool {
     };
 }
 
-/// returns a list of parameters
-pub fn builtinCallParams(tree: Ast, node: Ast.Node.Index, buf: *[2]Ast.Node.Index) ?[]const Node.Index {
-    const node_data = tree.nodes.items(.data);
-    return switch (tree.nodes.items(.tag)[node]) {
-        .builtin_call_two, .builtin_call_two_comma => {
-            buf[0] = node_data[node].lhs;
-            buf[1] = node_data[node].rhs;
-            if (node_data[node].lhs == 0) {
-                return buf[0..0];
-            } else if (node_data[node].rhs == 0) {
-                return buf[0..1];
-            } else {
-                return buf[0..2];
-            }
-        },
-        .builtin_call,
-        .builtin_call_comma,
-        => tree.extra_data[node_data[node].lhs..node_data[node].rhs],
-        else => return null,
-    };
-}
-
-pub fn blockLabel(tree: Ast, node: Ast.Node.Index) ?Ast.TokenIndex {
-    const token_tags = tree.tokens.items(.tag);
-    const main_tokens = tree.nodes.items(.main_token);
-
-    const main_token = main_tokens[node];
+pub fn blockLabel(tree: *const Ast, node: Ast.Node.Index) ?Ast.TokenIndex {
+    const main_token = tree.nodeMainToken(node);
 
     if (main_token < 2) return null;
-    if (token_tags[main_token - 1] != .colon) return null;
-    if (token_tags[main_token - 2] != .identifier) return null;
+    if (tree.tokenTag(main_token - 1) != .colon) return null;
+    if (tree.tokenTag(main_token - 2) != .identifier) return null;
     return main_token - 2;
 }
 
-/// returns a list of statements
-pub fn blockStatements(tree: Ast, node: Ast.Node.Index, buf: *[2]Ast.Node.Index) ?[]const Node.Index {
-    const node_data = tree.nodes.items(.data);
-    return switch (tree.nodes.items(.tag)[node]) {
-        .block_two, .block_two_semicolon => {
-            buf[0] = node_data[node].lhs;
-            buf[1] = node_data[node].rhs;
-            if (node_data[node].lhs == 0) {
-                return buf[0..0];
-            } else if (node_data[node].rhs == 0) {
-                return buf[0..1];
-            } else {
-                return buf[0..2];
-            }
-        },
-        .block,
-        .block_semicolon,
-        => tree.extra_data[node_data[node].lhs..node_data[node].rhs],
-        else => return null,
-    };
-}
-
-pub const ErrorSetIterator = struct {
-    token_tags: []const std.zig.Token.Tag,
-    current_token: Ast.TokenIndex,
-    last_token: Ast.TokenIndex,
-
-    pub fn init(tree: Ast, node: Ast.Node.Index) ErrorSetIterator {
-        std.debug.assert(tree.nodes.items(.tag)[node] == .error_set_decl);
-        return .{
-            .token_tags = tree.tokens.items(.tag),
-            .current_token = tree.nodes.items(.main_token)[node] + 2,
-            .last_token = tree.nodes.items(.data)[node].rhs,
-        };
-    }
-
-    pub fn next(it: *ErrorSetIterator) ?Ast.TokenIndex {
-        for (it.token_tags[it.current_token..it.last_token], it.current_token..) |tag, token| {
-            switch (tag) {
-                .doc_comment, .comma => {},
-                .identifier => {
-                    it.current_token = @min(token + 1, it.last_token);
-                    return @intCast(token);
-                },
-                else => {},
-            }
-        }
-        return null;
-    }
-};
-
-pub fn errorSetFieldCount(tree: Ast, node: Ast.Node.Index) usize {
-    std.debug.assert(tree.nodes.items(.tag)[node] == .error_set_decl);
-    const token_tags = tree.tokens.items(.tag);
-    const start = tree.nodes.items(.main_token)[node] + 2;
-    const end = tree.nodes.items(.data)[node].rhs;
+pub fn errorSetFieldCount(tree: *const Ast, node: Ast.Node.Index) usize {
+    std.debug.assert(tree.nodeTag(node) == .error_set_decl);
     var count: usize = 0;
-    for (token_tags[start..end]) |tag| {
-        count += @intFromBool(tag == .identifier);
+    const lbrace, const rbrace = tree.nodeData(node).token_and_token;
+    for (lbrace + 1..rbrace) |tok_i| {
+        count += @intFromBool(tree.tokenTag(@intCast(tok_i)) == .identifier);
     }
     return count;
 }
 
-/// Iterates over FnProto Params w/ added bounds check to support incomplete ast nodes
-pub fn nextFnParam(it: *Ast.full.FnProto.Iterator) ?Ast.full.FnProto.Param {
-    const token_tags = it.tree.tokens.items(.tag);
-    while (true) {
-        var first_doc_comment: ?Ast.TokenIndex = null;
-        var comptime_noalias: ?Ast.TokenIndex = null;
-        var name_token: ?Ast.TokenIndex = null;
-        if (!it.tok_flag) {
-            if (it.param_i >= it.fn_proto.ast.params.len) {
-                return null;
-            }
-            const param_type = it.fn_proto.ast.params[it.param_i];
-            const last_param_type_token = lastToken(it.tree.*, param_type);
-            var tok_i = it.tree.firstToken(param_type) - 1;
-            while (true) : (tok_i -= 1) switch (token_tags[tok_i]) {
-                .colon => continue,
-                .identifier => name_token = tok_i,
-                .doc_comment => first_doc_comment = tok_i,
-                .keyword_comptime, .keyword_noalias => comptime_noalias = tok_i,
-                else => break,
-            };
-            it.param_i += 1;
-            it.tok_i = last_param_type_token + 1;
+pub const FnParamIterator = struct {
+    tree: *const Ast,
+    params: []const Ast.Node.Index,
+    param_i: u32,
+    tok_i: Ast.TokenIndex,
+    tok_flag: bool,
 
-            // #boundsCheck
-            // https://github.com/zigtools/zls/issues/567
-            if (last_param_type_token >= it.tree.tokens.len - 1)
-                return Ast.full.FnProto.Param{
+    pub fn init(fn_proto: *const Ast.full.FnProto, tree: *const Ast) FnParamIterator {
+        return .{
+            .tree = tree,
+            .params = fn_proto.ast.params,
+            .param_i = 0,
+            .tok_i = fn_proto.lparen + 1,
+            .tok_flag = true,
+        };
+    }
+
+    /// Iterates over FnProto Params w/ added bounds check to support incomplete ast nodes
+    pub fn next(it: *FnParamIterator) ?Ast.full.FnProto.Param {
+        while (true) {
+            var first_doc_comment: ?Ast.TokenIndex = null;
+            var comptime_noalias: ?Ast.TokenIndex = null;
+            var name_token: ?Ast.TokenIndex = null;
+            if (!it.tok_flag) {
+                if (it.param_i >= it.params.len) {
+                    return null;
+                }
+                const param_type = it.params[it.param_i];
+                const last_param_type_token = lastToken(it.tree, param_type);
+                var tok_i = it.tree.firstToken(param_type) - 1;
+                while (true) : (tok_i -= 1) switch (it.tree.tokenTag(tok_i)) {
+                    .colon => continue,
+                    .identifier => name_token = tok_i,
+                    .doc_comment => first_doc_comment = tok_i,
+                    .keyword_comptime, .keyword_noalias => comptime_noalias = tok_i,
+                    else => break,
+                };
+                it.param_i += 1;
+                it.tok_i = last_param_type_token + 1;
+
+                // #boundsCheck
+                // https://github.com/zigtools/zls/issues/567
+                if (last_param_type_token >= it.tree.tokens.len - 1)
+                    return .{
+                        .first_doc_comment = first_doc_comment,
+                        .comptime_noalias = comptime_noalias,
+                        .name_token = name_token,
+                        .anytype_ellipsis3 = null,
+                        .type_expr = null,
+                    };
+
+                // Look for anytype and ... params afterwards.
+                if (it.tree.tokenTag(it.tok_i) == .comma) {
+                    it.tok_i += 1;
+                }
+                it.tok_flag = true;
+                return .{
                     .first_doc_comment = first_doc_comment,
                     .comptime_noalias = comptime_noalias,
                     .name_token = name_token,
                     .anytype_ellipsis3 = null,
-                    .type_expr = 0,
+                    .type_expr = param_type,
                 };
-
-            // Look for anytype and ... params afterwards.
-            if (token_tags[it.tok_i] == .comma) {
+            }
+            if (it.tree.tokenTag(it.tok_i) == .comma) {
                 it.tok_i += 1;
             }
-            it.tok_flag = true;
-            return Ast.full.FnProto.Param{
-                .first_doc_comment = first_doc_comment,
-                .comptime_noalias = comptime_noalias,
-                .name_token = name_token,
-                .anytype_ellipsis3 = null,
-                .type_expr = param_type,
-            };
-        }
-        if (token_tags[it.tok_i] == .comma) {
-            it.tok_i += 1;
-        }
-        if (token_tags[it.tok_i] == .r_paren) {
-            return null;
-        }
-        if (token_tags[it.tok_i] == .doc_comment) {
-            first_doc_comment = it.tok_i;
-            while (token_tags[it.tok_i] == .doc_comment) {
-                it.tok_i += 1;
+            if (it.tree.tokenTag(it.tok_i) == .r_paren) {
+                return null;
             }
-        }
-        switch (token_tags[it.tok_i]) {
-            .ellipsis3 => {
-                it.tok_flag = false; // Next iteration should return null.
-                return Ast.full.FnProto.Param{
-                    .first_doc_comment = first_doc_comment,
-                    .comptime_noalias = null,
-                    .name_token = null,
-                    .anytype_ellipsis3 = it.tok_i,
-                    .type_expr = 0,
-                };
-            },
-            .keyword_noalias, .keyword_comptime => {
-                comptime_noalias = it.tok_i;
-                it.tok_i += 1;
-            },
-            else => {},
-        }
-        if (token_tags[it.tok_i] == .identifier and
-            token_tags[it.tok_i + 1] == .colon)
-        {
-            name_token = it.tok_i;
-            it.tok_i += 2;
-        }
-        if (token_tags[it.tok_i] == .keyword_anytype) {
-            it.tok_i += 1;
-            return Ast.full.FnProto.Param{
-                .first_doc_comment = first_doc_comment,
-                .comptime_noalias = comptime_noalias,
-                .name_token = name_token,
-                .anytype_ellipsis3 = it.tok_i - 1,
-                .type_expr = 0,
-            };
-        }
-        it.tok_flag = false;
-    }
-}
-
-/// calls the given `callback` on every child of the given node
-/// see `nodeChildrenAlloc` for a non-callback, allocating variant.
-/// see `iterateChildrenRecursive` for recursive-iteration.
-/// the order in which children are given corresponds to the order in which they are found in the source text
-pub fn iterateChildren(
-    tree: Ast,
-    node: Ast.Node.Index,
-    context: anytype,
-    comptime Error: type,
-    comptime callback: fn (@TypeOf(context), Ast, Ast.Node.Index) Error!void,
-) Error!void {
-    const ctx = struct {
-        fn inner(ctx: *const anyopaque, t: Ast, n: Ast.Node.Index) anyerror!void {
-            return callback(@as(*const @TypeOf(context), @alignCast(@ptrCast(ctx))).*, t, n);
-        }
-    };
-    if (iterateChildrenTypeErased(tree, node, @ptrCast(&context), &ctx.inner)) |_| {
-        return;
-    } else |err| {
-        return @as(Error, @errorCast(err));
-    }
-}
-
-fn iterateChildrenTypeErased(
-    tree: Ast,
-    node: Ast.Node.Index,
-    context: *const anyopaque,
-    callback: *const fn (*const anyopaque, Ast, Ast.Node.Index) anyerror!void,
-) anyerror!void {
-    const node_tags = tree.nodes.items(.tag);
-    const node_data = tree.nodes.items(.data);
-    const main_tokens = tree.nodes.items(.main_token);
-    const token_tags = tree.tokens.items(.tag);
-
-    if (node > tree.nodes.len) return;
-
-    const tag = node_tags[node];
-    switch (tag) {
-        .@"usingnamespace",
-        .field_access,
-        .unwrap_optional,
-        .bool_not,
-        .negation,
-        .bit_not,
-        .negation_wrap,
-        .address_of,
-        .@"try",
-        .@"await",
-        .optional_type,
-        .deref,
-        .@"suspend",
-        .@"resume",
-        .@"return",
-        .grouped_expression,
-        .@"comptime",
-        .@"nosuspend",
-        .asm_simple,
-        => {
-            try callback(context, tree, node_data[node].lhs);
-        },
-
-        .test_decl,
-        .@"errdefer",
-        .@"defer",
-        .@"break",
-        .anyframe_type,
-        => {
-            try callback(context, tree, node_data[node].rhs);
-        },
-
-        .@"catch",
-        .equal_equal,
-        .bang_equal,
-        .less_than,
-        .greater_than,
-        .less_or_equal,
-        .greater_or_equal,
-        .assign_mul,
-        .assign_div,
-        .assign_mod,
-        .assign_add,
-        .assign_sub,
-        .assign_shl,
-        .assign_shl_sat,
-        .assign_shr,
-        .assign_bit_and,
-        .assign_bit_xor,
-        .assign_bit_or,
-        .assign_mul_wrap,
-        .assign_add_wrap,
-        .assign_sub_wrap,
-        .assign_mul_sat,
-        .assign_add_sat,
-        .assign_sub_sat,
-        .assign,
-        .merge_error_sets,
-        .mul,
-        .div,
-        .mod,
-        .array_mult,
-        .mul_wrap,
-        .mul_sat,
-        .add,
-        .sub,
-        .array_cat,
-        .add_wrap,
-        .sub_wrap,
-        .add_sat,
-        .sub_sat,
-        .shl,
-        .shl_sat,
-        .shr,
-        .bit_and,
-        .bit_xor,
-        .bit_or,
-        .@"orelse",
-        .bool_and,
-        .bool_or,
-        .array_type,
-        .array_access,
-        .array_init_one,
-        .array_init_one_comma,
-        .array_init_dot_two,
-        .array_init_dot_two_comma,
-        .struct_init_one,
-        .struct_init_one_comma,
-        .struct_init_dot_two,
-        .struct_init_dot_two_comma,
-        .call_one,
-        .call_one_comma,
-        .async_call_one,
-        .async_call_one_comma,
-        .switch_range,
-        .builtin_call_two,
-        .builtin_call_two_comma,
-        .container_decl_two,
-        .container_decl_two_trailing,
-        .tagged_union_two,
-        .tagged_union_two_trailing,
-        .container_field_init,
-        .container_field_align,
-        .block_two,
-        .block_two_semicolon,
-        .error_union,
-        .for_range,
-        => {
-            try callback(context, tree, node_data[node].lhs);
-            try callback(context, tree, node_data[node].rhs);
-        },
-
-        .root => {
-            if (tree.mode == .zon and tree.errors.len != 0) return;
-            for (rootDecls(tree)) |child| {
-                try callback(context, tree, child);
-            }
-        },
-
-        .array_init_dot,
-        .array_init_dot_comma,
-        .struct_init_dot,
-        .struct_init_dot_comma,
-        .builtin_call,
-        .builtin_call_comma,
-        .container_decl,
-        .container_decl_trailing,
-        .tagged_union,
-        .tagged_union_trailing,
-        .block,
-        .block_semicolon,
-        => {
-            for (tree.extra_data[node_data[node].lhs..node_data[node].rhs]) |child| {
-                try callback(context, tree, child);
-            }
-        },
-
-        .global_var_decl,
-        .local_var_decl,
-        .simple_var_decl,
-        .aligned_var_decl,
-        => {
-            const var_decl = tree.fullVarDecl(node).?.ast;
-            try callback(context, tree, var_decl.type_node);
-            try callback(context, tree, var_decl.align_node);
-            try callback(context, tree, var_decl.addrspace_node);
-            try callback(context, tree, var_decl.section_node);
-            try callback(context, tree, var_decl.init_node);
-        },
-
-        .assign_destructure => {
-            const lhs_count = tree.extra_data[node_data[node].lhs];
-            const lhs_exprs = tree.extra_data[node_data[node].lhs + 1 ..][0..lhs_count];
-            for (lhs_exprs) |lhs_node| {
-                try callback(context, tree, lhs_node);
-            }
-            try callback(context, tree, node_data[node].rhs);
-        },
-
-        .array_type_sentinel => {
-            const array_type = tree.arrayTypeSentinel(node).ast;
-            try callback(context, tree, array_type.elem_count);
-            try callback(context, tree, array_type.sentinel);
-            try callback(context, tree, array_type.elem_type);
-        },
-
-        .ptr_type_aligned,
-        .ptr_type_sentinel,
-        .ptr_type,
-        .ptr_type_bit_range,
-        => {
-            const ptr_type = fullPtrType(tree, node).?.ast;
-            try callback(context, tree, ptr_type.sentinel);
-            try callback(context, tree, ptr_type.align_node);
-            try callback(context, tree, ptr_type.bit_range_start);
-            try callback(context, tree, ptr_type.bit_range_end);
-            try callback(context, tree, ptr_type.addrspace_node);
-            try callback(context, tree, ptr_type.child_type);
-        },
-
-        .slice_open,
-        .slice,
-        .slice_sentinel,
-        => {
-            const slice = tree.fullSlice(node).?;
-            try callback(context, tree, slice.ast.sliced);
-            try callback(context, tree, slice.ast.start);
-            try callback(context, tree, slice.ast.end);
-            try callback(context, tree, slice.ast.sentinel);
-        },
-
-        .array_init,
-        .array_init_comma,
-        => {
-            const array_init = tree.arrayInit(node).ast;
-            try callback(context, tree, array_init.type_expr);
-            for (array_init.elements) |child| {
-                try callback(context, tree, child);
-            }
-        },
-
-        .struct_init,
-        .struct_init_comma,
-        => {
-            const struct_init = tree.structInit(node).ast;
-            try callback(context, tree, struct_init.type_expr);
-            for (struct_init.fields) |child| {
-                try callback(context, tree, child);
-            }
-        },
-
-        .call,
-        .call_comma,
-        .async_call,
-        .async_call_comma,
-        => {
-            const call = tree.callFull(node).ast;
-            try callback(context, tree, call.fn_expr);
-            for (call.params) |child| {
-                try callback(context, tree, child);
-            }
-        },
-
-        .@"switch",
-        .switch_comma,
-        => {
-            const cond = node_data[node].lhs;
-            const extra = tree.extraData(node_data[node].rhs, Ast.Node.SubRange);
-            const cases = tree.extra_data[extra.start..extra.end];
-            try callback(context, tree, cond);
-            for (cases) |child| {
-                try callback(context, tree, child);
-            }
-        },
-
-        .switch_case_one,
-        .switch_case_inline_one,
-        .switch_case,
-        .switch_case_inline,
-        => {
-            const switch_case = tree.fullSwitchCase(node).?.ast;
-            for (switch_case.values) |child| {
-                try callback(context, tree, child);
-            }
-            try callback(context, tree, switch_case.target_expr);
-        },
-
-        .while_simple,
-        .while_cont,
-        .@"while",
-        => {
-            const while_ast = fullWhile(tree, node).?.ast;
-            try callback(context, tree, while_ast.cond_expr);
-            try callback(context, tree, while_ast.cont_expr);
-            try callback(context, tree, while_ast.then_expr);
-            try callback(context, tree, while_ast.else_expr);
-        },
-        .for_simple,
-        .@"for",
-        => {
-            const for_ast = fullFor(tree, node).?.ast;
-            for (for_ast.inputs) |child| {
-                try callback(context, tree, child);
-            }
-            try callback(context, tree, for_ast.then_expr);
-            try callback(context, tree, for_ast.else_expr);
-        },
-
-        .@"if",
-        .if_simple,
-        => {
-            const if_ast = fullIf(tree, node).?.ast;
-            try callback(context, tree, if_ast.cond_expr);
-            try callback(context, tree, if_ast.then_expr);
-            try callback(context, tree, if_ast.else_expr);
-        },
-
-        .fn_proto_simple,
-        .fn_proto_multi,
-        .fn_proto_one,
-        .fn_proto,
-        .fn_decl,
-        => {
-            var buffer: [1]Node.Index = undefined;
-            const fn_proto = tree.fullFnProto(&buffer, node).?;
-
-            var it = fn_proto.iterate(&tree);
-            while (nextFnParam(&it)) |param| {
-                try callback(context, tree, param.type_expr);
-            }
-            try callback(context, tree, fn_proto.ast.align_expr);
-            try callback(context, tree, fn_proto.ast.addrspace_expr);
-            try callback(context, tree, fn_proto.ast.section_expr);
-            try callback(context, tree, fn_proto.ast.callconv_expr);
-            try callback(context, tree, fn_proto.ast.return_type);
-            if (node_tags[node] == .fn_decl) {
-                try callback(context, tree, node_data[node].rhs);
-            }
-        },
-
-        .container_decl_arg,
-        .container_decl_arg_trailing,
-        => {
-            const decl = tree.containerDeclArg(node).ast;
-            try callback(context, tree, decl.arg);
-            for (decl.members) |child| {
-                try callback(context, tree, child);
-            }
-        },
-
-        .tagged_union_enum_tag,
-        .tagged_union_enum_tag_trailing,
-        => {
-            const decl = tree.taggedUnionEnumTag(node).ast;
-            try callback(context, tree, decl.arg);
-            for (decl.members) |child| {
-                try callback(context, tree, child);
-            }
-        },
-
-        .container_field => {
-            const field = tree.containerField(node).ast;
-            try callback(context, tree, field.type_expr);
-            try callback(context, tree, field.align_expr);
-            try callback(context, tree, field.value_expr);
-        },
-
-        .@"asm" => {
-            const asm_node = tree.asmFull(node);
-
-            try callback(context, tree, asm_node.ast.template);
-
-            for (asm_node.outputs) |output_node| {
-                const has_arrow = token_tags[main_tokens[output_node] + 4] == .arrow;
-                if (has_arrow) {
-                    try callback(context, tree, node_data[output_node].lhs);
+            if (it.tree.tokenTag(it.tok_i) == .doc_comment) {
+                first_doc_comment = it.tok_i;
+                while (it.tree.tokenTag(it.tok_i) == .doc_comment) {
+                    it.tok_i += 1;
                 }
             }
-
-            for (asm_node.inputs) |input_node| {
-                try callback(context, tree, node_data[input_node].lhs);
+            switch (it.tree.tokenTag(it.tok_i)) {
+                .ellipsis3 => {
+                    it.tok_flag = false; // Next iteration should return null.
+                    return .{
+                        .first_doc_comment = first_doc_comment,
+                        .comptime_noalias = null,
+                        .name_token = null,
+                        .anytype_ellipsis3 = it.tok_i,
+                        .type_expr = null,
+                    };
+                },
+                .keyword_noalias, .keyword_comptime => {
+                    comptime_noalias = it.tok_i;
+                    it.tok_i += 1;
+                },
+                else => {},
             }
-        },
-
-        .asm_output,
-        .asm_input,
-        => unreachable,
-
-        .@"continue",
-        .anyframe_literal,
-        .char_literal,
-        .number_literal,
-        .unreachable_literal,
-        .identifier,
-        .enum_literal,
-        .string_literal,
-        .multiline_string_literal,
-        .error_set_decl,
-        .error_value,
-        => {},
+            if (it.tree.tokenTag(it.tok_i) == .identifier and
+                it.tree.tokenTag(it.tok_i + 1) == .colon)
+            {
+                name_token = it.tok_i;
+                it.tok_i += 2;
+            }
+            if (it.tree.tokenTag(it.tok_i) == .keyword_anytype) {
+                it.tok_i += 1;
+                return .{
+                    .first_doc_comment = first_doc_comment,
+                    .comptime_noalias = comptime_noalias,
+                    .name_token = name_token,
+                    .anytype_ellipsis3 = it.tok_i - 1,
+                    .type_expr = null,
+                };
+            }
+            it.tok_flag = false;
+        }
     }
-}
+};
 
-/// calls the given `callback` on every child of the given node and their children
-/// see `nodeChildrenRecursiveAlloc` for a non-iterator allocating variant.
-pub fn iterateChildrenRecursive(
-    tree: Ast,
-    node: Ast.Node.Index,
-    context: anytype,
-    comptime Error: type,
-    comptime callback: fn (@TypeOf(context), Ast, Ast.Node.Index) Error!void,
-) Error!void {
-    const RecursiveContext = struct {
-        fn recursive_callback(ctx: *const anyopaque, ast: Ast, child_node: Ast.Node.Index) anyerror!void {
-            if (child_node == 0) return;
-            try callback(@as(*const @TypeOf(context), @alignCast(@ptrCast(ctx))).*, ast, child_node);
-            try iterateChildrenTypeErased(ast, child_node, ctx, recursive_callback);
-        }
-    };
+pub const Iterator = union(enum) {
+    array: [5]Ast.Node.OptionalIndex,
+    sub_range: struct {
+        prefix: Ast.Node.OptionalIndex = .none,
+        items: Ast.Node.SubRange,
+        suffix: [2]Ast.Node.OptionalIndex = @splat(.none),
+    },
+    fn_proto: struct {
+        node: Ast.Node.Index,
+        param_i: u32,
+        tok_i: Ast.TokenIndex,
+        tok_flag: bool,
+    },
+    @"asm": struct {
+        template: Ast.Node.OptionalIndex,
+        items: Ast.Node.SubRange,
+        clobbers: Ast.Node.OptionalIndex,
+    },
 
-    if (iterateChildrenTypeErased(tree, node, @ptrCast(&context), RecursiveContext.recursive_callback)) |_| {
-        return;
-    } else |err| {
-        return @as(Error, @errorCast(err));
+    pub fn init(tree: *const Ast, node: Ast.Node.Index) Iterator {
+        return switch (tree.nodeTag(node)) {
+            .bool_not,
+            .negation,
+            .bit_not,
+            .negation_wrap,
+            .address_of,
+            .@"try",
+            .optional_type,
+            .deref,
+            .@"suspend",
+            .@"resume",
+            .@"comptime",
+            .@"nosuspend",
+            .@"defer",
+            => return .initArray(.{tree.nodeData(node).node}),
+            .@"return" => return .initArray(.{tree.nodeData(node).opt_node}),
+
+            .@"catch",
+            .equal_equal,
+            .bang_equal,
+            .less_than,
+            .greater_than,
+            .less_or_equal,
+            .greater_or_equal,
+            .assign_mul,
+            .assign_div,
+            .assign_mod,
+            .assign_add,
+            .assign_sub,
+            .assign_shl,
+            .assign_shl_sat,
+            .assign_shr,
+            .assign_bit_and,
+            .assign_bit_xor,
+            .assign_bit_or,
+            .assign_mul_wrap,
+            .assign_add_wrap,
+            .assign_sub_wrap,
+            .assign_mul_sat,
+            .assign_add_sat,
+            .assign_sub_sat,
+            .assign,
+            .merge_error_sets,
+            .mul,
+            .div,
+            .mod,
+            .array_mult,
+            .mul_wrap,
+            .mul_sat,
+            .add,
+            .sub,
+            .array_cat,
+            .add_wrap,
+            .sub_wrap,
+            .add_sat,
+            .sub_sat,
+            .shl,
+            .shl_sat,
+            .shr,
+            .bit_and,
+            .bit_xor,
+            .bit_or,
+            .@"orelse",
+            .bool_and,
+            .bool_or,
+            .array_type,
+            .array_access,
+            .array_init_one,
+            .array_init_one_comma,
+            .switch_range,
+            .fn_decl,
+            .container_field_align,
+            .error_union,
+            => {
+                const lhs, const rhs = tree.nodeData(node).node_and_node;
+                return .initArray(.{ lhs, rhs });
+            },
+
+            .call_one,
+            .call_one_comma,
+            .struct_init_one,
+            .struct_init_one_comma,
+            .container_field_init,
+            .for_range,
+            => {
+                const lhs, const opt_rhs = tree.nodeData(node).node_and_opt_node;
+                return .initArray(.{ lhs, opt_rhs });
+            },
+
+            .array_init_dot_two,
+            .array_init_dot_two_comma,
+            .struct_init_dot_two,
+            .struct_init_dot_two_comma,
+            .block_two,
+            .block_two_semicolon,
+            .builtin_call_two,
+            .builtin_call_two_comma,
+            .container_decl_two,
+            .container_decl_two_trailing,
+            .tagged_union_two,
+            .tagged_union_two_trailing,
+            => {
+                const opt_lhs, const opt_rhs = tree.nodeData(node).opt_node_and_opt_node;
+                return .initArray(.{ opt_lhs, opt_rhs });
+            },
+
+            .field_access,
+            .unwrap_optional,
+            .grouped_expression,
+            .asm_simple,
+            => .initArray(.{tree.nodeData(node).node_and_token[0]}),
+            .test_decl, .@"errdefer" => .initArray(.{tree.nodeData(node).opt_token_and_node[1]}),
+            .anyframe_type => .initArray(.{tree.nodeData(node).token_and_node[1]}),
+            .@"break", .@"continue" => .initArray(.{tree.nodeData(node).opt_token_and_opt_node[1]}),
+
+            .root => {
+                switch (tree.mode) {
+                    .zig => return .{ .sub_range = .{ .items = tree.nodeData(.root).extra_range } },
+                    .zon => return .{ .array = .{ tree.nodeData(.root).node.toOptional(), .none, .none, .none, .none } },
+                }
+            },
+
+            .array_init_dot,
+            .array_init_dot_comma,
+            .struct_init_dot,
+            .struct_init_dot_comma,
+            .builtin_call,
+            .builtin_call_comma,
+            .container_decl,
+            .container_decl_trailing,
+            .tagged_union,
+            .tagged_union_trailing,
+            .block,
+            .block_semicolon,
+            => .{ .sub_range = .{
+                .items = tree.nodeData(node).extra_range,
+            } },
+
+            .global_var_decl,
+            .local_var_decl,
+            .simple_var_decl,
+            .aligned_var_decl,
+            => {
+                const var_decl = tree.fullVarDecl(node).?.ast;
+                return .initArray(.{
+                    var_decl.type_node,
+                    var_decl.align_node,
+                    var_decl.addrspace_node,
+                    var_decl.section_node,
+                    var_decl.init_node,
+                });
+            },
+
+            .assign_destructure => {
+                const extra_index, const value_expr = tree.nodeData(node).extra_and_node;
+                const variable_count = tree.extra_data[@intFromEnum(extra_index)];
+                const sub_range_start: Ast.ExtraIndex = @enumFromInt(@intFromEnum(extra_index) + 1);
+                const sub_range_end: Ast.ExtraIndex = @enumFromInt(@intFromEnum(sub_range_start) + variable_count);
+                return .{ .sub_range = .{
+                    .items = .{ .start = sub_range_start, .end = sub_range_end },
+                    .suffix = .{ value_expr.toOptional(), .none },
+                } };
+            },
+
+            .array_type_sentinel => {
+                const array_type = tree.arrayTypeSentinel(node).ast;
+                return .initArray(.{
+                    array_type.elem_count,
+                    array_type.sentinel,
+                    array_type.elem_type,
+                });
+            },
+
+            .ptr_type_aligned,
+            .ptr_type_sentinel,
+            .ptr_type,
+            => {
+                const ptr_type = fullPtrType(tree, node).?.ast;
+                std.debug.assert(ptr_type.bit_range_start == .none);
+                std.debug.assert(ptr_type.bit_range_end == .none);
+                return .initArray(.{
+                    ptr_type.sentinel,
+                    ptr_type.align_node,
+                    ptr_type.addrspace_node,
+                    ptr_type.child_type,
+                });
+            },
+            .ptr_type_bit_range => {
+                const ptr_type = tree.ptrTypeBitRange(node);
+                std.debug.assert(ptr_type.size == .one);
+                std.debug.assert(ptr_type.ast.sentinel == .none);
+                std.debug.assert(ptr_type.ast.bit_range_start != .none);
+                std.debug.assert(ptr_type.ast.bit_range_end != .none);
+                return .initArray(.{
+                    ptr_type.ast.align_node,
+                    ptr_type.ast.bit_range_start,
+                    ptr_type.ast.bit_range_end,
+                    ptr_type.ast.addrspace_node,
+                    ptr_type.ast.child_type,
+                });
+            },
+
+            .slice_open,
+            .slice,
+            .slice_sentinel,
+            => {
+                const slice = tree.fullSlice(node).?;
+                return .initArray(.{
+                    slice.ast.sliced,
+                    slice.ast.start,
+                    slice.ast.end,
+                    slice.ast.sentinel,
+                });
+            },
+
+            .array_init,
+            .array_init_comma,
+            .struct_init,
+            .struct_init_comma,
+            .call,
+            .call_comma,
+            .@"switch",
+            .switch_comma,
+            .container_decl_arg,
+            .container_decl_arg_trailing,
+            .tagged_union_enum_tag,
+            .tagged_union_enum_tag_trailing,
+            => {
+                const prefix, const extra_index = tree.nodeData(node).node_and_extra;
+                return .{ .sub_range = .{
+                    .prefix = prefix.toOptional(),
+                    .items = tree.extraData(extra_index, Node.SubRange),
+                } };
+            },
+
+            .switch_case_one, .switch_case_inline_one => {
+                const first_value, const target_expr = tree.nodeData(node).opt_node_and_node;
+                return .initArray(.{ first_value, target_expr });
+            },
+            .switch_case,
+            .switch_case_inline,
+            => {
+                const extra_index, const target_expr = tree.nodeData(node).extra_and_node;
+                return .{ .sub_range = .{
+                    .items = tree.extraData(extra_index, Node.SubRange),
+                    .suffix = .{ target_expr.toOptional(), .none },
+                } };
+            },
+
+            .while_simple,
+            .while_cont,
+            .@"while",
+            => {
+                const while_ast = fullWhile(tree, node).?.ast;
+                return .initArray(.{
+                    while_ast.cond_expr,
+                    while_ast.cont_expr,
+                    while_ast.then_expr,
+                    while_ast.else_expr,
+                });
+            },
+            .for_simple => {
+                const input, const then_expr = tree.nodeData(node).node_and_node;
+                return .initArray(.{ input, then_expr });
+            },
+            .@"for",
+            => {
+                const extra_index, const extra = tree.nodeData(node).@"for";
+                const then_expr: Node.Index = @enumFromInt(tree.extra_data[@intFromEnum(extra_index) + extra.inputs]);
+                const else_expr: Node.OptionalIndex = if (extra.has_else) @enumFromInt(tree.extra_data[@intFromEnum(extra_index) + extra.inputs + 1]) else .none;
+                return .{ .sub_range = .{
+                    .items = .{ .start = extra_index, .end = @enumFromInt(@intFromEnum(extra_index) + extra.inputs) },
+                    .suffix = .{ then_expr.toOptional(), else_expr },
+                } };
+            },
+
+            .@"if",
+            .if_simple,
+            => {
+                const if_ast = fullIf(tree, node).?.ast;
+                return .initArray(.{
+                    if_ast.cond_expr,
+                    if_ast.then_expr,
+                    if_ast.else_expr,
+                });
+            },
+            .fn_proto_simple,
+            .fn_proto_multi,
+            .fn_proto_one,
+            .fn_proto,
+            => return .{ .fn_proto = .{
+                .node = node,
+                .param_i = 0,
+                .tok_i = tree.nodeMainToken(node) + 1,
+                .tok_flag = true,
+            } },
+
+            .container_field => {
+                const field = tree.containerField(node).ast;
+                return .initArray(.{
+                    field.type_expr,
+                    field.align_expr,
+                    field.value_expr,
+                });
+            },
+
+            .@"asm" => {
+                const template, const extra_index = tree.nodeData(node).node_and_extra;
+                const extra = tree.extraData(extra_index, Node.Asm);
+                return .{ .@"asm" = .{
+                    .template = template.toOptional(),
+                    .items = .{ .start = extra.items_start, .end = extra.items_end },
+                    .clobbers = extra.clobbers,
+                } };
+            },
+
+            .asm_output,
+            .asm_input,
+            => unreachable,
+
+            .anyframe_literal,
+            .char_literal,
+            .number_literal,
+            .unreachable_literal,
+            .identifier,
+            .enum_literal,
+            .string_literal,
+            .multiline_string_literal,
+            .error_set_decl,
+            .error_value,
+            => return .{ .array = @splat(.none) },
+        };
     }
-}
 
-/// returns the children of the given node.
-/// see `iterateChildren` for a callback variant
-/// see `nodeChildrenRecursiveAlloc` for a recursive variant.
-/// caller owns the returned memory
-pub fn nodeChildrenAlloc(allocator: std.mem.Allocator, tree: Ast, node: Ast.Node.Index) error{OutOfMemory}![]Ast.Node.Index {
-    const Context = struct {
-        children: *std.ArrayList(Ast.Node.Index),
-        fn callback(self: @This(), ast: Ast, child_node: Ast.Node.Index) error{OutOfMemory}!void {
-            _ = ast;
-            if (child_node == 0) return;
-            try self.children.append(child_node);
+    pub fn next(it: *Iterator, tree: *const Ast) ?Ast.Node.Index {
+        sw: switch (it.*) {
+            .array => |*array| {
+                const result = array[0].unwrap() orelse return null;
+                @memmove(array[0 .. array.len - 1], array[1..]);
+                array[array.len - 1] = .none;
+                return result;
+            },
+            .sub_range => |*sub_range| {
+                if (sub_range.prefix.unwrap()) |result| {
+                    sub_range.prefix = .none;
+                    return result;
+                }
+                const items = tree.extraDataSlice(sub_range.items, Ast.Node.Index);
+                if (items.len > 0) {
+                    defer sub_range.items.start = @enumFromInt(@intFromEnum(sub_range.items.start) + 1);
+                    return items[0];
+                }
+                const first = sub_range.suffix[0].unwrap() orelse return null;
+                sub_range.suffix[0] = sub_range.suffix[1];
+                sub_range.suffix[1] = .none;
+                return first;
+            },
+            .fn_proto => |*fn_proto| {
+                var buffer: [1]Ast.Node.Index = undefined;
+                const func = tree.fullFnProto(&buffer, fn_proto.node).?;
+                var func_it: FnParamIterator = .{
+                    .tree = tree,
+                    .params = func.ast.params,
+                    .param_i = fn_proto.param_i,
+                    .tok_i = fn_proto.tok_i,
+                    .tok_flag = fn_proto.tok_flag,
+                };
+                while (func_it.next()) |param| {
+                    fn_proto.param_i = func_it.param_i;
+                    fn_proto.tok_i = func_it.tok_i;
+                    fn_proto.tok_flag = func_it.tok_flag;
+                    return param.type_expr orelse continue;
+                } else {
+                    it.* = .initArray(.{
+                        func.ast.align_expr,
+                        func.ast.addrspace_expr,
+                        func.ast.section_expr,
+                        func.ast.callconv_expr,
+                        func.ast.return_type,
+                    });
+                    continue :sw it.*;
+                }
+            },
+            .@"asm" => |*asm_state| {
+                @branchHint(.unlikely);
+
+                if (asm_state.template.unwrap()) |template| {
+                    asm_state.template = .none;
+                    return template;
+                }
+                const items = tree.extraDataSlice(asm_state.items, Ast.Node.Index);
+
+                var i: usize = 0;
+                defer asm_state.items.start = @enumFromInt(@intFromEnum(asm_state.items.start) + i);
+                while (i < items.len) {
+                    defer i += 1;
+                    switch (tree.nodeTag(items[i])) {
+                        .asm_output => {
+                            const output_node = items[i];
+                            const has_arrow = tree.tokenTag(tree.nodeMainToken(output_node) + 4) == .arrow;
+                            if (!has_arrow) continue;
+                            const lhs = tree.nodeData(output_node).opt_node_and_token[0].unwrap() orelse continue;
+                            return lhs;
+                        },
+                        .asm_input => {
+                            const input_node = items[i];
+                            return tree.nodeData(input_node).node_and_token[0];
+                        },
+                        else => unreachable,
+                    }
+                }
+
+                if (asm_state.clobbers.unwrap()) |clobbers| {
+                    asm_state.clobbers = .none;
+                    return clobbers;
+                }
+
+                return null;
+            },
         }
+    }
+
+    fn initArray(tuple: anytype) Iterator {
+        var array: @FieldType(Iterator, "array") = @splat(.none);
+        comptime std.debug.assert(tuple.len <= array.len);
+        var i: usize = 0;
+        inline for (tuple) |item| {
+            std.debug.assert(item != .root);
+            switch (@TypeOf(item)) {
+                Ast.Node.OptionalIndex => {
+                    if (item != .none) {
+                        array[i] = item;
+                        i += 1;
+                    }
+                },
+                Ast.Node.Index => {
+                    array[i] = item.toOptional();
+                    i += 1;
+                },
+                else => comptime unreachable,
+            }
+        }
+        return .{ .array = array };
+    }
+};
+
+pub const Walker = struct {
+    stack: std.ArrayList(Stack),
+
+    pub fn init(allocator: std.mem.Allocator, tree: *const Ast, node: Ast.Node.Index) error{OutOfMemory}!Walker {
+        var stack: std.ArrayList(Stack) = .empty;
+        try stack.append(allocator, .{
+            .node = node,
+            .it = .init(tree, node),
+        });
+        return .{ .stack = stack };
+    }
+
+    pub fn deinit(walker: *Walker, allocator: std.mem.Allocator) void {
+        walker.stack.deinit(allocator);
+        walker.* = undefined;
+    }
+
+    pub const Event = union(enum) {
+        open: Ast.Node.Index,
+        close: Ast.Node.Index,
     };
 
-    var children = std.ArrayList(Ast.Node.Index).init(allocator);
-    errdefer children.deinit();
-    try iterateChildren(tree, node, Context{ .children = &children }, error{OutOfMemory}, Context.callback);
-    return children.toOwnedSlice();
-}
+    pub fn next(walker: *Walker, allocator: std.mem.Allocator, tree: *const Ast) error{OutOfMemory}!?Event {
+        while (walker.stack.items.len != 0) {
+            const stack: *Stack = &walker.stack.items[walker.stack.items.len - 1];
+            const node = stack.it.next(tree) orelse {
+                const node = stack.node;
+                walker.stack.items.len -= 1;
+                return .{ .close = node };
+            };
+            std.debug.assert(node != .root);
+            try walker.stack.append(allocator, .{
+                .node = node,
+                .it = .init(tree, node),
+            });
+            return .{ .open = node };
+        } else return null;
+    }
 
-/// returns the children of the given node.
-/// see `iterateChildrenRecursive` for a callback variant
-/// caller owns the returned memory
-pub fn nodeChildrenRecursiveAlloc(allocator: std.mem.Allocator, tree: Ast, node: Ast.Node.Index) error{OutOfMemory}![]Ast.Node.Index {
-    const Context = struct {
-        children: *std.ArrayList(Ast.Node.Index),
-        fn callback(self: @This(), ast: Ast, child_node: Ast.Node.Index) error{OutOfMemory}!void {
-            _ = ast;
-            if (child_node == 0) return;
-            try self.children.append(child_node);
+    pub fn nextIgnoreClose(walker: *Walker, allocator: std.mem.Allocator, tree: *const Ast) error{OutOfMemory}!?Ast.Node.Index {
+        while (true) {
+            switch (try walker.next(allocator, tree) orelse return null) {
+                .open => |node| return node,
+                .close => continue,
+            }
         }
-    };
+    }
 
-    var children = std.ArrayList(Ast.Node.Index).init(allocator);
-    errdefer children.deinit();
-    try iterateChildrenRecursive(tree, node, .{ .children = &children }, Context.callback);
-    return children.toOwnedSlice(allocator);
-}
+    pub fn skip(walker: *Walker) void {
+        walker.stack.items.len -= 1;
+    }
+
+    /// Returns the parent node after a `Event.open` has been returned from `next`.
+    pub fn parentNode(walker: *const Walker) Ast.Node.Index {
+        return walker.stack.items[walker.stack.items.len - 2].node;
+    }
+
+    const Stack = struct {
+        node: Ast.Node.Index,
+        it: Iterator,
+    };
+};
 
 /// returns a list of nodes that overlap with the given source code index.
 /// sorted from smallest to largest.
 /// caller owns the returned memory.
-pub fn nodesOverlappingIndex(allocator: std.mem.Allocator, tree: Ast, index: usize) error{OutOfMemory}![]Ast.Node.Index {
+pub fn nodesOverlappingIndex(allocator: std.mem.Allocator, tree: *const Ast, index: usize) error{OutOfMemory}![]Ast.Node.Index {
     std.debug.assert(index <= tree.source.len);
 
-    const Context = struct {
-        index: usize,
-        allocator: std.mem.Allocator,
-        nodes: std.ArrayListUnmanaged(Ast.Node.Index) = .{},
+    var nodes: std.ArrayList(Ast.Node.Index) = .empty;
+    defer nodes.deinit(allocator);
 
-        pub fn append(self: *@This(), ast: Ast, node: Ast.Node.Index) error{OutOfMemory}!void {
-            if (node == 0) return;
-            const loc = offsets.nodeToLoc(ast, node);
-            if (loc.start <= self.index and self.index <= loc.end) {
-                try iterateChildren(ast, node, self, error{OutOfMemory}, append);
-                try self.nodes.append(self.allocator, node);
-            }
+    var walker: Walker = try .init(allocator, tree, .root);
+    defer walker.deinit(allocator);
+
+    while (try walker.nextIgnoreClose(allocator, tree)) |node| {
+        const loc = offsets.nodeToLoc(tree, node);
+        if (loc.start <= index and index <= loc.end) {
+            try nodes.append(allocator, node);
+        } else {
+            walker.skip();
+        }
+    }
+
+    std.mem.reverse(Ast.Node.Index, nodes.items);
+    try nodes.append(allocator, .root);
+    return try nodes.toOwnedSlice(allocator);
+}
+
+/// returns a list of nodes that overlap with the given source code index.
+/// the list may include nodes that were discarded during error recovery in the Zig parser.
+/// sorted from smallest to largest.
+/// caller owns the returned memory.
+/// this function can be removed when the parser has been improved.
+pub fn nodesOverlappingIndexIncludingParseErrors(allocator: std.mem.Allocator, tree: *const Ast, source_index: usize) error{OutOfMemory}![]Ast.Node.Index {
+    const NodeLoc = struct {
+        node: Ast.Node.Index,
+        loc: offsets.Loc,
+
+        fn lessThan(_: void, lhs: @This(), rhs: @This()) bool {
+            return rhs.loc.start < lhs.loc.start and lhs.loc.end < rhs.loc.end;
         }
     };
 
-    var context: Context = .{ .index = index, .allocator = allocator };
-    try iterateChildren(tree, 0, &context, error{OutOfMemory}, Context.append);
-    try context.nodes.append(allocator, 0);
-    return try context.nodes.toOwnedSlice(allocator);
+    var node_locs: std.ArrayList(NodeLoc) = .empty;
+    defer node_locs.deinit(allocator);
+    for (0..tree.nodes.len) |i| {
+        const node: Ast.Node.Index = @enumFromInt(i);
+        const loc = offsets.nodeToLoc(tree, node);
+        if (loc.start <= source_index and source_index <= loc.end) {
+            try node_locs.append(allocator, .{ .node = node, .loc = loc });
+        }
+    }
+
+    std.mem.sort(NodeLoc, node_locs.items, {}, NodeLoc.lessThan);
+
+    const nodes = try allocator.alloc(Ast.Node.Index, node_locs.items.len);
+    for (node_locs.items, nodes) |node_loc, *node| {
+        node.* = node_loc.node;
+    }
+    return nodes;
 }
 
 /// returns a list of nodes that together encloses the given source code range
 /// caller owns the returned memory
-pub fn nodesAtLoc(allocator: std.mem.Allocator, tree: Ast, loc: offsets.Loc) error{OutOfMemory}![]Ast.Node.Index {
+pub fn nodesAtLoc(allocator: std.mem.Allocator, tree: *const Ast, loc: offsets.Loc) error{OutOfMemory}![]Ast.Node.Index {
     std.debug.assert(loc.start <= loc.end and loc.end <= tree.source.len);
 
     const Context = struct {
         allocator: std.mem.Allocator,
-        nodes: std.ArrayListUnmanaged(Ast.Node.Index) = .{},
-        locs: std.ArrayListUnmanaged(offsets.Loc) = .{},
+        nodes: std.ArrayList(Ast.Node.Index) = .empty,
+        locs: std.ArrayList(offsets.Loc) = .empty,
 
-        pub fn append(self: *@This(), ast: Ast, node: Ast.Node.Index) !void {
-            if (node == 0) return;
+        pub fn append(self: *@This(), ast: *const Ast, node: Ast.Node.Index) error{OutOfMemory}!void {
+            std.debug.assert(node != .root);
             try self.nodes.append(self.allocator, node);
             try self.locs.append(self.allocator, offsets.nodeToLoc(ast, node));
         }
@@ -2060,9 +1652,10 @@ pub fn nodesAtLoc(allocator: std.mem.Allocator, tree: Ast, loc: offsets.Loc) err
 
     try context.nodes.ensureTotalCapacity(allocator, 32);
 
-    var parent: Ast.Node.Index = 0; // root node
+    var parent: Ast.Node.Index = .root;
     while (true) {
-        try iterateChildren(tree, parent, &context, error{OutOfMemory}, Context.append);
+        var it: Iterator = .init(tree, parent);
+        while (it.next(tree)) |child| try context.append(tree, child);
 
         if (smallestEnclosingSubrange(context.locs.items, loc)) |subslice| {
             std.debug.assert(subslice.len != 0);
@@ -2196,4 +1789,40 @@ test smallestEnclosingSubrange {
         children[1..3],
         children[result4.start .. result4.start + result4.len],
     );
+}
+
+pub fn indexOfBreakTarget(
+    tree: *const Ast,
+    nodes: []const Ast.Node.Index,
+    break_label_maybe: ?[]const u8,
+) ?usize {
+    for (nodes, 0..) |node, index| {
+        if (fullFor(tree, node)) |for_node| {
+            const break_label = break_label_maybe orelse return index;
+            const for_label = tree.tokenSlice(for_node.label_token orelse continue);
+            if (std.mem.eql(u8, break_label, for_label)) return index;
+        } else if (fullWhile(tree, node)) |while_node| {
+            const break_label = break_label_maybe orelse return index;
+            const while_label = tree.tokenSlice(while_node.label_token orelse continue);
+            if (std.mem.eql(u8, break_label, while_label)) return index;
+        } else if (tree.fullSwitch(node)) |switch_node| {
+            const break_label = break_label_maybe orelse continue;
+            const switch_label = tree.tokenSlice(switch_node.label_token orelse continue);
+            if (std.mem.eql(u8, break_label, switch_label)) return index;
+        } else switch (tree.nodeTag(node)) {
+            .block,
+            .block_semicolon,
+            .block_two,
+            .block_two_semicolon,
+            => {
+                const break_label = break_label_maybe orelse continue;
+                const block_label_token = blockLabel(tree, node) orelse continue;
+                const block_label = tree.tokenSlice(block_label_token);
+
+                if (std.mem.eql(u8, break_label, block_label)) return index;
+            },
+            else => {},
+        }
+    }
+    return null;
 }

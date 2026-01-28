@@ -8,27 +8,27 @@ const offsets = @import("offsets.zig");
 
 const DocumentScope = @This();
 
-scopes: std.MultiArrayList(Scope) = .{},
-declarations: std.MultiArrayList(Declaration) = .{},
+scopes: std.MultiArrayList(Scope),
+declarations: std.MultiArrayList(Declaration),
 /// used for looking up a child declaration in a given scope
-declaration_lookup_map: DeclarationLookupMap = .{},
-extra: std.ArrayListUnmanaged(u32) = .{},
+declaration_lookup_map: DeclarationLookupMap,
+extra: std.ArrayList(u32),
 /// All identifier token that are in error sets.
 /// When there are multiple error sets that contain the same error, only one of them is stored.
 /// A token that has a doc comment takes priority.
 /// This means that if there a multiple error sets with the same name, only one of them is included.
-global_error_set: IdentifierSet = .{},
+global_error_set: IdentifierSet,
 /// All identifier token that are in enums.
 /// When there are multiple enums that contain the field name, only one of them is stored.
 /// A token that has a doc comment takes priority.
 /// This means that if there a multiple enums with the same name, only one of them is included.
-global_enum_set: IdentifierSet = .{},
+global_enum_set: IdentifierSet,
 
 /// Stores a set of identifier tokens with unique names
 pub const IdentifierSet = std.ArrayHashMapUnmanaged(Ast.TokenIndex, void, IdentifierTokenContext, true);
 
 pub const IdentifierTokenContext = struct {
-    tree: Ast,
+    tree: *const Ast,
 
     pub fn eql(self: @This(), a: Ast.TokenIndex, b: Ast.TokenIndex, b_index: usize) bool {
         _ = b_index;
@@ -63,7 +63,7 @@ pub const DeclarationLookup = struct {
 pub const DeclarationLookupContext = struct {
     pub fn hash(self: @This(), s: DeclarationLookup) u32 {
         _ = self;
-        var hasher = std.hash.Wyhash.init(0);
+        var hasher: std.hash.Wyhash = .init(0);
         std.hash.autoHash(&hasher, s.scope);
         hasher.update(s.name);
         std.hash.autoHash(&hasher, s.kind);
@@ -77,75 +77,13 @@ pub const DeclarationLookupContext = struct {
     }
 };
 
-/// Assumes that the `node` is not a container_field of a struct tuple field.
-fn getDeclNameToken(tree: Ast, node: Ast.Node.Index) ?Ast.TokenIndex {
-    const tags = tree.nodes.items(.tag);
-    const token_tags = tree.tokens.items(.tag);
-    const main_tokens = tree.nodes.items(.main_token);
-
-    var buffer: [1]Ast.Node.Index = undefined;
-    const token_index = switch (tags[node]) {
-        .local_var_decl,
-        .global_var_decl,
-        .simple_var_decl,
-        .aligned_var_decl,
-        => tree.fullVarDecl(node).?.ast.mut_token + 1,
-        .fn_proto,
-        .fn_proto_multi,
-        .fn_proto_one,
-        .fn_proto_simple,
-        .fn_decl,
-        => tree.fullFnProto(&buffer, node).?.name_token orelse return null,
-
-        .identifier => main_tokens[node],
-        .error_value => main_tokens[node] + 2, // 'error'.<main_token +2>
-        .test_decl => ast.testDeclNameToken(tree, node) orelse return null,
-
-        .container_field,
-        .container_field_init,
-        .container_field_align,
-        => main_tokens[node],
-
-        .root,
-        .container_decl,
-        .container_decl_trailing,
-        .container_decl_arg,
-        .container_decl_arg_trailing,
-        .container_decl_two,
-        .container_decl_two_trailing,
-        .tagged_union,
-        .tagged_union_trailing,
-        .tagged_union_two,
-        .tagged_union_two_trailing,
-        .tagged_union_enum_tag,
-        .tagged_union_enum_tag_trailing,
-        .error_set_decl,
-        .block,
-        .block_semicolon,
-        .block_two,
-        .block_two_semicolon,
-        => return null,
-
-        else => return null,
-    };
-
-    if (token_index >= tree.tokens.len) return null;
-    if (token_tags[token_index] != .identifier) return null;
-    return token_index;
-}
-
 pub const Declaration = union(enum) {
     /// Index of the ast node.
     /// Can have one of the following tags:
-    ///   - `.root`
-    ///   - `.container_decl`
-    ///   - `.tagged_union`
-    ///   - `.error_set_decl`
     ///   - `.container_field`
     ///   - `.fn_proto`
     ///   - `.fn_decl`
     ///   - `.var_decl`
-    ///   - `.block`
     ast_node: Ast.Node.Index,
     /// Function parameter
     function_parameter: Param,
@@ -170,15 +108,17 @@ pub const Declaration = union(enum) {
     /// - `if (condition) |_| {} else |identifier| {}`
     /// - `while (condition) |_| {} else |identifier| {}`
     /// - `condition catch |identifier| {}`
-    /// - `errdefer |identifier| {}` (condition is 0)
+    /// - `errdefer |identifier| {}` (condition is `.none`)
     error_union_error: struct {
         identifier: Ast.TokenIndex,
-        /// may be 0
-        condition: Ast.Node.Index,
+        condition: Ast.Node.OptionalIndex,
     },
     assign_destructure: AssignDestructure,
-    // a switch case capture
+    /// - `switch (condition) { .case => |value| {} }`
     switch_payload: Switch,
+    /// - `switch (condition) { inline .case => |_, tag| {} }`
+    /// - `switch (condition) { inline else => |_, tag| {} }`
+    switch_inline_tag_payload: Switch,
     label: struct {
         identifier: Ast.TokenIndex,
         block: Ast.Node.Index,
@@ -187,16 +127,22 @@ pub const Declaration = union(enum) {
     /// used as child declarations of an error set declaration
     error_token: Ast.TokenIndex,
 
+    comptime {
+        for (std.meta.fields(Declaration)) |field| {
+            std.debug.assert(@sizeOf(field.type) <= 8); // a Declaration without the union tag must be less than 8 bytes
+        }
+    }
+
     pub const Param = struct {
         param_index: u16,
         func: Ast.Node.Index,
 
-        pub fn get(self: Param, tree: Ast) ?Ast.full.FnProto.Param {
+        pub fn get(self: Param, tree: *const Ast) ?Ast.full.FnProto.Param {
             var buffer: [1]Ast.Node.Index = undefined;
             const func = tree.fullFnProto(&buffer, self.func).?;
             var param_index: u16 = 0;
-            var it = func.iterate(&tree);
-            while (ast.nextFnParam(&it)) |param| : (param_index += 1) {
+            var it: ast.FnParamIterator = .init(&func, tree);
+            while (it.next()) |param| : (param_index += 1) {
                 if (self.param_index == param_index) return param;
             }
             return null;
@@ -208,12 +154,12 @@ pub const Declaration = union(enum) {
         node: Ast.Node.Index,
         index: u32,
 
-        pub fn getVarDeclNode(self: AssignDestructure, tree: Ast) Ast.Node.Index {
-            const data = tree.nodes.items(.data);
-            return tree.extra_data[data[self.node].lhs + 1 ..][self.index];
+        pub fn getVarDeclNode(self: AssignDestructure, tree: *const Ast) Ast.Node.Index {
+            const extra_index = tree.nodeData(self.node).extra_and_node[0];
+            return @enumFromInt(tree.extra_data[@intFromEnum(extra_index) + 1 ..][self.index]);
         }
 
-        pub fn getFullVarDecl(self: AssignDestructure, tree: Ast) Ast.full.VarDecl {
+        pub fn getFullVarDecl(self: AssignDestructure, tree: *const Ast) Ast.full.VarDecl {
             return tree.fullVarDecl(self.getVarDeclNode(tree)).?;
         }
     };
@@ -224,10 +170,9 @@ pub const Declaration = union(enum) {
         /// is guaranteed to have a payload_token
         case_index: u32,
 
-        pub fn getCase(self: Switch, tree: Ast) Ast.full.SwitchCase {
-            const node_datas = tree.nodes.items(.data);
-            const extra = tree.extraData(node_datas[self.node].rhs, Ast.Node.SubRange);
-            const cases = tree.extra_data[extra.start..extra.end];
+        pub fn getCase(self: Switch, tree: *const Ast) Ast.full.SwitchCase {
+            const extra_index = tree.nodeData(self.node).node_and_extra[1];
+            const cases = tree.extraDataSlice(tree.extraData(extra_index, Ast.Node.SubRange), Ast.Node.Index);
             return tree.fullSwitchCase(cases[self.case_index]).?;
         }
     };
@@ -254,9 +199,37 @@ pub const Declaration = union(enum) {
         return std.meta.eql(a, b);
     }
 
-    pub fn nameToken(decl: Declaration, tree: Ast) Ast.TokenIndex {
+    /// Returns a `.identifier` or `.builtin` token.
+    pub fn nameToken(decl: Declaration, tree: *const Ast) Ast.TokenIndex {
         return switch (decl) {
-            .ast_node => |n| getDeclNameToken(tree, n).?,
+            .ast_node => |node| {
+                var buffer: [1]Ast.Node.Index = undefined;
+                const token_index = switch (tree.nodeTag(node)) {
+                    .local_var_decl,
+                    .global_var_decl,
+                    .simple_var_decl,
+                    .aligned_var_decl,
+                    => tree.nodeMainToken(node) + 1,
+                    .fn_proto,
+                    .fn_proto_multi,
+                    .fn_proto_one,
+                    .fn_proto_simple,
+                    .fn_decl,
+                    => tree.fullFnProto(&buffer, node).?.name_token.?,
+
+                    .container_field,
+                    .container_field_init,
+                    .container_field_align,
+                    => tree.nodeMainToken(node),
+
+                    else => unreachable,
+                };
+
+                switch (tree.tokenTag(token_index)) {
+                    .identifier, .builtin => return token_index,
+                    else => unreachable,
+                }
+            },
             .function_parameter => |payload| payload.get(tree).?.name_token.?,
             .optional_payload => |payload| payload.identifier,
             .error_union_payload => |payload| payload.identifier,
@@ -269,10 +242,12 @@ pub const Declaration = union(enum) {
                 const varDecl = tree.fullVarDecl(var_decl_node).?;
                 return varDecl.ast.mut_token + 1;
             },
-            .switch_payload => |payload| {
+            .switch_payload,
+            .switch_inline_tag_payload,
+            => |payload| {
                 const case = payload.getCase(tree);
                 const payload_token = case.payload_token.?;
-                return payload_token + @intFromBool(tree.tokens.items(.tag)[payload_token] == .asterisk);
+                return payload_token + @intFromBool(tree.tokenTag(payload_token) == .asterisk) + @as(Ast.TokenIndex, 2) * @intFromBool(decl == .switch_inline_tag_payload);
             },
         };
     }
@@ -280,25 +255,24 @@ pub const Declaration = union(enum) {
 
 pub const Scope = struct {
     pub const Tag = enum(u3) {
-        /// `node_tags[ast_node]` is ContainerDecl or Root or ErrorSetDecl
+        /// `tree.nodeTag(ast_node)` is ContainerDecl or Root or ErrorSetDecl
         container,
-        /// index into `DocumentScope.extra`
-        /// Body:
-        ///     ast_node: Ast.Node.Index,
-        ///     usingnamespace_count: u32,
-        ///     usingnamespaces: [usingnamespace_count]u32,
-        /// `node_tags[ast_node]` is ContainerDecl or Root
-        container_usingnamespace,
-        /// `node_tags[ast_node]` is FnProto
+        /// `tree.nodeTag(ast_node)` is FnProto
         function,
-        /// `node_tags[ast_node]` is Block
+        /// `tree.nodeTag(ast_node)` is Block
         block,
         other,
+
+        pub fn isContainer(self: @This()) bool {
+            return switch (self) {
+                .container => true,
+                .block, .function, .other => false,
+            };
+        }
     };
 
     pub const Data = packed union {
         ast_node: Ast.Node.Index,
-        container_usingnamespace: u32,
     };
 
     pub const SmallLoc = packed struct {
@@ -352,6 +326,7 @@ pub const Scope = struct {
     };
 
     pub const OptionalIndex = enum(u32) {
+        root,
         none = std.math.maxInt(u32),
         _,
 
@@ -364,12 +339,12 @@ pub const Scope = struct {
 
 const ScopeContext = struct {
     allocator: std.mem.Allocator,
-    tree: Ast,
+    tree: *const Ast,
     doc_scope: *DocumentScope,
 
     current_scope: Scope.OptionalIndex = .none,
-    child_scopes_scratch: std.ArrayListUnmanaged(Scope.Index) = .{},
-    child_declarations_scratch: std.ArrayListUnmanaged(Declaration.Index) = .{},
+    child_scopes_scratch: std.ArrayList(Scope.Index) = .empty,
+    child_declarations_scratch: std.ArrayList(Declaration.Index) = .empty,
 
     fn deinit(context: *ScopeContext) void {
         context.child_scopes_scratch.deinit(context.allocator);
@@ -395,10 +370,10 @@ const ScopeContext = struct {
             if (std.mem.eql(u8, name, "_")) return;
             defer std.debug.assert(pushed.context.doc_scope.declarations.len == pushed.context.doc_scope.declaration_lookup_map.count());
 
-            // if (@import("builtin").mode == .Debug) {
-            //     // Check that nameToken works
-            //     std.debug.assert(identifier_token == declaration.nameToken(pushed.context.tree));
-            // }
+            if (@import("builtin").mode == .Debug) {
+                // Check that nameToken works
+                std.debug.assert(identifier_token == declaration.nameToken(pushed.context.tree));
+            }
 
             const context = pushed.context;
             const doc_scope = context.doc_scope;
@@ -489,10 +464,10 @@ const ScopeContext = struct {
             .loc = loc,
             .parent_scope = context.current_scope,
             .child_scopes = .{
-                .small = [_]Scope.OptionalIndex{.none} ** Scope.ChildScopes.small_size,
+                .small = @splat(.none),
             },
             .child_declarations = .{
-                .small = [_]Declaration.OptionalIndex{.none} ** Scope.ChildDeclarations.small_size,
+                .small = @splat(.none),
             },
         });
         const new_scope_index: Scope.Index = @enumFromInt(context.doc_scope.scopes.len - 1);
@@ -540,24 +515,30 @@ const ScopeContext = struct {
     }
 };
 
-pub fn init(allocator: std.mem.Allocator, tree: Ast) error{OutOfMemory}!DocumentScope {
+pub fn init(allocator: std.mem.Allocator, tree: *const Ast) error{OutOfMemory}!DocumentScope {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    var document_scope = DocumentScope{};
+    var document_scope: DocumentScope = .{
+        .scopes = .empty,
+        .declarations = .empty,
+        .declaration_lookup_map = .empty,
+        .extra = .empty,
+        .global_error_set = .empty,
+        .global_enum_set = .empty,
+    };
     errdefer document_scope.deinit(allocator);
 
-    var context = ScopeContext{
+    var context: ScopeContext = .{
         .allocator = allocator,
         .tree = tree,
         .doc_scope = &document_scope,
     };
     defer context.deinit();
-
     switch (tree.mode) {
-        .zig => try walkContainerDecl(&context, tree, 0),
+        .zig => try walkContainerDecl(&context, tree, .root),
         .zon => {
-            const root_node = tree.nodes.items(.data)[0].lhs;
+            const root_node = tree.nodeData(.root).node;
             const new_scope = try context.startScope(
                 .container,
                 .{ .ast_node = root_node },
@@ -567,6 +548,7 @@ pub fn init(allocator: std.mem.Allocator, tree: Ast) error{OutOfMemory}!Document
             try new_scope.finalize();
         },
     }
+
     return document_scope;
 }
 
@@ -588,18 +570,16 @@ fn locToSmallLoc(loc: offsets.Loc) Scope.SmallLoc {
 }
 
 /// Similar to `walkNode` but also returns a new scope.
-/// Asserts that `node_idx != 0`
+/// Asserts that `node_idx != .root`
 /// Caller must finalize the scope
 fn walkNodeEnsureScope(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
     start_token: Ast.TokenIndex,
 ) error{OutOfMemory}!ScopeContext.PushedScope {
-    std.debug.assert(node_idx != 0);
-    const tags = tree.nodes.items(.tag);
-
-    switch (tags[node_idx]) {
+    std.debug.assert(node_idx != .root);
+    switch (tree.nodeTag(node_idx)) {
         .block,
         .block_semicolon,
         .block_two,
@@ -622,10 +602,10 @@ fn walkNodeEnsureScope(
 
 fn walkNode(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
-    const tag = tree.nodes.items(.tag)[node_idx];
+    const tag = tree.nodeTag(node_idx);
     try switch (tag) {
         .root => return,
         .container_decl,
@@ -669,33 +649,20 @@ fn walkNode(
         => walkSwitchNode(context, tree, node_idx),
         .@"errdefer" => walkErrdeferNode(context, tree, node_idx),
 
-        .@"usingnamespace",
-        .field_access,
-        .unwrap_optional,
+        .@"defer",
         .bool_not,
         .negation,
         .bit_not,
         .negation_wrap,
         .address_of,
         .@"try",
-        .@"await",
         .optional_type,
         .deref,
         .@"suspend",
         .@"resume",
-        .@"return",
-        .grouped_expression,
         .@"comptime",
         .@"nosuspend",
-        .asm_simple,
-        => walkLhsNode(context, tree, node_idx),
-
-        .test_decl,
-        .@"defer",
-        .@"break",
-        .@"continue",
-        .anyframe_type,
-        => walkRhsNode(context, tree, node_idx),
+        => walkUnaryOpNode(context, tree, node_idx),
 
         .equal_equal,
         .bang_equal,
@@ -748,38 +715,28 @@ fn walkNode(
         .array_access,
         .array_init_one,
         .array_init_one_comma,
+        .switch_range,
+        .error_union,
+        .container_field_align,
+        => walkBinOpNode(context, tree, node_idx),
+
         .array_init_dot_two,
         .array_init_dot_two_comma,
-        .call_one,
-        .call_one_comma,
-        .async_call_one,
-        .async_call_one_comma,
-        .switch_range,
+        .struct_init_dot_two,
+        .struct_init_dot_two_comma,
         .builtin_call_two,
         .builtin_call_two_comma,
-        .container_field_init,
-        .container_field_align,
-        .error_union,
-        .for_range,
-        => walkLhsRhsNode(context, tree, node_idx),
+        => walkOptNodeAndOptNode(context, tree, node_idx),
 
         .struct_init_one,
         .struct_init_one_comma,
-        .struct_init_dot_two,
-        .struct_init_dot_two_comma,
-        => {
-            try walkStructInit(context, tree, node_idx);
-            try walkLhsRhsNode(context, tree, node_idx);
-        },
-
-        .struct_init_dot,
-        .struct_init_dot_comma,
-        .struct_init,
-        .struct_init_comma,
-        => {
-            try walkStructInit(context, tree, node_idx);
-            try walkOtherNode(context, tree, node_idx);
-        },
+        .call_one,
+        .call_one_comma,
+        .switch_case_one,
+        .switch_case_inline_one,
+        .container_field_init,
+        .for_range,
+        => walkNodeAndOptNode(context, tree, node_idx),
 
         .global_var_decl,
         .local_var_decl,
@@ -798,24 +755,34 @@ fn walkNode(
         .array_init_dot_comma,
         .array_init,
         .array_init_comma,
+        .struct_init_dot,
+        .struct_init_dot_comma,
+        .struct_init,
+        .struct_init_comma,
         .call,
         .call_comma,
-        .async_call,
-        .async_call_comma,
-        .switch_case_one,
-        .switch_case_inline_one,
         .switch_case,
         .switch_case_inline,
         .builtin_call,
         .builtin_call_comma,
         .container_field,
+        .asm_simple,
         .@"asm",
+
+        .grouped_expression,
+        .field_access,
+        .unwrap_optional,
+        .@"return",
+        .test_decl,
+        .@"break",
+        .anyframe_type,
         => walkOtherNode(context, tree, node_idx),
 
         .asm_output,
         .asm_input,
         => unreachable,
 
+        .@"continue",
         .anyframe_literal,
         .char_literal,
         .number_literal,
@@ -829,57 +796,22 @@ fn walkNode(
     };
 }
 
-noinline fn walkStructInit(
-    context: *ScopeContext,
-    tree: Ast,
-    node_idx: Ast.Node.Index,
-) error{OutOfMemory}!void {
-    const tracy_zone = tracy.trace(@src());
-    defer tracy_zone.end();
-
-    if (tree.mode != .zon) return; // Limit to .zon for now
-
-    const token_tags = tree.tokens.items(.tag);
-
-    var buf: [2]Ast.Node.Index = undefined;
-    const struct_init = tree.fullStructInit(&buf, node_idx).?;
-
-    const scope = try context.startScope(
-        .container,
-        .{ .ast_node = node_idx },
-        locToSmallLoc(offsets.nodeToLoc(tree, node_idx)),
-    );
-
-    for (struct_init.ast.fields) |value_node| { // the node of `value` in `.name = value`
-        const name_token = tree.firstToken(value_node) - 2; // math our way two token indexes back to get the `name`
-        if (token_tags[name_token] != .identifier) continue; // cause: `.{ .name =<insert dot here> .some`
-        try scope.pushDeclaration(name_token, .{ .ast_node = value_node }, .field);
-        try walkNode(context, tree, value_node);
-    }
-
-    try scope.finalize();
-}
-
 noinline fn walkContainerDecl(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
-
-    const allocator = context.allocator;
-    const tags = tree.nodes.items(.tag);
-    const token_tags = tree.tokens.items(.tag);
 
     var buf: [2]Ast.Node.Index = undefined;
     const container_decl = tree.fullContainerDecl(&buf, node_idx).?;
 
     const is_enum_or_tagged_union, const is_struct = blk: {
-        if (node_idx == 0) break :blk .{ false, true };
-        break :blk switch (token_tags[container_decl.ast.main_token]) {
+        if (node_idx == .root) break :blk .{ false, true };
+        break :blk switch (tree.tokenTag(container_decl.ast.main_token)) {
             .keyword_enum => .{ true, false },
-            .keyword_union => .{ container_decl.ast.enum_token != null or container_decl.ast.arg != 0, false },
+            .keyword_union => .{ container_decl.ast.enum_token != null or container_decl.ast.arg != .none, false },
             .keyword_struct => .{ false, true },
             .keyword_opaque => .{ false, false },
             else => unreachable,
@@ -892,16 +824,10 @@ noinline fn walkContainerDecl(
         locToSmallLoc(offsets.nodeToLoc(tree, node_idx)),
     );
 
-    var uses = std.ArrayListUnmanaged(Ast.Node.Index){};
-    defer uses.deinit(allocator);
-
     for (container_decl.ast.members) |decl| {
         try walkNode(context, tree, decl);
 
-        switch (tags[decl]) {
-            .@"usingnamespace" => {
-                try uses.append(allocator, decl);
-            },
+        switch (tree.nodeTag(decl)) {
             .test_decl,
             .@"comptime",
             => continue,
@@ -913,10 +839,10 @@ noinline fn walkContainerDecl(
                 var container_field = tree.fullContainerField(decl).?;
                 if (is_struct and container_field.ast.tuple_like) continue;
 
-                container_field.convertToNonTupleLike(tree.nodes);
+                container_field.convertToNonTupleLike(tree);
                 if (container_field.ast.tuple_like) continue;
                 const main_token = container_field.ast.main_token;
-                if (token_tags[main_token] != .identifier) continue;
+                if (tree.tokenTag(main_token) != .identifier) continue;
                 try scope.pushDeclaration(main_token, .{ .ast_node = decl }, .field);
 
                 if (is_enum_or_tagged_union) {
@@ -926,11 +852,11 @@ noinline fn walkContainerDecl(
                     const gop = try context.doc_scope.global_enum_set.getOrPutContext(
                         context.allocator,
                         main_token,
-                        IdentifierTokenContext{ .tree = tree },
+                        .{ .tree = tree },
                     );
                     if (!gop.found_existing) {
                         gop.key_ptr.* = main_token;
-                    } else if (gop.found_existing and token_tags[main_token - 1] == .doc_comment) {
+                    } else if (gop.found_existing and tree.tokenTag(main_token - 1) == .doc_comment) {
                         // a token with a doc comment takes priority.
                         gop.key_ptr.* = main_token;
                     }
@@ -960,42 +886,31 @@ noinline fn walkContainerDecl(
     }
 
     try scope.finalize();
-
-    if (uses.items.len != 0) {
-        const scope_data = &context.doc_scope.scopes.items(.data)[@intFromEnum(scope.scope)];
-        scope_data.tag = .container_usingnamespace;
-        scope_data.data = .{ .container_usingnamespace = @intCast(context.doc_scope.extra.items.len) };
-
-        try context.doc_scope.extra.ensureUnusedCapacity(allocator, uses.items.len + 2);
-        context.doc_scope.extra.appendAssumeCapacity(node_idx);
-        context.doc_scope.extra.appendAssumeCapacity(@intCast(uses.items.len));
-        context.doc_scope.extra.appendSliceAssumeCapacity(uses.items);
-    }
 }
 
 noinline fn walkErrorSetNode(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
-    const token_tags = tree.tokens.items(.tag);
-
     const scope = try context.startScope(
         .container,
         .{ .ast_node = node_idx },
         locToSmallLoc(offsets.nodeToLoc(tree, node_idx)),
     );
 
-    var it = ast.ErrorSetIterator.init(tree, node_idx);
+    const lbrace, const rbrace = tree.nodeData(node_idx).token_and_token;
+    for (lbrace + 1..rbrace) |tok_i| {
+        if (tree.tokenTag(@intCast(tok_i)) != .identifier) continue;
+        const identifier_token: Ast.TokenIndex = @intCast(tok_i);
 
-    while (it.next()) |identifier_token| {
         try scope.pushDeclaration(identifier_token, .{ .error_token = identifier_token }, .other);
         const gop = try context.doc_scope.global_error_set.getOrPutContext(
             context.allocator,
             identifier_token,
-            IdentifierTokenContext{ .tree = tree },
+            .{ .tree = tree },
         );
-        if (!gop.found_existing or token_tags[identifier_token - 1] == .doc_comment) {
+        if (!gop.found_existing or tree.tokenTag(identifier_token - 1) == .doc_comment) {
             // a token with a doc comment takes priority.
             gop.key_ptr.* = identifier_token;
         }
@@ -1006,12 +921,9 @@ noinline fn walkErrorSetNode(
 
 noinline fn walkFuncNode(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
-    const node_tags = tree.nodes.items(.tag);
-    const data = tree.nodes.items(.data);
-
     var buf: [1]Ast.Node.Index = undefined;
     const func = tree.fullFnProto(&buf, node_idx).?;
 
@@ -1022,8 +934,8 @@ noinline fn walkFuncNode(
     );
 
     var param_index: u16 = 0;
-    var it = func.iterate(&tree);
-    while (ast.nextFnParam(&it)) |param| : (param_index += 1) {
+    var it: ast.FnParamIterator = .init(&func, tree);
+    while (it.next()) |param| : (param_index += 1) {
         if (param.name_token) |name_token| {
             try scope.pushDeclaration(
                 name_token,
@@ -1031,14 +943,18 @@ noinline fn walkFuncNode(
                 .other,
             );
         }
-        try walkNode(context, tree, param.type_expr);
+        if (param.type_expr) |type_expr| {
+            try walkNode(context, tree, type_expr);
+        }
     }
 
-    try walkNode(context, tree, func.ast.return_type);
+    if (func.ast.return_type.unwrap()) |return_type| {
+        try walkNode(context, tree, return_type);
+    }
 
-    if (node_tags[node_idx] == .fn_decl) {
+    if (tree.nodeTag(node_idx) == .fn_decl) {
         // Visit the function body
-        try walkNode(context, tree, data[node_idx].rhs);
+        try walkNode(context, tree, tree.nodeData(node_idx).node_and_node[1]);
     }
 
     try scope.finalize();
@@ -1046,7 +962,7 @@ noinline fn walkFuncNode(
 
 noinline fn walkBlockNode(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
     const pushed_scope = try walkBlockNodeKeepOpen(context, tree, node_idx, tree.firstToken(node_idx));
@@ -1055,13 +971,10 @@ noinline fn walkBlockNode(
 
 fn walkBlockNodeKeepOpen(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
     start_token: Ast.TokenIndex,
 ) error{OutOfMemory}!ScopeContext.PushedScope {
-    const node_tags = tree.nodes.items(.tag);
-    const data = tree.nodes.items(.data);
-
     const last_token = ast.lastToken(tree, node_idx);
 
     const scope = try context.startScope(
@@ -1079,11 +992,11 @@ fn walkBlockNodeKeepOpen(
     }
 
     var buffer: [2]Ast.Node.Index = undefined;
-    const statements = ast.blockStatements(tree, node_idx, &buffer).?;
+    const statements = tree.blockStatements(&buffer, node_idx).?;
 
     for (statements) |idx| {
         try walkNode(context, tree, idx);
-        switch (node_tags[idx]) {
+        switch (tree.nodeTag(idx)) {
             .global_var_decl,
             .local_var_decl,
             .aligned_var_decl,
@@ -1094,10 +1007,9 @@ fn walkBlockNodeKeepOpen(
                 try scope.pushDeclaration(name_token, .{ .ast_node = idx }, .other);
             },
             .assign_destructure => {
-                const lhs_count = tree.extra_data[data[idx].lhs];
-                const lhs_exprs = tree.extra_data[data[idx].lhs + 1 ..][0..lhs_count];
+                const assign_destructure = tree.assignDestructure(idx);
 
-                for (lhs_exprs, 0..) |lhs_node, i| {
+                for (assign_destructure.ast.variables, 0..) |lhs_node, i| {
                     const var_decl = tree.fullVarDecl(lhs_node) orelse continue;
                     const name_token = var_decl.ast.mut_token + 1;
                     try scope.pushDeclaration(
@@ -1116,17 +1028,15 @@ fn walkBlockNodeKeepOpen(
 
 noinline fn walkIfNode(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
-    const token_tags = tree.tokens.items(.tag);
-
     const if_node = ast.fullIf(tree, node_idx).?;
 
     try walkNode(context, tree, if_node.ast.cond_expr);
 
     if (if_node.payload_token) |payload_token| {
-        const name_token = payload_token + @intFromBool(token_tags[payload_token] == .asterisk);
+        const name_token = payload_token + @intFromBool(tree.tokenTag(payload_token) == .asterisk);
 
         const decl: Declaration = if (if_node.error_token != null)
             .{ .error_union_payload = .{ .identifier = name_token, .condition = if_node.ast.cond_expr } }
@@ -1140,63 +1050,58 @@ noinline fn walkIfNode(
         try walkNode(context, tree, if_node.ast.then_expr);
     }
 
-    if (if_node.ast.else_expr != 0) {
+    if (if_node.ast.else_expr.unwrap()) |else_expr| {
         if (if_node.error_token) |error_token| {
-            const else_scope = try walkNodeEnsureScope(context, tree, if_node.ast.else_expr, error_token);
+            const else_scope = try walkNodeEnsureScope(context, tree, else_expr, error_token);
             try else_scope.pushDeclaration(
                 error_token,
-                .{ .error_union_error = .{ .identifier = error_token, .condition = if_node.ast.cond_expr } },
+                .{ .error_union_error = .{ .identifier = error_token, .condition = if_node.ast.cond_expr.toOptional() } },
                 .other,
             );
             try else_scope.finalize();
         } else {
-            try walkNode(context, tree, if_node.ast.else_expr);
+            try walkNode(context, tree, else_expr);
         }
     }
 }
 
 noinline fn walkCatchNode(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
-    const token_tags = tree.tokens.items(.tag);
-    const data = tree.nodes.items(.data);
-    const main_tokens = tree.nodes.items(.main_token);
+    const lhs, const rhs = tree.nodeData(node_idx).node_and_node;
+    try walkNode(context, tree, lhs);
 
-    try walkNode(context, tree, data[node_idx].lhs);
-
-    const catch_token = main_tokens[node_idx] + 2;
+    const catch_token = tree.nodeMainToken(node_idx) + 2;
     if (catch_token < tree.tokens.len and
-        token_tags[catch_token - 1] == .pipe and
-        token_tags[catch_token] == .identifier)
+        tree.tokenTag(catch_token - 1) == .pipe and
+        tree.tokenTag(catch_token) == .identifier)
     {
-        const expr_scope = try walkNodeEnsureScope(context, tree, data[node_idx].rhs, catch_token);
+        const expr_scope = try walkNodeEnsureScope(context, tree, rhs, catch_token);
         try expr_scope.pushDeclaration(
             catch_token,
-            .{ .error_union_error = .{ .identifier = catch_token, .condition = data[node_idx].lhs } },
+            .{ .error_union_error = .{ .identifier = catch_token, .condition = lhs.toOptional() } },
             .other,
         );
         try expr_scope.finalize();
     } else {
-        try walkNode(context, tree, data[node_idx].rhs);
+        try walkNode(context, tree, rhs);
     }
 }
 
 /// label_token: inline_token while (cond_expr) |payload_token| : (cont_expr) then_expr else |error_token| else_expr
 noinline fn walkWhileNode(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
-    const token_tags = tree.tokens.items(.tag);
-
     const while_node = ast.fullWhile(tree, node_idx).?;
 
     try walkNode(context, tree, while_node.ast.cond_expr);
 
     const payload_declaration, const payload_name_token = if (while_node.payload_token) |payload_token| blk: {
-        const name_token = payload_token + @intFromBool(token_tags[payload_token] == .asterisk);
+        const name_token = payload_token + @intFromBool(tree.tokenTag(payload_token) == .asterisk);
 
         const decl: Declaration = if (while_node.error_token != null)
             .{ .error_union_payload = .{ .identifier = name_token, .condition = while_node.ast.cond_expr } }
@@ -1205,13 +1110,13 @@ noinline fn walkWhileNode(
         break :blk .{ decl, name_token };
     } else .{ null, null };
 
-    if (while_node.ast.cont_expr != 0) {
+    if (while_node.ast.cont_expr.unwrap()) |cont_expr| {
         if (payload_declaration) |decl| {
-            const cont_scope = try walkNodeEnsureScope(context, tree, while_node.ast.cont_expr, tree.firstToken(while_node.ast.cont_expr));
+            const cont_scope = try walkNodeEnsureScope(context, tree, cont_expr, tree.firstToken(cont_expr));
             try cont_scope.pushDeclaration(payload_name_token.?, decl, .other);
             try cont_scope.finalize();
         } else {
-            try walkNode(context, tree, while_node.ast.cont_expr);
+            try walkNode(context, tree, cont_expr);
         }
     }
 
@@ -1235,10 +1140,10 @@ noinline fn walkWhileNode(
         try walkNode(context, tree, while_node.ast.then_expr);
     }
 
-    if (while_node.ast.else_expr != 0) {
+    if (while_node.ast.else_expr.unwrap()) |else_expr| {
         if (while_node.label_token != null or while_node.error_token != null) {
-            const else_start = while_node.error_token orelse tree.firstToken(while_node.ast.else_expr);
-            const else_scope = try walkNodeEnsureScope(context, tree, while_node.ast.else_expr, else_start);
+            const else_start = while_node.error_token orelse tree.firstToken(else_expr);
+            const else_scope = try walkNodeEnsureScope(context, tree, else_expr, else_start);
 
             if (while_node.label_token) |label| {
                 try else_scope.pushDeclaration(
@@ -1251,14 +1156,14 @@ noinline fn walkWhileNode(
             if (while_node.error_token) |error_token| {
                 try else_scope.pushDeclaration(
                     error_token,
-                    .{ .error_union_error = .{ .identifier = error_token, .condition = while_node.ast.cond_expr } },
+                    .{ .error_union_error = .{ .identifier = error_token, .condition = while_node.ast.cond_expr.toOptional() } },
                     .other,
                 );
             }
 
             try else_scope.finalize();
         } else {
-            try walkNode(context, tree, while_node.ast.else_expr);
+            try walkNode(context, tree, else_expr);
         }
     }
 }
@@ -1266,11 +1171,9 @@ noinline fn walkWhileNode(
 /// label_token: inline_token for (inputs) |capture_tokens| then_expr else else_expr
 noinline fn walkForNode(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
-    const token_tags = tree.tokens.items(.tag);
-
     const for_node = ast.fullFor(tree, node_idx).?;
 
     for (for_node.ast.inputs) |input_node| {
@@ -1282,11 +1185,11 @@ noinline fn walkForNode(
     var capture_token = for_node.payload_token;
     for (for_node.ast.inputs) |input| {
         if (capture_token + 1 >= tree.tokens.len) break;
-        const capture_is_ref = token_tags[capture_token] == .asterisk;
+        const capture_is_ref = tree.tokenTag(capture_token) == .asterisk;
         const name_token = capture_token + @intFromBool(capture_is_ref);
         capture_token = name_token + 2;
 
-        if (tree.tokens.items(.tag)[name_token] != .identifier) break;
+        if (tree.tokenTag(name_token) != .identifier) break;
         try then_scope.pushDeclaration(
             name_token,
             .{ .for_loop_payload = .{ .identifier = name_token, .condition = input } },
@@ -1304,58 +1207,53 @@ noinline fn walkForNode(
 
     try then_scope.finalize();
 
-    if (for_node.ast.else_expr != 0) {
+    if (for_node.ast.else_expr.unwrap()) |else_expr| {
         if (for_node.label_token) |label_token| {
-            const else_scope = try walkNodeEnsureScope(context, tree, for_node.ast.else_expr, tree.firstToken(for_node.ast.else_expr));
+            const else_scope = try walkNodeEnsureScope(context, tree, else_expr, tree.firstToken(else_expr));
             try else_scope.pushDeclaration(
                 for_node.label_token.?,
-                .{ .label = .{ .identifier = label_token, .block = for_node.ast.else_expr } },
+                .{ .label = .{ .identifier = label_token, .block = else_expr } },
                 .label,
             );
             try else_scope.finalize();
         } else {
-            try walkNode(context, tree, for_node.ast.else_expr);
+            try walkNode(context, tree, else_expr);
         }
     }
 }
 
 noinline fn walkSwitchNode(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
-    const token_tags = tree.tokens.items(.tag);
-    const data = tree.nodes.items(.data);
+    const full = tree.fullSwitch(node_idx).?;
 
-    const maybe_labeled_switch_scope = labeled: {
-        const first_token = tree.nodes.items(.main_token)[node_idx];
-        if (token_tags[first_token] == .identifier) {
-            const new_scope = try context.startScope(
-                .other,
-                undefined,
-                locToSmallLoc(offsets.tokensToLoc(tree, first_token, ast.lastToken(tree, node_idx))),
-            );
-            try new_scope.pushDeclaration(
-                first_token,
-                .{ .label = .{ .identifier = first_token, .block = node_idx } },
-                .label,
-            );
-            break :labeled new_scope;
-        } else {
-            break :labeled null;
-        }
-    };
+    const switch_scope = if (full.label_token) |label_token| blk: {
+        const scope = try context.startScope(
+            .other,
+            .{ .ast_node = node_idx },
+            locToSmallLoc(offsets.nodeToLoc(tree, node_idx)),
+        );
+        try scope.pushDeclaration(
+            label_token,
+            .{ .label = .{ .identifier = label_token, .block = node_idx } },
+            .label,
+        );
+        break :blk scope;
+    } else null;
 
-    try walkNode(context, tree, data[node_idx].lhs);
+    try walkNode(context, tree, full.ast.condition);
 
-    const extra = tree.extraData(data[node_idx].rhs, Ast.Node.SubRange);
-    const cases = tree.extra_data[extra.start..extra.end];
-
-    for (cases, 0..) |case, case_index| {
+    for (full.ast.cases, 0..) |case, case_index| {
         const switch_case: Ast.full.SwitchCase = tree.fullSwitchCase(case).?;
 
+        for (switch_case.ast.values) |case_value| {
+            try walkNode(context, tree, case_value);
+        }
+
         if (switch_case.payload_token) |payload_token| {
-            const name_token = payload_token + @intFromBool(token_tags[payload_token] == .asterisk);
+            const name_token = payload_token + @intFromBool(tree.tokenTag(payload_token) == .asterisk);
 
             const expr_scope = try walkNodeEnsureScope(context, tree, switch_case.ast.target_expr, name_token);
             try expr_scope.pushDeclaration(
@@ -1363,55 +1261,73 @@ noinline fn walkSwitchNode(
                 .{ .switch_payload = .{ .node = node_idx, .case_index = @intCast(case_index) } },
                 .other,
             );
+            if (name_token + 2 < tree.tokens.len and
+                tree.tokenTag(name_token + 1) == .comma and
+                tree.tokenTag(name_token + 2) == .identifier)
+            {
+                try expr_scope.pushDeclaration(
+                    name_token + 2,
+                    .{ .switch_inline_tag_payload = .{ .node = node_idx, .case_index = @intCast(case_index) } },
+                    .other,
+                );
+            }
             try expr_scope.finalize();
         } else {
             try walkNode(context, tree, switch_case.ast.target_expr);
         }
     }
-
-    if (maybe_labeled_switch_scope) |scope| try scope.finalize();
+    if (switch_scope) |scope| try scope.finalize();
 }
 
 noinline fn walkErrdeferNode(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
-    const data = tree.nodes.items(.data);
-    const payload_token = data[node_idx].lhs;
+    const opt_payload_token, const rhs = tree.nodeData(node_idx).opt_token_and_node;
 
-    if (payload_token != 0) {
-        const expr_scope = try walkNodeEnsureScope(context, tree, data[node_idx].rhs, payload_token);
+    if (opt_payload_token.unwrap()) |payload_token| {
+        const expr_scope = try walkNodeEnsureScope(context, tree, rhs, payload_token);
         try expr_scope.pushDeclaration(
             payload_token,
-            .{ .error_union_error = .{ .identifier = payload_token, .condition = 0 } },
+            .{ .error_union_error = .{ .identifier = payload_token, .condition = .none } },
             .other,
         );
         try expr_scope.finalize();
     } else {
-        return try walkNode(context, tree, data[node_idx].rhs);
+        return try walkNode(context, tree, rhs);
     }
 }
 
-noinline fn walkLhsNode(context: *ScopeContext, tree: Ast, node_idx: Ast.Node.Index) error{OutOfMemory}!void {
-    try walkNode(context, tree, tree.nodes.items(.data)[node_idx].lhs);
+noinline fn walkUnaryOpNode(context: *ScopeContext, tree: *const Ast, node_idx: Ast.Node.Index) error{OutOfMemory}!void {
+    try walkNode(context, tree, tree.nodeData(node_idx).node);
 }
 
-noinline fn walkRhsNode(context: *ScopeContext, tree: Ast, node_idx: Ast.Node.Index) error{OutOfMemory}!void {
-    try walkNode(context, tree, tree.nodes.items(.data)[node_idx].rhs);
+noinline fn walkBinOpNode(context: *ScopeContext, tree: *const Ast, node_idx: Ast.Node.Index) error{OutOfMemory}!void {
+    const lhs, const rhs = tree.nodeData(node_idx).node_and_node;
+    try walkNode(context, tree, lhs);
+    try walkNode(context, tree, rhs);
 }
 
-noinline fn walkLhsRhsNode(context: *ScopeContext, tree: Ast, node_idx: Ast.Node.Index) error{OutOfMemory}!void {
-    try walkNode(context, tree, tree.nodes.items(.data)[node_idx].lhs);
-    try walkNode(context, tree, tree.nodes.items(.data)[node_idx].rhs);
+noinline fn walkOptNodeAndOptNode(context: *ScopeContext, tree: *const Ast, node_idx: Ast.Node.Index) error{OutOfMemory}!void {
+    const opt_lhs, const opt_rhs = tree.nodeData(node_idx).opt_node_and_opt_node;
+    if (opt_lhs.unwrap()) |lhs| try walkNode(context, tree, lhs);
+    if (opt_rhs.unwrap()) |rhs| try walkNode(context, tree, rhs);
+}
+
+noinline fn walkNodeAndOptNode(context: *ScopeContext, tree: *const Ast, node_idx: Ast.Node.Index) error{OutOfMemory}!void {
+    const lhs, const opt_rhs = tree.nodeData(node_idx).node_and_opt_node;
+    try walkNode(context, tree, lhs);
+    if (opt_rhs.unwrap()) |rhs| try walkNode(context, tree, rhs);
 }
 
 noinline fn walkOtherNode(
     context: *ScopeContext,
-    tree: Ast,
+    tree: *const Ast,
     node_idx: Ast.Node.Index,
 ) error{OutOfMemory}!void {
-    try ast.iterateChildren(tree, node_idx, context, error{OutOfMemory}, walkNode);
+    var it: ast.Iterator = .init(tree, node_idx);
+    while (it.next(tree)) |child| try walkNode(context, tree, child);
 }
 
 // Lookup
@@ -1430,21 +1346,6 @@ pub fn getScopeParent(
     return doc_scope.scopes.items(.parent_scope)[@intFromEnum(scope)];
 }
 
-pub fn getScopeUsingnamespaceNodesConst(
-    doc_scope: DocumentScope,
-    scope: Scope.Index,
-) []const Ast.Node.Index {
-    const data = doc_scope.scopes.items(.data)[@intFromEnum(scope)];
-    switch (data.tag) {
-        .container_usingnamespace => {
-            const start = data.data.container_usingnamespace;
-            const len = doc_scope.extra.items[start + 1];
-            return doc_scope.extra.items[start + 2 .. start + 2 + len];
-        },
-        else => return &.{},
-    }
-}
-
 pub fn getScopeAstNode(
     doc_scope: DocumentScope,
     scope: Scope.Index,
@@ -1454,7 +1355,6 @@ pub fn getScopeAstNode(
     const data = slice.items(.data)[@intFromEnum(scope)];
 
     return switch (data.tag) {
-        .container_usingnamespace => doc_scope.extra.items[data.data.container_usingnamespace],
         .container, .function, .block => data.data.ast_node,
         .other => null,
     };

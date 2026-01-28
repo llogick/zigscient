@@ -1,20 +1,18 @@
 const std = @import("std");
 const zls = @import("zls");
-const builtin = @import("builtin");
 
-const helper = @import("../helper.zig");
 const Context = @import("../context.zig").Context;
 const ErrorBuilder = @import("../ErrorBuilder.zig");
 
-const types = zls.types;
+const types = zls.lsp.types;
 const offsets = zls.offsets;
 
 const allocator: std.mem.Allocator = std.testing.allocator;
 
 const Completion = struct {
     label: []const u8,
-    labelDetails: ?types.CompletionItemLabelDetails = null,
-    kind: types.CompletionItemKind,
+    labelDetails: ?types.completion.Item.LabelDetails = null,
+    kind: types.completion.Item.Kind,
     detail: ?[]const u8 = null,
     documentation: ?[]const u8 = null,
     deprecated: bool = false,
@@ -314,11 +312,23 @@ test "function alias" {
             .detail = "fn () void",
         },
     });
+    try testCompletion(
+        \\const S = struct {
+        \\    alpha: u32,
+        \\    fn foo(_: S) void {}
+        \\    const bar = foo;
+        \\};
+        \\const baz = S.bar(.<cursor>);
+    , &.{
+        .{
+            .label = "alpha",
+            .kind = .Field,
+            .detail = "u32",
+        },
+    });
 }
 
 test "generic function" {
-    // TODO doesn't work for std.ArrayList
-
     try testCompletion(
         \\const S = struct { alpha: u32 };
         \\fn ArrayList(comptime T: type) type {
@@ -333,16 +343,16 @@ test "generic function" {
     try testCompletion(
         \\const S = struct { alpha: u32 };
         \\fn foo(comptime T: type) T {}
-        \\const S1 = foo(S);
-        \\const S2 = S1.<cursor>
+        \\const s = foo(S);
+        \\const foo = s.<cursor>
     , &.{
         .{ .label = "alpha", .kind = .Field, .detail = "u32" },
     });
     try testCompletion(
         \\const S = struct { alpha: u32 };
         \\fn foo(any: anytype, comptime T: type) T {}
-        \\const S1 = foo(null, S);
-        \\const S2 = S1.<cursor>
+        \\const s = foo(null, S);
+        \\const foo = s.<cursor>
     , &.{
         .{ .label = "alpha", .kind = .Field, .detail = "u32" },
     });
@@ -370,6 +380,29 @@ test "generic function" {
     , &.{
         .{ .label = "alpha", .kind = .Field, .detail = "u32" },
         .{ .label = "foo", .kind = .Method, .detail = "fn (self: S, any: anytype, comptime T: type) T" },
+    });
+}
+
+test "nested generic function" {
+    try testCompletion(
+        \\fn ArrayList(comptime T: type) type {
+        \\    return ArrayListAligned(T, null);
+        \\}
+        \\
+        \\fn ArrayListAligned(comptime T: type) type {
+        \\    return struct {
+        \\        items: []T,
+        \\
+        \\        const empty: @This() = .{
+        \\            .items = &.{},
+        \\        };
+        \\    };
+        \\}
+        \\
+        \\var list: ArrayList(u8) = .<cursor>;
+    , &.{
+        .{ .label = "items", .kind = .Field, .detail = "[]u8" },
+        .{ .label = "empty", .kind = .Constant, .detail = "ArrayListAligned(u8)" },
     });
 }
 
@@ -402,8 +435,15 @@ test "recursive generic function" {
     , &.{});
 }
 
+test "generic function without body" {
+    try testCompletion(
+        \\const Foo: fn (type) type = undefined;
+        \\const Bar = Foo(u32);
+        \\const value = Bar.<cursor>;
+    , &.{});
+}
+
 test "std.ArrayList" {
-    if (!std.process.can_spawn) return error.SkipZigTest;
     try testCompletion(
         \\const std = @import("std");
         \\const S = struct { alpha: u32 };
@@ -415,7 +455,6 @@ test "std.ArrayList" {
 }
 
 test "std.ArrayHashMap" {
-    if (!std.process.can_spawn) return error.SkipZigTest;
     try testCompletion(
         \\const std = @import("std");
         \\const map: std.StringArrayHashMapUnmanaged(void) = undefined;
@@ -428,7 +467,7 @@ test "std.ArrayHashMap" {
     try testCompletion(
         \\const std = @import("std");
         \\const S = struct { alpha: u32 };
-        \\const map: std.AutoArrayHashMap(u32, S) = undefined;
+        \\const map: std.AutoArrayHashMapUnmanaged(u32, S) = undefined;
         \\const s = map.get(0);
         \\const foo = s.?.<cursor>
     , &.{
@@ -437,8 +476,8 @@ test "std.ArrayHashMap" {
     try testCompletion(
         \\const std = @import("std");
         \\const S = struct { alpha: u32 };
-        \\const map: std.AutoArrayHashMap(u32, S) = undefined;
-        \\const gop = try map.getOrPut(0);
+        \\const map: std.AutoArrayHashMapUnmanaged(u32, S) = undefined;
+        \\const gop = try map.getOrPut(undefined, 0);
         \\const foo = gop.value_ptr.<cursor>
     , &.{
         .{ .label = "*", .kind = .Operator, .detail = "S" },
@@ -447,7 +486,6 @@ test "std.ArrayHashMap" {
 }
 
 test "std.HashMap" {
-    if (!std.process.can_spawn) return error.SkipZigTest;
     try testCompletion(
         \\const std = @import("std");
         \\const map: std.StringHashMapUnmanaged(void) = undefined;
@@ -460,7 +498,7 @@ test "std.HashMap" {
     try testCompletion(
         \\const std = @import("std");
         \\const S = struct { alpha: u32 };
-        \\const map: std.AutoHashMap(u32, S) = undefined;
+        \\const map: std.AutoHashMapUnmanaged(u32, S) = undefined;
         \\const s = map.get(0);
         \\const foo = s.?.<cursor>
     , &.{
@@ -469,8 +507,8 @@ test "std.HashMap" {
     try testCompletion(
         \\const std = @import("std");
         \\const S = struct { alpha: u32 };
-        \\const map: std.AutoHashMap(u32, S) = undefined;
-        \\const gop = try map.getOrPut(0);
+        \\const map: std.AutoHashMapUnmanaged(u32, S) = undefined;
+        \\const gop = try map.getOrPut(undefined, 0);
         \\const foo = gop.value_ptr.<cursor>
     , &.{
         .{ .label = "*", .kind = .Operator, .detail = "S" },
@@ -523,6 +561,44 @@ test "function call" {
         \\const func: *const fn() S = undefined;
         \\const foo = func();
         \\const bar = foo.<cursor>;
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+    });
+}
+
+test "chained function call" {
+    try testCompletion(
+        \\const S1 = struct {
+        \\    alpha: u32,
+        \\    fn init() S1 {}
+        \\    fn foo(_: S1, _: S2) void {}
+        \\};
+        \\const S2 = struct {
+        \\    beta: []const u8,
+        \\};
+        \\const bar = S1.init().foo(.{.<cursor>});
+    , &.{
+        .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
+    });
+}
+
+test "resolve return type of function with invalid parameter" {
+    try testCompletion(
+        \\fn Foo(foo: unknown) type {
+        \\    _ = foo;
+        \\    return struct { alpha: u32 };
+        \\}
+        \\var foo: Foo() = undefined;
+        \\const bar = foo.<cursor>
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+    });
+}
+
+test "resolve parameters of function with invalid return type" {
+    try testCompletion(
+        \\fn foo(_: struct { alpha: u32 }) unknown {}
+        \\const bar = foo(.<cursor>)
     , &.{
         .{ .label = "alpha", .kind = .Field, .detail = "u32" },
     });
@@ -856,6 +932,14 @@ test "if/for/while/catch scopes" {
     try testCompletion(
         \\const S = struct { pub const T = u32; };
         \\test {
+        \\    if (true) S.<cursor>
+        \\}
+    , &.{
+        .{ .label = "T", .kind = .Constant, .detail = "u32" },
+    });
+    try testCompletion(
+        \\const S = struct { pub const T = u32; };
+        \\test {
         \\    if (true) {
         \\    } else {
         \\        S.<cursor>
@@ -1156,7 +1240,7 @@ test "namespace" {
     , &.{
         .{ .label = "alpha", .kind = .Function, .detail = "fn () void" },
         .{ .label = "beta", .kind = .Function, .detail = "fn (_: anytype) void" },
-        .{ .label = "gamma", .kind = .Function, .detail = "fn (_: @This()) void" },
+        .{ .label = "gamma", .kind = .Function, .detail = "fn (_: namespace) void" },
     });
     try testCompletion(
         \\const namespace = struct {
@@ -1167,9 +1251,8 @@ test "namespace" {
         \\const instance: namespace = undefined;
         \\const bar = instance.<cursor>
     , &.{
-        .{ .label = "alpha", .kind = .Function, .detail = "fn () void" },
         .{ .label = "beta", .kind = .Function, .detail = "fn (_: anytype) void" },
-        .{ .label = "gamma", .kind = .Function, .detail = "fn (_: @This()) void" },
+        .{ .label = "gamma", .kind = .Function, .detail = "fn (_: namespace) void" },
     });
     try testCompletion(
         \\fn alpha() void {}
@@ -1179,9 +1262,8 @@ test "namespace" {
         \\const foo: @This() = undefined;
         \\const bar = foo.<cursor>;
     , &.{
-        .{ .label = "alpha", .kind = .Function, .detail = "fn () void" },
         .{ .label = "beta", .kind = .Function, .detail = "fn (_: anytype) void" },
-        .{ .label = "gamma", .kind = .Function, .detail = "fn (_: @This()) void" },
+        .{ .label = "gamma", .kind = .Function, .detail = "fn (_: test-0) void" },
     });
 }
 
@@ -1281,9 +1363,20 @@ test "struct" {
     , &.{
         .{ .label = "alpha", .kind = .Function, .detail = "fn () void" },
         .{ .label = "beta", .kind = .Function, .detail = "fn (_: anytype) void" },
-        .{ .label = "gamma", .kind = .Function, .detail = "fn (_: @This()) void" },
+        .{ .label = "gamma", .kind = .Function, .detail = "fn (_: test-0) void" },
         .{ .label = "Self", .kind = .Struct },
         .{ .label = "bar", .kind = .Struct },
+    });
+
+    try testCompletion(
+        \\const S = struct {
+        \\    alpha: u32,
+        \\    beta: []const u8,
+        \\};
+        \\const foo = (S{}).<cursor>;
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+        .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
     });
 }
 
@@ -1326,15 +1419,15 @@ test "enum" {
         .{ .label = "beta", .kind = .EnumMember },
     });
     try testCompletion(
-        \\const E = enum {
+        \\const E = enum(u8) {
         \\    alpha,
-        \\    beta,
+        \\    beta = 42,
         \\    const bar = 5;
         \\};
         \\const foo: E = .<cursor>
     , &.{
-        .{ .label = "alpha", .kind = .EnumMember },
-        .{ .label = "beta", .kind = .EnumMember },
+        .{ .label = "alpha", .kind = .EnumMember, .detail = "E" },
+        .{ .label = "beta", .kind = .EnumMember, .detail = "E = 42" },
     });
     try testCompletion(
         \\const E = enum {
@@ -1418,7 +1511,7 @@ test "enum" {
         \\    sef2,
         \\};
         \\const S = struct {
-        \\    pub fn retEnum() SomeEnum {}
+        \\    pub fn retEnum(self: S) SomeEnum {}
         \\};
         \\test {
         \\    const s = S{};
@@ -1551,12 +1644,82 @@ test "enum" {
     });
 }
 
+test "decl literal" {
+    try testCompletion(
+        \\const S = struct {
+        \\    field: u32,
+        \\
+        \\    pub const foo: error{OutOfMemory}!S = .{};
+        \\    const bar: *const S = &.{};
+        \\    var baz: @This() = .{};
+        \\    var qux: u32 = .{};
+        \\
+        \\    fn init() ?S {}
+        \\    fn create() !*S {}
+        \\    fn func() void {}
+        \\};
+        \\const s: S = .<cursor>;
+    , &.{
+        .{ .label = "field", .kind = .Field, .detail = "u32" },
+        .{ .label = "foo", .kind = .Constant },
+        .{ .label = "bar", .kind = .Constant },
+        .{ .label = "baz", .kind = .Variable },
+        .{ .label = "init", .kind = .Function, .detail = "fn () ?S" },
+        .{ .label = "create", .kind = .Function, .detail = "fn () !*S" },
+    });
+}
+
+test "decl literal function" {
+    try testCompletion(
+        \\const Inner = struct {
+        \\    fn init() Inner {}
+        \\};
+        \\const Outer = struct {
+        \\    inner: Inner,
+        \\};
+        \\const foo: Outer = .{
+        \\    .inner = .in<cursor>it(),
+        \\};
+    , &.{
+        .{ .label = "init", .kind = .Function, .detail = "fn () Inner" },
+    });
+    try testCompletion(
+        \\fn Empty() type {
+        \\    return struct {
+        \\        fn init() @This() {}
+        \\    };
+        \\}
+        \\const foo: Empty() = .in<cursor>it();
+    , &.{
+        .{ .label = "init", .kind = .Function, .detail = "fn () Empty()" },
+    });
+}
+
+test "decl literal function call" {
+    try testCompletion(
+        \\const S = struct {
+        \\    field: u32,
+        \\
+        \\    const default: S = .{};
+        \\    fn init() S {}
+        \\};
+        \\fn foo(s: S) void {}
+        \\fn bar() void {
+        \\    foo(.<cursor>);
+        \\}
+    , &.{
+        .{ .label = "field", .kind = .Field, .detail = "u32" },
+        .{ .label = "default", .kind = .Constant },
+        .{ .label = "init", .kind = .Function, .detail = "fn () S" },
+    });
+}
+
 test "enum literal" {
     try testCompletion(
         \\const literal = .foo;
         \\const foo = <cursor>
     , &.{
-        .{ .label = "literal", .kind = .EnumMember, .detail = "@TypeOf(.enum_literal)" },
+        .{ .label = "literal", .kind = .EnumMember, .detail = "@EnumLiteral()" },
     });
 }
 
@@ -1652,6 +1815,49 @@ test "switch cases" {
         .{ .label = "sef1", .kind = .EnumMember },
         .{ .label = "sef2", .kind = .EnumMember },
     });
+
+    try testCompletion(
+        \\const Birdie = enum {
+        \\    canary,
+        \\};
+        \\const SomeEnum = enum {
+        \\    sef1,
+        \\    sef2,
+        \\    sef3,
+        \\    sef4,
+        \\};
+        \\fn retEnum(se: SomeEnum) void {
+        \\    switch(se) {
+        \\       .sef1 => {},
+        \\       .sef4 => {},
+        \\       .<cursor>
+        \\    }
+        \\}
+    , &.{
+        .{ .label = "sef2", .kind = .EnumMember },
+        .{ .label = "sef3", .kind = .EnumMember },
+    });
+
+    try testCompletion(
+        \\const Birdie = enum {
+        \\    canary,
+        \\};
+        \\const SomeEnum = enum {
+        \\    sef1,
+        \\    sef2,
+        \\    sef3,
+        \\    sef4,
+        \\};
+        \\fn retEnum(se: SomeEnum) void {
+        \\    switch(se) {
+        \\       .sef1, .sef4 => {},
+        \\       .<cursor>
+        \\       .sef3 => {},
+        \\    }
+        \\}
+    , &.{
+        .{ .label = "sef2", .kind = .EnumMember },
+    });
     try testCompletion(
         \\const Birdie = enum {
         \\    canary,
@@ -1696,7 +1902,7 @@ test "switch cases" {
         \\    sef2,
         \\};
         \\const S = struct {
-        \\    pub fn retEnum() SomeEnum {}
+        \\    pub fn retEnum(self: S) SomeEnum {}
         \\};
         \\test {
         \\    const s = S{};
@@ -1729,6 +1935,22 @@ test "switch cases" {
         \\const SomeEnum = enum {
         \\    sef1,
         \\    sef2,
+        \\    pub fn retEnum() anyerror!SomeEnum {}
+        \\};
+        \\test {
+        \\    switch (try SomeEnum.retEnum()) {.<cursor>}
+        \\}
+    , &.{
+        .{ .label = "sef1", .kind = .EnumMember },
+        .{ .label = "sef2", .kind = .EnumMember },
+    });
+    try testCompletion(
+        \\const Birdie = enum {
+        \\    canary,
+        \\};
+        \\const SomeEnum = enum {
+        \\    sef1,
+        \\    sef2,
         \\};
         \\fn retEnum() SomeEnum {}
         \\test {
@@ -1738,7 +1960,6 @@ test "switch cases" {
         \\    }
         \\}
     , &.{
-        .{ .label = "sef1", .kind = .EnumMember },
         .{ .label = "sef2", .kind = .EnumMember },
     });
 }
@@ -1767,7 +1988,7 @@ test "error set" {
         \\const baz = E2.<cursor>
     , &.{
         .{ .label = "baz", .kind = .Constant, .detail = "error.baz" },
-        .{ .label = "qux", .kind = .Constant, .detail = "error.qux", .documentation = "hello" },
+        .{ .label = "qux", .kind = .Constant, .detail = "error.qux" },
     });
 }
 
@@ -1857,7 +2078,7 @@ test "merged error sets" {
         \\const Error = error{Foo} || error{Bar};
         \\const E = <cursor>
     , &.{
-        .{ .label = "Error", .kind = .Constant, .detail = "type" },
+        .{ .label = "Error", .kind = .Constant, .detail = "error{Foo,Bar}" },
     });
 }
 
@@ -1955,36 +2176,51 @@ test "error." {
         .{ .label = "E3", .kind = .EnumMember },
         .{ .label = "E4", .kind = .EnumMember },
     });
-}
-
-test "return anon lit init" {
     try testCompletion(
-        \\const Birdie = enum { beep };
-        \\const n = struct {
-        \\    const T = union(enum) { a: u1, b: u2 };
+        \\const Birdie = error{Canary};
+        \\const Errors = error{E1} || error{E2} || nested.Error;
+        \\const nested = struct {
+        \\    const Error = error{E3};
         \\};
-        \\fn foo() ?n.T {
-        \\    return .<cursor>
+        \\const nm = struct {
+        \\    fn foo() (Errors || error{E4})!void {}
+        \\};
+        \\fn baz() !void {
+        \\    nm.foo() catch |err| {
+        \\        const some = switch (err) {
+        \\            error.<cursor>
+        \\        }
+        \\    };
         \\}
     , &.{
-        .{ .label = "a", .kind = .Field, .detail = "u1" },
-        .{ .label = "b", .kind = .Field, .detail = "u2" },
+        .{ .label = "E1", .kind = .EnumMember },
+        .{ .label = "E2", .kind = .EnumMember },
+        .{ .label = "E3", .kind = .EnumMember },
+        .{ .label = "E4", .kind = .EnumMember },
     });
     try testCompletion(
-        \\const Birdie = enum { beep };
-        \\const n = struct {
-        \\    const T = union(enum) { a: u1, b: u2 };
+        \\const Birdie = error{Canary};
+        \\const Errors = error{E1} || error{E2} || nested.Error;
+        \\const nested = struct {
+        \\    const Error = error{E3};
         \\};
-        \\fn foo() !?n.T {
-        \\    return .{.<cursor>}
+        \\const nm = struct {
+        \\    fn foo() error{E5}!void {}
+        \\};
+        \\fn baz() (Errors || error{E4})!void {
+        \\    nm.foo() catch |err| switch (err) {
+        \\        error.E5 => return error.<cursor>
+        \\    };
         \\}
     , &.{
-        .{ .label = "a", .kind = .Field, .detail = "u1" },
-        .{ .label = "b", .kind = .Field, .detail = "u2" },
+        .{ .label = "E1", .kind = .EnumMember },
+        .{ .label = "E2", .kind = .EnumMember },
+        .{ .label = "E3", .kind = .EnumMember },
+        .{ .label = "E4", .kind = .EnumMember },
     });
 }
 
-test "struct init" {
+test "structinit" {
     try testCompletion(
         \\const S = struct {
         \\    alpha: u32,
@@ -2003,11 +2239,7 @@ test "struct init" {
         \\};
         \\const foo = S{ .alpha = 3, .<cursor>, .gamma = null };
     , &.{
-        // TODO `alpha` should be excluded
-        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
         .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
-        // TODO `gamma` should be excluded
-        .{ .label = "gamma", .kind = .Field, .detail = "?*S" },
     });
     try testCompletion(
         \\const S = struct {
@@ -2016,8 +2248,6 @@ test "struct init" {
         \\};
         \\const foo = S{ .alpha = S{ .beta = "{}" }, .<cursor> };
     , &.{
-        // TODO `alpha` should be excluded
-        .{ .label = "alpha", .kind = .Field, .detail = "*const S" },
         .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
     });
     try testCompletion(
@@ -2050,11 +2280,7 @@ test "struct init" {
         \\};
         \\const foo = S{ .gamma = undefined, .<cursor> , .alpha = undefined };
     , &.{
-        // TODO `gamma` should be excluded
-        .{ .label = "gamma", .kind = .Field, .detail = "?*S" },
         .{ .label = "beta", .kind = .Field, .detail = "u32" },
-        // TODO `alpha` should be excluded
-        .{ .label = "alpha", .kind = .Field, .detail = "*const S" },
     });
     try testCompletion(
         \\const S = struct {
@@ -2097,19 +2323,6 @@ test "struct init" {
         .{ .label = "alpha", .kind = .Field, .detail = "*const S" },
         .{ .label = "beta", .kind = .Field, .detail = "u32" },
         .{ .label = "gamma", .kind = .Field, .detail = "?S = null" },
-    });
-    // Fields with the `@"n a m e"` syntax
-    try testCompletion(
-        \\const S = struct {
-        \\    @"n a m e": S,
-        \\    @"struct": S,
-        \\};
-        \\test {
-        \\    const s: S = .{ .@"struct" = .{ .@"n a m e" = .<cursor>}}
-        \\}
-    , &.{
-        .{ .label = "@\"n a m e\"", .kind = .Field, .detail = "S" },
-        .{ .label = "@\"struct\"", .kind = .Field, .detail = "S" },
     });
     try testCompletion(
         \\const S = struct { alpha: u32 };
@@ -2225,9 +2438,7 @@ test "struct init" {
         \\    brefa: A,
         \\    this_is_b: []const u8,
         \\};
-        \\test {
-        \\    ref(.{ .arefb = .{ .brefa = .{.<cursor>} } });
-        \\}
+        \\ref(.{ .arefb = .{ .brefa = .{.<cursor>} } });
     , &.{
         .{ .label = "arefb", .kind = .Field, .detail = "B = 8" },
         .{ .label = "this_is_a", .kind = .Field, .detail = "u32 = 9" },
@@ -2243,7 +2454,7 @@ test "struct init" {
         \\  s3f1: u8,
         \\  s3f2: u32 = 1,
         \\  ref2: S2,
-        \\  pub fn s3(p0: es, p1: S2) void {}
+        \\  pub fn s3(p0: S1, p1: S2) void {}
         \\};
         \\const refs = S3{ .ref2 = .{ .ref1 = .{ .ref3 = .{ .ref2 = .{ .ref1 = .{.<cursor>} } } } } };
     , &.{
@@ -2264,11 +2475,9 @@ test "struct init" {
         \\  s3f2: u32 = 1,
         \\  ref2: S2,
         \\  const Self = @This();
-        \\  pub fn s3(self: *Self, p0: es, p1: S2) void {}
+        \\  pub fn s3(self: *Self, p0: S1, p1: S2) void {}
         \\};
-        \\test {
-        \\  S3.s3(null, .{ .mye = .{} }, .{ .ref1 = .{ .ref3 = .{ .ref2 = .{ .ref1 = .{.<cursor>} } } } });
-        \\}
+        \\S3.s3(null, .{ .mye = .{} }, .{ .ref1 = .{ .ref3 = .{ .ref2 = .{ .ref1 = .{.<cursor>} } } } });
     , &.{
         .{ .label = "s1f1", .kind = .Field, .detail = "u8" },
         .{ .label = "s1f2", .kind = .Field, .detail = "u32 = 1" },
@@ -2294,10 +2503,8 @@ test "struct init" {
         \\  const Self = @This();
         \\  pub fn s3(self: Self, p0: es, p1: S1) void {}
         \\};
-        \\test {
-        \\  const iofs3 = S3{};
-        \\  iofs3.s3(.{.<cursor>});
-        \\}
+        \\const iofs3 = S3{};
+        \\iofs3.s3(.{.<cursor>});
     , &.{
         .{ .label = "s1f1", .kind = .Field, .detail = "u8" },
         .{ .label = "s1f2", .kind = .Field, .detail = "u32 = 1" },
@@ -2332,7 +2539,317 @@ test "struct init" {
     });
 }
 
-test "deprecated " {
+test "return - enum" {
+    try testCompletion(
+        \\const E = enum {
+        \\    alpha,
+        \\    beta,
+        \\};
+        \\fn foo() E {
+        \\    return .<cursor>
+        \\}
+    , &.{
+        .{ .label = "alpha", .kind = .EnumMember },
+        .{ .label = "beta", .kind = .EnumMember },
+    });
+}
+
+test "return - decl literal" {
+    try testCompletion(
+        \\const S = struct {
+        \\    alpha: u32,
+        \\    beta: []const u8,
+        \\
+        \\    const default: S = .{};
+        \\    fn init() S {}
+        \\};
+        \\fn foo() S {
+        \\    return .<cursor>;
+        \\}
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+        .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
+        .{ .label = "init", .kind = .Function, .detail = "fn () S" },
+        .{ .label = "default", .kind = .Constant },
+    });
+}
+
+test "return - generic decl literal" {
+    try testCompletion(
+        \\fn S(T: type) type {
+        \\    return struct {
+        \\        alpha: T,
+        \\        beta: []const u8,
+        \\
+        \\        const default: @This() = .{};
+        \\        fn init() @This() {}
+        \\    };
+        \\}
+        \\fn foo() S(u8) {
+        \\    return .<cursor>;
+        \\}
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u8" },
+        .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
+        .{ .label = "init", .kind = .Function, .detail = "fn () S(u8)" },
+        .{ .label = "default", .kind = .Constant, .detail = "S(u8)" },
+    });
+}
+
+test "return - structinit" {
+    try testCompletion(
+        \\const S = struct {
+        \\    alpha: u32,
+        \\    beta: []const u8,
+        \\};
+        \\fn foo() S {
+        \\    return .{ .<cursor> }
+        \\}
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+        .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
+    });
+    try testCompletion(
+        \\const S = struct {
+        \\    alpha: *const S,
+        \\    beta: u32,
+        \\    gamma: ?S,
+        \\};
+        \\fn foo() S {
+        \\    return .{ .gamma = .{ .<cursor> }}
+        \\}
+    , &.{
+        .{ .label = "gamma", .kind = .Field, .detail = "?S" },
+        .{ .label = "beta", .kind = .Field, .detail = "u32" },
+        .{ .label = "alpha", .kind = .Field, .detail = "*const S" },
+    });
+}
+
+test "return - structinit decl literal" {
+    try testCompletion(
+        \\const S = struct {
+        \\    alpha: *const S,
+        \\    beta: u32,
+        \\    gamma: ?S,
+        \\
+        \\    const default: S = .{};
+        \\    fn init() S {}
+        \\};
+        \\fn foo() S {
+        \\    return .{ .gamma = .<cursor> }
+        \\}
+    , &.{
+        .{ .label = "gamma", .kind = .Field, .detail = "?S" },
+        .{ .label = "beta", .kind = .Field, .detail = "u32" },
+        .{ .label = "alpha", .kind = .Field, .detail = "*const S" },
+        .{ .label = "init", .kind = .Function, .detail = "fn () S" },
+        .{ .label = "default", .kind = .Constant },
+    });
+}
+
+test "break - enum/decl literal" {
+    try testCompletion(
+        \\const E = enum {
+        \\    alpha,
+        \\    beta,
+        \\
+        \\    const default: E = .alpha;
+        \\    fn init() E {}
+        \\};
+        \\const foo: E = while (true) {
+        \\    break .<cursor>
+        \\};
+    , &.{
+        .{ .label = "alpha", .kind = .EnumMember },
+        .{ .label = "beta", .kind = .EnumMember },
+        .{ .label = "init", .kind = .Function, .detail = "fn () E" },
+        .{ .label = "default", .kind = .EnumMember },
+    });
+}
+
+test "break - structinit" {
+    try testCompletion(
+        \\const S = struct {
+        \\    alpha: u32,
+        \\    beta: []const u8,
+        \\};
+        \\const foo: S = while (true) {
+        \\    break .{ .<cursor> }
+        \\};
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+        .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
+    });
+    try testCompletion(
+        \\const S = struct {
+        \\    alpha: *const S,
+        \\    beta: u32,
+        \\    gamma: ?S,
+        \\};
+        \\const foo: S = while (true) {
+        \\    break .{ .gamma = .{ .<cursor> }}
+        \\};
+    , &.{
+        .{ .label = "gamma", .kind = .Field, .detail = "?S" },
+        .{ .label = "beta", .kind = .Field, .detail = "u32" },
+        .{ .label = "alpha", .kind = .Field, .detail = "*const S" },
+    });
+}
+
+test "break with label - enum/decl literal" {
+    try testCompletion(
+        \\const E = enum {
+        \\    alpha,
+        \\    beta,
+        \\
+        \\    const default: E = .alpha;
+        \\    fn init() E {}
+        \\};
+        \\const foo: E = blk: {
+        \\    break :blk .<cursor>
+        \\};
+    , &.{
+        .{ .label = "alpha", .kind = .EnumMember },
+        .{ .label = "beta", .kind = .EnumMember },
+        .{ .label = "init", .kind = .Function, .detail = "fn () E" },
+        .{ .label = "default", .kind = .EnumMember },
+    });
+}
+
+test "break with label - structinit" {
+    try testCompletion(
+        \\const S = struct {
+        \\    alpha: u32,
+        \\    beta: []const u8,
+        \\};
+        \\const foo: S = blk: {
+        \\    break :blk .{ .<cursor> }
+        \\};
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+        .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
+    });
+    try testCompletion(
+        \\const S = struct {
+        \\    alpha: *const S,
+        \\    beta: u32,
+        \\    gamma: ?S,
+        \\};
+        \\const foo: S = blk: {
+        \\    break :blk .{ .gamma = .{ .<cursor> }}
+        \\};
+    , &.{
+        .{ .label = "gamma", .kind = .Field, .detail = "?S" },
+        .{ .label = "beta", .kind = .Field, .detail = "u32" },
+        .{ .label = "alpha", .kind = .Field, .detail = "*const S" },
+    });
+}
+
+test "continue with label - enum/decl literal" {
+    try testCompletion(
+        \\const E = enum {
+        \\    alpha,
+        \\    beta,
+        \\
+        \\    const default: E = .alpha;
+        \\    fn init() E {}
+        \\};
+        \\const foo: E = .alpha;
+        \\const bar = blk: switch (foo) {
+        \\    .alpha => continue :blk .<cursor>,
+        \\};
+    , &.{
+        .{ .label = "alpha", .kind = .EnumMember },
+        .{ .label = "beta", .kind = .EnumMember },
+        .{ .label = "init", .kind = .Function, .detail = "fn () E" },
+        .{ .label = "default", .kind = .EnumMember },
+    });
+    try testCompletion(
+        \\const E = enum {
+        \\    alpha,
+        \\    beta,
+        \\
+        \\    const default: E = .alpha;
+        \\    fn init() E {}
+        \\};
+        \\const foo: E = .alpha;
+        \\const bar = blk: switch (foo) {
+        \\    .alpha => {
+        \\        continue :blk .<cursor>
+        \\    },
+        \\};
+    , &.{
+        .{ .label = "alpha", .kind = .EnumMember },
+        .{ .label = "beta", .kind = .EnumMember },
+        .{ .label = "init", .kind = .Function, .detail = "fn () E" },
+        .{ .label = "default", .kind = .EnumMember },
+    });
+}
+
+test "continue with label - structinit" {
+    try testCompletion(
+        \\const U = union(enum) {
+        \\    alpha: u32,
+        \\    beta: []const u8,
+        \\};
+        \\const foo: U = .{};
+        \\const bar = blk: switch (foo) {
+        \\    .alpha => continue :blk .{ .<cursor> }
+        \\};
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+        .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
+    });
+    try testCompletion(
+        \\const U = union(enum) {
+        \\    alpha: u32,
+        \\    beta: []const u8,
+        \\};
+        \\const foo: U = .{};
+        \\const bar = blk: switch (foo) {
+        \\    .alpha => {
+        \\        continue :blk .{ .<cursor> }
+        \\    },
+        \\};
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+        .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
+    });
+    try testCompletion(
+        \\const U = union(enum) {
+        \\    alpha: *const U,
+        \\    beta: u32,
+        \\    gamma: ?U,
+        \\};
+        \\const foo: U = .{};
+        \\const bar = blk: switch (foo) {
+        \\    .alpha => continue :blk .{ .gamma = .{ .<cursor> }}
+        \\};
+    , &.{
+        .{ .label = "gamma", .kind = .Field, .detail = "?U" },
+        .{ .label = "beta", .kind = .Field, .detail = "u32" },
+        .{ .label = "alpha", .kind = .Field, .detail = "*const U" },
+    });
+    try testCompletion(
+        \\const U = union(enum) {
+        \\    alpha: *const U,
+        \\    beta: u32,
+        \\    gamma: ?U,
+        \\};
+        \\const foo: U = .{};
+        \\const bar = blk: switch (foo) {
+        \\    .alpha => {
+        \\        continue :blk .{ .gamma = .{ .<cursor> }}
+        \\    },
+        \\};
+    , &.{
+        .{ .label = "gamma", .kind = .Field, .detail = "?U" },
+        .{ .label = "beta", .kind = .Field, .detail = "u32" },
+        .{ .label = "alpha", .kind = .Field, .detail = "*const U" },
+    });
+}
+
+test "deprecated" {
     // removed symbols from the standard library are ofted marked with a compile error
     try testCompletion(
         \\const foo = @compileError("Deprecated; some message");
@@ -2371,16 +2888,18 @@ test "declarations" {
 
     try testCompletion(
         \\const S = struct {
-        \\    pub fn public() S {}
-        \\    fn private() !void {}
+        \\    pub fn public(self: S) S {}
+        \\    fn private(self: S) !void {}
         \\};
         \\const foo: S = undefined;
         \\const bar = foo.<cursor>
     , &.{
-        .{ .label = "public", .kind = .Function, .detail = "fn () S" },
-        .{ .label = "private", .kind = .Function, .detail = "fn () !void" },
+        .{ .label = "public", .kind = .Function, .detail = "fn (self: S) S" },
+        .{ .label = "private", .kind = .Function, .detail = "fn (self: S) !void" },
     });
+}
 
+test "declarations - meta type" {
     try testCompletion(
         \\const S: type = struct {
         \\    pub fn public() S {}
@@ -2393,103 +2912,84 @@ test "declarations" {
     });
 }
 
-test "usingnamespace" {
+test "generic method - @This() parameter" {
     try testCompletion(
-        \\const S1 = struct {
-        \\    member: u32,
-        \\    pub fn public() S1 {}
-        \\    fn private() !void {}
-        \\};
-        \\const S2 = struct {
-        \\    usingnamespace S1;
-        \\};
-        \\const foo = S2.<cursor>
-    , &.{
-        .{ .label = "public", .kind = .Function, .detail = "fn () S1" },
-        .{ .label = "private", .kind = .Function, .detail = "fn () !void" },
-    });
-    try testCompletion(
-        \\const S1 = struct {
-        \\    usingnamespace struct {
-        \\        pub fn inner() void {}
-        \\    };
-        \\};
-        \\const foo = S1.<cursor>
-    , &.{
-        .{ .label = "inner", .kind = .Function, .detail = "fn () void" },
-    });
-    try testCompletion(
-        \\fn Bar(comptime Self: type) type {
+        \\fn Foo(T: type) type {
         \\    return struct {
-        \\        fn inner(self: Self) void { _ = self; }
+        \\        field: T,
+        \\        fn bar(self: @This()) void {
+        \\            _ = self;
+        \\        }
         \\    };
         \\}
-        \\const Foo = struct {
-        \\    alpha: u32,
-        \\    pub usingnamespace Bar(Foo);
-        \\    fn deinit(self: Foo) void { _ = self; }
-        \\};
-        \\const foo: Foo = undefined;
+        \\const foo: Foo(u8) = .{};
         \\const bar = foo.<cursor>
     , &.{
-        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
-        .{ .label = "inner", .kind = .Method, .detail = "fn (self: Self) void" },
-        .{ .label = "deinit", .kind = .Method, .detail = "fn (self: Foo) void" },
+        .{ .label = "field", .kind = .Field, .detail = "u8" },
+        .{ .label = "bar", .kind = .Method, .detail = "fn (self: Foo(u8)) void" },
     });
+}
+
+test "generic method - Self parameter" {
     try testCompletion(
-        \\const Alpha = struct {
-        \\    fn alpha() void {}
-        \\};
-        \\const Beta = struct {
-        \\    fn beta() void {}
-        \\};
-        \\const Gamma = struct {
-        \\    usingnamespace if (undefined) Alpha else Beta;
-        \\};
-        \\const gamma: Gamma = undefined;
-        \\const g = gamma.<cursor>
-    , &.{
-        .{ .label = "alpha", .kind = .Function, .detail = "fn () void" },
-        .{ .label = "beta", .kind = .Function, .detail = "fn () void" },
-    });
-    try testCompletion(
-        \\pub const chip_mod = struct {
-        \\    pub const devices = struct {
-        \\        pub const chip1 = struct {
-        \\            canary: bool,
-        \\            pub const peripherals = struct {};
-        \\            pub fn chip1fn1() void {}
-        \\            pub fn chip1fn2(_: u32) void {}
-        \\        };
-        \\        pub const chip2 = struct {
-        \\            pub fn chip2fn1() void {}
-        \\        };
+        \\fn Foo(T: type) type {
+        \\    return struct {
+        \\        field: T,
+        \\        const Self = @This();
+        \\        fn bar(self: Self) void {
+        \\            _ = self;
+        \\        }
         \\    };
-        \\};
-        \\const chip = struct {
-        \\    const inner = chip_mod; //@import("chip");
-        \\    pub usingnamespace @field(inner.devices, "chip1");
-        \\};
-        \\test {
-        \\    _ = chip.<cursor>;
         \\}
+        \\const foo: Foo(u8) = .{};
+        \\const bar = foo.<cursor>
     , &.{
-        .{ .label = "inner", .kind = .Struct, .detail = "type" },
-        .{ .label = "peripherals", .kind = .Struct, .detail = "type" },
-        .{ .label = "chip1fn1", .kind = .Function, .detail = "fn () void" },
-        .{ .label = "chip1fn2", .kind = .Function, .detail = "fn (_: u32) void" },
+        .{ .label = "field", .kind = .Field, .detail = "u8" },
+        .{ .label = "bar", .kind = .Method, .detail = "fn (self: Foo(u8)) void" },
+    });
+}
+
+test "generic method - recursive self parameter" {
+    try testCompletion(
+        \\fn Foo(T: type) type {
+        \\    return struct {
+        \\        field: T,
+        \\        fn bar(self: Foo(T)) void {
+        \\            _ = self;
+        \\        }
+        \\    };
+        \\}
+        \\const foo: Foo(u8) = .{};
+        \\const bar = foo.<cursor>
+    , &.{
+        .{ .label = "field", .kind = .Field, .detail = "u8" },
+        .{ .label = "bar", .kind = .Method, .detail = "fn (self: Foo(u8)) void" },
+    });
+}
+
+test "function taking a generic struct arg" {
+    try testCompletion(
+        \\fn Foo(T: type) type {
+        \\    return struct {
+        \\        field: T,
+        \\    };
+        \\}
+        \\fn foo(_: Foo(u8)) void {}
+        \\const bar = foo(.{.<cursor>
+    , &.{
+        .{ .label = "field", .kind = .Field, .detail = "u8" },
     });
 }
 
 test "anytype resolution based on callsite-references" {
     try testCompletion(
         \\const Writer1 = struct {
-        \\    fn write1() void {}
-        \\    fn writeAll1() void {}
+        \\    fn write1(self: Writer1) void {}
+        \\    fn writeAll1(self: Writer1) void {}
         \\};
         \\const Writer2 = struct {
-        \\    fn write2() void {}
-        \\    fn writeAll2() void {}
+        \\    fn write2(self: Writer2) void {}
+        \\    fn writeAll2(self: Writer2) void {}
         \\};
         \\fn caller(a: Writer1, b: Writer2) void {
         \\    callee(a);
@@ -2499,19 +2999,19 @@ test "anytype resolution based on callsite-references" {
         \\    writer.<cursor>
         \\}
     , &.{
-        .{ .label = "write1", .kind = .Function, .detail = "fn () void" },
-        .{ .label = "write2", .kind = .Function, .detail = "fn () void" },
-        .{ .label = "writeAll1", .kind = .Function, .detail = "fn () void" },
-        .{ .label = "writeAll2", .kind = .Function, .detail = "fn () void" },
+        .{ .label = "write1", .kind = .Function, .detail = "fn (self: Writer1) void" },
+        .{ .label = "write2", .kind = .Function, .detail = "fn (self: Writer2) void" },
+        .{ .label = "writeAll1", .kind = .Function, .detail = "fn (self: Writer1) void" },
+        .{ .label = "writeAll2", .kind = .Function, .detail = "fn (self: Writer2) void" },
     });
     try testCompletion(
         \\const Writer1 = struct {
-        \\    fn write1() void {}
-        \\    fn writeAll1() void {}
+        \\    fn write1(self: Writer1) void {}
+        \\    fn writeAll1(self: Writer1) void {}
         \\};
         \\const Writer2 = struct {
-        \\    fn write2() void {}
-        \\    fn writeAll2() void {}
+        \\    fn write2(self: Writer2) void {}
+        \\    fn writeAll2(self: Writer2) void {}
         \\};
         \\fn caller(a: Writer1, b: Writer2) void {
         \\    callee(a);
@@ -2521,8 +3021,8 @@ test "anytype resolution based on callsite-references" {
         \\    writer.<cursor>
         \\}
     , &.{
-        .{ .label = "write1", .kind = .Function, .detail = "fn () void" },
-        .{ .label = "writeAll1", .kind = .Function, .detail = "fn () void" },
+        .{ .label = "write1", .kind = .Function, .detail = "fn (self: Writer1) void" },
+        .{ .label = "writeAll1", .kind = .Function, .detail = "fn (self: Writer1) void" },
     });
 }
 
@@ -2568,24 +3068,6 @@ test "@extern" {
         \\        alpha: u32,
         \\    };
         \\    const foo = @extern(*S, .{});
-        \\    foo.<cursor>
-        \\}
-    , &.{
-        .{ .label = "*", .kind = .Operator, .detail = "S" },
-        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
-    });
-}
-
-test "@orelse with block" {
-    try testCompletion(
-        \\test {
-        \\    const S = struct {
-        \\        alpha: u32,
-        \\    };
-        \\    const v: ?*const S = &S{ .alpha = 5 };
-        \\    const foo = v orelse {
-        \\        return;
-        \\    };
         \\    foo.<cursor>
         \\}
     , &.{
@@ -2650,39 +3132,6 @@ test "builtin fns return type" {
         .{ .label = "void", .kind = .Field, .detail = "void" },
         .{ .label = "bool", .kind = .Field, .detail = "void" },
         .{ .label = "noreturn", .kind = .Field, .detail = "void" },
-        .{ .label = "int", .kind = .Struct, .detail = "Int" },
-        .{ .label = "float", .kind = .Struct, .detail = "Float" },
-        .{ .label = "pointer", .kind = .Struct, .detail = "Pointer" },
-        .{ .label = "array", .kind = .Struct, .detail = "Array" },
-        .{ .label = "@\"struct\"", .kind = .Struct, .detail = "Struct" },
-        .{ .label = "comptime_float", .kind = .Field, .detail = "void" },
-        .{ .label = "comptime_int", .kind = .Field, .detail = "void" },
-        .{ .label = "undefined", .kind = .Field, .detail = "void" },
-        .{ .label = "null", .kind = .Field, .detail = "void" },
-        .{ .label = "optional", .kind = .Struct, .detail = "Optional" },
-        .{ .label = "error_union", .kind = .Struct, .detail = "ErrorUnion" },
-        .{ .label = "error_set", .kind = .Field, .detail = "?[]const Error" },
-        .{ .label = "@\"enum\"", .kind = .Struct, .detail = "Enum" },
-        .{ .label = "@\"union\"", .kind = .Struct, .detail = "Union" },
-        .{ .label = "@\"fn\"", .kind = .Struct, .detail = "Fn" },
-        .{ .label = "@\"opaque\"", .kind = .Struct, .detail = "Opaque" },
-        .{ .label = "frame", .kind = .Struct, .detail = "Frame" },
-        .{ .label = "@\"anyframe\"", .kind = .Struct, .detail = "AnyFrame" },
-        .{ .label = "vector", .kind = .Struct, .detail = "Vector" },
-        .{ .label = "enum_literal", .kind = .Field, .detail = "void" },
-    });
-}
-
-test "builtin fns taking an enum arg" {
-    try testCompletion(
-        \\test {
-        \\    @Type(.{.<cursor>
-        \\}
-    , &.{
-        .{ .label = "type", .kind = .Field, .detail = "void" },
-        .{ .label = "void", .kind = .Field, .detail = "void" },
-        .{ .label = "bool", .kind = .Field, .detail = "void" },
-        .{ .label = "noreturn", .kind = .Field, .detail = "void" },
         .{ .label = "int", .kind = .Field, .detail = "Int" },
         .{ .label = "float", .kind = .Field, .detail = "Float" },
         .{ .label = "pointer", .kind = .Field, .detail = "Pointer" },
@@ -2694,7 +3143,7 @@ test "builtin fns taking an enum arg" {
         .{ .label = "null", .kind = .Field, .detail = "void" },
         .{ .label = "optional", .kind = .Field, .detail = "Optional" },
         .{ .label = "error_union", .kind = .Field, .detail = "ErrorUnion" },
-        .{ .label = "error_set", .kind = .Field, .detail = "ErrorSet" },
+        .{ .label = "error_set", .kind = .Field, .detail = "?[]const Error" },
         .{ .label = "@\"enum\"", .kind = .Field, .detail = "Enum" },
         .{ .label = "@\"union\"", .kind = .Field, .detail = "Union" },
         .{ .label = "@\"fn\"", .kind = .Field, .detail = "Fn" },
@@ -2704,25 +3153,101 @@ test "builtin fns taking an enum arg" {
         .{ .label = "vector", .kind = .Field, .detail = "Vector" },
         .{ .label = "enum_literal", .kind = .Field, .detail = "void" },
     });
+}
+
+test "function arguments of @Int" {
     try testCompletion(
         \\test {
-        \\    @Type(.{.Struct = .{.<cursor>
+        \\    @Int(.<cursor>)
         \\}
     , &.{
-        .{ .label = "layout", .kind = .Field, .detail = "ContainerLayout" },
-        .{ .label = "backing_integer", .kind = .Field, .detail = "?type = null" },
-        .{ .label = "fields", .kind = .Field, .detail = "[]const StructField" },
-        .{ .label = "decls", .kind = .Field, .detail = "[]const Declaration" },
-        .{ .label = "is_tuple", .kind = .Field, .detail = "bool" },
+        .{ .label = "signed", .kind = .EnumMember },
+        .{ .label = "unsigned", .kind = .EnumMember },
     });
+}
+
+test "function arguments of @Pointer" {
+    try testCompletion(
+        \\test {
+        \\    @Pointer(.<cursor>)
+        \\}
+    , &.{
+        .{ .label = "one", .kind = .EnumMember },
+        .{ .label = "many", .kind = .EnumMember },
+        .{ .label = "slice", .kind = .EnumMember },
+        .{ .label = "c", .kind = .EnumMember },
+    });
+    try testCompletion(
+        \\test {
+        \\    @Pointer(undefined, .<cursor>)
+        \\}
+    , &.{
+        .{ .label = "@\"const\"", .kind = .Field, .detail = "bool = false" },
+        .{ .label = "@\"volatile\"", .kind = .Field, .detail = "bool = false" },
+        .{ .label = "@\"allowzero\"", .kind = .Field, .detail = "bool = false" },
+        .{ .label = "@\"addrspace\"", .kind = .Field, .detail = "?AddressSpace = null" },
+        .{ .label = "@\"align\"", .kind = .Field, .detail = "?usize = null" },
+    });
+}
+
+test "function arguments of @Fn" {
+    try testCompletion(
+        \\test {
+        \\    @Fn(undefined, undefined, undefined, .{.<cursor>})
+        \\}
+    , &.{
+        .{ .label = "@\"callconv\"", .kind = .Field, .detail = "CallingConvention = .auto" },
+        .{ .label = "varargs", .kind = .Field, .detail = "bool = false" },
+    });
+}
+
+test "function arguments of @Struct" {
+    try testCompletion(
+        \\test {
+        \\    @Struct(.<cursor>)
+        \\}
+    , &.{
+        .{ .label = "@\"extern\"", .kind = .EnumMember },
+        .{ .label = "@\"packed\"", .kind = .EnumMember },
+        .{ .label = "auto", .kind = .EnumMember },
+    });
+}
+
+test "function arguments of @Union" {
+    try testCompletion(
+        \\test {
+        \\    @Union(.<cursor>)
+        \\}
+    , &.{
+        .{ .label = "@\"extern\"", .kind = .EnumMember },
+        .{ .label = "@\"packed\"", .kind = .EnumMember },
+        .{ .label = "auto", .kind = .EnumMember },
+    });
+}
+
+test "function arguments of @Enum" {
+    try testCompletion(
+        \\test {
+        \\    @Enum(undefined, .<cursor>)
+        \\}
+    , &.{
+        .{ .label = "exhaustive", .kind = .EnumMember },
+        .{ .label = "nonexhaustive", .kind = .EnumMember },
+    });
+}
+
+test "function arguments of @setFloatMode" {
     try testCompletion(
         \\test {
         \\    @setFloatMode(.<cursor>)
         \\}
     , &.{
-        .{ .label = "strict", .kind = .EnumMember, .detail = "strict" },
-        .{ .label = "optimized", .kind = .EnumMember, .detail = "optimized" },
+        .{ .label = "strict", .kind = .EnumMember },
+        .{ .label = "optimized", .kind = .EnumMember },
     });
+}
+
+test "function arguments of @prefetch" {
     try testCompletion(
         \\test {
         \\    @prefetch(, .{.<cursor>})
@@ -2732,19 +3257,25 @@ test "builtin fns taking an enum arg" {
         .{ .label = "locality", .kind = .Field, .detail = "u2 = 3" },
         .{ .label = "cache", .kind = .Field, .detail = "Cache = .data" },
     });
+}
+
+test "function arguments of @reduce" {
     try testCompletion(
         \\test {
         \\    @reduce(.<cursor>
         \\}
     , &.{
-        .{ .label = "And", .kind = .EnumMember, .detail = "And" },
-        .{ .label = "Or", .kind = .EnumMember, .detail = "Or" },
-        .{ .label = "Xor", .kind = .EnumMember, .detail = "Xor" },
-        .{ .label = "Min", .kind = .EnumMember, .detail = "Min" },
-        .{ .label = "Max", .kind = .EnumMember, .detail = "Max" },
-        .{ .label = "Add", .kind = .EnumMember, .detail = "Add" },
-        .{ .label = "Mul", .kind = .EnumMember, .detail = "Mul" },
+        .{ .label = "And", .kind = .EnumMember },
+        .{ .label = "Or", .kind = .EnumMember },
+        .{ .label = "Xor", .kind = .EnumMember },
+        .{ .label = "Min", .kind = .EnumMember },
+        .{ .label = "Max", .kind = .EnumMember },
+        .{ .label = "Add", .kind = .EnumMember },
+        .{ .label = "Mul", .kind = .EnumMember },
     });
+}
+
+test "function arguments of @export" {
     try testCompletionTextEdit(.{
         .source = "comptime { @export(foo ,.<cursor>",
         .label = "name",
@@ -2752,6 +3283,9 @@ test "builtin fns taking an enum arg" {
         .expected_replace_line = "comptime { @export(foo ,.{ .name = ",
         .enable_snippets = false,
     });
+}
+
+test "function arguments of @extern" {
     try testCompletionTextEdit(.{
         .source = "test { @extern(T , .<cursor>",
         .label = "is_thread_local",
@@ -2759,13 +3293,9 @@ test "builtin fns taking an enum arg" {
         .expected_replace_line = "test { @extern(T , .{ .is_thread_local = ",
         .enable_snippets = false,
     });
-    try testCompletionTextEdit(.{
-        .source = "test { @fence(.<cursor>",
-        .label = "acq_rel",
-        .expected_insert_line = "test { @fence(.acq_rel",
-        .expected_replace_line = "test { @fence(.acq_rel",
-        .enable_snippets = false,
-    });
+}
+
+test "function arguments of @cmpxchgWeak" {
     try testCompletionTextEdit(.{
         .source = "test { @cmpxchgWeak(1,2,3,4, .<cursor>",
         .label = "acq_rel",
@@ -2773,6 +3303,9 @@ test "builtin fns taking an enum arg" {
         .expected_replace_line = "test { @cmpxchgWeak(1,2,3,4, .acq_rel",
         .enable_snippets = false,
     });
+}
+
+test "function arguments of @cmpxchgStrong" {
     try testCompletionTextEdit(.{
         .source = "test { @cmpxchgStrong(1,2,3,4,5,.<cursor>",
         .label = "acq_rel",
@@ -2780,6 +3313,9 @@ test "builtin fns taking an enum arg" {
         .expected_replace_line = "test { @cmpxchgStrong(1,2,3,4,5,.acq_rel",
         .enable_snippets = false,
     });
+}
+
+test "function arguments of @atomicLoad" {
     try testCompletionTextEdit(.{
         .source = "test { @atomicLoad(1,2,.<cursor>",
         .label = "acq_rel",
@@ -2787,6 +3323,9 @@ test "builtin fns taking an enum arg" {
         .expected_replace_line = "test { @atomicLoad(1,2,.acq_rel",
         .enable_snippets = false,
     });
+}
+
+test "function arguments of @atomicStore" {
     try testCompletionTextEdit(.{
         .source = "test { @atomicStore(1,2,3,.<cursor>",
         .label = "acq_rel",
@@ -2794,6 +3333,9 @@ test "builtin fns taking an enum arg" {
         .expected_replace_line = "test { @atomicStore(1,2,3,.acq_rel",
         .enable_snippets = false,
     });
+}
+
+test "function arguments of @atomicRmw" {
     try testCompletionTextEdit(.{
         .source = "test { @atomicRmw(1,2,.<cursor>",
         .label = "Add",
@@ -2808,27 +3350,25 @@ test "builtin fns taking an enum arg" {
         .expected_replace_line = "test { @atomicRmw(1,2,3,4,.acq_rel",
         .enable_snippets = false,
     });
-    try testCompletionTextEdit(.{
-        .source = "test { @branchHint(.<cursor>",
-        .label = "cold",
-        .expected_insert_line = "test { @branchHint(.cold",
-        .expected_replace_line = "test { @branchHint(.cold",
-        .enable_snippets = false,
-    });
+}
+
+test "function arguments of @call" {
     try testCompletion(
         \\test {
         \\    @call(.<cursor>
         \\}
     , &.{
-        .{ .label = "auto", .kind = .EnumMember, .detail = "auto" },
-        .{ .label = "async_kw", .kind = .EnumMember, .detail = "async_kw" },
-        .{ .label = "never_tail", .kind = .EnumMember, .detail = "never_tail" },
-        .{ .label = "never_inline", .kind = .EnumMember, .detail = "never_inline" },
-        .{ .label = "no_async", .kind = .EnumMember, .detail = "no_async" },
-        .{ .label = "always_tail", .kind = .EnumMember, .detail = "always_tail" },
-        .{ .label = "always_inline", .kind = .EnumMember, .detail = "always_inline" },
-        .{ .label = "compile_time", .kind = .EnumMember, .detail = "compile_time" },
+        .{ .label = "auto", .kind = .EnumMember },
+        .{ .label = "never_tail", .kind = .EnumMember },
+        .{ .label = "never_inline", .kind = .EnumMember },
+        .{ .label = "always_tail", .kind = .EnumMember },
+        .{ .label = "always_inline", .kind = .EnumMember },
+        .{ .label = "compile_time", .kind = .EnumMember },
+        .{ .label = "no_suspend", .kind = .EnumMember },
     });
+}
+
+test "function attributes" {
     try testCompletionTextEdit(.{
         .source = "var a: u16 addrspace(.<cursor>",
         .label = "constant",
@@ -2837,19 +3377,13 @@ test "builtin fns taking an enum arg" {
     });
     try testCompletionTextEdit(.{
         .source = "fn foo() callconv(.<cursor>",
-        .label = "AAPCS",
-        .expected_insert_line = "fn foo() callconv(.AAPCS",
-        .expected_replace_line = "fn foo() callconv(.AAPCS",
-    });
-    try testCompletionTextEdit(.{
-        .source = "fn foo() callconv(.{ .x86_64_sysv = .<cursor>",
-        .label = "incoming_stack_alignment",
-        .expected_insert_line = "fn foo() callconv(.{ .x86_64_sysv = .{ .incoming_stack_alignment = ",
-        .expected_replace_line = "fn foo() callconv(.{ .x86_64_sysv = .{ .incoming_stack_alignment = ",
+        .label = "arm_aapcs",
+        .expected_insert_line = "fn foo() callconv(.{ .arm_aapcs = ",
+        .expected_replace_line = "fn foo() callconv(.{ .arm_aapcs = ",
     });
 }
 
-test "block" {
+test "label" {
     try testCompletion(
         \\const foo = blk: {
         \\    break :<cursor>
@@ -2857,6 +3391,16 @@ test "block" {
     , &.{
         .{ .label = "blk", .kind = .Text }, // idk what kind this should be
     });
+    // TODO: the AST for this only contains the comptime block so the label isn't completed
+    // try testCompletion(
+    //     \\comptime {
+    //     \\    sw: switch (0) {
+    //     \\        else => break :<cursor>,
+    //     \\    }
+    //     \\}
+    // , &.{
+    //     .{ .label = "sw", .kind = .Text },
+    // });
 
     try testCompletion(
         \\const S = struct { alpha: u32 };
@@ -2868,30 +3412,12 @@ test "block" {
     , &.{
         .{ .label = "alpha", .kind = .Field, .detail = "u32" },
     });
-    try testCompletion(
-        \\const Birdie = enum { canary };
-        \\const U = union(enum) { alpha: u32 };;
-        \\const bar: U = blk: {
-        \\    break :blk .<cursor>;
-        \\};
-    , &.{
-        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
-    });
-    try testCompletion(
-        \\const Birdie = enum { canary };
-        \\const U = union(enum) { alpha: u32 };;
-        \\const bar: U = blk: {
-        \\    break :blk .{.<cursor>;
-        \\};
-    , &.{
-        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
-    });
 }
 
 test "either" {
     try testCompletion(
         \\const Alpha = struct {
-        \\    fn alpha() void {}
+        \\    fn alpha(_: @This()) void {}
         \\};
         \\const Beta = struct {
         \\    field: u32,
@@ -2901,12 +3427,12 @@ test "either" {
         \\const bar = foo.<cursor>
     , &.{
         .{ .label = "field", .kind = .Field, .detail = "u32" },
-        .{ .label = "alpha", .kind = .Function, .detail = "fn () void" },
-        .{ .label = "beta", .kind = .Method, .detail = "fn (_: @This()) void" },
+        .{ .label = "alpha", .kind = .Function, .detail = "fn (_: Alpha) void" },
+        .{ .label = "beta", .kind = .Method, .detail = "fn (_: Beta) void" },
     });
     try testCompletion(
         \\const Alpha = struct {
-        \\    fn alpha() void {}
+        \\    fn alpha(_: @This()) void {}
         \\};
         \\const Beta = struct {
         \\    field: u32,
@@ -2918,13 +3444,13 @@ test "either" {
         \\const foo = gamma.<cursor>
     , &.{
         .{ .label = "field", .kind = .Field, .detail = "u32" },
-        .{ .label = "alpha", .kind = .Function, .detail = "fn () void" },
-        .{ .label = "beta", .kind = .Method, .detail = "fn (_: @This()) void" },
+        .{ .label = "alpha", .kind = .Function, .detail = "fn (_: Alpha) void" },
+        .{ .label = "beta", .kind = .Method, .detail = "fn (_: Beta) void" },
     });
 
     try testCompletion(
         \\const Alpha = struct {
-        \\    fn alpha() void {}
+        \\    fn alpha(_: @This()) void {}
         \\};
         \\const Beta = struct {
         \\    fn beta(_: @This()) void {}
@@ -2932,8 +3458,26 @@ test "either" {
         \\const T = if (undefined) Alpha else Beta;
         \\const bar = T.<cursor>
     , &.{
-        .{ .label = "alpha", .kind = .Function, .detail = "fn () void" },
-        .{ .label = "beta", .kind = .Function, .detail = "fn (_: @This()) void" },
+        .{ .label = "alpha", .kind = .Function, .detail = "fn (_: Alpha) void" },
+        .{ .label = "beta", .kind = .Function, .detail = "fn (_: Beta) void" },
+    });
+}
+
+test "container type inside switch case value" {
+    try testCompletion(
+        \\test {
+        \\    switch (undefined) {
+        \\        struct {
+        \\            const This = @This();
+        \\            fn func() void {
+        \\                This.<cursor>
+        \\            }
+        \\        } => {},
+        \\    }
+        \\}
+    , &.{
+        .{ .label = "This", .kind = .Struct, .detail = "type" },
+        .{ .label = "func", .kind = .Function, .detail = "fn () void" },
     });
 }
 
@@ -3011,17 +3555,36 @@ test "top-level doc comment" {
             .kind = .Struct,
             .detail = "type",
             .documentation =
-            \\ A
+            \\A
             \\
-            \\ B
+            \\B
             ,
         },
     });
 }
 
 test "filesystem" {
+    if (@import("builtin").target.cpu.arch.isWasm()) return error.SkipZigTest;
+
     try testCompletion(
         \\const foo = @import("<cursor>");
+    , &.{
+        .{
+            .label = "std",
+            .kind = .Module,
+        },
+        .{
+            .label = "builtin",
+            .kind = .Module,
+        },
+    });
+}
+
+test "filesystem string literal ends with non ASCII symbol" {
+    if (@import("builtin").target.cpu.arch.isWasm()) return error.SkipZigTest;
+
+    try testCompletion(
+        \\const foo = @import("<cursor> 🠁
     , &.{
         .{
             .label = "std",
@@ -3207,8 +3770,8 @@ test "insert replace behaviour - builtin with snippets" {
     try testCompletionTextEdit(.{
         .source = "const foo = @<cursor>;",
         .label = "@as",
-        .expected_insert_line = "const foo = @as(${1:comptime T}, ${2:expression});",
-        .expected_replace_line = "const foo = @as(${1:comptime T}, ${2:expression});",
+        .expected_insert_line = "const foo = @as(${1:comptime T: type}, ${2:expression});",
+        .expected_replace_line = "const foo = @as(${1:comptime T: type}, ${2:expression});",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3223,8 +3786,8 @@ test "insert replace behaviour - builtin with snippets" {
     try testCompletionTextEdit(.{
         .source = "const foo = @<cursor>();",
         .label = "@as",
-        .expected_insert_line = "const foo = @as(${1:comptime T}, ${2:expression});",
-        .expected_replace_line = "const foo = @as(${1:comptime T}, ${2:expression});",
+        .expected_insert_line = "const foo = @as(${1:comptime T: type}, ${2:expression});",
+        .expected_replace_line = "const foo = @as(${1:comptime T: type}, ${2:expression});",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3256,6 +3819,17 @@ test "insert replace behaviour - builtin with snippets" {
     });
 }
 
+test "insert replace behaviour - builtin with snippets - @errorFromInt" {
+    try testCompletionTextEdit(.{
+        .source = "const foo = @<cursor>;",
+        .label = "@errorFromInt",
+        .expected_insert_line = "const foo = @errorFromInt(${1:value: std.meta.Int(.unsigned, @bitSizeOf(anyerror))});",
+        .expected_replace_line = "const foo = @errorFromInt(${1:value: std.meta.Int(.unsigned, @bitSizeOf(anyerror))});",
+        .enable_snippets = true,
+        .enable_argument_placeholders = true,
+    });
+}
+
 test "insert replace behaviour - builtin with partial argument placeholders" {
     if (true) return error.SkipZigTest; // TODO
     try testCompletionTextEdit(.{
@@ -3269,8 +3843,8 @@ test "insert replace behaviour - builtin with partial argument placeholders" {
     try testCompletionTextEdit(.{
         .source = "const foo = @<cursor>( , 5);",
         .label = "@as",
-        .expected_insert_line = "const foo = @as(${1:comptime T}, 5);",
-        .expected_replace_line = "const foo = @as(${1:comptime T}, 5);",
+        .expected_insert_line = "const foo = @as(${1:comptime T: type}, 5);",
+        .expected_replace_line = "const foo = @as(${1:comptime T: type}, 5);",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3405,8 +3979,8 @@ test "insert replace behaviour - function with snippets" {
         \\const foo = <cursor>;
         ,
         .label = "func",
-        .expected_insert_line = "const foo = func(${1:comptime T}, ${2:number});",
-        .expected_replace_line = "const foo = func(${1:comptime T}, ${2:number});",
+        .expected_insert_line = "const foo = func(${1:comptime T: type}, ${2:number: u32});",
+        .expected_replace_line = "const foo = func(${1:comptime T: type}, ${2:number: u32});",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3427,11 +4001,32 @@ test "insert replace behaviour - function with snippets" {
         \\const foo = <cursor>();
         ,
         .label = "func",
-        .expected_insert_line = "const foo = func(${1:comptime T}, ${2:number});",
-        .expected_replace_line = "const foo = func(${1:comptime T}, ${2:number});",
+        .expected_insert_line = "const foo = func(${1:comptime T: type}, ${2:number: u32});",
+        .expected_replace_line = "const foo = func(${1:comptime T: type}, ${2:number: u32});",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
+}
+
+test "insert replace behaviour - function with escaped snippet" {
+    try testCompletionTextEdit(.{
+        .source =
+        \\fn @"${}"(e: error{}) void {}
+        \\const foo = <cursor>;
+        ,
+        .label = "@\"${}\"",
+        .expected_insert_line =
+        \\const foo = @"\${\}"(${1:e: error{\}});
+        ,
+        .expected_replace_line =
+        \\const foo = @"\${\}"(${1:e: error{\}});
+        ,
+        .enable_snippets = true,
+        .enable_argument_placeholders = true,
+    });
+}
+
+test "insert replace behaviour - function with snippets - 'self parameter' with placeholder" {
     try testCompletionTextEdit(.{
         .source =
         \\const S = struct {
@@ -3441,8 +4036,8 @@ test "insert replace behaviour - function with snippets" {
         \\S.<cursor>
         ,
         .label = "f",
-        .expected_insert_line = "S.f(${1:self})",
-        .expected_replace_line = "S.f(${1:self})",
+        .expected_insert_line = "S.f(${1:self: S})",
+        .expected_replace_line = "S.f(${1:self: S})",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3456,8 +4051,8 @@ test "insert replace behaviour - function with snippets" {
         \\s.<cursor>
         ,
         .label = "f",
-        .expected_insert_line = "s.f(${1:number})",
-        .expected_replace_line = "s.f(${1:number})",
+        .expected_insert_line = "s.f(${1:number: u32})",
+        .expected_replace_line = "s.f(${1:number: u32})",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3490,7 +4085,9 @@ test "insert replace behaviour - function with snippets" {
         .enable_snippets = true,
         .enable_argument_placeholders = false,
     });
+}
 
+test "insert replace behaviour - function with snippets - partial argument placeholders" {
     // remove the following tests when partial argument placeholders are supported (see test below)
     try testCompletionTextEdit(.{
         .source =
@@ -3524,8 +4121,8 @@ test "insert replace behaviour - function with partial argument placeholders" {
         \\const foo = <cursor>(u32,);
         ,
         .label = "func",
-        .expected_insert_line = "const foo = func(u32, ${1:number});",
-        .expected_replace_line = "const foo = func(u32, ${1:number});",
+        .expected_insert_line = "const foo = func(u32, ${1:number: u32});",
+        .expected_replace_line = "const foo = func(u32, ${1:number: u32});",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3535,8 +4132,8 @@ test "insert replace behaviour - function with partial argument placeholders" {
         \\const foo = <cursor>( , 5);
         ,
         .label = "func",
-        .expected_insert_line = "const foo = func(${1:comptime T}, 5);",
-        .expected_replace_line = "const foo = func(${1:comptime T}, 5);",
+        .expected_insert_line = "const foo = func(${1:comptime T: type}, 5);",
+        .expected_replace_line = "const foo = func(${1:comptime T: type}, 5);",
         .enable_snippets = true,
         .enable_argument_placeholders = true,
     });
@@ -3578,7 +4175,31 @@ test "insert replace behaviour - function alias" {
     });
 }
 
+test "insert replace behaviour - decl literal function" {
+    try testCompletionTextEdit(.{
+        .source =
+        \\const S = struct {
+        \\    fn init() S {}
+        \\};
+        \\const foo: S = .<cursor>;
+        ,
+        .label = "init",
+        .expected_insert_line = "const foo: S = .init;",
+        .expected_replace_line = "const foo: S = .init;",
+    });
+}
+
 test "insert replace behaviour - struct literal" {
+    try testCompletionTextEdit(.{
+        .source =
+        \\const S = struct { alpha: u32 };
+        \\const foo: S = .{ .<cursor>
+        ,
+        .label = "alpha",
+        .expected_insert_line = "const foo: S = .{ .alpha = ",
+        .expected_replace_line = "const foo: S = .{ .alpha = ",
+        .enable_snippets = true,
+    });
     try testCompletionTextEdit(.{
         .source =
         \\const S = struct { alpha: u32 };
@@ -3594,8 +4215,58 @@ test "insert replace behaviour - struct literal" {
         \\const foo: S = .<cursor>
         ,
         .label = "alpha",
-        .expected_insert_line = "const foo: S = .{ .alpha = $1 }$0",
-        .expected_replace_line = "const foo: S = .{ .alpha = $1 }$0",
+        .expected_insert_line = "const foo: S = .{ .alpha = $1 \\}$0",
+        .expected_replace_line = "const foo: S = .{ .alpha = $1 \\}$0",
+        .enable_snippets = true,
+    });
+}
+
+test "insert replace behaviour - struct literal with escaped snippet" {
+    try testCompletionTextEdit(.{
+        .source =
+        \\const S = struct { @"${}": u32 };
+        \\const foo: S = .<cursor>
+        ,
+        .label = "@\"${}\"",
+        .expected_insert_line =
+        \\const foo: S = .{ .@"\${\}" = $1 \}$0
+        ,
+        .expected_replace_line =
+        \\const foo: S = .{ .@"\${\}" = $1 \}$0
+        ,
+        .enable_snippets = true,
+    });
+}
+
+test "insert replace behaviour - struct literal - check for equal sign" {
+    try testCompletionTextEdit(.{
+        .source =
+        \\const S = struct { alpha: u32 };
+        \\const foo: S = .{ .<cursor> = 5 };
+        ,
+        .label = "alpha",
+        .expected_insert_line = "const foo: S = .{ .alpha = 5 };",
+        .expected_replace_line = "const foo: S = .{ .alpha = 5 };",
+        .enable_snippets = true,
+    });
+    try testCompletionTextEdit(.{
+        .source =
+        \\const S = struct { alpha: u32 };
+        \\const foo: S = .{ . <cursor> = 5 };
+        ,
+        .label = "alpha",
+        .expected_insert_line = "const foo: S = .{ . alpha = 5 };",
+        .expected_replace_line = "const foo: S = .{ . alpha = 5 };",
+        .enable_snippets = true,
+    });
+    try testCompletionTextEdit(.{
+        .source =
+        \\const S = struct { alpha: u32 };
+        \\const foo: S = .{ .<cursor>= 5 };
+        ,
+        .label = "alpha",
+        .expected_insert_line = "const foo: S = .{ .alpha= 5 };",
+        .expected_replace_line = "const foo: S = .{ .alpha= 5 };",
         .enable_snippets = true,
     });
 }
@@ -3608,8 +4279,8 @@ test "insert replace behaviour - tagged union" {
         \\const foo: U = .<cursor>
         ,
         .label = "alpha",
-        .expected_insert_line = "const foo: U = .{ .alpha = $1 }$0",
-        .expected_replace_line = "const foo: U = .{ .alpha = $1 }$0",
+        .expected_insert_line = "const foo: U = .{ .alpha = $1 \\}$0",
+        .expected_replace_line = "const foo: U = .{ .alpha = $1 \\}$0",
         .enable_snippets = true,
     });
     try testCompletionTextEdit(.{
@@ -3648,6 +4319,27 @@ test "insert replace behaviour - tagged union" {
         .expected_insert_line = "    switch (e) {.foo}",
         .expected_replace_line = "    switch (e) {.foo}",
         .enable_snippets = true,
+    });
+}
+
+test "insert replace behaviour - tagged union - zero-bit field" {
+    try testCompletionTextEdit(.{
+        .source =
+        \\const U = union(enum) { alpha: void };
+        \\const foo: U = .<cursor>
+        ,
+        .label = "alpha",
+        .expected_insert_line = "const foo: U = .alpha",
+        .expected_replace_line = "const foo: U = .alpha",
+    });
+    try testCompletionTextEdit(.{
+        .source =
+        \\const U = union(enum) { alpha: u0 };
+        \\const foo: U = .<cursor>
+        ,
+        .label = "alpha",
+        .expected_insert_line = "const foo: U = .alpha",
+        .expected_replace_line = "const foo: U = .alpha",
     });
 }
 
@@ -3701,28 +4393,28 @@ test "insert replace behaviour - file system completions" {
         .source = \\const std = @import("s<cursor>td");
         , .label = "std"
         , .expected_insert_line = \\const std = @import("stdtd");
-        , .expected_replace_line = \\const std = @import("stdtd");
+        , .expected_replace_line = \\const std = @import("std");
         ,
     });
     try testCompletionTextEdit(.{
         .source = \\const std = @import("<cursor>std");
         , .label = "std"
         , .expected_insert_line = \\const std = @import("stdstd");
-        , .expected_replace_line = \\const std = @import("stdstd");
+        , .expected_replace_line = \\const std = @import("std");
         ,
     });
     try testCompletionTextEdit(.{
         .source = \\const std = @import("<cursor>.zig");
         , .label = "std"
         , .expected_insert_line = \\const std = @import("std.zig");
-        , .expected_replace_line = \\const std = @import("std.zig");
+        , .expected_replace_line = \\const std = @import("std");
         ,
     });
     try testCompletionTextEdit(.{
         .source = \\const std = @import("st<cursor>.zig");
         , .label = "std"
         , .expected_insert_line = \\const std = @import("std.zig");
-        , .expected_replace_line = \\const std = @import("std.zig");
+        , .expected_replace_line = \\const std = @import("std");
         ,
     });
     if (true) return error.SkipZigTest; // TODO
@@ -3743,124 +4435,48 @@ test "insert replace behaviour - file system completions" {
     // zig fmt: on
 }
 
-// These only work with the modified parser
-test "parser dependent" {
+test "generic function with @This() as self param" {
     try testCompletion(
-        \\fn alias() void {
-        \\    var s = Alias{.<cursor>};
-        \\}
-        \\pub const Outer = struct {
-        \\    pub const Inner = struct {
-        \\        isf1: bool = true,
-        \\        isf2: bool = false,
-        \\    };
+        \\const Foo = struct {
+        \\    fn bar(_: *const @This(), comptime _: type) void {}
         \\};
-        \\const Alias0 = Outer.Inner;
-        \\const Alias = Alias0;
+        \\const foo: Foo = .{};
+        \\const _ = foo.<cursor>
     , &.{
-        .{ .label = "isf1", .kind = .Field, .detail = "bool = true" },
-        .{ .label = "isf2", .kind = .Field, .detail = "bool = false" },
+        .{
+            .label = "bar",
+            .kind = .Function,
+            .detail = "fn (_: *const Foo, comptime _: type) void",
+        },
     });
+}
+
+test "methods of branching type" {
     try testCompletion(
-        \\const MyStruct = struct {
-        \\    a: bool,
-        \\    b: bool,
-        \\    fn inside() void {
-        \\        var s = MyStruct{.<cursor>};
-        \\    }
+        \\const Reader = switch (undefined) {
+        \\    .windows => struct {
+        \\        fn foo(_: *Reader) bool {}
+        \\    },
+        \\    else => struct {
+        \\        fn bar(_: *Reader) bool {}
+        \\    },
         \\};
-    , &.{
-        .{ .label = "a", .kind = .Field, .detail = "bool" },
-        .{ .label = "b", .kind = .Field, .detail = "bool" },
-    });
-    try testCompletion(
-        \\const Birdie = enum {
-        \\    canary,
-        \\};
-        \\const E = enum {
-        \\    foo,
-        \\    bar,
-        \\    fn foo(e: E) void {
-        \\        switch (e) {.<cursor>};
-        \\    }
-        \\};
-    , &.{
-        .{ .label = "foo", .kind = .EnumMember },
-        .{ .label = "bar", .kind = .EnumMember },
-    });
-    try testCompletion(
-        \\pub const bar = struct {
-        \\    pub const baz = struct {
-        \\        pub const Foo = struct {
-        \\            alpha: u32 = 0,
-        \\        };
-        \\
-        \\        pub fn qux() u32 {
-        \\            return Foo{
-        \\                .<cursor>
-        \\            };
-        \\        }
-        \\    };
-        \\};
-    , &.{
-        .{ .label = "alpha", .kind = .Field },
-    });
-    try testCompletion(
-        \\pub var state: S = undefined;
-        \\pub const S = struct { foo: u32 };
-        \\
-        \\pub fn main() void {
-        \\    state.<cursor>
-        \\    {
-        \\        _ = state.foo;
-        \\    }
-        \\    state.foo;
+        \\test {
+        \\    var reader: Reader = undefined;
+        \\    reader.<cursor>
         \\}
     , &.{
-        .{ .label = "foo", .kind = .Field },
+        .{
+            .label = "foo",
+            .kind = .Function,
+            .detail = "fn (_: *either type) bool",
+        },
+        .{
+            .label = "bar",
+            .kind = .Function,
+            .detail = "fn (_: *either type) bool",
+        },
     });
-    try testCompletion(
-        \\const Birdie = enum {
-        \\    canary,
-        \\};
-        \\fn foo(e: Enum) void {
-        \\    switch (e) {.<cursor>}
-        \\}
-        \\
-        \\const Enum = enum {
-        \\    foo,
-        \\};
-    , &.{
-        .{ .label = "foo", .kind = .EnumMember },
-    });
-    // TODO
-    // Test for `fnCall(.{.})` and `fnCall(Parser.Node{. .some})` because they are handled in different places
-    // Test for completions after `.{` and every `,` in the following snippet
-    // ```
-    // pub fn gamma(p: Parser) void {
-    //     return p.addNode(.{
-    //         .tag = 1,
-    //         .main_token = 1,
-    //         .data = .{
-    //             .lhs = undefined,
-    //             .rhs = p.addNode(Parser.Node{
-    //                 .tag,
-    //             }),
-    //         },
-    //     });
-    // }
-    // const Parser = struct {
-    //     const Node = struct {
-    //         tag: u32,
-    //         main_token: u32,
-    //         data: struct {
-    //             lhs: u32,
-    //             rhs: u32,
-    //         },
-    //     };
-    //     pub fn addNode(_: Node) u32 {}
-    // };
-    // ```
 }
 
 fn testCompletion(source: []const u8, expected_completions: []const Completion) !void {
@@ -3876,11 +4492,11 @@ fn testCompletionWithOptions(
         completion_label_details: bool = true,
     },
 ) !void {
-    const cursor_idx = std.mem.indexOf(u8, source, "<cursor>").?;
+    const cursor_idx = std.mem.find(u8, source, "<cursor>").?;
     const text = try std.mem.concat(allocator, u8, &.{ source[0..cursor_idx], source[cursor_idx + "<cursor>".len ..] });
     defer allocator.free(text);
 
-    var ctx = try Context.init();
+    var ctx: Context = try .init();
     defer ctx.deinit();
 
     ctx.server.client_capabilities.completion_doc_supports_md = true;
@@ -3889,13 +4505,13 @@ fn testCompletionWithOptions(
     ctx.server.client_capabilities.supports_completion_deprecated_old = true;
     ctx.server.client_capabilities.supports_completion_deprecated_tag = true;
 
-    ctx.server.config.enable_argument_placeholders = options.enable_argument_placeholders;
-    ctx.server.config.enable_snippets = options.enable_snippets;
-    ctx.server.config.completion_label_details = options.completion_label_details;
+    ctx.server.config_manager.config.enable_argument_placeholders = options.enable_argument_placeholders;
+    ctx.server.config_manager.config.enable_snippets = options.enable_snippets;
+    ctx.server.config_manager.config.completion_label_details = options.completion_label_details;
 
     const test_uri = try ctx.addDocument(.{ .source = text });
 
-    const params = types.CompletionParams{
+    const params: types.completion.Params = .{
         .textDocument = .{ .uri = test_uri },
         .position = offsets.indexToPosition(source, cursor_idx, ctx.server.offset_encoding),
     };
@@ -3903,11 +4519,16 @@ fn testCompletionWithOptions(
     @setEvalBranchQuota(5000);
     const response = try ctx.server.sendRequestSync(ctx.arena.allocator(), "textDocument/completion", params);
 
-    const completion_list: types.CompletionList = (response orelse {
+    const completion_list: types.completion.List = (response orelse {
         if (expected_completions.len == 0) return;
         std.debug.print("Server returned `null` as the result\n", .{});
         return error.InvalidResponse;
-    }).CompletionList;
+    }).completion_list;
+
+    for (completion_list.items) |item| {
+        std.debug.assert(!(!options.enable_snippets and item.insertTextFormat == .Snippet));
+        std.debug.assert(!(item.kind == .Snippet and item.insertTextFormat != .Snippet));
+    }
 
     var actual = try extractCompletionLabels(completion_list.items);
     defer actual.deinit(allocator);
@@ -3924,14 +4545,14 @@ fn testCompletionWithOptions(
     var unexpected = try set_difference(actual, expected);
     defer unexpected.deinit(allocator);
 
-    var error_builder = ErrorBuilder.init(allocator);
+    var error_builder: ErrorBuilder = .init(allocator);
     defer error_builder.deinit();
     errdefer error_builder.writeDebug();
 
     try error_builder.addFile(test_uri, text);
 
     for (found.keys()) |label| {
-        const actual_completion: types.CompletionItem = blk: {
+        const actual_completion: types.completion.Item = blk: {
             for (completion_list.items) |item| {
                 if (std.mem.eql(u8, label, item.label)) break :blk item;
             }
@@ -3946,27 +4567,27 @@ fn testCompletionWithOptions(
         };
 
         if (actual_completion.kind == null or expected_completion.kind != actual_completion.kind.?) {
-            try error_builder.msgAtIndex("completion item '{s}' should be of kind '{s}' but was '{?s}'!", test_uri, cursor_idx, .err, .{
+            try error_builder.msgAtIndex("completion item '{s}' should be of kind '{t}' but was '{?t}'!", test_uri, cursor_idx, .err, .{
                 label,
-                @tagName(expected_completion.kind),
-                if (actual_completion.kind) |kind| @tagName(kind) else null,
+                expected_completion.kind,
+                if (actual_completion.kind) |kind| kind else null,
             });
             return error.InvalidCompletionKind;
         }
 
         if (expected_completion.documentation) |expected_doc| doc_blk: {
             const actual_doc = if (actual_completion.documentation) |doc| blk: {
-                const markup_context = doc.MarkupContent;
+                const markup_context = doc.markup_content;
                 try std.testing.expectEqual(types.MarkupKind.markdown, markup_context.kind);
                 break :blk markup_context.value;
             } else null;
 
             if (actual_doc != null and std.mem.eql(u8, expected_doc, actual_doc.?)) break :doc_blk;
 
-            try error_builder.msgAtIndex("completion item '{s}' should have doc '{s}' but was '{?s}'!", test_uri, cursor_idx, .err, .{
+            try error_builder.msgAtIndex("completion item '{s}' should have doc '{f}' but was '{?f}'!", test_uri, cursor_idx, .err, .{
                 label,
-                expected_doc,
-                actual_doc,
+                std.zig.fmtString(expected_doc),
+                if (actual_doc) |str| std.zig.fmtString(str) else null,
             });
             return error.InvalidCompletionDoc;
         }
@@ -4019,11 +4640,10 @@ fn testCompletionWithOptions(
         }
 
         blk: {
-            const actual_deprecated =
-                if (actual_completion.tags) |tags|
-                    std.mem.indexOfScalar(types.CompletionItemTag, tags, .Deprecated) != null
-                else
-                    false;
+            const actual_deprecated = if (actual_completion.tags) |tags|
+                std.mem.findScalar(types.completion.Item.Tag, tags, .Deprecated) != null
+            else
+                false;
             std.debug.assert(actual_deprecated == (actual_completion.deprecated orelse false));
             if (expected_completion.deprecated == actual_deprecated) break :blk;
 
@@ -4037,20 +4657,19 @@ fn testCompletionWithOptions(
     }
 
     if (missing.count() != 0 or unexpected.count() != 0) {
-        var buffer = std.ArrayListUnmanaged(u8){};
+        var buffer: std.ArrayList(u8) = .empty;
         defer buffer.deinit(allocator);
-        const out = buffer.writer(allocator);
 
-        try printLabels(out, found, "found");
-        try printLabels(out, missing, "missing");
-        try printLabels(out, unexpected, "unexpected");
+        try printLabels(&buffer, found, "found");
+        try printLabels(&buffer, missing, "missing");
+        try printLabels(&buffer, unexpected, "unexpected");
         try error_builder.msgAtIndex("invalid completions\n{s}", test_uri, cursor_idx, .err, .{buffer.items});
         return error.MissingOrUnexpectedCompletions;
     }
 }
 
 fn extractCompletionLabels(items: anytype) error{ DuplicateCompletionLabel, OutOfMemory }!std.StringArrayHashMapUnmanaged(void) {
-    var set = std.StringArrayHashMapUnmanaged(void){};
+    var set: std.StringArrayHashMapUnmanaged(void) = .empty;
     errdefer set.deinit(allocator);
     try set.ensureTotalCapacity(allocator, items.len);
     for (items) |item| {
@@ -4070,7 +4689,7 @@ fn extractCompletionLabels(items: anytype) error{ DuplicateCompletionLabel, OutO
 }
 
 fn set_intersection(a: std.StringArrayHashMapUnmanaged(void), b: std.StringArrayHashMapUnmanaged(void)) error{OutOfMemory}!std.StringArrayHashMapUnmanaged(void) {
-    var result = std.StringArrayHashMapUnmanaged(void){};
+    var result: std.StringArrayHashMapUnmanaged(void) = .empty;
     errdefer result.deinit(allocator);
     for (a.keys()) |key| {
         if (b.contains(key)) try result.putNoClobber(allocator, key, {});
@@ -4079,7 +4698,7 @@ fn set_intersection(a: std.StringArrayHashMapUnmanaged(void), b: std.StringArray
 }
 
 fn set_difference(a: std.StringArrayHashMapUnmanaged(void), b: std.StringArrayHashMapUnmanaged(void)) error{OutOfMemory}!std.StringArrayHashMapUnmanaged(void) {
-    var result = std.StringArrayHashMapUnmanaged(void){};
+    var result: std.StringArrayHashMapUnmanaged(void) = .empty;
     errdefer result.deinit(allocator);
     for (a.keys()) |key| {
         if (!b.contains(key)) try result.putNoClobber(allocator, key, {});
@@ -4087,11 +4706,11 @@ fn set_difference(a: std.StringArrayHashMapUnmanaged(void), b: std.StringArrayHa
     return result;
 }
 
-fn printLabels(writer: anytype, labels: std.StringArrayHashMapUnmanaged(void), name: []const u8) @TypeOf(writer).Error!void {
+fn printLabels(output: *std.ArrayList(u8), labels: std.StringArrayHashMapUnmanaged(void), name: []const u8) error{OutOfMemory}!void {
     if (labels.count() != 0) {
-        try writer.print("{s}:\n", .{name});
+        try output.print(allocator, "{s}:\n", .{name});
         for (labels.keys()) |label| {
-            try writer.print("  - {s}\n", .{label});
+            try output.print(allocator, "  - {s}\n", .{label});
         }
     }
 }
@@ -4111,7 +4730,7 @@ fn testCompletionTextEdit(
         enable_snippets: bool = false,
     },
 ) !void {
-    const cursor_idx = std.mem.indexOf(u8, options.source, "<cursor>").?;
+    const cursor_idx = std.mem.find(u8, options.source, "<cursor>").?;
     const text = try std.mem.concat(allocator, u8, &.{ options.source[0..cursor_idx], options.source[cursor_idx + "<cursor>".len ..] });
     defer allocator.free(text);
 
@@ -4123,19 +4742,19 @@ fn testCompletionTextEdit(
     const expected_replace_text = try std.mem.concat(allocator, u8, &.{ text[0..cursor_line_loc.start], options.expected_replace_line, text[cursor_line_loc.end..] });
     defer allocator.free(expected_replace_text);
 
-    var ctx = try Context.init();
+    var ctx: Context = try .init();
     defer ctx.deinit();
 
     ctx.server.client_capabilities.supports_snippets = true;
 
-    ctx.server.config.enable_argument_placeholders = options.enable_argument_placeholders;
-    ctx.server.config.enable_snippets = options.enable_snippets;
+    ctx.server.config_manager.config.enable_argument_placeholders = options.enable_argument_placeholders;
+    ctx.server.config_manager.config.enable_snippets = options.enable_snippets;
 
     const test_uri = try ctx.addDocument(.{ .source = text });
     const handle = ctx.server.document_store.getHandle(test_uri).?;
 
     const cursor_position = offsets.indexToPosition(options.source, cursor_idx, ctx.server.offset_encoding);
-    const params = types.CompletionParams{
+    const params: types.completion.Params = .{
         .textDocument = .{ .uri = test_uri },
         .position = cursor_position,
     };
@@ -4148,13 +4767,15 @@ fn testCompletionTextEdit(
             std.debug.print("Server returned `null` as the result\n", .{});
             return error.InvalidResponse;
         };
-        const completion_item = try searchCompletionItemWithLabel(response.CompletionList, options.label);
+        const completion_item = try searchCompletionItemWithLabel(response.completion_list, options.label);
 
         std.debug.assert(completion_item.additionalTextEdits == null); // unsupported
+        std.debug.assert(!(!options.enable_snippets and completion_item.insertTextFormat == .Snippet));
+        std.debug.assert(!(completion_item.kind == .Snippet and completion_item.insertTextFormat != .Snippet));
 
         const TextEditOrInsertReplace = std.meta.Child(@TypeOf(completion_item.textEdit));
 
-        const text_edit_or_insert_replace = completion_item.textEdit orelse blk: {
+        const text_edit_or_insert_replace: TextEditOrInsertReplace = completion_item.textEdit orelse blk: {
             var start_index: usize = cursor_idx;
             while (start_index > 0 and zls.Analyser.isSymbolChar(handle.tree.source[start_index - 1])) {
                 start_index -= 1;
@@ -4162,16 +4783,16 @@ fn testCompletionTextEdit(
 
             const start_position = offsets.indexToPosition(text, start_index, ctx.server.offset_encoding);
 
-            break :blk TextEditOrInsertReplace{
-                .TextEdit = types.TextEdit{
+            break :blk .{
+                .text_edit = .{
                     .newText = completion_item.insertText orelse completion_item.label,
-                    .range = types.Range{ .start = start_position, .end = cursor_position },
+                    .range = .{ .start = start_position, .end = cursor_position },
                 },
             };
         };
 
         switch (text_edit_or_insert_replace) {
-            .TextEdit => |text_edit| {
+            .text_edit => |text_edit| {
                 try std.testing.expect(text_edit.range.start.line == text_edit.range.end.line); // text edit range must be a single line
                 try std.testing.expect(offsets.positionInsideRange(cursor_position, text_edit.range)); // text edit range must contain the cursor position
 
@@ -4184,7 +4805,7 @@ fn testCompletionTextEdit(
                     try std.testing.expectEqualStrings(expected_replace_text, actual_text);
                 }
             },
-            .InsertReplaceEdit => |insert_replace_edit| {
+            .insert_replace_edit => |insert_replace_edit| {
                 std.debug.assert(supports_insert_replace);
 
                 try std.testing.expect(insert_replace_edit.insert.start.line == insert_replace_edit.insert.end.line); // text edit range must be a single line
@@ -4192,8 +4813,8 @@ fn testCompletionTextEdit(
                 try std.testing.expect(offsets.positionInsideRange(cursor_position, insert_replace_edit.insert)); // text edit range must contain the cursor position
                 try std.testing.expect(offsets.positionInsideRange(cursor_position, insert_replace_edit.replace)); // text edit range must contain the cursor position
 
-                const insert_text_edit = types.TextEdit{ .newText = insert_replace_edit.newText, .range = insert_replace_edit.insert };
-                const replace_text_edit = types.TextEdit{ .newText = insert_replace_edit.newText, .range = insert_replace_edit.replace };
+                const insert_text_edit: types.TextEdit = .{ .newText = insert_replace_edit.newText, .range = insert_replace_edit.insert };
+                const replace_text_edit: types.TextEdit = .{ .newText = insert_replace_edit.newText, .range = insert_replace_edit.replace };
 
                 const actual_insert_text = try zls.diff.applyTextEdits(allocator, text, &.{insert_text_edit}, ctx.server.offset_encoding);
                 defer allocator.free(actual_insert_text);
@@ -4208,24 +4829,22 @@ fn testCompletionTextEdit(
     }
 }
 
-fn searchCompletionItemWithLabel(completion_list: types.CompletionList, label: []const u8) !types.CompletionItem {
+fn searchCompletionItemWithLabel(completion_list: types.completion.List, label: []const u8) !types.completion.Item {
     for (completion_list.items) |item| {
         if (std.mem.eql(u8, item.label, label)) return item;
     }
 
-    std.debug.lockStdErr();
-    defer std.debug.unlockStdErr();
+    const stderr = std.debug.lockStderr(&.{}).terminal();
+    defer std.debug.unlockStderr();
 
-    const stderr = std.io.getStdErr().writer();
-
-    try stderr.print(
+    try stderr.writer.print(
         \\server returned no completion item with label '{s}'
         \\
         \\labels:
         \\
     , .{label});
     for (completion_list.items) |item| {
-        try stderr.print("  - {s}\n", .{item.label});
+        try stderr.writer.print("  - {s}\n", .{item.label});
     }
 
     return error.MissingCompletionItem;

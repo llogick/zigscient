@@ -11,18 +11,16 @@ const build_options = @import("build_options");
 const Config = @import("Config.zig");
 const configuration = @import("configuration.zig");
 const DocumentStore = @import("DocumentStore.zig");
-const DiagnosticsCollection = @import("DiagnosticsCollection.zig");
 const lsp = @import("lsp");
 const types = lsp.types;
 const Analyser = @import("analysis.zig");
-const ast = @import("ast.zig");
 const offsets = @import("offsets.zig");
-const Ast = std.zig.Ast;
 const tracy = @import("tracy");
 const diff = @import("diff.zig");
+const Uri = @import("uri.zig");
 const InternPool = @import("analyser/analyser.zig").InternPool;
-const known_folders = @import("known-folders");
-const BuildRunnerVersion = @import("build_runner/BuildRunnerVersion.zig").BuildRunnerVersion;
+const DiagnosticsCollection = @import("DiagnosticsCollection.zig");
+const build_runner_shared = @import("build_runner/shared.zig");
 
 const signature_help = @import("features/signature_help.zig");
 const references = @import("features/references.zig");
@@ -37,56 +35,38 @@ const hover_handler = @import("features/hover.zig");
 const selection_range = @import("features/selection_range.zig");
 const diagnostics_gen = @import("features/diagnostics.zig");
 
-const build_runner_shared = @import("build_runner/shared.zig");
 const BuildOnSave = diagnostics_gen.BuildOnSave;
 const BuildOnSaveSupport = build_runner_shared.BuildOnSaveSupport;
 
 const log = std.log.scoped(.server);
-const message_logger = std.log.scoped(.message);
 
 // public fields
+io: std.Io,
 allocator: std.mem.Allocator,
-/// use updateConfiguration or updateConfiguration2 for setting config options
-config: Config = .{},
-/// will default to lookup in the system and user configuration folder provided by known-folders.
-config_path: ?[]const u8 = null,
+config_manager: *configuration.Manager,
 document_store: DocumentStore,
-transport: ?lsp.AnyTransport = null,
-message_tracing: bool = false,
+transport: ?*lsp.Transport = null,
 offset_encoding: offsets.Encoding = .@"utf-16",
 status: Status = .uninitialized,
 
 // private fields
-thread_pool: if (zig_builtin.single_threaded) void else std.Thread.Pool,
-wait_group: if (zig_builtin.single_threaded) void else std.Thread.WaitGroup,
-job_queue: std.fifo.LinearFifo(Job, .Dynamic),
-job_queue_lock: std.Thread.Mutex = .{},
-ip: InternPool = .{},
-// ensure that build on save is only executed once at a time
-running_build_on_save_processes: std.atomic.Value(usize) = std.atomic.Value(usize).init(0),
-/// avoid Zig deadlocking when spawning multiple `zig ast-check` processes at the same time.
-/// See https://github.com/ziglang/zig/issues/16369
-zig_ast_check_lock: std.Thread.Mutex = .{},
-/// The underlying memory has been allocated with `config_arena`.
-runtime_zig_version: ?std.SemanticVersion = null,
-/// Every changed configuration will increase the amount of memory allocated by the arena,
-/// This is unlikely to cause any big issues since the user is probably not going set settings
-/// often in one session,
-config_arena: std.heap.ArenaAllocator.State = .{},
+wait_group: std.Io.Group = .init,
+ip: InternPool = undefined,
+/// Stores messages that should be displayed with `window/showMessage` once the server has been initialized.
+pending_show_messages: std.ArrayList(types.window.ShowMessageParams) = .empty,
 client_capabilities: ClientCapabilities = .{},
 diagnostics_collection: DiagnosticsCollection,
-workspaces: std.ArrayListUnmanaged(Workspace) = .empty,
-build_on_save_watch_initialized: bool = false,
+workspaces: std.ArrayList(Workspace) = .empty,
 
 // Code was based off of https://github.com/andersfr/zig-lsp/blob/master/server.zig
 
 const ClientCapabilities = struct {
     supports_snippets: bool = false,
     supports_apply_edits: bool = false,
-    supports_will_save: bool = false,
     supports_will_save_wait_until: bool = false,
     supports_publish_diagnostics: bool = false,
     supports_code_action_fixall: bool = false,
+    supports_semantic_tokens_overlapping: bool = false,
     hover_supports_md: bool = false,
     signature_help_supports_md: bool = false,
     completion_doc_supports_md: bool = false,
@@ -96,12 +76,13 @@ const ClientCapabilities = struct {
     /// deprecated can be marked through the `CompletionItem.tags` field
     supports_completion_deprecated_tag: bool = false,
     label_details_support: bool = false,
+    /// The client supports `workspace/configuration` requests.
     supports_configuration: bool = false,
+    /// The client supports dynamically registering for the `workspace/didChangeConfiguration` notification.
     supports_workspace_did_change_configuration_dynamic_registration: bool = false,
+    /// The client supports dynamically registering for the `workspace/didChangeWatchedFiles` notification.
+    supports_workspace_did_change_watched_files: bool = false,
     supports_textDocument_definition_linkSupport: bool = false,
-    supports_work_done_progress: bool = false,
-    supports_semantic_tokens_refresh: bool = false,
-    supports_inlay_hints_refresh: bool = false,
     /// The detail entries for big structs such as std.zig.CrossTarget were
     /// bricking the preview window in Sublime Text.
     /// https://github.com/zigtools/zls/pull/261
@@ -115,7 +96,6 @@ const ClientCapabilities = struct {
 };
 
 pub const Error = error{
-    OutOfMemory,
     ParseError,
     InvalidRequest,
     MethodNotFound,
@@ -149,7 +129,7 @@ pub const Error = error{
     /// The client has canceled a request and a server as detected
     /// the cancel.
     RequestCancelled,
-};
+} || std.mem.Allocator.Error || std.Io.Cancelable;
 
 pub const Status = enum {
     /// the server has not received a `initialize` request
@@ -166,40 +146,7 @@ pub const Status = enum {
     exiting_failure,
 };
 
-const Job = union(enum) {
-    incoming_message: std.json.Parsed(Message),
-    generate_diagnostics: DocumentStore.Uri,
-    run_build_on_save,
-
-    fn deinit(self: Job, allocator: std.mem.Allocator) void {
-        switch (self) {
-            .incoming_message => |parsed_message| parsed_message.deinit(),
-            .generate_diagnostics => |uri| allocator.free(uri),
-            .run_build_on_save => {},
-        }
-    }
-
-    const SynchronizationMode = enum {
-        /// this `Job` requires exclusive access to `Server` and `DocumentStore`
-        /// all previous jobs will be awaited
-        exclusive,
-        /// this `Job` requires shared access to `Server` and `DocumentStore`
-        /// other non exclusive jobs can be processed in parallel
-        shared,
-        /// this `Job` operates atomically and does not require any synchronisation
-        atomic,
-    };
-
-    fn syncMode(self: Job) SynchronizationMode {
-        return switch (self) {
-            .incoming_message => |parsed_message| if (isBlockingMessage(parsed_message.value)) .exclusive else .shared,
-            .generate_diagnostics => .shared,
-            .run_build_on_save => .atomic,
-        };
-    }
-};
-
-fn sendToClientResponse(server: *Server, id: lsp.JsonRPCMessage.ID, result: anytype) error{OutOfMemory}![]u8 {
+fn sendToClientResponse(server: *Server, id: lsp.JsonRPCMessage.ID, result: anytype) error{ Canceled, OutOfMemory }![]u8 {
     const tracy_zone = tracy.traceNamed(@src(), "sendToClientResponse(" ++ @typeName(@TypeOf(result)) ++ ")");
     defer tracy_zone.end();
 
@@ -207,10 +154,14 @@ fn sendToClientResponse(server: *Server, id: lsp.JsonRPCMessage.ID, result: anyt
     // TODO validate response is from a client to server request
     // TODO validate result type
 
-    return try server.sendToClientInternal(id, null, null, "result", result);
+    const response: lsp.TypedJsonRPCResponse(@TypeOf(result)) = .{
+        .id = id,
+        .result_or_error = .{ .result = result },
+    };
+    return try sendToClientInternal(server.io, server.allocator, server.transport, response);
 }
 
-fn sendToClientRequest(server: *Server, id: lsp.JsonRPCMessage.ID, method: []const u8, params: anytype) error{OutOfMemory}![]u8 {
+fn sendToClientRequest(server: *Server, id: lsp.JsonRPCMessage.ID, method: []const u8, params: anytype) error{ Canceled, OutOfMemory }![]u8 {
     const tracy_zone = tracy.traceNamed(@src(), "sendToClientRequest(" ++ @typeName(@TypeOf(params)) ++ ")");
     defer tracy_zone.end();
 
@@ -218,10 +169,15 @@ fn sendToClientRequest(server: *Server, id: lsp.JsonRPCMessage.ID, method: []con
     // TODO validate method is server to client
     // TODO validate params type
 
-    return try server.sendToClientInternal(id, method, null, "params", params);
+    const request: lsp.TypedJsonRPCRequest(@TypeOf(params)) = .{
+        .id = id,
+        .method = method,
+        .params = params,
+    };
+    return try sendToClientInternal(server.io, server.allocator, server.transport, request);
 }
 
-fn sendToClientNotification(server: *Server, method: []const u8, params: anytype) error{OutOfMemory}![]u8 {
+fn sendToClientNotification(server: *Server, method: []const u8, params: anytype) error{ Canceled, OutOfMemory }![]u8 {
     const tracy_zone = tracy.traceNamed(@src(), "sendToClientRequest(" ++ @typeName(@TypeOf(params)) ++ ")");
     defer tracy_zone.end();
 
@@ -229,84 +185,51 @@ fn sendToClientNotification(server: *Server, method: []const u8, params: anytype
     // TODO validate method is server to client
     // TODO validate params type
 
-    return try server.sendToClientInternal(null, method, null, "params", params);
+    const notification: lsp.TypedJsonRPCNotification(@TypeOf(params)) = .{
+        .method = method,
+        .params = params,
+    };
+    return try sendToClientInternal(server.io, server.allocator, server.transport, notification);
 }
 
-fn sendToClientResponseError(server: *Server, id: lsp.JsonRPCMessage.ID, err: ?lsp.JsonRPCMessage.Response.Error) error{OutOfMemory}![]u8 {
+fn sendToClientResponseError(server: *Server, id: lsp.JsonRPCMessage.ID, err: lsp.JsonRPCMessage.Response.Error) error{ Canceled, OutOfMemory }![]u8 {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    return try server.sendToClientInternal(id, null, err, "", null);
+    const response: lsp.JsonRPCMessage = .{
+        .response = .{ .id = id, .result_or_error = .{ .@"error" = err } },
+    };
+
+    return try sendToClientInternal(server.io, server.allocator, server.transport, response);
 }
 
-fn sendToClientInternal(
-    server: *Server,
-    maybe_id: ?lsp.JsonRPCMessage.ID,
-    maybe_method: ?[]const u8,
-    maybe_err: ?lsp.JsonRPCMessage.Response.Error,
-    extra_name: []const u8,
-    extra: anytype,
-) error{OutOfMemory}![]u8 {
-    var buffer = std.ArrayListUnmanaged(u8){};
-    errdefer buffer.deinit(server.allocator);
-    var writer = buffer.writer(server.allocator);
-    try writer.writeAll(
-        \\{"jsonrpc":"2.0"
-    );
-    if (maybe_id) |id| {
-        try writer.writeAll(
-            \\,"id":
-        );
-        try std.json.stringify(id, .{}, writer);
-    }
-    if (maybe_method) |method| {
-        try writer.writeAll(
-            \\,"method":
-        );
-        try std.json.stringify(method, .{}, writer);
-    }
-    switch (@TypeOf(extra)) {
-        void => {},
-        ?void => {
-            try writer.print(
-                \\,"{s}":null
-            , .{extra_name});
-        },
-        else => {
-            try writer.print(
-                \\,"{s}":
-            , .{extra_name});
-            try std.json.stringify(extra, .{ .emit_null_optional_fields = false }, writer);
-        },
-    }
-    if (maybe_err) |err| {
-        try writer.writeAll(
-            \\,"error":
-        );
-        try std.json.stringify(err, .{}, writer);
-    }
-    try writer.writeByte('}');
+fn sendToClientInternal(io: std.Io, allocator: std.mem.Allocator, transport: ?*lsp.Transport, message: anytype) error{ Canceled, OutOfMemory }![]u8 {
+    const message_stringified = try std.json.Stringify.valueAlloc(allocator, message, .{
+        .emit_null_optional_fields = false,
+    });
+    errdefer allocator.free(message_stringified);
 
-    if (server.transport) |transport| {
-        const tracy_zone_transport = tracy.traceNamed(@src(), "Transport.writeJsonMessage");
-        defer tracy_zone_transport.end();
+    if (transport) |t| {
+        const tracy_zone = tracy.traceNamed(@src(), "Transport.writeJsonMessage");
+        defer tracy_zone.end();
 
-        if (server.message_tracing) message_logger.debug("sent: {s}", .{buffer.items});
-
-        transport.writeJsonMessage(buffer.items) catch |err| {
-            log.err("failed to write response: {}", .{err});
+        t.writeJsonMessage(io, message_stringified) catch |err| switch (err) {
+            error.Canceled => return error.Canceled,
+            else => log.err("failed to write message: {}", .{err}),
         };
     }
-    return buffer.toOwnedSlice(server.allocator);
+
+    return message_stringified;
 }
 
-fn showMessage(
+/// Send a `window/showMessage` notification to the client that will display a message in the user interface.
+pub fn showMessage(
     server: *Server,
-    message_type: types.MessageType,
+    message_type: types.window.MessageType,
     comptime fmt: []const u8,
     args: anytype,
 ) void {
-    const message = std.fmt.allocPrint(server.allocator, fmt, args) catch return;
+    var message = std.fmt.allocPrint(server.allocator, fmt, args) catch return;
     defer server.allocator.free(message);
     switch (message_type) {
         .Error => log.err("{s}", .{message}),
@@ -316,16 +239,24 @@ fn showMessage(
         _ => log.debug("{s}", .{message}),
     }
     switch (server.status) {
+        .uninitialized => {
+            server.pending_show_messages.ensureUnusedCapacity(server.allocator, 1) catch return;
+            server.pending_show_messages.appendAssumeCapacity(.{
+                .type = message_type,
+                .message = message,
+            });
+            message = "";
+            return;
+        },
         .initializing,
         .initialized,
         => {},
-        .uninitialized,
         .shutdown,
         .exiting_success,
         .exiting_failure,
         => return,
     }
-    if (server.sendToClientNotification("window/showMessage", types.ShowMessageParams{
+    if (server.sendToClientNotification("window/showMessage", types.window.ShowMessageParams{
         .type = message_type,
         .message = message,
     })) |json_message| {
@@ -335,30 +266,35 @@ fn showMessage(
     }
 }
 
-pub fn initAnalyser(server: *Server, handle: ?*DocumentStore.Handle) Analyser {
-    return Analyser.init(
+pub fn initAnalyser(server: *Server, arena: std.mem.Allocator, handle: ?*DocumentStore.Handle) Analyser {
+    return .init(
         server.allocator,
+        arena,
         &server.document_store,
         &server.ip,
         handle,
     );
 }
 
-pub fn getAutofixMode(server: *Server) enum {
-    on_save,
+/// If `force_autofix` is enabled, implement autofix without relying on a `source.fixall` code action.
+pub fn autofixWorkaround(server: *Server) enum {
+    /// Autofix is implemented using `textDocument/willSaveWaitUntil`.
     will_save_wait_until,
-    fixall,
+    /// Autofix is implemented by send a `workspace/applyEdit` request after receiving a `textDocument/didSave` notification.
+    on_save,
+    /// No workaround implementation of autofix is possible.
+    unavailable,
+    /// The `force_autofix` config option is disabled.
     none,
 } {
-    if (server.client_capabilities.supports_code_action_fixall) return .fixall;
-    if (!server.config.enable_autofix) return .none;
+    if (!server.config_manager.config.force_autofix) return .none;
     if (server.client_capabilities.supports_will_save_wait_until) return .will_save_wait_until;
     if (server.client_capabilities.supports_apply_edits) return .on_save;
-    return .none;
+    return .unavailable;
 }
 
 /// caller owns returned memory.
-fn autofix(server: *Server, arena: std.mem.Allocator, handle: *DocumentStore.Handle) error{OutOfMemory}!std.ArrayListUnmanaged(types.TextEdit) {
+fn autofix(server: *Server, arena: std.mem.Allocator, handle: *DocumentStore.Handle) error{ Canceled, OutOfMemory }!std.ArrayList(types.TextEdit) {
     if (handle.tree.errors.len != 0) return .empty;
     if (handle.tree.mode == .zon) return .empty;
 
@@ -366,7 +302,7 @@ fn autofix(server: *Server, arena: std.mem.Allocator, handle: *DocumentStore.Han
     defer error_bundle.deinit(server.allocator);
     if (error_bundle.errorMessageCount() == 0) return .empty;
 
-    var analyser = server.initAnalyser(handle);
+    var analyser = server.initAnalyser(arena, handle);
     defer analyser.deinit();
 
     var builder: code_actions.Builder = .{
@@ -388,20 +324,42 @@ fn autofix(server: *Server, arena: std.mem.Allocator, handle: *DocumentStore.Han
     return builder.fixall_text_edits;
 }
 
+fn generateDiagnostics(server: *Server, handle: *DocumentStore.Handle) void {
+    if (!server.client_capabilities.supports_publish_diagnostics) return;
+    const do = struct {
+        fn do(param_server: *Server, param_handle: *DocumentStore.Handle) std.Io.Cancelable!void {
+            if (param_handle.getChangePending() == true) {
+                log.err("!genDiag  : early exit", .{});
+                return;
+            }
+            diagnostics_gen.generateDiagnostics(param_server, param_handle) catch |err| switch (err) {
+                error.Canceled => return error.Canceled,
+                error.OutOfMemory => {},
+            };
+        }
+    }.do;
+    server.wait_group.async(server.io, do, .{ server, handle });
+}
+
 fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.InitializeParams) Error!types.InitializeResult {
-    var skip_set_fixall = false;
+    var support_full_semantic_tokens = true;
 
     if (request.clientInfo) |clientInfo| {
         server.client_capabilities.client_name = try server.allocator.dupe(u8, clientInfo.name);
 
-        if (std.mem.eql(u8, clientInfo.name, "Sublime Text LSP")) {
+        if (std.mem.startsWith(u8, clientInfo.name, "Visual Studio Code") or
+            std.mem.startsWith(u8, clientInfo.name, "VSCodium") or
+            std.mem.startsWith(u8, clientInfo.name, "Code - OSS"))
+        {
+            // VS Code doesn't really utilize `textDocument/semanticTokens/range`.
+            // This will cause some visual artifacts when scrolling through the
+            // document quickly but will considerably improve performance
+            // especially on large files.
+            support_full_semantic_tokens = false;
+        } else if (std.mem.eql(u8, clientInfo.name, "Sublime Text LSP")) {
             server.client_capabilities.max_detail_length = 256;
-            // TODO investigate why fixall doesn't work in sublime text
-            server.client_capabilities.supports_code_action_fixall = false;
-            skip_set_fixall = true;
-        } else if (std.mem.eql(u8, clientInfo.name, "Visual Studio Code")) {
-            server.client_capabilities.supports_code_action_fixall = true;
-            skip_set_fixall = true;
+        } else if (std.mem.startsWith(u8, clientInfo.name, "emacs")) {
+            // Assumes that `emacs` means `emacs-lsp/lsp-mode`. Eglot uses `Eglot`.
         }
     }
 
@@ -465,20 +423,7 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
             }
         }
         if (textDocument.synchronization) |synchronization| {
-            server.client_capabilities.supports_will_save = synchronization.willSave orelse false;
             server.client_capabilities.supports_will_save_wait_until = synchronization.willSaveWaitUntil orelse false;
-        }
-        if (textDocument.codeAction) |codeaction| {
-            if (codeaction.codeActionLiteralSupport) |literalSupport| {
-                if (!skip_set_fixall) {
-                    for (literalSupport.codeActionKind.valueSet) |code_action_kind| {
-                        if (code_action_kind.eql(.@"source.fixAll")) {
-                            server.client_capabilities.supports_code_action_fixall = true;
-                            break;
-                        }
-                    }
-                }
-            }
         }
         if (textDocument.definition) |definition| {
             server.client_capabilities.supports_textDocument_definition_linkSupport = definition.linkSupport orelse false;
@@ -498,11 +443,14 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
                 }
             }
         }
+        if (textDocument.semanticTokens) |semanticTokens| {
+            server.client_capabilities.supports_semantic_tokens_overlapping = semanticTokens.overlappingTokenSupport orelse false;
+        }
     }
 
     if (request.capabilities.window) |window| {
         if (window.workDoneProgress) |wdp| {
-            server.client_capabilities.supports_work_done_progress = wdp;
+            server.document_store.lsp_capabilities.supports_work_done_progress = wdp;
         }
     }
 
@@ -514,25 +462,23 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
                 server.client_capabilities.supports_workspace_did_change_configuration_dynamic_registration = true;
             }
         }
+        if (workspace.didChangeWatchedFiles) |did_change| {
+            if (did_change.dynamicRegistration orelse false) {
+                server.client_capabilities.supports_workspace_did_change_watched_files = true;
+            }
+        }
         if (workspace.semanticTokens) |workspace_semantic_tokens| {
-            server.client_capabilities.supports_semantic_tokens_refresh = workspace_semantic_tokens.refreshSupport orelse false;
+            server.document_store.lsp_capabilities.supports_semantic_tokens_refresh = workspace_semantic_tokens.refreshSupport orelse false;
         }
         if (workspace.inlayHint) |inlay_hint| {
-            server.client_capabilities.supports_inlay_hints_refresh = inlay_hint.refreshSupport orelse false;
-        }
-    }
-
-    if (request.trace) |trace| {
-        // To support --enable-message-tracing, only allow turning this on here
-        if (trace != .off) {
-            server.message_tracing = true;
+            server.document_store.lsp_capabilities.supports_inlay_hints_refresh = inlay_hint.refreshSupport orelse false;
         }
     }
 
     if (request.clientInfo) |clientInfo| {
-        log.info("Client Info:      {s}-{s}", .{ clientInfo.name, clientInfo.version orelse "<no version>" });
+        log.info("Client Info: {s} ({s})", .{ clientInfo.name, clientInfo.version orelse "unknown version" });
     }
-    log.debug("Offset Encoding:  {s}", .{@tagName(server.offset_encoding)});
+    log.debug("Offset Encoding:  '{t}'", .{server.offset_encoding});
 
     if (request.workspaceFolders) |workspace_folders| {
         for (workspace_folders) |src| {
@@ -542,39 +488,30 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
 
     server.status = .initializing;
 
-    if (request.initializationOptions) |initialization_options| {
-        if (std.json.parseFromValueLeaky(Config, arena, initialization_options, .{
-            .ignore_unknown_fields = true,
-        })) |new_cfg| {
-            try server.updateConfiguration2(new_cfg, .{});
-        } else |err| {
-            log.err("failed to read initialization_options: {}", .{err});
+    {
+        for (server.pending_show_messages.items) |params| {
+            if (server.sendToClientNotification("window/showMessage", params)) |json_message| {
+                server.allocator.free(json_message);
+            } else |err| {
+                log.warn("failed to show message: {}", .{err});
+            }
         }
+        for (server.pending_show_messages.items) |params| server.allocator.free(params.message);
+        server.pending_show_messages.clearAndFree(server.allocator);
     }
 
-    if (!zig_builtin.is_test) {
-        var maybe_config_result = if (server.config_path) |config_path|
-            configuration.loadFromFile(server.allocator, config_path)
-        else
-            configuration.load(server.allocator);
-
-        if (maybe_config_result) |*config_result| {
-            defer config_result.deinit(server.allocator);
-            switch (config_result.*) {
-                .success => |config_with_path| {
-                    log.info("$ Reading {s} ..", .{config_with_path.path});
-                    try server.updateConfiguration2(config_with_path.config.value, .{});
-                },
-                .failure => |payload| blk: {
-                    try server.updateConfiguration(.{}, .{});
-                    const message = try payload.toMessage(server.allocator) orelse break :blk;
-                    defer server.allocator.free(message);
-                    server.showMessage(.Error, "Failed to load configuration options:\n{s}", .{message});
-                },
-                .not_found => try server.updateConfiguration(.{}, .{}),
+    if (request.initializationOptions) |initialization_options| {
+        if (std.json.parseFromValueLeaky(configuration.UnresolvedConfig, arena, initialization_options, .{
+            .ignore_unknown_fields = true,
+        })) |*new_cfg| {
+            try server.config_manager.setConfiguration(.lsp_initialization, new_cfg);
+            if (server.client_capabilities.supports_configuration) {
+                // Do not resolve configuration until we received `workspace/configuration`.
+            } else {
+                try server.resolveConfiguration();
             }
         } else |err| {
-            log.err("failed to load configuration: {}", .{err});
+            log.err("failed to read initialization_options: {}", .{err});
         }
     }
 
@@ -594,23 +531,24 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
                 .retriggerCharacters = &.{","},
             },
             .textDocumentSync = .{
-                .TextDocumentSyncOptions = .{
+                .text_document_sync_options = .{
                     .openClose = true,
                     .change = .Incremental,
                     .save = .{ .bool = true },
-                    .willSave = true,
                     .willSaveWaitUntil = true,
                 },
             },
-            .renameProvider = .{ .bool = true },
+            .renameProvider = .{
+                .rename_options = .{ .prepareProvider = true },
+            },
             .completionProvider = .{
                 .resolveProvider = false,
-                .triggerCharacters = &[_][]const u8{ ".", ":", "@", "]", "/" },
+                .triggerCharacters = &.{ ".", ":", "@", "]", "\"", "/" },
                 .completionItem = .{ .labelDetailsSupport = true },
             },
             .documentHighlightProvider = .{ .bool = true },
             .hoverProvider = .{ .bool = true },
-            .codeActionProvider = .{ .CodeActionOptions = .{ .codeActionKinds = code_actions.supported_code_actions } },
+            .codeActionProvider = .{ .code_action_options = .{ .codeActionKinds = code_actions.supported_code_actions } },
             .declarationProvider = .{ .bool = true },
             .definitionProvider = .{ .bool = true },
             .typeDefinitionProvider = .{ .bool = true },
@@ -630,8 +568,8 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
                 },
             },
             .semanticTokensProvider = .{
-                .SemanticTokensOptions = .{
-                    .full = .{ .bool = true },
+                .semantic_tokens_options = .{
+                    .full = .{ .bool = support_full_semantic_tokens },
                     .range = .{ .bool = true },
                     .legend = .{
                         .tokenTypes = std.meta.fieldNames(semantic_tokens.TokenType),
@@ -644,36 +582,44 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
     };
 }
 
-fn initializedHandler(server: *Server, _: std.mem.Allocator, notification: types.InitializedParams) Error!void {
+fn initializedHandler(server: *Server, arena: std.mem.Allocator, notification: types.InitializedParams) Error!void {
     _ = notification;
 
     if (server.status != .initializing) {
         log.warn("received a initialized notification but the server has not send a initialize request!", .{});
     }
 
-    if (server.config.ws_build_zig == null and server.workspaces.items.len != 0) {
-        var config_arena_allocator = server.config_arena.promote(server.allocator);
-        defer server.config_arena = config_arena_allocator.state;
-        const config_arena = config_arena_allocator.allocator();
-        server.config.ws_build_zig = DocumentStore.findBuildZig(
-            config_arena,
-            server.workspaces.items[0].uri, // more than 1?
-        ) catch null;
-        if (server.config.ws_build_zig) |ws_build_zig| {
-            server.document_store.config = DocumentStore.Config.fromMainConfig(server.config);
-            _ = server.document_store.getOrLoadHandle(ws_build_zig); // Should trigger getOrLoadBuildFile too
-            log.info("WS: Project configuration file: '{s}'", .{ws_build_zig});
-        }
-    }
-
     server.status = .initialized;
 
-    if (server.client_capabilities.supports_workspace_did_change_configuration_dynamic_registration) {
-        try server.registerCapability("workspace/didChangeConfiguration");
+    if (server.client_capabilities.supports_configuration and
+        server.client_capabilities.supports_workspace_did_change_configuration_dynamic_registration)
+    {
+        try server.registerCapability("workspace/didChangeConfiguration", null);
     }
 
-    if (server.client_capabilities.supports_configuration)
+    if (server.client_capabilities.supports_workspace_did_change_watched_files) {
+        // `{ "watchers": [ { "globPattern": "**/*.{zig,zon}" } ] }`
+        var watcher: std.json.ObjectMap = .init(arena);
+        try watcher.putNoClobber("globPattern", .{ .string = "**/*.{zig,zon}" });
+        var watchers_arr: std.json.Array = try .initCapacity(arena, 1);
+        watchers_arr.appendAssumeCapacity(.{ .object = watcher });
+        var fs_watcher_obj: std.json.ObjectMap = .init(arena);
+        try fs_watcher_obj.putNoClobber("watchers", .{ .array = watchers_arr });
+        const json_val: std.json.Value = .{ .object = fs_watcher_obj };
+
+        try server.registerCapability("workspace/didChangeWatchedFiles", json_val);
+    }
+
+    if (server.client_capabilities.supports_configuration) {
+        // We defer calling `server.resolveConfiguration()` until after workspace configuration has been received.
         try server.requestConfiguration();
+    } else {
+        // The client does not support the `workspace/configuration` (pull model) request
+        // and it is unknown whether the client will use the
+        // `workspace/didChangeConfiguration` (push model) notification instead.
+        // In case they don't, we resolve configuration early and re-resolve if push model is used.
+        try server.resolveConfiguration();
+    }
 }
 
 fn shutdownHandler(server: *Server, _: std.mem.Allocator, _: void) Error!?void {
@@ -689,17 +635,7 @@ fn exitHandler(server: *Server, _: std.mem.Allocator, _: void) Error!void {
     };
 }
 
-fn cancelRequestHandler(server: *Server, _: std.mem.Allocator, request: types.CancelParams) Error!void {
-    _ = server;
-    _ = request;
-    // TODO implement $/cancelRequest
-}
-
-fn setTraceHandler(server: *Server, _: std.mem.Allocator, request: types.SetTraceParams) Error!void {
-    server.message_tracing = request.value != .off;
-}
-
-fn registerCapability(server: *Server, method: []const u8) Error!void {
+fn registerCapability(server: *Server, method: []const u8, registersOptions: ?types.LSPAny) Error!void {
     const id = try std.fmt.allocPrint(server.allocator, "register-{s}", .{method});
     defer server.allocator.free(id);
 
@@ -708,80 +644,116 @@ fn registerCapability(server: *Server, method: []const u8) Error!void {
     const json_message = try server.sendToClientRequest(
         .{ .string = id },
         "client/registerCapability",
-        types.RegistrationParams{ .registrations = &.{
-            types.Registration{
+        types.Registration.Params{ .registrations = &.{
+            .{
                 .id = id,
                 .method = method,
+                .registerOptions = registersOptions,
             },
         } },
     );
     server.allocator.free(json_message);
 }
 
+/// Request configuration options with the `workspace/configuration` request.
 fn requestConfiguration(server: *Server) Error!void {
-    const configuration_items = comptime config: {
-        var comp_config: [std.meta.fields(Config).len]types.ConfigurationItem = undefined;
-        for (std.meta.fields(Config), 0..) |field, index| {
-            comp_config[index] = .{
-                .section = "zls." ++ field.name,
-            };
-        }
-
-        break :config comp_config;
+    const configuration_items: [1]types.workspace.configuration.Item = .{
+        .{
+            .section = "zls",
+            .scopeUri = if (server.workspaces.items.len == 1) server.workspaces.items[0].uri else null,
+        },
     };
 
     const json_message = try server.sendToClientRequest(
         .{ .string = "i_haz_configuration" },
         "workspace/configuration",
-        types.ConfigurationParams{
+        types.workspace.configuration.Params{
             .items = &configuration_items,
         },
     );
     server.allocator.free(json_message);
 }
 
-fn handleConfiguration(server: *Server, json: std.json.Value) error{OutOfMemory}!void {
+/// Handle the response of the `workspace/configuration` request.
+fn handleConfiguration(server: *Server, json: std.json.Value) error{ Canceled, OutOfMemory }!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    const fields = std.meta.fields(configuration.Configuration);
-    const result = switch (json) {
-        .array => |arr| if (arr.items.len == fields.len) arr.items else {
-            log.err("workspace/configuration expects an array of size {d} but received {d}", .{ fields.len, arr.items.len });
-            return;
+    const result: std.json.Value = switch (json) {
+        .array => |arr| blk: {
+            if (arr.items.len != 1) {
+                log.err("Response to 'workspace/configuration' expects an array of size 1 but received {d}", .{arr.items.len});
+                break :blk null;
+            }
+            break :blk switch (arr.items[0]) {
+                .object => arr.items[0],
+                .null => null,
+                else => {
+                    log.err("Response to 'workspace/configuration' expects an array of objects but got an array of {t}.", .{json});
+                    break :blk null;
+                },
+            };
         },
-        else => {
-            log.err("workspace/configuration expects an array but received {s}", .{@tagName(json)});
-            return;
+        else => blk: {
+            log.err("Response to 'workspace/configuration' expects an array but received {t}", .{json});
+            break :blk null;
         },
+    } orelse {
+        try server.resolveConfiguration();
+        return;
     };
 
-    var arena_allocator = std.heap.ArenaAllocator.init(server.allocator);
+    var arena_allocator: std.heap.ArenaAllocator = .init(server.allocator);
     defer arena_allocator.deinit();
     const arena = arena_allocator.allocator();
 
-    var new_config: configuration.Configuration = .{};
+    var new_config = std.json.parseFromValueLeaky(
+        configuration.UnresolvedConfig,
+        arena,
+        result,
+        .{ .ignore_unknown_fields = true },
+    ) catch |err| {
+        log.err("Failed to parse response from 'workspace/configuration': {}", .{err});
+        try server.resolveConfiguration();
+        return;
+    };
 
-    inline for (fields, result) |field, json_value| {
-        var runtime_known_field_name: []const u8 = ""; // avoid unnecessary function instantiations of `std.fmt.format`
-        runtime_known_field_name = field.name;
-
-        const maybe_new_value = std.json.parseFromValueLeaky(field.type, arena, json_value, .{}) catch |err| blk: {
-            log.err("failed to parse configuration option '{s}': {}", .{ runtime_known_field_name, err });
-            break :blk null;
+    const maybe_root_dir: ?[]const u8 = dir: {
+        if (server.workspaces.items.len != 1) break :dir null;
+        break :dir Uri.toFsPath(arena, server.workspaces.items[0].uri) catch |err| {
+            log.err("failed to parse root uri for workspace {s}: {}", .{
+                server.workspaces.items[0].uri, err,
+            });
+            break :dir null;
         };
-        if (maybe_new_value) |new_value| {
-            @field(new_config, field.name) = new_value;
+    };
+
+    inline for (configuration.file_system_config_options) |file_config| {
+        const field: *?[]const u8 = &@field(new_config, file_config.name);
+        if (field.*) |maybe_relative| resolve: {
+            if (maybe_relative.len == 0) break :resolve;
+            if (std.fs.path.isAbsolute(maybe_relative)) break :resolve;
+
+            const root_dir = maybe_root_dir orelse {
+                log.err("relative path only supported for {s} with exactly one workspace", .{file_config.name});
+                break;
+            };
+
+            const absolute = try std.fs.path.resolve(arena, &.{
+                root_dir, maybe_relative,
+            });
+
+            field.* = absolute;
         }
     }
 
-    server.updateConfiguration(new_config, .{}) catch |err| {
-        log.err("failed to update configuration: {}", .{err});
-    };
+    try server.config_manager.setConfiguration(.lsp_configuration, &new_config);
+    try server.resolveConfiguration();
 }
 
-const Workspace = struct {
+pub const Workspace = struct {
     uri: types.URI,
+    build_file_uri: ?types.URI = null,
     build_on_save: if (BuildOnSaveSupport.isSupportedComptime()) ?BuildOnSave else void,
     build_on_save_mode: if (BuildOnSaveSupport.isSupportedComptime()) ?enum { watch, manual } else void,
 
@@ -801,6 +773,7 @@ const Workspace = struct {
             if (workspace.build_on_save) |*build_on_save| build_on_save.deinit();
         }
         allocator.free(workspace.uri);
+        if (workspace.build_file_uri) |bfuri| allocator.free(bfuri);
     }
 
     fn sendManualWatchUpdate(workspace: *Workspace) void {
@@ -817,20 +790,23 @@ const Workspace = struct {
         server: *Server,
         /// Whether the build on save process should be restarted if it is already running.
         restart: bool,
-    }) error{OutOfMemory}!void {
+    }) error{ Canceled, OutOfMemory }!void {
         comptime std.debug.assert(BuildOnSaveSupport.isSupportedComptime());
 
-        if (args.server.runtime_zig_version) |runtime_zig_version| {
-            workspace.build_on_save_mode = switch (BuildOnSaveSupport.isSupportedRuntime(runtime_zig_version)) {
+        const config = &args.server.config_manager.config;
+
+        if (args.server.config_manager.zig_exe) |zig_exe| {
+            workspace.build_on_save_mode = switch (BuildOnSaveSupport.isSupportedRuntime(zig_exe.version)) {
                 .supported => .watch,
-                else => null, // if (args.server.config.enable_build_on_save orelse false) .manual else null,
+                // If if build on save has been explicitly enabled, fallback to the implementation with manual updates
+                else => if (config.enable_build_on_save orelse false) .manual else null,
             };
         } else {
             workspace.build_on_save_mode = null;
         }
 
         const build_on_save_supported = workspace.build_on_save_mode != null;
-        const build_on_save_wanted = args.server.config.enable_build_on_save == true;
+        const build_on_save_wanted = config.enable_build_on_save orelse true;
         const enable = build_on_save_supported and build_on_save_wanted;
 
         if (workspace.build_on_save) |*build_on_save| {
@@ -842,26 +818,11 @@ const Workspace = struct {
 
         if (!enable) return;
 
-        const zig_exe_path = args.server.config.zig_exe_path orelse return;
-        const zig_lib_path = args.server.config.zig_lib_path orelse return;
-        const build_runner_path = args.server.config.build_runner_path orelse return;
+        const zig_exe_path = config.zig_exe_path orelse return;
+        const zig_lib_path = config.zig_lib_path orelse return;
+        const build_runner_path = config.build_runner_path orelse return;
 
-        const maybe_build_zig_uri = DocumentStore.findBuildZig(args.server.allocator, workspace.uri) catch |err| {
-            log.err("Could not find a build.zig for workspace folder {s}: {}", .{ workspace.uri, err });
-            return;
-        };
-        const build_zig_uri = maybe_build_zig_uri orelse {
-            log.err("Could not find a build.zig for workspace folder {s}", .{workspace.uri});
-            return;
-        };
-        defer args.server.allocator.free(maybe_build_zig_uri.?);
-
-        var has_check_step: bool = false;
-        if (args.server.document_store.getBuildFile(build_zig_uri)) |bld_file| {
-            has_check_step = bld_file.hasAcheckStep();
-        }
-
-        const workspace_path = @import("uri.zig").parse(args.server.allocator, workspace.uri) catch |err| {
+        const workspace_path = Uri.toFsPath(args.server.allocator, workspace.uri) catch |err| {
             log.err("failed to parse URI '{s}': {}", .{ workspace.uri, err });
             return;
         };
@@ -869,35 +830,52 @@ const Workspace = struct {
 
         std.debug.assert(workspace.build_on_save == null);
         workspace.build_on_save = BuildOnSave.init(.{
+            .io = args.server.io,
             .allocator = args.server.allocator,
             .workspace_path = workspace_path,
-            .build_on_save_args = args.server.config.build_on_save_args,
-            .check_step_only = has_check_step,
+            .build_on_save_args = config.build_on_save_args,
+            .check_step_only = config.enable_build_on_save == null,
             .zig_exe_path = zig_exe_path,
             .zig_lib_path = zig_lib_path,
             .build_runner_path = build_runner_path,
             .collection = &args.server.diagnostics_collection,
-            .server = args.server,
-        }) catch |err| {
-            log.err("failed to initilize Build-On-Save for '{s}': {}", .{ workspace.uri, err });
-            return;
+            .document_store = &args.server.document_store,
+        }) catch |err| switch (err) {
+            error.Canceled => return error.Canceled,
+            else => {
+                log.err("failed to initilize Build-On-Save for '{s}': {}", .{ workspace.uri, err });
+                return;
+            },
         };
 
         log.info("trying to start Build-On-Save for '{s}'", .{workspace.uri});
     }
 };
 
-fn addWorkspace(server: *Server, uri: types.URI) error{OutOfMemory}!void {
+fn addWorkspace(server: *Server, uri: types.URI) error{ Canceled, OutOfMemory }!void {
     try server.workspaces.ensureUnusedCapacity(server.allocator, 1);
     server.workspaces.appendAssumeCapacity(try Workspace.init(server, uri));
+
+    blk: {
+        var arena_state = std.heap.ArenaAllocator.init(server.allocator);
+        defer arena_state.deinit();
+        const arena = arena_state.allocator();
+        const dir_path = Uri.toFsPath(arena, uri) catch break :blk;
+        if (try DocumentStore.buildDotZigExists(server.io, dir_path)) {
+            const bf_path = try std.fs.path.join(arena, &.{ dir_path, "build.zig" });
+            const bf_uri = try Uri.fromPath(server.allocator, bf_path);
+            server.workspaces.items[server.workspaces.items.len - 1].build_file_uri = bf_uri;
+            _ = try server.document_store.getOrLoadHandle(bf_uri);
+        }
+    }
+
     log.info("added Workspace Folder: {s}", .{uri});
 
-    if ((server.config.enable_build_on_save == true) and
+    if (BuildOnSaveSupport.isSupportedComptime() and
         // Don't initialize build on save until initialization finished.
         // If the client supports the `workspace/configuration` request, wait
         // until we have received workspace configuration from the server.
-        (server.status == .initialized and !server.client_capabilities.supports_configuration) and
-        BuildOnSaveSupport.isSupportedComptime())
+        (server.status == .initialized and !server.client_capabilities.supports_configuration))
     {
         try server.workspaces.items[server.workspaces.items.len - 1].refreshBuildOnSave(.{
             .server = server,
@@ -919,8 +897,37 @@ fn removeWorkspace(server: *Server, uri: types.URI) void {
     }
 }
 
-fn didChangeWorkspaceFoldersHandler(server: *Server, arena: std.mem.Allocator, notification: types.DidChangeWorkspaceFoldersParams) Error!void {
+fn didChangeWatchedFilesHandler(server: *Server, arena: std.mem.Allocator, notification: types.workspace.did_change_watched_files.Params) Error!void {
+    var updated_files: usize = 0;
+    for (notification.changes) |change| {
+        const file_path = Uri.toFsPath(arena, change.uri) catch |err| switch (err) {
+            error.UnsupportedScheme => continue,
+            else => {
+                log.err("failed to parse URI '{s}': {}", .{ change.uri, err });
+                continue;
+            },
+        };
+        const file_extension = std.fs.path.extension(file_path);
+        if (!std.mem.eql(u8, file_extension, ".zig") and !std.mem.eql(u8, file_extension, ".zon")) continue;
+
+        switch (change.type) {
+            .Created, .Changed, .Deleted => |kind| {
+                const did_update_file = try server.document_store.refreshDocumentFromFileSystem(change.uri, kind == .Deleted);
+                updated_files += @intFromBool(did_update_file);
+            },
+            else => {},
+        }
+    }
+    if (updated_files != 0) {
+        log.debug("updated {d} watched file(s)", .{updated_files});
+    }
+}
+
+fn didChangeWorkspaceFoldersHandler(server: *Server, arena: std.mem.Allocator, notification: types.workspace.folders.DidChangeParams) Error!void {
     _ = arena;
+
+    const old_cancel_protect = server.io.swapCancelProtection(.blocked);
+    defer _ = server.io.swapCancelProtection(old_cancel_protect);
 
     for (notification.event.added) |folder| {
         try server.addWorkspace(folder.uri);
@@ -931,20 +938,33 @@ fn didChangeWorkspaceFoldersHandler(server: *Server, arena: std.mem.Allocator, n
     }
 }
 
-fn didChangeConfigurationHandler(server: *Server, arena: std.mem.Allocator, notification: types.DidChangeConfigurationParams) Error!void {
+fn didChangeConfigurationHandler(server: *Server, arena: std.mem.Allocator, notification: types.workspace.configuration.did_change.Params) Error!void {
     const settings = switch (notification.settings) {
         .null => {
-            if (server.client_capabilities.supports_configuration) {
+            if (server.client_capabilities.supports_configuration and
+                server.client_capabilities.supports_workspace_did_change_configuration_dynamic_registration)
+            {
+                // The client has informed us that the configuration options have
+                // changed. The will request them with `workspace/configuration`.
                 try server.requestConfiguration();
             }
             return;
         },
-        .object => |object| object.get("zls") orelse notification.settings,
-        else => notification.settings,
+        .object => |object| blk: {
+            if (server.client_capabilities.supports_configuration and
+                server.client_capabilities.supports_workspace_did_change_configuration_dynamic_registration)
+            {
+                log.debug("Ignoring 'workspace/didChangeConfiguration' notification in favor of 'workspace/configuration'", .{});
+                try server.requestConfiguration();
+                return;
+            }
+            break :blk object.get("zls") orelse notification.settings;
+        },
+        else => notification.settings, // We will definitely fail to parse this
     };
 
     const new_config = std.json.parseFromValueLeaky(
-        configuration.Configuration,
+        configuration.UnresolvedConfig,
         arena,
         settings,
         .{ .ignore_unknown_fields = true },
@@ -953,137 +973,46 @@ fn didChangeConfigurationHandler(server: *Server, arena: std.mem.Allocator, noti
         return error.ParseError;
     };
 
-    try server.updateConfiguration(new_config, .{});
+    try server.config_manager.setConfiguration(.lsp_configuration, &new_config);
+    try server.resolveConfiguration();
 }
 
-pub const UpdateConfigurationOptions = struct {
-    resolve: bool = true,
-};
+pub fn resolveConfiguration(server: *Server) error{ Canceled, OutOfMemory }!void {
+    var result = try server.config_manager.resolveConfiguration(server.allocator);
+    defer result.deinit(server.allocator);
 
-pub fn updateConfiguration2(
-    server: *Server,
-    new_config: Config,
-    options: UpdateConfigurationOptions,
-) error{OutOfMemory}!void {
-    var cfg: configuration.Configuration = .{};
-    inline for (std.meta.fields(Config)) |field| {
-        @field(cfg, field.name) = @field(new_config, field.name);
-    }
-    try server.updateConfiguration(cfg, options);
-}
-
-pub fn updateConfiguration(
-    server: *Server,
-    param_new_config: configuration.Configuration,
-    options: UpdateConfigurationOptions,
-) error{OutOfMemory}!void {
-    const tracy_zone = tracy.trace(@src());
-    defer tracy_zone.end();
-
-    var config_arena_allocator = server.config_arena.promote(server.allocator);
-    defer server.config_arena = config_arena_allocator.state;
-    const config_arena = config_arena_allocator.allocator();
-
-    var new_config: configuration.Configuration = param_new_config;
-    server.validateConfiguration(&new_config);
-
-    inline for (std.meta.fields(Config)) |field| {
-        @field(new_config, field.name) = if (@field(new_config, field.name)) |new_value|
-            new_value
-        else
-            @field(server.config, field.name);
+    for (result.messages) |msg| {
+        server.showMessage(.Error, "{s}", .{msg});
     }
 
-    const resolve_result: ResolveConfigurationResult = blk: {
-        if (!options.resolve) break :blk ResolveConfigurationResult.unresolved;
-        const resolve_result = try resolveConfiguration(server.allocator, config_arena, &new_config);
-        server.validateConfiguration(&new_config);
-        server.runtime_zig_version = resolve_result.zig_runtime_version;
-        break :blk resolve_result;
-    };
-    defer resolve_result.deinit();
-
-    // <---------------------------------------------------------->
-    //                        apply changes
-    // <---------------------------------------------------------->
-
-    var has_changed: [std.meta.fields(Config).len]bool = @splat(false);
-
-    inline for (std.meta.fields(Config), 0..) |field, field_index| {
-        if (@field(new_config, field.name)) |new_value| {
-            const old_value_maybe_optional = @field(server.config, field.name);
-
-            const override_value = blk: {
-                const old_value = if (@typeInfo(@TypeOf(old_value_maybe_optional)) == .optional)
-                    if (old_value_maybe_optional) |old_value| old_value else break :blk true
-                else
-                    old_value_maybe_optional;
-
-                break :blk switch (@TypeOf(old_value)) {
-                    []const []const u8 => {
-                        if (old_value.len != new_value.len) break :blk true;
-                        for (old_value, new_value) |old, new| {
-                            if (!std.mem.eql(u8, old, new)) break :blk true;
-                        }
-                        break :blk false;
-                    },
-                    []const u8 => !std.mem.eql(u8, old_value, new_value),
-                    else => old_value != new_value,
-                };
-            };
-
-            if (override_value) {
-                var runtime_known_field_name: []const u8 = ""; // avoid unnecessary function instantiations of `std.fmt.format`
-                runtime_known_field_name = field.name;
-                log.info("$ {s} -> [{}]", .{ runtime_known_field_name, std.json.fmt(new_value, .{}) });
-                has_changed[field_index] = true;
-                @field(server.config, field.name) = switch (@TypeOf(new_value)) {
-                    []const []const u8 => blk: {
-                        const copy = try config_arena.alloc([]const u8, new_value.len);
-                        for (copy, new_value) |*duped, original| duped.* = try config_arena.dupe(u8, original);
-                        break :blk copy;
-                    },
-                    []const u8 => try config_arena.dupe(u8, new_value),
-                    else => new_value,
-                };
-            }
+    inline for (std.meta.fields(Config)) |field| {
+        if (@field(result.did_change, field.name)) {
+            const new_value = @field(server.config_manager.config, field.name);
+            log.info("$ {s} -> [{f}]", .{ field.name, std.json.fmt(new_value, .{}) });
         }
     }
 
-    const new_zig_exe_path = has_changed[std.meta.fieldIndex(Config, "zig_exe_path").?];
-    const new_zig_lib_path = has_changed[std.meta.fieldIndex(Config, "zig_lib_path").?];
-    const new_build_runner_path = has_changed[std.meta.fieldIndex(Config, "build_runner_path").?];
-    const new_enable_build_on_save = has_changed[std.meta.fieldIndex(Config, "enable_build_on_save").?];
-    const new_build_on_save_args = has_changed[std.meta.fieldIndex(Config, "build_on_save_args").?];
-    const new_force_autofix = has_changed[std.meta.fieldIndex(Config, "enable_autofix").?];
+    const new_zig_exe_path: bool = result.did_change.zig_exe_path;
+    const new_zig_lib_path: bool = result.did_change.zig_lib_path;
+    const new_build_runner_path: bool = result.did_change.build_runner_path;
+    const new_enable_build_on_save: bool = result.did_change.enable_build_on_save;
+    const new_build_on_save_args: bool = result.did_change.build_on_save_args;
+    const new_force_autofix: bool = result.did_change.force_autofix;
 
-    server.document_store.config = DocumentStore.Config.fromMainConfig(server.config);
+    server.document_store.config = createDocumentStoreConfig(server.config_manager);
 
-    if (new_zig_exe_path or new_build_runner_path) blk: {
-        if (!std.process.can_spawn) break :blk;
-
-        for (server.document_store.build_files.keys()) |build_file_uri| {
-            server.document_store.invalidateBuildFile(build_file_uri);
-        }
-    }
-
-    if (server.config.enable_build_on_save == true and
-        options.resolve and
+    if (BuildOnSaveSupport.isSupportedComptime() and
         // If the client supports the `workspace/configuration` request, defer
         // build on save initialization until after we have received workspace
         // configuration from the server
-        (!server.client_capabilities.supports_configuration or server.status == .initialized) and
-        BuildOnSaveSupport.isSupportedComptime())
+        (!server.client_capabilities.supports_configuration or server.status == .initialized))
     {
         const should_restart =
-            (new_zig_exe_path or
-                new_zig_lib_path or
-                new_build_runner_path or
-                new_enable_build_on_save or
-                new_build_on_save_args) or
-            !server.build_on_save_watch_initialized;
-
-        server.build_on_save_watch_initialized = true;
+            new_zig_exe_path or
+            new_zig_lib_path or
+            new_build_runner_path or
+            new_enable_build_on_save or
+            new_build_on_save_args;
 
         for (server.workspaces.items) |*workspace| {
             try workspace.refreshBuildOnSave(.{
@@ -1093,19 +1022,28 @@ pub fn updateConfiguration(
         }
     }
 
-    if (new_zig_exe_path or new_zig_lib_path) {
-        for (server.document_store.cimports.values()) |*result| {
-            result.deinit(server.document_store.allocator);
+    if (DocumentStore.supports_build_system) {
+        if (new_zig_exe_path or new_zig_lib_path or new_build_runner_path) {
+            for (server.document_store.build_files.keys()) |build_file_uri| {
+                server.document_store.invalidateBuildFile(build_file_uri);
+            }
         }
-        server.document_store.cimports.clearAndFree(server.document_store.allocator);
+
+        if (new_zig_exe_path or new_zig_lib_path) {
+            for (server.document_store.cimports.values()) |*cimport| {
+                cimport.deinit(server.document_store.allocator);
+            }
+            server.document_store.cimports.clearAndFree(server.document_store.allocator);
+        }
     }
 
-    if (server.status == .initialized) {
-        if (new_zig_exe_path and server.client_capabilities.supports_publish_diagnostics) {
-            for (server.document_store.handles.values()) |handle| {
-                if (!handle.isOpen()) continue;
-                try server.pushJob(.{ .generate_diagnostics = try server.allocator.dupe(u8, handle.uri) });
-            }
+    if (server.status == .initialized and
+        (new_zig_exe_path or new_zig_lib_path) and
+        server.client_capabilities.supports_publish_diagnostics)
+    {
+        for (server.document_store.handles.values()) |handle| {
+            if (!handle.isLspSynced()) continue;
+            server.generateDiagnostics(handle);
         }
     }
 
@@ -1113,382 +1051,100 @@ pub fn updateConfiguration(
     //  don't modify config options after here, only show messages
     // <---------------------------------------------------------->
 
-    // TODO there should a way to suppress this message
-    if (std.process.can_spawn and server.status == .initialized and server.config.zig_exe_path == null) {
-        server.showMessage(.Warning, "zig executable could not be found", .{});
-    } else if (std.process.can_spawn and server.status == .initialized and server.config.zig_lib_path == null) {
-        server.showMessage(.Warning, "zig standard library directory could not be resolved", .{});
-    }
+    check: {
+        if (!std.process.can_spawn) break :check;
+        if (server.status != .initialized) break :check;
 
-    switch (resolve_result.build_runner_version) {
-        .resolved, .unresolved_dont_error => {},
-        .unresolved => blk: {
-            if (!options.resolve) break :blk;
-            if (server.status != .initialized) break :blk;
-
-            const zig_version = resolve_result.zig_runtime_version.?;
-            const zls_version = build_options.version;
-
-            const zig_version_is_tagged = zig_version.pre == null and zig_version.build == null;
-            const zls_version_is_tagged = zls_version.pre == null and zls_version.build == null;
-
-            if (zig_version_is_tagged) {
-                server.showMessage(
-                    .Warning,
-                    "Unsupported Zig version: {} is not compatible with this release of Zigscient {}. Consider using Zigscient {}.{} for seamless compatibility.",
-                    .{ zig_version, zls_version, zig_version.major, zig_version.minor },
-                );
-            } else if (zls_version_is_tagged) {
-                server.showMessage(
-                    .Warning,
-                    "Version mismatch: This version of Zigscient {} is designed for use with Zig {}.{}. You're currently running Zig {}",
-                    .{ zls_version, zls_version.major, zls_version.minor, zig_version },
-                );
-            } else {
-                server.showMessage(
-                    .Warning,
-                    "Incompatible Zig version: Zigscient {} requires at least Zig {s} to function properly. You're currently running Zig {}",
-                    .{ zls_version, build_options.minimum_runtime_zig_version_string, zig_version },
-                );
-            }
-        },
-    }
-
-    if (server.config.prefer_ast_check_as_child_process) {
-        if (!std.process.can_spawn) {
-            log.info("'prefer_ast_check_as_child_process' is ignored because your OS can't spawn a child process", .{});
-        } else if (server.status == .initialized and server.config.zig_exe_path == null) {
-            log.warn("'prefer_ast_check_as_child_process' is ignored because Zig could not be found", .{});
+        // TODO there should a way to suppress this message
+        if (server.config_manager.zig_exe == null) {
+            server.showMessage(.Warning, "zig executable could not be found", .{});
+        } else if (server.config_manager.zig_lib_dir == null) {
+            server.showMessage(.Warning, "zig standard library directory could not be resolved", .{});
         }
     }
 
-    if (server.config.enable_build_on_save == true) {
+    check: {
+        if (server.status != .initialized) break :check;
+
+        switch (server.config_manager.build_runner_supported) {
+            .yes, .no_dont_error => break :check,
+            .no => {},
+        }
+
+        const zig_version = server.config_manager.zig_exe.?.version;
+        const zls_version = build_options.version;
+
+        const zig_version_is_tagged = zig_version.pre == null;
+        const zls_version_is_tagged = zls_version.pre == null;
+
+        if (zig_version_is_tagged) {
+            server.showMessage(
+                .Warning,
+                "Zig version {f} isn't supported by Zigscient {f} 's build_runner. The server won't be able to resolve project modules information.",
+                .{ zig_version, zls_version },
+            );
+        } else if (zls_version_is_tagged) {
+            server.showMessage(
+                .Warning,
+                "Compatibility mismatch: This version of Zigscient {f} is designed for use with Zig {}.{}. You're currently running Zig {f}",
+                .{ zls_version, zls_version.major, zls_version.minor, zig_version },
+            );
+        } else {
+            server.showMessage(
+                .Warning,
+                "Incompatible Zig version: Zigscient {f} requires at least Zig {s} to function properly. You're currently running Zig {f}",
+                .{ zls_version, build_options.minimum_runtime_zig_version_string, zig_version },
+            );
+        }
+    }
+
+    if (server.config_manager.config.enable_build_on_save orelse false) {
         if (!BuildOnSaveSupport.isSupportedComptime()) {
             // This message is not very helpful but it relatively uncommon to happen anyway.
-            log.info("Ignoring 'enable_build_on_save' because it isn't supported by this build of the server.", .{});
-        } else if (server.status == .initialized and (server.config.zig_exe_path == null or server.config.zig_lib_path == null)) {
-            log.warn("Ignoring 'enable_build_on_save' because Zig could not be found.", .{});
+            log.info("'enable_build_on_save' is ignored because build on save is not supported by this build of the server.", .{});
+        } else if (server.status == .initialized and (server.config_manager.config.zig_exe_path == null or server.config_manager.zig_lib_dir == null)) {
+            log.warn("'enable_build_on_save' is ignored because Zig could not be found", .{});
         } else if (!server.client_capabilities.supports_publish_diagnostics) {
-            log.warn("Ignoring 'enable_build_on_save' because it is not supported by {s}", .{server.client_capabilities.client_name orelse "your editor"});
-        } else if (server.status == .initialized and options.resolve and resolve_result.build_runner_version == .unresolved and server.config.build_runner_path == null) {
-            log.warn("Ignoring 'enable_build_on_save' because no compatible build runner is available", .{});
-        } else if (server.status == .initialized and options.resolve and resolve_result.zig_runtime_version != null) {
-            switch (BuildOnSaveSupport.isSupportedRuntime(resolve_result.zig_runtime_version.?)) {
+            log.warn("'enable_build_on_save' is ignored because it is not supported by {s}", .{server.client_capabilities.client_name orelse "your editor"});
+        } else if (server.status == .initialized and server.config_manager.build_runner_supported == .no and server.config_manager.config.build_runner_path == null) {
+            log.warn("'enable_build_on_save' is ignored because no build runner is available", .{});
+        } else if (server.status == .initialized and server.config_manager.zig_exe != null) {
+            switch (BuildOnSaveSupport.isSupportedRuntime(server.config_manager.zig_exe.?.version)) {
                 .supported => {},
-                .invalid_linux_kernel_version => |*utsname_release| log.warn("Build-On-Save cannot run in watch mode because it because the Linux version '{s}' could not be parsed", .{std.mem.sliceTo(utsname_release, 0)}),
-                .unsupported_linux_kernel_version => |kernel_version| log.warn("Build-On-Save cannot run in watch mode because it is not supported by Linux '{}' (requires at least {})", .{ kernel_version, BuildOnSaveSupport.minimum_linux_version }),
-                .unsupported_zig_version => log.warn("Build-On-Save cannot run in watch mode because it is not supported on {s} by Zig {} (requires at least {})", .{ @tagName(zig_builtin.os.tag), resolve_result.zig_runtime_version.?, BuildOnSaveSupport.minimum_zig_version }),
-                .unsupported_os => log.warn("Build-On-Save cannot run in watch mode because it is not supported on {s}", .{@tagName(zig_builtin.os.tag)}),
+                .invalid_linux_kernel_version => |*utsname_release| log.warn("Build-On-Save cannot run in watch mode because the Linux version '{s}' could not be parsed", .{std.mem.sliceTo(utsname_release, 0)}),
+                .unsupported_linux_kernel_version => |kernel_version| log.warn("Build-On-Save cannot run in watch mode because it is not supported by Linux '{f}' (requires at least {f})", .{ kernel_version, BuildOnSaveSupport.minimum_linux_version }),
+                .unsupported_zig_version => log.warn("Build-On-Save cannot run in watch mode because it is not supported on {t} by Zig {f} (requires at least {f})", .{ zig_builtin.os.tag, server.resolved_config.zig_runtime_version.?, BuildOnSaveSupport.minimum_zig_version }),
+                .unsupported_os => log.warn("Build-On-Save cannot run in watch mode because it is not supported on {t}", .{zig_builtin.os.tag}),
             }
         }
     }
 
-    if (server.config.enable_autofix and server.getAutofixMode() == .none) {
-        log.warn("Ignoring `enable_autofix` because it is not supported by {s}", .{server.client_capabilities.client_name orelse "your editor"});
-    } else if (new_force_autofix) {
-        log.info("Autofix Mode: {s}", .{@tagName(server.getAutofixMode())});
-    }
-}
-
-fn validateConfiguration(server: *Server, config: *configuration.Configuration) void {
-    const tracy_zone = tracy.trace(@src());
-    defer tracy_zone.end();
-
-    comptime for (std.meta.fieldNames(Config)) |field_name| {
-        @setEvalBranchQuota(2_000);
-        if (std.mem.indexOf(u8, field_name, "path") == null) continue;
-
-        if (std.mem.eql(u8, field_name, "zig_exe_path")) continue;
-        if (std.mem.eql(u8, field_name, "builtin_path")) continue;
-        if (std.mem.eql(u8, field_name, "build_runner_path")) continue;
-        if (std.mem.eql(u8, field_name, "zig_lib_path")) continue;
-        if (std.mem.eql(u8, field_name, "global_cache_path")) continue;
-
-        @compileError(std.fmt.comptimePrint(
-            \\config option '{s}' contains the word 'path'.
-            \\Please add config option validation checks below if necessary.
-            \\If not necessary, just add a check above to ignore this error.
-            \\
-        , .{field_name}));
-    };
-
-    const FileCheckInfo = struct {
-        field_name: []const u8,
-        value: *?[]const u8,
-        kind: enum { file, directory },
-        is_accessible: bool,
-    };
-
-    // zig fmt: off
-    const checks: []const FileCheckInfo = &.{
-        .{ .field_name = "zig_exe_path",      .value = &config.zig_exe_path,      .kind = .file,      .is_accessible = true },
-        .{ .field_name = "builtin_path",      .value = &config.builtin_path,      .kind = .file,      .is_accessible = true },
-        .{ .field_name = "build_runner_path", .value = &config.build_runner_path, .kind = .file,      .is_accessible = true },
-        .{ .field_name = "zig_lib_path",      .value = &config.zig_lib_path,      .kind = .directory, .is_accessible = true },
-        .{ .field_name = "global_cache_path", .value = &config.global_cache_path, .kind = .directory, .is_accessible = false },
-    };
-    // zig fmt: on
-
-    for (checks) |check| {
-        const is_ok = if (check.value.*) |path| ok: {
-            // Convert `""` to `null`
-            if (path.len == 0) {
-                // Thank you Visual Studio Trash Code
-                check.value.* = null;
-                break :ok true;
-            }
-
-            if (!std.fs.path.isAbsolute(path)) {
-                server.showMessage(.Warning, "config option '{s}': expected absolute path but got '{s}'", .{ check.field_name, path });
-                break :ok false;
-            }
-
-            switch (check.kind) {
-                .file => {
-                    const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
-                        if (check.is_accessible) {
-                            server.showMessage(.Warning, "config option '{s}': invalid file path '{s}': {}", .{ check.field_name, path, err });
-                            break :ok false;
-                        }
-                        break :ok true;
-                    };
-                    defer file.close();
-
-                    const stat = file.stat() catch |err| {
-                        log.err("failed to get stat of '{s}': {}", .{ path, err });
-                        break :ok true;
-                    };
-                    switch (stat.kind) {
-                        .directory => {
-                            server.showMessage(.Warning, "config option '{s}': expected file path but '{s}' is a directory", .{ check.field_name, path });
-                            break :ok false;
-                        },
-                        .file => {},
-                        // are there file kinds that should warn?
-                        // what about symlinks?
-                        else => {},
-                    }
-                    break :ok true;
-                },
-                .directory => {
-                    var dir = std.fs.openDirAbsolute(path, .{}) catch |err| {
-                        if (check.is_accessible) {
-                            server.showMessage(.Warning, "config option '{s}': invalid directory path '{s}': {}", .{ check.field_name, path, err });
-                            break :ok false;
-                        }
-                        break :ok true;
-                    };
-                    defer dir.close();
-                    const stat = dir.stat() catch |err| {
-                        log.err("failed to get stat of '{s}': {}", .{ path, err });
-                        break :ok true;
-                    };
-                    switch (stat.kind) {
-                        .file => {
-                            server.showMessage(.Warning, "config option '{s}': expected directory path but '{s}' is a file", .{ check.field_name, path });
-                            break :ok false;
-                        },
-                        .directory => {},
-                        // are there file kinds that should warn?
-                        // what about symlinks?
-                        else => {},
-                    }
-                    break :ok true;
-                },
-            }
-        } else true;
-
-        if (!is_ok) {
-            check.value.* = null;
+    if (new_force_autofix) {
+        switch (server.autofixWorkaround()) {
+            .none => {},
+            .unavailable => {
+                log.warn("`force_autofix` is ignored because it is not supported by {s}", .{server.client_capabilities.client_name orelse "your editor"});
+            },
+            .on_save, .will_save_wait_until => |workaround| {
+                log.info("Autofix workaround enabled: '{t}'", .{workaround});
+            },
         }
     }
 }
 
-const ResolveConfigurationResult = struct {
-    zig_env: ?std.json.Parsed(configuration.Env),
-    zig_runtime_version: ?std.SemanticVersion,
-    build_runner_version: union(enum) {
-        /// If returned, guarantees `zig_runtime_version != null`.
-        resolved: BuildRunnerVersion,
-        /// no suitable build runner could be resolved based on the `zig_runtime_version`
-        /// If returned, guarantees `zig_runtime_version != null`.
-        unresolved,
-        unresolved_dont_error,
-    },
-
-    pub const unresolved: ResolveConfigurationResult = .{
-        .zig_env = null,
-        .zig_runtime_version = null,
-        .build_runner_version = .unresolved_dont_error,
+fn createDocumentStoreConfig(config_manager: *const configuration.Manager) DocumentStore.Config {
+    return .{
+        .environ_map = config_manager.environ_map,
+        .zig_exe_path = config_manager.config.zig_exe_path,
+        .zig_lib_dir = config_manager.zig_lib_dir,
+        .build_runner_path = config_manager.config.build_runner_path,
+        .builtin_path = config_manager.config.builtin_path,
+        .global_cache_dir = config_manager.global_cache_dir,
+        .wasi_preopens = config_manager.wasi_preopens,
     };
-
-    fn deinit(result: ResolveConfigurationResult) void {
-        if (result.zig_env) |parsed| parsed.deinit();
-    }
-};
-
-fn resolveConfiguration(
-    allocator: std.mem.Allocator,
-    /// try leaking as little memory as possible since the ArenaAllocator is only deinit on exit
-    config_arena: std.mem.Allocator,
-    config: *configuration.Configuration,
-) error{OutOfMemory}!ResolveConfigurationResult {
-    const tracy_zone = tracy.trace(@src());
-    defer tracy_zone.end();
-
-    var result: ResolveConfigurationResult = .{
-        .zig_env = null,
-        .zig_runtime_version = null,
-        .build_runner_version = .unresolved_dont_error,
-    };
-    errdefer result.deinit();
-
-    if (config.zig_exe_path == null) blk: {
-        if (zig_builtin.is_test) unreachable;
-        if (!std.process.can_spawn) break :blk;
-        const zig_exe_path = try configuration.findZig(allocator) orelse break :blk;
-        defer allocator.free(zig_exe_path);
-        config.zig_exe_path = try config_arena.dupe(u8, zig_exe_path);
-    }
-
-    if (config.zig_exe_path) |exe_path| blk: {
-        if (!std.process.can_spawn) break :blk;
-        result.zig_env = configuration.getZigEnv(allocator, exe_path);
-        const env = result.zig_env orelse break :blk;
-
-        if (config.zig_lib_path == null) {
-            if (env.value.lib_dir) |lib_dir| resolve_lib_failed: {
-                if (std.fs.path.isAbsolute(lib_dir)) {
-                    config.zig_lib_path = try config_arena.dupe(u8, lib_dir);
-                } else {
-                    const cwd = std.process.getCwdAlloc(allocator) catch |err| switch (err) {
-                        error.OutOfMemory => return error.OutOfMemory,
-                        else => |e| {
-                            log.err("failed to resolve current working directory: {}", .{e});
-                            break :resolve_lib_failed;
-                        },
-                    };
-                    defer allocator.free(cwd);
-                    config.zig_lib_path = try std.fs.path.join(config_arena, &.{ cwd, lib_dir });
-                }
-            }
-        }
-
-        const version_string_duped = try config_arena.dupe(u8, env.value.version);
-        result.zig_runtime_version = std.SemanticVersion.parse(version_string_duped) catch |err| {
-            log.err("zig env returned a zig version that is an invalid semantic version: {}", .{err});
-            break :blk;
-        };
-    }
-
-    if (config.global_cache_path == null) blk: {
-        if (zig_builtin.is_test) unreachable;
-        const cache_dir_path = known_folders.getPath(allocator, .cache) catch null orelse {
-            log.warn("Known-folders could not fetch the cache path", .{});
-            break :blk;
-        };
-        defer allocator.free(cache_dir_path);
-
-        config.global_cache_path = try std.fs.path.join(config_arena, &.{ cache_dir_path, "zigscient" });
-
-        std.fs.cwd().makePath(config.global_cache_path.?) catch |err| {
-            log.warn("failed to create directory '{s}': {}", .{ config.global_cache_path.?, err });
-            config.global_cache_path = null;
-        };
-    }
-
-    if (config.build_runner_path == null) blk: {
-        if (!std.process.can_spawn) break :blk;
-        const global_cache_path = config.global_cache_path orelse break :blk;
-        const zig_version = result.zig_runtime_version orelse break :blk;
-
-        const build_runner_version = BuildRunnerVersion.selectBuildRunnerVersion(zig_version) orelse {
-            result.build_runner_version = .unresolved;
-            break :blk;
-        };
-        const build_runner_source = build_runner_version.getBuildRunnerFile();
-        const build_runner_config_source = @embedFile("build_runner/shared.zig");
-
-        const build_runner_hash = get_hash: {
-            const Hasher = std.crypto.auth.siphash.SipHash128(1, 3);
-
-            var hasher: Hasher = Hasher.init(&[_]u8{0} ** Hasher.key_length);
-            hasher.update(build_runner_source);
-            hasher.update(build_runner_config_source);
-            break :get_hash hasher.finalResult();
-        };
-
-        const cache_path = try std.fs.path.join(allocator, &.{ global_cache_path, "build_runner", &std.fmt.bytesToHex(build_runner_hash, .lower) });
-        defer allocator.free(cache_path);
-
-        std.debug.assert(std.fs.path.isAbsolute(cache_path));
-        var cache_dir = std.fs.cwd().makeOpenPath(cache_path, .{}) catch |err| {
-            log.err("failed to open directory '{s}': {}", .{ cache_path, err });
-            break :blk;
-        };
-        defer cache_dir.close();
-
-        cache_dir.writeFile(.{
-            .sub_path = "shared.zig",
-            .data = build_runner_config_source,
-        }) catch |err| {
-            log.err("failed to write file '{s}/shared.zig': {}", .{ cache_path, err });
-            break :blk;
-        };
-
-        cache_dir.writeFile(.{
-            .sub_path = "build_runner.zig",
-            .data = build_runner_source,
-            .flags = .{ .exclusive = true },
-        }) catch |err| if (err != error.PathAlreadyExists) {
-            log.err("failed to write file '{s}/build_runner.zig': {}", .{ cache_path, err });
-            break :blk;
-        };
-
-        config.build_runner_path = try std.fs.path.join(config_arena, &.{ cache_path, "build_runner.zig" });
-        result.build_runner_version = .{ .resolved = build_runner_version };
-    }
-
-    if (config.builtin_path == null) blk: {
-        if (!std.process.can_spawn) break :blk;
-        const zig_exe_path = config.zig_exe_path orelse break :blk;
-        const global_cache_path = config.global_cache_path orelse break :blk;
-
-        const argv = [_][]const u8{
-            zig_exe_path,
-            "build-exe",
-            "--show-builtin",
-        };
-
-        const run_result = std.process.Child.run(.{
-            .allocator = allocator,
-            .argv = &argv,
-            .max_output_bytes = 16 * 1024 * 1024,
-        }) catch |err| {
-            const args = std.mem.join(allocator, " ", &argv) catch break :blk;
-            log.err("failed to run command '{s}': {}", .{ args, err });
-            break :blk;
-        };
-        defer allocator.free(run_result.stdout);
-        defer allocator.free(run_result.stderr);
-
-        const builtin_path = try std.fs.path.join(config_arena, &.{ global_cache_path, "builtin.zig" });
-
-        std.fs.cwd().writeFile(.{
-            .sub_path = builtin_path,
-            .data = run_result.stdout,
-        }) catch |err| {
-            log.err("failed to write file '{s}': {}", .{ builtin_path, err });
-            break :blk;
-        };
-
-        config.builtin_path = builtin_path;
-    }
-
-    return result;
 }
 
-fn openDocumentHandler(server: *Server, _: std.mem.Allocator, notification: types.DidOpenTextDocumentParams) Error!void {
+fn openDocumentHandler(server: *Server, _: std.mem.Allocator, notification: types.TextDocument.DidOpenParams) Error!void {
     if (notification.textDocument.text.len > DocumentStore.max_document_size) {
         log.err("open document '{s}' failed: text size ({d}) is above maximum length ({d})", .{
             notification.textDocument.uri,
@@ -1498,59 +1154,43 @@ fn openDocumentHandler(server: *Server, _: std.mem.Allocator, notification: type
         return error.InternalError;
     }
 
-    try server.document_store.openDocument(notification.textDocument.uri, notification.textDocument.text);
-
-    if (server.client_capabilities.supports_publish_diagnostics) {
-        try server.pushJob(.{
-            .generate_diagnostics = try server.allocator.dupe(u8, notification.textDocument.uri),
-        });
-    }
+    try server.document_store.openLspSyncedDocument(notification.textDocument.uri, notification.textDocument.text);
+    server.generateDiagnostics(server.document_store.getHandle(notification.textDocument.uri).?);
 }
 
-fn changeDocumentHandler(server: *Server, _: std.mem.Allocator, notification: types.DidChangeTextDocumentParams) Error!void {
+fn changeDocumentHandler(server: *Server, _: std.mem.Allocator, notification: types.TextDocument.DidChangeParams) Error!void {
+    if (notification.contentChanges.len == 0) return;
     const handle = server.document_store.getHandle(notification.textDocument.uri) orelse return;
 
-    const content_changes = try diff.applyContentChanges(server.allocator, handle.tree.source, notification.contentChanges, server.offset_encoding);
-    const new_text = content_changes.text;
-
-    if (new_text.len > DocumentStore.max_document_size) {
-        log.err("change document '{s}' failed: text size ({d}) is above maximum length ({d})", .{
-            notification.textDocument.uri,
-            new_text.len,
-            DocumentStore.max_document_size,
-        });
-        return error.InternalError;
-    }
-
-    try server.document_store.refreshDocument(handle, content_changes);
-
+    try handle.applyContentChanges(
+        notification.contentChanges,
+        server.offset_encoding,
+        &server.diagnostics_collection,
+    );
     handle.handleRootIdComment(&server.document_store, false);
+    handle.setChangePending(false);
 
-    if (server.client_capabilities.supports_publish_diagnostics) {
-        try server.pushJob(.{
-            .generate_diagnostics = try server.allocator.dupe(u8, handle.uri),
-        });
-    }
+    server.generateDiagnostics(handle);
 }
 
-fn saveDocumentHandler(server: *Server, arena: std.mem.Allocator, notification: types.DidSaveTextDocumentParams) Error!void {
+fn saveDocumentHandler(server: *Server, arena: std.mem.Allocator, notification: types.TextDocument.DidSaveParams) Error!void {
     const uri = notification.textDocument.uri;
 
-    if (std.process.can_spawn and DocumentStore.isBuildFile(uri)) {
+    if (DocumentStore.supports_build_system and DocumentStore.isBuildFile(uri)) {
         server.document_store.invalidateBuildFile(uri);
     }
 
-    if (server.getAutofixMode() == .on_save) {
+    if (server.autofixWorkaround() == .on_save) {
         const handle = server.document_store.getHandle(uri) orelse return;
         var text_edits = try server.autofix(arena, handle);
 
-        var workspace_edit = types.WorkspaceEdit{ .changes = .{} };
+        var workspace_edit: types.WorkspaceEdit = .{ .changes = .{} };
         try workspace_edit.changes.?.map.putNoClobber(arena, uri, try text_edits.toOwnedSlice(arena));
 
         const json_message = try server.sendToClientRequest(
             .{ .string = "apply_edit" },
             "workspace/applyEdit",
-            types.ApplyWorkspaceEditParams{
+            types.workspace.apply_workspace_edit.Params{
                 .label = "autofix",
                 .edit = workspace_edit,
             },
@@ -1558,30 +1198,27 @@ fn saveDocumentHandler(server: *Server, arena: std.mem.Allocator, notification: 
         server.allocator.free(json_message);
     }
 
-    if (std.process.can_spawn and
-        server.config.enable_build_on_save != false and
-        server.client_capabilities.supports_publish_diagnostics and
-        BuildOnSaveSupport.isSupportedRuntime(server.runtime_zig_version.?) != .supported)
-    {
-        try server.pushJob(.run_build_on_save);
+    if (BuildOnSaveSupport.isSupportedComptime()) {
+        for (server.workspaces.items) |*workspace| {
+            workspace.sendManualWatchUpdate();
+        }
     }
 }
 
-fn closeDocumentHandler(server: *Server, _: std.mem.Allocator, notification: types.DidCloseTextDocumentParams) error{}!void {
-    server.document_store.closeDocument(notification.textDocument.uri);
+fn closeDocumentHandler(server: *Server, _: std.mem.Allocator, notification: types.TextDocument.DidCloseParams) error{Canceled}!void {
+    server.document_store.closeLspSyncedDocument(notification.textDocument.uri);
 
     if (server.client_capabilities.supports_publish_diagnostics) {
-        // clear diagnostics on closed file
-        const json_message = server.sendToClientNotification("textDocument/publishDiagnostics", .{
-            .uri = notification.textDocument.uri,
-            .diagnostics = &.{},
-        }) catch return;
-        server.allocator.free(json_message);
+        server.diagnostics_collection.clearSingleDocumentDiagnostics(notification.textDocument.uri);
+        server.diagnostics_collection.publishDiagnostics() catch |err| switch (err) {
+            error.Canceled => return error.Canceled,
+            else => log.err("failed to publish diagnostics: {}", .{err}),
+        };
     }
 }
 
-fn willSaveWaitUntilHandler(server: *Server, arena: std.mem.Allocator, request: types.WillSaveTextDocumentParams) Error!?[]types.TextEdit {
-    if (server.getAutofixMode() != .will_save_wait_until) return null;
+fn willSaveWaitUntilHandler(server: *Server, arena: std.mem.Allocator, request: types.TextDocument.WillSaveParams) Error!?[]types.TextEdit {
+    if (server.autofixWorkaround() != .will_save_wait_until) return null;
 
     switch (request.reason) {
         .Manual => {},
@@ -1598,13 +1235,15 @@ fn willSaveWaitUntilHandler(server: *Server, arena: std.mem.Allocator, request: 
     return try text_edits.toOwnedSlice(arena);
 }
 
-fn semanticTokensFullHandler(server: *Server, arena: std.mem.Allocator, request: types.SemanticTokensParams) Error!?types.SemanticTokens {
-    if (server.config.semantic_tokens == .none) return null;
+fn semanticTokensFullHandler(server: *Server, arena: std.mem.Allocator, request: types.semantic_tokens.Params) Error!?types.semantic_tokens.Result {
+    if (server.config_manager.config.semantic_tokens == .none) return null;
 
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
-    if (handle.tree.mode == .zon and handle.tree.errors.len != 0) return null;
 
-    var analyser = server.initAnalyser(handle);
+    // Workaround: The Ast on .zon files is unusable when an error occured on the root expr
+    if (handle.tree.mode == .zon and handle.tree.errors.len > 0) return null;
+
+    var analyser = server.initAnalyser(arena, handle);
     defer analyser.deinit();
     // semantic tokens can be quite expensive to compute on large files
     // and disabling callsite references can help with bringing the cost down.
@@ -1616,19 +1255,26 @@ fn semanticTokensFullHandler(server: *Server, arena: std.mem.Allocator, request:
         handle,
         null,
         server.offset_encoding,
-        server.config.semantic_tokens == .partial,
+        server.config_manager.config.semantic_tokens == .partial,
+        server.client_capabilities.supports_semantic_tokens_overlapping,
     );
 }
 
-fn semanticTokensRangeHandler(server: *Server, arena: std.mem.Allocator, request: types.SemanticTokensRangeParams) Error!?types.SemanticTokens {
-    if (server.config.semantic_tokens == .none) return null;
+fn semanticTokensRangeHandler(server: *Server, arena: std.mem.Allocator, request: types.semantic_tokens.Params.Range) Error!?types.semantic_tokens.Result {
+    if (server.config_manager.config.semantic_tokens == .none) return null;
 
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
-    if (handle.tree.mode == .zon and handle.tree.errors.len != 0) return null;
+
+    // Workaround: The Ast on .zon files is unusable when an error occured on the root expr
+    if (handle.tree.mode == .zon and handle.tree.errors.len > 0) return null;
+
     const loc = offsets.rangeToLoc(handle.tree.source, request.range, server.offset_encoding);
 
-    var analyser = server.initAnalyser(handle);
+    var analyser = server.initAnalyser(arena, handle);
     defer analyser.deinit();
+    // semantic tokens can be quite expensive to compute on large files
+    // and disabling callsite references can help with bringing the cost down.
+    analyser.collect_callsite_references = false;
 
     return try semantic_tokens.writeSemanticTokens(
         arena,
@@ -1636,34 +1282,34 @@ fn semanticTokensRangeHandler(server: *Server, arena: std.mem.Allocator, request
         handle,
         loc,
         server.offset_encoding,
-        server.config.semantic_tokens == .partial,
+        server.config_manager.config.semantic_tokens == .partial,
+        server.client_capabilities.supports_semantic_tokens_overlapping,
     );
 }
 
-fn completionHandler(server: *Server, arena: std.mem.Allocator, request: types.CompletionParams) Error!lsp.ResultType("textDocument/completion") {
+fn completionHandler(server: *Server, arena: std.mem.Allocator, request: types.completion.Params) Error!lsp.ResultType("textDocument/completion") {
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
-    if (handle.tree.mode == .zon) return null; // if we're doing completions it def has errors
+    if (handle.tree.mode == .zon) return null;
 
     const source_index = offsets.positionToIndex(handle.tree.source, request.position, server.offset_encoding);
 
-    var analyser = server.initAnalyser(handle);
+    var analyser = server.initAnalyser(arena, handle);
     defer analyser.deinit();
 
     return .{
-        .CompletionList = try completions.completionAtIndex(server, &analyser, arena, handle, source_index) orelse return null,
+        .completion_list = try completions.completionAtIndex(server, &analyser, arena, handle, source_index) orelse return null,
     };
 }
 
-fn signatureHelpHandler(server: *Server, arena: std.mem.Allocator, request: types.SignatureHelpParams) Error!?types.SignatureHelp {
+fn signatureHelpHandler(server: *Server, arena: std.mem.Allocator, request: types.SignatureHelp.Params) Error!?types.SignatureHelp {
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
-
-    if (request.position.character == 0) return null;
+    if (handle.tree.mode == .zon) return null;
 
     const source_index = offsets.positionToIndex(handle.tree.source, request.position, server.offset_encoding);
 
     const markup_kind: types.MarkupKind = if (server.client_capabilities.signature_help_supports_md) .markdown else .plaintext;
 
-    var analyser = server.initAnalyser(handle);
+    var analyser = server.initAnalyser(arena, handle);
     defer analyser.deinit();
 
     const signature_info = (try signature_help.getSignatureInfo(
@@ -1674,7 +1320,7 @@ fn signatureHelpHandler(server: *Server, arena: std.mem.Allocator, request: type
         markup_kind,
     )) orelse return null;
 
-    var signatures = try arena.alloc(types.SignatureInformation, 1);
+    var signatures = try arena.alloc(types.SignatureHelp.Signature, 1);
     signatures[0] = signature_info;
 
     return .{
@@ -1687,63 +1333,50 @@ fn signatureHelpHandler(server: *Server, arena: std.mem.Allocator, request: type
 fn gotoDefinitionHandler(
     server: *Server,
     arena: std.mem.Allocator,
-    request: types.DefinitionParams,
-) Error!lsp.ResultType("textDocument/definition") {
+    request: types.Definition.Params,
+) Error!?types.Definition.Result {
     return goto.gotoHandler(server, arena, .definition, request);
 }
 
-fn gotoTypeDefinitionHandler(server: *Server, arena: std.mem.Allocator, request: types.TypeDefinitionParams) Error!lsp.ResultType("textDocument/typeDefinition") {
-    const response = (try goto.gotoHandler(server, arena, .type_definition, .{
+fn gotoTypeDefinitionHandler(server: *Server, arena: std.mem.Allocator, request: types.type_definition.Params) Error!?types.Definition.Result {
+    return try goto.gotoHandler(server, arena, .type_definition, .{
         .textDocument = request.textDocument,
         .position = request.position,
         .workDoneToken = request.workDoneToken,
         .partialResultToken = request.partialResultToken,
-    })) orelse return null;
-    return switch (response) {
-        .array_of_DefinitionLink => |adl| .{ .array_of_DefinitionLink = adl },
-        .Definition => |def| .{ .Definition = def },
-    };
+    });
 }
 
-fn gotoImplementationHandler(server: *Server, arena: std.mem.Allocator, request: types.ImplementationParams) Error!lsp.ResultType("textDocument/implementation") {
-    const response = (try goto.gotoHandler(server, arena, .definition, .{
+fn gotoImplementationHandler(server: *Server, arena: std.mem.Allocator, request: types.implementation.Params) Error!?types.Definition.Result {
+    return try goto.gotoHandler(server, arena, .definition, .{
         .textDocument = request.textDocument,
         .position = request.position,
         .workDoneToken = request.workDoneToken,
         .partialResultToken = request.partialResultToken,
-    })) orelse return null;
-    return switch (response) {
-        .array_of_DefinitionLink => |adl| .{ .array_of_DefinitionLink = adl },
-        .Definition => |def| .{ .Definition = def },
-    };
+    });
 }
 
-fn gotoDeclarationHandler(server: *Server, arena: std.mem.Allocator, request: types.DeclarationParams) Error!lsp.ResultType("textDocument/declaration") {
-    const response = (try goto.gotoHandler(server, arena, .declaration, .{
+fn gotoDeclarationHandler(server: *Server, arena: std.mem.Allocator, request: types.declaration.Params) Error!?types.Definition.Result {
+    return try goto.gotoHandler(server, arena, .declaration, .{
         .textDocument = request.textDocument,
         .position = request.position,
         .workDoneToken = request.workDoneToken,
         .partialResultToken = request.partialResultToken,
-    })) orelse return null;
-    return switch (response) {
-        .array_of_DefinitionLink => |adl| .{ .array_of_DeclarationLink = adl },
-        .Definition => |def| .{ .Declaration = .{ .Location = def.Location } },
-    };
+    });
 }
 
-fn hoverHandler(server: *Server, arena: std.mem.Allocator, request: types.HoverParams) Error!?types.Hover {
-    if (request.position.character == 0) return null;
-
+fn hoverHandler(server: *Server, arena: std.mem.Allocator, request: types.Hover.Params) Error!?types.Hover {
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
+    if (handle.tree.mode == .zon) return null;
     const source_index = offsets.positionToIndex(handle.tree.source, request.position, server.offset_encoding);
 
     const markup_kind: types.MarkupKind = if (server.client_capabilities.hover_supports_md) .markdown else .plaintext;
 
-    var analyser = server.initAnalyser(handle);
+    var analyser = server.initAnalyser(arena, handle);
     defer analyser.deinit();
 
     return hover_handler.hover(
-        server,
+        &server.document_store,
         &analyser,
         arena,
         handle,
@@ -1753,19 +1386,19 @@ fn hoverHandler(server: *Server, arena: std.mem.Allocator, request: types.HoverP
     );
 }
 
-fn documentSymbolsHandler(server: *Server, arena: std.mem.Allocator, request: types.DocumentSymbolParams) Error!lsp.ResultType("textDocument/documentSymbol") {
+fn documentSymbolsHandler(server: *Server, arena: std.mem.Allocator, request: types.DocumentSymbol.Params) Error!lsp.ResultType("textDocument/documentSymbol") {
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
+    if (handle.tree.mode == .zon) return null;
     return .{
-        .array_of_DocumentSymbol = try document_symbol.getDocumentSymbols(arena, handle.tree, server.offset_encoding),
+        .document_symbols = try document_symbol.getDocumentSymbols(arena, &handle.tree, server.offset_encoding),
     };
 }
 
-fn formattingHandler(server: *Server, arena: std.mem.Allocator, request: types.DocumentFormattingParams) Error!?[]types.TextEdit {
+fn formattingHandler(server: *Server, arena: std.mem.Allocator, request: types.document_formatting.Params) Error!?[]types.TextEdit {
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
-
     if (handle.tree.errors.len != 0) return null;
 
-    const formatted = try handle.tree.render(arena);
+    const formatted = try handle.tree.renderAlloc(arena);
 
     if (std.mem.eql(u8, handle.tree.source, formatted)) return null;
 
@@ -1773,34 +1406,49 @@ fn formattingHandler(server: *Server, arena: std.mem.Allocator, request: types.D
     return text_edits.items;
 }
 
-fn renameHandler(server: *Server, arena: std.mem.Allocator, request: types.RenameParams) Error!?types.WorkspaceEdit {
+fn renameHandler(server: *Server, arena: std.mem.Allocator, request: types.rename.Params) Error!?types.WorkspaceEdit {
     const response = try references.referencesHandler(server, arena, .{ .rename = request });
     return if (response) |rep| rep.rename else null;
 }
 
-fn referencesHandler(server: *Server, arena: std.mem.Allocator, request: types.ReferenceParams) Error!?[]types.Location {
+fn prepareRenameHandler(server: *Server, request: types.prepare_rename.Params) Error!?types.prepare_rename.Result {
+    const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
+
+    const source_index = offsets.positionToIndex(handle.tree.source, request.position, server.offset_encoding);
+    const name_loc = Analyser.identifierLocFromIndex(&handle.tree, source_index) orelse return null;
+    const name = offsets.locToSlice(handle.tree.source, name_loc);
+    return .{
+        .prepare_rename_placeholder = .{
+            .range = offsets.locToRange(handle.tree.source, name_loc, server.offset_encoding),
+            .placeholder = name,
+        },
+    };
+}
+
+fn referencesHandler(server: *Server, arena: std.mem.Allocator, request: types.reference.Params) Error!?[]types.Location {
     const response = try references.referencesHandler(server, arena, .{ .references = request });
     return if (response) |rep| rep.references else null;
 }
 
-fn documentHighlightHandler(server: *Server, arena: std.mem.Allocator, request: types.DocumentHighlightParams) Error!?[]types.DocumentHighlight {
+fn documentHighlightHandler(server: *Server, arena: std.mem.Allocator, request: types.DocumentHighlight.Params) Error!?[]types.DocumentHighlight {
     const response = try references.referencesHandler(server, arena, .{ .highlight = request });
     return if (response) |rep| rep.highlight else null;
 }
 
-fn inlayHintHandler(server: *Server, arena: std.mem.Allocator, request: types.InlayHintParams) Error!?[]types.InlayHint {
+fn inlayHintHandler(server: *Server, arena: std.mem.Allocator, request: types.InlayHint.Params) Error!?[]types.InlayHint {
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
+    if (handle.tree.mode == .zon) return null;
 
     // The Language Server Specification does not provide a client capabilities that allows the client to specify the MarkupKind of inlay hints.
     const hover_kind: types.MarkupKind = if (server.client_capabilities.hover_supports_md) .markdown else .plaintext;
     const loc = offsets.rangeToLoc(handle.tree.source, request.range, server.offset_encoding);
 
-    var analyser = server.initAnalyser(handle);
+    var analyser = server.initAnalyser(arena, handle);
     defer analyser.deinit();
 
     return try inlay_hints.writeRangeInlayHint(
         arena,
-        server.config,
+        &server.config_manager.config,
         &analyser,
         handle,
         loc,
@@ -1809,7 +1457,7 @@ fn inlayHintHandler(server: *Server, arena: std.mem.Allocator, request: types.In
     );
 }
 
-fn codeActionHandler(server: *Server, arena: std.mem.Allocator, request: types.CodeActionParams) Error!lsp.ResultType("textDocument/codeAction") {
+fn codeActionHandler(server: *Server, arena: std.mem.Allocator, request: types.CodeAction.Params) Error!lsp.ResultType("textDocument/codeAction") {
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
 
     // as of right now, only ast-check errors may get a code action
@@ -1819,11 +1467,11 @@ fn codeActionHandler(server: *Server, arena: std.mem.Allocator, request: types.C
     var error_bundle = try diagnostics_gen.getAstCheckDiagnostics(server, handle);
     defer error_bundle.deinit(server.allocator);
 
-    var analyser = server.initAnalyser(handle);
+    var analyser = server.initAnalyser(arena, handle);
     defer analyser.deinit();
 
     const only_kinds = if (request.context.only) |kinds| blk: {
-        var set: std.EnumSet(std.meta.Tag(types.CodeActionKind)) = .initEmpty();
+        var set: std.EnumSet(std.meta.Tag(types.CodeAction.Kind)) = .initEmpty();
         for (kinds) |kind| {
             set.setPresent(kind, true);
         }
@@ -1841,70 +1489,65 @@ fn codeActionHandler(server: *Server, arena: std.mem.Allocator, request: types.C
     try builder.generateCodeAction(error_bundle);
     try builder.generateCodeActionsInRange(request.range);
 
-    const Result = lsp.ResultType("textDocument/codeAction");
-    const result = try arena.alloc(std.meta.Child(std.meta.Child(Result)), builder.actions.items.len);
+    const result = try arena.alloc(types.CodeAction.Result, builder.actions.items.len);
     for (builder.actions.items, result) |action, *out| {
-        out.* = .{ .CodeAction = action };
+        out.* = .{ .code_action = action };
     }
 
     return result;
 }
 
-fn foldingRangeHandler(server: *Server, arena: std.mem.Allocator, request: types.FoldingRangeParams) Error!?[]types.FoldingRange {
+fn foldingRangeHandler(server: *Server, arena: std.mem.Allocator, request: types.FoldingRange.Params) Error!?[]types.FoldingRange {
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
 
-    return try folding_range.generateFoldingRanges(arena, handle.tree, server.offset_encoding);
+    return try folding_range.generateFoldingRanges(arena, &handle.tree, server.offset_encoding);
 }
 
-fn selectionRangeHandler(server: *Server, arena: std.mem.Allocator, request: types.SelectionRangeParams) Error!?[]types.SelectionRange {
+fn selectionRangeHandler(server: *Server, arena: std.mem.Allocator, request: types.SelectionRange.Params) Error!?[]types.SelectionRange {
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
-
     return try selection_range.generateSelectionRanges(arena, handle, request.positions, server.offset_encoding);
 }
 
 const HandledRequestParams = union(enum) {
     initialize: types.InitializeParams,
     shutdown,
-    @"textDocument/willSaveWaitUntil": types.WillSaveTextDocumentParams,
-    @"textDocument/semanticTokens/full": types.SemanticTokensParams,
-    @"textDocument/semanticTokens/range": types.SemanticTokensRangeParams,
-    @"textDocument/inlayHint": types.InlayHintParams,
-    @"textDocument/completion": types.CompletionParams,
-    @"textDocument/signatureHelp": types.SignatureHelpParams,
-    @"textDocument/definition": types.DefinitionParams,
-    @"textDocument/typeDefinition": types.TypeDefinitionParams,
-    @"textDocument/implementation": types.ImplementationParams,
-    @"textDocument/declaration": types.DeclarationParams,
-    @"textDocument/hover": types.HoverParams,
-    @"textDocument/documentSymbol": types.DocumentSymbolParams,
-    @"textDocument/formatting": types.DocumentFormattingParams,
-    @"textDocument/rename": types.RenameParams,
-    @"textDocument/references": types.ReferenceParams,
-    @"textDocument/documentHighlight": types.DocumentHighlightParams,
-    @"textDocument/codeAction": types.CodeActionParams,
-    @"textDocument/foldingRange": types.FoldingRangeParams,
-    @"textDocument/selectionRange": types.SelectionRangeParams,
+    @"textDocument/willSaveWaitUntil": types.TextDocument.WillSaveParams,
+    @"textDocument/semanticTokens/full": types.semantic_tokens.Params,
+    @"textDocument/semanticTokens/range": types.semantic_tokens.Params.Range,
+    @"textDocument/inlayHint": types.InlayHint.Params,
+    @"textDocument/completion": types.completion.Params,
+    @"textDocument/signatureHelp": types.SignatureHelp.Params,
+    @"textDocument/definition": types.Definition.Params,
+    @"textDocument/typeDefinition": types.type_definition.Params,
+    @"textDocument/implementation": types.implementation.Params,
+    @"textDocument/declaration": types.declaration.Params,
+    @"textDocument/hover": types.Hover.Params,
+    @"textDocument/documentSymbol": types.DocumentSymbol.Params,
+    @"textDocument/formatting": types.document_formatting.Params,
+    @"textDocument/rename": types.rename.Params,
+    @"textDocument/prepareRename": types.prepare_rename.Params,
+    @"textDocument/references": types.reference.Params,
+    @"textDocument/documentHighlight": types.DocumentHighlight.Params,
+    @"textDocument/codeAction": types.CodeAction.Params,
+    @"textDocument/foldingRange": types.FoldingRange.Params,
+    @"textDocument/selectionRange": types.SelectionRange.Params,
     other: lsp.MethodWithParams,
 };
 
 const HandledNotificationParams = union(enum) {
     initialized: types.InitializedParams,
     exit,
-    @"$/cancelRequest": types.CancelParams,
-    @"$/setTrace": types.SetTraceParams,
-    @"textDocument/didOpen": types.DidOpenTextDocumentParams,
-    @"textDocument/didChange": types.DidChangeTextDocumentParams,
-    @"textDocument/didSave": types.DidSaveTextDocumentParams,
-    @"textDocument/didClose": types.DidCloseTextDocumentParams,
-    @"workspace/didChangeWorkspaceFolders": types.DidChangeWorkspaceFoldersParams,
-    @"workspace/didChangeConfiguration": types.DidChangeConfigurationParams,
+    @"textDocument/didOpen": types.TextDocument.DidOpenParams,
+    @"textDocument/didChange": types.TextDocument.DidChangeParams,
+    @"textDocument/didSave": types.TextDocument.DidSaveParams,
+    @"textDocument/didClose": types.TextDocument.DidCloseParams,
+    @"workspace/didChangeWatchedFiles": types.workspace.did_change_watched_files.Params,
+    @"workspace/didChangeWorkspaceFolders": types.workspace.folders.DidChangeParams,
+    @"workspace/didChangeConfiguration": types.workspace.configuration.did_change.Params,
     other: lsp.MethodWithParams,
 };
 
-const Message = lsp.Message(.{
-    .RequestParams = HandledRequestParams,
-    .NotificationParams = HandledNotificationParams,
-});
+const Message = lsp.Message(HandledRequestParams, HandledNotificationParams, .{});
 
 fn isBlockingMessage(msg: Message) bool {
     switch (msg) {
@@ -1926,6 +1569,7 @@ fn isBlockingMessage(msg: Message) bool {
             .@"textDocument/documentSymbol",
             .@"textDocument/formatting",
             .@"textDocument/rename",
+            .@"textDocument/prepareRename",
             .@"textDocument/references",
             .@"textDocument/documentHighlight",
             .@"textDocument/codeAction",
@@ -1935,14 +1579,13 @@ fn isBlockingMessage(msg: Message) bool {
             .other => return false,
         },
         .notification => |notification| switch (notification.params) {
-            .@"$/cancelRequest" => return false,
             .initialized,
             .exit,
-            .@"$/setTrace",
             .@"textDocument/didOpen",
             .@"textDocument/didChange",
             .@"textDocument/didSave",
             .@"textDocument/didClose",
+            .@"workspace/didChangeWatchedFiles",
             .@"workspace/didChangeWorkspaceFolders",
             .@"workspace/didChangeConfiguration",
             => return true,
@@ -1952,59 +1595,69 @@ fn isBlockingMessage(msg: Message) bool {
     }
 }
 
-/// make sure to also set the `transport` field
-pub fn create(allocator: std.mem.Allocator) !*Server {
-    const server = try allocator.create(Server);
-    errdefer server.destroy();
-    server.* = Server{
-        .allocator = allocator,
-        .config = .{},
-        .document_store = .{
-            .allocator = allocator,
-            .config = DocumentStore.Config.fromMainConfig(Config{}),
-            .server = server,
-        },
-        .job_queue = std.fifo.LinearFifo(Job, .Dynamic).init(allocator),
-        .thread_pool = undefined, // set below
-        .wait_group = if (zig_builtin.single_threaded) {} else .{},
-        .diagnostics_collection = .{ .allocator = allocator },
-    };
+pub const CreateOptions = struct {
+    /// An implementation that doesn't support `concurrent` is permitted but will not be able to provide some features like build on save.
+    io: std.Io,
+    /// Must be thread-safe unless the ZLS module is in single_threaded mode or the Io implementation has no parallelism.
+    allocator: std.mem.Allocator,
+    /// Must be set when running `loop`. Controls how the server will send and receive messages.
+    transport: ?*lsp.Transport,
+    config_manager: *configuration.Manager,
+    max_thread_count: usize = 4, // what is a good value here?
+};
 
-    if (zig_builtin.single_threaded) {
-        server.thread_pool = {};
-    } else {
-        try server.thread_pool.init(.{
+pub fn create(options: CreateOptions) std.mem.Allocator.Error!*Server {
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
+
+    const io = options.io;
+    const allocator = options.allocator;
+
+    const server = try allocator.create(Server);
+    errdefer allocator.destroy(server);
+
+    server.* = .{
+        .io = io,
+        .allocator = allocator,
+        .config_manager = options.config_manager,
+        .document_store = .{
+            .io = io,
             .allocator = allocator,
-            .n_jobs = 4, // what is a good value here?
-        });
-    }
+            .config = undefined, // set below
+            .workspaces = &server.workspaces,
+            .diagnostics_collection = &server.diagnostics_collection,
+        },
+        .diagnostics_collection = .{ .io = io, .allocator = allocator },
+    };
+    server.document_store.config = createDocumentStoreConfig(server.config_manager);
 
     server.ip = try InternPool.init(allocator);
+    errdefer server.ip.deinit(allocator);
+
+    if (options.transport) |transport| {
+        server.setTransport(transport);
+    }
 
     return server;
 }
 
 pub fn destroy(server: *Server) void {
-    if (!zig_builtin.single_threaded) {
-        server.wait_group.wait();
-        server.thread_pool.deinit();
-    }
-
-    while (server.job_queue.readItem()) |job| job.deinit(server.allocator);
-    server.job_queue.deinit();
+    server.wait_group.cancel(server.io);
     server.document_store.deinit();
     server.ip.deinit(server.allocator);
     for (server.workspaces.items) |*workspace| workspace.deinit(server.allocator);
     server.workspaces.deinit(server.allocator);
-    server.client_capabilities.deinit(server.allocator);
-    server.config_arena.promote(server.allocator).deinit();
     server.diagnostics_collection.deinit();
+    server.client_capabilities.deinit(server.allocator);
+    for (server.pending_show_messages.items) |params| server.allocator.free(params.message);
+    server.pending_show_messages.deinit(server.allocator);
     server.allocator.destroy(server);
 }
 
-pub fn setTransport(server: *Server, transport: lsp.AnyTransport) void {
+pub fn setTransport(server: *Server, transport: *lsp.Transport) void {
     server.transport = transport;
     server.diagnostics_collection.transport = transport;
+    server.document_store.transport = transport;
 }
 
 pub fn keepRunning(server: Server) bool {
@@ -2014,57 +1667,48 @@ pub fn keepRunning(server: Server) bool {
     }
 }
 
-pub fn waitAndWork(server: *Server) void {
-    if (zig_builtin.single_threaded) return;
-    server.thread_pool.waitAndWork(&server.wait_group);
-    server.wait_group.reset();
-}
+pub const LoopError = std.mem.Allocator.Error ||
+    std.Io.Cancelable ||
+    std.Io.File.Reader.Error ||
+    lsp.BaseProtocolHeader.ParseError ||
+    error{ EndOfStream, ParseError };
 
-/// The main loop
-pub fn loop(server: *Server) !void {
+/// The main loop of ZLS
+pub fn loop(server: *Server) LoopError!void {
     std.debug.assert(server.transport != null);
+    defer server.wait_group.cancel(server.io);
     while (server.keepRunning()) {
-        const json_message = try server.transport.?.readJsonMessage(server.allocator);
+        const json_message = try server.transport.?.readJsonMessage(server.io, server.allocator);
         defer server.allocator.free(json_message);
 
-        if (server.message_tracing) message_logger.debug("received: {s}", .{json_message});
-        try server.sendJsonMessage(json_message);
+        var arena_allocator: std.heap.ArenaAllocator = .init(server.allocator);
+        errdefer arena_allocator.deinit();
 
-        while (server.job_queue.readItem()) |job| {
-            if (zig_builtin.single_threaded) {
-                server.processJob(job, null);
-                continue;
-            }
+        const message = message: {
+            const tracy_zone = tracy.traceNamed(@src(), "Message.parse");
+            defer tracy_zone.end();
+            break :message Message.parseFromSliceLeaky(
+                arena_allocator.allocator(),
+                json_message,
+                .{ .ignore_unknown_fields = true, .max_value_len = null, .allocate = .alloc_always },
+            ) catch return error.ParseError;
+        };
 
-            switch (job.syncMode()) {
-                .exclusive => {
-                    server.waitAndWork();
-                    server.processJob(job, null);
-                },
-                .shared => {
-                    server.wait_group.start();
-                    errdefer job.deinit(server.allocator);
-                    try server.thread_pool.spawn(processJob, .{ server, job, &server.wait_group });
-                },
-                .atomic => {
-                    errdefer job.deinit(server.allocator);
-                    try server.thread_pool.spawn(processJob, .{ server, job, null });
-                },
+        if (isBlockingMessage(message)) {
+            if (message == .notification and
+                message.notification.params == .@"textDocument/didChange")
+            {
+                if (server.document_store.getHandle(message.notification.params.@"textDocument/didChange".textDocument.uri)) |handle| {
+                    handle.setChangePending(true);
+                }
             }
+            try server.wait_group.await(server.io);
+            server.wait_group = .init;
+            try server.processMessageReportError(arena_allocator.state, message);
+        } else {
+            server.wait_group.async(server.io, processMessageReportError, .{ server, arena_allocator.state, message });
         }
     }
-}
-
-pub fn sendJsonMessage(server: *Server, json_message: []const u8) Error!void {
-    const tracy_zone = tracy.trace(@src());
-    defer tracy_zone.end();
-
-    const parsed_message = Message.parseFromSlice(
-        server.allocator,
-        json_message,
-        .{ .ignore_unknown_fields = true, .max_value_len = null, .allocate = .alloc_always },
-    ) catch return error.ParseError;
-    try server.pushJob(.{ .incoming_message = parsed_message });
 }
 
 pub fn sendJsonMessageSync(server: *Server, json_message: []const u8) Error!?[]u8 {
@@ -2074,12 +1718,12 @@ pub fn sendJsonMessageSync(server: *Server, json_message: []const u8) Error!?[]u
         .{ .ignore_unknown_fields = true, .max_value_len = null, .allocate = .alloc_always },
     ) catch return error.ParseError;
     defer parsed_message.deinit();
-    return try server.processMessage(parsed_message.value);
+    return try server.processMessage(parsed_message.arena.allocator(), parsed_message.value);
 }
 
 pub fn sendRequestSync(server: *Server, arena: std.mem.Allocator, comptime method: []const u8, params: lsp.ParamsType(method)) Error!lsp.ResultType(method) {
     comptime std.debug.assert(lsp.isRequestMethod(method));
-    const tracy_zone = tracy.trace(@src());
+    const tracy_zone = tracy.traceNamed(@src(), "sendRequestSync(" ++ method ++ ")");
     defer tracy_zone.end();
     tracy_zone.setName(method);
 
@@ -2103,6 +1747,7 @@ pub fn sendRequestSync(server: *Server, arena: std.mem.Allocator, comptime metho
         .@"textDocument/documentSymbol" => try server.documentSymbolsHandler(arena, params),
         .@"textDocument/formatting" => try server.formattingHandler(arena, params),
         .@"textDocument/rename" => try server.renameHandler(arena, params),
+        .@"textDocument/prepareRename" => server.prepareRenameHandler(params),
         .@"textDocument/references" => try server.referencesHandler(arena, params),
         .@"textDocument/documentHighlight" => try server.documentHighlightHandler(arena, params),
         .@"textDocument/codeAction" => try server.codeActionHandler(arena, params),
@@ -2114,7 +1759,7 @@ pub fn sendRequestSync(server: *Server, arena: std.mem.Allocator, comptime metho
 
 pub fn sendNotificationSync(server: *Server, arena: std.mem.Allocator, comptime method: []const u8, params: lsp.ParamsType(method)) Error!void {
     comptime std.debug.assert(lsp.isNotificationMethod(method));
-    const tracy_zone = tracy.trace(@src());
+    const tracy_zone = tracy.traceNamed(@src(), "sendNotificationSync(" ++ method ++ ")");
     defer tracy_zone.end();
     tracy_zone.setName(method);
 
@@ -2124,12 +1769,11 @@ pub fn sendNotificationSync(server: *Server, arena: std.mem.Allocator, comptime 
     return switch (@field(Params, method)) {
         .initialized => try server.initializedHandler(arena, params),
         .exit => try server.exitHandler(arena, params),
-        .@"$/cancelRequest" => try server.cancelRequestHandler(arena, params),
-        .@"$/setTrace" => try server.setTraceHandler(arena, params),
         .@"textDocument/didOpen" => try server.openDocumentHandler(arena, params),
         .@"textDocument/didChange" => try server.changeDocumentHandler(arena, params),
         .@"textDocument/didSave" => try server.saveDocumentHandler(arena, params),
         .@"textDocument/didClose" => try server.closeDocumentHandler(arena, params),
+        .@"workspace/didChangeWatchedFiles" => try server.didChangeWatchedFilesHandler(arena, params),
         .@"workspace/didChangeWorkspaceFolders" => try server.didChangeWorkspaceFoldersHandler(arena, params),
         .@"workspace/didChangeConfiguration" => try server.didChangeConfigurationHandler(arena, params),
         .other => {},
@@ -2146,125 +1790,68 @@ pub fn sendMessageSync(server: *Server, arena: std.mem.Allocator, comptime metho
     } else unreachable;
 }
 
-const wantsLog = @import("root").wantsLog;
-
-fn processMessage(server: *Server, message: Message) Error!?[]u8 {
+fn processMessage(server: *Server, arena: std.mem.Allocator, message: Message) Error!?[]u8 {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    var timer = if (wantsLog(.debug)) std.time.Timer.start() catch null else null;
-    defer if (timer) |*t| {
-        const total_time = @divFloor(t.read(), std.time.ns_per_ms);
-        if (zig_builtin.single_threaded) {
-            log.debug("Took {d}ms to process {}", .{ total_time, fmtMessage(message) });
-        } else {
-            const thread_id = std.Thread.getCurrentId();
-            log.debug(
-                "T[{d}] {} {d}ms",
-                .{
-                    thread_id,
-                    fmtMessage(message),
-                    total_time,
-                },
-            );
-        }
-    };
-
     try server.validateMessage(message);
-
-    var arena_allocator = std.heap.ArenaAllocator.init(server.allocator);
-    defer arena_allocator.deinit();
 
     switch (message) {
         .request => |request| switch (request.params) {
-            .other => return try server.sendToClientResponse(request.id, null),
+            .other => return try server.sendToClientResponse(request.id, @as(?void, null)),
             inline else => |params, method| {
-                const result = try server.sendRequestSync(arena_allocator.allocator(), @tagName(method), params);
+                const result = try server.sendRequestSync(arena, @tagName(method), params);
                 return try server.sendToClientResponse(request.id, result);
             },
         },
         .notification => |notification| switch (notification.params) {
             .other => {},
-            inline else => |params, method| try server.sendNotificationSync(arena_allocator.allocator(), @tagName(method), params),
+            inline else => |params, method| try server.sendNotificationSync(arena, @tagName(method), params),
         },
         .response => |response| try server.handleResponse(response),
     }
     return null;
 }
 
-fn processMessageReportError(server: *Server, message: Message) ?[]const u8 {
-    return server.processMessage(message) catch |err| {
-        log.err("failed to process {}: {}", .{ fmtMessage(message), err });
+fn processMessageReportError(server: *Server, arena_state: std.heap.ArenaAllocator.State, message: Message) std.Io.Cancelable!void {
+    var arena_allocator = arena_state.promote(server.allocator);
+    defer arena_allocator.deinit();
+
+    if (server.processMessage(arena_allocator.allocator(), message)) |json_message| {
+        server.allocator.free(json_message orelse return);
+    } else |err| {
+        if (err == error.Canceled) return error.Canceled;
+        log.err("failed to process {f}: {}", .{ fmtMessage(message), err });
         if (@errorReturnTrace()) |trace| {
-            std.debug.dumpStackTrace(trace.*);
+            std.debug.dumpStackTrace(trace);
         }
 
         switch (message) {
-            .request => |request| return server.sendToClientResponseError(request.id, lsp.JsonRPCMessage.Response.Error{
-                .code = @enumFromInt(switch (err) {
-                    error.OutOfMemory => @intFromEnum(types.ErrorCodes.InternalError),
-                    error.ParseError => @intFromEnum(types.ErrorCodes.ParseError),
-                    error.InvalidRequest => @intFromEnum(types.ErrorCodes.InvalidRequest),
-                    error.MethodNotFound => @intFromEnum(types.ErrorCodes.MethodNotFound),
-                    error.InvalidParams => @intFromEnum(types.ErrorCodes.InvalidParams),
-                    error.InternalError => @intFromEnum(types.ErrorCodes.InternalError),
-                    error.ServerNotInitialized => @intFromEnum(types.ErrorCodes.ServerNotInitialized),
-                    error.RequestFailed => @intFromEnum(types.LSPErrorCodes.RequestFailed),
-                    error.ServerCancelled => @intFromEnum(types.LSPErrorCodes.ServerCancelled),
-                    error.ContentModified => @intFromEnum(types.LSPErrorCodes.ContentModified),
-                    error.RequestCancelled => @intFromEnum(types.LSPErrorCodes.RequestCancelled),
-                }),
-                .message = @errorName(err),
-            }) catch null,
-            .notification, .response => return null,
-        }
-    };
-}
-
-fn processJob(server: *Server, job: Job, wait_group: ?*std.Thread.WaitGroup) void {
-    const tracy_zone = tracy.trace(@src());
-    defer tracy_zone.end();
-    tracy_zone.setName(@tagName(job));
-    defer if (!zig_builtin.single_threaded and wait_group != null) wait_group.?.finish();
-
-    defer job.deinit(server.allocator);
-
-    switch (job) {
-        .incoming_message => |parsed_message| {
-            const response = server.processMessageReportError(parsed_message.value) orelse return;
-            server.allocator.free(response);
-        },
-        .generate_diagnostics => |uri| {
-            const handle = server.document_store.getHandle(uri) orelse return;
-            diagnostics_gen.generateDiagnostics(server, handle) catch return;
-        },
-        .run_build_on_save => {
-            if (!std.process.can_spawn) unreachable;
-
-            if (server.running_build_on_save_processes.load(.seq_cst) != 0) return;
-
-            for (server.workspaces.items) |workspace_folder| {
-                const workspace_folder_uri = workspace_folder.uri;
-                _ = server.running_build_on_save_processes.fetchAdd(1, .acq_rel);
-                defer _ = server.running_build_on_save_processes.fetchSub(1, .acq_rel);
-
-                var arena_allocator = std.heap.ArenaAllocator.init(server.allocator);
-                defer arena_allocator.deinit();
-                var diagnostic_set = std.StringArrayHashMapUnmanaged(std.ArrayListUnmanaged(types.Diagnostic)){};
-                diagnostics_gen.generateBuildOnSaveDiagnostics(server, workspace_folder_uri, arena_allocator.allocator(), &diagnostic_set) catch |err| {
-                    log.err("failed to run build on save on {s}: {}", .{ workspace_folder_uri, err });
-                    return;
+            .request => |request| {
+                const json_message = server.sendToClientResponseError(request.id, .{
+                    .code = @enumFromInt(switch (err) {
+                        error.Canceled => unreachable, // checked above
+                        error.OutOfMemory => @intFromEnum(types.ErrorCodes.InternalError),
+                        error.ParseError => @intFromEnum(types.ErrorCodes.ParseError),
+                        error.InvalidRequest => @intFromEnum(types.ErrorCodes.InvalidRequest),
+                        error.MethodNotFound => @intFromEnum(types.ErrorCodes.MethodNotFound),
+                        error.InvalidParams => @intFromEnum(types.ErrorCodes.InvalidParams),
+                        error.InternalError => @intFromEnum(types.ErrorCodes.InternalError),
+                        error.ServerNotInitialized => @intFromEnum(types.ErrorCodes.ServerNotInitialized),
+                        error.RequestFailed => @intFromEnum(types.LSPErrorCodes.RequestFailed),
+                        error.ServerCancelled => @intFromEnum(types.LSPErrorCodes.ServerCancelled),
+                        error.ContentModified => @intFromEnum(types.LSPErrorCodes.ContentModified),
+                        error.RequestCancelled => @intFromEnum(types.LSPErrorCodes.RequestCancelled),
+                    }),
+                    .message = @errorName(err),
+                }) catch |send_err| switch (send_err) {
+                    error.Canceled => return error.Canceled,
+                    else => return,
                 };
-
-                for (diagnostic_set.keys(), diagnostic_set.values()) |document_uri, diagnostics| {
-                    const json_message = server.sendToClientNotification("textDocument/publishDiagnostics", .{
-                        .uri = document_uri,
-                        .diagnostics = diagnostics.items,
-                    }) catch return;
-                    server.allocator.free(json_message);
-                }
-            }
-        },
+                server.allocator.free(json_message);
+            },
+            .notification, .response => return,
+        }
     }
 }
 
@@ -2286,6 +1873,7 @@ fn validateMessage(server: *const Server, message: Message) Error!void {
 
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#dollarRequests
     if (message == .request and std.mem.startsWith(u8, method, "$/")) return error.MethodNotFound;
+    if (message == .notification and std.mem.startsWith(u8, method, "$/")) return;
 
     switch (server.status) {
         .uninitialized => blk: {
@@ -2333,70 +1921,38 @@ fn handleResponse(server: *Server, response: lsp.JsonRPCMessage.Response) Error!
         .result => |result| result,
         .@"error" => |err| {
             log.err("Error response for '{s}': {}, {s}", .{ id, err.code, err.message });
+            if (std.mem.eql(u8, id, "i_haz_configuration")) {
+                try server.resolveConfiguration();
+            }
             return;
         },
     };
 
-    const ignore_map = std.StaticStringMap(void).initComptime(.{
-        .{"semantic_tokens_refresh"},
-        .{"inlay_hints_refresh"},
-        .{"apply_edit"},
-        .{"progress"},
-    });
-    if (ignore_map.has(id) or std.mem.startsWith(u8, id, "register")) return;
-
-    if (std.mem.eql(u8, id, "i_haz_configuration")) {
+    if (std.mem.eql(u8, id, "semantic_tokens_refresh")) {
+        //
+    } else if (std.mem.eql(u8, id, "inlay_hints_refresh")) {
+        //
+    } else if (std.mem.eql(u8, id, "progress")) {
+        //
+    } else if (std.mem.startsWith(u8, id, "register")) {
+        //
+    } else if (std.mem.eql(u8, id, "apply_edit")) {
+        //
+    } else if (std.mem.eql(u8, id, "i_haz_configuration")) {
         try server.handleConfiguration(result orelse .null);
     } else {
         log.warn("received response from client with id '{s}' that has no handler!", .{id});
     }
 }
 
-/// takes ownership of `job`
-fn pushJob(server: *Server, job: Job) error{OutOfMemory}!void {
-    server.job_queue_lock.lock();
-    defer server.job_queue_lock.unlock();
-    server.job_queue.writeItem(job) catch |err| {
-        job.deinit(server.allocator);
-        return err;
-    };
-}
-
-pub fn formatMessage(
-    message: Message,
-    comptime fmt: []const u8,
-    options: std.fmt.FormatOptions,
-    writer: anytype,
-) !void {
-    _ = options;
-    if (fmt.len != 0) std.fmt.invalidFmtError(fmt, message);
+fn formatMessage(message: Message, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     switch (message) {
-        .request => |request| try writer.print(
-            "M[{}][{s}]",
-            .{
-                std.json.fmt(
-                    request.id,
-                    .{},
-                ),
-                @tagName(request.params),
-            },
-        ),
-        .notification => |notification| try writer.print(
-            "M[notification][{s}]",
-            .{@tagName(notification.params)},
-        ),
-        .response => |response| try writer.print(
-            "M[response][{?}]",
-            .{
-                std.json.fmt(
-                    response.id,
-                    .{},
-                ),
-            },
-        ),
+        .request => |request| try writer.print("request-{f}-{t}", .{ std.json.fmt(request.id, .{}), request.params }),
+        .notification => |notification| try writer.print("notification-{t}", .{notification.params}),
+        .response => |response| try writer.print("response-{f}", .{std.json.fmt(response.id, .{})}),
     }
 }
 
-fn fmtMessage(message: Message) std.fmt.Formatter(formatMessage) {
+fn fmtMessage(message: Message) std.fmt.Alt(Message, formatMessage) {
     return .{ .data = message };
 }

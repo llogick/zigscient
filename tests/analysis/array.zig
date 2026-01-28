@@ -3,6 +3,15 @@ const ArrayType = [3]u8;
 const ArrayTypeWithSentinel = [3:0]u8;
 //    ^^^^^^^^^^^^^^^^^^^^^ (type)([3:0]u8)
 
+const ArrayTypeWithSentinel2 = [3:.{}]struct {};
+//    ^^^^^^^^^^^^^^^^^^^^^^ (type)([3]struct {})
+//                                ^ (struct {})()
+
+const InvalidArrayTypeAccess0 = ArrayType[0];
+//    ^^^^^^^^^^^^^^^^^^^^^^^ (unknown)()
+const InvalidArrayTypeAccess1 = ArrayType[1];
+//    ^^^^^^^^^^^^^^^^^^^^^^^ (unknown)()
+
 const empty_array: [0]u8 = undefined;
 //    ^^^^^^^^^^^ ([0]u8)()
 const empty_array_len = empty_array.len;
@@ -14,6 +23,9 @@ var runtime_index: usize = 5;
 
 const some_array: [length]u8 = undefined;
 //    ^^^^^^^^^^ ([3]u8)()
+
+const some_array_pointer = &[3]u8{ 1, 2, 3 };
+//    ^^^^^^^^^^^^^^^^^^ (*const [3]u8)()
 
 const some_unsized_array: [unknown_length]u8 = undefined;
 //    ^^^^^^^^^^^^^^^^^^ ([?]u8)()
@@ -27,42 +39,38 @@ const some_unsized_array_len = some_unsized_array.len;
 const array_indexing = some_array[0];
 //    ^^^^^^^^^^^^^^ (u8)()
 
-// TODO this should be `*const [2]u8`
+const array_indexing_pointer = &some_array[0];
+//    ^^^^^^^^^^^^^^^^^^^^^^ (*const u8)()
+
 const array_slice_open_1 = some_array[1..];
-//    ^^^^^^^^^^^^^^^^^^ (*[2]u8)()
+//    ^^^^^^^^^^^^^^^^^^ (*const [2]u8)()
 
-// TODO this should be `*const [0]u8`
 const array_slice_open_3 = some_array[3..];
-//    ^^^^^^^^^^^^^^^^^^ (*[0]u8)()
+//    ^^^^^^^^^^^^^^^^^^ (*const [0]u8)()
 
-// TODO this should be `*const [?]u8`
 const array_slice_open_4 = some_array[4..];
-//    ^^^^^^^^^^^^^^^^^^ (*[?]u8)()
+//    ^^^^^^^^^^^^^^^^^^ (*const [?]u8)()
 
 const array_slice_open_runtime = some_array[runtime_index..];
-//    ^^^^^^^^^^^^^^^^^^^^^^^^ ([]u8)()
+//    ^^^^^^^^^^^^^^^^^^^^^^^^ ([]const u8)()
 
-// TODO this should be `*const [2]u8`
 const array_slice_0_2 = some_array[0..2];
-//    ^^^^^^^^^^^^^^^ (*[2]u8)()
+//    ^^^^^^^^^^^^^^^ (*const [2]u8)()
 
-// TODO this should be `*const [2 :0]u8`
 const array_slice_0_2_sentinel = some_array[0..2 :0];
-// TODO   ^^^^^^^^^^^^^^^ ([:0]u8)()
+//    ^^^^^^^^^^^^^^^^^^^^^^^^ (*const [2:0]u8)()
 
-// TODO this should be `*const [?]u8`
 const array_slice_0_5 = some_array[0..5];
-//    ^^^^^^^^^^^^^^^ (*[?]u8)()
+//    ^^^^^^^^^^^^^^^ (*const [?]u8)()
 
-// TODO this should be `*const [?]u8`
 const array_slice_3_2 = some_array[3..2];
-//    ^^^^^^^^^^^^^^^ (*[?]u8)()
+//    ^^^^^^^^^^^^^^^ (*const [?]u8)()
 
 const array_slice_0_runtime = some_array[0..runtime_index];
-//    ^^^^^^^^^^^^^^^^^^^^^ ([]u8)()
+//    ^^^^^^^^^^^^^^^^^^^^^ ([]const u8)()
 
 const array_slice_with_sentinel = some_array[0..runtime_index :0];
-// TODO   ^^^^^^^^^^^^^^^^^^^^^^^^^ ([:0]u8)()
+//    ^^^^^^^^^^^^^^^^^^^^^^^^^ ([:0]const u8)()
 
 //
 // Array init
@@ -74,6 +82,61 @@ const array_init_inferred_len_0 = [_]u8{};
 //    ^^^^^^^^^^^^^^^^^^^^^^^^^ ([0]u8)()
 const array_init_inferred_len_3 = [_]u8{ 1, 2, 3 };
 //    ^^^^^^^^^^^^^^^^^^^^^^^^^ ([3]u8)()
+
+//
+// Array concatenation
+//
+
+const array_cat_0 = [_]u8{0} ++ [_]u8{1};
+//    ^^^^^^^^^^^ ([2]u8)()
+
+const array_cat_1 = [1]u8{0} ++ [_]u8{1};
+//    ^^^^^^^^^^^ ([2]u8)()
+
+const array_cat_2 = [_]u8{0} ++ [1]u8{1};
+//    ^^^^^^^^^^^ ([2]u8)()
+
+const array_cat_3 = [1]u8{0} ++ [1]u8{1};
+//    ^^^^^^^^^^^ ([2]u8)()
+
+const array_cat_4 = &[2]u8{ 0, 1 } ++ &[3]u8{ 2, 3, 4 };
+//    ^^^^^^^^^^^ (*const [5]u8)()
+
+//
+// Array multiplication
+//
+
+const array_mult_0 = [_]u8{0} ** 2;
+//    ^^^^^^^^^^^^ ([2]u8)()
+
+const array_mult_1 = [1]u8{0} ** 2;
+//    ^^^^^^^^^^^^ ([2]u8)()
+
+const array_mult_2 = &[3]u8{ 0, 1, 2 } ** 2;
+//    ^^^^^^^^^^^^ (*const [6]u8)()
+
+const array = [_:0]u8{ 1, 2, 3, 4 };
+//    ^^^^^ ([4:0]u8)()
+
+const slice0: [:0]i1 = undefined;
+//    ^^^^^^ ([:0]i1)()
+
+const slice1: [:42]u8 = undefined;
+//    ^^^^^^ ([:42]u8)()
+
+const slice2 = array[0..2];
+//    ^^^^^^ (*const [2]u8)()
+
+const slice3 = array[1..];
+//    ^^^^^^ (*const [3:0]u8)()
+
+//
+// invalid operations
+//
+
+const unknown_type: type = undefined;
+const invalid_array_access = unknown_type[5];
+//    ^^^^^^^^^^^^^^^^^^^^ (unknown)()
 
 comptime {
     // Use @compileLog to verify the expected type with the compiler:
