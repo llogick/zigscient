@@ -1,22 +1,10 @@
 .{
     .name = .Zigscient,
-    // Remove `-dev` when tagging a new ZLS release and add it back on the next development cycle.
+    // Remove `-dev` when tagging a new release and add it back on the next development cycle.
     .version = "0.16.0-dev",
-    // Specifies the minimum Zig version that is required to compile and test ZLS.
+    // Specifies the minimum Zig version that is required to compile and test this project.
     // Must be a Zig version that is downloadable from https://ziglang.org/download/ or a mirror.
-    //
-    // Whenever this version is increased, run the following command:
-    // ```bash
-    // nix flake update --commit-lock-file
-    // ```
-    // If you do not use Nix, a ZLS maintainer can take care of this.
-    .minimum_zig_version = "0.16.0-dev.2255+d417441f4",
-    // If you do not use Nix, a ZLS maintainer can take care of this.
-    // Whenever the dependencies are updated, run the following command:
-    // ```bash
-    // nix run github:nix-community/zon2nix#default_0_14 > deps.nix
-    // ```
-    // The `deps.nix` should also be updated to not fetch `tracy`.
+    .minimum_zig_version = "0.16.0-dev.2365+377bb8f23",
     .dependencies = .{
         .known_folders = .{
             .url = "https://github.com/ziglibs/known-folders/archive/82027007c0eb199a3242c167a5cffd83b6ee571b.tar.gz",
