@@ -353,13 +353,18 @@ fn loadConfigFromSystem(io: std.Io, allocator: std.mem.Allocator, environ_map: s
         const folder_path = try known_folders.getPath(io, allocator, environ_map, folder) orelse continue;
         defer allocator.free(folder_path);
 
-        const config_path = try std.fs.path.join(allocator, &.{ folder_path, "zls.json" });
-        defer allocator.free(config_path);
+        for ([_][]const u8{
+            "zls",
+            "",
+        }) |sub| {
+            const config_path = try std.fs.path.join(allocator, &.{ folder_path, sub, "zls.json" });
+            defer allocator.free(config_path);
 
-        const result = try loadConfigFromFile(io, allocator, config_path);
-        switch (result) {
-            .success, .failure => return result,
-            .not_found => continue,
+            const result = try loadConfigFromFile(io, allocator, config_path);
+            switch (result) {
+                .success, .failure => return result,
+                .not_found => continue,
+            }
         }
     }
 
