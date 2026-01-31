@@ -1350,7 +1350,7 @@ fn loadBuildConfiguration(self: *DocumentStore, build_file_uri: Uri, build_file_
             .{
                 .argv = args,
                 .cwd = cwd,
-                .max_output_bytes = 16 * 1024 * 1024,
+                .reserve_amount = 16 * 1024 * 1024,
             },
         );
     };

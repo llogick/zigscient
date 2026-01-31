@@ -209,28 +209,31 @@ pub fn translate(
         }, .little) catch return @as(std.Io.File.Writer.Error!?Result, stdin_writer.err.?);
     }
 
-    var poller = std.Io.poll(allocator, enum { stdout }, .{ .stdout = process.stdout.? });
-    defer poller.deinit();
-    const stdout = poller.reader(.stdout);
+    var multi_reader_buffer: std.Io.File.MultiReader.Buffer(1) = undefined;
+    var multi_reader: std.Io.File.MultiReader = undefined;
+    multi_reader.init(allocator, io, multi_reader_buffer.toStreams(), &.{process.stdout.?});
+    defer multi_reader.deinit();
+
+    const stdout = multi_reader.reader(0);
 
     while (true) {
-        const timeout: u64 = 20 * std.time.ns_per_s;
+        const timeout: std.Io.Timeout = .{ .duration = .{ .clock = .awake, .raw = .fromSeconds(40) } };
 
         while (stdout.buffered().len < @sizeOf(InMessage.Header)) {
-            if (!try poller.pollTimeout(timeout)) return error.EndOfStream;
+            try multi_reader.fill(64, timeout);
         }
         const header = stdout.takeStruct(InMessage.Header, .little) catch unreachable;
         while (stdout.buffered().len < header.bytes_len) {
-            if (!try poller.pollTimeout(timeout)) return error.EndOfStream;
+            try multi_reader.fill(64, timeout);
         }
         const body = stdout.take(header.bytes_len) catch unreachable;
         var reader: std.Io.Reader = .fixed(body);
 
-        // log.debug("received header: {}", .{header});
+        // log.err("received header: {}", .{header});
 
         switch (header.tag) {
             .zig_version => {
-                // log.debug("zig-version: {s}", .{body});
+                // log.err("zig-version: {s}", .{body});
             },
             .emit_digest => {
                 _ = reader.takeStruct(std.zig.Server.Message.EmitDigest, .little) catch return error.InvalidMessage;
