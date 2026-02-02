@@ -217,7 +217,7 @@ pub fn translate(
     const stdout = multi_reader.reader(0);
 
     while (true) {
-        const timeout: std.Io.Timeout = .{ .duration = .{ .clock = .awake, .raw = .fromSeconds(40) } };
+        const timeout: std.Io.Timeout = .{ .duration = .{ .clock = .awake, .raw = .fromSeconds(60) } };
 
         while (stdout.buffered().len < @sizeOf(InMessage.Header)) {
             try multi_reader.fill(64, timeout);
