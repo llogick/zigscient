@@ -731,6 +731,46 @@ pub const BuildOnSave = struct {
                 ErrorBundle.SourceLocation,
                 @intFromEnum(message.src_loc),
             );
+
+            // Surface
+            // src/blah.zig:1:1: error: unable to load 'blah.zig': FileNotFound
+            // src/main.zig:2:22: note: file imported here
+            const eb_message = eb.nullTerminatedString(message.msg);
+            if (std.mem.startsWith(u8, eb_message, "unable to load") and std.mem.endsWith(u8, eb_message, "FileNotFound")) unable_to_load: {
+                const eb_notes = eb.getNotes(message_index);
+                if (eb_notes.len == 0) break :unable_to_load;
+                const eb_note = eb.getErrorMessage(eb_notes[0]);
+                if (eb_note.src_loc == .none) break :unable_to_load;
+                const eb_note_message = eb.nullTerminatedString(eb_note.msg);
+                if (!std.mem.eql(u8, eb_note_message, "file imported here")) break :unable_to_load;
+                const eb_note_src_loc = eb.getSourceLocation(eb_note.src_loc);
+                const eb_note_src_path = eb.nullTerminatedString(eb_note_src_loc.src_path);
+                var wip_eb: ErrorBundle.Wip = undefined;
+                try wip_eb.init(arena);
+                try wip_eb.addRootErrorMessage(.{
+                    .msg = try wip_eb.addString(try std.fmt.allocPrint(arena, "[!] {s}", .{eb_message})),
+                    .src_loc = try wip_eb.addSourceLocation(
+                        .{
+                            .src_path = try wip_eb.addString(eb_note_src_path),
+                            .line = eb_note_src_loc.line,
+                            .column = eb_note_src_loc.column,
+                            .span_start = eb_note_src_loc.span_start,
+                            .span_main = eb_note_src_loc.span_main,
+                            .span_end = eb_note_src_loc.span_end,
+                            .source_line = 0,
+                        },
+                    ),
+                    .notes_len = 0,
+                });
+                try collection.pushErrorBundle(
+                    diagnostic_tag,
+                    header.cycle,
+                    workspace_path,
+                    try wip_eb.toOwnedBundle(""),
+                );
+                continue;
+            }
+
             if (location.data.reference_trace_len == 0) continue;
 
             const path = eb.nullTerminatedString(location.data.src_path);
