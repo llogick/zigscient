@@ -10,7 +10,7 @@ const minimum_build_zig_version = @import("build.zig.zon").minimum_zig_version;
 /// build runner: refactor step evaluation logic
 ///
 /// A breaking change to the Zig Build System should be handled by updating the server's build runner (see src\build_runner)
-const minimum_runtime_zig_version = "0.16.0-dev.2365+377bb8f23";
+const minimum_runtime_zig_version = "0.16.0-dev.2490+fce7878a9";
 
 const release_targets = [_]std.Target.Query{
     .{ .cpu_arch = .aarch64, .os_tag = .linux },

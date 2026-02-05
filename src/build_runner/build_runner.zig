@@ -40,25 +40,27 @@ var dont_create_roots_txt_file: bool = false;
 ///! This is a modified build runner to extract information out of build.zig
 ///! Modified version of lib/build_runner.zig
 pub fn main(init: process.Init.Minimal) !void {
-    // Here we use an ArenaAllocator backed by a DirectAllocator because a build is a short-lived,
-    // one shot program. We don't need to waste time freeing memory and finding places to squish
-    // bytes into. So we free everything all at once at the very end.
-    var single_threaded_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer single_threaded_arena.deinit();
+    var debug_gpa_state: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = debug_gpa_state.deinit();
+    const gpa = debug_gpa_state.allocator();
 
-    var thread_safe_arena: std.heap.ThreadSafeAllocator = .{
-        .child_allocator = single_threaded_arena.allocator(),
-    };
-    const arena = thread_safe_arena.allocator();
-
-    const args = try init.args.toSlice(arena);
-
-    var threaded: std.Io.Threaded = .init(arena, .{
+    var threaded: std.Io.Threaded = .init(gpa, .{
         .environ = init.environ,
         .argv0 = .init(init.args),
     });
     defer threaded.deinit();
     const io = threaded.ioBasic();
+
+    // ...but we'll back our arena by `std.heap.page_allocator` for efficiency.
+    var single_threaded_arena: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+    defer single_threaded_arena.deinit();
+    var thread_safe_arena: std.heap.ThreadSafeAllocator = .{
+        .child_allocator = single_threaded_arena.allocator(),
+        .io = io,
+    };
+    const arena = thread_safe_arena.allocator();
+
+    const args = try init.args.toSlice(arena);
 
     var arg_idx: usize = 0;
 
@@ -415,8 +417,6 @@ pub fn main(init: process.Init.Minimal) !void {
         }
     }.do, .{&w});
     message_thread.detach();
-
-    const gpa = arena;
 
     var step_stack = try stepNamesToStepStack(gpa, builder, targets.items, check_step_only);
     if (step_stack.count() == 0) {
