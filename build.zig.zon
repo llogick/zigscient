@@ -24,6 +24,11 @@
             // For local dev
             // .path = "../extended-zccs",
         },
+        .zig_std = .{
+            .url = "https://github.com/LamplightWorks/zig-std/archive/d1032ea808ccc3db19e6783934eb35e905812348.tar.gz",
+            .hash = "zig_std-0.16.0-dev.2468+c2d4806d6-ibBY-von8QCARZQdMpqd5Iz9EaZjeglf7Gp0iOov8DuC",
+            // .path = "../../../zig-std",
+        },
         .tracy = .{
             .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.13.1.tar.gz",
             .hash = "N-V-__8AAOncKwEm1F9c5LrT7HMNmRMYX8-fAoqpc6YyTu9X",
