@@ -1,16 +1,12 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const bzz = @import("build.zig.zon");
 
-const proj_version = std.SemanticVersion.parse(@import("build.zig.zon").version) catch unreachable;
-const proj_name_tag = @import("build.zig.zon").name;
+const proj_version = std.SemanticVersion.parse(bzz.version) catch unreachable;
+const proj_name_tag = bzz.name;
 
-const minimum_build_zig_version = @import("build.zig.zon").minimum_zig_version;
-
-/// Specify the minimum Zig version that the server's build_runner can handle:
-/// build runner: refactor step evaluation logic
-///
-/// A breaking change to the Zig Build System should be handled by updating the server's build runner (see src\build_runner)
-const minimum_runtime_zig_version = "0.16.0-dev.2490+fce7878a9";
+const minimum_build_zig_version = bzz.minimum_zig_version;
+const minimum_runtime_zig_version = bzz.minimum_runtime_zig_version;
 
 const release_targets = [_]std.Target.Query{
     .{ .cpu_arch = .aarch64, .os_tag = .linux },
@@ -94,7 +90,7 @@ pub fn build(b: *Build) !void {
     if (tracy_enable and use_llvm == null) use_llvm = true;
 
     const gen_exe = b.addExecutable(.{
-        .name = "zls_gen",
+        .name = "config_gen",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/tools/config_gen.zig"),
             .target = b.graph.host,
@@ -486,7 +482,7 @@ fn createTracyModule(
     return tracy_module;
 }
 
-/// - compile amdZLS binaries with different targets
+/// - compile binaries with different targets
 /// - compress them (.tar.xz or .zip)
 /// - optionally sign them with minisign (https://github.com/jedisct1/minisign)
 /// - install artifacts and a `release.json` metadata file to `./zig-out`
@@ -517,7 +513,7 @@ fn release(b: *Build, release_artifacts: []const *Build.Step.Compile, released_p
         const extensions: []const FileExtension = if (is_windows) &.{.zip} else &.{ .@"tar.xz", .@"tar.gz" };
 
         for (extensions) |extension| {
-            const file_name = b.fmt("zls-{t}-{t}-{f}.{t}", .{
+            const file_name = b.fmt("zigscient-{t}-{t}-{f}.{t}", .{
                 resolved_target.cpu.arch,
                 resolved_target.os.tag,
                 released_proj_version,
@@ -538,6 +534,7 @@ fn release(b: *Build, release_artifacts: []const *Build.Step.Compile, released_p
                     compress_cmd.addArtifactArg(exe);
                     compress_cmd.addFileArg(exe.getEmittedPdb());
                     compress_cmd.addFileArg(b.path("LICENSE"));
+                    compress_cmd.addFileArg(b.path("LICENSE-ZLS"));
                     compress_cmd.addFileArg(b.path("README.md"));
                 },
                 .@"tar.xz",
@@ -587,7 +584,7 @@ fn release(b: *Build, release_artifacts: []const *Build.Step.Compile, released_p
 
     const source = b.fmt(
         \\{{
-        \\  "zlsVersion": "{[proj_version]f}",
+        \\  "AppVersion": "{[proj_version]f}",
         \\  "zigVersion": "{[zig_version]f}",
         \\  "minimumBuildZigVersion": "{[minimum_build_zig_version]s}",
         \\  "minimumRuntimeZigVersion": "{[minimum_runtime_zig_version]s}",
@@ -638,7 +635,7 @@ const Build = blk: {
         @compileError(message);
     }
 
-    // check that the ZLS version and minimum build version make sense
+    // check that this project's version and minimum build version make sense
     if (proj_version_is_tagged) {
         // A different patch version is allowed (e.g ZLS 0.15.0 can require Zig 0.15.1)
 
