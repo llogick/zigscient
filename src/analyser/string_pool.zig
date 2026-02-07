@@ -59,8 +59,8 @@ pub fn StringPool(comptime config: Config) type {
             // precompute the hash before acquiring the lock
             const precomputed_key_hash = std.hash_map.hashString(str);
 
-            pool.mutex.lock();
-            defer pool.mutex.unlock();
+            pool.mutex.lockUncancelable(pool.io);
+            defer pool.mutex.unlock(pool.io);
 
             const adapter: PrecomputedStringIndexAdapter = .{
                 .bytes = &pool.bytes,
@@ -82,8 +82,8 @@ pub fn StringPool(comptime config: Config) type {
             // precompute the hash before acquiring the lock
             const precomputed_key_hash = std.hash_map.hashString(str);
 
-            pool.mutex.lock();
-            defer pool.mutex.unlock();
+            pool.mutex.lockUncancelable(pool.io);
+            defer pool.mutex.unlock(pool.io);
 
             const adapter: PrecomputedStringIndexAdapter = .{
                 .bytes = &pool.bytes,
@@ -139,7 +139,7 @@ pub fn StringPool(comptime config: Config) type {
 
             pub fn release(locked_string: LockedString, pool: *Pool) void {
                 _ = locked_string;
-                pool.mutex.unlock();
+                pool.mutex.unlock(pool.io);
             }
         };
 
@@ -148,7 +148,7 @@ pub fn StringPool(comptime config: Config) type {
         ///
         /// Will lock the `StringPool` until the `release` method is called on the returned locked string.
         pub fn stringToSliceLock(pool: *Pool, index: String) LockedString {
-            pool.mutex.lock();
+            pool.mutex.lockUncancelable(pool.io);
             return .{ .slice = pool.stringToSliceUnsafe(index) };
         }
 
@@ -170,12 +170,16 @@ pub fn StringPool(comptime config: Config) type {
         mutex: MutexType,
         bytes: std.ArrayList(u8),
         map: std.HashMapUnmanaged(u32, void, std.hash_map.StringIndexContext, std.hash_map.default_max_load_percentage),
+        io: std.Io,
 
-        pub const empty: Pool = .{
-            .mutex = .{},
-            .bytes = .empty,
-            .map = .empty,
-        };
+        pub fn init(io: std.Io) Pool {
+            return .{
+                .mutex = .init,
+                .bytes = .empty,
+                .map = .empty,
+                .io = io,
+            };
+        }
 
         pub fn deinit(pool: *Pool, allocator: Allocator) void {
             pool.bytes.deinit(allocator);
@@ -183,11 +187,12 @@ pub fn StringPool(comptime config: Config) type {
             pool.* = undefined;
         }
 
-        pub const MutexType = config.MutexType orelse if (config.thread_safe) std.Thread.Mutex else DummyMutex;
+        pub const MutexType = config.MutexType orelse if (config.thread_safe) std.Io.Mutex else DummyMutex;
 
         const DummyMutex = struct {
-            pub fn lock(_: *@This()) void {}
-            pub fn unlock(_: *@This()) void {}
+            pub fn lockUncancelable(_: *@This(), _: std.Io) void {}
+            pub fn unlock(_: *@This(), _: std.Io) void {}
+            pub const init: @This() = .{};
         };
 
         const FormatContext = struct {
@@ -222,7 +227,7 @@ const PrecomputedStringIndexAdapter = struct {
 
 test StringPool {
     const gpa = std.testing.allocator;
-    var pool: StringPool(.{}) = .empty;
+    var pool: StringPool(.{}) = .init(std.testing.io);
     defer pool.deinit(gpa);
 
     const str = "All Your Codebase Are Belong To Us";
@@ -239,7 +244,7 @@ test StringPool {
 
 test "StringPool - check interning" {
     const gpa = std.testing.allocator;
-    var pool: StringPool(.{ .thread_safe = false }) = .empty;
+    var pool: StringPool(.{ .thread_safe = false }) = .init(std.testing.io);
     defer pool.deinit(gpa);
 
     const str = "All Your Codebase Are Belong To Us";
@@ -261,7 +266,7 @@ test "StringPool - getOrPut on existing string without allocation" {
     const gpa = std.testing.allocator;
     var failing_gpa: std.testing.FailingAllocator = .init(gpa, .{ .fail_index = 0 });
 
-    var pool: StringPool(.{}) = .empty;
+    var pool: StringPool(.{}) = .init(std.testing.io);
     defer pool.deinit(gpa);
 
     try pool.bytes.ensureTotalCapacityPrecise(gpa, "hello".len + 1);

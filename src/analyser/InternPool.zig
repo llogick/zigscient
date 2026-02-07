@@ -5,7 +5,8 @@ map: std.AutoArrayHashMapUnmanaged(void, void),
 items: std.MultiArrayList(Item),
 extra: std.ArrayList(u32),
 string_pool: StringPool,
-lock: RwLock,
+lock: std.Io.RwLock,
+io: Io,
 
 limbs: std.ArrayList(usize),
 
@@ -21,16 +22,12 @@ const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 const expect = std.testing.expect;
 const expectFmt = std.testing.expectFmt;
+const Io = std.Io;
 
 pub const StringPool = @import("string_pool.zig").StringPool(.{});
 pub const String = StringPool.String;
 const ErrorMsg = @import("error_msg.zig").ErrorMsg;
 const SegmentedList = @import("segmented_list.zig").SegmentedList;
-
-pub const RwLock = if (builtin.single_threaded)
-    std.Thread.RwLock.SingleThreadedRwLock
-else
-    std.Thread.RwLock.DefaultRwLock;
 
 pub const Key = union(enum) {
     simple_type: SimpleType,
@@ -439,8 +436,8 @@ pub const Key = union(enum) {
 
                 if (a_info.names.len != b_info.names.len) return false;
 
-                if (should_lock) ip.lock.lockShared();
-                defer if (should_lock) ip.lock.unlockShared();
+                if (should_lock) ip.lock.lockSharedUncancelable(ip.io);
+                defer if (should_lock) ip.lock.unlockShared(ip.io);
 
                 for (
                     a_info.names.getUnprotectedSlice(ip),
@@ -466,8 +463,8 @@ pub const Key = union(enum) {
 
                 if (a_info.args.len != b_info.args.len) return false;
 
-                if (should_lock) ip.lock.lockShared();
-                defer if (should_lock) ip.lock.unlockShared();
+                if (should_lock) ip.lock.lockSharedUncancelable(ip.io);
+                defer if (should_lock) ip.lock.unlockShared(ip.io);
 
                 for (
                     a_info.args.getUnprotectedSlice(ip),
@@ -485,8 +482,8 @@ pub const Key = union(enum) {
                 if (a_info.types.len != b_info.types.len) return false;
                 if (a_info.values.len != b_info.values.len) return false;
 
-                if (should_lock) ip.lock.lockShared();
-                defer if (should_lock) ip.lock.unlockShared();
+                if (should_lock) ip.lock.lockSharedUncancelable(ip.io);
+                defer if (should_lock) ip.lock.unlockShared(ip.io);
 
                 for (
                     a_info.types.getUnprotectedSlice(ip),
@@ -504,8 +501,8 @@ pub const Key = union(enum) {
 
                 if (a_info.ty != b_info.ty) return false;
 
-                if (should_lock) ip.lock.lockShared();
-                defer if (should_lock) ip.lock.unlockShared();
+                if (should_lock) ip.lock.lockSharedUncancelable(ip.io);
+                defer if (should_lock) ip.lock.unlockShared(ip.io);
 
                 if (!a_info.getConst(ip).eql(b_info.getConst(ip))) return false;
 
@@ -518,8 +515,8 @@ pub const Key = union(enum) {
 
                 if (a_info.values.len != b_info.values.len) return false;
 
-                if (should_lock) ip.lock.lockShared();
-                defer if (should_lock) ip.lock.unlockShared();
+                if (should_lock) ip.lock.lockSharedUncancelable(ip.io);
+                defer if (should_lock) ip.lock.unlockShared(ip.io);
 
                 for (
                     a_info.values.getUnprotectedSlice(ip),
@@ -664,23 +661,23 @@ pub const Index = enum(u32) {
         /// prefer using `dupe` when iterating over all elements.
         pub fn at(slice: Slice, index: u32, ip: *InternPool) Index {
             assert(index < slice.len);
-            ip.lock.lockShared();
-            defer ip.lock.unlockShared();
+            ip.lock.lockSharedUncancelable(ip.io);
+            defer ip.lock.unlockShared(ip.io);
             return @enumFromInt(ip.extra.items[slice.start + index]);
         }
 
         pub fn dupe(slice: Slice, gpa: Allocator, ip: *InternPool) error{OutOfMemory}![]Index {
             if (slice.len == 0) return &.{};
-            ip.lock.lockShared();
-            defer ip.lock.unlockShared();
+            ip.lock.lockSharedUncancelable(ip.io);
+            defer ip.lock.unlockShared(ip.io);
             return try gpa.dupe(Index, slice.getUnprotectedSlice(ip));
         }
 
         pub fn hashWithHasher(slice: Slice, hasher: anytype, ip: *InternPool) void {
             std.hash.autoHash(hasher, slice.len);
             if (slice.len == 0) return;
-            ip.lock.lockShared();
-            defer ip.lock.unlockShared();
+            ip.lock.lockSharedUncancelable(ip.io);
+            defer ip.lock.unlockShared(ip.io);
             hasher.update(std.mem.sliceAsBytes(slice.getUnprotectedSlice(ip)));
         }
 
@@ -722,23 +719,23 @@ pub const StringSlice = struct {
     /// prefer using `dupe` when iterating over all elements.
     pub fn at(slice: StringSlice, index: u32, ip: *InternPool) String {
         assert(index < slice.len);
-        ip.lock.lockShared();
-        defer ip.lock.unlockShared();
+        ip.lock.lockSharedUncancelable(ip.io);
+        defer ip.lock.unlockShared(ip.io);
         return @enumFromInt(ip.extra.items[slice.start + index]);
     }
 
     pub fn dupe(slice: StringSlice, gpa: Allocator, ip: *InternPool) error{OutOfMemory}![]String {
         if (slice.len == 0) return &.{};
-        ip.lock.lockShared();
-        defer ip.lock.unlockShared();
+        ip.lock.lockSharedUncancelable(ip.io);
+        defer ip.lock.unlockShared(ip.io);
         return try gpa.dupe(String, slice.getUnprotectedSlice(ip));
     }
 
     pub fn hashWithHasher(slice: StringSlice, hasher: anytype, ip: *InternPool) void {
         std.hash.autoHash(hasher, slice.len);
         if (slice.len == 0) return;
-        ip.lock.lockShared();
-        defer ip.lock.unlockShared();
+        ip.lock.lockSharedUncancelable(ip.io);
+        defer ip.lock.unlockShared(ip.io);
         hasher.update(std.mem.sliceAsBytes(slice.getUnprotectedSlice(ip)));
     }
 
@@ -760,8 +757,8 @@ pub const LimbSlice = struct {
     pub fn hashWithHasher(slice: LimbSlice, hasher: anytype, ip: *InternPool) void {
         std.hash.autoHash(hasher, slice.len);
         if (slice.len == 0) return;
-        ip.lock.lockShared();
-        defer ip.lock.unlockShared();
+        ip.lock.lockSharedUncancelable(ip.io);
+        defer ip.lock.unlockShared(ip.io);
         hasher.update(std.mem.sliceAsBytes(slice.getUnprotectedSlice(ip)));
     }
 
@@ -1034,13 +1031,14 @@ pub const Union = struct {
     pub const Index = enum(u32) { _ };
 };
 
-pub fn init(gpa: Allocator) Allocator.Error!InternPool {
+pub fn init(gpa: Allocator, io: std.Io) Allocator.Error!InternPool {
     var ip: InternPool = .{
+        .io = io,
         .map = .empty,
         .items = .empty,
         .extra = .empty,
-        .string_pool = .empty,
-        .lock = .{},
+        .string_pool = .init(io),
+        .lock = .init,
         .limbs = .empty,
         .decls = .{},
         .structs = .{},
@@ -1196,8 +1194,8 @@ pub fn deinit(ip: *InternPool, gpa: Allocator) void {
 pub fn indexToKey(ip: *InternPool, index: Index) Key {
     assert(index != .none);
 
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     return ip.indexToKeyNoLock(index);
 }
 
@@ -1266,15 +1264,15 @@ pub fn get(ip: *InternPool, gpa: Allocator, key: Key) Allocator.Error!Index {
     };
 
     not_found: {
-        ip.lock.lockShared();
-        defer ip.lock.unlockShared();
+        ip.lock.lockSharedUncancelable(ip.io);
+        defer ip.lock.unlockShared(ip.io);
 
         const index = ip.map.getIndexAdapted(key, adapter) orelse break :not_found;
         return @enumFromInt(index);
     }
 
-    ip.lock.lock();
-    defer ip.lock.unlock();
+    ip.lock.lockUncancelable(ip.io);
+    defer ip.lock.unlock(ip.io);
 
     const gop = try ip.map.getOrPutAdapted(gpa, key, adapter);
     if (gop.found_existing) return @enumFromInt(gop.index);
@@ -1430,8 +1428,8 @@ pub fn contains(ip: *InternPool, key: Key) ?Index {
         .ip = ip,
         .precomputed_hash = key.hash32(ip),
     };
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     const index = ip.map.getIndexAdapted(key, adapter) orelse return null;
     return @enumFromInt(index);
 }
@@ -1439,8 +1437,8 @@ pub fn contains(ip: *InternPool, key: Key) ?Index {
 pub fn getIndexSlice(ip: *InternPool, gpa: Allocator, data: []const Index) error{OutOfMemory}!Index.Slice {
     if (data.len == 0) return Index.Slice.empty;
 
-    ip.lock.lock();
-    defer ip.lock.unlock();
+    ip.lock.lockUncancelable(ip.io);
+    defer ip.lock.unlock(ip.io);
 
     const start: u32 = @intCast(ip.extra.items.len);
     try ip.extra.appendSlice(gpa, @ptrCast(data));
@@ -1454,8 +1452,8 @@ pub fn getIndexSlice(ip: *InternPool, gpa: Allocator, data: []const Index) error
 pub fn getStringSlice(ip: *InternPool, gpa: Allocator, data: []const String) error{OutOfMemory}!StringSlice {
     if (data.len == 0) return StringSlice.empty;
 
-    ip.lock.lock();
-    defer ip.lock.unlock();
+    ip.lock.lockUncancelable(ip.io);
+    defer ip.lock.unlock(ip.io);
 
     const start: u32 = @intCast(ip.extra.items.len);
     try ip.extra.appendSlice(gpa, @ptrCast(data));
@@ -1479,67 +1477,67 @@ fn getLimbSlice(ip: *InternPool, gpa: Allocator, data: []const std.math.big.Limb
 }
 
 pub fn getDecl(ip: *InternPool, index: InternPool.Decl.Index) *const InternPool.Decl {
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     return ip.decls.at(@intFromEnum(index));
 }
 pub fn getDeclMut(ip: *InternPool, index: InternPool.Decl.Index) *InternPool.Decl {
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     return ip.decls.at(@intFromEnum(index));
 }
 pub fn getStruct(ip: *InternPool, index: Struct.Index) *const Struct {
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     return ip.structs.at(@intFromEnum(index));
 }
 pub fn getStructMut(ip: *InternPool, index: Struct.Index) *Struct {
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     return ip.structs.at(@intFromEnum(index));
 }
 pub fn getEnum(ip: *InternPool, index: Enum.Index) *const Enum {
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     return ip.enums.at(@intFromEnum(index));
 }
 pub fn getEnumMut(ip: *InternPool, index: Enum.Index) *Enum {
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     return ip.enums.at(@intFromEnum(index));
 }
 pub fn getUnion(ip: *InternPool, index: Union.Index) *const Union {
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     return ip.unions.at(@intFromEnum(index));
 }
 pub fn getUnionMut(ip: *InternPool, index: Union.Index) *Union {
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     return ip.unions.at(@intFromEnum(index));
 }
 
 pub fn createDecl(ip: *InternPool, gpa: Allocator, decl: Decl) Allocator.Error!Decl.Index {
-    ip.lock.lock();
-    defer ip.lock.unlock();
+    ip.lock.lockUncancelable(ip.io);
+    defer ip.lock.unlock(ip.io);
     try ip.decls.append(gpa, decl);
     return @enumFromInt(ip.decls.count() - 1);
 }
 pub fn createStruct(ip: *InternPool, gpa: Allocator, struct_info: Struct) Allocator.Error!Struct.Index {
-    ip.lock.lock();
-    defer ip.lock.unlock();
+    ip.lock.lockUncancelable(ip.io);
+    defer ip.lock.unlock(ip.io);
     try ip.structs.append(gpa, struct_info);
     return @enumFromInt(ip.structs.count() - 1);
 }
 pub fn createEnum(ip: *InternPool, gpa: Allocator, enum_info: Enum) Allocator.Error!Enum.Index {
-    ip.lock.lock();
-    defer ip.lock.unlock();
+    ip.lock.lockUncancelable(ip.io);
+    defer ip.lock.unlock(ip.io);
     try ip.enums.append(gpa, enum_info);
     return @enumFromInt(ip.enums.count() - 1);
 }
 pub fn createUnion(ip: *InternPool, gpa: Allocator, union_info: Union) Allocator.Error!Union.Index {
-    ip.lock.lock();
-    defer ip.lock.unlock();
+    ip.lock.lockUncancelable(ip.io);
+    defer ip.lock.unlock(ip.io);
     try ip.unions.append(gpa, union_info);
     return @enumFromInt(ip.unions.count() - 1);
 }
@@ -2953,8 +2951,8 @@ fn panicOrElse(comptime T: type, message: []const u8, value: T) T {
 // ---------------------------------------------
 
 pub fn zigTypeTag(ip: *InternPool, index: Index) ?std.builtin.TypeId {
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     return switch (ip.items.items(.tag)[@intFromEnum(index)]) {
         .simple_type => switch (@as(SimpleType, @enumFromInt(ip.items.items(.data)[@intFromEnum(index)]))) {
             .f16,
@@ -3046,8 +3044,8 @@ pub fn zigTypeTag(ip: *InternPool, index: Index) ?std.builtin.TypeId {
 }
 
 pub fn typeOf(ip: *InternPool, index: Index) Index {
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     const data = ip.items.items(.data)[@intFromEnum(index)];
     return switch (ip.items.items(.tag)[@intFromEnum(index)]) {
         .simple_value => switch (@as(SimpleValue, @enumFromInt(data))) {
@@ -3105,8 +3103,8 @@ pub fn typeOf(ip: *InternPool, index: Index) Index {
 }
 
 pub fn isType(ip: *InternPool, ty: Index) bool {
-    ip.lock.lockShared();
-    defer ip.lock.unlockShared();
+    ip.lock.lockSharedUncancelable(ip.io);
+    defer ip.lock.unlockShared(ip.io);
     return switch (ip.items.items(.tag)[@intFromEnum(ty)]) {
         .simple_type,
         .type_int_signed,
@@ -3152,8 +3150,8 @@ pub fn isUnknown(ip: *InternPool, index: Index) bool {
     switch (index) {
         .unknown_type, .unknown_unknown => return true,
         else => {
-            ip.lock.lockShared();
-            defer ip.lock.unlockShared();
+            ip.lock.lockSharedUncancelable(ip.io);
+            defer ip.lock.unlockShared(ip.io);
             return ip.items.items(.tag)[@intFromEnum(index)] == .unknown_value;
         },
     }
@@ -4187,7 +4185,7 @@ pub fn fmtId(ip: *InternPool, string: String) std.fmt.Alt(FormatId, FormatId.ren
 test "simple types" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const null_type = try ip.get(gpa, .{ .simple_type = .null_type });
@@ -4224,7 +4222,7 @@ test "simple types" {
 test "int type" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const i32_type = try ip.get(gpa, .{ .int_type = .{ .signedness = .signed, .bits = 32 } });
@@ -4274,7 +4272,7 @@ test "int type" {
 test "int value" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const unsigned_zero_value = try ip.get(gpa, .{ .int_u64_value = .{ .ty = .u64_type, .int = 0 } });
@@ -4307,7 +4305,7 @@ test "int value" {
 test "big int value" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     var result: std.math.big.int.Managed = try .init(gpa);
@@ -4336,7 +4334,7 @@ test "big int value" {
 test "float type" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const f16_type = try ip.get(gpa, .{ .simple_type = .f16 });
@@ -4366,7 +4364,7 @@ test "float type" {
 test "float value" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const f16_value = try ip.get(gpa, .{ .float_16_value = 0.25 });
@@ -4424,7 +4422,7 @@ test "float value" {
 test "pointer type" {
     const gpa = std.testing.allocator;
 
-    var ip = try InternPool.init(gpa);
+    var ip = try InternPool.init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"*i32" = try ip.get(gpa, .{ .pointer_type = .{
@@ -4513,7 +4511,7 @@ test "pointer type" {
 test "optional type" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const i32_optional_type = try ip.get(gpa, .{ .optional_type = .{ .payload_type = .i32_type } });
@@ -4528,7 +4526,7 @@ test "optional type" {
 test "optional value" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const u32_optional_type = try ip.get(gpa, .{ .optional_type = .{ .payload_type = .u32_type } });
@@ -4542,7 +4540,7 @@ test "optional value" {
 test "error set type" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const foo_name = try ip.string_pool.getOrPutString(gpa, "foo");
@@ -4575,7 +4573,7 @@ test "error set type" {
 test "error union type" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const empty_error_set = try ip.get(gpa, .{ .error_set_type = .{
@@ -4595,7 +4593,7 @@ test "error union type" {
 test "array type" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const i32_3_array_type = try ip.get(gpa, .{ .array_type = .{
@@ -4617,7 +4615,7 @@ test "array type" {
 test "struct value" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const foo_name_index = try ip.string_pool.getOrPutString(gpa, "foo");
@@ -4647,7 +4645,7 @@ test "struct value" {
 test "function type" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"fn(i32) bool" = try ip.get(gpa, .{ .function_type = .{
@@ -4693,7 +4691,7 @@ test "function type" {
 test "union value" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const int_name_index = try ip.string_pool.getOrPutString(gpa, "int");
@@ -4731,7 +4729,7 @@ test "union value" {
 test "anyframe type" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"anyframe->i32" = try ip.get(gpa, .{ .anyframe_type = .{ .child = .i32_type } });
@@ -4746,7 +4744,7 @@ test "anyframe type" {
 test "vector type" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"@Vector(2,i32)" = try ip.get(gpa, .{ .vector_type = .{
@@ -4783,7 +4781,7 @@ test "vector type" {
 test "Index.Slice" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     _ = try ip.getIndexSlice(gpa, &.{ .none, .c_ulonglong_type, .call_modifier_type });
@@ -4809,7 +4807,7 @@ test "Index.Slice" {
 test StringSlice {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const str1 = try ip.string_pool.getOrPutString(gpa, "aaa");
@@ -4842,7 +4840,7 @@ test "test thread safety of InternPool" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const index_start = ip.map.count();
@@ -4904,7 +4902,7 @@ test "coerceInMemoryAllowed integers and floats" {
     defer arena_allocator.deinit();
     const arena = arena_allocator.allocator();
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     try expect(try ip.coerceInMemoryAllowed(gpa, arena, .u32_type, .u32_type, true, builtin.target) == .ok);
@@ -4928,7 +4926,7 @@ test "coerceInMemoryAllowed error set" {
     defer arena_allocator.deinit();
     const arena = arena_allocator.allocator();
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const foo_name = try ip.string_pool.getOrPutString(gpa, "foo");
@@ -4982,7 +4980,7 @@ test "coerceInMemoryAllowed error set" {
 test "resolvePeerTypes" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     try expect(.noreturn_type == try ip.resolvePeerTypes(gpa, &.{}, builtin.target));
@@ -4998,7 +4996,7 @@ test "resolvePeerTypes" {
 test "resolvePeerTypes integers and floats" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     try ip.testResolvePeerTypes(.i16_type, .i16_type, .i16_type);
@@ -5083,7 +5081,7 @@ test "resolvePeerTypes integers and floats" {
 test "resolvePeerTypes optionals" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"?u32" = try ip.get(gpa, .{ .optional_type = .{ .payload_type = .u32_type } });
@@ -5096,7 +5094,7 @@ test "resolvePeerTypes optionals" {
 test "resolvePeerTypes pointers" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"*u32" = try ip.get(gpa, .{ .pointer_type = .{ .elem_type = .u32_type, .flags = .{ .size = .one } } });
@@ -5189,7 +5187,7 @@ test "resolvePeerTypes pointers" {
 test "resolvePeerTypes function pointers" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"*u32" = try ip.get(gpa, .{ .pointer_type = .{
@@ -5221,7 +5219,7 @@ test "resolvePeerTypes function pointers" {
 test "resolvePeerTypes error sets" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const foo_name = try ip.string_pool.getOrPutString(gpa, "foo");
@@ -5266,7 +5264,7 @@ fn testResolvePeerTypesInOrder(ip: *InternPool, lhs: Index, rhs: Index, expected
 test "coerce int" {
     const gpa = std.testing.allocator;
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"as(comptime_int, 1)" = try ip.get(gpa, .{ .int_u64_value = .{ .ty = .comptime_int_type, .int = 1 } });

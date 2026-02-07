@@ -231,7 +231,7 @@ pub fn fmtFieldDetail(ip: *InternPool, field: InternPool.Struct.Field) std.fmt.A
 
 test "dotCompletions - primitives" {
     const gpa = std.testing.allocator;
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     try testCompletion(&ip, .bool_type, &.{});
@@ -243,7 +243,7 @@ test "dotCompletions - primitives" {
 
 test "dotCompletions - optional types" {
     const gpa = std.testing.allocator;
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"?u32" = try ip.get(gpa, .{ .optional_type = .{ .payload_type = .u32_type } });
@@ -258,7 +258,7 @@ test "dotCompletions - optional types" {
 
 test "dotCompletions - array types" {
     const gpa = std.testing.allocator;
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"[3]u32" = try ip.get(gpa, .{ .array_type = .{ .child = .u32_type, .len = 3 } });
@@ -282,7 +282,7 @@ test "dotCompletions - array types" {
 
 test "dotCompletions - pointer types" {
     const gpa = std.testing.allocator;
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"*u32" = try ip.get(gpa, .{ .pointer_type = .{
@@ -358,7 +358,7 @@ test "dotCompletions - pointer types" {
 
 test "dotCompletions - single pointer indirection" {
     const gpa = std.testing.allocator;
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, std.testing.io);
     defer ip.deinit(gpa);
 
     const @"[1]u32" = try ip.get(gpa, .{ .array_type = .{ .child = .u32_type, .len = 1 } });

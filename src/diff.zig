@@ -6,18 +6,20 @@ const offsets = @import("offsets.zig");
 const tracy = @import("tracy");
 const DiffMatchPatch = @import("diffz");
 
-const dmp: DiffMatchPatch = .{
-    .diff_timeout = .fromMilliseconds(250),
-};
-
 pub fn edits(
     allocator: std.mem.Allocator,
     before: []const u8,
     after: []const u8,
     encoding: offsets.Encoding,
+    io: std.Io,
 ) error{OutOfMemory}!std.ArrayList(types.TextEdit) {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
+
+    const dmp: DiffMatchPatch = .{
+        .io = io,
+        .diff_timeout = .fromMilliseconds(250),
+    };
 
     var diffs = try dmp.diff(allocator, before, after, true);
     defer DiffMatchPatch.deinitDiffList(allocator, &diffs);

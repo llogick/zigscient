@@ -24,7 +24,7 @@ fn testDiff(allocator: std.mem.Allocator, rand: std.Random, encoding: zls.offset
     const before = buffer[0..split_index];
     const after = buffer[split_index..];
 
-    var edits = try zls.diff.edits(allocator, before, after, encoding);
+    var edits = try zls.diff.edits(allocator, before, after, encoding, std.testing.io);
     defer {
         for (edits.items) |edit| allocator.free(edit.newText);
         edits.deinit(allocator);

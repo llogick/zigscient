@@ -89,7 +89,7 @@ pub fn main(init: std.process.Init) Error!void {
         }
     }
 
-    var ip: InternPool = try .init(gpa);
+    var ip: InternPool = try .init(gpa, io);
     defer ip.deinit(gpa);
 
     var diagnostics_collection: zls.DiagnosticsCollection = .{

@@ -204,7 +204,6 @@ pub fn build(b: *Build) !void {
             .{ .name = "known-folders", .module = known_folders_module },
             .{ .name = "tracy", .module = zls_module.import_table.get("tracy").? },
             .{ .name = "zls", .module = zls_module },
-            .{ .name = "std", .module = b.dependency("zig_std", .{}).module("zig-std") },
         },
     });
 
@@ -238,7 +237,6 @@ pub fn build(b: *Build) !void {
             .imports = &.{
                 .{ .name = "zls", .module = zls_module },
                 .{ .name = "test_options", .module = test_options },
-                .{ .name = "std", .module = b.dependency("zig_std", .{}).module("zig-std") },
             },
         }),
         .filters = test_filters,
@@ -430,7 +428,6 @@ fn createZLSModule(
             .{ .name = "extended-zccs", .module = extended_zccs },
             .{ .name = "build_options", .module = options.build_options },
             .{ .name = "version_data", .module = options.version_data },
-            .{ .name = "std", .module = b.dependency("zig_std", .{}).module("zig-std") },
         },
     });
 

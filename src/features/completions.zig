@@ -1667,8 +1667,8 @@ fn collectErrorSetTypeFields(
     if (key != .error_set_type) return null;
     if (key.error_set_type.names.len == 0) return;
 
-    ip.string_pool.mutex.lock();
-    defer ip.string_pool.mutex.unlock();
+    ip.string_pool.mutex.lockUncancelable(ip.io);
+    defer ip.string_pool.mutex.unlock(ip.io);
 
     for (0..key.error_set_type.names.len) |name_idx| {
         const err_name = ip.string_pool.stringToSliceUnsafe(key.error_set_type.names.at(@intCast(name_idx), ip));

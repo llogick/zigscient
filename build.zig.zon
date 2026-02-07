@@ -4,7 +4,7 @@
     .version = "0.16.0-dev",
     // The minimum Zig version that is required to compile and test this project.
     // Must be a Zig version that is downloadable from https://ziglang.org/download/ or a mirror.
-    .minimum_zig_version = "0.16.0-dev.2490+fce7878a9",
+    .minimum_zig_version = "0.16.0-dev.2510+bcb5218a2",
     // The minimum Zig version that the server's build_runner can handle:
     // A breaking change to the Zig Build System should be handled by updating the server's build runner (see src/build_runner)
     .minimum_runtime_zig_version = "0.16.0-dev.2490+fce7878a9",
@@ -14,23 +14,19 @@
             .hash = "known_folders-0.0.0-Fy-PJqHJAAB43zDJmOdlr3nViu69IFI9pNFt7hkHjKk4",
         },
         .diffz = .{
-            .url = "https://github.com/ziglibs/diffz/archive/669e6ed7470100bfd9d2aa9f6f96b93c45996179.tar.gz",
-            .hash = "diffz-0.0.1-G2tlISLPAQDzXkUIRWWUfdgIsIb1dAyVwRPXMt5kRpui",
+            // .url = "https://github.com/ziglibs/diffz/archive/669e6ed7470100bfd9d2aa9f6f96b93c45996179.tar.gz",
+            .url = "https://github.com/LamplightWorks/diffz/archive/e60cb216f6f592ee16c557c7b3d78778896cc103.tar.gz",
+            .hash = "diffz-0.0.1-G2tlIXPPAQCORCQw9Xh_WDvS5ZNLAVVsIxpjI8S6xkjQ",
         },
         .lsp_kit = .{
-            .url = "https://github.com/zigtools/lsp-kit/archive/922e9c2fc00741b167a19277d737b8eb890f0253.tar.gz",
-            .hash = "lsp_kit-0.1.0-bi_PL94yDABlKrIbUTtVALYWLeFt6XAzHS6R12Tp83_Z",
+            // .url = "https://github.com/zigtools/lsp-kit/archive/922e9c2fc00741b167a19277d737b8eb890f0253.tar.gz",
+            .url = "https://github.com/jozip/lsp-kit/archive/4f75d3af5b664148137aff1e0f63927af80efc02.tar.gz",
+            .hash = "lsp_kit-0.1.0-bi_PLw8zDACM2VkCLnxfZqKW6j8SFJx2givwLFkkAQSU",
         },
         .extended_zccs = .{
             .url = "https://github.com/llogick/extended-zccs/archive/d83f4833a7469ba44cdcf7b237bb9a612d83d0fb.tar.gz",
             .hash = "extended_zccs-0.16.0-dev-zEaUNhXQDgDMfl6nMCtSo23xiYiVAke02u0VdMQnkIM8",
-            // For local dev
             // .path = "../extended-zccs",
-        },
-        .zig_std = .{
-            .url = "https://github.com/LamplightWorks/zig-std/archive/d1032ea808ccc3db19e6783934eb35e905812348.tar.gz",
-            .hash = "zig_std-0.16.0-dev.2468+c2d4806d6-ibBY-von8QCARZQdMpqd5Iz9EaZjeglf7Gp0iOov8DuC",
-            // .path = "../../../zig-std",
         },
         .tracy = .{
             .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.13.1.tar.gz",

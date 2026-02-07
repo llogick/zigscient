@@ -1402,7 +1402,7 @@ fn formattingHandler(server: *Server, arena: std.mem.Allocator, request: types.d
 
     if (std.mem.eql(u8, handle.tree.source, formatted)) return null;
 
-    const text_edits = try diff.edits(arena, handle.tree.source, formatted, server.offset_encoding);
+    const text_edits = try diff.edits(arena, handle.tree.source, formatted, server.offset_encoding, server.io);
     return text_edits.items;
 }
 
@@ -1630,7 +1630,7 @@ pub fn create(options: CreateOptions) std.mem.Allocator.Error!*Server {
     };
     server.document_store.config = createDocumentStoreConfig(server.config_manager);
 
-    server.ip = try InternPool.init(allocator);
+    server.ip = try InternPool.init(allocator, io);
     errdefer server.ip.deinit(allocator);
 
     if (options.transport) |transport| {
