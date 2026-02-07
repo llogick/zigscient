@@ -1402,7 +1402,7 @@ fn formattingHandler(server: *Server, arena: std.mem.Allocator, request: types.d
 
     if (std.mem.eql(u8, handle.tree.source, formatted)) return null;
 
-    const text_edits = try diff.edits(arena, handle.tree.source, formatted, server.offset_encoding, server.io);
+    const text_edits = try diff.edits(server.io, arena, handle.tree.source, formatted, server.offset_encoding);
     return text_edits.items;
 }
 

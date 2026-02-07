@@ -7,21 +7,22 @@ const tracy = @import("tracy");
 const DiffMatchPatch = @import("diffz");
 
 pub fn edits(
+    io: std.Io,
     allocator: std.mem.Allocator,
     before: []const u8,
     after: []const u8,
     encoding: offsets.Encoding,
-    io: std.Io,
 ) error{OutOfMemory}!std.ArrayList(types.TextEdit) {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    const dmp: DiffMatchPatch = .{
-        .io = io,
-        .diff_timeout = .fromMilliseconds(250),
-    };
-
-    var diffs = try dmp.diff(allocator, before, after, true);
+    const dmp: DiffMatchPatch = .initDefault(io, allocator);
+    var diffs = try dmp.diff(
+        before,
+        after,
+        true,
+        .{ .duration = .{ .clock = .awake, .raw = .fromMilliseconds(250) } },
+    );
     defer DiffMatchPatch.deinitDiffList(allocator, &diffs);
 
     var edit_count: usize = 0;

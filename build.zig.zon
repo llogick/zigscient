@@ -14,14 +14,12 @@
             .hash = "known_folders-0.0.0-Fy-PJqHJAAB43zDJmOdlr3nViu69IFI9pNFt7hkHjKk4",
         },
         .diffz = .{
-            // .url = "https://github.com/ziglibs/diffz/archive/669e6ed7470100bfd9d2aa9f6f96b93c45996179.tar.gz",
-            .url = "https://github.com/LamplightWorks/diffz/archive/e60cb216f6f592ee16c557c7b3d78778896cc103.tar.gz",
-            .hash = "diffz-0.0.1-G2tlIXPPAQCORCQw9Xh_WDvS5ZNLAVVsIxpjI8S6xkjQ",
+            .url = "https://github.com/LamplightWorks/diffz/archive/aa11caef328a3f20f2493f8fd676a1dfa7819246.tar.gz",
+            .hash = "diffz-0.0.1-G2tlIYrNAQAQx3cuIp7EVs0xvxbv9DCPf4YuHmvubsrZ",
         },
         .lsp_kit = .{
-            // .url = "https://github.com/zigtools/lsp-kit/archive/922e9c2fc00741b167a19277d737b8eb890f0253.tar.gz",
-            .url = "https://github.com/jozip/lsp-kit/archive/4f75d3af5b664148137aff1e0f63927af80efc02.tar.gz",
-            .hash = "lsp_kit-0.1.0-bi_PLw8zDACM2VkCLnxfZqKW6j8SFJx2givwLFkkAQSU",
+            .url = "https://github.com/LamplightWorks/lsp-kit/archive/7b03f0b6801babffe76608cf3db59793902a21d6.tar.gz",
+            .hash = "lsp_kit-0.1.0-bi_PLw8zDABvCWe2rD4Aqb9gx0sRXBKO0a7M0vg3AbR3",
         },
         .extended_zccs = .{
             .url = "https://github.com/llogick/extended-zccs/archive/d83f4833a7469ba44cdcf7b237bb9a612d83d0fb.tar.gz",
