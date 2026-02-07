@@ -1630,7 +1630,7 @@ pub fn create(options: CreateOptions) std.mem.Allocator.Error!*Server {
     };
     server.document_store.config = createDocumentStoreConfig(server.config_manager);
 
-    server.ip = try InternPool.init(allocator, io);
+    server.ip = try InternPool.init(io, allocator);
     errdefer server.ip.deinit(allocator);
 
     if (options.transport) |transport| {
