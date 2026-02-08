@@ -42,9 +42,9 @@ var dont_create_roots_txt_file: bool = false;
 pub fn main(init: process.Init.Minimal) !void {
     var debug_gpa_state: std.heap.DebugAllocator(.{}) = .init;
     defer _ = debug_gpa_state.deinit();
-    const gpa = debug_gpa_state.allocator();
+    const dgpa = debug_gpa_state.allocator();
 
-    var threaded: std.Io.Threaded = .init(gpa, .{
+    var threaded: std.Io.Threaded = .init(dgpa, .{
         .environ = init.environ,
         .argv0 = .init(init.args),
     });
@@ -418,6 +418,8 @@ pub fn main(init: process.Init.Minimal) !void {
     }.do, .{&w});
     message_thread.detach();
 
+    const gpa = arena;
+
     var step_stack = try stepNamesToStepStack(gpa, builder, targets.items, check_step_only);
     if (step_stack.count() == 0) {
         // This means that `enable_build_on_save == null` and the project contains no "check" step.
@@ -509,7 +511,7 @@ const Watch = struct {
 
     fn wait(w: *Watch, gpa: Allocator, timeout: std.Io.Timeout) !std.Build.Watch.WaitResult {
         if (@TypeOf(std.Build.Watch) != void and w.supports_fs_watch) {
-            return try w.fs_watch.wait(gpa, switch (timeout) {
+            return try w.fs_watch.wait(gpa, w.io, switch (timeout) {
                 .none => .none,
                 .duration => |d| .{ .ms = @intCast(d.raw.toMilliseconds()) },
                 .deadline => unreachable,
