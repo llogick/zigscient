@@ -1415,7 +1415,7 @@ fn prepareRenameHandler(server: *Server, request: types.prepare_rename.Params) E
     const handle = server.document_store.getHandle(request.textDocument.uri) orelse return null;
 
     const source_index = offsets.positionToIndex(handle.tree.source, request.position, server.offset_encoding);
-    const name_loc = Analyser.identifierLocFromIndex(&handle.tree, source_index) orelse return null;
+    const name_loc = offsets.identifierLocFromIndex(&handle.tree, source_index) orelse return null;
     const name = offsets.locToSlice(handle.tree.source, name_loc);
     return .{
         .prepare_rename_placeholder = .{
