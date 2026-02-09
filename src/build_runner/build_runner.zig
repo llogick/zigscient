@@ -517,28 +517,13 @@ const Watch = struct {
                 .deadline => unreachable,
             });
         }
-        waitTimeout(&w.manual_event, w.io, timeout) catch |err| switch (err) {
+        w.manual_event.waitTimeout(w.io, timeout) catch |err| switch (err) {
             error.Canceled => unreachable,
             error.Timeout => return .timeout,
         };
         w.manual_event.reset();
         markStepsDirty(gpa, w.steps);
         return .dirty;
-    }
-
-    /// Copy of `std.Io.Event.waitTimeout` but a compile error has been fixed.
-    pub fn waitTimeout(event: *std.Io.Event, io: std.Io, timeout: std.Io.Timeout) (error{Timeout} || std.Io.Cancelable)!void {
-        if (@cmpxchgStrong(std.Io.Event, event, .unset, .waiting, .acquire, .acquire)) |prev| switch (prev) {
-            .unset => unreachable,
-            .waiting => assert(!builtin.single_threaded), // invalid state
-            .is_set => return,
-        };
-        try io.futexWaitTimeout(std.Io.Event, event, .waiting, timeout);
-        switch (@atomicLoad(std.Io.Event, event, .acquire)) {
-            .unset => unreachable, // `reset` called before pending `wait` returned
-            .waiting => return error.Timeout,
-            .is_set => return,
-        }
     }
 
     fn markStepsDirty(gpa: Allocator, all_steps: []const *Step) void {
