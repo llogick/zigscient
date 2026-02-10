@@ -4986,14 +4986,24 @@ pub fn getPositionContext(
         defer previous_token_end = tok.loc.end;
 
         // Single '@' do not return a builtin token so we check this on our own.
-        if (tok.tag == .invalid and tree.source[tok.loc.start] == '@') {
-            if (std.mem.startsWith(u8, tree.source[tok.loc.start..], "@\"")) {
-                tok.tag = .identifier;
-                tok.loc = .{ .start = tok.loc.start, .end = @min(line_loc.end, tree.tokenStart(current_token + 1)) };
-            } else if (std.mem.startsWith(u8, tree.source[tok.loc.start..], "@")) {
-                tok.tag = .builtin;
-                tok.loc = .{ .start = tok.loc.start, .end = tok.loc.start + 1 };
-            }
+        check_tag: switch (tok.tag) {
+            .invalid => {
+                const s = tree.source[tok.loc.start..tok.loc.end];
+                const q = std.mem.find(u8, s, "\"") orelse {
+                    if (!std.mem.startsWith(u8, s, "@")) return .empty;
+                    tok.tag = .builtin;
+                    tok.loc = .{ .start = tok.loc.start, .end = tok.loc.start + 1 };
+                    break :check_tag;
+                };
+                if (s[q -| 1] == '@') {
+                    tok.tag = .identifier;
+                    tok.loc = .{ .start = tok.loc.start, .end = @min(line_loc.end, tree.tokenStart(current_token + 1)) };
+                } else {
+                    tok.tag = .string_literal;
+                }
+            },
+            .eof => break,
+            else => {},
         }
 
         if (source_index < tok.loc.start) break;
@@ -5016,20 +5026,6 @@ pub fn getPositionContext(
                 },
                 else => if (previous_token_end == tok.loc.start) break,
             }
-        }
-
-        switch (tok.tag) {
-            .invalid => {
-                const s = tree.source[tok.loc.start..tok.loc.end];
-                const q = std.mem.find(u8, s, "\"") orelse return .other;
-                if (s[q -| 1] == '@') {
-                    tok.tag = .identifier;
-                } else {
-                    tok.tag = .string_literal;
-                }
-            },
-            .eof => break,
-            else => {},
         }
 
         const curr_ctx: *Stack.State = stack.peek();
