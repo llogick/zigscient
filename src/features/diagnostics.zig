@@ -34,7 +34,7 @@ pub fn generateDiagnostics(
 
         var error_bundle = try getAstCheckDiagnostics(server, handle);
         if (handle.getChangePending() == true) {
-            log.err("!genDiag  : ignoring AstCheck diags", .{});
+            // log.err("!genDiag  : ignoring AstCheck diags", .{});
             error_bundle.deinit(server.allocator);
             return;
         }
@@ -52,7 +52,7 @@ pub fn generateDiagnostics(
 
         try collectParseDiagnostics(&handle.tree, &wip);
         if (handle.getChangePending() == true) {
-            log.err("!genDiag  : ignoring parse diags", .{});
+            // log.err("!genDiag  : ignoring parse diags", .{});
             return;
         }
         var error_bundle = try wip.toOwnedBundle("");
