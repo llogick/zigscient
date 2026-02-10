@@ -22,9 +22,9 @@
             .hash = "lsp_kit-0.1.0-bi_PLw8zDABvCWe2rD4Aqb9gx0sRXBKO0a7M0vg3AbR3",
         },
         .extended_zccs = .{
-            .url = "https://github.com/llogick/extended-zccs/archive/d83f4833a7469ba44cdcf7b237bb9a612d83d0fb.tar.gz",
-            .hash = "extended_zccs-0.16.0-dev-zEaUNhXQDgDMfl6nMCtSo23xiYiVAke02u0VdMQnkIM8",
-            // .path = "../extended-zccs",
+            .url = "https://github.com/llogick/extended-zccs/archive/54a633d2eb3c3cd54d1a29d78f124d94d555e5d4.tar.gz",
+            .hash = "extended_zccs-0.16.0-dev-zEaUNhjQDgBrx65eaBfqCVkPHG2VvEFQqPenk1rEvcJI",
+            // .path = "../../../extended-zccs",
         },
         .tracy = .{
             .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.13.1.tar.gz",
