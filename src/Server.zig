@@ -329,7 +329,7 @@ fn generateDiagnostics(server: *Server, handle: *DocumentStore.Handle) void {
     const do = struct {
         fn do(param_server: *Server, param_handle: *DocumentStore.Handle) std.Io.Cancelable!void {
             if (param_handle.getChangePending() == true) {
-                log.err("!genDiag  : early exit", .{});
+                // log.err("!genDiag  : early exit", .{});
                 return;
             }
             diagnostics_gen.generateDiagnostics(param_server, param_handle) catch |err| switch (err) {
