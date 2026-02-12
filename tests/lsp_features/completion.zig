@@ -3412,6 +3412,17 @@ test "label" {
     , &.{
         .{ .label = "alpha", .kind = .Field, .detail = "u32" },
     });
+
+    try testCompletionTextEdit(.{
+        .source =
+        \\const foo = blk: {
+        \\    break :<cursor>
+        \\};
+        ,
+        .label = "blk",
+        .expected_insert_line = "    break :blk",
+        .expected_replace_line = "    break :blk",
+    });
 }
 
 test "either" {
