@@ -1000,6 +1000,8 @@ pub const CompilationState = struct {
     linker_print_gc_sections: bool = false,
     linker_print_icf_sections: bool = false,
     linker_print_map: bool = false,
+    linker_nmagic: bool = false,
+    linker_fatal_warnings: bool = false,
     llvm_opt_bisect_limit: c_int = -1,
     linker_z_nocopyreloc: bool = false,
     linker_z_nodelete: bool = false,
@@ -1226,6 +1228,8 @@ pub fn buildOutputType(
     cs.linker_print_gc_sections = false;
     cs.linker_print_icf_sections = false;
     cs.linker_print_map = false;
+    cs.linker_nmagic = false;
+    cs.linker_fatal_warnings = false;
     cs.llvm_opt_bisect_limit = -1;
     cs.linker_z_nocopyreloc = false;
     cs.linker_z_nodelete = false;
@@ -2978,6 +2982,15 @@ pub fn buildOutputType(
                     cs.linker_print_icf_sections = true;
                 } else if (mem.eql(u8, arg, "--print-map")) {
                     cs.linker_print_map = true;
+                } else if (mem.eql(u8, arg, "-n") or mem.eql(u8, arg, "--nmagic")) {
+                    cs.linker_nmagic = true;
+                } else if (mem.eql(u8, arg, "--fatal-warnings")) {
+                    cs.linker_fatal_warnings = true;
+                } else if (mem.eql(u8, arg, "--no-fatal-warnings")) {
+                    cs.linker_fatal_warnings = false;
+                } else if (mem.eql(u8, arg, "-m")) {
+                    _ = linker_args_it.nextOrFatal();
+                    warn("-m option is ignored; emulation is derived from target", .{});
                 } else if (mem.eql(u8, arg, "--sort-section")) {
                     const arg1 = linker_args_it.nextOrFatal();
                     cs.linker_sort_section = stringToEnum(link.File.Lld.Elf.SortSection, arg1) orelse {
@@ -3250,9 +3263,11 @@ pub fn buildOutputType(
                     cs.hash_style = stringToEnum(link.File.Lld.Elf.HashStyle, next_arg) orelse {
                         fatal("expected [sysv|gnu|both] after --hash-style, found {q}", .{next_arg});
                     };
-                } else if (mem.eql(u8, arg, "-wrap")) {
+                } else if (mem.eql(u8, arg, "-wrap") or mem.eql(u8, arg, "--wrap")) {
                     const next_arg = linker_args_it.nextOrFatal();
                     try cs.symbol_wrap_set.put(arena, next_arg, {});
+                } else if (mem.cutPrefix(u8, arg, "--wrap=")) |symbol| {
+                    try cs.symbol_wrap_set.put(arena, symbol, {});
                 } else if (mem.startsWith(u8, arg, "/subsystem:")) {
                     var split_it = mem.splitBackwardsScalar(u8, arg, ':');
                     cs.subsystem = try parseSubsystem(split_it.first());
@@ -3980,6 +3995,8 @@ pub fn buildOutputType(
         .linker_print_gc_sections = cs.linker_print_gc_sections,
         .linker_print_icf_sections = cs.linker_print_icf_sections,
         .linker_print_map = cs.linker_print_map,
+        .linker_nmagic = cs.linker_nmagic,
+        .linker_fatal_warnings = cs.linker_fatal_warnings,
         .llvm_opt_bisect_limit = cs.llvm_opt_bisect_limit,
         .linker_global_base = cs.linker_global_base,
         .linker_export_symbol_names = cs.linker_export_symbol_names.items,

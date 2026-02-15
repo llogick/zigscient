@@ -80,6 +80,8 @@ pub const Elf = struct {
     sort_section: ?SortSection,
     print_icf_sections: bool,
     print_map: bool,
+    nmagic: bool,
+    fatal_warnings: bool,
     emit_relocs: bool,
     z_nodelete: bool,
     z_notext: bool,
@@ -135,6 +137,8 @@ pub const Elf = struct {
             .sort_section = options.sort_section,
             .print_icf_sections = options.print_icf_sections,
             .print_map = options.print_map,
+            .nmagic = options.nmagic,
+            .fatal_warnings = options.fatal_warnings,
             .emit_relocs = options.emit_relocs,
             .z_nodelete = options.z_nodelete,
             .z_notext = options.z_notext,
@@ -945,6 +949,14 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
 
         if (elf.print_map) {
             try argv.append("--print-map");
+        }
+
+        if (elf.nmagic) {
+            try argv.append("--nmagic");
+        }
+
+        if (elf.fatal_warnings) {
+            try argv.append("--fatal-warnings");
         }
 
         if (comp.link_eh_frame_hdr) {
