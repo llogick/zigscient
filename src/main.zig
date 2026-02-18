@@ -510,6 +510,8 @@ fn parseArgs(
         log.warn("Zigscient is not a CLI tool, it communicates over the Language Server Protocol.", .{});
         log.warn("Did you mean to run 'zigscient --help'?", .{});
         log.warn("", .{});
+        result.disable_lsp_logs = true;
+        result.enable_stderr_logs = true;
     }
 
     return result;
