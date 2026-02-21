@@ -825,6 +825,74 @@ fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.Posi
 
     const completing = offsets.locToSlice(source, .{ .start = string_content_loc.start, .end = previous_separator_index orelse string_content_loc.start });
 
+    const after_separator_index = if (previous_separator_index) |index| index + 1 else string_content_loc.start;
+    const insert_loc: offsets.Loc = .{ .start = after_separator_index, .end = builder.source_index };
+    const replace_loc: offsets.Loc = .{ .start = after_separator_index, .end = next_separator_index orelse string_content_loc.end };
+
+    const insert_range = offsets.locToRange(source, insert_loc, builder.server.offset_encoding);
+    const replace_range = offsets.locToRange(source, replace_loc, builder.server.offset_encoding);
+
+    if (pos_context == .import_string_literal) {
+        try builder.completions.ensureUnusedCapacity(builder.arena, 2);
+        if (store.config.zig_lib_dir) |zig_lib_dir| {
+            builder.completions.appendAssumeCapacity(.{
+                .label = "std",
+                .kind = .Module,
+                .detail = zig_lib_dir.path,
+                .sortText = "1",
+            });
+        }
+        if (store.config.builtin_path) |builtin_path| {
+            builder.completions.appendAssumeCapacity(.{
+                .label = "builtin",
+                .kind = .Module,
+                .detail = builtin_path,
+                .sortText = "2",
+            });
+        }
+
+        if (!DocumentStore.supports_build_system) {
+            // no build system modules
+        } else if (DocumentStore.isBuildFile(builder.orig_handle.uri)) blk: {
+            const build_file = store.getBuildFile(builder.orig_handle.uri) orelse break :blk;
+            const build_config = build_file.tryLockConfig(store.io) orelse break :blk;
+            defer build_file.unlockConfig(store.io);
+
+            try builder.completions.ensureUnusedCapacity(builder.arena, build_config.deps_build_roots.len);
+            for (build_config.deps_build_roots) |dbr| {
+                completions.putAssumeCapacity(.{
+                    .label = dbr.name,
+                    .kind = .Module,
+                    .detail = dbr.path,
+                    .sortText = "4",
+                }, {});
+            }
+        } else if (try builder.orig_handle.getAssociatedBuildFileUri(store)) |uri| blk: {
+            const build_file = store.getBuildFile(uri).?;
+            const build_config = build_file.tryLockConfig(store.io) orelse break :blk;
+            defer build_file.unlockConfig(store.io);
+
+            try completions.ensureUnusedCapacity(builder.arena, build_config.packages.len);
+            for (build_config.packages) |pkg| {
+                completions.putAssumeCapacity(.{
+                    .label = pkg.name,
+                    .kind = .Module,
+                    .detail = pkg.path,
+                    .sortText = "4",
+                }, {});
+            }
+        }
+
+        const string_content_range = offsets.locToRange(source, .{ .start = insert_loc.start, .end = string_content_loc.end }, builder.server.offset_encoding);
+
+        // completions on module replace the entire string literal
+        for (builder.completions.items) |*item| {
+            if (item.kind == .Module and item.textEdit == null) {
+                item.textEdit = createTextEdit(builder, .{ .newText = item.label, .insert = insert_range, .replace = string_content_range });
+            }
+        }
+    }
+
     var search_paths: std.ArrayList([]const u8) = .empty;
     if (std.fs.path.isAbsolute(completing) and pos_context != .import_string_literal) {
         try search_paths.append(builder.arena, completing);
@@ -844,13 +912,6 @@ fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.Posi
         };
         try search_paths.append(builder.arena, std.fs.path.dirname(document_path).?);
     }
-
-    const after_separator_index = if (previous_separator_index) |index| index + 1 else string_content_loc.start;
-    const insert_loc: offsets.Loc = .{ .start = after_separator_index, .end = builder.source_index };
-    const replace_loc: offsets.Loc = .{ .start = after_separator_index, .end = next_separator_index orelse string_content_loc.end };
-
-    const insert_range = offsets.locToRange(source, insert_loc, builder.server.offset_encoding);
-    const replace_range = offsets.locToRange(source, replace_loc, builder.server.offset_encoding);
 
     for (search_paths.items) |path| {
         if (!std.fs.path.isAbsolute(path)) continue;
@@ -902,67 +963,6 @@ fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.Posi
             else => {},
         }
     }
-
-    if (completing.len == 0 and pos_context == .import_string_literal) {
-        no_modules: {
-            if (!DocumentStore.supports_build_system) break :no_modules;
-
-            if (DocumentStore.isBuildFile(builder.orig_handle.uri)) {
-                const build_file = store.getBuildFile(builder.orig_handle.uri) orelse break :no_modules;
-                const build_config = build_file.tryLockConfig(store.io) orelse break :no_modules;
-                defer build_file.unlockConfig(store.io);
-
-                try completions.ensureUnusedCapacity(builder.arena, build_config.deps_build_roots.len);
-                for (build_config.deps_build_roots) |dbr| {
-                    completions.putAssumeCapacity(.{
-                        .label = dbr.name,
-                        .kind = .Module,
-                        .detail = dbr.path,
-                    }, {});
-                }
-            } else if (try builder.orig_handle.getAssociatedBuildFileUri(store)) |uri| {
-                const build_file = store.getBuildFile(uri).?;
-                const build_config = build_file.tryLockConfig(store.io) orelse break :no_modules;
-                defer build_file.unlockConfig(store.io);
-
-                try completions.ensureUnusedCapacity(builder.arena, build_config.packages.len);
-                for (build_config.packages) |pkg| {
-                    completions.putAssumeCapacity(.{
-                        .label = pkg.name,
-                        .kind = .Module,
-                        .detail = pkg.path,
-                    }, {});
-                }
-            }
-        }
-
-        try completions.ensureUnusedCapacity(builder.arena, 2);
-        if (store.config.zig_lib_dir) |zig_lib_dir| {
-            completions.putAssumeCapacity(.{
-                .label = "std",
-                .kind = .Module,
-                .detail = zig_lib_dir.path,
-            }, {});
-        }
-        if (store.config.builtin_path) |builtin_path| {
-            completions.putAssumeCapacity(.{
-                .label = "builtin",
-                .kind = .Module,
-                .detail = builtin_path,
-            }, {});
-        }
-
-        const string_content_range = offsets.locToRange(source, .{ .start = insert_loc.start, .end = string_content_loc.end }, builder.server.offset_encoding);
-
-        // completions on module replace the entire string literal
-        for (builder.completions.items) |*item| {
-            if (item.kind == .Module and item.textEdit == null) {
-                item.textEdit = createTextEdit(builder, .{ .newText = item.label, .insert = insert_range, .replace = string_content_range });
-            }
-        }
-    }
-
-    try builder.completions.appendSlice(builder.arena, completions.keys());
 }
 
 pub fn completionAtIndex(
