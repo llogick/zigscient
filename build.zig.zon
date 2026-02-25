@@ -22,8 +22,8 @@
             .hash = "lsp_kit-0.1.0-bi_PLw8zDABvCWe2rD4Aqb9gx0sRXBKO0a7M0vg3AbR3",
         },
         .extended_zccs = .{
-            .url = "https://github.com/llogick/extended-zccs/archive/58d5211988fa7798f58049af5f7234f7c439bb14.tar.gz",
-            .hash = "extended_zccs-0.16.0-dev-zEaUNsDQDgAlF6DBu8jg2oiBTSYweAMj6QwF75ykGGia",
+            .url = "https://github.com/llogick/extended-zccs/archive/6679695f3ac4acfe20f1aa2839fb15fa63a5278f.tar.gz",
+            .hash = "extended_zccs-0.16.0-dev-zEaUNmLSDgBwH9zGejadOEEEK7bsg_D7dYQ3VbhHA-QE",
             // .path = "../../../extended-zccs",
         },
         .tracy = .{
