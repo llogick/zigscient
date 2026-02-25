@@ -1488,6 +1488,11 @@ fn collectContainerFields(
 ) Analyser.Error!void {
     const info = switch (container.data) {
         .container => |info| info,
+        .error_union, .optional => blk: { // HACK? Shouldn't these be resolved before they get here?
+            const expected_ty = container.resolveDeclLiteralResultType();
+            if (expected_ty.data != .container) return;
+            break :blk expected_ty.data.container;
+        },
         else => return,
     };
 
