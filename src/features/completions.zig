@@ -770,39 +770,78 @@ fn completeError(builder: *Builder, token_index: std.zig.Ast.TokenIndex) Analyse
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    const tree = builder.orig_handle.tree;
+    const handle = builder.orig_handle;
+    const tree = handle.tree;
     const token_tags = tree.tokens.items(.tag);
     const token_starts = tree.tokens.items(.start);
 
-    std.debug.assert(token_tags[token_index] == .keyword_error);
+    if (token_tags[token_index] != .keyword_error) return null;
     if (token_index < 1 or token_index > token_tags.len - 2) return null;
 
     const dot_token_index = token_index + 1;
     if (token_tags[dot_token_index] != .period) return null;
 
     if (token_tags[token_index - 1] == .keyword_return) {
-        const doc_scope = try builder.orig_handle.getDocumentScope();
+        const doc_scope = try handle.getDocumentScope();
         const fn_scope = Analyser.innermostScopeAtIndexWithTag(doc_scope, token_starts[token_index], .initOne(.function)).unwrap() orelse return null;
         const fn_node = doc_scope.getScopeAstNode(fn_scope).?;
-        const fn_type = try builder.analyser.resolveTypeOfNode(.of(fn_node, builder.orig_handle)) orelse return null;
+        const fn_type = try builder.analyser.resolveTypeOfNode(.of(fn_node, handle)) orelse return null;
         const ret_type = try builder.analyser.resolveReturnType(fn_type) orelse return null;
         const err_type = try builder.analyser.resolveUnwrapErrorUnionType(ret_type, .error_set) orelse return null;
-        return collectErrorSetTypeFields(builder, err_type);
+        return collectErrorSetTypeFields(builder, err_type, true);
     }
 
-    const nodes = try ast.nodesOverlappingIndexIncludingParseErrors(builder.arena, &tree, token_starts[token_index]);
+    var nodes = try ast.nodesOverlappingIndexIncludingParseErrors(builder.arena, &tree, token_starts[token_index]);
     var dot_context = getSwitchOrStructInitContext(&tree, dot_token_index, nodes) orelse return null;
     if (dot_context.likely != .switch_case) return null;
 
-    const name_loc = offsets.tokenToLoc(&tree, dot_context.type_info.identifier_token_index);
-    var types_list: Analyser.Type.ArraySet = .empty;
-    try collectVarAccessContainerNodes(builder, builder.orig_handle, name_loc, dot_context, &types_list);
+    // dot_context.type_info.identifier_token_index is the `err` in `switch(err)`
+    // ```zig
+    //  fcall() catch |err| {
+    //      const .. = switch (err) {
+    //  }
+    // ```
+    // const used_members_set = try collectUsedMembersSet(builder, dot_context.likely, dot_token_index);
+    const containers = try collectContainerNodes(builder, handle, dot_context);
+    if (containers.len != 0) for (containers) |container| {
+        _ = try collectErrorSetTypeFields(builder, container, true);
+        return;
+    };
 
-    if (types_list.entries.len == 0) return null;
+    // The parser failed to create the switch node => find the fn manually
+    var ident_tok_i = dot_context.type_info.identifier_token_index;
+    if (ident_tok_i < 10) return null;
+    if (token_tags[ident_tok_i - 6] != .keyword_catch) return null;
+    ident_tok_i -= 7;
+    if (token_tags[ident_tok_i] != .r_paren) return null;
 
-    for (types_list.keys()) |ty| {
-        _ = try collectErrorSetTypeFields(builder, ty);
+    var depth: i32 = 0;
+    while (ident_tok_i > 0) : (ident_tok_i -= 1) {
+        switch (token_tags[ident_tok_i]) {
+            .r_paren => depth += 1,
+            .l_paren => {
+                depth -= 1;
+                if (depth != 0) continue;
+                nodes = try ast.nodesOverlappingIndexIncludingParseErrors(builder.arena, &tree, token_starts[ident_tok_i]);
+                switch (tree.nodeTag(nodes[0])) {
+                    .identifier, .field_access => {
+                        if (try builder.analyser.resolveTypeOfNode(.of(nodes[0], handle))) |ty| {
+                            if (!ty.isFunc()) break;
+                            const ret_type = try builder.analyser.resolveReturnType(ty) orelse return null;
+                            const err_type = try builder.analyser.resolveUnwrapErrorUnionType(ret_type, .error_set) orelse return null;
+                            return collectErrorSetTypeFields(builder, err_type, true);
+                        }
+                    },
+                    else => {},
+                }
+                break;
+            },
+            .semicolon => return null,
+            else => {},
+        }
     }
+
+    return null;
 }
 
 /// Asserts that `pos_context` is one of the following:
@@ -1048,8 +1087,10 @@ pub fn completionAtIndex(
             }
         }
 
-        const score = itemSortScore(item.*);
-        item.sortText = try std.fmt.allocPrint(arena, "{s}_{s}", .{ score, item.label });
+        if (item.sortText == null) {
+            const score = itemSortScore(item.*);
+            item.sortText = try std.fmt.allocPrint(arena, "{s}_{s}", .{ score, item.label });
+        }
     }
 
     return .{ .isIncomplete = false, .items = completions };
@@ -1502,7 +1543,20 @@ fn collectContainerFields(
 ) Analyser.Error!void {
     const info = switch (container.data) {
         .container => |info| info,
-        .error_union, .optional => blk: { // HACK? Shouldn't these be resolved before they get here?
+        .ip_index => {
+            _ = try collectErrorSetTypeFields(builder, container, false);
+            return;
+        },
+        .error_union => blk: { // HACK? Shouldn't these be resolved before they get here?
+            // This will require substantial changes to do right, ie sorting errors last in completions
+            // if (eu.error_set) |es| {
+            //     _ = try collectErrorSetTypeFields(builder, es.*, false);
+            // }
+            const expected_ty = container.resolveDeclLiteralResultType();
+            if (expected_ty.data != .container) return;
+            break :blk expected_ty.data.container;
+        },
+        .optional => blk: { // HACK? Shouldn't these be resolved before they get here?
             const expected_ty = container.resolveDeclLiteralResultType();
             if (expected_ty.data != .container) return;
             break :blk expected_ty.data.container;
@@ -1706,10 +1760,12 @@ fn collectContainerNodes(
 fn collectErrorSetTypeFields(
     builder: *Builder,
     err_type: Analyser.Type,
+    /// Affects the textEdit, ie if true it means we're completing a `error.` otherwise a `.` => replace `.` with `error.name`
+    kw_error_present: bool,
 ) error{OutOfMemory}!?void {
     if (err_type.data != .ip_index) return null;
     const ip = builder.analyser.ip;
-    const key = ip.indexToKey(err_type.data.ip_index.type);
+    const key = ip.indexToKey(if (err_type.data.ip_index.index) |i| i else err_type.data.ip_index.type);
     if (key != .error_set_type) return null;
     if (key.error_set_type.names.len == 0) return;
 
@@ -1718,10 +1774,22 @@ fn collectErrorSetTypeFields(
 
     for (0..key.error_set_type.names.len) |name_idx| {
         const err_name = ip.string_pool.stringToSliceUnsafe(key.error_set_type.names.at(@intCast(name_idx), ip));
+        const label = try std.fmt.allocPrint(builder.arena, "{s}{s}", .{ if (kw_error_present) "" else "error.", err_name });
+        const source_index = builder.source_index;
+        const handle = builder.orig_handle;
+        const tree = handle.tree;
+        const source = tree.source;
+        const server = builder.server;
+        var identifier_loc = prepareCompletionLoc(&handle.tree, source_index);
+        identifier_loc.start = identifier_loc.start - @intFromBool(!kw_error_present and offsets.sourceIndexToTokenIndex(&tree, source_index).pickPreferred(&.{.period}, &tree) != null);
+        const insert_range = offsets.locToRange(source, identifier_loc, server.offset_encoding);
+        const replace_range = offsets.locToRange(source, identifier_loc, server.offset_encoding);
+
         try builder.completions.append(builder.arena, .{
-            .label = err_name,
+            .label = label,
             .kind = .EnumMember,
-            .insertText = err_name,
+            .textEdit = createTextEdit(builder, .{ .newText = label, .insert = insert_range, .replace = replace_range }),
+            .sortText = try std.fmt.allocPrint(builder.arena, "R_{s}", .{err_name}),
         });
     }
 }

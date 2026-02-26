@@ -2220,6 +2220,110 @@ test "error." {
     });
 }
 
+test "treat '.' as 'error.'" {
+    // try testCompletion(
+    //     \\const Birdie = error{Canary};
+    //     \\const Errors = error{E1} || error{E2} || nested.Error;
+    //     \\const nested = struct {
+    //     \\    const Error = error{E3};
+    //     \\};
+    //     \\fn foo() (Errors || error{E4})!void {
+    //     \\    return error.<cursor>;
+    //     \\}
+    // , &.{
+    //     .{ .label = "E1", .kind = .EnumMember },
+    //     .{ .label = "E2", .kind = .EnumMember },
+    //     .{ .label = "E3", .kind = .EnumMember },
+    //     .{ .label = "E4", .kind = .EnumMember },
+    // });
+    try testCompletion(
+        \\const Birdie = error{Canary};
+        \\const Errors = error{E1} || error{E2} || nested.Error;
+        \\const nested = struct {
+        \\    const Error = error{E3};
+        \\};
+        \\const nm = struct {
+        \\    fn foo() (Errors || error{E4})!void {}
+        \\};
+        \\fn baz() !void {
+        \\    nm.foo() catch |err| switch (err) {
+        \\        .<cursor>
+        \\    };
+        \\}
+    , &.{
+        .{ .label = "error.E1", .kind = .EnumMember },
+        .{ .label = "error.E2", .kind = .EnumMember },
+        .{ .label = "error.E3", .kind = .EnumMember },
+        .{ .label = "error.E4", .kind = .EnumMember },
+    });
+    try testCompletion(
+        \\const Birdie = error{Canary};
+        \\const Errors = error{E1} || error{E2} || nested.Error;
+        \\const nested = struct {
+        \\    const Error = error{E3};
+        \\};
+        \\const nm = struct {
+        \\    fn foo() (Errors || error{E4})!void {}
+        \\};
+        \\fn baz() !void {
+        \\    nm.foo() catch |err| {
+        \\        const some = switch (err) {
+        \\            .<cursor>
+        \\        }
+        \\    };
+        \\}
+    , &.{
+        .{ .label = "error.E1", .kind = .EnumMember },
+        .{ .label = "error.E2", .kind = .EnumMember },
+        .{ .label = "error.E3", .kind = .EnumMember },
+        .{ .label = "error.E4", .kind = .EnumMember },
+    });
+    // try testCompletion(
+    //     \\const Birdie = error{Canary};
+    //     \\const Errors = error{E1} || error{E2} || nested.Error;
+    //     \\const nested = struct {
+    //     \\    const Error = error{E3};
+    //     \\};
+    //     \\const nm = struct {
+    //     \\    fn foo() error{E5}!void {}
+    //     \\};
+    //     \\fn baz() (Errors || error{E4})!void {
+    //     \\    nm.foo() catch |err| switch (err) {
+    //     \\        error.E5 => return error.<cursor>
+    //     \\    };
+    //     \\}
+    // , &.{
+    //     .{ .label = "E1", .kind = .EnumMember },
+    //     .{ .label = "E2", .kind = .EnumMember },
+    //     .{ .label = "E3", .kind = .EnumMember },
+    //     .{ .label = "E4", .kind = .EnumMember },
+    // });
+    try testCompletionTextEdit(.{
+        .source =
+        \\const err: error{E1, E2} = undefined;
+        \\switch(err) {
+        \\    .<cursor>
+        \\}
+        ,
+        .label = "error.E1",
+        .expected_insert_line = "    error.E1",
+        .expected_replace_line = "    error.E1",
+        .enable_snippets = false,
+    });
+    try testCompletionTextEdit(.{
+        .source =
+        \\const err: error{Err1, Err2} = undefined;
+        \\switch(err) {
+        \\    error.E<cursor>0
+        \\}
+        ,
+        .label = "Err1",
+        .expected_insert_line = "    error.Err1",
+        .expected_replace_line = "    error.Err1",
+        .enable_snippets = false,
+    });
+}
+
 test "structinit" {
     try testCompletion(
         \\const S = struct {
