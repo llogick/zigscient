@@ -3650,6 +3650,9 @@ test "enum completion on out of bound token index" {
     try testCompletion(
         \\ = 1.<cursor>
     , &.{});
+    try testCompletion(
+        \\) { .<cursor>
+    , &.{});
 }
 
 test "combine doc comments of declaration and definition" {
