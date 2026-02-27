@@ -51,14 +51,9 @@ pub fn main(init: process.Init.Minimal) !void {
     defer threaded.deinit();
     const io = threaded.ioBasic();
 
-    // ...but we'll back our arena by `std.heap.page_allocator` for efficiency.
-    var single_threaded_arena: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
-    defer single_threaded_arena.deinit();
-    var thread_safe_arena: std.heap.ThreadSafeAllocator = .{
-        .child_allocator = single_threaded_arena.allocator(),
-        .io = io,
-    };
-    const arena = thread_safe_arena.allocator();
+    var arena_instance: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+    defer arena_instance.deinit();
+    const arena = arena_instance.allocator();
 
     const args = try init.args.toSlice(arena);
 
@@ -100,7 +95,7 @@ pub fn main(init: process.Init.Minimal) !void {
             .io = io,
             .gpa = arena,
             .manifest_dir = try local_cache_directory.handle.createDirPathOpen(io, "h", .{}),
-            .cwd = try process.currentPathAlloc(io, single_threaded_arena.allocator()),
+            .cwd = try process.currentPathAlloc(io, arena),
         },
         .zig_exe = zig_exe,
         .environ_map = try init.environ.createMap(arena),
@@ -2278,7 +2273,8 @@ const copied_from_zig = struct {
         try zig_args.append("--global-cache-dir");
         try zig_args.append(b.graph.global_cache_root.path orelse ".");
 
-        if (b.graph.debug_compiler_runtime_libs) try zig_args.append("--debug-rt");
+        if (b.graph.debug_compiler_runtime_libs) |mode|
+            try zig_args.append(b.fmt("--debug-rt={t}", .{mode}));
 
         try zig_args.append("--name");
         try zig_args.append(compile.name);
