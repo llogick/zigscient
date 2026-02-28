@@ -1033,9 +1033,8 @@ const roots_info = struct {
         const gop_result = try visited_steps.getOrPut(gpa, step);
         if (gop_result.found_existing) return;
         if (step.cast(Step.Compile)) |compile| {
-            // if (compile.kind.isTest()) break :blk;
+            // if (compile.kind.isTest()) return;
             var root_imports: std.ArrayListUnmanaged(BuildConfig.NamePathPair) = .{};
-            // std.debug.print("cstep: {s}\n", .{compile.name});
 
             var cli_named_modules = try copied_from_zig.CliNamedModules.init(gpa, compile.root_module);
             for (compile.getCompileDependencies(false)) |dep_compile| {
@@ -1075,10 +1074,11 @@ const roots_info = struct {
         if (rhs.mods.len == 0) return true; //  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         const lhs_dir_name = std.fs.path.dirname(lhs.mods[0].path).?; // [0] should be 'root'
         const rhs_dir_name = std.fs.path.dirname(rhs.mods[0].path).?; // [0] should be 'root'
-        if (std.mem.startsWith(u8, lhs_dir_name, dir_path)) {
-            return if (!std.mem.startsWith(u8, rhs_dir_name, dir_path)) true else (lhs.mods.len > rhs.mods.len);
-        }
-        return false;
+        if (std.mem.startsWith(u8, lhs_dir_name, dir_path) and !std.mem.startsWith(u8, rhs_dir_name, dir_path)) return true;
+        if (std.mem.startsWith(u8, rhs_dir_name, dir_path) and !std.mem.startsWith(u8, lhs_dir_name, dir_path)) return false;
+        if (@intFromEnum(lhs.step.kind) < @intFromEnum(rhs.step.kind)) return true;
+        if (@intFromEnum(rhs.step.kind) < @intFromEnum(lhs.step.kind)) return false;
+        return (lhs_dir_name.len < rhs_dir_name.len);
     }
 
     pub fn print(
