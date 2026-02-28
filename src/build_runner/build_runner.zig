@@ -1069,13 +1069,20 @@ const roots_info = struct {
         );
     }
 
-    pub fn hasPrecedence(dir_path: []const u8, lhs: RootEntry, rhs: RootEntry) bool {
+    pub const hasPrecedenceContext = struct {
+        build_root_path: []const u8,
+        zig_pkg_path: []const u8,
+    };
+
+    pub fn hasPrecedence(ctx: hasPrecedenceContext, lhs: RootEntry, rhs: RootEntry) bool {
         if (lhs.mods.len == 0) return false; // C compile steps should be last
         if (rhs.mods.len == 0) return true; //  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         const lhs_dir_name = std.fs.path.dirname(lhs.mods[0].path).?; // [0] should be 'root'
         const rhs_dir_name = std.fs.path.dirname(rhs.mods[0].path).?; // [0] should be 'root'
-        if (std.mem.startsWith(u8, lhs_dir_name, dir_path) and !std.mem.startsWith(u8, rhs_dir_name, dir_path)) return true;
-        if (std.mem.startsWith(u8, rhs_dir_name, dir_path) and !std.mem.startsWith(u8, lhs_dir_name, dir_path)) return false;
+        if (std.mem.startsWith(u8, lhs_dir_name, ctx.zig_pkg_path) and !std.mem.startsWith(u8, rhs_dir_name, ctx.zig_pkg_path)) return false;
+        if (std.mem.startsWith(u8, rhs_dir_name, ctx.zig_pkg_path) and !std.mem.startsWith(u8, lhs_dir_name, ctx.zig_pkg_path)) return true;
+        if (std.mem.startsWith(u8, lhs_dir_name, ctx.build_root_path) and !std.mem.startsWith(u8, rhs_dir_name, ctx.build_root_path)) return true;
+        if (std.mem.startsWith(u8, rhs_dir_name, ctx.build_root_path) and !std.mem.startsWith(u8, lhs_dir_name, ctx.build_root_path)) return false;
         if (@intFromEnum(lhs.step.kind) < @intFromEnum(rhs.step.kind)) return true;
         if (@intFromEnum(rhs.step.kind) < @intFromEnum(lhs.step.kind)) return false;
         return (lhs_dir_name.len < rhs_dir_name.len);
@@ -1432,7 +1439,16 @@ fn extractBuildInformation(
         );
     }
 
-    std.mem.sort(roots_info.RootEntry, unsorted_roots.items, build_root, roots_info.hasPrecedence);
+    const zig_pkg_path = try std.fs.path.join(arena, &.{ build_root, "zig-pkg" });
+    std.mem.sort(
+        roots_info.RootEntry,
+        unsorted_roots.items,
+        roots_info.hasPrecedenceContext{
+            .build_root_path = build_root,
+            .zig_pkg_path = zig_pkg_path,
+        },
+        roots_info.hasPrecedence,
+    );
 
     if (!dont_create_roots_txt_file) try roots_info_slc.print(gpa,
         \\Project path: {s}
@@ -1459,12 +1475,12 @@ fn extractBuildInformation(
         if (!dont_create_roots_txt_file) try roots_info.print(gpa, &roots_info_slc, &root_idx, item.step, &args);
     }
 
+    const io = b.graph.io;
     const roots_info_file_path = if (!dont_create_roots_txt_file) blk: {
         const dir_path = std.fs.path.dirname(self_path) orelse unreachable;
         const file_path = try std.fs.path.join(gpa, &.{ dir_path, "roots.txt" });
         // const file = try std.fs.cwd().createFile(file_path, .{});
         // try file.writeAll(roots_info_slc.items);
-        const io = b.graph.io;
         const file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
         var fw = file.writer(io, &.{});
         fw.interface.writeAll(roots_info_slc.items) catch return fw.err.?;
@@ -1487,8 +1503,10 @@ fn extractBuildInformation(
         .{ .whitespace = .indent_2 },
     );
 
-    var file_writer = std.Io.File.stdout().writer(b.graph.io, &.{});
+    var file_writer = std.Io.File.stdout().writer(io, &.{});
     file_writer.interface.writeAll(stringified_build_config) catch return file_writer.err.?;
+
+    std.process.exit(0);
 }
 
 fn processPkgConfig(
