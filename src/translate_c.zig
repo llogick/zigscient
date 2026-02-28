@@ -187,7 +187,7 @@ pub fn translate(
             return null;
         },
     };
-    defer process.kill(io);
+    errdefer process.kill(io);
 
     {
         var stdin_writer = process.stdin.?.writer(io, &.{});
