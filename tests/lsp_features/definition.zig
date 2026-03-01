@@ -366,6 +366,29 @@ test "builtins" {
     );
 }
 
+test "escaped identifier with same name as primitive" {
+    try testDefinition(
+        \\const @"null" = undefined;
+        \\const foo = <>null;
+        \\const bar = @"null";
+    );
+    try testDefinition(
+        \\const @"i32" = undefined;
+        \\const foo = <>i32;
+        \\const bar = @"i32";
+    );
+    try testDefinition(
+        \\const <def><decl>@"null"</decl></def> = undefined;
+        \\const foo = null;
+        \\const bar = <>@"null";
+    );
+    try testDefinition(
+        \\const <def><decl>@"i32"</decl></def> = undefined;
+        \\const foo = i32;
+        \\const bar = <>@"i32";
+    );
+}
+
 /// - use `<>` to indicate the cursor position
 /// - use `<decl>content</decl>` to set the expected range of the declaration
 /// - use `<def>content</def>` to set the expected range of the definition
@@ -455,7 +478,7 @@ fn testDefinition(source: []const u8) !void {
                 try error_builder.msgAtLoc("actual declaration here", test_uri, actual_loc, .err, .{});
             }
         } else {
-            try error_builder.msgAtLoc("unexpected declaration here", test_uri.raw, actual_loc, .err, .{});
+            try error_builder.msgAtLoc("unexpected declaration here", test_uri, actual_loc, .err, .{});
         }
         const actual_origin_loc = offsets.rangeToLoc(phr.new_source, response.definition_links[0].originSelectionRange.?, ctx.server.offset_encoding);
         if (origin_loc) |expected_origin_loc| {
@@ -479,7 +502,7 @@ fn testDefinition(source: []const u8) !void {
                 try error_builder.msgAtLoc("actual definition here", test_uri, actual_loc, .err, .{});
             }
         } else {
-            try error_builder.msgAtLoc("unexpected definition here", test_uri.raw, actual_loc, .err, .{});
+            try error_builder.msgAtLoc("unexpected definition here", test_uri, actual_loc, .err, .{});
         }
         const actual_origin_loc = offsets.rangeToLoc(phr.new_source, response.definition_links[0].originSelectionRange.?, ctx.server.offset_encoding);
         if (origin_loc) |expected_origin_loc| {
@@ -503,7 +526,7 @@ fn testDefinition(source: []const u8) !void {
                 try error_builder.msgAtLoc("actual type definition here", test_uri, actual_loc, .err, .{});
             }
         } else {
-            try error_builder.msgAtLoc("unexpected type definition here", test_uri.raw, actual_loc, .err, .{});
+            try error_builder.msgAtLoc("unexpected type definition here", test_uri, actual_loc, .err, .{});
         }
         const actual_origin_loc = offsets.rangeToLoc(phr.new_source, response.definition_links[0].originSelectionRange.?, ctx.server.offset_encoding);
         if (origin_loc) |expected_origin_loc| {
