@@ -1,15 +1,34 @@
-A drop-in alternative to the original Zig Language Server, with several enhancements.
+<h1 align="center">Zigscient</h1> 
+<h3 align="center">A Zig Language Server</h3>
+<p align="center">A drop-in alternative to ZLS</p>
 
-Key features and improvements:
+
+## What's different:
+
+- Improved editing responsiveness for large documents
+  - Uses an extended parser, that reuses tokens and nodes to process document changes faster
+
+- Improved syntax error handling
+  - Uses an extended parser, that works around some common parser deficiencies due to syntax errors
+
 - Reworked Modules Collection and Lookup
-  - Modules are grouped by CompileStep (root ID). See [How to set/switch `root_id`](https://github.com/llogick/zigscient/wiki/Modules:-Switching-%60root_id%60)
-- Improved parser performance:
-  - Slightly better syntax error handling
-  - Faster reparsing of large documents
-- Enhanced code completions:
-  - Declaration literals: autocompletion and navigation support
-  - Error and function return type completions, e.g. `return .`, `return error.`, and `switch(err) { error. }`
+  - Modules are grouped by CompileStep (root ID). See [How to set/switch 'root_id'](https://github.com/llogick/zigscient/wiki/Modules:-Switching-%60root_id%60)
+  
+  (This may look like a step back, but is needed for correct module resolution for modules created using meta-programming that have the same name)
 
+- Propagates error messages originating in currently not-open-in-editor documents based
+
+    on reference-trace, eg Writers' `print(fmt, args)`
+
+      std.debug.print("{}", .{});      [!] too few arguments
+      std.debug.print("", .{1});       [!] unused argument in ''
+      std.debug.print("{s}", .{1});    [!] invalid format string ..
+      [!] indicates that the error did not originate in the current document/file
+
+## Building
+```
+zig build -Doptimize=ReleaseFast
+```
 
 > [!NOTE]  
 > Remember to rename the executable or update your editor's configuration
