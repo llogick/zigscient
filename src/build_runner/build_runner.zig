@@ -337,7 +337,7 @@ pub fn main(init: process.Init.Minimal) !void {
     }
 
     if (graph.needed_lazy_dependencies.entries.len != 0) {
-        var buffer: ArrayList(u8) = .{};
+        var buffer: ArrayList(u8) = .empty;
         for (graph.needed_lazy_dependencies.keys()) |k| {
             try buffer.appendSlice(arena, k);
             try buffer.append(arena, '\n');
@@ -987,7 +987,7 @@ const Packages = struct {
     }
 
     pub fn toPackageList(self: *Packages) ![]BuildConfig.NamePathPair {
-        var result: ArrayList(BuildConfig.NamePathPair) = .{};
+        var result: ArrayList(BuildConfig.NamePathPair) = .empty;
         errdefer result.deinit(self.allocator);
 
         const Context = struct {
@@ -1034,7 +1034,7 @@ const roots_info = struct {
         if (gop_result.found_existing) return;
         if (step.cast(Step.Compile)) |compile| {
             // if (compile.kind.isTest()) return;
-            var root_imports: std.ArrayListUnmanaged(BuildConfig.NamePathPair) = .{};
+            var root_imports: std.ArrayListUnmanaged(BuildConfig.NamePathPair) = .empty;
 
             var cli_named_modules = try copied_from_zig.CliNamedModules.init(gpa, compile.root_module);
             for (compile.getCompileDependencies(false)) |dep_compile| {
@@ -1174,7 +1174,7 @@ fn extractBuildInformation(
 
     // collect the set of all steps
     {
-        var stack: ArrayList(*Step) = .{};
+        var stack: ArrayList(*Step) = .empty;
         defer stack.deinit(gpa);
 
         try stack.ensureUnusedCapacity(gpa, b.top_level_steps.count());
@@ -1400,7 +1400,7 @@ fn extractBuildInformation(
     //     .{ "diffz", "122089a8247a693cad53beb161bde6c30f71376cd4298798d45b32740c3581405864" },
     // };
 
-    var deps_build_roots: ArrayList(BuildConfig.NamePathPair) = .{};
+    var deps_build_roots: ArrayList(BuildConfig.NamePathPair) = .empty;
     for (dependencies.root_deps) |root_dep| {
         inline for (comptime std.meta.declarations(dependencies.packages)) |package| blk: {
             if (std.mem.eql(u8, package.name, root_dep[1])) {
@@ -1424,8 +1424,8 @@ fn extractBuildInformation(
     }
 
     // roots[]
-    var visited_steps: std.AutoArrayHashMapUnmanaged(*Step, void) = .{};
-    var unsorted_roots: std.ArrayListUnmanaged(roots_info.RootEntry) = .{};
+    var visited_steps: std.AutoArrayHashMapUnmanaged(*Step, void) = .empty;
+    var unsorted_roots: std.ArrayListUnmanaged(roots_info.RootEntry) = .empty;
     var roots_info_slc: std.ArrayList(u8) = .empty;
     var root_idx: u32 = 0;
 
