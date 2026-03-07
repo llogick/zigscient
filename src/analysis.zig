@@ -1909,7 +1909,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, options: ResolveOptions) Error
 
             func_ty = try analyser.resolveFunctionTypeFromCall(handle, call, func_ty);
             const func_info = func_ty.data.function;
-            const func_uri = func_info.handle.uri.raw;
+            const func_uri = func_info.handle.uri;
 
             if (std.mem.endsWith(u8, func_uri, "/std/meta.zig") and func_info.name != null) {
                 const func_name = func_info.name.?;
