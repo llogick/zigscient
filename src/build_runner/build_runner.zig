@@ -49,7 +49,7 @@ pub fn main(init: process.Init.Minimal) !void {
         .argv0 = .init(init.args),
     });
     defer threaded.deinit();
-    const io = threaded.ioBasic();
+    const io = threaded.io();
 
     var arena_instance: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     defer arena_instance.deinit();

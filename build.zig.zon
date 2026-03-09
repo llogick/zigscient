@@ -18,8 +18,9 @@
             .hash = "diffz-0.0.1-G2tlIYrNAQAQx3cuIp7EVs0xvxbv9DCPf4YuHmvubsrZ",
         },
         .lsp_kit = .{
-            .url = "https://github.com/LamplightWorks/lsp-kit/archive/7b03f0b6801babffe76608cf3db59793902a21d6.tar.gz",
-            .hash = "lsp_kit-0.1.0-bi_PLw8zDABvCWe2rD4Aqb9gx0sRXBKO0a7M0vg3AbR3",
+            .url = "https://github.com/LamplightWorks/lsp-kit/archive/9de64c17fafb865732069f99b059b9fb30121d3a.tar.gz",
+            .hash = "lsp_kit-0.1.0-bi_PLwozDADexLfUG27dVjQi9kD5kfOAvwGVWHCwuE1R",
+            // .path = "../../../zig-lsp-kit",
         },
         .extended_zccs = .{
             .url = "https://github.com/llogick/extended-zccs/archive/e1353077ac3df69d3cbee858218b7332bead143a.tar.gz",
