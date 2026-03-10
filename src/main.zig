@@ -547,7 +547,7 @@ pub fn main(init: std.process.Init.Minimal) !u8 {
         .argv0 = .init(init.args),
     });
     defer threaded.deinit();
-    const io = threaded.ioBasic();
+    const io = threaded.io();
 
     var environ_map = try init.environ.createMap(allocator);
     defer environ_map.deinit();
