@@ -31,6 +31,7 @@ pub const dependencies = @import("@dependencies");
 pub const std_options: std.Options = .{
     .side_channels_mitigations = .none,
     .http_disable_tls = true,
+    .networking = false,
 };
 
 var self_path: [:0]const u8 = undefined;

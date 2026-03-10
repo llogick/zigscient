@@ -37,6 +37,7 @@ pub const std_options: std.Options = .{
     // value in logFn itself
     .log_level = .debug,
     .logFn = logFn,
+    .networking = false,
 };
 
 /// Log messages with the LSP 'window/logMessage' message.
