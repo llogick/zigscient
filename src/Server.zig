@@ -729,13 +729,15 @@ fn handleConfiguration(server: *Server, json: std.json.Value) error{ Canceled, O
     };
 
     inline for (configuration.file_system_config_options) |file_config| {
+        var runtime_known_config_name: []const u8 = ""; // avoid unnecessary function instantiations of `std.Io.Writer.print`
+        runtime_known_config_name = file_config.name;
         const field: *?[]const u8 = &@field(new_config, file_config.name);
         if (field.*) |maybe_relative| resolve: {
             if (maybe_relative.len == 0) break :resolve;
             if (std.fs.path.isAbsolute(maybe_relative)) break :resolve;
 
             const root_dir = maybe_root_dir orelse {
-                log.err("relative path only supported for {s} with exactly one workspace", .{file_config.name});
+                log.err("relative path only supported for {s} with exactly one workspace", .{runtime_known_config_name});
                 break;
             };
 
@@ -987,8 +989,10 @@ pub fn resolveConfiguration(server: *Server) error{ Canceled, OutOfMemory }!void
 
     inline for (std.meta.fields(Config)) |field| {
         if (@field(result.did_change, field.name)) {
+            var runtime_known_field_name: []const u8 = ""; // avoid unnecessary function instantiations of `std.Io.Writer.print`
+            runtime_known_field_name = field.name;
             const new_value = @field(server.config_manager.config, field.name);
-            log.info("$ {s} -> [{f}]", .{ field.name, std.json.fmt(new_value, .{}) });
+            log.info("$ {s} -> [{f}]", .{ runtime_known_field_name, std.json.fmt(new_value, .{}) });
         }
     }
 
