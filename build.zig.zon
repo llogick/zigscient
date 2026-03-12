@@ -4,10 +4,10 @@
     .version = "0.16.0-dev",
     // The minimum Zig version that is required to compile and test this project.
     // Must be a Zig version that is downloadable from https://ziglang.org/download/ or a mirror.
-    .minimum_zig_version = "0.16.0-dev.2670+56253d9e3",
+    .minimum_zig_version = "0.16.0-dev.2821+3edaef9e0",
     // The minimum Zig version that the server's build_runner can handle:
     // A breaking change to the Zig Build System should be handled by updating the server's build runner (see src/build_runner)
-    .minimum_runtime_zig_version = "0.16.0-dev.2670+56253d9e3",
+    .minimum_runtime_zig_version = "0.16.0-dev.2821+3edaef9e0",
     .dependencies = .{
         .known_folders = .{
             .url = "https://github.com/LamplightWorks/known-folders/archive/d002ad87b1f8c238eb080c185bb0b93cfd946b9d.tar.gz",
@@ -23,8 +23,8 @@
             // .path = "../../../zig-lsp-kit",
         },
         .extended_zccs = .{
-            .url = "https://github.com/llogick/extended-zccs/archive/e1353077ac3df69d3cbee858218b7332bead143a.tar.gz",
-            .hash = "extended_zccs-0.16.0-dev-zEaUNqfSDgDSbKVDXEUA00_Ywmk8-fBGy4ehcLsNFioq",
+            .url = "https://github.com/llogick/extended-zccs/archive/f7475204edb98b04d80d8fa257f8cddcf22eba67.tar.gz",
+            .hash = "extended_zccs-0.16.0-dev-zEaUNoSPDgDWNN7Nko4ZA9Otv1KFVBmCaRS1aOlnYzFE",
             // .path = "../../../extended-zccs",
         },
         .tracy = .{
