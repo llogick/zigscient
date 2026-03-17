@@ -866,7 +866,7 @@ fn completeError(builder: *Builder, token_index: std.zig.Ast.TokenIndex) Analyse
     }
 
     var nodes = try ast.nodesOverlappingIndexIncludingParseErrors(builder.arena, &tree, token_starts[token_index]);
-    var dot_context = getSwitchOrStructInitContext(&tree, dot_token_index, nodes) orelse return null;
+    const dot_context = getSwitchOrStructInitContext(&tree, dot_token_index, nodes) orelse return null;
     if (dot_context.likely != .switch_case) return null;
 
     // dot_context.type_info.identifier_token_index is the `err` in `switch(err)`
