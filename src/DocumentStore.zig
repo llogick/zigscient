@@ -641,11 +641,11 @@ pub const Handle = struct {
                         const loc = offsets.rangeToLoc(self.ast.bytes.items, pcc.range, encoding);
                         if (loc.start != 0 and loc.end != self.ast.bytes.items.len - 1) continue;
                         try self.ast.bytes.replaceRange(self.ast.gpa, 0, self.ast.bytes.items.len - 1, pcc.text);
-                        break :blk .{ 0, @intCast(self.ast.bytes.items.len - 1), i };
+                        break :blk .{ 0, @intCast(@max(self.ast.bytes.items.len - 1, prev_bytes_len - 1)), i };
                     },
                     .text_document_content_change_whole_document => |content_change| {
                         try self.ast.bytes.replaceRange(self.ast.gpa, 0, self.ast.bytes.items.len - 1, content_change.text);
-                        break :blk .{ 0, @intCast(self.ast.bytes.items.len - 1), i };
+                        break :blk .{ 0, @intCast(@max(self.ast.bytes.items.len - 1, prev_bytes_len - 1)), i };
                     },
                 }
             }
