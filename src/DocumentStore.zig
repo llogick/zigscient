@@ -763,6 +763,7 @@ pub const Handle = struct {
                     log.err("{s}: roots_index > roots.len; using id 0", .{handle.uri});
                     roots_index = 0;
                 }
+                if (build_file.roots_index == roots_index) return;
                 build_file.roots_index = roots_index;
                 send_noti = true;
             }
