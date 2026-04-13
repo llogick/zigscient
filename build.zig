@@ -185,7 +185,7 @@ pub fn build(b: *Build) !void {
         .build_options = build_options,
         .version_data = version_data_module,
     });
-    b.modules.put("zls", zls_module) catch @panic("OOM");
+    b.modules.put(b.allocator, "zls", zls_module) catch @panic("OOM");
 
     const known_folders_module = b.dependency("known_folders", .{
         .target = target,

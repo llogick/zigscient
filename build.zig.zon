@@ -4,7 +4,7 @@
     .version = "0.16.0-dev",
     // The minimum Zig version that is required to compile and test this project.
     // Must be a Zig version that is downloadable from https://ziglang.org/download/ or a mirror.
-    .minimum_zig_version = "0.16.0-dev.3132+fd2718f82",
+    .minimum_zig_version = "0.16.0-dev.3153+d6f43caad",
     // The minimum Zig version that the server's build_runner can handle:
     // A breaking change to the Zig Build System should be handled by updating the server's build runner (see src/build_runner)
     .minimum_runtime_zig_version = "0.16.0-dev.2821+3edaef9e0",
@@ -23,8 +23,8 @@
             // .path = "../../../zig-lsp-kit",
         },
         .extended_zccs = .{
-            .url = "https://github.com/llogick/extended-zccs/archive/6bc68e00a7933aaaff56eb0a39c5ed743eecd1dd.tar.gz",
-            .hash = "extended_zccs-0.16.0-dev-zEaUNs-ZDgAHlFDVbrt2eLiw1BM9AnU70xZ85Gpyt5fP",
+            .url = "https://github.com/llogick/extended-zccs/archive/1190578b989664798159ce019683c9b822fe0788.tar.gz",
+            .hash = "extended_zccs-0.16.0-dev-zEaUNuWZDgA6dLgf-4XplKyTLbiCDL_D-Fww7NUi3vvC",
             // .path = "../../../extended-zccs",
         },
         .tracy = .{
