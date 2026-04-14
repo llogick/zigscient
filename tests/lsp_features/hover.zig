@@ -232,7 +232,7 @@ test "builtin with multi line parameters" {
         \\  comptime field_types: *const [field_names.len]type,
         \\  comptime field_attrs: *const [field_names.len]Type.UnionField.Attributes,
         \\) type
-        \\Returns a [union](https://ziglang.org/documentation/master/#union) type with the properties specified by the arguments.
+        \\Returns a [union](https://ziglang.org/documentation/0.16.0/#union) type with the properties specified by the arguments.
     , .{ .markup_kind = .plaintext });
 }
 
