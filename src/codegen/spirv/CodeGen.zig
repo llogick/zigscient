@@ -3342,7 +3342,7 @@ fn airDivFloor(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
 
     const info = cg.arithmeticTypeInfo(lhs.ty);
     switch (info.class) {
-        .composite_integer => unreachable, // TODO
+        .composite_integer => return cg.todo("div_floor for composite integers", .{}),
         .integer, .strange_integer => {
             switch (info.signedness) {
                 .unsigned => {
@@ -3381,7 +3381,7 @@ fn airDivTrunc(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     const rhs = try cg.temporary(bin_op.rhs);
     const info = cg.arithmeticTypeInfo(lhs.ty);
     switch (info.class) {
-        .composite_integer => unreachable, // TODO
+        .composite_integer => return cg.todo("div_trunc for composite integers", .{}),
         .integer, .strange_integer => switch (info.signedness) {
             .unsigned => {
                 const result = try cg.buildBinary(.OpUDiv, lhs, rhs);
@@ -3420,7 +3420,7 @@ fn airArithOp(
     const rhs = try cg.temporary(bin_op.rhs);
     const info = cg.arithmeticTypeInfo(lhs.ty);
     const result = switch (info.class) {
-        .composite_integer => unreachable, // TODO
+        .composite_integer => return cg.todo("arith op for composite integers", .{}),
         .integer, .strange_integer => res: {
             const raw = switch (info.signedness) {
                 .signed => try cg.buildBinary(sop, lhs, rhs),
@@ -3461,7 +3461,7 @@ fn abs(cg: *CodeGen, result_ty: Type, value: Temporary) !Temporary {
             }
             return try cg.normalize(abs_value, cg.arithmeticTypeInfo(result_ty));
         },
-        .composite_integer => unreachable, // TODO
+        .composite_integer => return cg.todo("@abs for composite integers", .{}),
         .bool => unreachable,
     }
 }
@@ -3489,7 +3489,7 @@ fn airAddSubOverflow(
 
     const info = cg.arithmeticTypeInfo(lhs.ty);
     switch (info.class) {
-        .composite_integer => unreachable, // TODO
+        .composite_integer => return cg.todo("add/sub-with-overflow for composite integers", .{}),
         .strange_integer, .integer => {},
         .float, .bool => unreachable,
     }
@@ -3539,7 +3539,7 @@ fn airMulOverflow(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
 
     const info = cg.arithmeticTypeInfo(lhs.ty);
     switch (info.class) {
-        .composite_integer => unreachable, // TODO
+        .composite_integer => return cg.todo("mul-with-overflow for composite integers", .{}),
         .strange_integer, .integer => {},
         .float, .bool => unreachable,
     }
@@ -3710,7 +3710,7 @@ fn airShlOverflow(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
 
     const info = cg.arithmeticTypeInfo(base.ty);
     switch (info.class) {
-        .composite_integer => unreachable, // TODO
+        .composite_integer => return cg.todo("shl-with-overflow for composite integers", .{}),
         .integer, .strange_integer => {},
         .float, .bool => unreachable,
     }
@@ -3761,7 +3761,7 @@ fn airClzCtz(cg: *CodeGen, inst: Air.Inst.Index, op: UnaryOp) !?Id {
 
     const info = cg.arithmeticTypeInfo(operand.ty);
     switch (info.class) {
-        .composite_integer => unreachable, // TODO
+        .composite_integer => return cg.todo("@clz/@ctz for composite integers", .{}),
         .integer, .strange_integer => {},
         .float, .bool => unreachable,
     }
@@ -3846,7 +3846,7 @@ fn airReduce(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
             .Mul => .OpFMul,
             else => unreachable,
         },
-        .composite_integer => unreachable, // TODO
+        .composite_integer => return cg.todo("@reduce for composite integers", .{}),
     };
 
     const needs_normalize = info.class == .strange_integer and
@@ -4181,7 +4181,7 @@ fn cmp(
 
     const info = cg.arithmeticTypeInfo(scalar_ty);
     const pred: Opcode = switch (info.class) {
-        .composite_integer => unreachable, // TODO
+        .composite_integer => return cg.todo("comparison for composite integers", .{}),
         .float => switch (op) {
             .eq => .OpFOrdEqual,
             .neq => .OpFUnordNotEqual,
@@ -4449,7 +4449,7 @@ fn airNot(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     const result = switch (info.class) {
         .bool => try cg.buildUnary(.l_not, operand),
         .float => unreachable,
-        .composite_integer => unreachable, // TODO
+        .composite_integer => return cg.todo("bitwise not for composite integers", .{}),
         .strange_integer, .integer => blk: {
             const complement = try cg.buildUnary(.bit_not, operand);
             break :blk try cg.normalize(complement, info);
