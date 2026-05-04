@@ -1620,6 +1620,10 @@ fn resolveType(cg: *CodeGen, ty: Type, repr: Repr) Error!Id {
                 return try cg.module.opaqueType("u0");
             }
             const int_info = ty.intInfo(zcu);
+            const backing_bits, const big_int = cg.module.backingIntBits(int_info.bits);
+            if (big_int and backing_bits > 64) {
+                return cg.fail("integer width of {} bits is not yet supported on the SPIR-V backend", .{int_info.bits});
+            }
             return try cg.module.intType(int_info.signedness, int_info.bits);
         },
         .@"enum" => return try cg.resolveType(ty.intTagType(zcu), repr),
