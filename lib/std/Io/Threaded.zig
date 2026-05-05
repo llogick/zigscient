@@ -2887,7 +2887,7 @@ fn batchAwaitConcurrent(userdata: ?*anyopaque, b: *Io.Batch, timeout: Io.Timeout
                                 try poll_storage.add(o.socket_handle, posix.POLL.IN | posix.POLL.ERR);
                                 break :nb;
                             },
-                            else => |e| break .{ e, 0 },
+                            else => |e| break .{ e, msg_i },
                         };
                         data_i += msg.data.len;
                     } else .{ null, o.message_buffer.len } };
