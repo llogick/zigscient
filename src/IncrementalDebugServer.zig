@@ -95,6 +95,7 @@ fn runServer(ids: *IncrementalDebugServer) void {
                 => |e| log.err("failed to serve '{f}' ({t})", .{ stream.socket.address, e }),
 
                 error.EndOfStream,
+                error.ConnectionTimedOut,
                 error.ConnectionResetByPeer,
                 => log.info("client '{f}' disconnected", .{stream.socket.address}),
 

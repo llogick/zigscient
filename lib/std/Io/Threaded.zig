@@ -12883,6 +12883,7 @@ fn netReadPosix(fd: net.Socket.Handle, data: [][]u8) net.Stream.Reader.Error!usi
                         .NOMEM => return error.SystemResources,
                         .NOTCONN => return error.SocketUnconnected,
                         .CONNRESET => return error.ConnectionResetByPeer,
+                        .TIMEDOUT => return error.ConnectionTimedOut,
                         .NOTCAPABLE => return error.AccessDenied,
                         else => |err| return posix.unexpectedErrno(err),
                     }
@@ -12914,6 +12915,7 @@ fn netReadPosix(fd: net.Socket.Handle, data: [][]u8) net.Stream.Reader.Error!usi
                     .NOMEM => return error.SystemResources,
                     .NOTCONN => return error.SocketUnconnected,
                     .CONNRESET => return error.ConnectionResetByPeer,
+                    .TIMEDOUT => return error.ConnectionTimedOut,
                     .PIPE => return error.SocketUnconnected,
                     .NETDOWN => return error.NetworkDown,
                     else => |err| return posix.unexpectedErrno(err),
@@ -13077,6 +13079,7 @@ fn netSendOnePosix(
             .HOSTUNREACH => return syscall.fail(error.HostUnreachable),
             .NETUNREACH => return syscall.fail(error.NetworkUnreachable),
             .NOTCONN => return syscall.fail(error.SocketUnconnected),
+            .TIMEDOUT => return syscall.fail(error.ConnectionTimedOut),
             .NETDOWN => return syscall.fail(error.NetworkDown),
             .BADF => |err| return syscall.errnoBug(err), // File descriptor used after closed.
             .DESTADDRREQ => |err| return syscall.errnoBug(err),
@@ -13148,6 +13151,7 @@ fn netSendManyPosix(
             .HOSTUNREACH => return syscall.fail(error.HostUnreachable),
             .NETUNREACH => return syscall.fail(error.NetworkUnreachable),
             .NOTCONN => return syscall.fail(error.SocketUnconnected),
+            .TIMEDOUT => return syscall.fail(error.ConnectionTimedOut),
             .NETDOWN => return syscall.fail(error.NetworkDown),
 
             .BADF => |err| return syscall.errnoBug(err), // File descriptor used after closed.
@@ -13228,6 +13232,7 @@ fn netReceivePosix(
             .MSGSIZE => return syscall.fail(error.MessageOversize),
             .PIPE => return syscall.fail(error.SocketUnconnected),
             .CONNRESET => return syscall.fail(error.ConnectionResetByPeer),
+            .TIMEDOUT => return syscall.fail(error.ConnectionTimedOut),
             .NETDOWN => return syscall.fail(error.NetworkDown),
             .AGAIN => return syscall.fail(error.WouldBlock),
             .BADF => |err| return syscall.errnoBug(err),
@@ -13390,6 +13395,7 @@ fn netWritePosix(
                     .HOSTUNREACH => return error.HostUnreachable,
                     .NETUNREACH => return error.NetworkUnreachable,
                     .NOTCONN => return error.SocketUnconnected,
+                    .TIMEDOUT => return error.ConnectionTimedOut,
                     .NETDOWN => return error.NetworkDown,
                     else => |err| return posix.unexpectedErrno(err),
                 }

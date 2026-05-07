@@ -5152,6 +5152,7 @@ fn netReceive(
             .PIPE => return .{ error.SocketUnconnected, message_i },
             .OPNOTSUPP => |err| return .{ errnoBug(err), message_i },
             .CONNRESET => return .{ error.ConnectionResetByPeer, message_i },
+            .TIMEDOUT => return .{ error.ConnectionTimedOut, message_i },
             .NETDOWN => return .{ error.NetworkDown, message_i },
             else => |err| return .{ unexpectedErrno(err), message_i },
         }

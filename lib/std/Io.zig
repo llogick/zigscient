@@ -373,6 +373,9 @@ pub const Operation = union(enum) {
             /// the OS where it was queued up to be reported at the next call
             /// to send or receive on the bound socket.
             PortUnreachable,
+            /// The remote peer did not respond to ongoing communication, causing the
+            /// OS to abort the connection.
+            ConnectionTimedOut,
         } || Io.UnexpectedError;
 
         pub const Result = struct { ?net.Socket.ReceiveError, usize };
@@ -416,6 +419,9 @@ pub const Operation = union(enum) {
             /// An attempt was made to send to a network/broadcast address as
             /// though it was a unicast address.
             AccessDenied,
+            /// The remote peer did not respond to ongoing communication, causing the
+            /// OS to abort the connection.
+            ConnectionTimedOut,
         } || Io.UnexpectedError;
 
         pub const Result = struct { ?net.Socket.SendError, usize };
@@ -429,10 +435,12 @@ pub const Operation = union(enum) {
             SystemResources,
             ConnectionResetByPeer,
             SocketUnconnected,
-            /// The file descriptor does not hold the required rights to read
-            /// from it.
+            /// File descriptor does not hold the required rights to read from it.
             AccessDenied,
             NetworkDown,
+            /// The remote peer did not respond to ongoing communication, causing the
+            /// OS to abort the connection.
+            ConnectionTimedOut,
         } || Io.UnexpectedError;
 
         pub const Result = Error!usize;
@@ -469,6 +477,9 @@ pub const Operation = union(enum) {
             /// Local end has been shut down on a connection-oriented socket, or
             /// the socket was never connected.
             SocketUnconnected,
+            /// The remote peer did not respond to ongoing communication, causing the
+            /// OS to abort the connection.
+            ConnectionTimedOut,
             SocketNotBound,
         } || Io.UnexpectedError;
 
