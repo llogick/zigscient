@@ -75,20 +75,22 @@ test "for reference" {
 
 test "for else" {
     // For allows an else attached to it, the same as a while loop.
-    const items = [_]?i32{ 3, 4, null, 5 };
+    // The else branch is evaluated when the loop completes without a break.
+    const items = [_]i32{ 3, 4, 5 };
 
-    // For loops can also be used as expressions.
-    // Similar to while loops, when you break from a for loop, the else branch is not evaluated.
-    var sum: i32 = 0;
     const result = for (items) |value| {
-        if (value != null) {
-            sum += value.?;
-        }
-    } else blk: {
-        try expectEqual(12, sum);
-        break :blk sum;
-    };
-    try expectEqual(12, result);
+        if (value > 10) break value;
+    } else 0;
+
+    try expectEqual(0, result);
+
+    const more_items = [_]i32{ 3, 4, 11, 5 };
+
+    const another_result = for (more_items) |value| {
+        if (value > 10) break value;
+    } else 0;
+
+    try expectEqual(11, another_result);
 }
 
 // test
