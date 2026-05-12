@@ -235,7 +235,6 @@ pub const VTable = struct {
     netListenUnix: *const fn (?*anyopaque, *const net.UnixAddress, net.UnixAddress.ListenOptions) net.UnixAddress.ListenError!net.Socket.Handle,
     netConnectUnix: *const fn (?*anyopaque, *const net.UnixAddress) net.UnixAddress.ConnectError!net.Socket.Handle,
     netSocketCreatePair: *const fn (?*anyopaque, net.Socket.CreatePairOptions) net.Socket.CreatePairError![2]net.Socket,
-    netWrite: *const fn (?*anyopaque, dest: net.Socket.Handle, header: []const u8, data: []const []const u8, splat: usize) net.Stream.Writer.Error!usize,
     netWriteFile: *const fn (?*anyopaque, net.Socket.Handle, header: []const u8, *Io.File.Reader, Io.Limit) net.Stream.Writer.WriteFileError!usize,
     netClose: *const fn (?*anyopaque, sockets: []const net.Socket) void,
     netShutdown: *const fn (?*anyopaque, handle: net.Socket.Handle, how: net.ShutdownHow) net.ShutdownError!void,
@@ -253,6 +252,7 @@ pub const Operation = union(enum) {
     net_receive: NetReceive,
     net_send: NetSend,
     net_read: NetRead,
+    net_write: NetWrite,
 
     pub const Tag = @typeInfo(Operation).@"union".tag_type.?;
 
@@ -433,6 +433,43 @@ pub const Operation = union(enum) {
             /// from it.
             AccessDenied,
             NetworkDown,
+        } || Io.UnexpectedError;
+
+        pub const Result = Error!usize;
+    };
+
+    pub const NetWrite = struct {
+        socket_handle: net.Socket.Handle,
+        header: []const u8 = &.{},
+        data: []const []const u8,
+        splat: usize = 1,
+
+        pub const Error = error{
+            /// Another TCP Fast Open is already in progress.
+            FastOpenAlreadyInProgress,
+            /// Network session was unexpectedly closed by recipient.
+            ConnectionResetByPeer,
+            /// The output queue for a network interface was full. This generally indicates that the
+            /// interface has stopped sending, but may be caused by transient congestion. (Normally,
+            /// this does not occur in Linux. Packets are just silently dropped when a device queue
+            /// overflows.)
+            ///
+            /// This is also caused when there is not enough kernel memory available.
+            SystemResources,
+            /// No route to network.
+            NetworkUnreachable,
+            /// Network reached but no route to host.
+            HostUnreachable,
+            /// The local network interface used to reach the destination is down.
+            NetworkDown,
+            /// The destination address is not listening.
+            ConnectionRefused,
+            /// The passed address didn't have the correct address family in its sa_family field.
+            AddressFamilyUnsupported,
+            /// Local end has been shut down on a connection-oriented socket, or
+            /// the socket was never connected.
+            SocketUnconnected,
+            SocketNotBound,
         } || Io.UnexpectedError;
 
         pub const Result = Error!usize;
@@ -2771,7 +2808,6 @@ pub const failing: std.Io = .{
         .netListenUnix = failingNetListenUnix,
         .netConnectUnix = failingNetConnectUnix,
         .netSocketCreatePair = failingNetSocketCreatePair,
-        .netWrite = failingNetWrite,
         .netWriteFile = failingNetWriteFile,
         .netClose = unreachableNetClose,
         .netShutdown = failingNetShutdown,
@@ -2920,6 +2956,7 @@ pub fn failingOperate(userdata: ?*anyopaque, operation: Operation) Cancelable!Op
         .net_receive => .{ .net_receive = .{ error.NetworkDown, 0 } },
         .net_send => .{ .net_send = .{ error.NetworkDown, 0 } },
         .net_read => .{ .net_read = error.NetworkDown },
+        .net_write => .{ .net_write = error.NetworkDown },
     };
 }
 
@@ -3513,15 +3550,6 @@ pub fn failingNetSocketCreatePair(userdata: ?*anyopaque, options: net.Socket.Cre
     _ = userdata;
     _ = options;
     return error.OperationUnsupported;
-}
-
-pub fn failingNetWrite(userdata: ?*anyopaque, dest: net.Socket.Handle, header: []const u8, data: []const []const u8, splat: usize) net.Stream.Writer.Error!usize {
-    _ = userdata;
-    _ = dest;
-    _ = header;
-    _ = data;
-    _ = splat;
-    return error.NetworkDown;
 }
 
 pub fn failingNetWriteFile(userdata: ?*anyopaque, handle: net.Socket.Handle, header: []const u8, file_reader: *Io.File.Reader, limit: Io.Limit) net.Stream.Writer.WriteFileError!usize {

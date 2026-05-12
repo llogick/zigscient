@@ -458,7 +458,6 @@ pub fn io(ev: *Evented) Io {
             .netListenUnix = netListenUnixUnavailable,
             .netConnectUnix = netConnectUnixUnavailable,
             .netSocketCreatePair = netSocketCreatePairUnavailable,
-            .netWrite = netWriteUnavailable,
             .netWriteFile = netWriteFileUnavailable,
             .netClose = netClose,
             .netShutdown = netShutdownUnavailable,
@@ -1714,6 +1713,7 @@ fn operate(userdata: ?*anyopaque, operation: Io.Operation) Io.Cancelable!Io.Oper
         .net_receive => @panic("TODO implement net_receive operation"),
         .net_send => @panic("TODO implement net_send operation"),
         .net_read => @panic("TODO implement net_read operation"),
+        .net_write => @panic("TODO implement net_write operation"),
     }
 }
 
@@ -2136,6 +2136,7 @@ fn batchDrainSubmitted(
                 .device_io_control => {},
                 .net_receive => @panic("TODO implement batched net_receive"),
                 .net_read => @panic("TODO implement batched net_read"),
+                .net_write => @panic("TODO implement batched net_write"),
             };
             if (concurrency) return error.ConcurrencyUnavailable;
             break :result try operate(ev, storage.submission.operation);
@@ -2196,6 +2197,7 @@ fn batchSourceEvent(context: ?*anyopaque) callconv(.c) void {
         .device_io_control => unreachable,
         .net_receive => @panic("TODO implement batched net_receive"),
         .net_read => @panic("TODO implement batched net_read"),
+        .net_write => @panic("TODO implement batched net_write"),
     };
 
     switch (pending.node.prev) {
@@ -4864,22 +4866,6 @@ fn netSocketCreatePairUnavailable(
     _ = userdata;
     _ = options;
     return error.OperationUnsupported;
-}
-
-fn netWriteUnavailable(
-    userdata: ?*anyopaque,
-    handle: net.Socket.Handle,
-    header: []const u8,
-    data: []const []const u8,
-    splat: usize,
-) net.Stream.Writer.Error!usize {
-    const ev: *Evented = @ptrCast(@alignCast(userdata));
-    _ = ev;
-    _ = handle;
-    _ = header;
-    _ = data;
-    _ = splat;
-    return error.NetworkDown;
 }
 
 fn netWriteFileUnavailable(

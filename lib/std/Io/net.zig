@@ -1348,33 +1348,7 @@ pub const Stream = struct {
         err: ?Error = null,
         write_file_err: ?WriteFileError = null,
 
-        pub const Error = error{
-            /// Another TCP Fast Open is already in progress.
-            FastOpenAlreadyInProgress,
-            /// Network session was unexpectedly closed by recipient.
-            ConnectionResetByPeer,
-            /// The output queue for a network interface was full. This generally indicates that the
-            /// interface has stopped sending, but may be caused by transient congestion. (Normally,
-            /// this does not occur in Linux. Packets are just silently dropped when a device queue
-            /// overflows.)
-            ///
-            /// This is also caused when there is not enough kernel memory available.
-            SystemResources,
-            /// No route to network.
-            NetworkUnreachable,
-            /// Network reached but no route to host.
-            HostUnreachable,
-            /// The local network interface used to reach the destination is down.
-            NetworkDown,
-            /// The destination address is not listening.
-            ConnectionRefused,
-            /// The passed address didn't have the correct address family in its sa_family field.
-            AddressFamilyUnsupported,
-            /// Local end has been shut down on a connection-oriented socket, or
-            /// the socket was never connected.
-            SocketUnconnected,
-            SocketNotBound,
-        } || Io.UnexpectedError || Io.Cancelable;
+        pub const Error = Io.Operation.NetWrite.Error || Io.Cancelable;
 
         pub const WriteFileError = Error || error{
             /// The `Io` implementation cannot offer a more efficient
@@ -1407,7 +1381,16 @@ pub const Stream = struct {
             const io = w.io;
             const buffered = io_w.buffered();
             const handle = w.stream.socket.handle;
-            const n = io.vtable.netWrite(io.userdata, handle, buffered, data, splat) catch |err| {
+            const result = io.operate(.{ .net_write = .{
+                .socket_handle = handle,
+                .header = buffered,
+                .data = data,
+                .splat = splat,
+            } }) catch |err| {
+                w.err = err;
+                return error.WriteFailed;
+            };
+            const n = result.net_write catch |err| {
                 w.err = err;
                 return error.WriteFailed;
             };
