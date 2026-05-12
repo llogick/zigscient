@@ -452,7 +452,6 @@ pub fn io(ev: *Evented) Io {
             .randomSecure = randomSecure,
 
             .netListenIp = netListenIpUnavailable,
-            .netAccept = netAcceptUnavailable,
             .netBindIp = netBindIpUnavailable,
             .netConnectIp = netConnectIpUnavailable,
             .netListenUnix = netListenUnixUnavailable,
@@ -1712,6 +1711,7 @@ fn operate(userdata: ?*anyopaque, operation: Io.Operation) Io.Cancelable!Io.Oper
         .device_io_control => |*o| return .{ .device_io_control = try deviceIoControl(o) },
         .net_receive => @panic("TODO implement net_receive operation"),
         .net_send => @panic("TODO implement net_send operation"),
+        .net_accept => @panic("TODO implement net_accept operation"),
         .net_read => @panic("TODO implement net_read operation"),
         .net_write => @panic("TODO implement net_write operation"),
     }
@@ -4799,18 +4799,6 @@ fn netListenIpUnavailable(
     const ev: *Evented = @ptrCast(@alignCast(userdata));
     _ = ev;
     _ = address;
-    _ = options;
-    return error.NetworkDown;
-}
-
-fn netAcceptUnavailable(
-    userdata: ?*anyopaque,
-    listen_handle: net.Socket.Handle,
-    options: net.Server.AcceptOptions,
-) net.Server.AcceptError!net.Socket {
-    const ev: *Evented = @ptrCast(@alignCast(userdata));
-    _ = ev;
-    _ = listen_handle;
     _ = options;
     return error.NetworkDown;
 }

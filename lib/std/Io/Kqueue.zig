@@ -646,7 +646,6 @@ pub fn io(k: *Kqueue) Io {
 
             .netListenIp = netListenIp,
             .netListenUnix = netListenUnix,
-            .netAccept = netAccept,
             .netBindIp = netBindIp,
             .netConnectIp = netConnectIp,
             .netConnectUnix = netConnectUnix,
@@ -1005,13 +1004,6 @@ fn netListenIp(
     const k: *Kqueue = @ptrCast(@alignCast(userdata));
     _ = k;
     _ = address;
-    _ = options;
-    @panic("TODO");
-}
-fn netAccept(userdata: ?*anyopaque, server: net.Socket.Handle, options: net.Server.AcceptOptions) net.Server.AcceptError!net.Socket {
-    const k: *Kqueue = @ptrCast(@alignCast(userdata));
-    _ = k;
-    _ = server;
     _ = options;
     @panic("TODO");
 }

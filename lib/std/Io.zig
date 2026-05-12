@@ -229,7 +229,6 @@ pub const VTable = struct {
     randomSecure: *const fn (?*anyopaque, buffer: []u8) RandomSecureError!void,
 
     netListenIp: *const fn (?*anyopaque, address: *const net.IpAddress, net.IpAddress.ListenOptions) net.IpAddress.ListenError!net.Socket,
-    netAccept: *const fn (?*anyopaque, server: net.Socket.Handle, options: net.Server.AcceptOptions) net.Server.AcceptError!net.Socket,
     netBindIp: *const fn (?*anyopaque, address: *const net.IpAddress, options: net.IpAddress.BindOptions) net.IpAddress.BindError!net.Socket,
     netConnectIp: *const fn (?*anyopaque, address: *const net.IpAddress, options: net.IpAddress.ConnectOptions) net.IpAddress.ConnectError!net.Socket,
     netListenUnix: *const fn (?*anyopaque, *const net.UnixAddress, net.UnixAddress.ListenOptions) net.UnixAddress.ListenError!net.Socket.Handle,
@@ -251,6 +250,7 @@ pub const Operation = union(enum) {
     device_io_control: DeviceIoControl,
     net_receive: NetReceive,
     net_send: NetSend,
+    net_accept: NetAccept,
     net_read: NetRead,
     net_write: NetWrite,
 
@@ -340,6 +340,35 @@ pub const Operation = union(enum) {
             /// negative errno.
             pub const Result = i32;
         },
+    };
+
+    pub const NetAccept = struct {
+        socket_handle: net.Socket.Handle,
+        options: net.Server.AcceptOptions,
+
+        pub const Error = error{
+            /// The per-process limit on the number of open file descriptors has been reached.
+            ProcessFdQuotaExceeded,
+            /// The system-wide limit on the total number of open files has been reached.
+            SystemFdQuotaExceeded,
+            /// Not enough free memory. This often means that the memory allocation is limited
+            /// by the socket buffer limits, not by the system memory.
+            SystemResources,
+            /// Either `listen` was never called, or `shutdown` was called (possibly while
+            /// this call was blocking). This allows `shutdown` to be used as a concurrent
+            /// cancellation mechanism.
+            SocketNotListening,
+            /// The network subsystem has failed.
+            NetworkDown,
+            /// An incoming connection was indicated, but was subsequently terminated by the
+            /// remote peer prior to accepting the call.
+            ConnectionAborted,
+            /// Firewall rules forbid connection.
+            BlockedByFirewall,
+            ProtocolFailure,
+        } || Io.UnexpectedError;
+
+        pub const Result = Error!net.Socket;
     };
 
     pub const NetReceive = struct {
@@ -2819,7 +2848,6 @@ pub const failing: std.Io = .{
         .sleep = noSleep,
 
         .netListenIp = failingNetListenIp,
-        .netAccept = failingNetAccept,
         .netBindIp = failingNetBindIp,
         .netConnectIp = failingNetConnectIp,
         .netListenUnix = failingNetListenUnix,
@@ -2972,6 +3000,7 @@ pub fn failingOperate(userdata: ?*anyopaque, operation: Operation) Cancelable!Op
         .device_io_control => unreachable,
         .net_receive => .{ .net_receive = .{ error.NetworkDown, 0 } },
         .net_send => .{ .net_send = .{ error.NetworkDown, 0 } },
+        .net_accept => .{ .net_accept = error.NetworkDown },
         .net_read => .{ .net_read = error.NetworkDown },
         .net_write => .{ .net_write = error.NetworkDown },
     };
