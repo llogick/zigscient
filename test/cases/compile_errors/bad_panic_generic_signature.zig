@@ -11,6 +11,7 @@ pub const panic = struct {
     pub const castToNull = simple_panic.castToNull;
     pub const incorrectAlignment = simple_panic.incorrectAlignment;
     pub const invalidErrorCode = simple_panic.invalidErrorCode;
+    pub const unexpectedErrorCode = simple_panic.unexpectedErrorCode;
     pub const integerOutOfBounds = simple_panic.integerOutOfBounds;
     pub const integerOverflow = simple_panic.integerOverflow;
     pub const shlOverflow = simple_panic.shlOverflow;

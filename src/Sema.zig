@@ -21677,16 +21677,16 @@ fn zirErrorCast(sema: *Sema, block: *Block, extended: Zir.Inst.Extended.InstData
             const is_zero = try block.addBinOp(.cmp_eq, err_int_inst, zero_err);
             if (result == .disjoint) {
                 // Error must be zero.
-                try sema.addSafetyCheck(block, src, is_zero, .invalid_error_code);
+                try sema.addSafetyCheckCall(block, src, is_zero, .@"panic.unexpectedErrorCode", &.{err_code_inst});
             } else {
                 // Error must be in destination set or zero.
                 const has_value = try block.addTyOp(.error_set_has_value, dest_err_ty, err_int_inst);
                 const ok = try block.addBinOp(.bit_or, has_value, is_zero);
-                try sema.addSafetyCheck(block, src, ok, .invalid_error_code);
+                try sema.addSafetyCheckCall(block, src, ok, .@"panic.unexpectedErrorCode", &.{err_code_inst});
             }
         } else {
             const ok = try block.addTyOp(.error_set_has_value, dest_err_ty, err_int_inst);
-            try sema.addSafetyCheck(block, src, ok, .invalid_error_code);
+            try sema.addSafetyCheckCall(block, src, ok, .@"panic.unexpectedErrorCode", &.{err_code_inst});
         }
     }
 
@@ -35033,7 +35033,9 @@ fn getExpectedBuiltinFnType(sema: *Sema, decl: Zcu.StdLangDecl) CompileError!Typ
         }),
 
         // `fn (anyerror) noreturn`
-        .@"panic.unwrapError" => try pt.funcType(.{
+        .@"panic.unwrapError",
+        .@"panic.unexpectedErrorCode",
+        => try pt.funcType(.{
             .param_types = &.{.anyerror_type},
             .return_type = .noreturn_type,
         }),

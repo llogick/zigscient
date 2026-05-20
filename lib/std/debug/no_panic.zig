@@ -65,6 +65,11 @@ pub fn invalidErrorCode() noreturn {
     @trap();
 }
 
+pub fn unexpectedErrorCode(_: anyerror) noreturn {
+    @branchHint(.cold);
+    @trap();
+}
+
 pub fn integerOutOfBounds() noreturn {
     @branchHint(.cold);
     @trap();

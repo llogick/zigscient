@@ -151,6 +151,10 @@ pub fn FullPanic(comptime panicFn: fn ([]const u8, ?usize) noreturn) type {
             @branchHint(.cold);
             call("invalid error code", @returnAddress());
         }
+        pub fn unexpectedErrorCode(err: anyerror) noreturn {
+            @branchHint(.cold);
+            std.debug.panicExtra(@returnAddress(), "unexpected error code, found error.{s}", .{@errorName(err)});
+        }
         pub fn integerOutOfBounds() noreturn {
             @branchHint(.cold);
             call("integer does not fit in destination type", @returnAddress());
