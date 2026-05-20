@@ -24,10 +24,10 @@ fn bad2() anyerror {
 
 // error
 //
-// :2:24: error: error union is ignored
+// :2:24: error: error union of type 'anyerror!void' is ignored
 // :2:24: note: consider using 'try', 'catch', or 'if'
-// :7:25: error: error union is ignored
+// :7:25: error: error union of type 'anyerror!void' is ignored
 // :7:25: note: consider using 'try', 'catch', or 'if'
-// :12:25: error: error union is ignored
+// :12:25: error: error union of type 'anyerror!void' is ignored
 // :12:25: note: consider using 'try', 'catch', or 'if'
-// :19:25: error: error set is ignored
+// :19:25: error: error set of type 'anyerror' is ignored

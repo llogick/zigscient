@@ -3182,10 +3182,12 @@ fn ensureResultUsed(
     const zcu = pt.zcu;
     switch (ty.zigTypeTag(zcu)) {
         .void, .noreturn => return,
-        .error_set => return sema.fail(block, src, "error set is ignored", .{}),
+        .error_set => {
+            return sema.fail(block, src, "error set of type '{f}' is ignored", .{ty.fmt(pt)});
+        },
         .error_union => {
             const msg = msg: {
-                const msg = try sema.errMsg(src, "error union is ignored", .{});
+                const msg = try sema.errMsg(src, "error union of type '{f}' is ignored", .{ty.fmt(pt)});
                 errdefer msg.destroy(sema.gpa);
                 try sema.errNote(src, msg, "consider using 'try', 'catch', or 'if'", .{});
                 break :msg msg;
