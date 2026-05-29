@@ -1704,8 +1704,8 @@ fn cfgLspServer(
         ls_test_options.step.name = "test options";
 
         ls_test_options.addOptionPath("zig_exe_path", .zig_exe);
-        ls_test_options.addOptionPath("zig_lib_path", .zig_lib);
-        ls_test_options.addOptionPath("global_cache_path", .{ .relative = .{ .base = .global_cache } });
+        ls_test_options.addOptionPathUntracked("zig_lib_path", .zig_lib);
+        ls_test_options.addOptionPathUntracked("global_cache_path", .{ .relative = .{ .base = .global_cache } });
 
         break :blk ls_test_options.createModule();
     };

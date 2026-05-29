@@ -654,13 +654,21 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                             .path = try s.addLazyPath(src.path),
                         };
 
+                        const args_untracked = try arena.alloc(Configuration.Step.Options.Arg, so.args_untracked.items.len);
+                        for (args_untracked, so.args_untracked.items) |*dest, src| dest.* = .{
+                            .name = src.name,
+                            .path = try s.addLazyPath(src.path),
+                        };
+
                         break :e try wc.addExtraErased(Configuration.Step.Options, .{
                             .flags = .{
                                 .args = so.args.items.len != 0,
+                                .args_untracked = so.args_untracked.items.len != 0,
                             },
                             .generated_file = so.generated_file,
                             .contents = try wc.addBytes(so.contents.items),
                             .args = .{ .slice = args },
+                            .args_untracked = .{ .slice = args_untracked },
                         });
                     },
                 })),

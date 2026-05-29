@@ -13,6 +13,7 @@ step: Step,
 generated_file: Configuration.GeneratedFileIndex,
 contents: std.ArrayList(u8) = .empty,
 args: std.ArrayList(Arg) = .empty,
+args_untracked: std.ArrayList(Arg) = .empty,
 encountered_types: std.StringHashMapUnmanaged(void),
 
 pub const base_tag: Step.Tag = .options;
@@ -421,12 +422,36 @@ fn printStructValue(
 }
 
 /// The added option has type `[]const u8` and value of the provided path.
+/// This interface assumes the provided path is a generated file, and causes a
+/// transitive dependency through Options on the file's contents.
+///
+/// See also:
+/// * `addOptionPathUntracked`
 pub fn addOptionPath(options: *Options, name: []const u8, path: LazyPath) void {
     const graph = options.step.owner.graph;
     const arena = graph.arena;
     const wc = &graph.wip_configuration;
 
     options.args.append(arena, .{
+        .name = wc.addString(name) catch @panic("OOM"),
+        .path = path.dupe(options.step.owner.graph),
+    }) catch @panic("OOM");
+    path.addStepDependencies(&options.step);
+}
+
+/// The added option has type `[]const u8` and value of the provided path.
+/// This interface treats the resolved path string as pure data, meaning it
+/// does not track anything about the meaning or contents of this path, and
+/// therefore also does not create any related dependencies.
+///
+/// See also:
+/// * `addOptionPath`
+pub fn addOptionPathUntracked(options: *Options, name: []const u8, path: LazyPath) void {
+    const graph = options.step.owner.graph;
+    const arena = graph.arena;
+    const wc = &graph.wip_configuration;
+
+    options.args_untracked.append(arena, .{
         .name = wc.addString(name) catch @panic("OOM"),
         .path = path.dupe(options.step.owner.graph),
     }) catch @panic("OOM");
