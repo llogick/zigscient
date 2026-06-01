@@ -13923,9 +13923,14 @@ fn netLookupFallible(
         var port_buffer: [8]u8 = undefined;
         const port_c = std.fmt.bufPrintSentinel(&port_buffer, "{d}", .{options.port}, 0) catch unreachable;
 
+        const family: i32 = if (options.family) |f| switch (f) {
+            .ip4 => posix.AF.INET,
+            .ip6 => posix.AF.INET6,
+        } else posix.AF.UNSPEC;
+
         const hints: posix.addrinfo = .{
             .flags = .{ .CANONNAME = options.canonical_name_buffer != null, .NUMERICSERV = true },
-            .family = posix.AF.UNSPEC,
+            .family = family,
             .socktype = posix.SOCK.STREAM,
             .protocol = posix.IPPROTO.TCP,
             .canonname = null,
