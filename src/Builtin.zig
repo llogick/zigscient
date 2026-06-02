@@ -64,7 +64,9 @@ pub fn append(opts: @This(), buffer: *std.array_list.Managed(u8)) Allocator.Erro
         \\pub const unwind_tables: std.lang.UnwindTables = .{f};
         \\pub const is_test = {};
         \\pub const single_threaded = {};
+        \\/// Deprecated; to be removed in 0.18.0. Use `target.abi` instead.
         \\pub const abi: std.Target.Abi = .{f};
+        \\/// Deprecated; to be removed in 0.18.0. Use `target.cpu` instead.
         \\pub const cpu: std.Target.Cpu = .{{
         \\    .arch = .{f},
         \\    .model = &std.Target.{f}.cpu.{f},
@@ -95,6 +97,7 @@ pub fn append(opts: @This(), buffer: *std.array_list.Managed(u8)) Allocator.Erro
     try buffer.print(
         \\    }}),
         \\}};
+        \\/// Deprecated; to be removed in 0.18.0. Use `target.os` instead.
         \\pub const os: std.Target.Os = .{{
         \\    .tag = .{f},
         \\    .version_range = .{{
@@ -238,6 +241,7 @@ pub fn append(opts: @This(), buffer: *std.array_list.Managed(u8)) Allocator.Erro
     const link_libc = opts.link_libc;
 
     try buffer.print(
+        \\/// Deprecated; to be removed in 0.18.0. Use `target.ofmt` instead.
         \\pub const object_format: std.Target.ObjectFormat = .{f};
         \\/// Deprecated, to be removed after 0.18.0
         \\pub const mode = optimize;
