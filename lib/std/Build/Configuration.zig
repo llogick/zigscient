@@ -610,7 +610,8 @@ pub const Step = extern struct {
                 producer: bool,
                 generated: bool,
                 dep_file: bool,
-                _: u21 = 0,
+                make_absolute: bool,
+                _: u20 = 0,
             };
 
             pub const Tag = enum(u4) {

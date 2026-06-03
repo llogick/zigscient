@@ -196,6 +196,9 @@
         .elf2 = .{
             .path = "elf2",
         },
+        .run_args = .{
+            .path = "run_args",
+        },
     },
     .paths = .{
         "build.zig",
