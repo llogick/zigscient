@@ -12,10 +12,6 @@ top_level_steps: std.array_hash_map.String(Configuration.Step.Index),
 path: std.Build.Cache.Path,
 
 pub fn print(sc: *const ScannedConfig, w: *Writer) Writer.Error!void {
-    std.log.err("TODO also print paths", .{});
-    std.log.err("TODO also print unlazy deps", .{});
-    std.log.err("TODO also print system integrations", .{});
-    std.log.err("TODO also print available options", .{});
     const c = &sc.configuration;
     var serializer: Serializer = .{ .writer = w };
     var s = try serializer.beginStruct(.{});
@@ -41,6 +37,48 @@ pub fn print(sc: *const ScannedConfig, w: *Writer) Writer.Error!void {
             var step_field = try tf.beginStructField(.{});
             try printStruct(sc, &step_field, Configuration.Step, step);
             try step_field.end();
+        }
+        try tf.end();
+    }
+
+    {
+        var tf = try s.beginTupleField("path_deps", .{});
+        for (c.path_deps_base, c.path_deps_sub) |base, sub| {
+            var sf = try tf.beginStructField(.{});
+            try sf.field("base", @tagName(base), .{});
+            try sf.field("sub", sub.slice(c), .{});
+            try sf.end();
+        }
+        try tf.end();
+    }
+
+    {
+        var tf = try s.beginTupleField("unlazy_deps", .{});
+        for (c.unlazy_deps) |dep| {
+            try tf.field(dep.slice(c), .{});
+        }
+        try tf.end();
+    }
+
+    {
+        var tf = try s.beginTupleField("system_integrations", .{});
+        for (c.system_integrations) |opt| {
+            var sf = try tf.beginStructField(.{});
+            try sf.field("name", opt.name.slice(c), .{});
+            try sf.field("status", opt.status, .{});
+            try sf.end();
+        }
+        try tf.end();
+    }
+
+    {
+        var tf = try s.beginTupleField("available_options", .{});
+        for (c.available_options) |opt| {
+            var sf = try tf.beginStructField(.{});
+            try sf.field("name", opt.name.slice(c), .{});
+            try sf.field("description", opt.description.slice(c), .{});
+            try sf.field("type", @tagName(opt.type), .{});
+            try sf.end();
         }
         try tf.end();
     }
