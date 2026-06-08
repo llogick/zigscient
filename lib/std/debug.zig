@@ -501,7 +501,7 @@ pub fn defaultPanic(msg: []const u8, first_trace_addr: ?usize) noreturn {
     if (use_trap_panic) @trap();
 
     switch (builtin.os.tag) {
-        .freestanding, .other, .@"3ds", .psp, .vita => {
+        .freestanding, .other, .@"3ds", .wiiu, .psp, .vita => {
             @trap();
         },
         .uefi => {

@@ -6362,6 +6362,7 @@ fn addCommonCCArgs(
                 .serenity => try argv.append("__serenity__"),
                 // Homebrew targets without LLVM support; use communities's preferred macros.
                 .@"3ds" => try argv.append("-D__3DS__"),
+                .wiiu => try argv.append("-D__WIIU__"),
                 .psp => try argv.append("-D__PSP__"),
                 .vita => try argv.append("-D__vita__"),
                 else => {},

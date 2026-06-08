@@ -192,6 +192,7 @@ const targets = [_]std.Target.Query{
     .{ .cpu_arch = .powerpc, .os_tag = .openbsd, .abi = .eabihf },
     .{ .cpu_arch = .powerpc, .os_tag = .rtems, .abi = .eabi },
     .{ .cpu_arch = .powerpc, .os_tag = .rtems, .abi = .eabihf },
+    .{ .cpu_arch = .powerpc, .os_tag = .wiiu, .abi = .eabihf },
 
     .{ .cpu_arch = .powerpcle, .os_tag = .freestanding, .abi = .eabi },
     .{ .cpu_arch = .powerpcle, .os_tag = .freestanding, .abi = .eabihf },
