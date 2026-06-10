@@ -665,3 +665,14 @@ test "global comptime only optional" {
         assert(S.void.?.* == void);
     }
 }
+
+test "optional ptr payload alignment" {
+    const S = struct {
+        fn doTheTest(p: *align(1) ?u32) !void {
+            comptime assert(@TypeOf(&p.*.?) == *align(1) u32);
+            try expect(p.*.? == 10);
+        }
+    };
+    var x: ?u32 = 10;
+    try S.doTheTest(&x);
+}

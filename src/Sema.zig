@@ -7956,12 +7956,10 @@ fn analyzeOptionalPayloadPtr(
     }
 
     const child_type = opt_type.optionalChild(zcu);
-    const child_pointer = try pt.ptrType(.{
-        .child = child_type.toIntern(),
-        .flags = .{
-            .is_const = optional_ptr_ty.isConstPtr(zcu),
-            .address_space = optional_ptr_ty.ptrAddressSpace(zcu),
-        },
+    const child_pointer = try pt.ptrType(info: {
+        var new = optional_ptr_ty.ptrInfo(zcu);
+        new.child = child_type.toIntern();
+        break :info new;
     });
 
     if (try sema.resolveDefinedValue(block, src, optional_ptr)) |ptr_val| {
