@@ -26285,17 +26285,7 @@ fn fieldPtr(
             const attr_ptr_ty = if (is_pointer_to) object_ty else object_ptr_ty;
 
             if (field_name.eqlSlice("ptr", ip)) {
-                const slice_ptr_ty = inner_ty.slicePtrFieldType(zcu);
-
-                const result_ty = try pt.ptrType(.{
-                    .child = slice_ptr_ty.toIntern(),
-                    .flags = .{
-                        .is_const = !attr_ptr_ty.ptrIsMutable(zcu),
-                        .is_volatile = attr_ptr_ty.isVolatilePtr(zcu),
-                        .address_space = attr_ptr_ty.ptrAddressSpace(zcu),
-                    },
-                });
-
+                const result_ty = try attr_ptr_ty.fieldPtrType(Value.slice_ptr_index, pt);
                 if (try sema.resolveDefinedValue(block, object_ptr_src, inner_ptr)) |val| {
                     return Air.internedToRef((try val.ptrField(Value.slice_ptr_index, pt)).toIntern());
                 }
@@ -26305,15 +26295,7 @@ fn fieldPtr(
                 try sema.checkKnownAllocPtr(block, inner_ptr, field_ptr);
                 return field_ptr;
             } else if (field_name.eqlSlice("len", ip)) {
-                const result_ty = try pt.ptrType(.{
-                    .child = .usize_type,
-                    .flags = .{
-                        .is_const = !attr_ptr_ty.ptrIsMutable(zcu),
-                        .is_volatile = attr_ptr_ty.isVolatilePtr(zcu),
-                        .address_space = attr_ptr_ty.ptrAddressSpace(zcu),
-                    },
-                });
-
+                const result_ty = try attr_ptr_ty.fieldPtrType(Value.slice_len_index, pt);
                 if (try sema.resolveDefinedValue(block, object_ptr_src, inner_ptr)) |val| {
                     return Air.internedToRef((try val.ptrField(Value.slice_len_index, pt)).toIntern());
                 }

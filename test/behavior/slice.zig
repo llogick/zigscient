@@ -1083,3 +1083,15 @@ test "conditionally return second argument slice" {
     try expectEqualStrings("", S.foo(false, "false"));
     try expectEqualStrings("true", S.foo(true, "true"));
 }
+
+test "slice field alignment" {
+    const S = struct {
+        fn doTheTest(p: *align(1) const []u8) !void {
+            comptime assert(@TypeOf(&p.ptr) == *align(1) const [*]u8);
+            comptime assert(@TypeOf(&p.len) == *align(1) const usize);
+            try expect(p.len == 10);
+        }
+    };
+    var arr: [10]u8 = @splat(0);
+    try S.doTheTest(&&arr);
+}
