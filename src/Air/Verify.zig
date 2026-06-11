@@ -365,7 +365,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             .struct_field_ptr_index_1,
             .struct_field_ptr_index_2,
             .struct_field_ptr_index_3,
-            .struct_field_val,
+            .agg_field_val,
             .set_union_tag,
             .get_union_tag,
             .slice,

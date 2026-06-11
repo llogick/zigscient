@@ -198,7 +198,7 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
                 const extra = self.air.extraData(Air.UnionInit, ty_pl.payload).data;
                 try self.verifyInstOperands(inst, .{ extra.init, .none, .none });
             },
-            .struct_field_ptr, .struct_field_val, .spirv_runtime_array_len => {
+            .struct_field_ptr, .agg_field_val, .spirv_runtime_array_len => {
                 const ty_pl = data[@intFromEnum(inst)].ty_pl;
                 const extra = self.air.extraData(Air.StructField, ty_pl.payload).data;
                 try self.verifyInstOperands(inst, .{ extra.struct_operand, .none, .none });

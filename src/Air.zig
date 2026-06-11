@@ -688,8 +688,7 @@ pub const Inst = struct {
         struct_field_ptr_index_3,
         /// Given a byval struct or union and a field index, returns the field byval.
         /// Uses the `ty_pl` field, payload is `StructField`.
-        /// TODO rename to `agg_field_val`
-        struct_field_val,
+        agg_field_val,
         /// Given a pointer to a tagged union, set its tag to the provided value.
         /// Result type is always void.
         /// Uses the `bin_op` field. LHS is union pointer, RHS is new tag value.
@@ -1684,7 +1683,7 @@ pub fn typeOfIndex(air: *const Air, inst: Air.Inst.Index, ip: *const InternPool)
         .block,
         .dbg_inline_block,
         .struct_field_ptr,
-        .struct_field_val,
+        .agg_field_val,
         .slice_elem_ptr,
         .ptr_elem_ptr,
         .cmpxchg_weak,
@@ -2079,7 +2078,7 @@ pub fn mustLower(air: Air, inst: Air.Inst.Index, ip: *const InternPool) bool {
         .struct_field_ptr_index_1,
         .struct_field_ptr_index_2,
         .struct_field_ptr_index_3,
-        .struct_field_val,
+        .agg_field_val,
         .get_union_tag,
         .slice,
         .slice_len,

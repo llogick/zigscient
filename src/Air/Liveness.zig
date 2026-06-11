@@ -680,7 +680,7 @@ fn analyzeInst(
             const extra = a.air.extraData(Air.UnionInit, inst_datas[@intFromEnum(inst)].ty_pl.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ extra.init, .none, .none });
         },
-        .struct_field_ptr, .struct_field_val, .spirv_runtime_array_len => {
+        .struct_field_ptr, .agg_field_val, .spirv_runtime_array_len => {
             const extra = a.air.extraData(Air.StructField, inst_datas[@intFromEnum(inst)].ty_pl.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ extra.struct_operand, .none, .none });
         },

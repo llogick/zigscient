@@ -41,7 +41,7 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
 
         .expand_packed_load,
         .expand_packed_store,
-        .expand_packed_struct_field_val,
+        .expand_packed_agg_field_val,
         .expand_packed_aggregate_init,
 
         .scalarize_add,
@@ -1809,7 +1809,7 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
         .struct_field_ptr_index_1 => cg.airStructFieldPtrIndex(inst, 1),
         .struct_field_ptr_index_2 => cg.airStructFieldPtrIndex(inst, 2),
         .struct_field_ptr_index_3 => cg.airStructFieldPtrIndex(inst, 3),
-        .struct_field_val => cg.airStructFieldVal(inst),
+        .agg_field_val => cg.airAggFieldVal(inst),
         .field_parent_ptr => cg.airFieldParentPtr(inst),
 
         .switch_br => cg.airSwitchBr(inst, false),
@@ -5470,7 +5470,7 @@ fn structFieldPtr(
     }
 }
 
-fn airStructFieldVal(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
+fn airAggFieldVal(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     const pt = cg.pt;
     const zcu = pt.zcu;
     const ty_pl = cg.air.instructions.items(.data)[@intFromEnum(inst)].ty_pl;
@@ -5483,7 +5483,7 @@ fn airStructFieldVal(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     if (!field_ty.hasRuntimeBits(zcu)) return cg.finishAir(inst, .none, &.{struct_field.struct_operand});
 
     const result: WValue = switch (struct_ty.containerLayout(zcu)) {
-        .@"packed" => unreachable, // legalize .expand_packed_struct_field_val
+        .@"packed" => unreachable, // legalize .expand_packed_agg_field_val
         else => result: {
             const offset = std.math.cast(u32, struct_ty.structFieldOffset(field_index, zcu)) orelse {
                 return cg.fail("Field type '{f}' too big to fit into stack frame", .{field_ty.fmt(pt)});

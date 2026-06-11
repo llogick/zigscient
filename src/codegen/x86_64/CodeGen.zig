@@ -72,7 +72,7 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
 
         .expand_packed_load,
         .expand_packed_store,
-        .expand_packed_struct_field_val,
+        .expand_packed_agg_field_val,
         .expand_packed_aggregate_init,
     });
 }
@@ -103965,7 +103965,7 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 )), cg);
                 try ops[0].finish(inst, &.{ty_op.operand}, &ops, cg);
             },
-            .struct_field_val => {
+            .agg_field_val => {
                 const ty_pl = air_datas[@intFromEnum(inst)].ty_pl;
                 const struct_field = cg.air.extraData(Air.StructField, ty_pl.payload).data;
                 const agg_ty = cg.typeOf(struct_field.struct_operand);

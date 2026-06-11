@@ -1519,7 +1519,7 @@ fn genBody(func: *Func, body: []const Air.Inst.Index) InnerError!void {
             .store           => try func.airStore(inst, false),
             .store_safe      => try func.airStore(inst, true),
             .struct_field_ptr=> try func.airStructFieldPtr(inst),
-            .struct_field_val=> try func.airStructFieldVal(inst),
+            .agg_field_val   => try func.airAggFieldVal(inst),
             .float_from_int  => try func.airFloatFromInt(inst),
             .int_from_float  => try func.airIntFromFloat(inst),
             .cmpxchg_strong  => try func.airCmpxchg(inst, .strong),
@@ -4591,7 +4591,7 @@ fn structFieldPtr(func: *Func, inst: Air.Inst.Index, operand: Air.Inst.Ref, inde
     return dst_mcv.offset(field_offset);
 }
 
-fn airStructFieldVal(func: *Func, inst: Air.Inst.Index) !void {
+fn airAggFieldVal(func: *Func, inst: Air.Inst.Index) !void {
     const pt = func.pt;
     const zcu = pt.zcu;
 
@@ -4688,7 +4688,7 @@ fn airStructFieldVal(func: *Func, inst: Air.Inst.Index) !void {
                     break :result dst_mcv;
                 }
 
-                return func.fail("TODO: airStructFieldVal load_frame field_off non multiple of 8", .{});
+                return func.fail("TODO: airAggFieldVal load_frame field_off non multiple of 8", .{});
             },
             else => return func.fail("TODO: airStructField {s}", .{@tagName(src_mcv)}),
         }

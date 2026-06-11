@@ -576,7 +576,7 @@ fn genBody(self: *Self, body: []const Air.Inst.Index) InnerError!void {
             .store           => try self.airStore(inst, false),
             .store_safe      => try self.airStore(inst, true),
             .struct_field_ptr=> try self.airStructFieldPtr(inst),
-            .struct_field_val=> try self.airStructFieldVal(inst),
+            .agg_field_val   => try self.airAggFieldVal(inst),
             .array_to_slice  => try self.airArrayToSlice(inst),
             .float_from_int    => try self.airFloatFromInt(inst),
             .int_from_float    => try self.airIntFromFloat(inst),
@@ -2473,7 +2473,7 @@ fn airStructFieldPtrIndex(self: *Self, inst: Air.Inst.Index, index: u8) !void {
     return self.finishAir(inst, result, .{ ty_op.operand, .none, .none });
 }
 
-fn airStructFieldVal(self: *Self, inst: Air.Inst.Index) !void {
+fn airAggFieldVal(self: *Self, inst: Air.Inst.Index) !void {
     const ty_pl = self.air.instructions.items(.data)[@intFromEnum(inst)].ty_pl;
     const extra = self.air.extraData(Air.StructField, ty_pl.payload).data;
     const operand = extra.struct_operand;
@@ -2536,7 +2536,7 @@ fn airStructFieldVal(self: *Self, inst: Air.Inst.Index) !void {
                     else => unreachable,
                 }
             },
-            else => return self.fail("TODO implement codegen struct_field_val for {}", .{mcv}),
+            else => return self.fail("TODO implement codegen agg_field_val for {}", .{mcv}),
         }
     };
 

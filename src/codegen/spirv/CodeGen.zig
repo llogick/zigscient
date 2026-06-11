@@ -4222,7 +4222,7 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) Error!void {
             .get_union_tag => try cg.airGetUnionTag(inst),
             .union_init => try cg.airUnionInit(inst),
 
-            .struct_field_val => try cg.airStructFieldVal(inst),
+            .agg_field_val => try cg.airAggFieldVal(inst),
             .field_parent_ptr => try cg.airFieldParentPtr(inst),
 
             .struct_field_ptr => try cg.airStructFieldPtr(inst),
@@ -6701,7 +6701,7 @@ fn airUnionInit(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     return try cg.unionInit(ty, extra.field_index, payload);
 }
 
-fn airStructFieldVal(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
+fn airAggFieldVal(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     const pt = cg.pt;
     const zcu = cg.zcu;
     const ty_pl = cg.air.instructions.items(.data)[@intFromEnum(inst)].ty_pl;

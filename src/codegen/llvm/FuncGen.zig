@@ -539,7 +539,7 @@ fn genBody(self: *FuncGen, body: []const Air.Inst.Index, coverage_point: Air.Cov
             .atomic_store_seq_cst   => try self.airAtomicStore(inst, .seq_cst),
 
             .struct_field_ptr => try self.airStructFieldPtr(inst),
-            .struct_field_val => try self.airStructFieldVal(inst),
+            .agg_field_val => try self.airAggFieldVal(inst),
 
             .struct_field_ptr_index_0 => try self.airStructFieldPtrIndex(inst, 0),
             .struct_field_ptr_index_1 => try self.airStructFieldPtrIndex(inst, 1),
@@ -2323,7 +2323,7 @@ fn airStructFieldPtrIndex(
     return self.fieldPtr(struct_ptr, struct_ptr_ty, field_index);
 }
 
-fn airStructFieldVal(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value {
+fn airAggFieldVal(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value {
     const o = self.object;
     const zcu = o.zcu;
     const ty_pl = self.air.instructions.items(.data)[@intFromEnum(inst)].ty_pl;

@@ -317,7 +317,7 @@ const Writer = struct {
             => try w.writeDbgVar(s, inst),
 
             .struct_field_ptr => try w.writeStructField(s, inst),
-            .struct_field_val => try w.writeStructField(s, inst),
+            .agg_field_val => try w.writeStructField(s, inst),
             .spirv_runtime_array_len => try w.writeStructField(s, inst),
             .inferred_alloc => @panic("TODO"),
             .inferred_alloc_comptime => @panic("TODO"),

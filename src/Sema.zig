@@ -671,7 +671,7 @@ pub const Block = struct {
         field_ty: Type,
     ) !Air.Inst.Ref {
         return block.addInst(.{
-            .tag = .struct_field_val,
+            .tag = .agg_field_val,
             .data = .{ .ty_pl = .{
                 .ty = Air.internedToRef(field_ty.toIntern()),
                 .payload = try block.sema.addExtra(Air.StructField{

@@ -36,7 +36,7 @@ pub fn legalizeFeatures(_: *const std.Target) ?*const Air.Legalize.Features {
 
             .expand_packed_load = true,
             .expand_packed_store = true,
-            .expand_packed_struct_field_val = true,
+            .expand_packed_agg_field_val = true,
             .expand_packed_aggregate_init = true,
 
             .scalarize_bit_cast_array = true,
@@ -2823,7 +2823,7 @@ fn genBodyInner(f: *Function, body: []const Air.Inst.Index) Error!void {
 
             .field_parent_ptr => try airFieldParentPtr(f, inst),
 
-            .struct_field_val => try airStructFieldVal(f, inst),
+            .agg_field_val    => try airAggFieldVal(f, inst),
             .slice_ptr        => try airSliceField(f, inst, false, "ptr"),
             .slice_len        => try airSliceField(f, inst, false, "len"),
 
@@ -5527,7 +5527,7 @@ fn fieldPtr(
     return local;
 }
 
-fn airStructFieldVal(f: *Function, inst: Air.Inst.Index) !CValue {
+fn airAggFieldVal(f: *Function, inst: Air.Inst.Index) !CValue {
     const pt = f.dg.pt;
     const zcu = pt.zcu;
     const ip = &zcu.intern_pool;
@@ -5542,7 +5542,7 @@ fn airStructFieldVal(f: *Function, inst: Air.Inst.Index) !CValue {
     const struct_ty = f.typeOf(extra.struct_operand);
     const w = &f.code.writer;
 
-    assert(struct_ty.containerLayout(zcu) != .@"packed"); // `Air.Legalize.Feature.expand_packed_struct_field_val` handles this case
+    assert(struct_ty.containerLayout(zcu) != .@"packed"); // `Air.Legalize.Feature.expand_packed_agg_field_val` handles this case
     const field_name: CValue = switch (ip.indexToKey(struct_ty.toIntern())) {
         .struct_type => .{ .identifier = struct_ty.structFieldName(extra.field_index, zcu).unwrap().?.toSlice(ip) },
         .union_type => name: {

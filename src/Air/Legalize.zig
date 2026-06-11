@@ -181,8 +181,8 @@ pub const Feature = enum {
     /// Currently assumes little endian and a specific integer layout where the lsb of every integer is the lsb of the
     /// first byte of memory until bit pointers know their backing type.
     expand_packed_store,
-    /// Replace `struct_field_val` of a packed field with a `bit_cast` to integer, `shr`, `trunc`, and `bit_cast` to field type.
-    expand_packed_struct_field_val,
+    /// Replace `agg_field_val` of a packed field with a `bit_cast` to integer, `shr`, `trunc`, and `bit_cast` to field type.
+    expand_packed_agg_field_val,
     /// Replace `aggregate_init` of a packed struct with a sequence of `shl_exact`, `bit_cast`, `int_cast`, and `bit_or`.
     expand_packed_aggregate_init,
 
@@ -781,7 +781,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .struct_field_ptr_index_2,
             .struct_field_ptr_index_3,
             => {},
-            .struct_field_val => if (l.features.has(.expand_packed_struct_field_val)) {
+            .agg_field_val => if (l.features.has(.expand_packed_agg_field_val)) {
                 const ty_pl = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_pl;
                 const extra = l.extraData(Air.StructField, ty_pl.payload).data;
                 switch (l.typeOf(extra.struct_operand).containerLayout(zcu)) {
@@ -1808,8 +1808,8 @@ fn scalarizeOverflowBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!
     //     %9 = legalize_vec_elem_val(orig_lhs, %8)
     //     %10 = legalize_vec_elem_val(orig_rhs, %8)
     //     %11 = ???_with_overflow(struct { Int, u1 }, %9, %10)
-    //     %12 = struct_field_val(%11, 0)
-    //     %13 = struct_field_val(%11, 1)
+    //     %12 = agg_field_val(%11, 0)
+    //     %13 = agg_field_val(%11, 1)
     //     %14 = legalize_vec_store_elem(%4, %8, %12)
     //     %15 = legalize_vec_store_elem(%4, %8, %13)
     //     %16 = cmp_eq(%8, <usize, N-1>)
@@ -1861,7 +1861,7 @@ fn scalarizeOverflowBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!
         } },
     }).toRef();
     const int_elem = loop.block.add(l, .{
-        .tag = .struct_field_val,
+        .tag = .agg_field_val,
         .data = .{ .ty_pl = .{
             .ty = .fromType(scalar_int_ty),
             .payload = try l.addExtra(Air.StructField, .{
@@ -1871,7 +1871,7 @@ fn scalarizeOverflowBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!
         } },
     }).toRef();
     const overflow_elem = loop.block.add(l, .{
-        .tag = .struct_field_val,
+        .tag = .agg_field_val,
         .data = .{ .ty_pl = .{
             .ty = .u1_type,
             .payload = try l.addExtra(Air.StructField, .{
@@ -2343,14 +2343,14 @@ fn safeArithmeticBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, overflow_
     // The worst-case scenario is a vector operand:
     //
     // %1 = add_with_overflow(%x, %y)
-    // %2 = struct_field_val(%1, .@"1")
+    // %2 = agg_field_val(%1, .@"1")
     // %3 = reduce(%2, .@"or")
     // %4 = bit_cast(%3, @bool_type)
     // %5 = cond_br(%4, {
     //   %6 = call(@panic.integerOverflow, [])
     //   %7 = unreach()
     // }, {
-    //   %8 = struct_field_val(%1, .@"0")
+    //   %8 = agg_field_val(%1, .@"0")
     //   %9 = br(%z, %8)
     // })
     var inst_buf: [9]Air.Inst.Index = undefined;
@@ -2369,7 +2369,7 @@ fn safeArithmeticBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, overflow_
         } },
     });
     const overflow_bits_inst = main_block.add(l, .{
-        .tag = .struct_field_val,
+        .tag = .agg_field_val,
         .data = .{ .ty_pl = .{
             .ty = Air.internedToRef(overflow_bits_ty.toIntern()),
             .payload = try l.addExtra(Air.StructField, .{
@@ -2393,7 +2393,7 @@ fn safeArithmeticBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, overflow_
     condbr.else_block = .init(condbr.then_block.stealRemainingCapacity());
 
     const result_inst = condbr.else_block.add(l, .{
-        .tag = .struct_field_val,
+        .tag = .agg_field_val,
         .data = .{ .ty_pl = .{
             .ty = Air.internedToRef(operand_ty.toIntern()),
             .payload = try l.addExtra(Air.StructField, .{
