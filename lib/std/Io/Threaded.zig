@@ -1563,7 +1563,7 @@ pub const splat_buffer_size = 64;
 /// NtWaitForMultipleObjects accepts. We use this value also for poll() on
 /// posix systems.
 const poll_buffer_len = 64;
-pub const default_PATH = "/usr/local/bin:/bin/:/usr/bin";
+pub const default_PATH = "/usr/local/bin:/bin:/usr/bin";
 /// There are multiple kernel bugs being worked around with retries.
 const max_windows_kernel_bug_retries = 13;
 
