@@ -302,27 +302,14 @@ pub const ElfDynLib = struct {
                         const extended_memsz = mem.alignForward(usize, ph.p_memsz + extra_bytes, page_size);
                         const ptr = @as([*]align(std.heap.page_size_min) u8, @ptrFromInt(aligned_addr));
                         const prot = elfToProt(ph.p_flags);
-                        if ((ph.p_flags & elf.PF_W) == 0) {
-                            // If it does not need write access, it can be mapped from the fd.
-                            _ = try posix.mmap(
-                                ptr,
-                                extended_memsz,
-                                prot,
-                                .{ .TYPE = .PRIVATE, .FIXED = true },
-                                file.handle,
-                                ph.p_offset - extra_bytes,
-                            );
-                        } else {
-                            const sect_mem = try posix.mmap(
-                                ptr,
-                                extended_memsz,
-                                prot,
-                                .{ .TYPE = .PRIVATE, .FIXED = true, .ANONYMOUS = true },
-                                -1,
-                                0,
-                            );
-                            @memcpy(sect_mem[0..ph.p_filesz], file_bytes[0..ph.p_filesz]);
-                        }
+                        _ = try posix.mmap(
+                            ptr,
+                            extended_memsz,
+                            prot,
+                            .{ .TYPE = .PRIVATE, .FIXED = true },
+                            file.handle,
+                            ph.p_offset - extra_bytes,
+                        );
                     },
                     else => {},
                 }

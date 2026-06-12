@@ -11,12 +11,16 @@ pub fn build(b: *std.Build) void {
     if (builtin.os.tag == .wasi) return;
     if (builtin.os.tag == .windows) return;
 
+    // ld and lld do not agree on the format of the .hash section
+    // Tracked by https://codeberg.org/ziglang/zig/issues/35746
+    if (builtin.cpu.arch == .s390x and builtin.os.tag == .linux) return;
+
     const lib = b.addLibrary(.{
         .linkage = .dynamic,
-        .name = "add",
+        .name = "lib",
         .version = .{ .major = 1, .minor = 0, .patch = 0 },
         .root_module = b.createModule(.{
-            .root_source_file = b.path("add.zig"),
+            .root_source_file = b.path("lib.zig"),
             .optimize = optimize,
             .target = target,
         }),

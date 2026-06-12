@@ -8,9 +8,11 @@ pub fn main(init: std.process.Init) !void {
     var lib = try std.DynLib.open(dynlib_name);
     defer lib.close();
 
-    const Add = *const fn (i32, i32) callconv(.c) i32;
-    const addFn = lib.lookup(Add, "add") orelse return error.SymbolNotFound;
+    const AddInts = *const fn (i32, i32) callconv(.c) i32;
+    const addInts = lib.lookup(AddInts, "addInts").?;
+    std.debug.assert(addInts(12, 34) == 46);
 
-    const result = addFn(12, 34);
-    std.debug.assert(result == 46);
+    const FortyTwo = *const fn () callconv(.c) i32;
+    const fortyTwo = lib.lookup(FortyTwo, "fortyTwo").?;
+    std.debug.assert(fortyTwo() == 42);
 }
