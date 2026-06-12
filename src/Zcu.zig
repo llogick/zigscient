@@ -1572,7 +1572,7 @@ pub const SrcLoc = struct {
             .node_offset_deref_ptr => |node_off| {
                 const tree = try src_loc.file_scope.getTree(zcu);
                 const node = node_off.toAbsolute(src_loc.base_node);
-                return tree.nodeToSpan(node);
+                return tree.nodeToSpan(tree.nodeData(node).node);
             },
             .node_offset_asm_source => |node_off| {
                 const tree = try src_loc.file_scope.getTree(zcu);

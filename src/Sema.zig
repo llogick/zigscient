@@ -1241,6 +1241,8 @@ fn analyzeBodyInner(
             .optional_type                => try sema.zirOptionalType(block, inst),
             .ptr_type                     => try sema.zirPtrType(block, inst),
             .ref                          => try sema.zirRef(block, inst),
+            .deref                        => try sema.zirDeref(block, inst),
+            .ref_deref                    => try sema.zirRefDeref(block, inst),
             .shr                          => try sema.zirShr(block, inst, .shr),
             .shr_exact                    => try sema.zirShr(block, inst, .shr_exact),
             .slice_end                    => try sema.zirSliceEnd(block, inst),
@@ -1563,11 +1565,6 @@ fn analyzeBodyInner(
             },
             .validate_ptr_array_init => {
                 try sema.zirValidatePtrArrayInit(block, inst);
-                i += 1;
-                continue;
-            },
-            .validate_deref => {
-                try sema.zirValidateDeref(block, inst);
                 i += 1;
                 continue;
             },
@@ -3080,6 +3077,69 @@ fn zirRef(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Ins
     const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].un_tok;
     const operand = sema.resolveInst(inst_data.operand);
     return sema.analyzeRef(block, block.tokenOffset(inst_data.src_tok), operand, .none);
+}
+
+fn zirDeref(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
+    const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].un_node;
+    const src = block.nodeOffset(inst_data.src_node);
+    const ptr_src = block.src(.{ .node_offset_deref_ptr = inst_data.src_node });
+    const operand = sema.resolveInst(inst_data.operand);
+
+    try sema.validateDeref(block, src, operand, sema.typeOf(operand));
+
+    return sema.analyzeLoad(block, src, operand, ptr_src);
+}
+
+fn zirRefDeref(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
+    const pt = sema.pt;
+    const zcu = pt.zcu;
+    const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].un_node;
+    const src = block.nodeOffset(inst_data.src_node);
+    const ptr_src = block.src(.{ .node_offset_deref_ptr = inst_data.src_node });
+    const operand = sema.resolveInst(inst_data.operand);
+    const operand_ty = sema.typeOf(operand);
+
+    try sema.validateDeref(block, src, operand, operand_ty);
+
+    const ptr_info = operand_ty.ptrInfo(zcu);
+    return switch (ptr_info.flags.size) {
+        .many, .slice => unreachable, // cannot be dereferenced
+        .c => ptr: {
+            var single_ptr_flags = ptr_info.flags;
+            single_ptr_flags.size = .one;
+            single_ptr_flags.is_allowzero = false;
+            const single_ptr_ty = try pt.ptrType(.{
+                .child = ptr_info.child,
+                .flags = single_ptr_flags,
+            });
+            break :ptr try sema.coerceCompatiblePtrs(block, single_ptr_ty, operand, ptr_src);
+        },
+        .one => operand,
+    };
+}
+
+fn validateDeref(
+    sema: *Sema,
+    block: *Block,
+    src: LazySrcLoc,
+    ref: Air.Inst.Ref,
+    ty: Type,
+) CompileError!void {
+    const pt = sema.pt;
+    const zcu = pt.zcu;
+    if (ty.zigTypeTag(zcu) != .pointer) {
+        return sema.fail(block, src, "cannot dereference non-pointer type '{f}'", .{ty.fmt(pt)});
+    } else switch (ty.ptrSize(zcu)) {
+        .one, .c => {},
+        .many => return sema.fail(block, src, "index syntax required for unknown-length pointer type '{f}'", .{ty.fmt(pt)}),
+        .slice => return sema.fail(block, src, "index syntax required for slice type '{f}'", .{ty.fmt(pt)}),
+    }
+    if (sema.resolveValue(ref)) |val| {
+        // Error for deref of undef pointer, unless the pointee is OPV in which case it's legal.
+        if (val.isUndef(zcu) and ty.childType(zcu).classify(zcu) != .one_possible_value) {
+            return sema.fail(block, src, "cannot dereference undefined value", .{});
+        }
+    }
 }
 
 fn zirEnsureResultUsed(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!void {
@@ -4603,30 +4663,6 @@ fn zirValidatePtrArrayInit(
         },
 
         else => unreachable,
-    }
-}
-
-fn zirValidateDeref(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!void {
-    const pt = sema.pt;
-    const zcu = pt.zcu;
-    const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].un_node;
-    const src = block.nodeOffset(inst_data.src_node);
-    const operand = sema.resolveInst(inst_data.operand);
-    const operand_ty = sema.typeOf(operand);
-
-    if (operand_ty.zigTypeTag(zcu) != .pointer) {
-        return sema.fail(block, src, "cannot dereference non-pointer type '{f}'", .{operand_ty.fmt(pt)});
-    } else switch (operand_ty.ptrSize(zcu)) {
-        .one, .c => {},
-        .many => return sema.fail(block, src, "index syntax required for unknown-length pointer type '{f}'", .{operand_ty.fmt(pt)}),
-        .slice => return sema.fail(block, src, "index syntax required for slice type '{f}'", .{operand_ty.fmt(pt)}),
-    }
-
-    if (sema.resolveValue(operand)) |val| {
-        // Error for deref of undef pointer, unless the pointee is OPV in which case it's legal.
-        if (val.isUndef(zcu) and operand_ty.childType(zcu).classify(zcu) != .one_possible_value) {
-            return sema.fail(block, src, "cannot dereference undefined value", .{});
-        }
     }
 }
 

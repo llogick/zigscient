@@ -567,12 +567,21 @@ pub const Inst = struct {
         /// Uses the `pl_node` field with payload `Bin`.
         merge_error_sets,
         /// Turns an R-Value into a const L-Value. In other words, it takes a value,
-        /// stores it in a memory location, and returns a const pointer to it. If the value
-        /// is `comptime`, the memory location is global static constant data. Otherwise,
-        /// the memory location is in the stack frame, local to the scope containing the
-        /// instruction.
+        /// stores it in a memory location, and returns a const single-item pointer to it.
+        /// If the value is `comptime`, the memory location is global static constant data.
+        /// Otherwise, the memory location is in the stack frame, local to the scope
+        /// containing the instruction.
         /// Uses the `un_tok` union field.
         ref,
+        /// Implements the dereference operand (`.*`). Checks that operand is a pointer
+        /// that supports being directly dereferenced.
+        /// Uses the `un_node` union field.
+        deref,
+        /// Emitted when a dereference (`.*`) with a reference result location occurs.
+        /// Checks that operand is a pointer that supports being directly dereferenced
+        /// and returns a single-item pointer to the dereferenced memory location.
+        /// Uses the `un_node` union field.
+        ref_deref,
         /// Sends control flow back to the function's callee.
         /// Includes an operand as the return value.
         /// Includes an AST node source location.
@@ -717,9 +726,6 @@ pub const Inst = struct {
         /// - `if (eu) |payload| {...} else |err| {...}`, AST node is the `if`.
         /// Uses the `pl_node` union field. Payload is `SwitchBlock`.
         switch_block_err_union,
-        /// Check that operand type supports the dereference operand (.*).
-        /// Uses the `un_node` field.
-        validate_deref,
         /// Check that the operand's type is an array or tuple with the given number of elements.
         /// Uses the `pl_node` field. Payload is `ValidateDestructure`.
         validate_destructure,
@@ -1170,6 +1176,8 @@ pub const Inst = struct {
                 .mulwrap,
                 .mul_sat,
                 .ref,
+                .deref,
+                .ref_deref,
                 .shl,
                 .shl_sat,
                 .shr,
@@ -1213,7 +1221,6 @@ pub const Inst = struct {
                 .switch_block,
                 .switch_block_ref,
                 .switch_block_err_union,
-                .validate_deref,
                 .validate_destructure,
                 .union_init,
                 .field_type_ref,
@@ -1352,7 +1359,6 @@ pub const Inst = struct {
                 .atomic_store,
                 .store_node,
                 .store_to_inferred_ptr,
-                .validate_deref,
                 .validate_destructure,
                 .@"export",
                 .set_runtime_safety,
@@ -1456,6 +1462,8 @@ pub const Inst = struct {
                 .mulwrap,
                 .mul_sat,
                 .ref,
+                .deref,
+                .ref_deref,
                 .shl,
                 .shl_sat,
                 .shr,
@@ -1708,6 +1716,8 @@ pub const Inst = struct {
                 .merge_error_sets = .pl_node,
                 .mod_rem = .pl_node,
                 .ref = .un_tok,
+                .deref = .un_node,
+                .ref_deref = .un_node,
                 .ret_node = .un_node,
                 .ret_load = .un_node,
                 .ret_implicit = .un_tok,
@@ -1744,7 +1754,6 @@ pub const Inst = struct {
                 .switch_block = .pl_node,
                 .switch_block_ref = .pl_node,
                 .switch_block_err_union = .pl_node,
-                .validate_deref = .un_node,
                 .validate_destructure = .pl_node,
                 .field_type_ref = .pl_node,
                 .union_init = .pl_node,
@@ -4186,6 +4195,8 @@ fn findTrackableInner(
         .for_len,
         .merge_error_sets,
         .ref,
+        .deref,
+        .ref_deref,
         .ret_node,
         .ret_load,
         .ret_implicit,
@@ -4219,7 +4230,6 @@ fn findTrackableInner(
         .enum_literal,
         .decl_literal,
         .decl_literal_no_coerce,
-        .validate_deref,
         .validate_destructure,
         .field_type_ref,
         .opt_eu_base_ptr_init,
