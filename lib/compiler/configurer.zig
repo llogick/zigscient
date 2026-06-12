@@ -676,7 +676,6 @@ fn serialize(b: *std.Build, wc: *Configuration.Wip, writer: *Io.Writer) !void {
                     },
                     .compile => e: {
                         const c: *Step.Compile = @fieldParentPtr("step", step);
-                        const exec_cmd_args: []const ?[]const u8 = c.exec_cmd_args orelse &.{};
                         const installed_headers: []u32 = try arena.alloc(u32, c.installed_headers.items.len);
                         for (installed_headers, c.installed_headers.items) |*dst, src| switch (src) {
                             .file => |file| {
@@ -703,7 +702,6 @@ fn serialize(b: *std.Build, wc: *Configuration.Wip, writer: *Io.Writer) !void {
                         break :e try wc.addExtraErased(Configuration.Step.Compile, .{
                             .flags = .{
                                 .filters_len = c.filters.len != 0,
-                                .exec_cmd_args_len = exec_cmd_args.len != 0,
                                 .installed_headers_len = installed_headers.len != 0,
                                 .force_undefined_symbols_len = c.force_undefined_symbols.entries.len != 0,
 
@@ -837,7 +835,6 @@ fn serialize(b: *std.Build, wc: *Configuration.Wip, writer: *Io.Writer) !void {
                                 .none, .fast, .uuid, .sha1, .md5 => null,
                             } else null },
                             .filters = .{ .slice = try s.initStringList(c.filters) },
-                            .exec_cmd_args = .{ .slice = try s.initOptionalStringList(exec_cmd_args) },
                             .installed_headers = .initErased(installed_headers),
                             .force_undefined_symbols = .{ .slice = try s.initStringList(c.force_undefined_symbols.keys()) },
                             .expect_errors = .{ .u = if (c.expect_errors) |x| switch (x) {

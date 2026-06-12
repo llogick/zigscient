@@ -698,7 +698,6 @@ pub const Step = extern struct {
         root_name: String,
 
         filters: Storage.FlagLengthPrefixedList(.flags, .filters_len, String),
-        exec_cmd_args: Storage.FlagLengthPrefixedList(.flags, .exec_cmd_args_len, OptionalString),
         installed_headers: Storage.FlagLengthPrefixedList(.flags, .installed_headers_len, Storage.Extended(InstalledHeader.Flags, InstalledHeader)),
         force_undefined_symbols: Storage.FlagLengthPrefixedList(.flags, .force_undefined_symbols_len, String),
         expect_errors: Storage.FlagUnion(.flags4, .expect_errors, ExpectErrors),
@@ -927,7 +926,6 @@ pub const Step = extern struct {
             tag: Tag = .compile,
 
             filters_len: bool,
-            exec_cmd_args_len: bool,
             installed_headers_len: bool,
             force_undefined_symbols_len: bool,
 
@@ -954,6 +952,7 @@ pub const Step = extern struct {
             force_load_objc: bool,
             discard_local_symbols: bool,
             mingw_unicode_entry_point: bool,
+            _: u1 = 0,
         };
 
         pub const Flags2 = packed struct(u32) {

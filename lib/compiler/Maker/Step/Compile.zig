@@ -806,18 +806,6 @@ fn lowerZigArgs(
         try zig_args.append(gpa, if (enabled) "--enable-new-dtags" else "--disable-new-dtags");
     }
 
-    if (conf_comp.flags3.kind == .@"test" and conf_comp.exec_cmd_args.slice.len != 0) {
-        for (conf_comp.exec_cmd_args.slice) |cmd_arg| {
-            try zig_args.ensureUnusedCapacity(gpa, 2);
-            if (cmd_arg.slice(conf)) |arg| {
-                zig_args.appendAssumeCapacity("--test-cmd");
-                zig_args.appendAssumeCapacity(arg);
-            } else {
-                zig_args.appendAssumeCapacity("--test-cmd-bin");
-            }
-        }
-    }
-
     if (graph.sysroot) |sysroot| try zig_args.appendSlice(gpa, &.{ "--sysroot", sysroot });
 
     // -I and -L arguments that appear after the last --mod argument apply to all modules.

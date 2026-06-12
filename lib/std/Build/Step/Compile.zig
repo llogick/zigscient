@@ -51,7 +51,6 @@ shared_memory: bool = false,
 global_base: ?u64 = null,
 /// Set via options; intended to be read-only after that.
 zig_lib_dir: ?LazyPath,
-exec_cmd_args: ?[]const ?[]const u8,
 filters: []const []const u8,
 test_runner: ?TestRunner,
 wasi_exec_model: ?std.builtin.WasiExecModel = null,
@@ -419,7 +418,6 @@ pub fn create(owner: *std.Build, options: Options) *Compile {
         .out_filename = out_filename,
         .installed_headers = .empty,
         .zig_lib_dir = null,
-        .exec_cmd_args = null,
         .filters = options.filters,
         .test_runner = null, // set below
         .rdynamic = false,
@@ -734,17 +732,6 @@ pub fn getEmittedLlvmIr(compile: *Compile) LazyPath {
 /// Returns the path to the generated LLVM BC.
 pub fn getEmittedLlvmBc(compile: *Compile) LazyPath {
     return compile.getEmittedFileGeneric(&compile.generated_llvm_bc);
-}
-
-pub fn setExecCmd(compile: *Compile, args: []const ?[]const u8) void {
-    const graph = compile.step.owner.graph;
-    const arena = graph.arena;
-    assert(compile.kind == .@"test");
-    const duped_args = arena.alloc(?[]const u8, args.len) catch @panic("OOM");
-    for (args, 0..) |arg, i| {
-        duped_args[i] = if (arg) |a| graph.dupeString(a) else null;
-    }
-    compile.exec_cmd_args = duped_args;
 }
 
 pub fn rootModuleTarget(c: *Compile) std.Target {

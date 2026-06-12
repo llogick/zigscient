@@ -898,17 +898,7 @@ pub fn addRunArtifact(b: *Build, exe: *Step.Compile) *Step.Run {
     const run_step = Step.Run.create(b, step_name);
     run_step.producer = exe;
     if (exe.kind == .@"test") {
-        if (exe.exec_cmd_args) |exec_cmd_args| {
-            for (exec_cmd_args) |cmd_arg| {
-                if (cmd_arg) |arg| {
-                    run_step.addArg(arg);
-                } else {
-                    run_step.addArtifactArg(exe);
-                }
-            }
-        } else {
-            run_step.addArtifactArg(exe);
-        }
+        run_step.addArtifactArg(exe);
 
         const test_server_mode: bool = s: {
             if (exe.test_runner) |r| break :s r.mode == .server;
