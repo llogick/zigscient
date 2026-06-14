@@ -10868,7 +10868,7 @@ fn finishSwitchBr(
 const ValidatedSwitchBlock = struct {
     seen_enum_fields: []const ?LazySrcLoc,
     seen_errors: std.AutoHashMapUnmanaged(InternPool.NullTerminatedString, LazySrcLoc),
-    seen_ranges: []const RangeSet.Range,
+    seen_ranges: std.MultiArrayList(RangeSet.Range).Slice,
     true_src: ?LazySrcLoc,
     false_src: ?LazySrcLoc,
     void_src: ?LazySrcLoc,
@@ -10903,7 +10903,7 @@ const ValidatedSwitchBlock = struct {
         error_names: InternPool.NullTerminatedString.Slice,
         seen_enum_fields: []const ?LazySrcLoc,
         seen_errors: *const std.AutoHashMapUnmanaged(InternPool.NullTerminatedString, LazySrcLoc),
-        seen_ranges: []const RangeSet.Range,
+        seen_ranges: std.MultiArrayList(RangeSet.Range).Slice,
         seen_true: bool,
         seen_false: bool,
         seen_void: bool,
@@ -10940,13 +10940,13 @@ const ValidatedSwitchBlock = struct {
                         else => unreachable,
                     };
                     while (it.next_idx < it.seen_ranges.len and
-                        cur_val.eql(it.seen_ranges[it.next_idx].first, int_ty, zcu))
+                        cur_val.eql(it.seen_ranges.items(.first)[it.next_idx], int_ty, zcu))
                     {
                         defer it.next_idx += 1;
                         const incr = try arith.incrementDefinedInt(
                             sema,
                             int_ty,
-                            it.seen_ranges[it.next_idx].last,
+                            it.seen_ranges.items(.last)[it.next_idx],
                         );
                         if (incr.overflow) {
                             it.next_val = null;
@@ -11434,7 +11434,7 @@ fn validateSwitchBlock(
     return .{
         .seen_enum_fields = seen_enum_fields,
         .seen_errors = seen_errors,
-        .seen_ranges = range_set.ranges.items,
+        .seen_ranges = range_set.ranges.slice(),
         .true_src = true_src,
         .false_src = false_src,
         .void_src = void_src,

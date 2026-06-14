@@ -1,6 +1,6 @@
 const RangeSet = @This();
 
-ranges: std.ArrayList(Range),
+ranges: std.MultiArrayList(Range),
 
 pub const Range = struct {
     first: Value,
@@ -22,30 +22,25 @@ pub fn ensureUnusedCapacity(self: *RangeSet, allocator: Allocator, additional_co
 pub fn addAssumeCapacity(set: *RangeSet, new: Range, ty: Type, zcu: *Zcu) ?LazySrcLoc {
     assert(new.first.typeOf(zcu).eql(ty));
     assert(new.last.typeOf(zcu).eql(ty));
+    assert(new.first.compareScalar(.lte, new.last, ty, zcu));
 
-    for (set.ranges.items) |range| {
-        if (new.last.compareScalar(.gte, range.first, ty, zcu) and
-            new.first.compareScalar(.lte, range.last, ty, zcu))
-        {
-            return range.src; // They overlap.
-        }
+    const idx = std.sort.lowerBound(Value, set.ranges.items(.last), @as(SearchCtx, .{
+        .val = new.first,
+        .zcu = zcu,
+    }), compare);
+
+    if (idx != set.ranges.len and // `new.first` is *not* greater than all `old.last`
+        new.last.compareScalar(.gte, set.ranges.items(.first)[idx], ty, zcu))
+    {
+        return set.ranges.items(.src)[idx]; // `new` overlaps with existing range.
     }
-    set.ranges.appendAssumeCapacity(new);
+    set.ranges.insertAssumeCapacity(idx, new);
     return null;
 }
 
 pub fn add(set: *RangeSet, allocator: Allocator, new: Range, ty: Type, zcu: *Zcu) Allocator.Error!?LazySrcLoc {
     try set.ensureUnusedCapacity(allocator, 1);
     return set.addAssumeCapacity(new, ty, zcu);
-}
-
-const SortCtx = struct {
-    ty: Type,
-    zcu: *Zcu,
-};
-/// Assumes a and b do not overlap
-fn lessThan(ctx: SortCtx, a: Range, b: Range) bool {
-    return a.first.compareScalar(.lt, b.first, ctx.ty, ctx.zcu);
 }
 
 pub fn spans(
@@ -58,35 +53,36 @@ pub fn spans(
 ) Allocator.Error!bool {
     assert(first.typeOf(zcu).eql(ty));
     assert(last.typeOf(zcu).eql(ty));
-    if (set.ranges.items.len == 0) return false;
+    if (set.ranges.len == 0) return false;
 
-    std.mem.sort(Range, set.ranges.items, SortCtx{ .ty = ty, .zcu = zcu }, lessThan);
+    assert(std.sort.isSorted(Value, set.ranges.items(.first), @as(SortCtx, .{ .ty = ty, .zcu = zcu }), lessThan));
+    assert(std.sort.isSorted(Value, set.ranges.items(.last), @as(SortCtx, .{ .ty = ty, .zcu = zcu }), lessThan));
 
-    if (!set.ranges.items[0].first.eql(first, ty, zcu) or
-        !set.ranges.items[set.ranges.items.len - 1].last.eql(last, ty, zcu))
+    if (!set.ranges.items(.first)[0].eql(first, ty, zcu) or
+        !set.ranges.items(.last)[set.ranges.len - 1].eql(last, ty, zcu))
     {
         return false;
     }
 
     const limbs = try allocator.alloc(
-        std.math.big.Limb,
-        std.math.big.int.calcTwosCompLimbCount(ty.intInfo(zcu).bits),
+        math.big.Limb,
+        math.big.int.calcTwosCompLimbCount(ty.intInfo(zcu).bits),
     );
     defer allocator.free(limbs);
-    var counter: std.math.big.int.Mutable = .init(limbs, 0);
+    var counter: math.big.int.Mutable = .init(limbs, 0);
 
     var space: InternPool.Key.Int.Storage.BigIntSpace = undefined;
 
     // look for gaps
-    for (set.ranges.items[1..], 0..) |cur, i| {
-        // i starts counting from the second item.
-        const prev = set.ranges.items[i];
-
-        // prev.last + 1 == cur.first
-        counter.copy(prev.last.toBigInt(&space, zcu));
+    for (
+        set.ranges.items(.first)[1..],
+        set.ranges.items(.last)[0 .. set.ranges.len - 1],
+    ) |cur_first, prev_last| {
+        // prev_last + 1 == cur_first
+        counter.copy(prev_last.toBigInt(&space, zcu));
         counter.addScalar(counter.toConst(), 1);
 
-        const cur_start_int = cur.first.toBigInt(&space, zcu);
+        const cur_start_int = cur_first.toBigInt(&space, zcu);
         if (!cur_start_int.eql(counter.toConst())) {
             return false;
         }
@@ -95,7 +91,24 @@ pub fn spans(
     return true;
 }
 
+const SearchCtx = struct {
+    val: Value,
+    zcu: *const Zcu,
+};
+fn compare(ctx: SearchCtx, other: Value) math.Order {
+    return ctx.val.order(other, ctx.zcu);
+}
+
+const SortCtx = struct {
+    ty: Type,
+    zcu: *Zcu,
+};
+fn lessThan(ctx: SortCtx, a: Value, b: Value) bool {
+    return a.compareScalar(.lt, b, ctx.ty, ctx.zcu);
+}
+
 const std = @import("std");
+const math = std.math;
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 
