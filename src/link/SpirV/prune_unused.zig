@@ -100,20 +100,13 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
                 };
                 if (!alive.isSet(index)) continue;
             } else {
-                // annotation-style: emit only if all id operands are alive
-                id_offset_buf.items.len = 0;
-                parser.parseInstructionResultIds(binary.*, inst, &id_offset_buf) catch continue;
-                var all_alive = true;
-                for (id_offset_buf.items) |off| {
-                    const id: ResultId = @enumFromInt(inst.operands[off]);
-                    if (id_to_index.get(id)) |idx| {
-                        if (!alive.isSet(idx)) {
-                            all_alive = false;
-                            break;
-                        }
-                    }
+                // annotation-style: emit only if the target id is alive
+                if (inst.operands.len > 0) {
+                    const target: ResultId = @enumFromInt(inst.operands[0]);
+                    if (id_to_index.get(target)) |idx| {
+                        if (!alive.isSet(idx)) continue;
+                    } else continue;
                 }
-                if (!all_alive) continue;
             }
         }
 

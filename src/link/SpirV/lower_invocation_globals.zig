@@ -366,6 +366,8 @@ const ModuleBuilder = struct {
     /// The first ID of the new entry points. Entry points are allocated from
     /// here according to their index in `info.entry_points`.
     entry_point_new_id_base: u32,
+    /// OpName operands saved for invocation globals to re-emit.
+    global_names: std.array_hash_map.Auto(ResultId, []const Word) = .empty,
     /// A set of all function types in the new program. SPIR-V mandates that these are unique,
     /// and until a general type deduplication pass is programmed, we just handle it here via this.
     function_types: std.array_hash_map.Custom(FunctionType, ResultId, FunctionType.Context, true) = .empty,
@@ -403,14 +405,41 @@ const ModuleBuilder = struct {
         binary.functions_start = self.new_functions_section orelse binary.instructions.len;
     }
 
+    fn emitGlobalNames(self: *ModuleBuilder, info: ModuleInfo) !void {
+        for (info.functions.keys(), info.functions.values()) |func, fn_info| {
+            if (info.dead_initializers.contains(func)) continue;
+            const new_info = self.function_new_info.get(func) orelse continue;
+            for (fn_info.invocation_globals.keys(), 0..) |global, i| {
+                if (!info.live_invocation_globals.contains(global)) continue;
+                const name_words = self.global_names.get(global) orelse continue;
+                const id = new_info.invocationGlobalId(i);
+                try self.section.emitRaw(self.arena, .OpName, 1 + name_words.len);
+                self.section.writeOperand(ResultId, id);
+                self.section.writeWords(name_words);
+            }
+        }
+    }
+
     /// Process everything from `binary` up to the first function and emit it into the builder.
     fn processPreamble(self: *ModuleBuilder, binary: BinaryModule, info: ModuleInfo) !void {
+        var emitted_global_names = false;
         var it = binary.iterateInstructions();
         while (it.next()) |inst| {
+            if (!emitted_global_names) switch (inst.opcode.class()) {
+                .annotation, .type_declaration, .constant_creation => {
+                    try self.emitGlobalNames(info);
+                    emitted_global_names = true;
+                },
+                else => {},
+            };
+
             switch (inst.opcode) {
                 .OpName => {
                     const id: ResultId = @enumFromInt(inst.operands[0]);
-                    if (info.invocation_globals.contains(id)) continue;
+                    if (info.invocation_globals.contains(id)) {
+                        try self.global_names.put(self.arena, id, inst.operands[1..]);
+                        continue;
+                    }
                     if (info.dead_initializers.contains(id)) continue;
                 },
                 .OpExtInstImport => {
@@ -446,11 +475,6 @@ const ModuleBuilder = struct {
                     continue;
                 },
                 .OpTypeFunction => {
-                    // Re-emitted in `emitFunctionTypes()`. We can do this because
-                    // OpTypeFunction's may not currently be used anywhere that is not
-                    // directly with an OpFunction. For now we ignore Intels function
-                    // pointers extension, that is not a problem with a generalized
-                    // pass anyway.
                     continue;
                 },
                 .OpFunction => break,
@@ -458,6 +482,10 @@ const ModuleBuilder = struct {
             }
 
             try self.section.emitRawInstruction(self.arena, inst.opcode, inst.operands);
+        }
+
+        if (!emitted_global_names) {
+            try self.emitGlobalNames(info);
         }
     }
 

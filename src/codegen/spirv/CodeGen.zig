@@ -556,6 +556,7 @@ pub fn genNav(cg: *CodeGen, do_codegen: bool) Error!void {
             try cg.module.sections.functions.append(gpa, cg.body);
 
             try cg.module.debugNameFmt(initializer_id, "initializer of {f}", .{nav.fqn.fmt(ip)});
+            try cg.module.debugName(result_id, nav.fqn.toSlice(ip));
 
             try cg.module.sections.globals.emit(gpa, .OpExtInst, .{
                 .id_result_type = ptr_ty_id,
