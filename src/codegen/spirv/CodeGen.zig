@@ -384,6 +384,13 @@ pub fn genNav(cg: *CodeGen, do_codegen: bool) Error!void {
 
     switch (decl.kind) {
         .func => {
+            if (nav.resolved.?.is_extern_decl) {
+                _ = try cg.resolveType(ty, .direct);
+                try emitExternFnStub(cg, nav, decl, ty);
+                decl.end_dep = cg.module.decl_deps.items.len;
+                return;
+            }
+
             const fn_info = zcu.typeToFunc(ty).?;
             const return_ty_id = try cg.resolveFnReturnType(.fromInterned(fn_info.return_type));
             const is_test = zcu.test_functions.contains(cg.owner_nav);
@@ -677,14 +684,21 @@ fn resolve(cg: *CodeGen, inst: Air.Inst.Ref) !Id {
     if (inst.toInterned()) |val_ip_index| {
         const ty = cg.typeOf(inst);
         if (ty.zigTypeTag(zcu) == .@"fn") {
-            const fn_nav = switch (zcu.intern_pool.indexToKey(val_ip_index)) {
+            const val_key = zcu.intern_pool.indexToKey(val_ip_index);
+            const fn_nav = switch (val_key) {
                 .@"extern" => |@"extern"| @"extern".owner_nav,
                 .func => |func| func.owner_nav,
                 else => unreachable,
             };
             const spv_decl_index = try cg.module.resolveNav(ip, fn_nav);
             try cg.module.decl_deps.append(cg.module.gpa, spv_decl_index);
-            return cg.module.declPtr(spv_decl_index).result_id;
+            const decl = cg.module.declPtr(spv_decl_index);
+            if (val_key == .@"extern") {
+                const nav = ip.getNav(fn_nav);
+                const nav_ty: Type = .fromInterned(nav.resolved.?.type);
+                try emitExternFnStub(cg, nav, decl, nav_ty);
+            }
+            return decl.result_id;
         }
 
         return try cg.constant(ty, .fromInterned(val_ip_index), .direct);
@@ -1434,6 +1448,51 @@ fn constantUavRef(
     }
 }
 
+/// Emit a stub OpFunction/OpFunctionEnd + Import linkage decoration for an
+/// extern function so the module is structurally valid. The stub will be
+/// replaced by the real definition at link time.
+fn emitExternFnStub(cg: *CodeGen, nav: InternPool.Nav, decl: *Module.Decl, fn_ty: Type) !void {
+    if (decl.has_extern_stub) return;
+    decl.has_extern_stub = true;
+
+    const gpa = cg.module.gpa;
+    const zcu = cg.module.zcu;
+    const ip = &zcu.intern_pool;
+    const fn_info = zcu.typeToFunc(fn_ty).?;
+    const return_ty_id = try cg.resolveFnReturnType(.fromInterned(fn_info.return_type));
+    const prototype_ty_id = try cg.resolveType(fn_ty, .direct);
+
+    var stub: Section = .{};
+    defer stub.deinit(gpa);
+    try stub.emit(gpa, .OpFunction, .{
+        .id_result_type = return_ty_id,
+        .id_result = decl.result_id,
+        .function_type = prototype_ty_id,
+        .function_control = .{},
+    });
+    for (fn_info.param_types.get(ip)) |param_ty_index| {
+        const param_ty: Type = .fromInterned(param_ty_index);
+        if (!param_ty.hasRuntimeBits(zcu)) continue;
+        const param_type_id = try cg.resolveType(param_ty, .direct);
+        try stub.emit(gpa, .OpFunctionParameter, .{
+            .id_result_type = param_type_id,
+            .id_result = cg.module.allocId(),
+        });
+    }
+    try stub.emit(gpa, .OpFunctionEnd, {});
+    try cg.module.sections.functions.append(gpa, stub);
+
+    const extern_name = nav.getExtern(ip).?.name.toSlice(ip);
+    try cg.module.sections.annotations.emit(gpa, .OpDecorate, .{
+        .target = decl.result_id,
+        .decoration = .{ .linkage_attributes = .{
+            .name = extern_name,
+            .linkage_type = .import,
+        } },
+    });
+    try cg.module.debugName(decl.result_id, extern_name);
+}
+
 fn constantNavRef(cg: *CodeGen, ty: Type, nav_index: InternPool.Nav.Index) !Id {
     const zcu = cg.module.zcu;
     const ip = &zcu.intern_pool;
@@ -1449,7 +1508,12 @@ fn constantNavRef(cg: *CodeGen, ty: Type, nav_index: InternPool.Nav.Index) !Id {
                 // just generate an empty pointer. Function pointers are represented by a pointer to usize.
                 return try cg.module.constUndef(ty_id);
             },
-            .@"extern" => if (ip.isFunctionType(nav_ty.toIntern())) @panic("TODO"),
+            .@"extern" => if (ip.isFunctionType(nav_ty.toIntern())) {
+                const spv_decl_index = try cg.module.resolveNav(ip, nav_index);
+                const decl = cg.module.declPtr(spv_decl_index);
+                try emitExternFnStub(cg, nav, decl, nav_ty);
+                return decl.result_id;
+            },
             else => {},
         },
     }

@@ -1179,7 +1179,7 @@ pub const File = struct {
         if (base.tag == .lld) return;
         assert(!base.post_prelink);
         switch (base.tag) {
-            inline .elf, .elf2, .wasm => |tag| {
+            inline .elf, .elf2, .wasm, .spirv => |tag| {
                 dev.check(tag.devFeature());
                 return @as(*tag.Type(), @fieldParentPtr("base", base)).loadInput(input);
             },

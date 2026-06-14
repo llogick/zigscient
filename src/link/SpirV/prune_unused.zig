@@ -35,12 +35,39 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
     var id_offset_buf: std.ArrayList(u16) = .empty;
     defer id_offset_buf.deinit(gpa);
 
-    // mark non-prunable preamble instructions alive
+    // Mark non-prunable preamble instructions alive
+    // OpExtInst in the preamble is metadata (e.g. Zig error info) that references
+    // functions. skip it here so it doesn't root dead functions alive.
+    // These instructions are handled as prunable during the rewrite phase.
     it = binary.iterateInstructions();
     while (it.next()) |inst| {
         if (inst.offset >= binary.functions_start) break;
-        if (!canPrune(inst.opcode)) {
-            markAlive(parser, binary.*, inst, &alive, &id_to_index, &code_offsets, &id_offset_buf) catch {};
+        if (canPrune(inst.opcode) or inst.opcode == .OpExtInst) continue;
+        try markAlive(
+            parser,
+            binary.*,
+            inst,
+            &alive,
+            &id_to_index,
+            &code_offsets,
+            &id_offset_buf,
+        );
+    }
+
+    // mark functions with LinkageAttributes Export alive
+    it = binary.iterateInstructions();
+    while (it.next()) |inst| {
+        if (inst.offset >= binary.functions_start) break;
+        if (inst.opcode == .OpDecorate and inst.operands.len >= 2 and
+            inst.operands[1] == @intFromEnum(spec.Decoration.linkage_attributes))
+        {
+            // Last word after the string is the linkage type; Export = 0.
+            if (inst.operands[inst.operands.len - 1] == @intFromEnum(spec.LinkageType.@"export")) {
+                const target: ResultId = @enumFromInt(inst.operands[0]);
+                if (id_to_index.get(target)) |index| {
+                    alive.set(index);
+                }
+            }
         }
     }
 
@@ -58,11 +85,15 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
                 }
                 continue;
             }
+
+            // mark the function's type operands alive
+            try markAlive(parser, binary.*, inst, &alive, &id_to_index, &code_offsets, &id_offset_buf);
+            continue;
         }
 
         // mark operands of alive function contents
         if (!canPrune(inst.opcode)) {
-            markAlive(parser, binary.*, inst, &alive, &id_to_index, &code_offsets, &id_offset_buf) catch {};
+            try markAlive(parser, binary.*, inst, &alive, &id_to_index, &code_offsets, &id_offset_buf);
         }
     }
 
@@ -87,7 +118,9 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
             }
         }
 
-        if (canPrune(inst.opcode)) {
+        const is_prunable = canPrune(inst.opcode) or
+            (inst.opcode == .OpExtInst and inst.offset < binary.functions_start);
+        if (is_prunable) {
             const inst_spec = parser.getInstSpec(inst.opcode) orelse {
                 appendInst(&new_words, binary, inst, &new_functions_start);
                 continue;
@@ -188,11 +221,11 @@ fn markAlive(
             _ = fn_it.next();
             while (fn_it.next()) |fn_inst| {
                 if (fn_inst.opcode == .OpFunctionEnd) break;
-                markAlive(parser, binary, fn_inst, alive, id_to_index, code_offsets, id_offset_buf) catch {};
+                try markAlive(parser, binary, fn_inst, alive, id_to_index, code_offsets, id_offset_buf);
             }
-            markAlive(parser, binary, ref_inst, alive, id_to_index, code_offsets, id_offset_buf) catch {};
+            try markAlive(parser, binary, ref_inst, alive, id_to_index, code_offsets, id_offset_buf);
         } else {
-            markAlive(parser, binary, ref_inst, alive, id_to_index, code_offsets, id_offset_buf) catch {};
+            try markAlive(parser, binary, ref_inst, alive, id_to_index, code_offsets, id_offset_buf);
         }
     }
 }
@@ -218,7 +251,6 @@ fn canPrune(op: Opcode) bool {
             .OpString,
             .OpName,
             .OpMemberName,
-            .OpExtInstImport,
             .OpVariable,
             => true,
             else => false,

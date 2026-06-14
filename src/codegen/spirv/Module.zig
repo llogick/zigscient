@@ -130,6 +130,9 @@ pub const Decl = struct {
     begin_dep: usize = 0,
     /// The past-end offset of the dependencies of this decl in the `decl_deps` array.
     end_dep: usize = 0,
+    /// Whether a stub OpFunction/OpFunctionEnd + Import linkage decoration has
+    /// already been emitted for this extern function decl.
+    has_extern_stub: bool = false,
 };
 
 pub const EntryPoint = struct {
