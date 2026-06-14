@@ -1,0 +1,26 @@
+name: Check Formatting
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-fmt:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: master
+
+      - name: Run zig build test-fmt
+        run: zig build test-fmt --zig-lib-dir ./lib/

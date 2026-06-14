@@ -1,4 +1,4 @@
-name: CI
+name: Build and Test
 
 on:
   push:
@@ -8,23 +8,19 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-check-test:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
-
-      - name: Run zig fmt
-        if: matrix.os == 'ubuntu-22.04'
-        run: zig fmt --check .
+          version: master
 
       - name: Run zig build check test
-        run: zig build check test --summary all
+        run: zig build check test --summary all --zig-lib-dir ./lib/

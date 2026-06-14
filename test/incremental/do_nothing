@@ -1,0 +1,41 @@
+// TODO: it'd be great if we could actually check that no analysis happened!
+#update=initial version
+#file=main.zig
+pub fn main() void {
+    const ptr: *const O = @ptrFromInt(0x1000);
+    _ = ptr;
+}
+const S = struct { foo: u32, nested: struct { x: u16 } };
+const U = union(enum) { a, b, c: S };
+const E = enum(u8) { a = @typeInfo(U).@"union".field_names.len, b = 0, c };
+const O = opaque {
+    comptime {
+        _ = @as(S, undefined);
+        _ = @as(U, undefined);
+        _ = @as(E, undefined);
+        const Wrapper = struct { val: S };
+        const wrapper: Wrapper = .{ .val = .{ .foo = 123, .nested = .{ .x = 456 } } };
+        _ = wrapper;
+    }
+};
+#expect_stdout=""
+#update=do literally nothing
+#file=main.zig
+pub fn main() void {
+    const ptr: *const O = @ptrFromInt(0x1000);
+    _ = ptr;
+}
+const S = struct { foo: u32, nested: struct { x: u16 } };
+const U = union(enum) { a, b, c: S };
+const E = enum(u8) { a = @typeInfo(U).@"union".field_names.len, b = 0, c };
+const O = opaque {
+    comptime {
+        _ = @as(S, undefined);
+        _ = @as(U, undefined);
+        _ = @as(E, undefined);
+        const Wrapper = struct { val: S };
+        const wrapper: Wrapper = .{ .val = .{ .foo = 123, .nested = .{ .x = 456 } } };
+        _ = wrapper;
+    }
+};
+#expect_stdout=""

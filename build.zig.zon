@@ -1,39 +1,49 @@
+// Not intended to be consumed as a package.
 .{
     .name = .Zigscient,
-    // Remove `-dev` when tagging a new release and add it back on the next development cycle.
-    .version = "0.16.1",
-    // The integrated langref version. A valid Zig release version or "master"
-    // Used in links to documentation, ie https://ziglang.org/documentation/0.16.0/
-    .langref_version = "0.16.0",
+    .version = "0.17.0-dev",
     // The minimum Zig version that is required to compile and test this project.
     // Must be a Zig version that is downloadable from https://ziglang.org/download/ or a mirror.
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0-dev.702+18b3c78a9",
     // The minimum Zig version that the server's build_runner can handle:
     // A breaking change to the Zig Build System should be handled by updating the server's build runner (see src/build_runner)
-    .minimum_runtime_zig_version = "0.16.0",
+    .minimum_runtime_zig_version = "0.17.0-dev.702+18b3c78a9",
+    // Would like to be accurate even during a dev cycle,
+    // but there isn't an easy way to automate this based on the last cherry-picked commit
+    .compiler_internals_version = "0.17.0",
+    // The integrated langref version. A valid Zig release version or "master"
+    // Used in links to documentation, ie https://ziglang.org/documentation/0.16.0/
+    .langref_version = "master",
     .dependencies = .{
         .known_folders = .{
-            .url = "https://github.com/LamplightWorks/known-folders/archive/71f0a3d660401ee461cc42ae1f2360f4b83084d3.tar.gz",
-            .hash = "known_folders-0.0.0-Fy-PJjrKAAAY9ALC7ALIxFsmKFP314HJw6v3NLSS3NDB",
+            .url = "https://github.com/LamplightWorks/known-folders/archive/207c34a16e4365edc20d92c7892f962b3bed46e8.tar.gz",
+            .hash = "known_folders-0.0.0-Fy-PJsbKAACbDh9bBxR0MMThxZSS6A9RH4apWphNHY70",
         },
         .diffz = .{
-            .url = "https://github.com/LamplightWorks/diffz/archive/aa11caef328a3f20f2493f8fd676a1dfa7819246.tar.gz",
-            .hash = "diffz-0.0.1-G2tlIYrNAQAQx3cuIp7EVs0xvxbv9DCPf4YuHmvubsrZ",
+            .url = "https://github.com/LamplightWorks/diffz/archive/aac8aa99c436ab8277b0711922aad062c0167b12.tar.gz",
+            .hash = "diffz-0.0.1-G2tlISvOAQDORzPTSxDgiKwlHuADKeJMdJrw4kRfLufj",
+            // .path = "../../../diffz",
         },
         .lsp_kit = .{
-            .url = "https://github.com/LamplightWorks/lsp-kit/archive/98d6bed6e42a0866e1e2ba0867673d9f57ca6687.tar.gz",
-            .hash = "lsp_kit-0.1.0-bi_PLwozDAApVpvVJHz80NPklig5biWlZCkyxjFbOtiD",
-            // .path = "../../../zig-lsp-kit",
+            .url = "https://github.com/LamplightWorks/lsp-kit/archive/dcbb8dd686d85a8f178a4389e730d41dd727b991.tar.gz",
+            .hash = "lsp_kit-0.1.0-bi_PL2UzDADxFRnnSjhhN7-ZTi9fDMom827yIp_ptc8l",
+            // .path = "../../../lws-lsp-kit",
         },
         .extended_zccs = .{
-            .url = "https://github.com/llogick/extended-zccs/archive/e2c8a0a65e63254e55218fd80aa7a8715fb53ce8.tar.gz",
-            .hash = "extended_zccs-0.16.0-dev-zEaUNiafDgBP9Rxs7UD513yHtJITYpq5XSnb01UDYNeI",
+            .url = "https://github.com/llogick/extended-zccs/archive/7959a9c2be23f178bb8e826ee958a73adac50760.tar.gz",
+            .hash = "extended_zccs-0.17.0-dev-zEaUNgxkDgAyjuMdy7oT9NCFWUtc09OzPAf5WKabyzEk",
             // .path = "../../../extended-zccs",
         },
         .tracy = .{
             .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.13.1.tar.gz",
             .hash = "N-V-__8AAOncKwEm1F9c5LrT7HMNmRMYX8-fAoqpc6YyTu9X",
             .lazy = true,
+        },
+        .standalone_test_cases = .{
+            .path = "test/standalone",
+        },
+        .link_test_cases = .{
+            .path = "test/link",
         },
     },
     .paths = .{""},

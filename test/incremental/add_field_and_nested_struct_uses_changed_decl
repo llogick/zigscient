@@ -1,0 +1,25 @@
+#update=initial version
+#file=main.zig
+pub fn main() void {
+    _ = @as(S, undefined);
+}
+// To reproduce the original bug, the inner struct must perform a namespace lookup
+// or a scope lookup when resolving its field type.
+const SomeType = u8;
+const S = struct {
+    foo: struct { inner: SomeType },
+};
+#expect_stdout=""
+#update=add field to outer struct, change decl used by inner struct
+#file=main.zig
+pub fn main() void {
+    _ = @as(S, undefined);
+}
+// To reproduce the original bug, the inner struct must perform a namespace lookup
+// or a scope lookup when resolving its field type.
+const SomeType = u16;
+const S = struct {
+    foo: struct { inner: SomeType },
+    bar: u32,
+};
+#expect_stdout=""

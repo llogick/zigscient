@@ -1,0 +1,29 @@
+name: Bug Report
+description: Zig working differently than expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A bug is when something works differently than it is expected to.
+        ## Remember to search before filing a new report
+        Please search for this bug in the issue tracker, and use a bug report title that
+        would have made your bug report turn up in the search results for your search query.
+        ## Include all three ingredients
+        All three ingredients are essential to an actionable bug report. If your bug report
+        does not contain code that can be copy pasted into a terminal, it is incomplete.
+  - type: input
+    id: version
+    attributes:
+      label: Zig Version
+      description: "The output of `zig version`. Only bugs against latest development version are tracked."
+      placeholder: "0.17.0-dev.601+0ff175b69"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce, Observed Behavior, and Expected Behavior
+      description: "What exactly can someone else do, in order to observe the problem? What did you expect to happen instead?"
+    validations:
+      required: true

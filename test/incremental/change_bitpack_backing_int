@@ -1,0 +1,77 @@
+#update=initial version
+#file=main.zig
+const Foo = packed struct(u8) { a: u4, b: i4 };
+const Bar = packed union(u10) { a: u10, b: i10 };
+pub fn main() void {}
+comptime {
+    @compileLog(@typeInfo(Foo).@"struct".backing_integer.?);
+}
+comptime {
+    @compileLog(@bitSizeOf(Bar));
+}
+const std = @import("std");
+const io = std.Io.Threaded.global_single_threaded.io();
+#expect_error=main.zig:5:5: error: found compile log statement
+#expect_error=main.zig:8:5: note: also here
+#expect_compile_log=@as(type, u8)
+#expect_compile_log=@as(comptime_int, 10)
+
+#update=make backing types signed
+#file=main.zig
+const Foo = packed struct(i8) { a: u4, b: i4 };
+const Bar = packed union(i10) { a: u10, b: i10 };
+pub fn main() void {}
+comptime {
+    @compileLog(@typeInfo(Foo).@"struct".backing_integer.?);
+}
+comptime {
+    @compileLog(@bitSizeOf(Bar));
+}
+const std = @import("std");
+const io = std.Io.Threaded.global_single_threaded.io();
+#expect_error=main.zig:5:5: error: found compile log statement
+#expect_error=main.zig:8:5: note: also here
+#expect_compile_log=@as(type, i8)
+#expect_compile_log=@as(comptime_int, 10)
+
+#update=make backing types too small
+#file=main.zig
+const Foo = packed struct(i5) { a: u4, b: i4 };
+const Bar = packed union(i8) { a: u10, b: i10 };
+pub fn main() void {}
+comptime {
+    @compileLog(@typeInfo(Foo).@"struct".backing_integer.?);
+}
+comptime {
+    @compileLog(@bitSizeOf(Bar));
+}
+const std = @import("std");
+const io = std.Io.Threaded.global_single_threaded.io();
+#expect_error=main.zig:1:20: error: backing integer bit width does not match total bit width of fields
+#expect_error=main.zig:1:27: note: backing integer 'i5' has bit width '5'
+#expect_error=main.zig:1:20: note: struct fields have total bit width '8'
+#expect_error=main.zig:2:35: error: field bit width does not match backing integer
+#expect_error=main.zig:2:35: note: field type 'u10' has bit width '10'
+#expect_error=main.zig:2:26: note: backing integer 'i8' has bit width '8'
+#expect_error=main.zig:2:35: note: all fields in a packed union must have the same bit width
+
+#update=make backing types too big
+#file=main.zig
+const Foo = packed struct(u10) { a: u4, b: i4 };
+const Bar = packed union(u32) { a: u10, b: i10 };
+pub fn main() void {}
+comptime {
+    @compileLog(@typeInfo(Foo).@"struct".backing_integer.?);
+}
+comptime {
+    @compileLog(@bitSizeOf(Bar));
+}
+const std = @import("std");
+const io = std.Io.Threaded.global_single_threaded.io();
+#expect_error=main.zig:1:20: error: backing integer bit width does not match total bit width of fields
+#expect_error=main.zig:1:27: note: backing integer 'u10' has bit width '10'
+#expect_error=main.zig:1:20: note: struct fields have total bit width '8'
+#expect_error=main.zig:2:36: error: field bit width does not match backing integer
+#expect_error=main.zig:2:36: note: field type 'u10' has bit width '10'
+#expect_error=main.zig:2:26: note: backing integer 'u32' has bit width '32'
+#expect_error=main.zig:2:36: note: all fields in a packed union must have the same bit width

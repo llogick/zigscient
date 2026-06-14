@@ -21,5 +21,5 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 Includes other software related under the MIT license:
-- ZLS, Copyright (c) 2020 Auguste Rame and Alexandros Naskos. For licensing see /LICENSE-ZLS
-- Zig, Copyright (c) Zig contributors. For licensing see /src/zig-components/LICENSE
+- Zig, Copyright (c) Zig contributors. For licensing see LICENSE-ZIG
+- ZLS, Copyright (c) ZLS contributors. For licensing see LICENSE-ZLS

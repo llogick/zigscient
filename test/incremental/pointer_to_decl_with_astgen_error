@@ -1,0 +1,23 @@
+#update=initial version
+#file=main.zig
+const foo = {};
+pub fn main() void {
+    _ = &foo;
+}
+#expect_stdout=""
+
+#update=introduce use of undeclared identifier
+#file=main.zig
+const foo = something;
+pub fn main() void {
+    _ = &foo;
+}
+#expect_error=main.zig:1:13: error: use of undeclared identifier 'something'
+
+#update=revert use of undeclared identifier
+#file=main.zig
+const foo = {};
+pub fn main() void {
+    _ = &foo;
+}
+#expect_stdout=""
