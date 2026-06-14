@@ -17,7 +17,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: master
 
       # - name: Install APT packages
       #   run: |
@@ -32,15 +32,25 @@ jobs:
 
       - name: Build all targets
         run: |
+          echo "::group::Creating Build Directory"
           mkdir -p builds
+          echo "::endgroup::"
+
+          echo "::group::Creating artifacts"
           for target in "x86_64-linux" "aarch64-linux" "x86_64-windows" "aarch64-windows" "x86_64-macos" "aarch64-macos"; do
-            zig build -Dcpu=baseline -Dtarget=${target} -Doptimize=ReleaseFast
+            zig build check test --zig-lib-dir ./lib/ -Dcpu=baseline -Dtarget=${target} -Doptimize=ReleaseFast
+            zig build --zig-lib-dir ./lib/ -Dcpu=baseline -Dtarget=${target} -Doptimize=ReleaseFast
             if [[ $target == *"windows"* ]]; then
               cp zig-out/bin/zigscient.exe builds/zigscient-${target}.exe
             else
               cp zig-out/bin/zigscient builds/zigscient-${target}
             fi
           done
+          echo "::endgroup::"
+
+          echo "::group::Copying README and LICENSEs files"
+          cp README.md LICENSE LICENSE-ZLS LICENSE-ZIG builds/
+          echo "::endgroup::"
       - uses: actions/upload-artifact@v4
         with:
           name: zigscient
@@ -64,7 +74,11 @@ jobs:
         run: |
           cd zigscient
           for file in *; do
-            zip -j "../${file%.*}.zip" "$file"
+            if [ -d "$file" ]; then continue; fi
+            case "${file,,}" in
+               readme.md|license*) continue ;;
+            esac
+             zip -j "../${file%.*}.zip" "$file" README.md LICENSE LICENSE-ZLS LICENSE-ZIG
           done
       - uses: softprops/action-gh-release@v2
         with:
