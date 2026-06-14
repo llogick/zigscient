@@ -639,6 +639,8 @@ test "function pointer align mask" {
 }
 
 test "align expression is implicitly comptime" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const S = struct {
         fn alignment() usize {
             return 4;

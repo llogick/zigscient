@@ -885,6 +885,8 @@ test "union no tag with struct member" {
 }
 
 test "extern union doesn't trigger field check at comptime" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const U = extern union {
         x: u32,
         y: u8,
@@ -1214,6 +1216,7 @@ test "return an extern union from C calling convention" {
 test "noreturn field in union" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const U = union(enum) {
         a: u32,

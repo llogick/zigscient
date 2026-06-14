@@ -841,7 +841,6 @@ pub const File = struct {
         assert(base.comp.zcu.?.llvm_object == null);
         switch (base.tag) {
             .lld => unreachable,
-            .spirv => unreachable, // see corresponding special case in `Zcu.PerThread.runCodegenInner`
             .plan9 => unreachable,
             inline else => |tag| {
                 dev.check(tag.devFeature());

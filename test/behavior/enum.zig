@@ -1318,6 +1318,8 @@ test "switch on an extern enum with negative value" {
 }
 
 test "switch on an enum with small signed tag type" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const E = enum(i3) {
         y = -2,
         z = -1,

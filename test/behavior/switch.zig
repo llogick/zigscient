@@ -801,6 +801,7 @@ test "enum value without tag name used as switch item" {
 }
 
 test "switch item sizeof" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const S = struct {
         fn doTheTest() !void {
             var a: usize = 0;

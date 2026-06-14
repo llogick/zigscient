@@ -71,7 +71,7 @@ const ModuleInfo = struct {
         arena: Allocator,
         parser: *BinaryModule.Parser,
         binary: BinaryModule,
-    ) BinaryModule.ParseError!ModuleInfo {
+    ) !ModuleInfo {
         var entry_points: std.array_hash_map.Auto(ResultId, void) = .empty;
         var functions: std.array_hash_map.Auto(ResultId, Fn) = .empty;
         var fn_types = std.AutoHashMap(ResultId, struct {
@@ -79,9 +79,9 @@ const ModuleInfo = struct {
             param_types: []const ResultId,
         }).init(arena);
         var calls: std.array_hash_map.Auto(ResultId, void) = .empty;
-        var callee_store = std.array_list.Managed(ResultId).init(arena);
+        var callee_store: std.ArrayList(ResultId) = .empty;
         var function_invocation_globals: std.array_hash_map.Auto(ResultId, void) = .empty;
-        var result_id_offsets = std.array_list.Managed(u16).init(arena);
+        var result_id_offsets: std.ArrayList(u16) = .empty;
         var invocation_globals: std.array_hash_map.Auto(ResultId, InvocationGlobal) = .empty;
 
         var maybe_current_function: ?ResultId = null;
@@ -164,7 +164,7 @@ const ModuleInfo = struct {
                     }
 
                     const first_callee = callee_store.items.len;
-                    try callee_store.appendSlice(calls.keys());
+                    try callee_store.appendSlice(arena, calls.keys());
 
                     const fn_type = fn_types.get(fn_ty_id) orelse {
                         log.err("Function {f} has invalid OpFunction type", .{current_function});
@@ -395,12 +395,12 @@ const ModuleBuilder = struct {
         return @enumFromInt(self.id_bound);
     }
 
-    fn finalize(self: *ModuleBuilder, a: Allocator, binary: *BinaryModule) !void {
+    fn finalize(self: *ModuleBuilder, arena: Allocator, binary: *BinaryModule) !void {
         binary.id_bound = self.id_bound;
-        binary.instructions = try a.dupe(Word, self.section.instructions.items);
+        binary.instructions = try arena.dupe(Word, self.section.instructions.items);
         // Nothing is removed in this pass so we don't need to change any of the maps,
         // just make sure the section is updated.
-        binary.sections.functions = self.new_functions_section orelse binary.instructions.len;
+        binary.functions_start = self.new_functions_section orelse binary.instructions.len;
     }
 
     /// Process everything from `binary` up to the first function and emit it into the builder.
@@ -525,12 +525,12 @@ const ModuleBuilder = struct {
         binary: BinaryModule,
         info: ModuleInfo,
     ) !void {
-        var result_id_offsets = std.array_list.Managed(u16).init(self.arena);
-        var operands = std.array_list.Managed(u32).init(self.arena);
+        var result_id_offsets: std.ArrayList(u16) = .empty;
+        var operands: std.ArrayList(u32) = .empty;
 
         var maybe_current_function: ?ResultId = null;
         var skip_until_end: bool = false;
-        var it = binary.iterateInstructionsFrom(binary.sections.functions);
+        var it = binary.iterateInstructionsFrom(binary.functions_start);
         self.new_functions_section = self.section.instructions.items.len;
         while (it.next()) |inst| {
             if (skip_until_end) {
@@ -541,7 +541,7 @@ const ModuleBuilder = struct {
             try parser.parseInstructionResultIds(binary, inst, &result_id_offsets);
 
             operands.items.len = 0;
-            try operands.appendSlice(inst.operands);
+            try operands.appendSlice(self.arena, inst.operands);
 
             // Replace the result-ids with the global's new result-id if required.
             for (result_id_offsets.items) |off| {
@@ -741,14 +741,14 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule, progress: std.Pr
     const sub_node = progress.start("Lower invocation globals", 6);
     defer sub_node.end();
 
-    var arena = std.heap.ArenaAllocator.init(parser.a);
-    defer arena.deinit();
-    const a = arena.allocator();
+    var arena_state = std.heap.ArenaAllocator.init(parser.gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
 
-    var info = try ModuleInfo.parse(a, parser, binary.*);
-    try info.resolve(a);
+    var info = try ModuleInfo.parse(arena, parser, binary.*);
+    try info.resolve(arena);
 
-    var builder = try ModuleBuilder.init(a, binary.*, info);
+    var builder = try ModuleBuilder.init(arena, binary.*, info);
     sub_node.completeOne();
     try builder.deriveNewFnInfo(info);
     sub_node.completeOne();
@@ -760,5 +760,5 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule, progress: std.Pr
     sub_node.completeOne();
     try builder.emitNewEntryPoints(info);
     sub_node.completeOne();
-    try builder.finalize(parser.a, binary);
+    try builder.finalize(parser.gpa, binary);
 }

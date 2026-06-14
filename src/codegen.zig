@@ -101,6 +101,7 @@ pub const AnyMir = union {
     x86_64: if (dev.env.supports(.x86_64_backend)) @import("codegen/x86_64/Mir.zig") else noreturn,
     wasm: if (dev.env.supports(.wasm_backend)) @import("codegen/wasm/Mir.zig") else noreturn,
     c: if (dev.env.supports(.c_backend)) @import("codegen/c.zig").Mir else noreturn,
+    spirv: if (dev.env.supports(.spirv_backend)) @import("codegen/spirv/Mir.zig") else noreturn,
 
     pub inline fn tag(comptime backend: std.lang.CompilerBackend) []const u8 {
         return switch (backend) {
@@ -110,6 +111,7 @@ pub const AnyMir = union {
             .stage2_x86_64 => "x86_64",
             .stage2_wasm => "wasm",
             .stage2_c => "c",
+            .stage2_spirv => "spirv",
             else => unreachable,
         };
     }
@@ -125,6 +127,7 @@ pub const AnyMir = union {
             .stage2_x86_64,
             .stage2_wasm,
             .stage2_c,
+            .stage2_spirv,
             => |backend_ct| @field(mir, tag(backend_ct)).deinit(gpa),
         }
     }
@@ -153,6 +156,7 @@ pub fn generateFunction(
         .stage2_x86_64,
         .stage2_wasm,
         .stage2_c,
+        .stage2_spirv,
         => |backend| {
             dev.check(devFeatureForBackend(backend));
             const CodeGen = importBackend(backend);

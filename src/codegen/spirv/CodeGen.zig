@@ -5,6 +5,8 @@ const Signedness = std.lang.Signedness;
 const assert = std.debug.assert;
 const log = std.log.scoped(.codegen);
 
+const link = @import("../../link.zig");
+const codegen = @import("../../codegen.zig");
 const Zcu = @import("../../Zcu.zig");
 const Type = @import("../../Type.zig");
 const Value = @import("../../Value.zig");
@@ -12,6 +14,7 @@ const Air = @import("../../Air.zig");
 const InternPool = @import("../../InternPool.zig");
 const Section = @import("Section.zig");
 const Assembler = @import("Assembler.zig");
+const Mir = @import("Mir.zig");
 
 const spec = @import("spec.zig");
 const Opcode = spec.Opcode;
@@ -167,6 +170,197 @@ pub fn deinit(cg: *CodeGen) void {
     cg.id_scratch.deinit(gpa);
     cg.prologue.deinit(gpa);
     cg.body.deinit(gpa);
+}
+
+pub fn generate(
+    _: *link.File,
+    pt: Zcu.PerThread,
+    func_index: InternPool.Index,
+    air: *const Air,
+    liveness: *const ?Air.Liveness,
+) codegen.Error!Mir {
+    const zcu = pt.zcu;
+    const gpa = zcu.gpa;
+    const nav = zcu.funcInfo(func_index).owner_nav;
+    const structured_cfg = zcu.navFileScope(nav).mod.?.structured_cfg;
+
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    var module: Module = .{
+        .gpa = gpa,
+        .arena = arena.allocator(),
+        .zcu = zcu,
+    };
+    defer module.deinit();
+
+    var cg: CodeGen = .{
+        .pt = pt,
+        .air = air.*,
+        .liveness = liveness.*.?,
+        .owner_nav = nav,
+        .module = &module,
+        .control_flow = switch (structured_cfg) {
+            true => .{ .structured = .{} },
+            false => .{ .unstructured = .{} },
+        },
+        .base_line = zcu.navSrcLine(nav),
+    };
+    defer cg.deinit();
+
+    cg.genNav(true) catch |err| switch (err) {
+        error.AlreadyReported => return error.AlreadyReported,
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+
+    return cg.serializeToMir(gpa);
+}
+
+pub fn generateNav(
+    pt: Zcu.PerThread,
+    nav_index: InternPool.Nav.Index,
+) codegen.Error!Mir {
+    const zcu = pt.zcu;
+    const gpa = zcu.gpa;
+    const structured_cfg = zcu.navFileScope(nav_index).mod.?.structured_cfg;
+
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    var module: Module = .{
+        .gpa = gpa,
+        .arena = arena.allocator(),
+        .zcu = zcu,
+    };
+    defer module.deinit();
+
+    var cg: CodeGen = .{
+        .pt = pt,
+        .air = undefined,
+        .liveness = undefined,
+        .owner_nav = nav_index,
+        .module = &module,
+        .control_flow = switch (structured_cfg) {
+            true => .{ .structured = .{} },
+            false => .{ .unstructured = .{} },
+        },
+        .base_line = zcu.navSrcLine(nav_index),
+    };
+    defer cg.deinit();
+
+    cg.genNav(false) catch |err| switch (err) {
+        error.AlreadyReported => return error.AlreadyReported,
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+
+    return cg.serializeToMir(gpa);
+}
+
+fn serializeToMir(cg: *CodeGen, gpa: Allocator) codegen.Error!Mir {
+    const module = cg.module;
+
+    const owner_entry = module.nav_link.get(cg.owner_nav);
+    const owner_decl_index = owner_entry orelse return .{
+        .id_bound = module.next_result_id,
+        .owner_nav = cg.owner_nav,
+        .kind = .func,
+        .decl_result_id = .none,
+        .extended_instruction_set = &.{},
+        .globals = &.{},
+        .functions = &.{},
+        .annotations = &.{},
+        .debug_names = &.{},
+        .debug_strings = &.{},
+        .execution_modes = &.{},
+        .nav_refs = &.{},
+        .uav_refs = &.{},
+        .decl_deps = &.{},
+        .internal_globals = &.{},
+        .entry_points = &.{},
+    };
+
+    const owner_decl = module.declPtr(owner_decl_index);
+
+    var nav_refs: std.ArrayList(Mir.NavRef) = .empty;
+    defer nav_refs.deinit(gpa);
+    var nav_it = module.nav_link.iterator();
+    while (nav_it.next()) |entry| {
+        if (entry.key_ptr.* == cg.owner_nav) continue;
+        const decl = module.declPtr(entry.value_ptr.*);
+        try nav_refs.append(gpa, .{
+            .local_id = decl.result_id,
+            .nav = entry.key_ptr.*,
+            .kind = decl.kind,
+        });
+    }
+
+    var uav_refs: std.ArrayList(Mir.UavRef) = .empty;
+    defer uav_refs.deinit(gpa);
+    var uav_it = module.uav_link.iterator();
+    while (uav_it.next()) |entry| {
+        const decl = module.declPtr(entry.value_ptr.*);
+        try uav_refs.append(gpa, .{
+            .local_id = decl.result_id,
+            .val = entry.key_ptr.*[0],
+            .storage_class = entry.key_ptr.*[1],
+            .kind = decl.kind,
+        });
+    }
+
+    var decl_deps: std.ArrayList(Mir.DeclDep) = .empty;
+    defer decl_deps.deinit(gpa);
+    var internal_globals: std.ArrayList(Id) = .empty;
+    defer internal_globals.deinit(gpa);
+
+    const deps = module.decl_deps.items[owner_decl.begin_dep..owner_decl.end_dep];
+    for (deps) |dep_index| {
+        const dep_decl = module.declPtr(dep_index);
+        var found = false;
+        nav_it.index = 0;
+        while (nav_it.next()) |entry| {
+            if (entry.value_ptr.* == dep_index) {
+                try decl_deps.append(gpa, .{
+                    .kind = dep_decl.kind,
+                    .nav = entry.key_ptr.*,
+                });
+                found = true;
+                break;
+            }
+        }
+        if (!found and dep_decl.kind == .global) {
+            try internal_globals.append(gpa, dep_decl.result_id);
+        }
+    }
+
+    var ep_list: std.ArrayList(Mir.EntryPoint) = .empty;
+    defer ep_list.deinit(gpa);
+    var ep_it = module.entry_points.iterator();
+    while (ep_it.next()) |entry| {
+        const ep = entry.value_ptr;
+        const ep_decl = module.declPtr(ep.decl_index);
+        try ep_list.append(gpa, .{
+            .local_id = ep_decl.result_id,
+            .name = try gpa.dupe(u8, ep.name),
+            .cc = ep.cc,
+        });
+    }
+
+    return .{
+        .id_bound = module.next_result_id,
+        .owner_nav = cg.owner_nav,
+        .kind = owner_decl.kind,
+        .decl_result_id = owner_decl.result_id,
+        .extended_instruction_set = try module.sections.extended_instruction_set.instructions.toOwnedSlice(gpa),
+        .globals = try module.sections.globals.instructions.toOwnedSlice(gpa),
+        .functions = try module.sections.functions.instructions.toOwnedSlice(gpa),
+        .annotations = try module.sections.annotations.instructions.toOwnedSlice(gpa),
+        .debug_names = try module.sections.debug_names.instructions.toOwnedSlice(gpa),
+        .debug_strings = try module.sections.debug_strings.instructions.toOwnedSlice(gpa),
+        .execution_modes = try module.sections.execution_modes.instructions.toOwnedSlice(gpa),
+        .nav_refs = try nav_refs.toOwnedSlice(gpa),
+        .uav_refs = try uav_refs.toOwnedSlice(gpa),
+        .decl_deps = try decl_deps.toOwnedSlice(gpa),
+        .internal_globals = try internal_globals.toOwnedSlice(gpa),
+        .entry_points = try ep_list.toOwnedSlice(gpa),
+    };
 }
 
 const Error = error{ AlreadyReported, OutOfMemory };

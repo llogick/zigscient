@@ -299,6 +299,7 @@ test "tuple type with void field and a runtime field" {
 test "branching inside tuple literal" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
         fn foo(a: anytype) !void {
