@@ -26,6 +26,10 @@ cwd: ?Build.LazyPath,
 /// Override this field to modify the environment, or use setEnvironmentVariable
 environ_map: ?*EnvMap,
 
+/// Named files that will be provided to the parent process.
+/// See `std.process.Preopens`.
+preopens: std.array_hash_map.String(Build.LazyPath),
+
 /// Controls the `NO_COLOR` and `CLICOLOR_FORCE` environment variables.
 color: Color = .auto,
 
@@ -200,6 +204,7 @@ pub fn create(owner: *std.Build, name: []const u8) *Run {
         .argv = .empty,
         .cwd = null,
         .environ_map = null,
+        .preopens = .empty,
         .disable_zig_progress = false,
         .stdio = .infer_from_args,
         .stdin = .none,
@@ -613,6 +618,17 @@ pub fn setEnvironmentVariable(run: *Run, key: []const u8, value: []const u8) voi
 
 pub fn removeEnvironmentVariable(run: *Run, key: []const u8) void {
     _ = run.getEnvMap().swapRemove(key);
+}
+
+pub fn setPreopen(run: *Run, name: []const u8, resource: Build.LazyPath) void {
+    const graph = run.step.owner.graph;
+    const arena = graph.arena;
+    resource.addStepDependencies(&run.step);
+    run.preopens.put(
+        arena,
+        graph.dupeString(name),
+        resource.dupe(graph),
+    ) catch @panic("OOM");
 }
 
 /// Adds a check for exact stderr match. Does not add any other checks.

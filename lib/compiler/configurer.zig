@@ -1070,6 +1070,8 @@ fn serialize(b: *std.Build, wc: *Configuration.Wip, writer: *Io.Writer) !void {
                             .file_inputs = .{ .slice = try s.initLazyPathList(run.file_inputs.items) },
                             .args = .{ .slice = try s.initArgsList(run.argv.items) },
                             .cwd = .{ .value = try s.addOptionalLazyPath(run.cwd) },
+                            .preopen_names = .{ .slice = try s.initStringList(run.preopens.keys()) },
+                            .preopen_paths = .{ .slice = try s.initLazyPathList(run.preopens.values()) },
                             .captured_stdout = .{ .value = if (run.captured_stdout) |cs| .{
                                 .basename = try wc.addString(cs.basename),
                                 .generated_file = cs.generated_file,

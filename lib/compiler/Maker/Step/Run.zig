@@ -65,6 +65,12 @@ pub fn make(
         }
     }
 
+    for (conf_run.preopen_names.slice, conf_run.preopen_paths.slice) |name, path| {
+        man.hash.addBytesZ(name.slice(conf));
+        const cwd_path = try maker.resolveLazyPathIndex(arena, path, run_index);
+        man.hash.addBytes(try cwd_path.toString(arena));
+    }
+
     man.hash.add(graph.fuzzing);
     man.hash.add(conf_run.flags.color);
     man.hash.add(conf_run.flags.disable_zig_progress);
@@ -1912,9 +1918,15 @@ fn runCommand(
                     },
                     .wasmtime => |bin_name| {
                         if (graph.enable_wasmtime) {
-                            try interp_argv.ensureUnusedCapacity(arena, 3 + argv.len);
+                            try interp_argv.ensureUnusedCapacity(arena, 3 + argv.len + conf_run.preopen_names.slice.len);
                             interp_argv.appendAssumeCapacity(bin_name);
                             interp_argv.appendAssumeCapacity("--dir=.");
+                            for (conf_run.preopen_names.slice, conf_run.preopen_paths.slice) |name, lazy_path| {
+                                const path = try maker.resolveLazyPath(arena, lazy_path.get(conf), run_index);
+                                path.root_dir.handle.createDirPath(io, path.subPathOrDot()) catch |e|
+                                    return step.fail(maker, "failed creating directory {f}: {t}", .{ path, e });
+                                interp_argv.appendAssumeCapacity(try allocPrint(arena, "--dir={f}::{s}", .{ path, name.slice(conf) }));
+                            }
                             // Wasmtime doeesn't inherit environment variables from the parent process
                             // by default. '-S inherit-env' was added in Wasmtime version 20.
                             interp_argv.appendAssumeCapacity("-Sinherit-env");
