@@ -453,7 +453,7 @@ pub const Os = struct {
 
                                 break :blk default_min;
                             },
-                            .max = .{ .major = 7, .minor = 0, .patch = 9 },
+                            .max = .{ .major = 7, .minor = 1, .patch = 9 },
                         },
                         .glibc = blk: {
                             // For 32-bit targets that traditionally used 32-bit time, we require

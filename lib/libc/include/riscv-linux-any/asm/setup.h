@@ -3,6 +3,6 @@
 #ifndef _ASM_RISCV_SETUP_H
 #define _ASM_RISCV_SETUP_H
 
-#define COMMAND_LINE_SIZE	1024
+#define COMMAND_LINE_SIZE	2048
 
 #endif /* _ASM_RISCV_SETUP_H */
