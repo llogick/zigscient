@@ -137,6 +137,11 @@ pub fn loadInput(linker: *Linker, input: link.Input) !void {
             if (n_read != bytes.len)
                 return diags.fail("SPIR-V object '{f}': incomplete read", .{obj.path});
 
+            const needs_swap = all_words[0] == @byteSwap(spec.magic_number);
+            if (needs_swap) {
+                for (all_words) |*w| w.* = @byteSwap(w.*);
+            }
+
             if (all_words[0] != spec.magic_number)
                 return diags.fail("SPIR-V object '{f}': invalid magic number", .{obj.path});
 
@@ -266,16 +271,6 @@ pub fn flush(
     var binary = linkModule(arena, merged.words, merged.id_bound, sub_prog_node) catch |err| switch (err) {
         error.OutOfMemory => |e| return e,
         else => |other| {
-            // Uncomment to write the pre-link merged module for debugging
-            // const dbg_header = [_]Word{
-            //     spec.magic_number,
-            //     merged.version.toWord(),
-            //     merged.generator_id,
-            //     merged.id_bound,
-            //     0,
-            // };
-            // linker.base.file.?.writeStreamingAll(io, @ptrCast(&dbg_header)) catch {};
-            // linker.base.file.?.writeStreamingAll(io, @ptrCast(merged.words)) catch {};
             return diags.fail("error while linking: {s}", .{@errorName(other)});
         },
     };
@@ -289,10 +284,17 @@ pub fn flush(
         0,
     };
 
-    linker.base.file.?.writeStreamingAll(io, @ptrCast(&header)) catch |err|
-        return diags.fail("failed to write: {t}", .{err});
-    linker.base.file.?.writeStreamingAll(io, @ptrCast(binary.instructions)) catch |err|
-        return diags.fail("failed to write: {t}", .{err});
+    var file_writer = linker.base.file.?.writer(io, &.{});
+    file_writer.interface.writeSliceEndian(Word, &header, .little) catch |err| switch (err) {
+        error.WriteFailed => return diags.fail("failed to write: {t}", .{file_writer.err.?}),
+    };
+    file_writer.interface.writeSliceEndian(Word, binary.instructions, .little) catch |err| switch (err) {
+        error.WriteFailed => return diags.fail("failed to write: {t}", .{file_writer.err.?}),
+    };
+    file_writer.end() catch |err| switch (err) {
+        error.WriteFailed => return diags.fail("failed to write: {t}", .{file_writer.err.?}),
+        else => |e| return diags.fail("failed to write: {t}", .{e}),
+    };
 }
 
 fn linkModule(arena: Allocator, words: []const Word, id_bound: u32, progress: std.Progress.Node) !BinaryModule {
