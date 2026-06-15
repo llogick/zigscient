@@ -1727,7 +1727,7 @@ fn runCommand(
     const allow_skip = switch (conf_run.flags.stdio) {
         .check, .zig_test => conf_run.flags.skip_foreign_checks,
         else => false,
-    };
+    } or !conf_run.flags.failing_to_execute_foreign_is_an_error;
 
     var interp_argv: std.ArrayList([]const u8) = .empty;
 
