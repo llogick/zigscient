@@ -133,6 +133,20 @@ test "alignment and size of structs with 128-bit fields" {
         y: u8,
     };
     const expected = switch (builtin.cpu.arch) {
+        .s390x,
+        => .{
+            .a_align = 8,
+            .a_size = 16,
+
+            .b_align = 8,
+            .b_size = 24,
+
+            .u128_align = 8,
+            .u128_size = 16,
+            .u129_align = 8,
+            .u129_size = 24,
+        },
+
         .amdgcn,
         .arm,
         .armeb,
@@ -145,7 +159,6 @@ test "alignment and size of structs with 128-bit fields" {
         .powerpc,
         .powerpcle,
         .riscv32,
-        .s390x,
         => .{
             .a_align = 8,
             .a_size = 16,
@@ -191,7 +204,7 @@ test "alignment and size of structs with 128-bit fields" {
 
         else => return error.SkipZigTest,
     };
-    const min_struct_align = if (builtin.zig_backend == .stage2_c) 16 else 0;
+    const min_struct_align = if (builtin.zig_backend == .stage2_c) if (builtin.cpu.arch == .s390x) 8 else 16 else 0;
     comptime {
         assert(@alignOf(A) == @max(expected.a_align, min_struct_align));
         assert(@sizeOf(A) == expected.a_size);

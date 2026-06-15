@@ -2521,7 +2521,7 @@ pub fn defaultStructFieldAlignment(
         ((field_ty.isAbiInt(zcu) and field_ty.intInfo(zcu).bits > 64) or
             (field_ty.toIntern() == .f80_type and zcu.getTarget().cTypeBitSize(.longdouble) != 80)))
     {
-        return abi_align.maxStrict(.@"16");
+        return abi_align.maxStrict(if (zcu.getTarget().cpu.arch == .s390x) .@"8" else .@"16");
     }
     return abi_align;
 }
