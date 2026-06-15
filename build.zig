@@ -1766,7 +1766,7 @@ fn getVersion(b: *std.Build, opt_version_string: ?[]const u8) std.SemanticVersio
     if (proj_version.pre == null) return proj_version;
 
     const argv: []const []const u8 = &.{
-        "git", "--git-dir", ".git", "describe", "--match", "*.*.*", "--tags",
+        "git", "--git-dir", ".git", "describe", "--match", "*.*.*", "--tags", "--exclude", "*-rc*",
     };
     var code: u8 = undefined;
     const git_describe_untrimmed = b.runAllowFail(argv, &code, .ignore) catch |err| {
