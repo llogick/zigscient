@@ -36,9 +36,12 @@ jobs:
           mkdir -p builds
           echo "::endgroup::"
 
+          echo "::group::Cursory check test (native)"
+          zig build check test --zig-lib-dir ./lib/ -Dcpu=baseline -Dtarget=${target}
+          echo "::endgroup::"
+
           echo "::group::Creating artifacts"
           for target in "x86_64-linux" "aarch64-linux" "x86_64-windows" "aarch64-windows" "x86_64-macos" "aarch64-macos"; do
-            zig build check test --zig-lib-dir ./lib/ -Dcpu=baseline -Dtarget=${target} -Doptimize=ReleaseFast
             zig build --zig-lib-dir ./lib/ -Dcpu=baseline -Dtarget=${target} -Doptimize=ReleaseFast
             if [[ $target == *"windows"* ]]; then
               cp zig-out/bin/zigscient.exe builds/zigscient-${target}.exe
