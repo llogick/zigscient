@@ -3254,7 +3254,7 @@ fn initHeaders(
         // `FINI_ARRAY`/`PREINIT_ARRAY` sections are instead created by `createInitFiniArraySection`
         // when needed (it seems to be legal to leave those undefined if the section doesn't exist).
 
-        try elf.ensureUnusedSymbolCapacity(4, .maybe_global);
+        try elf.ensureUnusedSymbolCapacity(10, .maybe_global);
         // Despite the name, `__dso_handle` is necessary even in static binaries.
         _ = elf.addGlobalSymbolAssumeCapacity(.{
             .node = Section.Index.text.get(elf).ni,
@@ -3289,6 +3289,78 @@ fn initHeaders(
             .bind = .strong,
             .visibility = .HIDDEN,
             .shndx = elf.shndx.got,
+        }) catch |err| switch (err) {
+            error.MultipleDefinitions => unreachable, // no inputs are processed yet
+        };
+        _ = elf.addGlobalSymbolAssumeCapacity(.{
+            .node = .none,
+            .name = try .string(elf, "__init_array_start"),
+            .value = 0,
+            .size = 0,
+            .type = .NOTYPE,
+            .bind = .strong,
+            .visibility = .HIDDEN,
+            .shndx = .ABS,
+        }) catch |err| switch (err) {
+            error.MultipleDefinitions => unreachable, // no inputs are processed yet
+        };
+        _ = elf.addGlobalSymbolAssumeCapacity(.{
+            .node = .none,
+            .name = try .string(elf, "__init_array_end"),
+            .value = 0,
+            .size = 0,
+            .type = .NOTYPE,
+            .bind = .strong,
+            .visibility = .HIDDEN,
+            .shndx = .ABS,
+        }) catch |err| switch (err) {
+            error.MultipleDefinitions => unreachable, // no inputs are processed yet
+        };
+        _ = elf.addGlobalSymbolAssumeCapacity(.{
+            .node = .none,
+            .name = try .string(elf, "__fini_array_start"),
+            .value = 0,
+            .size = 0,
+            .type = .NOTYPE,
+            .bind = .strong,
+            .visibility = .HIDDEN,
+            .shndx = .ABS,
+        }) catch |err| switch (err) {
+            error.MultipleDefinitions => unreachable, // no inputs are processed yet
+        };
+        _ = elf.addGlobalSymbolAssumeCapacity(.{
+            .node = .none,
+            .name = try .string(elf, "__fini_array_end"),
+            .value = 0,
+            .size = 0,
+            .type = .NOTYPE,
+            .bind = .strong,
+            .visibility = .HIDDEN,
+            .shndx = .ABS,
+        }) catch |err| switch (err) {
+            error.MultipleDefinitions => unreachable, // no inputs are processed yet
+        };
+        _ = elf.addGlobalSymbolAssumeCapacity(.{
+            .node = .none,
+            .name = try .string(elf, "__preinit_array_start"),
+            .value = 0,
+            .size = 0,
+            .type = .NOTYPE,
+            .bind = .strong,
+            .visibility = .HIDDEN,
+            .shndx = .ABS,
+        }) catch |err| switch (err) {
+            error.MultipleDefinitions => unreachable, // no inputs are processed yet
+        };
+        _ = elf.addGlobalSymbolAssumeCapacity(.{
+            .node = .none,
+            .name = try .string(elf, "__preinit_array_end"),
+            .value = 0,
+            .size = 0,
+            .type = .NOTYPE,
+            .bind = .strong,
+            .visibility = .HIDDEN,
+            .shndx = .ABS,
         }) catch |err| switch (err) {
             error.MultipleDefinitions => unreachable, // no inputs are processed yet
         };
@@ -4759,36 +4831,24 @@ fn createInitFiniArraySection(
     });
     elf.section_by_name.putAssumeCapacityNoClobber(shndx.name(elf), {});
     try elf.ensureUnusedSymbolCapacity(2, .maybe_global);
-    _ = elf.addGlobalSymbolAssumeCapacity(.{
+    // These symbols definitely already have strong definitions, because we added them alongside the
+    // other linker-defined symbols, all the way back in `initHeaders`.
+    const start_sym_name = try elf.string(.strtab, "__" ++ name ++ "_start");
+    const end_sym_name = try elf.string(.strtab, "__" ++ name ++ "_end");
+    elf.setGlobalSymbolValue(start_sym_name, elf.globals.strong_def.getPtr(start_sym_name).?, .{
         .node = shndx.get(elf).ni,
-        .name = try .string(elf, "__" ++ name ++ "_start"),
         .value = shndx.vaddr(elf),
         .size = 0,
         .type = .NOTYPE,
-        .bind = .strong,
-        .visibility = .HIDDEN,
         .shndx = shndx.*,
-    }) catch |err| switch (err) {
-        error.MultipleDefinitions => return elf.base.comp.link_diags.fail(
-            "multiple definitions of '{s}'",
-            .{"__" ++ name ++ "_start"},
-        ),
-    };
-    _ = elf.addGlobalSymbolAssumeCapacity(.{
+    });
+    elf.setGlobalSymbolValue(end_sym_name, elf.globals.strong_def.getPtr(end_sym_name).?, .{
         .node = shndx.get(elf).ni,
-        .name = try .string(elf, "__" ++ name ++ "_end"),
         .value = shndx.vaddr(elf),
         .size = 0,
         .type = .NOTYPE,
-        .bind = .strong,
-        .visibility = .HIDDEN,
         .shndx = shndx.*,
-    }) catch |err| switch (err) {
-        error.MultipleDefinitions => return elf.base.comp.link_diags.fail(
-            "multiple definitions of '{s}'",
-            .{"__" ++ name ++ "_end"},
-        ),
-    };
+    });
 }
 fn updateInitFiniArraySectionSize(
     elf: *Elf,
