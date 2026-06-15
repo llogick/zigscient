@@ -901,6 +901,7 @@ pub const UnixAddress = struct {
         ReadOnlyFileSystem,
         WouldBlock,
         NetworkDown,
+        ConnectionRefused,
     } || Io.Cancelable || Io.UnexpectedError;
 
     pub fn connect(ua: *const UnixAddress, io: Io) ConnectError!Stream {

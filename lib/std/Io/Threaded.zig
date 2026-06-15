@@ -12124,6 +12124,7 @@ fn posixConnectUnix(
                     .NOTDIR => return error.NotDir,
                     .ROFS => return error.ReadOnlyFileSystem,
                     .PERM => return error.PermissionDenied,
+                    .CONNREFUSED => return error.ConnectionRefused,
 
                     .BADF => |err| return errnoBug(err), // File descriptor used after closed.
                     .CONNABORTED => |err| return errnoBug(err),
