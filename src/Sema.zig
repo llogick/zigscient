@@ -18779,6 +18779,18 @@ fn structInitAnon(
         break :rs runtime_index;
     };
 
+    // A field can't be `comptime` if it references a `comptime var` but the aggregate can still be comptime-known.
+    // Replace these fields with `.none` only for generating the type.
+    const values_no_comptime = if (!any_values) values else blk: {
+        const new_values = try sema.arena.alloc(InternPool.Index, types.len);
+        for (values, new_values) |val, *new_val| {
+            if (val != .none and Value.fromInterned(val).canMutateComptimeVarState(zcu)) {
+                new_val.* = .none;
+            } else new_val.* = val;
+        }
+        break :blk new_values;
+    };
+
     // We treat anonymous struct types as reified types, because there are similarities: they have
     // no captures, and instead use a form of structural equivalence which we can easy represent by
     // hashing the field names/types/values. They also perform layout resolution immediately. These
@@ -18787,7 +18799,7 @@ fn structInitAnon(
     const type_hash: u64 = hash: {
         var hasher = std.hash.Wyhash.init(0);
         hasher.update(std.mem.sliceAsBytes(types));
-        hasher.update(std.mem.sliceAsBytes(values));
+        hasher.update(std.mem.sliceAsBytes(values_no_comptime));
         hasher.update(std.mem.sliceAsBytes(names));
         break :hash hasher.final();
     };
@@ -18811,9 +18823,9 @@ fn structInitAnon(
             @memcpy(wip.field_names.get(ip), names);
             @memcpy(wip.field_types.get(ip), types);
             if (any_values) {
-                @memcpy(wip.field_values.get(ip), values);
+                @memcpy(wip.field_values.get(ip), values_no_comptime);
                 @memset(wip.field_is_comptime_bits.getAll(ip), 0);
-                for (values, 0..) |val, field_index| {
+                for (values_no_comptime, 0..) |val, field_index| {
                     if (val == .none) continue;
                     const bit_bag_index = field_index / 32;
                     const mask = @as(u32, 1) << @intCast(field_index % 32);
@@ -18840,6 +18852,15 @@ fn structInitAnon(
         const struct_val = try pt.aggregateValue(struct_ty, values);
         return sema.addConstantMaybeRef(struct_val, is_ref);
     };
+
+    for (values, 0..) |field_val, i| {
+        if (field_val == .none) continue; // runtime-known
+        const field_src = block.src(.{ .init_elem = .{
+            .init_node_offset = src.offset.node_offset.x,
+            .elem_index = @intCast(i),
+        } });
+        try sema.validateRuntimeValue(block, field_src, .fromIntern(field_val));
+    }
 
     if (is_ref) {
         const target = zcu.getTarget();
@@ -19097,12 +19118,10 @@ fn arrayInitAnon(
         .values = values_no_comptime,
     }));
 
-    const runtime_src = opt_runtime_src orelse {
+    _ = opt_runtime_src orelse {
         const tuple_val = try pt.aggregateValue(tuple_ty, values);
         return sema.addConstantMaybeRef(tuple_val, is_ref);
     };
-
-    try sema.requireRuntimeBlock(block, src, runtime_src);
 
     for (operands, 0..) |operand, i| {
         const operand_src = block.src(.{ .init_elem = .{

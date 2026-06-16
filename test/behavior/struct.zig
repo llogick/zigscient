@@ -2326,3 +2326,12 @@ test "pointer to runtime field of struct containing struct containing comptime-o
     ptr = &foo.number;
     try expect(ptr.* == 123);
 }
+
+test "struct field referencing comptime var isn't comptime" {
+    comptime var v: u8 = 0;
+    const s = .{ .v = &v };
+    // field isn't comptime but struct is still comptime-known
+    comptime assert(!@typeInfo(@TypeOf(s)).@"struct".field_attrs[0].@"comptime");
+    v = 1;
+    comptime assert(s.v.* == 1);
+}
