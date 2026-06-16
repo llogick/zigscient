@@ -24,7 +24,6 @@ fn testTruncate(x: u32) u8 {
 }
 
 test "truncate to non-power-of-two integers" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 
     try testTrunc(u32, u1, 0b10101, 0b1);
@@ -41,7 +40,6 @@ test "truncate to non-power-of-two integers" {
 test "truncate to non-power-of-two integers from 128-bit" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try testTrunc(u128, u1, 0xffffffff_ffffffff_ffffffff_01010101, 0x01);
     try testTrunc(u128, u1, 0xffffffff_ffffffff_ffffffff_01010110, 0x00);
@@ -299,7 +297,6 @@ const global_b: *const i32 = &global_a;
 const global_c: *const f32 = @as(*const f32, @ptrCast(global_b));
 test "compile time global reinterpret" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const d = @as(*const i32, @ptrCast(global_c));
     try expect(d.* == 1234);
 }
@@ -1217,8 +1214,6 @@ fn testUnsignedCmp(comptime T: type) !void {
 }
 
 test "integer compare <= 64 bits" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     inline for (.{ u8, u16, u32, u64, usize, u10, u20, u30, u60 }) |T| {
         try testUnsignedCmp(T);
         try comptime testUnsignedCmp(T);
@@ -1231,7 +1226,6 @@ test "integer compare <= 64 bits" {
 
 test "integer compare <= 128 bits" {
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     inline for (.{ u65, u96, u127, u128 }) |T| {
         try testUnsignedCmp(T);
@@ -1245,7 +1239,6 @@ test "integer compare <= 128 bits" {
 
 test "integer compare > 128 bits" {
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     inline for (.{ u129, u255, u512, u800 }) |T| {
         try testUnsignedCmp(T);

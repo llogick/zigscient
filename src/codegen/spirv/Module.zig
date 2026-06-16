@@ -658,8 +658,6 @@ pub fn intType(module: *Module, signedness: std.lang.Signedness, bits: u16) !Id 
     };
     const backing_bits, const big_int = module.backingIntBits(bits);
     if (big_int) {
-        // TODO: support composite integers larger than 64 bit
-        assert(backing_bits <= 64);
         const u32_ty = try module.intType(.unsigned, 32);
         const len_id = try module.constant(u32_ty, .{ .uint32 = backing_bits / big_int_bits });
         return module.arrayType(len_id, u32_ty);

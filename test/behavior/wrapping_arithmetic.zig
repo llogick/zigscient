@@ -3,7 +3,6 @@ const builtin = @import("builtin");
 const minInt = std.math.minInt;
 const maxInt = std.math.maxInt;
 const expect = std.testing.expect;
-const skip128 = builtin.zig_backend == .stage2_spirv;
 
 test "wrapping add" {
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
@@ -14,14 +13,14 @@ test "wrapping add" {
             try testWrapAdd(i8, -128, -128, 0);
             try testWrapAdd(i2, 1, 1, -2);
             try testWrapAdd(i64, maxInt(i64), 1, minInt(i64));
-            if (!skip128) try testWrapAdd(i128, maxInt(i128), -maxInt(i128), 0);
-            if (!skip128) try testWrapAdd(i128, minInt(i128), maxInt(i128), -1);
+            try testWrapAdd(i128, maxInt(i128), -maxInt(i128), 0);
+            try testWrapAdd(i128, minInt(i128), maxInt(i128), -1);
             try testWrapAdd(i8, 127, 127, -2);
             try testWrapAdd(u8, 3, 10, 13);
             try testWrapAdd(u8, 255, 255, 254);
             try testWrapAdd(u2, 3, 2, 1);
             try testWrapAdd(u3, 7, 1, 0);
-            if (!skip128) try testWrapAdd(u128, maxInt(u128), 1, minInt(u128));
+            try testWrapAdd(u128, maxInt(u128), 1, minInt(u128));
         }
 
         fn testWrapAdd(comptime T: type, lhs: T, rhs: T, expected: T) !void {
@@ -51,12 +50,12 @@ test "wrapping subtraction" {
             try testWrapSub(i8, -128, -128, 0);
             try testWrapSub(i8, -1, 127, -128);
             try testWrapSub(i64, minInt(i64), 1, maxInt(i64));
-            if (!skip128) try testWrapSub(i128, maxInt(i128), -1, minInt(i128));
-            if (!skip128) try testWrapSub(i128, minInt(i128), -maxInt(i128), -1);
+            try testWrapSub(i128, maxInt(i128), -1, minInt(i128));
+            try testWrapSub(i128, minInt(i128), -maxInt(i128), -1);
             try testWrapSub(u8, 10, 3, 7);
             try testWrapSub(u8, 0, 255, 1);
             try testWrapSub(u5, 0, 31, 1);
-            if (!skip128) try testWrapSub(u128, 0, maxInt(u128), 1);
+            try testWrapSub(u128, 0, maxInt(u128), 1);
         }
 
         fn testWrapSub(comptime T: type, lhs: T, rhs: T, expected: T) !void {
@@ -88,11 +87,11 @@ test "wrapping multiplication" {
             try testWrapMul(i8, -128, -128, 0);
             try testWrapMul(i8, maxInt(i8), maxInt(i8), 1);
             try testWrapMul(i16, maxInt(i16), -1, minInt(i16) + 1);
-            if (!skip128) try testWrapMul(i128, maxInt(i128), -1, minInt(i128) + 1);
-            if (!skip128) try testWrapMul(i128, minInt(i128), -1, minInt(i128));
+            try testWrapMul(i128, maxInt(i128), -1, minInt(i128) + 1);
+            try testWrapMul(i128, minInt(i128), -1, minInt(i128));
             try testWrapMul(u8, 10, 3, 30);
             try testWrapMul(u8, 2, 255, 254);
-            if (!skip128) try testWrapMul(u128, maxInt(u128), maxInt(u128), 1);
+            try testWrapMul(u128, maxInt(u128), maxInt(u128), 1);
         }
 
         fn testWrapMul(comptime T: type, lhs: T, rhs: T, expected: T) !void {
