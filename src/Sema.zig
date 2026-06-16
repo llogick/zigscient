@@ -9845,7 +9845,7 @@ fn zirSwitchBlockErrUnion(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Comp
 
     const maybe_switch_ref: ?Air.Inst.Ref = ref: {
         // make err capture (i.e. switch operand) available to switch prong bodies
-        sema.inst_map.putAssumeCapacityNoClobber(inst, raw_switch_operand);
+        sema.inst_map.putAssumeCapacity(inst, raw_switch_operand);
         defer assert(sema.inst_map.remove(inst));
         break :ref try sema.analyzeSwitchBlock(block, &switch_block, raw_switch_operand, false, merges, inst, &zir_switch, &validated_switch);
     };

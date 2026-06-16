@@ -1542,3 +1542,40 @@ test "error captures narrow error sets" {
     try comptime S.doTheTest(error.B);
     try comptime S.doTheTest(error.C);
 }
+
+test "repeated switch analysis overrides previous analysis results" {
+    // This tests an implementation detail where semantic analysis of switch
+    // statements uses the switch inst itself to store capture values and result
+    // type information while analyzing (parts of) that switch inst.
+    // If that inst has already been assigned a result by a previous analysis
+    // that result needs to be overwritten.
+
+    comptime {
+        const x: u32 = 123;
+        for (0..2) |_| _ = switch (x) {
+            123 => |capture| capture,
+            else => unreachable,
+        };
+    }
+    comptime {
+        const x: union(enum) { a, b, c } = .a;
+        for (0..2) |_| _ = switch (x) {
+            .a => |_, tag| tag,
+            else => unreachable,
+        };
+    }
+    comptime {
+        const x: enum { a, b, c } = .a;
+        for (0..2) |_| _ = label: switch (x) {
+            .a => continue :label .b,
+            else => 123,
+        };
+    }
+    comptime {
+        const x: anyerror!void = error.MyError;
+        for (0..2) |_| _ = x catch |err| switch (err) {
+            error.MyError => {},
+            else => unreachable,
+        };
+    }
+}
