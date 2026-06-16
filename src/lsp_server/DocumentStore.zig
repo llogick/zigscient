@@ -45,17 +45,22 @@ lsp_capabilities: struct {
 } = .{},
 progress_notifications: [@typeInfo(ProgressNotificationIndex).@"enum".field_names.len]ProgressNotification = .{
     .{
-        .id = "s2c-wdp-builds",
-        .title = "Loading build configuration",
+        .id = "s2c-wdp-config",
+        .title = "Retrieving Configuration",
+    },
+    .{
+        .id = "s2c-wdp-tailor",
+        .title = "Preparing Build",
     },
     .{
         .id = "s2c-wdp-compilations",
-        .title = "Updating compilation",
+        .title = "Updating Compilation",
     },
 },
 // Keep in sync with the `progress_notifications` field
 const ProgressNotificationIndex = enum {
-    build_progress,
+    cfg_progress,
+    tlr_progress,
     compilation_progress,
 };
 
@@ -440,7 +445,7 @@ fn invalidateBuildFileWorker(self: *DocumentStore, build_file: *BldDoc) std.Io.C
         }
     }
 
-    var token = self.notifyProgressStart(.build_progress, build_file.flat_uri);
+    var token = self.notifyProgressStart(.cfg_progress, build_file.flat_uri);
     errdefer if (token) |t| self.notifyProgressEnd(t, .failure);
 
     while (true) {

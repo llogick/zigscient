@@ -211,6 +211,10 @@ pub fn runTailor(build_file: *BldDoc, ds: *DocumentStore) !void {
         try std.fmt.allocPrint(arena, "{}", .{step_index}),
     });
 
+    const token = ds.notifyProgressStart(.tlr_progress, build_file.flat_uri);
+    errdefer if (token) |t| ds.notifyProgressEnd(t, .failure);
+    defer if (token) |t| ds.notifyProgressEnd(t, .success);
+
     const tailor_run_result = blk: {
         const tracy_zone2 = tracy.trace(@src());
         defer tracy_zone2.end();
