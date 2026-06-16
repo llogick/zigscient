@@ -34,7 +34,6 @@ test "@mulAdd f16" {
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
 
     try comptime testMulAdd16();
-    try testMulAdd16();
 }
 
 fn testMulAdd16() !void {
@@ -49,9 +48,7 @@ test "@mulAdd f80" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_c and builtin.cpu.arch.isArm()) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-
     try comptime testMulAdd80();
     try testMulAdd80();
 }

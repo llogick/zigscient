@@ -136,8 +136,6 @@ test "implicit cast single item pointer to C pointer and back" {
 }
 
 test "initialize const optional C pointer to null" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const a: ?[*c]i32 = null;
     try expect(a == null);
     comptime assert(a == null);
@@ -146,7 +144,6 @@ test "initialize const optional C pointer to null" {
 test "assigning integer to C pointer" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     var x: i32 = 0;
     var y: i32 = 1;
     var ptr: [*c]u8 = 0;
@@ -645,8 +642,6 @@ test "result type preserved through multiple references" {
 }
 
 test "result type found through optional pointer" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const ptr1: ?*const u32 = &@intCast(123);
     const ptr2: ?[]const u8 = &.{ @intCast(123), @truncate(0xABCD) };
     try expect(ptr1.?.* == 123);
@@ -700,7 +695,6 @@ fn constant() !void {
 test "pointer-to-array constness for zero-size elements, var" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     try mutable();
     try comptime mutable();
 }

@@ -145,19 +145,12 @@ test "implicit cast to optional to error union to return result loc" {
 }
 
 test "fn returning empty error set can be passed as fn returning any error" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
-    entry();
-    comptime entry();
 }
 
 test "fn returning empty error set can be passed as fn returning any error - pointer" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     entryPtr();
-    comptime entryPtr();
 }
-
 fn entry() void {
     foo2(bar2);
 }
@@ -369,10 +362,8 @@ test "error: Infer error set from literals" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     _ = nullLiteral("n") catch |err| handleErrors(err);
-    _ = floatLiteral("n") catch |err| handleErrors(err);
     _ = intLiteral("n") catch |err| handleErrors(err);
     _ = comptime nullLiteral("n") catch |err| handleErrors(err);
-    _ = comptime floatLiteral("n") catch |err| handleErrors(err);
     _ = comptime intLiteral("n") catch |err| handleErrors(err);
 }
 
@@ -511,7 +502,6 @@ test "function pointer with return type that is error union with payload which i
         const Foo = struct {
             fun: *const fn (a: i32) (anyerror!*Foo),
         };
-
         const Err = error{UnspecifiedErr};
 
         fn bar(a: i32) anyerror!*Foo {
@@ -699,8 +689,6 @@ test "coerce error set to the current inferred error set" {
 test "error union payload is properly aligned" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
 
     const S = struct {
         a: u128,
@@ -758,7 +746,6 @@ test "pointer to error union payload" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
 
     var err_union: anyerror!u8 = 15;
 

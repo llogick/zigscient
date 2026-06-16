@@ -211,8 +211,6 @@ test "@sizeOf comparison against zero" {
 }
 
 test "hardcoded address in typeof expression" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         fn func() @TypeOf(@as(*[]u8, @ptrFromInt(0x10)).*[0]) {
             return 0;
@@ -301,7 +299,6 @@ test "lazy abi size used in comparison" {
 test "peer type resolution with @TypeOf doesn't trigger dependency loop check" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const T = struct {
         next: @TypeOf(null, @as(*const @This(), undefined)),
     };

@@ -431,8 +431,6 @@ test "type pun @ptrFromInt" {
 }
 
 test "type pun null pointer-like optional" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const p: ?*u8 = null;
     // note that expectEqual hides the bug
     try testing.expect(@as(*const ?*i8, @ptrCast(&p)).* == null);
@@ -518,7 +516,6 @@ fn fieldPtrTest() u32 {
 }
 test "pointer in aggregate field can mutate comptime state" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     try comptime std.testing.expect(fieldPtrTest() == 2);
 }
 

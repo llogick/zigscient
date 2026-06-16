@@ -168,7 +168,6 @@ test "@memcpy with sentinel" {
 }
 
 test "@memcpy no sentinel source into sentinel destination" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
         fn doTheTest() void {

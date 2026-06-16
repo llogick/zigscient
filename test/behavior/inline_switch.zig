@@ -34,8 +34,6 @@ test "inline prong ranges" {
 const E = enum { a, b, c, d };
 test "inline switch enums" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     var x: E = .a;
     _ = &x;
     switch (x) {
@@ -49,7 +47,6 @@ test "inline switch unions" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     var x: U = .a;
     _ = &x;
     switch (x) {
@@ -74,8 +71,6 @@ test "inline switch unions" {
 
 test "inline else bool" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     var a = true;
     _ = &a;
     switch (a) {
@@ -87,7 +82,6 @@ test "inline else bool" {
 test "inline else error" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const Err = error{ a, b, c };
     var a = Err.a;
     _ = &a;

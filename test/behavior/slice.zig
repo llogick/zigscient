@@ -173,8 +173,6 @@ test "pass a slice of types to a function" {
 
 test "generic malloc free" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const a = memAlloc(u8, 10) catch unreachable;
     memFree(u8, a);
 }
@@ -188,7 +186,6 @@ fn memFree(comptime T: type, memory: []T) void {
 
 test "slice of hardcoded address to pointer" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         fn doTheTest() !void {
             const pointer = @as([*]u8, @ptrFromInt(0x04))[0..2];
@@ -212,8 +209,6 @@ test "comptime slice of pointer preserves comptime var" {
 }
 
 test "comptime pointer cast array and then slice" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const array = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 };
 
     const ptrA: [*]const u8 = @as([*]const u8, @ptrCast(&array));
@@ -229,7 +224,6 @@ test "comptime pointer cast array and then slice" {
 test "slicing zero length array" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const s1 = ""[0..];
     const s2 = ([_]u32{})[0..];
     try expect(s1.len == 0);

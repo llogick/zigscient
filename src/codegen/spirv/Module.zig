@@ -773,6 +773,13 @@ pub fn structType(
     return result_id;
 }
 
+pub fn structFields(module: *const Module, struct_ty_id: Id) ?[]const Id {
+    for (module.cache.struct_types.keys(), module.cache.struct_types.values()) |key, val| {
+        if (val == struct_ty_id) return key.fields;
+    }
+    return null;
+}
+
 pub fn functionType(module: *Module, return_ty_id: Id, param_type_ids: []const Id) !Id {
     if (module.cache.fn_types.get(.{
         .return_ty = return_ty_id,

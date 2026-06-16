@@ -84,8 +84,6 @@ test "string literal pointer sentinel" {
 }
 
 test "sentinel slice of string literal" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const string = "Hello!\x00World!";
     try std.testing.expect(@TypeOf(string) == *const [13:0]u8);
 
@@ -103,7 +101,6 @@ test "Peer type resolution with string literals and unknown length u8 pointers" 
 
 test "including the sentinel when dereferencing a string literal" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     var var_str = "abc";
     const var_derefed = var_str[0 .. var_str.len + 1].*;
 

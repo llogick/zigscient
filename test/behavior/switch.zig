@@ -9,7 +9,6 @@ const maxInt = std.math.maxInt;
 
 test "switch with numbers" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try testSwitchWithNumbers(13);
 }
@@ -25,7 +24,6 @@ fn testSwitchWithNumbers(x: u32) !void {
 
 test "switch with all ranges" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     try expect(testSwitchWithAllRanges(50, 3) == 1);
     try expect(testSwitchWithAllRanges(101, 0) == 2);
@@ -214,8 +212,6 @@ test "undefined.u0" {
 
 test "switch with disjoint range" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
-
     var q: u8 = 0;
     _ = &q;
     switch (q) {
@@ -226,8 +222,6 @@ test "switch with disjoint range" {
 }
 
 test "switch variable for range and multiple prongs" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
-
     const S = struct {
         fn doTheTest() !void {
             try doTheSwitch(16);

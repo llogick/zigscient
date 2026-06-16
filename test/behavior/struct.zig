@@ -342,7 +342,6 @@ test "self-referencing struct via array member" {
 }
 
 test "empty struct method call" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const es = EmptyStruct{};
     try expect(es.method() == 1234);
 }
@@ -379,7 +378,6 @@ const APackedStruct = packed struct {
 test "packed struct" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
 
     var foo = APackedStruct{
@@ -448,8 +446,6 @@ test "runtime struct initialization of bitfield" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
 
     const s1 = Nibbles{
         .x = x1,
@@ -489,7 +485,6 @@ test "packed struct fields are ordered from LSB to MSB" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     var all: u64 = 0x7765443322221111;
     var bytes: [8]u8 align(@alignOf(Bitfields)) = undefined;
     @memcpy(bytes[0..8], @as([*]u8, @ptrCast(&all)));
@@ -1776,7 +1771,6 @@ test "circular dependency through pointer field of a struct" {
 }
 
 test "field calls do not force struct field init resolution" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const S = struct {
         x: u32 = blk: {
             _ = @TypeOf(make().dummyFn()); // runtime field call - S not fully resolved - dummyFn call should not force field init resolution

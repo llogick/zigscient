@@ -45,104 +45,67 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
 
 pub const zig_call_abi_ver = 3;
 
-const ControlFlow = union(enum) {
-    const Structured = struct {
-        /// This type indicates the way that a block is terminated. The
-        /// state of a particular block is used to track how a jump from
-        /// inside the block must reach the outside.
-        const Block = union(enum) {
-            const Incoming = struct {
-                src_label: Id,
-                /// Instruction that returns an u32 value of the
-                /// `Air.Inst.Index` that control flow should jump to.
-                next_block: Id,
-            };
+const LoopSwitch = struct { cond_var: Id, continue_label: Id };
 
-            const SelectionMerge = struct {
-                /// Incoming block from the `then` label.
-                /// Note that hte incoming block from the `else` label is
-                /// either given by the next element in the stack.
-                incoming: Incoming,
-                /// The label id of the cond_br's merge block.
-                /// For the top-most element in the stack, this
-                /// value is undefined.
-                merge_block: Id,
-            };
-
-            /// For a `selection` type block, we cannot use early exits, and we
-            /// must generate a 'merge ladder' of OpSelection instructions. To that end,
-            /// we keep a stack of the merges that still must be closed at the end of
-            /// a block.
-            ///
-            /// This entire structure basically just resembles a tree like
-            ///     a   x
-            ///      \ /
-            ///   b   o   merge
-            ///    \ /
-            /// c   o   merge
-            ///  \ /
-            ///   o   merge
-            ///  /
-            /// o   jump to next block
-            selection: struct {
-                /// In order to know which merges we still need to do, we need to keep
-                /// a stack of those.
-                merge_stack: std.ArrayList(SelectionMerge) = .empty,
-            },
-            /// For a `loop` type block, we can early-exit the block by
-            /// jumping to the loop exit node, and we don't need to generate
-            /// an entire stack of merges.
-            loop: struct {
-                /// The next block to jump to can be determined from any number
-                /// of conditions that jump to the loop exit.
-                merges: std.ArrayList(Incoming) = .empty,
-                /// The label id of the loop's merge block.
-                merge_block: Id,
-            },
-
-            fn deinit(block: *Structured.Block, gpa: Allocator) void {
-                switch (block.*) {
-                    .selection => |*merge| merge.merge_stack.deinit(gpa),
-                    .loop => |*merge| merge.merges.deinit(gpa),
-                }
-                block.* = undefined;
-            }
-        };
-        /// This determines how exits from the current block must be handled.
-        block_stack: std.ArrayList(*Structured.Block) = .empty,
-        block_results: std.AutoHashMapUnmanaged(Air.Inst.Index, Id) = .empty,
+/// This type indicates the way that a block is terminated. The
+/// state of a particular block is used to track how a jump from
+/// inside the block must reach the outside.
+const Block = union(enum) {
+    const Incoming = struct {
+        src_label: Id,
+        /// Instruction that returns an u32 value of the
+        /// `Air.Inst.Index` that control flow should jump to.
+        next_block: Id,
     };
 
-    const Unstructured = struct {
-        const Incoming = struct {
-            src_label: Id,
-            break_value_id: Id,
-        };
-
-        const Block = struct {
-            label: ?Id = null,
-            incoming_blocks: std.ArrayList(Incoming) = .empty,
-        };
-
-        /// We need to keep track of result ids for block labels, as well as the 'incoming'
-        /// blocks for a block.
-        blocks: std.AutoHashMapUnmanaged(Air.Inst.Index, *Block) = .empty,
+    const SelectionMerge = struct {
+        /// Incoming block from the `then` label.
+        /// Note that the incoming block from the `else` label is
+        /// either given by the next element in the stack.
+        incoming: Incoming,
+        /// The label id of the cond_br's merge block.
+        /// For the top-most element in the stack, this
+        /// value is undefined.
+        merge_block: Id,
     };
 
-    structured: Structured,
-    unstructured: Unstructured,
+    /// For a `selection` type block, we cannot use early exits, and we
+    /// must generate a 'merge ladder' of OpSelection instructions. To that end,
+    /// we keep a stack of the merges that still must be closed at the end of
+    /// a block.
+    ///
+    /// This entire structure basically just resembles a tree like
+    ///     a   x
+    ///      \ /
+    ///   b   o   merge
+    ///    \ /
+    /// c   o   merge
+    ///  \ /
+    ///   o   merge
+    ///  /
+    /// o   jump to next block
+    selection: struct {
+        /// In order to know which merges we still need to do, we need to keep
+        /// a stack of those.
+        merge_stack: std.ArrayList(SelectionMerge) = .empty,
+    },
+    /// For a `loop` type block, we can early-exit the block by
+    /// jumping to the loop exit node, and we don't need to generate
+    /// an entire stack of merges.
+    loop: struct {
+        /// The next block to jump to can be determined from any number
+        /// of conditions that jump to the loop exit.
+        merges: std.ArrayList(Incoming) = .empty,
+        /// The label id of the loop's merge block.
+        merge_block: Id,
+    },
 
-    pub fn deinit(cg: *ControlFlow, gpa: Allocator) void {
-        switch (cg.*) {
-            .structured => |*cf| {
-                cf.block_stack.deinit(gpa);
-                cf.block_results.deinit(gpa);
-            },
-            .unstructured => |*cf| {
-                cf.blocks.deinit(gpa);
-            },
+    fn deinit(block: *Block, gpa: Allocator) void {
+        switch (block.*) {
+            .selection => |*merge| merge.merge_stack.deinit(gpa),
+            .loop => |*merge| merge.merges.deinit(gpa),
         }
-        cg.* = undefined;
+        block.* = undefined;
     }
 };
 
@@ -151,23 +114,27 @@ air: Air,
 liveness: Air.Liveness,
 owner_nav: InternPool.Nav.Index,
 module: *Module,
-control_flow: ControlFlow,
+block_stack: std.ArrayList(*Block) = .empty,
+block_results: std.AutoHashMapUnmanaged(Air.Inst.Index, Id) = .empty,
 base_line: u32,
 block_label: Id = .none,
 next_arg_index: u32 = 0,
 args: std.ArrayList(Id) = .empty,
 virtual_allocas: std.AutoHashMapUnmanaged(Id, ?Id) = .empty,
 inst_results: std.AutoHashMapUnmanaged(Air.Inst.Index, Id) = .empty,
+loop_switches: std.AutoHashMapUnmanaged(Air.Inst.Index, LoopSwitch) = .empty,
 id_scratch: std.ArrayList(Id) = .empty,
 prologue: Section = .{},
 body: Section = .{},
 
 pub fn deinit(cg: *CodeGen) void {
     const gpa = cg.module.gpa;
-    cg.control_flow.deinit(gpa);
+    cg.block_stack.deinit(gpa);
+    cg.block_results.deinit(gpa);
     cg.args.deinit(gpa);
     cg.virtual_allocas.deinit(gpa);
     cg.inst_results.deinit(gpa);
+    cg.loop_switches.deinit(gpa);
     cg.id_scratch.deinit(gpa);
     cg.prologue.deinit(gpa);
     cg.body.deinit(gpa);
@@ -183,7 +150,6 @@ pub fn generate(
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
     const nav = zcu.funcInfo(func_index).owner_nav;
-    const structured_cfg = zcu.navFileScope(nav).mod.?.structured_cfg;
 
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
@@ -200,10 +166,6 @@ pub fn generate(
         .liveness = liveness.*.?,
         .owner_nav = nav,
         .module = &module,
-        .control_flow = switch (structured_cfg) {
-            true => .{ .structured = .{} },
-            false => .{ .unstructured = .{} },
-        },
         .base_line = zcu.navSrcLine(nav),
     };
     defer cg.deinit();
@@ -222,7 +184,6 @@ pub fn generateNav(
 ) codegen.Error!Mir {
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
-    const structured_cfg = zcu.navFileScope(nav_index).mod.?.structured_cfg;
 
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
@@ -239,10 +200,6 @@ pub fn generateNav(
         .liveness = undefined,
         .owner_nav = nav_index,
         .module = &module,
-        .control_flow = switch (structured_cfg) {
-            true => .{ .structured = .{} },
-            false => .{ .unstructured = .{} },
-        },
         .base_line = zcu.navSrcLine(nav_index),
     };
     defer cg.deinit();
@@ -433,17 +390,10 @@ pub fn genNav(cg: *CodeGen, do_codegen: bool) Error!void {
             cg.block_label = root_block_id;
 
             const main_body = cg.air.getMainBody();
-            switch (cg.control_flow) {
-                .structured => {
-                    _ = try cg.genStructuredBody(.selection, main_body);
-                    // We always expect paths to here to end, but we still need the block
-                    // to act as a dummy merge block.
-                    try cg.body.emit(gpa, .OpUnreachable, {});
-                },
-                .unstructured => {
-                    try cg.genBody(main_body);
-                },
-            }
+            _ = try cg.genStructuredBody(.selection, main_body);
+            // We always expect paths to here to end, but we still need the block
+            // to act as a dummy merge block.
+            try cg.body.emit(gpa, .OpUnreachable, {});
             try cg.body.emit(gpa, .OpFunctionEnd, {});
             // Append the actual code into the functions section.
             try cg.module.sections.functions.append(gpa, cg.prologue);
@@ -1052,8 +1002,34 @@ fn constIntBig(cg: *CodeGen, ty: Type, val: Value) !Id {
     return cg.constructComposite(result_ty_id, constituents);
 }
 
+/// Construct a composite value from its constituents.
+/// In logical addressing mode (Vulkan/OpenGL), OpCompositeConstruct cannot accept
+/// pointer operands, so for struct types we use alloc, store for each field and load instead.
 pub fn constructComposite(cg: *CodeGen, result_ty_id: Id, constituents: []const Id) !Id {
     const gpa = cg.module.gpa;
+
+    if (cg.module.structFields(result_ty_id)) |fields| {
+        assert(fields.len == constituents.len);
+        const u32_ty_id = try cg.module.intType(.unsigned, 32);
+        const var_id = try cg.alloc(result_ty_id, null);
+        for (fields, constituents, 0..) |field_ty_id, constituent, i| {
+            const field_ptr_ty_id = try cg.module.ptrType(field_ty_id, .function);
+            const index_id = try cg.module.constant(u32_ty_id, .{ .uint32 = @intCast(i) });
+            const field_ptr = try cg.accessChainId(field_ptr_ty_id, var_id, &.{index_id});
+            try cg.body.emit(gpa, .OpStore, .{
+                .pointer = field_ptr,
+                .object = constituent,
+            });
+        }
+        const result_id = cg.module.allocId();
+        try cg.body.emit(gpa, .OpLoad, .{
+            .id_result_type = result_ty_id,
+            .id_result = result_id,
+            .pointer = var_id,
+        });
+        return result_id;
+    }
+
     const result_id = cg.module.allocId();
     try cg.body.emit(gpa, .OpCompositeConstruct, .{
         .id_result_type = result_ty_id,
@@ -3896,19 +3872,21 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) Error!void {
             .load               => try cg.airLoad(inst),
             .store, .store_safe => return cg.airStore(inst),
 
-            .br             => return cg.airBr(inst),
+            .br              => return cg.airBr(inst),
             // For now just ignore this instruction. This effectively falls back on the old implementation,
             // this doesn't change anything for us.
-            .repeat         => return,
-            .breakpoint     => return,
-            .cond_br        => return cg.airCondBr(inst),
-            .loop           => return cg.airLoop(inst),
-            .ret            => return cg.airRet(inst),
-            .ret_safe       => return cg.airRet(inst), // TODO
-            .ret_load       => return cg.airRetLoad(inst),
-            .@"try"         => try cg.airTry(inst),
-            .switch_br      => return cg.airSwitchBr(inst),
-            .unreach, .trap => return cg.airUnreach(),
+            .repeat          => return,
+            .breakpoint      => return,
+            .cond_br         => return cg.airCondBr(inst),
+            .loop            => return cg.airLoop(inst),
+            .ret             => return cg.airRet(inst),
+            .ret_safe        => return cg.airRet(inst), // TODO
+            .ret_load        => return cg.airRetLoad(inst),
+            .@"try"          => try cg.airTry(inst),
+            .switch_br       => return cg.airSwitchBr(inst),
+            .loop_switch_br  => return cg.airLoopSwitchBr(inst),
+            .switch_dispatch => return cg.airSwitchDispatch(inst),
+            .unreach, .trap  => return cg.airUnreach(),
 
             .dbg_empty_stmt            => return,
             .dbg_stmt                  => return cg.airDbgStmt(inst),
@@ -6426,7 +6404,27 @@ fn structFieldPtr(
             return cg.accessChain(result_ty_id, object_ptr, &.{field_index});
         },
         .@"struct" => switch (object_ty.containerLayout(zcu)) {
-            .@"packed" => return cg.todo("implement field access for packed structs", .{}),
+            .@"packed" => {
+                const byte_offset = codegen.fieldOffset(object_ptr_ty, result_ptr_ty, field_index, zcu);
+                if (byte_offset == 0) return object_ptr;
+                const usize_ty_id = try cg.resolveType(.usize, .direct);
+                const base_int = cg.module.allocId();
+                try cg.body.emit(cg.module.gpa, .OpConvertPtrToU, .{
+                    .id_result_type = usize_ty_id,
+                    .id_result = base_int,
+                    .pointer = object_ptr,
+                });
+                const offset_id = try cg.constInt(.usize, byte_offset);
+                const adjusted = try cg.buildBinary(.OpIAdd, .{ .ty = .usize, .value = .{ .singleton = base_int } }, .{ .ty = .usize, .value = .{ .singleton = offset_id } });
+                const adjusted_id = try adjusted.materialize(cg);
+                const result_id = cg.module.allocId();
+                try cg.body.emit(cg.module.gpa, .OpConvertUToPtr, .{
+                    .id_result_type = result_ty_id,
+                    .id_result = result_id,
+                    .integer_value = adjusted_id,
+                });
+                return result_id;
+            },
             .auto, .@"extern" => {
                 return try cg.accessChain(result_ty_id, object_ptr, &.{field_index});
             },
@@ -6532,9 +6530,7 @@ fn airArg(cg: *CodeGen) Id {
 /// block to jump to. This function emits instructions, so it should be emitted
 /// inside the merge block of the block.
 /// This function should only be called with structured control flow generation.
-fn structuredNextBlock(cg: *CodeGen, incoming: []const ControlFlow.Structured.Block.Incoming) !Id {
-    assert(cg.control_flow == .structured);
-
+fn structuredNextBlock(cg: *CodeGen, incoming: []const Block.Incoming) !Id {
     const result_id = cg.module.allocId();
     const block_id_ty_id = try cg.resolveType(.u32, .direct);
     try cg.body.emitRaw(cg.module.gpa, .OpPhi, @intCast(2 + incoming.len * 2)); // result type + result + variable/parent...
@@ -6552,10 +6548,8 @@ fn structuredNextBlock(cg: *CodeGen, incoming: []const ControlFlow.Structured.Bl
 /// terminating a body, there should be no instructions after it.
 /// This function should only be called with structured control flow generation.
 fn structuredBreak(cg: *CodeGen, target_block: Id) !void {
-    assert(cg.control_flow == .structured);
-
     const gpa = cg.module.gpa;
-    const sblock = cg.control_flow.structured.block_stack.getLast().?;
+    const sblock = cg.block_stack.getLast().?;
     const merge_block = switch (sblock.*) {
         .selection => |*merge| blk: {
             const merge_label = cg.module.allocId();
@@ -6598,11 +6592,9 @@ fn genStructuredBody(
     },
     body: []const Air.Inst.Index,
 ) !Id {
-    assert(cg.control_flow == .structured);
-
     const gpa = cg.module.gpa;
 
-    var sblock: ControlFlow.Structured.Block = switch (block_merge_type) {
+    var sblock: Block = switch (block_merge_type) {
         .loop => |merge| .{ .loop = .{
             .merge_block = merge.merge_label,
         } },
@@ -6611,8 +6603,8 @@ fn genStructuredBody(
     defer sblock.deinit(gpa);
 
     {
-        try cg.control_flow.structured.block_stack.append(gpa, &sblock);
-        defer _ = cg.control_flow.structured.block_stack.pop();
+        try cg.block_stack.append(gpa, &sblock);
+        defer _ = cg.block_stack.pop();
 
         try cg.genBody(body);
     }
@@ -6650,7 +6642,7 @@ fn genStructuredBody(
             try cg.beginSpvBlock(merge_stack[merge_stack.len - 1].merge_block);
 
             // Now generate a merge ladder for the remaining merges in the stack.
-            var incoming: ControlFlow.Structured.Block.Incoming = .{
+            var incoming: Block.Incoming = .{
                 .src_label = cg.block_label,
                 .next_block = merge_stack[merge_stack.len - 1].incoming.next_block,
             };
@@ -6699,65 +6691,19 @@ fn lowerBlock(cg: *CodeGen, inst: Air.Inst.Index, body: []const Air.Inst.Index) 
     const ty = cg.typeOfIndex(inst);
     const have_block_result = ty.hasRuntimeBits(zcu);
 
-    const cf = switch (cg.control_flow) {
-        .structured => |*cf| cf,
-        .unstructured => |*cf| {
-            var block: ControlFlow.Unstructured.Block = .{};
-            defer block.incoming_blocks.deinit(gpa);
-
-            // 4 chosen as arbitrary initial capacity.
-            try block.incoming_blocks.ensureUnusedCapacity(gpa, 4);
-
-            try cf.blocks.putNoClobber(gpa, inst, &block);
-            defer assert(cf.blocks.remove(inst));
-
-            try cg.genBody(body);
-
-            // Only begin a new block if there were actually any breaks towards it.
-            if (block.label) |label| {
-                try cg.beginSpvBlock(label);
-            }
-
-            if (!have_block_result)
-                return null;
-
-            assert(block.label != null);
-            const result_id = cg.module.allocId();
-            const result_type_id = try cg.resolveType(ty, .direct);
-
-            try cg.body.emitRaw(
-                gpa,
-                .OpPhi,
-                // result type + result + variable/parent...
-                2 + @as(u16, @intCast(block.incoming_blocks.items.len * 2)),
-            );
-            cg.body.writeOperand(Id, result_type_id);
-            cg.body.writeOperand(Id, result_id);
-
-            for (block.incoming_blocks.items) |incoming| {
-                cg.body.writeOperand(
-                    spec.PairIdRefIdRef,
-                    .{ incoming.break_value_id, incoming.src_label },
-                );
-            }
-
-            return result_id;
-        },
-    };
-
     const maybe_block_result_var_id = if (have_block_result) blk: {
         const ty_id = try cg.resolveType(ty, .indirect);
         const block_result_var_id = try cg.alloc(ty_id, null);
-        try cf.block_results.putNoClobber(gpa, inst, block_result_var_id);
+        try cg.block_results.putNoClobber(gpa, inst, block_result_var_id);
         break :blk block_result_var_id;
     } else null;
-    defer if (have_block_result) assert(cf.block_results.remove(inst));
+    defer if (have_block_result) assert(cg.block_results.remove(inst));
 
     const next_block = try cg.genStructuredBody(.selection, body);
 
     // When encountering a block instruction, we are always at least in the function's scope,
     // so there always has to be another entry.
-    assert(cf.block_stack.items.len > 0);
+    assert(cg.block_stack.items.len > 0);
 
     // Check if the target of the branch was this current block.
     const this_block = try cg.constInt(.u32, @intFromEnum(inst));
@@ -6770,7 +6716,7 @@ fn lowerBlock(cg: *CodeGen, inst: Air.Inst.Index, body: []const Air.Inst.Index) 
         .operand_2 = this_block,
     });
 
-    const sblock = cf.block_stack.getLast().?;
+    const sblock = cg.block_stack.getLast().?;
 
     if (ty.isNoReturn(zcu)) {
         // If this block is noreturn, this instruction is the last of a block,
@@ -6828,41 +6774,18 @@ fn lowerBlock(cg: *CodeGen, inst: Air.Inst.Index, body: []const Air.Inst.Index) 
 }
 
 fn airBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
-    const gpa = cg.module.gpa;
     const zcu = cg.module.zcu;
     const br = cg.air.instructions.items(.data)[@intFromEnum(inst)].br;
     const operand_ty = cg.typeOf(br.operand);
 
-    switch (cg.control_flow) {
-        .structured => |*cf| {
-            if (operand_ty.hasRuntimeBits(zcu)) {
-                const operand_id = try cg.resolve(br.operand);
-                const block_result_var_id = cf.block_results.get(br.block_inst).?;
-                try cg.store(operand_ty, block_result_var_id, operand_id, .{});
-            }
-
-            const next_block = try cg.constInt(.u32, @intFromEnum(br.block_inst));
-            try cg.structuredBreak(next_block);
-        },
-        .unstructured => |cf| {
-            const block = cf.blocks.get(br.block_inst).?;
-            if (operand_ty.hasRuntimeBits(zcu)) {
-                const operand_id = try cg.resolve(br.operand);
-                // block_label should not be undefined here, lest there
-                // is a br or br_void in the function's body.
-                try block.incoming_blocks.append(gpa, .{
-                    .src_label = cg.block_label,
-                    .break_value_id = operand_id,
-                });
-            }
-
-            if (block.label == null) {
-                block.label = cg.module.allocId();
-            }
-
-            try cg.body.emit(gpa, .OpBranch, .{ .target_label = block.label.? });
-        },
+    if (operand_ty.hasRuntimeBits(zcu)) {
+        const operand_id = try cg.resolve(br.operand);
+        const block_result_var_id = cg.block_results.get(br.block_inst).?;
+        try cg.store(operand_ty, block_result_var_id, operand_id, .{});
     }
+
+    const next_block = try cg.constInt(.u32, @intFromEnum(br.block_inst));
+    try cg.structuredBreak(next_block);
 }
 
 fn airCondBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
@@ -6875,56 +6798,40 @@ fn airCondBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
     const then_label = cg.module.allocId();
     const else_label = cg.module.allocId();
 
-    switch (cg.control_flow) {
-        .structured => {
-            const merge_label = cg.module.allocId();
+    const merge_label = cg.module.allocId();
 
-            try cg.body.emit(gpa, .OpSelectionMerge, .{
-                .merge_block = merge_label,
-                .selection_control = .{},
-            });
-            try cg.body.emit(gpa, .OpBranchConditional, .{
-                .condition = condition_id,
-                .true_label = then_label,
-                .false_label = else_label,
-            });
+    try cg.body.emit(gpa, .OpSelectionMerge, .{
+        .merge_block = merge_label,
+        .selection_control = .{},
+    });
+    try cg.body.emit(gpa, .OpBranchConditional, .{
+        .condition = condition_id,
+        .true_label = then_label,
+        .false_label = else_label,
+    });
 
-            try cg.beginSpvBlock(then_label);
-            const then_next = try cg.genStructuredBody(.selection, then_body);
-            const then_incoming: ControlFlow.Structured.Block.Incoming = .{
-                .src_label = cg.block_label,
-                .next_block = then_next,
-            };
+    try cg.beginSpvBlock(then_label);
+    const then_next = try cg.genStructuredBody(.selection, then_body);
+    const then_incoming: Block.Incoming = .{
+        .src_label = cg.block_label,
+        .next_block = then_next,
+    };
 
-            try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label });
+    try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label });
 
-            try cg.beginSpvBlock(else_label);
-            const else_next = try cg.genStructuredBody(.selection, else_body);
-            const else_incoming: ControlFlow.Structured.Block.Incoming = .{
-                .src_label = cg.block_label,
-                .next_block = else_next,
-            };
+    try cg.beginSpvBlock(else_label);
+    const else_next = try cg.genStructuredBody(.selection, else_body);
+    const else_incoming: Block.Incoming = .{
+        .src_label = cg.block_label,
+        .next_block = else_next,
+    };
 
-            try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label });
+    try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label });
 
-            try cg.beginSpvBlock(merge_label);
-            const next_block = try cg.structuredNextBlock(&.{ then_incoming, else_incoming });
+    try cg.beginSpvBlock(merge_label);
+    const next_block = try cg.structuredNextBlock(&.{ then_incoming, else_incoming });
 
-            try cg.structuredBreak(next_block);
-        },
-        .unstructured => {
-            try cg.body.emit(gpa, .OpBranchConditional, .{
-                .condition = condition_id,
-                .true_label = then_label,
-                .false_label = else_label,
-            });
-
-            try cg.beginSpvBlock(then_label);
-            try cg.genBody(then_body);
-            try cg.beginSpvBlock(else_label);
-            try cg.genBody(else_body);
-        },
-    }
+    try cg.structuredBreak(next_block);
 }
 
 fn airLoop(cg: *CodeGen, inst: Air.Inst.Index) !void {
@@ -6933,73 +6840,133 @@ fn airLoop(cg: *CodeGen, inst: Air.Inst.Index) !void {
 
     const body_label = cg.module.allocId();
 
-    switch (cg.control_flow) {
-        .structured => {
-            const header_label = cg.module.allocId();
-            const merge_label = cg.module.allocId();
-            const continue_label = cg.module.allocId();
+    const header_label = cg.module.allocId();
+    const merge_label = cg.module.allocId();
+    const continue_label = cg.module.allocId();
 
-            // The back-edge must point to the loop header, so generate a separate block for the
-            // loop header so that we don't accidentally include some instructions from there
-            // in the loop.
+    // The back-edge must point to the loop header, so generate a separate block for the
+    // loop header so that we don't accidentally include some instructions from there
+    // in the loop.
 
-            try cg.body.emit(gpa, .OpBranch, .{ .target_label = header_label });
-            try cg.beginSpvBlock(header_label);
+    try cg.body.emit(gpa, .OpBranch, .{ .target_label = header_label });
+    try cg.beginSpvBlock(header_label);
 
-            // Emit loop header and jump to loop body
-            try cg.body.emit(gpa, .OpLoopMerge, .{
-                .merge_block = merge_label,
-                .continue_target = continue_label,
-                .loop_control = .{},
-            });
+    // Emit loop header and jump to loop body
+    try cg.body.emit(gpa, .OpLoopMerge, .{
+        .merge_block = merge_label,
+        .continue_target = continue_label,
+        .loop_control = .{},
+    });
 
-            try cg.body.emit(gpa, .OpBranch, .{ .target_label = body_label });
+    try cg.body.emit(gpa, .OpBranch, .{ .target_label = body_label });
 
-            try cg.beginSpvBlock(body_label);
+    try cg.beginSpvBlock(body_label);
 
-            const next_block = try cg.genStructuredBody(.{ .loop = .{
-                .merge_label = merge_label,
-                .continue_label = continue_label,
-            } }, block.body);
-            try cg.structuredBreak(next_block);
+    const next_block = try cg.genStructuredBody(.{ .loop = .{
+        .merge_label = merge_label,
+        .continue_label = continue_label,
+    } }, block.body);
+    try cg.structuredBreak(next_block);
 
-            try cg.beginSpvBlock(continue_label);
+    try cg.beginSpvBlock(continue_label);
 
-            try cg.body.emit(gpa, .OpBranch, .{ .target_label = header_label });
-        },
-        .unstructured => {
-            try cg.body.emit(gpa, .OpBranch, .{ .target_label = body_label });
-            try cg.beginSpvBlock(body_label);
-            try cg.genBody(block.body);
-
-            try cg.body.emit(gpa, .OpBranch, .{ .target_label = body_label });
-        },
-    }
+    try cg.body.emit(gpa, .OpBranch, .{ .target_label = header_label });
 }
 
 fn airLoad(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     const zcu = cg.module.zcu;
+    const pt = cg.pt;
     const ty_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
     const ptr_ty = cg.typeOf(ty_op.operand);
+    const ptr_info = ptr_ty.ptrInfo(zcu);
     const elem_ty = cg.typeOfIndex(inst);
     const operand = try cg.resolve(ty_op.operand);
     if (!ptr_ty.isVolatilePtr(zcu) and cg.liveness.isUnused(inst)) return null;
 
     if (cg.virtual_allocas.get(operand)) |stored| return stored.?;
 
+    if (ptr_info.packed_offset.host_size != 0 and
+        ptr_info.flags.vector_index == .none)
+    {
+        const host_bits: u16 = ptr_info.packed_offset.host_size * 8;
+        const elem_bit_size: u16 = @intCast(elem_ty.bitSize(zcu));
+        const host_int_ty = try pt.intType(.unsigned, host_bits);
+        const host_val = try cg.load(host_int_ty, operand, .{ .is_volatile = ptr_ty.isVolatilePtr(zcu) });
+        const signedness: Signedness = if (elem_ty.isInt(zcu)) elem_ty.intInfo(zcu).signedness else .unsigned;
+        const field_int_ty = try pt.intType(signedness, elem_bit_size);
+        const narrowed = if (ptr_info.packed_offset.bit_offset > 0) blk: {
+            const bit_offset_id = try cg.constInt(host_int_ty, ptr_info.packed_offset.bit_offset);
+            const shifted = try cg.buildBinary(.OpShiftRightLogical, .{ .ty = host_int_ty, .value = .{ .singleton = host_val } }, .{ .ty = host_int_ty, .value = .{ .singleton = bit_offset_id } });
+            break :blk try shifted.materialize(cg);
+        } else host_val;
+        const result_id = blk: {
+            if (cg.module.backingIntBits(elem_bit_size).@"0" == cg.module.backingIntBits(host_bits).@"0")
+                break :blk try cg.bitCast(field_int_ty, host_int_ty, narrowed);
+            const trunc = try cg.buildConvert(field_int_ty, .{ .ty = host_int_ty, .value = .{ .singleton = narrowed } });
+            break :blk try trunc.materialize(cg);
+        };
+        if (elem_ty.ip_index == .bool_type) return try cg.convertToDirect(.bool, result_id);
+        if (elem_ty.isInt(zcu)) return result_id;
+        return try cg.bitCast(elem_ty, field_int_ty, result_id);
+    }
+
     return try cg.load(elem_ty, operand, .{ .is_volatile = ptr_ty.isVolatilePtr(zcu) });
 }
 
 fn airStore(cg: *CodeGen, inst: Air.Inst.Index) !void {
     const zcu = cg.module.zcu;
+    const pt = cg.pt;
     const bin_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].bin_op;
     const ptr_ty = cg.typeOf(bin_op.lhs);
+    const ptr_info = ptr_ty.ptrInfo(zcu);
     const elem_ty = ptr_ty.childType(zcu);
     const ptr = try cg.resolve(bin_op.lhs);
     const value = try cg.resolve(bin_op.rhs);
 
     if (cg.virtual_allocas.getPtr(ptr)) |slot| {
         slot.* = value;
+        return;
+    }
+
+    if (ptr_info.packed_offset.host_size != 0 and
+        ptr_info.flags.vector_index == .none)
+    {
+        const host_bits: u16 = ptr_info.packed_offset.host_size * 8;
+        const host_int_ty = try pt.intType(.unsigned, host_bits);
+        const host_val = try cg.load(host_int_ty, ptr, .{ .is_volatile = ptr_ty.isVolatilePtr(zcu) });
+        const elem_bit_size: u16 = @intCast(elem_ty.bitSize(zcu));
+        const signedness: Signedness = if (elem_ty.isInt(zcu)) elem_ty.intInfo(zcu).signedness else .unsigned;
+        const field_int_ty = try pt.intType(signedness, elem_bit_size);
+
+        var value_as_int: Id = undefined;
+        if (elem_ty.ip_index == .bool_type) {
+            value_as_int = try cg.convertToIndirect(.bool, value);
+            value_as_int = try cg.bitCast(field_int_ty, .u1, value_as_int);
+        } else if (elem_ty.isInt(zcu)) {
+            value_as_int = value;
+        } else {
+            value_as_int = try cg.bitCast(field_int_ty, elem_ty, value);
+        }
+
+        const extended = blk: {
+            if (cg.module.backingIntBits(elem_bit_size).@"0" == cg.module.backingIntBits(host_bits).@"0")
+                break :blk try cg.bitCast(host_int_ty, field_int_ty, value_as_int);
+            const conv = try cg.buildConvert(host_int_ty, .{ .ty = field_int_ty, .value = .{ .singleton = value_as_int } });
+            break :blk try conv.materialize(cg);
+        };
+
+        const bit_offset = ptr_info.packed_offset.bit_offset;
+        const field_mask = (@as(u64, 1) << @as(u6, @intCast(elem_bit_size))) - 1;
+        const host_mask = if (host_bits == 64) @as(u64, std.math.maxInt(u64)) else (@as(u64, 1) << @as(u6, @intCast(host_bits))) - 1;
+        const clear_mask = ~(field_mask << @as(u6, @intCast(bit_offset))) & host_mask;
+        const clear_mask_id = try cg.constInt(host_int_ty, clear_mask);
+        const cleared = try cg.buildBinary(.OpBitwiseAnd, .{ .ty = host_int_ty, .value = .{ .singleton = host_val } }, .{ .ty = host_int_ty, .value = .{ .singleton = clear_mask_id } });
+        const bit_offset_id = try cg.constInt(host_int_ty, bit_offset);
+        const shifted_val = try cg.buildBinary(.OpShiftLeftLogical, .{ .ty = host_int_ty, .value = .{ .singleton = extended } }, .{ .ty = host_int_ty, .value = .{ .singleton = bit_offset_id } });
+        const combined = try cg.buildBinary(.OpBitwiseOr, cleared, shifted_val);
+        const combined_id = try combined.materialize(cg);
+
+        try cg.store(host_int_ty, ptr, combined_id, .{ .is_volatile = ptr_ty.isVolatilePtr(zcu) });
         return;
     }
 
@@ -7091,19 +7058,13 @@ fn airTry(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
         const err_block = cg.module.allocId();
         const ok_block = cg.module.allocId();
 
-        switch (cg.control_flow) {
-            .structured => {
-                // According to AIR documentation, this block is guaranteed
-                // to not break and end in a return instruction. Thus,
-                // for structured control flow, we can just naively use
-                // the ok block as the merge block here.
-                try cg.body.emit(gpa, .OpSelectionMerge, .{
-                    .merge_block = ok_block,
-                    .selection_control = .{},
-                });
-            },
-            .unstructured => {},
-        }
+        // According to AIR documentation, this block is guaranteed
+        // to not break and end in a return instruction. Thus,
+        // we can just naively use the ok block as the merge block here.
+        try cg.body.emit(gpa, .OpSelectionMerge, .{
+            .merge_block = ok_block,
+            .selection_control = .{},
+        });
 
         try cg.body.emit(gpa, .OpBranchConditional, .{
             .condition = is_err_id,
@@ -7419,45 +7380,44 @@ fn airSwitchBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
 
     const num_cases = switch_br.cases_len;
 
-    // Compute the total number of arms that we need.
-    // Zig switches are grouped by condition, so we need to loop through all of them
-    const num_conditions = blk: {
-        var num_conditions: u32 = 0;
+    // compute the total number of scalar arms and find the last range case
+    var num_conditions: u32 = 0;
+    var last_range_case: ?u32 = null;
+    {
         var it = switch_br.iterateCases();
         while (it.next()) |case| {
-            if (case.ranges.len > 0) return cg.todo("switch with ranges", .{});
-            num_conditions += @intCast(case.items.len);
+            if (case.ranges.len > 0) {
+                last_range_case = case.idx;
+            } else {
+                num_conditions += @intCast(case.items.len);
+            }
         }
-        break :blk num_conditions;
-    };
+    }
 
     // First, pre-allocate the labels for the cases.
     const case_labels = cg.module.allocIds(num_cases);
     // We always need the default case - if zig has none, we will generate unreachable there.
-    const default = cg.module.allocId();
+    const default_label = cg.module.allocId();
+    const switch_default = if (last_range_case != null) cg.module.allocId() else default_label;
 
-    const merge_label = switch (cg.control_flow) {
-        .structured => cg.module.allocId(),
-        .unstructured => null,
-    };
+    const merge_label = cg.module.allocId();
 
-    if (cg.control_flow == .structured) {
-        try cg.body.emit(gpa, .OpSelectionMerge, .{
-            .merge_block = merge_label.?,
-            .selection_control = .{},
-        });
-    }
+    try cg.body.emit(gpa, .OpSelectionMerge, .{
+        .merge_block = merge_label,
+        .selection_control = .{},
+    });
 
     // Emit the instruction before generating the blocks.
     try cg.body.emitRaw(gpa, .OpSwitch, 2 + (cond_words + 1) * num_conditions);
     cg.body.writeOperand(Id, cond_indirect);
-    cg.body.writeOperand(Id, default);
+    cg.body.writeOperand(Id, switch_default);
 
-    // Emit each of the cases
+    // Emit the non-range cases into the OpSwitch.
+    // Cases with ranges are handled by the conditional chain below.
     {
         var it = switch_br.iterateCases();
         while (it.next()) |case| {
-            // SPIR-V needs a literal here, which' width depends on the case condition.
+            if (case.ranges.len > 0) continue;
             const label = case_labels.at(case.idx);
 
             for (case.items) |item| {
@@ -7480,62 +7440,394 @@ fn airSwitchBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
         }
     }
 
-    var incoming_structured_blocks: std.ArrayList(ControlFlow.Structured.Block.Incoming) = .empty;
+    var incoming_structured_blocks: std.ArrayList(Block.Incoming) = .empty;
     defer incoming_structured_blocks.deinit(gpa);
+    try incoming_structured_blocks.ensureUnusedCapacity(gpa, num_cases + 1);
 
-    if (cg.control_flow == .structured) {
-        try incoming_structured_blocks.ensureUnusedCapacity(gpa, num_cases + 1);
+    // emit the range-checking chain as nested if-else inside the switch's default branch.
+    // each range case becomes:
+    // - check condition,
+    // - if true emit case body and branch to merge,
+    // - else continue to next check or default
+    if (last_range_case != null) {
+        const cond_tmp: Temporary = .init(cond_ty, cond);
+        const bool_ty_id = try cg.resolveType(.bool, .direct);
+
+        try cg.beginSpvBlock(switch_default);
+
+        var it_range = switch_br.iterateCases();
+        while (it_range.next()) |case| {
+            if (case.ranges.len == 0) continue;
+
+            var case_cond: ?Id = null;
+
+            for (case.items) |item| {
+                const item_tmp: Temporary = try cg.temporary(item);
+                const eq = try (try cg.cmp(.eq, cond_tmp, item_tmp)).materialize(cg);
+                case_cond = if (case_cond) |prev| blk: {
+                    const combined = cg.module.allocId();
+                    try cg.body.emitRaw(gpa, .OpLogicalOr, 4);
+                    cg.body.writeOperand(Id, bool_ty_id);
+                    cg.body.writeOperand(Id, combined);
+                    cg.body.writeOperand(Id, prev);
+                    cg.body.writeOperand(Id, eq);
+                    break :blk combined;
+                } else eq;
+            }
+
+            for (case.ranges) |range| {
+                const lo_tmp: Temporary = try cg.temporary(range[0]);
+                const hi_tmp: Temporary = try cg.temporary(range[1]);
+                const ge = try (try cg.cmp(.gte, cond_tmp, lo_tmp)).materialize(cg);
+                const le = try (try cg.cmp(.lte, cond_tmp, hi_tmp)).materialize(cg);
+                const in_range = cg.module.allocId();
+                try cg.body.emitRaw(gpa, .OpLogicalAnd, 4);
+                cg.body.writeOperand(Id, bool_ty_id);
+                cg.body.writeOperand(Id, in_range);
+                cg.body.writeOperand(Id, ge);
+                cg.body.writeOperand(Id, le);
+                case_cond = if (case_cond) |prev| blk: {
+                    const combined = cg.module.allocId();
+                    try cg.body.emitRaw(gpa, .OpLogicalOr, 4);
+                    cg.body.writeOperand(Id, bool_ty_id);
+                    cg.body.writeOperand(Id, combined);
+                    cg.body.writeOperand(Id, prev);
+                    cg.body.writeOperand(Id, in_range);
+                    break :blk combined;
+                } else in_range;
+            }
+
+            const case_label = case_labels.at(case.idx);
+            const is_last = case.idx == last_range_case.?;
+            const next_check = if (is_last) default_label else cg.module.allocId();
+
+            try cg.body.emit(gpa, .OpSelectionMerge, .{
+                .merge_block = next_check,
+                .selection_control = .{},
+            });
+
+            try cg.body.emit(gpa, .OpBranchConditional, .{
+                .condition = case_cond.?,
+                .true_label = case_label,
+                .false_label = next_check,
+            });
+
+            if (!is_last) {
+                try cg.beginSpvBlock(next_check);
+            }
+        }
     }
 
-    // Now, finally, we can start emitting each of the cases.
+    // emit bodies
     var it = switch_br.iterateCases();
     while (it.next()) |case| {
         const label = case_labels.at(case.idx);
 
         try cg.beginSpvBlock(label);
 
-        switch (cg.control_flow) {
-            .structured => {
-                const next_block = try cg.genStructuredBody(.selection, case.body);
-                incoming_structured_blocks.appendAssumeCapacity(.{
-                    .src_label = cg.block_label,
-                    .next_block = next_block,
-                });
+        const next_block = try cg.genStructuredBody(.selection, case.body);
+        incoming_structured_blocks.appendAssumeCapacity(.{
+            .src_label = cg.block_label,
+            .next_block = next_block,
+        });
 
-                try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label.? });
-            },
-            .unstructured => {
-                try cg.genBody(case.body);
-            },
-        }
+        try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label });
     }
 
-    const else_body = it.elseBody();
-    try cg.beginSpvBlock(default);
+    const else_body = blk: {
+        var it_else = switch_br.iterateCases();
+        while (it_else.next()) |_| {}
+        break :blk it_else.elseBody();
+    };
+    try cg.beginSpvBlock(default_label);
     if (else_body.len != 0) {
-        switch (cg.control_flow) {
-            .structured => {
-                const next_block = try cg.genStructuredBody(.selection, else_body);
-                incoming_structured_blocks.appendAssumeCapacity(.{
-                    .src_label = cg.block_label,
-                    .next_block = next_block,
-                });
+        const next_block = try cg.genStructuredBody(.selection, else_body);
+        incoming_structured_blocks.appendAssumeCapacity(.{
+            .src_label = cg.block_label,
+            .next_block = next_block,
+        });
 
-                try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label.? });
-            },
-            .unstructured => {
-                try cg.genBody(else_body);
-            },
-        }
+        try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label });
     } else {
         try cg.body.emit(gpa, .OpUnreachable, {});
     }
 
-    if (cg.control_flow == .structured) {
-        try cg.beginSpvBlock(merge_label.?);
-        const next_block = try cg.structuredNextBlock(incoming_structured_blocks.items);
-        try cg.structuredBreak(next_block);
+    try cg.beginSpvBlock(merge_label);
+    const next_block = try cg.structuredNextBlock(incoming_structured_blocks.items);
+    try cg.structuredBreak(next_block);
+}
+
+fn airLoopSwitchBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
+    const gpa = cg.module.gpa;
+    const zcu = cg.module.zcu;
+    const target = cg.module.zcu.getTarget();
+    const switch_br = cg.air.unwrapSwitch(inst);
+    const cond_ty = cg.typeOf(switch_br.operand);
+    const initial_cond = try cg.resolve(switch_br.operand);
+    var initial_cond_indirect = try cg.convertToIndirect(cond_ty, initial_cond);
+
+    const cond_words: u32 = switch (cond_ty.zigTypeTag(zcu)) {
+        .bool, .error_set => 1,
+        .int => blk: {
+            const bits = cond_ty.intInfo(zcu).bits;
+            const backing_bits, const big_int = cg.module.backingIntBits(bits);
+            if (big_int) return cg.todo("implement composite int loop switch", .{});
+            break :blk if (backing_bits <= 32) 1 else 2;
+        },
+        .@"enum" => blk: {
+            const int_ty = cond_ty.intTagType(zcu);
+            const int_info = int_ty.intInfo(zcu);
+            const backing_bits, const big_int = cg.module.backingIntBits(int_info.bits);
+            if (big_int) return cg.todo("implement composite int loop switch", .{});
+            break :blk if (backing_bits <= 32) 1 else 2;
+        },
+        .pointer => blk: {
+            initial_cond_indirect = try cg.intFromPtr(initial_cond_indirect);
+            break :blk target.ptrBitWidth() / 32;
+        },
+        else => return cg.todo("implement loop switch for type {s}", .{@tagName(cond_ty.zigTypeTag(zcu))}),
+    };
+
+    const cond_ty_id = try cg.resolveType(cond_ty, .indirect);
+    const cond_var = try cg.alloc(cond_ty_id, null);
+    try cg.store(cond_ty, cond_var, initial_cond_indirect, .{});
+
+    const num_cases = switch_br.cases_len;
+
+    var num_conditions: u32 = 0;
+    var last_range_case: ?u32 = null;
+    {
+        var it = switch_br.iterateCases();
+        while (it.next()) |case| {
+            if (case.ranges.len > 0) {
+                last_range_case = case.idx;
+            } else {
+                num_conditions += @intCast(case.items.len);
+            }
+        }
     }
+
+    const case_labels = cg.module.allocIds(num_cases);
+    const default_label = cg.module.allocId();
+    const switch_default = if (last_range_case != null) cg.module.allocId() else default_label;
+
+    const header_label = cg.module.allocId();
+    const loop_merge = cg.module.allocId();
+    const continue_label = cg.module.allocId();
+    const switch_merge = cg.module.allocId();
+    const body_label = cg.module.allocId();
+
+    // switch_dispatch signals "continue the loop" by using this sentinel as the
+    // next_block in structuredBreak. at switch_merge, a phi + comparison distinguishes
+    // dispatch (continue) from break (exit)
+    const dispatch_sentinel = try cg.constInt(.u32, @intFromEnum(inst));
+
+    try cg.loop_switches.putNoClobber(gpa, inst, .{
+        .cond_var = cond_var,
+        .continue_label = dispatch_sentinel,
+    });
+    defer assert(cg.loop_switches.remove(inst));
+
+    try cg.body.emit(gpa, .OpBranch, .{ .target_label = header_label });
+    try cg.beginSpvBlock(header_label);
+
+    try cg.body.emit(gpa, .OpLoopMerge, .{
+        .merge_block = loop_merge,
+        .continue_target = continue_label,
+        .loop_control = .{},
+    });
+
+    try cg.body.emit(gpa, .OpBranch, .{ .target_label = body_label });
+    try cg.beginSpvBlock(body_label);
+
+    const cond = try cg.load(cond_ty, cond_var, .{});
+    const cond_indirect = try cg.convertToIndirect(cond_ty, cond);
+
+    try cg.body.emit(gpa, .OpSelectionMerge, .{
+        .merge_block = switch_merge,
+        .selection_control = .{},
+    });
+
+    try cg.body.emitRaw(gpa, .OpSwitch, 2 + (cond_words + 1) * num_conditions);
+    cg.body.writeOperand(Id, cond_indirect);
+    cg.body.writeOperand(Id, switch_default);
+
+    {
+        var it = switch_br.iterateCases();
+        while (it.next()) |case| {
+            if (case.ranges.len > 0) continue;
+            const label = case_labels.at(case.idx);
+            for (case.items) |item| {
+                const value: Value = .fromInterned(item.toInterned().?);
+                const int_val: u64 = switch (cond_ty.zigTypeTag(zcu)) {
+                    .bool, .int => if (cond_ty.isSignedInt(zcu)) @bitCast(value.toSignedInt(zcu)) else value.toUnsignedInt(zcu),
+                    .@"enum" => value.intFromEnum(zcu).toUnsignedInt(zcu),
+                    .error_set => value.getErrorInt(zcu),
+                    .pointer => value.toUnsignedInt(zcu),
+                    else => unreachable,
+                };
+                const int_lit: spec.LiteralContextDependentNumber = switch (cond_words) {
+                    1 => .{ .uint32 = @intCast(int_val) },
+                    2 => .{ .uint64 = int_val },
+                    else => unreachable,
+                };
+                cg.body.writeOperand(spec.LiteralContextDependentNumber, int_lit);
+                cg.body.writeOperand(Id, label);
+            }
+        }
+    }
+
+    var incoming_structured_blocks: std.ArrayList(Block.Incoming) = .empty;
+    defer incoming_structured_blocks.deinit(gpa);
+    try incoming_structured_blocks.ensureUnusedCapacity(gpa, num_cases + 1);
+
+    if (last_range_case != null) {
+        const cond_tmp: Temporary = .init(cond_ty, cond);
+        const bool_ty_id = try cg.resolveType(.bool, .direct);
+
+        try cg.beginSpvBlock(switch_default);
+
+        var it_range = switch_br.iterateCases();
+        while (it_range.next()) |case| {
+            if (case.ranges.len == 0) continue;
+
+            var case_cond: ?Id = null;
+
+            for (case.items) |item| {
+                const item_tmp: Temporary = try cg.temporary(item);
+                const eq = try (try cg.cmp(.eq, cond_tmp, item_tmp)).materialize(cg);
+                case_cond = if (case_cond) |prev| blk: {
+                    const combined = cg.module.allocId();
+                    try cg.body.emitRaw(gpa, .OpLogicalOr, 4);
+                    cg.body.writeOperand(Id, bool_ty_id);
+                    cg.body.writeOperand(Id, combined);
+                    cg.body.writeOperand(Id, prev);
+                    cg.body.writeOperand(Id, eq);
+                    break :blk combined;
+                } else eq;
+            }
+
+            for (case.ranges) |range| {
+                const lo_tmp: Temporary = try cg.temporary(range[0]);
+                const hi_tmp: Temporary = try cg.temporary(range[1]);
+                const ge = try (try cg.cmp(.gte, cond_tmp, lo_tmp)).materialize(cg);
+                const le = try (try cg.cmp(.lte, cond_tmp, hi_tmp)).materialize(cg);
+                const in_range = cg.module.allocId();
+                try cg.body.emitRaw(gpa, .OpLogicalAnd, 4);
+                cg.body.writeOperand(Id, bool_ty_id);
+                cg.body.writeOperand(Id, in_range);
+                cg.body.writeOperand(Id, ge);
+                cg.body.writeOperand(Id, le);
+                case_cond = if (case_cond) |prev| blk: {
+                    const combined = cg.module.allocId();
+                    try cg.body.emitRaw(gpa, .OpLogicalOr, 4);
+                    cg.body.writeOperand(Id, bool_ty_id);
+                    cg.body.writeOperand(Id, combined);
+                    cg.body.writeOperand(Id, prev);
+                    cg.body.writeOperand(Id, in_range);
+                    break :blk combined;
+                } else in_range;
+            }
+
+            const case_label = case_labels.at(case.idx);
+            const is_last = case.idx == last_range_case.?;
+            const next_check = if (is_last) default_label else cg.module.allocId();
+
+            try cg.body.emit(gpa, .OpSelectionMerge, .{
+                .merge_block = next_check,
+                .selection_control = .{},
+            });
+
+            try cg.body.emit(gpa, .OpBranchConditional, .{
+                .condition = case_cond.?,
+                .true_label = case_label,
+                .false_label = next_check,
+            });
+
+            if (!is_last) {
+                try cg.beginSpvBlock(next_check);
+            }
+        }
+    }
+
+    {
+        var it = switch_br.iterateCases();
+        while (it.next()) |case| {
+            const label = case_labels.at(case.idx);
+            try cg.beginSpvBlock(label);
+
+            const next_block = try cg.genStructuredBody(.selection, case.body);
+            incoming_structured_blocks.appendAssumeCapacity(.{
+                .src_label = cg.block_label,
+                .next_block = next_block,
+            });
+            try cg.body.emit(gpa, .OpBranch, .{ .target_label = switch_merge });
+        }
+    }
+
+    const else_body = blk: {
+        var it_else = switch_br.iterateCases();
+        while (it_else.next()) |_| {}
+        break :blk it_else.elseBody();
+    };
+    try cg.beginSpvBlock(default_label);
+    if (else_body.len != 0) {
+        const next_block = try cg.genStructuredBody(.selection, else_body);
+        incoming_structured_blocks.appendAssumeCapacity(.{
+            .src_label = cg.block_label,
+            .next_block = next_block,
+        });
+        try cg.body.emit(gpa, .OpBranch, .{ .target_label = switch_merge });
+    } else {
+        try cg.body.emit(gpa, .OpUnreachable, {});
+    }
+
+    try cg.beginSpvBlock(switch_merge);
+    const next_block = try cg.structuredNextBlock(incoming_structured_blocks.items);
+
+    const is_dispatch = cg.module.allocId();
+    const bool_ty_id = try cg.resolveType(.bool, .direct);
+    try cg.body.emit(gpa, .OpIEqual, .{
+        .id_result_type = bool_ty_id,
+        .id_result = is_dispatch,
+        .operand_1 = next_block,
+        .operand_2 = dispatch_sentinel,
+    });
+
+    const dispatch_check_merge = cg.module.allocId();
+    try cg.body.emit(gpa, .OpSelectionMerge, .{
+        .merge_block = dispatch_check_merge,
+        .selection_control = .{},
+    });
+    const exit_block = cg.module.allocId();
+    try cg.body.emit(gpa, .OpBranchConditional, .{
+        .condition = is_dispatch,
+        .true_label = dispatch_check_merge,
+        .false_label = exit_block,
+    });
+
+    try cg.beginSpvBlock(exit_block);
+    try cg.body.emit(gpa, .OpBranch, .{ .target_label = loop_merge });
+
+    try cg.beginSpvBlock(dispatch_check_merge);
+    try cg.body.emit(gpa, .OpBranch, .{ .target_label = continue_label });
+
+    try cg.beginSpvBlock(continue_label);
+    try cg.body.emit(gpa, .OpBranch, .{ .target_label = header_label });
+
+    try cg.beginSpvBlock(loop_merge);
+    try cg.structuredBreak(next_block);
+}
+
+fn airSwitchDispatch(cg: *CodeGen, inst: Air.Inst.Index) !void {
+    const br = cg.air.instructions.items(.data)[@intFromEnum(inst)].br;
+    const loop_switch = cg.loop_switches.get(br.block_inst).?;
+    const cond_ty = cg.typeOf(br.operand);
+    const operand = try cg.resolve(br.operand);
+    const operand_indirect = try cg.convertToIndirect(cond_ty, operand);
+
+    try cg.store(cond_ty, loop_switch.cond_var, operand_indirect, .{});
+    try cg.structuredBreak(loop_switch.continue_label);
 }
 
 fn airUnreach(cg: *CodeGen) !void {
@@ -7743,9 +8035,19 @@ fn airCall(cg: *CodeGen, inst: Air.Inst.Index, modifier: std.lang.CallModifier) 
         // temporary params buffer.
         const arg_ty = cg.typeOf(arg);
         if (!arg_ty.hasRuntimeBits(zcu)) continue;
-        const arg_id = try cg.resolve(arg);
 
-        params[n_params] = arg_id;
+        if (arg_ty.zigTypeTag(zcu) == .pointer and !arg_ty.isSlice(zcu) and
+            !arg_ty.childType(zcu).hasRuntimeBits(zcu))
+        {
+            // in logical addressing, pointer arguments to function calls
+            // must be memory object declarations (OpVariable). for pointers to
+            // zero-sized types, the source value may not be a variable, so just
+            // allocate a dummy one.
+            const child_ty_id = try cg.resolveType(arg_ty.childType(zcu), .indirect);
+            params[n_params] = try cg.alloc(child_ty_id, null);
+        } else {
+            params[n_params] = try cg.resolve(arg);
+        }
         n_params += 1;
     }
 

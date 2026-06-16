@@ -5,8 +5,6 @@ const expectEqual = std.testing.expectEqual;
 const expectError = std.testing.expectError;
 
 test "break and continue inside loop inside defer expression" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     testBreakContInDefer(10);
     comptime testBreakContInDefer(10);
 }
@@ -111,7 +109,6 @@ test "mixing normal and error defers" {
 test "simple else prong doesn't emit an error for unreachable else prong" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         fn foo() error{Foo}!void {
             return error.Foo;

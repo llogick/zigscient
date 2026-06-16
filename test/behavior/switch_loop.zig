@@ -7,7 +7,6 @@ test "simple switch loop" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     const S = struct {
         fn doTheTest() !void {
@@ -31,7 +30,6 @@ test "switch loop with ranges" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     const S = struct {
         fn doTheTest() !void {
@@ -52,7 +50,6 @@ test "switch loop on enum" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     const S = struct {
         const E = enum { a, b, c };
@@ -76,7 +73,6 @@ test "switch loop with error set" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     const S = struct {
         const E = error{ Foo, Bar, Baz };
@@ -252,7 +248,6 @@ test "switch loop on non-exhaustive enum" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     const S = struct {
         const E = enum(u8) { a, b, c, _ };
@@ -275,8 +270,6 @@ test "switch loop on non-exhaustive enum" {
 test "switch loop with discarded tag capture" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         const U = union(enum) {
             a: u32,
@@ -301,7 +294,6 @@ test "switch loop with discarded tag capture" {
 
 test "switch loop with single catch-all prong" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         const E = enum { a, b, c };
         const U = union(E) { a: u32, b: u16, c: u8 };
@@ -469,8 +461,6 @@ test "switch loop with tag capture" {
 }
 
 test "switch loop for error handling" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const Error = error{ MyError, MyOtherError };
     const S = struct {
         fn doTheTest() !void {
@@ -516,7 +506,6 @@ test "switch loop for error handling" {
 
 test "switch loop with packed structs" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const P = packed struct {
         a: u7,
         b: u20,
