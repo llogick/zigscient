@@ -5664,3 +5664,43 @@ pub const UnwrappedOpaqueDecl = struct {
     capture_names: []const NullTerminatedString,
     decls: []const Inst.Index,
 };
+
+// Flesh out and move to a proper location, eg extended-zccs..
+pub fn getTypeDeclSrcNode(zir: Zir, type_decl: Zir.Inst.Index) ?std.zig.Ast.Node.Index {
+    const inst = zir.instructions.get(@intFromEnum(type_decl));
+    if (inst.tag != .extended) return null;
+    switch (inst.data.extended.opcode) {
+        .struct_decl => {
+            const extra = zir.extraData(Zir.Inst.StructDecl, inst.data.extended.operand).data;
+            return extra.src_node;
+        },
+        .union_decl => {
+            const extra = zir.extraData(Zir.Inst.UnionDecl, inst.data.extended.operand).data;
+            return extra.src_node;
+        },
+        .enum_decl => {
+            const extra = zir.extraData(Zir.Inst.EnumDecl, inst.data.extended.operand).data;
+            return extra.src_node;
+        },
+        .opaque_decl => {
+            const extra = zir.extraData(Zir.Inst.OpaqueDecl, inst.data.extended.operand).data;
+            return extra.src_node;
+        },
+        .reify_struct => {
+            const extra = zir.extraData(Zir.Inst.ReifyStruct, inst.data.extended.operand).data;
+            return extra.node;
+        },
+        .reify_union => {
+            const extra = zir.extraData(Zir.Inst.ReifyUnion, inst.data.extended.operand).data;
+            return extra.node;
+        },
+        .reify_enum => {
+            const extra = zir.extraData(Zir.Inst.ReifyEnum, inst.data.extended.operand).data;
+            return extra.node;
+        },
+        else => {
+            std.log.err("incorrect opcode: {t}", .{inst.data.extended.opcode});
+            return null;
+        },
+    }
+}

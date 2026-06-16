@@ -5227,6 +5227,7 @@ pub fn getPositionContext(
                 break :new_state .{ .keyword = current_token };
             },
             .keyword_test => .{ .test_doctest_name = .{ .start = tok.loc.end, .end = tok.loc.end } },
+            .keyword_struct, .keyword_enum, .keyword_union => .{ .keyword = current_token },
             .container_doc_comment => .comment,
             .doc_comment => new_state: {
                 if (!curr_ctx.isErrSetDef()) break :new_state .comment; // Intent is to skip everything between the `error{...}` braces

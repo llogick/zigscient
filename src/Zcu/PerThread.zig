@@ -1447,7 +1447,23 @@ pub fn ensureTypeLayoutUpToDate(
         .success = !new_failed,
     } });
 
-    if (new_failed) return error.AnalysisFail;
+    if (new_failed) return error.AnalysisFail else if (zcu.lsp_document_store != null) blk: {
+        const uri = file.uri_slice orelse break :blk;
+        const zir = file.zir orelse break :blk;
+        const src_loc = ty.srcLocOrNull(zcu) orelse break :blk;
+        const resolved = src_loc.base_node_inst.resolveFull(&zcu.intern_pool) orelse break :blk;
+        const ds = zcu.lsp_document_store.?;
+        const src_node = Zir.getTypeDeclSrcNode(zir, resolved.inst) orelse break :blk;
+        const lsp_doc = ds.getHandle(uri) orelse break :blk;
+        lsp_doc.computed_data.lock.lockUncancelable(comp.io);
+        defer lsp_doc.computed_data.lock.unlock(comp.io);
+        lsp_doc.computed_data.build = comp.lsp_comp_build;
+        try lsp_doc.computed_data.type_decls.put(
+            ds.allocator,
+            src_node,
+            .{ .ty = ty, .tid = pt.tid },
+        );
+    }
 }
 
 /// Ensures that the default field values of the given `struct` type are fully up-to-date,

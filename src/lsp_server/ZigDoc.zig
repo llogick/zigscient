@@ -22,7 +22,7 @@ computed_data: struct {
     lock: std.Io.RwLock = .init,
     build: ?*BldDoc.Build = null,
     type_decls: std.AutoHashMapUnmanaged(Ast.Node.Index, struct {
-        ty: Compilation.InternPool.Index,
+        ty: Compilation.Type,
         tid: Compilation.Zcu.PerThread.Id,
     }) = .empty,
     air: std.AutoHashMapUnmanaged(Ast.Node.Index, struct {

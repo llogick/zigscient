@@ -556,45 +556,41 @@ fn hoverKeyword(
     const active = zcu.activate(args.tid);
     defer active.deactivate();
 
-    switch (active.pt.zcu.intern_pool.indexToKey(args.ty)) {
+    std.debug.assert(switch (active.pt.zcu.intern_pool.indexToKey(args.ty.toIntern())) {
         .enum_type,
         .union_type,
         .struct_type,
-        => {
-            var output: std.ArrayList(u8) = .empty;
+        => true,
+        else => false,
+    });
 
-            if (markup_kind == .markdown) {
-                try output.print(arena, "```zig\n", .{});
-            }
+    var output: std.ArrayList(u8) = .empty;
 
-            const ty = Compilation.Type.fromInterned(args.ty);
-
-            try output.print(arena,
-                \\size: {}
-                \\align({t})
-                \\fqn: {f}
-            , .{
-                ty.abiSize(active.pt.zcu),
-                ty.abiAlignment(active.pt.zcu),
-                ty.fmt(active.pt),
-            });
-
-            if (markup_kind == .markdown) {
-                try output.print(arena, "\n```\n", .{});
-            }
-
-            return .{
-                .contents = .{ .markup_content = .{
-                    .kind = markup_kind,
-                    .value = output.items,
-                } },
-                .range = offsets.locToRange(handle.tree.source, offsets.tokenToLoc(tree, token_index), offset_encoding),
-            };
-        },
-        else => {},
+    if (markup_kind == .markdown) {
+        try output.print(arena, "```zig\n", .{});
     }
 
-    return null;
+    try output.print(arena,
+        \\size: {}
+        \\align({t})
+        \\fqn: {f}
+    , .{
+        args.ty.abiSize(active.pt.zcu),
+        args.ty.abiAlignment(active.pt.zcu),
+        args.ty.fmt(active.pt),
+    });
+
+    if (markup_kind == .markdown) {
+        try output.print(arena, "\n```\n", .{});
+    }
+
+    return .{
+        .contents = .{ .markup_content = .{
+            .kind = markup_kind,
+            .value = output.items,
+        } },
+        .range = offsets.locToRange(handle.tree.source, offsets.tokenToLoc(tree, token_index), offset_encoding),
+    };
 }
 
 pub fn hover(
