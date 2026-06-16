@@ -578,7 +578,7 @@ fn peekBitsShortEnding(d: *Decompress, n: u4) !u16 {
 }
 
 fn tossBitsShort(d: *Decompress, n: u4) !void {
-    if (d.input.bufferedLen() * 8 + d.consumed_bits < n) return error.EndOfStream;
+    if (d.input.bufferedLen() * 8 - d.consumed_bits < n) return error.EndOfStream;
     d.tossBits(n);
 }
 
@@ -1062,6 +1062,15 @@ test "bug 18966" {
         @embedFile("testdata/fuzz/bug_18966.input"),
         @embedFile("testdata/fuzz/bug_18966.expect"),
     );
+}
+
+test "truncated input ending when reading dynamic length bits" {
+    try testFailure(.raw, &[_]u8{
+        0x15, 0xd5, 0x07, 0x3b, 0x16, 0x0c, 0x03, 0x86,
+        0x61, 0x2b, 0xa3, 0xec, 0xec, 0x15, 0x95, 0x6c,
+        0x92, 0x4d, 0x19, 0x95, 0x4a, 0xb6, 0x22, 0x23,
+        0xc9,
+    }, error.EndOfStream);
 }
 
 test "reading into empty buffer" {
