@@ -25023,6 +25023,13 @@ fn zirBuiltinExtern(
         .pcrel => if (options.visibility == .default) return sema.fail(block, options_src, "cannot require a pc-relative relocation to a symbol with default visibility", .{}),
     }
 
+    if (options.decoration) |decoration| switch (decoration) {
+        .flat => if (ptr_info.flags.address_space != .input) {
+            return sema.fail(block, options_src, "'flat' decoration requires 'input' address space", .{});
+        },
+        .location, .descriptor => {},
+    };
+
     // TODO: error for threadlocal functions, non-const functions, etc
 
     const extern_val = try pt.getExtern(.{

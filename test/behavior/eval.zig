@@ -1181,7 +1181,6 @@ test "lazy sizeof is resolved in division" {
 }
 
 test "lazy sizeof union tag size in compare" {
-
     const A = union(enum) {
         a: void,
         b: void,

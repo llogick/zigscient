@@ -292,6 +292,9 @@ fn voidFun(a: i32, b: void, c: i32, d: void) !void {
 
 test "call function with empty string" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
+    acceptsString("");
 }
 
 fn acceptsString(foo: []u8) void {
@@ -302,7 +305,9 @@ test "function pointers" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const fns = [_]*const @TypeOf(fn1){
+        &fn1,
         &fn2,
         &fn3,
         &fn4,
@@ -440,6 +445,7 @@ test "method call with optional and error union first param" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
+        x: i32 = 1234,
 
         fn opt(s: ?@This()) !void {
             try expect(s.?.x == 1234);

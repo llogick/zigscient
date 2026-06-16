@@ -118,6 +118,10 @@ block_stack: std.ArrayList(*Block) = .empty,
 block_results: std.AutoHashMapUnmanaged(Air.Inst.Index, Id) = .empty,
 base_line: u32,
 block_label: Id = .none,
+/// Whether the current block has been terminated by a terminator
+/// instruction (e.g. OpKill from inline assembly). When true, no further
+/// branch instructions should be emitted for the current block.
+block_terminated: bool = false,
 next_arg_index: u32 = 0,
 args: std.ArrayList(Id) = .empty,
 virtual_allocas: std.AutoHashMapUnmanaged(Id, ?Id) = .empty,
@@ -428,10 +432,13 @@ pub fn genNav(cg: *CodeGen, do_codegen: bool) Error!void {
                             if (ty.zigTypeTag(zcu) == .@"struct" and storage_class != .physical_storage_buffer) {
                                 try cg.module.decorate(ty_id, .block);
                             }
-                            try cg.module.decorate(ptr_ty_id, .{
-                                .array_stride = .{ .array_stride = @intCast(ty.abiSize(zcu)) },
-                            });
-                            try cg.decorateLayout(ty, ty_id);
+
+                            if (ty.hasRuntimeBits(zcu)) {
+                                try cg.module.decorate(ptr_ty_id, .{
+                                    .array_stride = .{ .array_stride = @intCast(ty.abiSize(zcu)) },
+                                });
+                                try cg.decorateLayout(ty, ty_id);
+                            }
                         },
                         else => {},
                     }
@@ -444,6 +451,10 @@ pub fn genNav(cg: *CodeGen, do_codegen: bool) Error!void {
                             try cg.module.decorate(result_id, .{
                                 .location = .{ .location = location },
                             });
+                        },
+                        .flat => |location| {
+                            try cg.module.decorate(result_id, .{ .location = .{ .location = location } });
+                            try cg.module.decorate(result_id, .flat);
                         },
                         .descriptor => |descriptor| {
                             if (storage_class != .storage_buffer and storage_class != .uniform and storage_class != .uniform_constant) {
@@ -770,6 +781,7 @@ fn addFunctionDep(cg: *CodeGen, decl_index: Module.Decl.Index, storage_class: St
 fn beginSpvBlock(cg: *CodeGen, label: Id) !void {
     try cg.body.emit(cg.module.gpa, .OpLabel, .{ .id_result = label });
     cg.block_label = label;
+    cg.block_terminated = false;
 }
 
 /// Return the amount of bits in the largest supported integer type. This is either 32 (always supported), or 64 (if
@@ -2038,10 +2050,12 @@ fn resolveType(cg: *CodeGen, ty: Type, repr: Repr) Error!Id {
                     const elem_ty: Type = .fromInterned(spirv_type.ty);
                     const elem_ty_id = try cg.resolveType(elem_ty, .indirect);
                     const result_id = try cg.module.runtimeArrayType(ip_index, elem_ty_id);
-                    try cg.module.decorate(
-                        result_id,
-                        .{ .array_stride = .{ .array_stride = @intCast(elem_ty.abiSize(zcu)) } },
-                    );
+
+                    if (elem_ty.hasRuntimeBits(zcu)) {
+                        try cg.module.decorate(result_id, .{ .array_stride = .{
+                            .array_stride = @intCast(elem_ty.abiSize(zcu)),
+                        } });
+                    }
                     return result_id;
                 },
             }
@@ -6564,6 +6578,8 @@ fn structuredNextBlock(cg: *CodeGen, incoming: []const Block.Incoming) !Id {
 /// terminating a body, there should be no instructions after it.
 /// This function should only be called with structured control flow generation.
 fn structuredBreak(cg: *CodeGen, target_block: Id) !void {
+    if (cg.block_terminated) return;
+
     const gpa = cg.module.gpa;
     const sblock = cg.block_stack.getLast().?;
     const merge_block = switch (sblock.*) {
@@ -6833,7 +6849,9 @@ fn airCondBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
         .next_block = then_next,
     };
 
-    try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label });
+    if (!cg.block_terminated) {
+        try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label });
+    }
 
     try cg.beginSpvBlock(else_label);
     const else_next = try cg.genStructuredBody(.selection, else_body);
@@ -6842,7 +6860,9 @@ fn airCondBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
         .next_block = else_next,
     };
 
-    try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label });
+    if (!cg.block_terminated) {
+        try cg.body.emit(gpa, .OpBranch, .{ .target_label = merge_label });
+    }
 
     try cg.beginSpvBlock(merge_label);
     const next_block = try cg.structuredNextBlock(&.{ then_incoming, else_incoming });

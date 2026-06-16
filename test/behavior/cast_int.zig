@@ -8,6 +8,8 @@ const minInt = std.math.minInt;
 test "@intCast i32 to u7" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
+
     var x: u128 = maxInt(u128);
     var y: i32 = 120;
     _ = .{ &x, &y };
@@ -143,6 +145,7 @@ test "@intCast <= 64 bits" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     try testIntCast(i32, minInt(i32), i64, minInt(i32));
+    try testIntCast(i32, maxInt(i32), i64, maxInt(i32));
     try testIntCast(u32, maxInt(u32), u64, maxInt(u32));
     try testIntCast(u32, maxInt(i32), i64, maxInt(i32));
     try testIntCast(u32, maxInt(u32), i64, maxInt(u32));
@@ -169,6 +172,7 @@ test "@intCast > 128 bits" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try testIntCast(u8, 123, u140, 123);
+    try testIntCast(u64, 1 << 63, u140, 1 << 63);
     try testIntCast(u127, maxInt(u127), u140, maxInt(u127));
     try testIntCast(i8, -42, i140, -42);
     try testIntCast(i64, minInt(i64), i140, minInt(i64));

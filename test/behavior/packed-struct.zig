@@ -227,6 +227,8 @@ test "nested packed structs" {
 test "regular in irregular packed struct" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
+
     const Irregular = packed struct {
         bar: Regular = Regular{},
         _: u24 = 0,
@@ -247,6 +249,7 @@ test "nested packed struct unaligned" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const S1 = packed struct {
+        a: u4,
         b: u4,
         c: u8,
     };

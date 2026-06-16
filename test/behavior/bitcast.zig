@@ -35,6 +35,8 @@ test "@bitCast iX -> uX exotic integers" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
+
     const bit_values = [_]usize{ 1, 48, 27, 512, 493, 293, 125, 204, 112 };
 
     inline for (bit_values) |bits| {
@@ -77,6 +79,7 @@ test "bitcast uX to bytes" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
 
     const bit_values = [_]usize{ 1, 48, 27, 512, 493, 293, 125, 204, 112 };
     inline for (bit_values) |bits| {

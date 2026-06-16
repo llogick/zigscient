@@ -393,6 +393,15 @@ fn processGenericInstruction(ass: *Assembler) !?AsmValue {
     const actual_word_count = section.instructions.items.len - first_word;
     section.instructions.items[first_word] |= @as(u32, @as(u16, @intCast(actual_word_count))) << 16 | @intFromEnum(ass.inst.opcode);
 
+    switch (ass.inst.opcode) {
+        .OpKill,
+        .OpReturn,
+        .OpReturnValue,
+        .OpUnreachable,
+        => ass.cg.block_terminated = true,
+        else => {},
+    }
+
     if (maybe_result_id) |result| return .{ .value = result };
     return null;
 }

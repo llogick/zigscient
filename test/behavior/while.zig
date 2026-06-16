@@ -38,7 +38,6 @@ fn staticWhileLoop2() i32 {
 }
 
 test "while with continue expression" {
-
     var sum: i32 = 0;
     {
         var i: i32 = 0;

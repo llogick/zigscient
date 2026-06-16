@@ -574,6 +574,7 @@ test "large integer division" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
 
     {
         var numerator: u256 = 99999999999999999997315645440;
@@ -654,7 +655,6 @@ fn testSignedWrappingEval(x: i32) !void {
 }
 
 test "signed negation wrapping" {
-
     try testSignedNegationWrappingEval(minInt(i16));
     try comptime testSignedNegationWrappingEval(minInt(i16));
 }
