@@ -387,7 +387,7 @@ pub fn StackMachine(comptime options: Options) type {
                         .regval_type = .{
                             .type_offset = rt.type_offset,
                             .type_size = @sizeOf(addr_type),
-                            .value = (try regNative(cpu_context, rt.register)).*,
+                            .value = @intCast((try regNative(cpu_context, rt.register)).*),
                         },
                     });
                 },
@@ -738,7 +738,7 @@ pub fn StackMachine(comptime options: Options) type {
                         var block_stream: std.Io.Reader = .fixed(block);
                         const register = (try readOperand(&block_stream, block[0], context)).?.register;
                         const value = (try regNative(cpu_context, register)).*;
-                        try self.stack.append(allocator, .{ .generic = value });
+                        try self.stack.append(allocator, .{ .generic = @intCast(value) });
                     } else {
                         var stack_machine: Self = .{};
                         defer stack_machine.deinit(allocator);

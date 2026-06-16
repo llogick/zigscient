@@ -168,7 +168,7 @@ fn nextInner(unwinder: *SelfUnwinder, gpa: Allocator, cache_entry: *const CacheE
         .none => return error.InvalidDebugInfo,
         .reg_off => |ro| cfa: {
             const ptr = try regNative(&unwinder.cpu_state, ro.register);
-            break :cfa try applyOffset(ptr.*, ro.offset);
+            break :cfa try applyOffset(@intCast(ptr.*), ro.offset);
         },
         .expression => |expr| cfa: {
             // On most implemented architectures, the CFA is defined to be the previous frame's SP.
@@ -181,7 +181,7 @@ fn nextInner(unwinder: *SelfUnwinder, gpa: Allocator, cache_entry: *const CacheE
             const value = try unwinder.expr_vm.run(expr, gpa, .{
                 .format = format,
                 .cpu_context = &unwinder.cpu_state,
-            }, prev_cfa_val) orelse return error.InvalidDebugInfo;
+            }, @intCast(prev_cfa_val)) orelse return error.InvalidDebugInfo;
             switch (value) {
                 .generic => |g| break :cfa g,
                 else => return error.InvalidDebugInfo,
@@ -203,7 +203,7 @@ fn nextInner(unwinder: *SelfUnwinder, gpa: Allocator, cache_entry: *const CacheE
         const new_val: union(enum) {
             same,
             undefined,
-            val: usize,
+            val: std.debug.cpu_context.Native.Gpr,
             bytes: []const u8,
         } = switch (rule) {
             .default => val: {
@@ -219,7 +219,7 @@ fn nextInner(unwinder: *SelfUnwinder, gpa: Allocator, cache_entry: *const CacheE
             .undefined => .undefined,
             .same_value => .same,
             .offset => |offset| val: {
-                const ptr: *const usize = @ptrFromInt(try applyOffset(cfa, offset));
+                const ptr: *const std.debug.cpu_context.Native.Gpr = @ptrFromInt(try applyOffset(cfa, offset));
                 break :val .{ .val = ptr.* };
             },
             .val_offset => |offset| .{ .val = try applyOffset(cfa, offset) },
@@ -260,12 +260,7 @@ fn nextInner(unwinder: *SelfUnwinder, gpa: Allocator, cache_entry: *const CacheE
                     has_return_address = false;
                 }
             },
-            .val => |val| {
-                const dest = try new_cpu_state.dwarfRegisterBytes(@intCast(register));
-                if (dest.len != @sizeOf(usize)) return error.InvalidDebugInfo;
-                const dest_ptr: *align(1) usize = @ptrCast(dest);
-                dest_ptr.* = val;
-            },
+            .val => |val| (try regNative(&new_cpu_state, register)).* = val,
             .bytes => |src| {
                 const dest = try new_cpu_state.dwarfRegisterBytes(@intCast(register));
                 if (dest.len != src.len) return error.InvalidDebugInfo;
@@ -275,7 +270,7 @@ fn nextInner(unwinder: *SelfUnwinder, gpa: Allocator, cache_entry: *const CacheE
     }
 
     const return_address = if (has_return_address)
-        stripInstructionPtrAuthCode((try regNative(&new_cpu_state, return_address_register)).*)
+        stripInstructionPtrAuthCode(@intCast((try regNative(&new_cpu_state, return_address_register)).*))
     else
         0;
 
@@ -303,9 +298,9 @@ pub fn regNative(ctx: *std.debug.cpu_context.Native, num: u16) error{
     InvalidRegister,
     UnsupportedRegister,
     IncompatibleRegisterSize,
-}!*align(1) usize {
+}!*align(1) std.debug.cpu_context.Native.Gpr {
     const bytes = try ctx.dwarfRegisterBytes(num);
-    if (bytes.len != @sizeOf(usize)) return error.IncompatibleRegisterSize;
+    if (bytes.len != @sizeOf(std.debug.cpu_context.Native.Gpr)) return error.IncompatibleRegisterSize;
     return @ptrCast(bytes);
 }
 
