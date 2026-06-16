@@ -218,6 +218,7 @@ pub const Environ = struct {
             DEBUGINFOD_CACHE_PATH: ?[:0]const u8 = null,
             XDG_CACHE_HOME: ?[:0]const u8 = null,
             HOME: ?[:0]const u8 = null,
+            TERM: ?[:0]const u8 = null,
         },
     };
 
@@ -8800,9 +8801,8 @@ fn isTty(file: File) Io.Cancelable!bool {
 
 fn fileEnableAnsiEscapeCodes(userdata: ?*anyopaque, file: File) File.EnableAnsiEscapeCodesError!void {
     const t: *Threaded = @ptrCast(@alignCast(userdata));
-    _ = t;
 
-    if (!is_windows) return if (!try supportsAnsiEscapeCodes(file)) error.NotTerminalDevice;
+    if (!is_windows) return if (!try supportsAnsiEscapeCodes(t, file)) error.NotTerminalDevice;
 
     // For Windows Terminal, VT Sequences processing is enabled by default.
     const console: File = .{
@@ -8850,14 +8850,13 @@ fn fileEnableAnsiEscapeCodes(userdata: ?*anyopaque, file: File) File.EnableAnsiE
 
 fn fileSupportsAnsiEscapeCodes(userdata: ?*anyopaque, file: File) Io.Cancelable!bool {
     const t: *Threaded = @ptrCast(@alignCast(userdata));
-    _ = t;
-    return supportsAnsiEscapeCodes(file);
+    return supportsAnsiEscapeCodes(t, file);
 }
 
-fn supportsAnsiEscapeCodes(file: File) Io.Cancelable!bool {
+fn supportsAnsiEscapeCodes(t: *Threaded, file: File) Io.Cancelable!bool {
     if (is_windows) {
         var get_console_mode = windows.CONSOLE.USER_IO.GET_MODE;
-        switch ((try deviceIoControl(&.{
+        return switch ((try deviceIoControl(&.{
             .file = .{
                 .handle = windows.peb().ProcessParameters.ConsoleHandle,
                 .flags = .{ .nonblocking = false },
@@ -8865,15 +8864,33 @@ fn supportsAnsiEscapeCodes(file: File) Io.Cancelable!bool {
             .code = windows.IOCTL.CONDRV.ISSUE_USER_IO,
             .in = @ptrCast(&get_console_mode.request(file, 0, .{}, 0, .{})),
         })).u.Status) {
-            .SUCCESS => if (get_console_mode.Data & windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING != 0)
-                return true,
+            .SUCCESS => get_console_mode.Data & windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING != 0,
             .CANCELLED => unreachable,
-            .INVALID_HANDLE => return isCygwinPty(file),
-            else => return false,
-        }
+            .INVALID_HANDLE => isCygwinPty(file),
+            else => false,
+        };
     }
 
-    if (try isTty(file)) return true;
+    if (native_os == .wasi) {
+        // WASI sanitizes stdout when fd is a tty so ANSI escape codes
+        // will not be interpreted as actual cursor commands, and
+        // stderr is always sanitized.
+
+        return false;
+    }
+
+    if (try isTty(file)) {
+        if (file.handle == posix.STDOUT_FILENO or file.handle == posix.STDERR_FILENO) {
+            t.scanEnviron();
+            if (t.environ.string.TERM) |term| {
+                if (std.mem.eql(u8, term, "dumb")) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
 
     return false;
 }
