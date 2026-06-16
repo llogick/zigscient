@@ -225,7 +225,6 @@ test "initializing anon struct with mixed comptime-runtime fields" {
 test "tuple in tuple passed to generic function" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const S = struct {
         fn pair(x: f32, y: f32) @Tuple(&.{ f32, f32 }) {
             return .{ x, y };

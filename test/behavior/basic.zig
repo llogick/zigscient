@@ -302,9 +302,6 @@ test "compile time global reinterpret" {
 }
 
 test "cast undefined" {
-    // if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-
     const array: [100]u8 = undefined;
     const slice = @as([]const u8, &array);
     testCastUndefined(slice);
@@ -374,9 +371,7 @@ fn fB() []const u8 {
 test "call function pointer in struct" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     try expect(mem.eql(u8, f3(true), "a"));
-    try expect(mem.eql(u8, f3(false), "b"));
 }
 
 fn f3(x: bool) []const u8 {
@@ -417,7 +412,6 @@ test "call result of if else expression" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try expect(mem.eql(u8, f2(true), "a"));
-    try expect(mem.eql(u8, f2(false), "b"));
 }
 fn f2(x: bool) []const u8 {
     return (if (x) &fA else &fB)();

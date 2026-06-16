@@ -457,21 +457,31 @@ const ModuleBuilder = struct {
                 },
                 .OpEntryPoint => {
                     const original_id: ResultId = @enumFromInt(inst.operands[1]);
-                    const new_id_index = info.entry_points.getIndex(original_id).?;
-                    const new_id: ResultId = @enumFromInt(self.entry_point_new_id_base + new_id_index);
-                    try self.section.emitRaw(self.arena, .OpEntryPoint, inst.operands.len);
-                    self.section.writeWord(inst.operands[0]);
-                    self.section.writeOperand(ResultId, new_id);
-                    self.section.writeWords(inst.operands[2..]);
+                    const fn_info = info.functions.get(original_id).?;
+                    if (fn_info.invocation_globals.count() > 0) {
+                        const new_id_index = info.entry_points.getIndex(original_id).?;
+                        const new_id: ResultId = @enumFromInt(self.entry_point_new_id_base + new_id_index);
+                        try self.section.emitRaw(self.arena, .OpEntryPoint, inst.operands.len);
+                        self.section.writeWord(inst.operands[0]);
+                        self.section.writeOperand(ResultId, new_id);
+                        self.section.writeWords(inst.operands[2..]);
+                    } else {
+                        try self.section.emitRawInstruction(self.arena, inst.opcode, inst.operands);
+                    }
                     continue;
                 },
                 .OpExecutionMode, .OpExecutionModeId => {
                     const original_id: ResultId = @enumFromInt(inst.operands[0]);
-                    const new_id_index = info.entry_points.getIndex(original_id).?;
-                    const new_id: ResultId = @enumFromInt(self.entry_point_new_id_base + new_id_index);
-                    try self.section.emitRaw(self.arena, inst.opcode, inst.operands.len);
-                    self.section.writeOperand(ResultId, new_id);
-                    self.section.writeWords(inst.operands[1..]);
+                    const fn_info = info.functions.get(original_id).?;
+                    if (fn_info.invocation_globals.count() > 0) {
+                        const new_id_index = info.entry_points.getIndex(original_id).?;
+                        const new_id: ResultId = @enumFromInt(self.entry_point_new_id_base + new_id_index);
+                        try self.section.emitRaw(self.arena, inst.opcode, inst.operands.len);
+                        self.section.writeOperand(ResultId, new_id);
+                        self.section.writeWords(inst.operands[1..]);
+                    } else {
+                        try self.section.emitRawInstruction(self.arena, inst.opcode, inst.operands);
+                    }
                     continue;
                 },
                 .OpTypeFunction => {
@@ -652,6 +662,7 @@ const ModuleBuilder = struct {
 
         for (info.entry_points.keys(), 0..) |func, entry_point_index| {
             const fn_info = info.functions.get(func).?;
+            if (fn_info.invocation_globals.count() == 0) continue;
             const ep_id: ResultId = @enumFromInt(self.entry_point_new_id_base + @as(u32, @intCast(entry_point_index)));
             const fn_type = self.function_types.get(.{
                 .return_type = fn_info.return_type,

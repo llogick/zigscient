@@ -1159,8 +1159,6 @@ test "repeated value is correctly expanded" {
 }
 
 test "value in if block is comptime-known" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const first = blk: {
         const s = if (false) "a" else "b";
         break :blk "foo" ++ s;
@@ -1196,7 +1194,6 @@ test "lazy value is resolved as slice operand" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const A = struct { a: u32 };
     var a: [512]u64 = undefined;
 

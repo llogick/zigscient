@@ -2541,7 +2541,7 @@ test "peer type resolution: many compatible pointers" {
 test "peer type resolution: tuples with comptime fields" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
+    // if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     const a = .{ 1, 2 };
     const b = .{ @as(u32, 3), @as(i16, 4) };

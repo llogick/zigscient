@@ -1286,7 +1286,23 @@ fn constant(cg: *CodeGen, ty: Type, val: Value, repr: Repr) Error!Id {
                     const comp_ty_id = try cg.resolveType(ty, .direct);
                     return try cg.constructComposite(comp_ty_id, constituents.items);
                 },
-                .tuple_type => return cg.todo("implement tuple types", .{}),
+                .tuple_type => |tuple| {
+                    var constituents: std.ArrayList(Id) = .empty;
+                    defer constituents.deinit(gpa);
+
+                    for (tuple.types.get(ip), tuple.values.get(ip), 0..) |field_ty, field_val, i| {
+                        if (field_val != .none) continue;
+                        const ft: Type = .fromInterned(field_ty);
+                        if (!ft.hasRuntimeBits(zcu)) continue;
+
+                        const fv = try val.fieldValue(pt, i);
+                        const field_id = try cg.constant(ft, fv, .indirect);
+                        try constituents.append(gpa, field_id);
+                    }
+
+                    const comp_ty_id = try cg.resolveType(ty, .direct);
+                    return try cg.constructComposite(comp_ty_id, constituents.items);
+                },
                 else => unreachable,
             },
             .un => |un| {
