@@ -5262,6 +5262,7 @@ inline fn splat(comptime Type: type, rhs: Type) Type {
 }
 test splat {
     const test_splat = unary(splat, .{});
+    try test_splat.testBoolVectors();
     try test_splat.testIntVectors();
     try test_splat.testFloatVectors();
 }

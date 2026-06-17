@@ -169090,12 +169090,56 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 };
                 try res[0].finish(inst, &.{reduce.operand}, &ops, cg);
             },
-            .splat => |air_tag| fallback: {
+            .splat => |air_tag| {
                 const ty_op = air_datas[@intFromEnum(inst)].ty_op;
-                if (cg.typeOf(ty_op.operand).toIntern() == .bool_type) break :fallback try cg.airSplat(inst);
                 var ops = try cg.tempsFromOperands(inst, .{ty_op.operand});
                 var res: [1]Temp = undefined;
                 cg.select(&res, &.{ty_op.ty.toType()}, &ops, comptime &.{ .{
+                    .dst_constraints = .{ .{ .bool_vec = .qword }, .any },
+                    .src_constraints = .{ .bool, .any, .any },
+                    .patterns = &.{
+                        .{ .src = .{ .to_gpr, .none, .none } },
+                    },
+                    .dst_temps = .{ .{ .rc = .general_purpose }, .unused },
+                    .clobbers = .{ .eflags = true },
+                    .each = .{ .once = &.{
+                        .{ ._, ._, .bt, .src0d, .si(0), ._, ._ },
+                        .{ ._, ._, .sbb, .dst0q, .dst0q, ._, ._ },
+                        .{ ._, ._r, .sh, .dst0q, .uia(64, .dst0, .sub_bit_size), ._, ._ },
+                    } },
+                }, .{
+                    .dst_constraints = .{ .any_bool_vec, .any },
+                    .src_constraints = .{ .bool, .any, .any },
+                    .patterns = &.{
+                        .{ .src = .{ .to_gpr, .none, .none } },
+                    },
+                    .dst_temps = .{ .mem, .unused },
+                    .extra_temps = .{
+                        .{ .type = .isize, .kind = .{ .reg = .rdi } },
+                        .{ .type = .u8, .kind = .{ .reg = .rax } },
+                        .{ .type = .u32, .kind = .{ .reg = .rcx } },
+                        .unused,
+                        .unused,
+                        .unused,
+                        .unused,
+                        .unused,
+                        .unused,
+                        .unused,
+                        .unused,
+                    },
+                    .clobbers = .{ .eflags = true },
+                    .each = .{ .once = &.{
+                        .{ ._, ._, .bt, .src0d, .si(0), ._, ._ },
+                        .{ ._, ._, .sbb, .tmp1b, .tmp1b, ._, ._ },
+                        .{ ._, ._, .lea, .tmp0q, .dst0b, ._, ._ },
+                        .{ ._, ._, .mov, .tmp2d, .sia(1, .dst0, .add_bit_size_sub_1_div_8_down_1), ._, ._ },
+                        .{ ._, .@"rep _sb", .sto, ._, ._, ._, ._ },
+                        .{ ._, ._, .@"and", .memad(.dst0b, .add_bit_size_sub_1_div_8_down_1, 0), .ua(.dst0, .bit_size_last_byte_mask), ._, ._ },
+                        .{ ._, ._, .mov, .tmp2d, .sa(.dst0, .add_size_sub_bit_size_div_8_down_1_sub_1), ._, ._ },
+                        .{ ._, ._, .xor, .tmp1b, .tmp1b, ._, ._ },
+                        .{ ._, .@"rep _sb", .sto, ._, ._, ._, ._ },
+                    } },
+                }, .{
                     .required_features = .{ .avx2, null, null, null },
                     .dst_constraints = .{ .{ .scalar_int = .{ .of = .xword, .is = .byte } }, .any },
                     .src_constraints = .{ .{ .int = .byte }, .any, .any },
@@ -180803,56 +180847,6 @@ fn airMemset(self: *CodeGen, inst: Air.Inst.Index, safety: bool) !void {
     return self.finishAir(inst, .unreach, .{ bin_op.lhs, bin_op.rhs, .none });
 }
 
-fn airSplat(self: *CodeGen, inst: Air.Inst.Index) !void {
-    const pt = self.pt;
-    const zcu = pt.zcu;
-    const ty_op = self.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
-    const vector_ty = self.typeOfIndex(inst);
-    const vector_len = vector_ty.vectorLen(zcu);
-    const scalar_ty = self.typeOf(ty_op.operand);
-
-    const result: MCValue = result: {
-        if (scalar_ty.toIntern() != .bool_type) return self.fail("TODO implement airSplat for {f}", .{
-            vector_ty.fmt(pt),
-        });
-        const regs =
-            try self.register_manager.allocRegs(2, .{ inst, null }, abi.RegisterClass.gp);
-        const reg_locks = self.register_manager.lockRegsAssumeUnused(2, regs);
-        defer for (reg_locks) |lock| self.register_manager.unlockReg(lock);
-
-        try self.genSetReg(regs[1], vector_ty, .{ .immediate = 0 }, .{});
-        try self.genSetReg(
-            regs[1],
-            vector_ty,
-            .{ .immediate = @as(u64, std.math.maxInt(u64)) >> @intCast(64 - vector_len) },
-            .{},
-        );
-        const src_mcv = try self.resolveInst(ty_op.operand);
-        const abi_size = @max(std.math.divCeil(u32, vector_len, 8) catch unreachable, 4);
-        try self.asmCmovccRegisterRegister(
-            switch (src_mcv) {
-                .eflags => |cc| cc,
-                .register => |src_reg| cc: {
-                    try self.asmRegisterImmediate(.{ ._, .@"test" }, src_reg.to8(), .u(1));
-                    break :cc .nz;
-                },
-                else => cc: {
-                    try self.asmMemoryImmediate(
-                        .{ ._, .@"test" },
-                        try src_mcv.mem(self, .{ .size = .byte }),
-                        .u(1),
-                    );
-                    break :cc .nz;
-                },
-            },
-            registerAlias(regs[0], abi_size),
-            registerAlias(regs[1], abi_size),
-        );
-        break :result .{ .register = regs[0] };
-    };
-    return self.finishAir(inst, result, .{ ty_op.operand, .none, .none });
-}
-
 fn airSelect(self: *CodeGen, inst: Air.Inst.Index) !void {
     const pt = self.pt;
     const zcu = pt.zcu;
@@ -191236,6 +191230,9 @@ const Select = struct {
                 unaligned_size_add_elem_size,
                 unaligned_size_sub_elem_size,
                 unaligned_size_sub_2_elem_size,
+                size_sub_bit_size_div_8_down_1_sub_1,
+                bit_size_sub_1_div_8_down_1,
+                bit_size_last_byte_mask,
                 bit_size,
                 src0_bit_size,
                 @"8_size_sub_bit_size",
@@ -191288,6 +191285,9 @@ const Select = struct {
             const add_unaligned_size_add_elem_size: Adjust = .{ .sign = .pos, .lhs = .unaligned_size_add_elem_size, .op = .mul, .rhs = .@"1" };
             const add_unaligned_size_sub_elem_size: Adjust = .{ .sign = .pos, .lhs = .unaligned_size_sub_elem_size, .op = .mul, .rhs = .@"1" };
             const add_unaligned_size_sub_2_elem_size: Adjust = .{ .sign = .pos, .lhs = .unaligned_size_sub_2_elem_size, .op = .mul, .rhs = .@"1" };
+            const add_size_sub_bit_size_div_8_down_1_sub_1: Adjust = .{ .sign = .pos, .lhs = .size_sub_bit_size_div_8_down_1_sub_1, .op = .mul, .rhs = .@"1" };
+            const add_bit_size_sub_1_div_8_down_1: Adjust = .{ .sign = .pos, .lhs = .bit_size_sub_1_div_8_down_1, .op = .mul, .rhs = .@"1" };
+            const bit_size_last_byte_mask: Adjust = .{ .sign = .pos, .lhs = .bit_size_last_byte_mask, .op = .mul, .rhs = .@"1" };
             const add_2_bit_size: Adjust = .{ .sign = .pos, .lhs = .bit_size, .op = .mul, .rhs = .@"2" };
             const add_bit_size: Adjust = .{ .sign = .pos, .lhs = .bit_size, .op = .mul, .rhs = .@"1" };
             const add_bit_size_rem_8: Adjust = .{ .sign = .pos, .lhs = .bit_size, .op = .rem_8_mul, .rhs = .@"1" };
@@ -192223,6 +192223,20 @@ const Select = struct {
                 .unaligned_size_sub_2_elem_size => {
                     const ty = op.flags.base.ref.typeOf(s);
                     break :lhs @intCast(s.cg.unalignedSize(ty) - ty.scalarType(s.cg.pt.zcu).abiSize(s.cg.pt.zcu) * 2);
+                },
+                .size_sub_bit_size_div_8_down_1_sub_1 => {
+                    const ty = op.flags.base.ref.typeOf(s);
+                    const size: SignedImm = @intCast(ty.abiSize(s.cg.pt.zcu));
+                    const bit_size: SignedImm = @intCast(s.cg.nonBoolScalarBitSize(ty));
+                    break :lhs size - @divFloor(bit_size - 1, 8) - 1;
+                },
+                .bit_size_sub_1_div_8_down_1 => {
+                    const bit_size: SignedImm = @intCast(s.cg.nonBoolScalarBitSize(op.flags.base.ref.typeOf(s)));
+                    break :lhs @divFloor(bit_size - 1, 8);
+                },
+                .bit_size_last_byte_mask => {
+                    const bit_size = s.cg.nonBoolScalarBitSize(op.flags.base.ref.typeOf(s));
+                    break :lhs @as(u8, std.math.maxInt(u8)) >> @intCast(7 - (bit_size - 1) % 8);
                 },
                 .bit_size => @intCast(s.cg.nonBoolScalarBitSize(op.flags.base.ref.typeOf(s))),
                 .src0_bit_size => @intCast(s.cg.nonBoolScalarBitSize(Select.Operand.Ref.src0.typeOf(s))),
