@@ -771,7 +771,7 @@ pub fn writeBytePreserve(w: *Writer, preserve: usize, byte: u8) Error!void {
         w.end += 1;
         return;
     }
-    try w.vtable.rebase(w, preserve, 1);
+    try w.vtable.rebase(w, preserve -| 1, 1);
     w.buffer[w.end] = byte;
     w.end += 1;
 }
