@@ -1059,6 +1059,8 @@ pub fn storageClass(module: *Module, as: std.lang.AddressSpace) spec.StorageClas
         .cog,
         .lut,
         .hub,
+        .externref,
+        .funcref,
         => unreachable,
     };
 }

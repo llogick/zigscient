@@ -2347,6 +2347,7 @@ pub fn supportsAddressSpace(
             (is_spirv and (context == null or context == .constant or context == .pointer)),
         .param => is_nvptx,
         .input, .output, .uniform, .push_constant, .storage_buffer, .physical_storage_buffer => is_spirv,
+        .externref, .funcref => target.cpu.has(.wasm, .reference_types),
     };
 }
 
