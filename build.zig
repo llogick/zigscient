@@ -614,6 +614,26 @@ pub fn build(b: *std.Build) !void {
         update_mingw_step.dependOn(&b.addFail("The -Dmingw-src=... option is required for this step").step);
     }
 
+    const check_mingw_step = b.step("check-mingw", "Checks for mingw preprocessor regressions");
+    const mingw_preprocessor_mod = b.createModule(.{
+        .root_source_file = b.path("src/libs/mingw/Preprocessor.zig"),
+        .target = target,
+    });
+
+    const check_mingw_exe = b.addExecutable(.{
+        .name = "check_mingw",
+        .root_module = b.createModule(.{
+            .target = b.graph.host,
+            .root_source_file = b.path("tools/check_mingw.zig"),
+            .imports = &.{
+                .{ .name = "preprocessor", .module = mingw_preprocessor_mod },
+            },
+        }),
+    });
+    const check_mingw_run = b.addRunArtifact(check_mingw_exe);
+    check_mingw_run.addDirectoryArg(b.path("lib/libc/mingw"));
+    check_mingw_step.dependOn(&check_mingw_run.step);
+
     const test_incremental_step = b.step("test-incremental", "Run the incremental compilation test cases");
     try tests.addIncrementalTests(b, test_incremental_step, test_filters);
     if (!skip_test_incremental) test_step.dependOn(test_incremental_step);
@@ -635,8 +655,7 @@ pub fn build(b: *std.Build) !void {
         "langref",
         "std-docs",
         "docs",
-        "fmt",
-        // "test-fmt",
+        "check-mingw",
         "test-cases",
         "test-modules",
         "test-behavior",
