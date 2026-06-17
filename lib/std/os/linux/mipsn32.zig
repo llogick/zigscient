@@ -163,6 +163,25 @@ pub fn syscall_pipe(
         : .{ .r1 = true, .r3 = true, .r5 = true, .r6 = true, .r7 = true, .r8 = true, .r9 = true, .r10 = true, .r11 = true, .r12 = true, .r13 = true, .r14 = true, .r15 = true, .r24 = true, .r25 = true, .hi = true, .lo = true, .memory = true });
 }
 
+pub fn syscall_lseek(
+    fd: std.os.linux.fd_t,
+    offset: std.os.linux.off_t,
+    whence: u32,
+) u64 {
+    return asm volatile (
+        \\ syscall
+        \\ beq $a3, $zero, 1f
+        \\ blez $v0, 1f
+        \\ dsubu $v0, $zero, $v0
+        \\1:
+        : [ret] "={$2}" (-> u64),
+        : [number] "{$2}" (@intFromEnum(SYS.lseek)),
+          [fd] "{$4}" (@as(u32, @bitCast(fd))),
+          [offset] "{$5}" (@as(u64, @bitCast(offset))),
+          [whence] "{$6}" (whence),
+        : .{ .r1 = true, .r3 = true, .r7 = true, .r8 = true, .r9 = true, .r10 = true, .r11 = true, .r12 = true, .r13 = true, .r14 = true, .r15 = true, .r24 = true, .r25 = true, .hi = true, .lo = true, .memory = true });
+}
+
 pub fn clone() callconv(.naked) u32 {
     // __clone(func, stack, flags, arg, ptid, tls, ctid)
     //         a0,   a1,    a2,    a3,  a4,   a5,  a6

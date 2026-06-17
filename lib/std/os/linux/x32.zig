@@ -109,6 +109,20 @@ pub fn syscall6(
         : .{ .rcx = true, .r11 = true, .memory = true });
 }
 
+pub fn syscall_lseek(
+    fd: std.os.linux.fd_t,
+    offset: std.os.linux.off_t,
+    whence: u32,
+) u64 {
+    return asm volatile ("syscall"
+        : [ret] "={rax}" (-> u64),
+        : [number] "{rax}" (@intFromEnum(SYS.lseek)),
+          [fd] "{rdi}" (@as(u32, @bitCast(fd))),
+          [offset] "{rsi}" (@as(u64, @bitCast(offset))),
+          [whence] "{rdx}" (whence),
+        : .{ .rcx = true, .r11 = true, .memory = true });
+}
+
 pub fn clone() callconv(.naked) u32 {
     asm volatile (
         \\      movl $0x40000038,%%eax // SYS_clone

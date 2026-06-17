@@ -10195,7 +10195,7 @@ fn fileSeekBy(userdata: ?*anyopaque, file: File, offset: i64) File.SeekError!voi
 
     if (posix.SEEK == void) return error.Unseekable;
 
-    if (native_os == .linux and !builtin.link_libc and @sizeOf(usize) == 4) {
+    if (native_os == .linux and !builtin.link_libc and @sizeOf(posix.system.syscall_arg_t) == 4) {
         var result: i64 = undefined;
         const syscall: Syscall = try .start();
         while (true) {
@@ -10307,7 +10307,7 @@ fn fileSeekTo(userdata: ?*anyopaque, file: File, offset: u64) File.SeekError!voi
 }
 
 fn posixSeekTo(fd: posix.fd_t, offset: u64) File.SeekError!void {
-    if (native_os == .linux and !builtin.link_libc and @sizeOf(usize) == 4) {
+    if (native_os == .linux and !builtin.link_libc and @sizeOf(posix.system.syscall_arg_t) == 4) {
         const syscall: Syscall = try .start();
         while (true) {
             var result: i64 = undefined;
