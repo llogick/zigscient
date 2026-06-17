@@ -12,6 +12,7 @@ lib/std/compress/lzma/testdata/** binary
 lib/std/compress/xz/testdata/** binary
 lib/std/crypto/codecs/asn1/der/testdata/** binary
 lib/std/tar/testdata/** binary
+lib/std/zip/testdata/** binary
 src/Package/Fetch/testdata/** binary
 src/Package/Fetch/git/testdata/** binary
 

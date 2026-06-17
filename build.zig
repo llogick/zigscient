@@ -153,6 +153,8 @@ pub fn build(b: *std.Build) !void {
                 ".tzif",
                 // exclude files from lib/std/tar/testdata
                 ".tar",
+                // exclude files from lib/std/zip/testdata
+                ".zip",
                 // others
                 "README.md",
             },

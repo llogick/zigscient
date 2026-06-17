@@ -638,3 +638,85 @@ pub fn extract(dest: Io.Dir, fr: *File.Reader, options: ExtractOptions) !void {
         }
     }
 }
+
+const testing = std.testing;
+
+test "extractTo" {
+    const io = testing.io;
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "test.zip",
+        .data = @embedFile("zip/testdata/test.zip"),
+    });
+
+    var file = try tmp.dir.openFile(io, "test.zip", .{});
+    defer file.close(io);
+    var read_buf: [512]u8 = undefined;
+    var reader = file.reader(io, &read_buf);
+
+    const Expected = struct {
+        contents: []const u8,
+        compression: CompressionMethod,
+    };
+    const expected_map = std.StaticStringMap(Expected).initComptime(.{
+        .{ "deflate.txt", Expected{ .contents = "aaaaaaaaaaaaaaaaaaaaaaaa\n", .compression = .deflate } },
+        .{ "store.txt", Expected{ .contents = "hello world\n", .compression = .store } },
+        .{ "dir/", Expected{ .contents = "", .compression = .store } },
+    });
+
+    var iter = try Iterator.init(&reader);
+    var num_entries: usize = 0;
+    while (try iter.next()) |entry| {
+        var filename_buf: [256]u8 = undefined;
+        const filename = try entry.getFilename(&reader, &filename_buf, .{});
+        const expected = expected_map.get(filename) orelse {
+            std.debug.print("found unexpected filename: {f}\n", .{std.ascii.hexEscape(filename, .lower)});
+            return error.UnexpectedFilename;
+        };
+        var buf: [256]u8 = undefined;
+        var w: Writer = .fixed(&buf);
+        try entry.extractTo(&reader, &w);
+        try testing.expectEqualStrings(expected.contents, w.buffered());
+        try testing.expectEqual(expected.compression, entry.compression_method);
+        num_entries += 1;
+    }
+    try testing.expectEqual(expected_map.kvs.len, num_entries);
+}
+
+test "output buffers too small" {
+    const io = testing.io;
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "test.zip",
+        .data = @embedFile("zip/testdata/test.zip"),
+    });
+
+    var file = try tmp.dir.openFile(io, "test.zip", .{});
+    defer file.close(io);
+    var read_buf: [512]u8 = undefined;
+    var reader = file.reader(io, &read_buf);
+
+    var iter = try Iterator.init(&reader);
+    var num_entries: usize = 0;
+    while (try iter.next()) |entry| {
+        try testing.expectError(
+            error.ZipInsufficientBuffer,
+            entry.getFilename(&reader, &.{}, .{}),
+        );
+
+        if (entry.uncompressed_size <= 1) continue;
+
+        var buf: [1]u8 = undefined;
+        var w: Writer = .fixed(&buf);
+        try testing.expectError(
+            error.WriteFailed,
+            entry.extractTo(&reader, &w),
+        );
+        num_entries += 1;
+    }
+    try std.testing.expect(num_entries > 0);
+}
