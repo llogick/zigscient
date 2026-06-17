@@ -324,7 +324,7 @@ pub fn printUsage(sc: *const ScannedConfig, graph: *Graph, w: *Writer) !void {
         \\                               '--webui' when no limit is specified.
         \\  --time-report                Force full rebuild and provide detailed information on
         \\                               compilation time of Zig source code (implies '--webui')
-        \\     -fincremental             Enable incremental compilation
+        \\  -fincremental                Enable incremental compilation
         \\  -fno-incremental             Disable incremental compilation
         \\
         \\Package Management Options:
