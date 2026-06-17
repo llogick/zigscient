@@ -3262,7 +3262,7 @@ fn initHeaders(
             .value = Section.Index.text.vaddr(elf),
             .size = 0,
             .type = .NOTYPE,
-            .bind = .strong,
+            .bind = .weak,
             .visibility = .HIDDEN,
             .shndx = .text,
         }) catch |err| switch (err) {
