@@ -93,7 +93,7 @@ jobs:
           fetch-depth: 0
       - name: Build and Test
         run: sh ci/aarch64-macos-debug.sh
-        timeout-minutes: 180
+        timeout-minutes: 240
   aarch64-macos-release:
     runs-on: [self-hosted, aarch64-macos]
     steps:
