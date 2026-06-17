@@ -18071,6 +18071,12 @@ fn analyzeRet(
         try inlining.merges.results.append(sema.gpa, operand);
         try inlining.merges.br_list.append(sema.gpa, br_inst.toIndex().?);
         try inlining.merges.src_locs.append(sema.gpa, operand_src);
+        var body_block = block;
+        while (body_block.parent) |parent| body_block = parent;
+        if (body_block.runtime_cond == null and body_block.runtime_loop == null) {
+            body_block.runtime_cond = block.runtime_cond orelse block.runtime_loop;
+            body_block.runtime_loop = block.runtime_loop;
+        }
     } else {
         try sema.validateRuntimeValue(block, operand_src, operand);
         const ret_tag: Air.Inst.Tag = if (block.wantSafety()) .ret_safe else .ret;
