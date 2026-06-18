@@ -12,11 +12,7 @@ comptime {
     } else {
         symbol(&__muldi3, "__muldi3");
     }
-    if (compiler_rt.want_windows_v2u64_abi) {
-        symbol(&__multi3_windows_x86_64, "__multi3");
-    } else {
-        symbol(&__multi3, "__multi3");
-    }
+    symbol(&__multi3, "__multi3");
 }
 
 pub fn __mulsi3(a: i32, b: i32) callconv(.c) i32 {
@@ -87,12 +83,6 @@ pub fn muldXi(comptime T: type, a: T, b: T) DoubleInt(T) {
 
 pub fn __multi3(a: i128, b: i128) callconv(.c) i128 {
     return mulX(i128, a, b);
-}
-
-const v2u64 = @Vector(2, u64);
-
-fn __multi3_windows_x86_64(a: v2u64, b: v2u64) callconv(.c) v2u64 {
-    return @bitCast(mulX(i128, @as(i128, @bitCast(a)), @as(i128, @bitCast(b))));
 }
 
 test {

@@ -8,38 +8,19 @@ const symbol = compiler_rt.symbol;
 const HalveInt = compiler_rt.HalveInt;
 
 comptime {
-    if (compiler_rt.want_windows_v2u64_abi) {
-        symbol(&__umodti3_windows_x86_64, "__umodti3");
-        symbol(&__modti3_windows_x86_64, "__modti3");
-        symbol(&__udivti3_windows_x86_64, "__udivti3");
-        symbol(&__divti3_windows_x86_64, "__divti3");
-        symbol(&__udivmodti4_windows_x86_64, "__udivmodti4");
-    } else {
-        symbol(&__umodti3, "__umodti3");
-        symbol(&__modti3, "__modti3");
-        symbol(&__udivti3, "__udivti3");
-        symbol(&__divti3, "__divti3");
-        symbol(&__udivmodti4, "__udivmodti4");
-    }
+    symbol(&__umodti3, "__umodti3");
+    symbol(&__modti3, "__modti3");
+    symbol(&__udivti3, "__udivti3");
+    symbol(&__divti3, "__divti3");
+    symbol(&__udivmodti4, "__udivmodti4");
 }
-
-const v128 = @Vector(2, u64);
-const v2u64 = @Vector(2, u64);
 
 pub fn __udivmodti4(a: u128, b: u128, maybe_rem: ?*u128) callconv(.c) u128 {
     return udivmod(u128, a, b, maybe_rem);
 }
 
-fn __udivmodti4_windows_x86_64(a: v2u64, b: v2u64, maybe_rem: ?*u128) callconv(.c) v2u64 {
-    return @bitCast(udivmod(u128, @bitCast(a), @bitCast(b), maybe_rem));
-}
-
 pub fn __divti3(a: i128, b: i128) callconv(.c) i128 {
     return div(a, b);
-}
-
-fn __divti3_windows_x86_64(a: v128, b: v128) callconv(.c) v128 {
-    return @bitCast(div(@bitCast(a), @bitCast(b)));
 }
 
 inline fn div(a: i128, b: i128) i128 {
@@ -58,16 +39,8 @@ pub fn __udivti3(a: u128, b: u128) callconv(.c) u128 {
     return udivmod(u128, a, b, null);
 }
 
-fn __udivti3_windows_x86_64(a: v2u64, b: v2u64) callconv(.c) v2u64 {
-    return @bitCast(udivmod(u128, @bitCast(a), @bitCast(b), null));
-}
-
 pub fn __modti3(a: i128, b: i128) callconv(.c) i128 {
     return mod(a, b);
-}
-
-fn __modti3_windows_x86_64(a: v2u64, b: v2u64) callconv(.c) v2u64 {
-    return @bitCast(mod(@as(i128, @bitCast(a)), @as(i128, @bitCast(b))));
 }
 
 inline fn mod(a: i128, b: i128) i128 {
@@ -86,12 +59,6 @@ pub fn __umodti3(a: u128, b: u128) callconv(.c) u128 {
     var r: u128 = undefined;
     _ = udivmod(u128, a, b, &r);
     return r;
-}
-
-fn __umodti3_windows_x86_64(a: v2u64, b: v2u64) callconv(.c) v2u64 {
-    var r: u128 = undefined;
-    _ = udivmod(u128, @bitCast(a), @bitCast(b), &r);
-    return @bitCast(r);
 }
 
 const lo = switch (builtin.cpu.arch.endian()) {
