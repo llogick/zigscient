@@ -1360,6 +1360,15 @@ const targets = [_]ArchTarget{
         .extra_cpus = &.{
             .{
                 .llvm_name = null,
+                .zig_name = "r3000a",
+                .features = &.{
+                    "mips1",
+                    "soft_float",
+                    "notraps",
+                },
+            },
+            .{
+                .llvm_name = null,
                 .zig_name = "allegrex",
                 .features = &.{ "mips2", "single_float", "notraps" },
             },

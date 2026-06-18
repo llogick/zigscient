@@ -243,9 +243,10 @@ pub fn targetTriple(allocator: Allocator, target: *const std.Target) ![]const u8
         .opengl,
         .other,
         .plan9,
+        .psx,
         .psp,
-        .tios,
         .vita,
+        .tios,
         .wiiu,
         => "unknown",
     };

@@ -70,7 +70,19 @@ comptime {
             // case it's not required to provide an entrypoint such as main.
             if (!@hasDecl(root, start_sym_name) and @hasDecl(root, "main")) @export(&wasm_freestanding_start, .{ .name = start_sym_name });
         } else switch (native_os) {
-            .other, .freestanding, .@"3ds", .wiiu, .psp, .vita, .vulkan, .opengl, .opencl => {},
+            .other,
+            .freestanding,
+            .vulkan,
+            .opengl,
+            .opencl,
+
+            .@"3ds",
+            .wiiu,
+
+            .psx,
+            .psp,
+            .vita,
+            => {},
             else => if (!@hasDecl(root, start_sym_name)) @export(&_start, .{ .name = start_sym_name }),
         }
     }

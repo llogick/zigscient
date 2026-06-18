@@ -51,6 +51,7 @@ pub const Os = struct {
         @"3ds",
         wiiu,
 
+        psx,
         ps3,
         ps4,
         ps5,
@@ -166,6 +167,7 @@ pub const Os = struct {
                 .plan9,
                 .serenity,
 
+                .psx,
                 .ps3,
                 .ps4,
                 .ps5,
@@ -402,6 +404,7 @@ pub const Os = struct {
                 .plan9,
                 .serenity,
 
+                .psx,
                 .ps3,
                 .ps4,
                 .ps5,
@@ -949,6 +952,7 @@ pub const Abi = enum {
             .uefi => .msvc,
             .@"3ds" => .eabihf,
             .wiiu => .eabihf,
+            .psx => .eabi,
             .psp => .eabihf,
             .vita => .eabihf,
             .wasi, .emscripten => .musl,
@@ -2098,6 +2102,7 @@ pub const Cpu = struct {
                 .m68k => &m68k.cpu.M68030,
                 .mips => &mips.cpu.mips32r2,
                 .mipsel => switch (os.tag) {
+                    .psx => &mips.cpu.r3000a,
                     .psp => &mips.cpu.allegrex,
                     else => &mips.cpu.mips32r2,
                 },
@@ -2290,11 +2295,12 @@ pub fn requiresLibC(target: *const Target) bool {
         .freestanding,
         .fuchsia,
         .managarm,
-        .ps3,
         .rtems,
         .cuda,
         .nvcl,
         .amdhsa,
+        .psx,
+        .ps3,
         .ps4,
         .ps5,
         .psp,
@@ -2475,6 +2481,7 @@ pub const DynamicLinker = struct {
             .opengl,
             .vulkan,
 
+            .psx,
             .ps3,
             .ps4,
             .ps5,
@@ -2886,6 +2893,7 @@ pub const DynamicLinker = struct {
             .@"3ds",
             .wiiu,
 
+            .psx,
             .psp,
             .vita,
 
@@ -3445,6 +3453,12 @@ pub fn cTypeBitSize(target: *const Target, c_type: CType) u16 {
             .longlong, .ulonglong, .double, .longdouble => return 64,
         },
 
+        .psx => switch (c_type) {
+            .char => return 8,
+            .short, .ushort => return 16,
+            .int, .uint, .long, .ulong, .float => return 32,
+            .longlong, .ulonglong, .double, .longdouble => return 64,
+        },
         .ps4, .ps5 => switch (c_type) {
             .char => return 8,
             .short, .ushort => return 16,

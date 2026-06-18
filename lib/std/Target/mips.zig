@@ -587,4 +587,13 @@ pub const cpu = struct {
             .p5600,
         }),
     };
+    pub const r3000a: CpuModel = .{
+        .name = "r3000a",
+        .llvm_name = null,
+        .features = featureSet(&[_]Feature{
+            .mips1,
+            .notraps,
+            .soft_float,
+        }),
+    };
 };
