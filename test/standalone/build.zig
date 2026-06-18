@@ -69,6 +69,13 @@ pub fn build(b: *std.Build) void {
             });
             tool.root_module.addImport("preprocessor", mingw_preprocessor_mod);
         }
+        if (std.mem.endsWith(u8, tool_src_path, "update_cpu_features.zig")) {
+            const spirv_spec = b.createModule(.{
+                .root_source_file = b.path("../../src/codegen/spirv/spec.zig"),
+                .target = tools_target,
+            });
+            tool.root_module.addImport("spirv_spec", spirv_spec);
+        }
 
         tools_tests_step.dependOn(&tool.step);
     }

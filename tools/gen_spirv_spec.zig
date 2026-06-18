@@ -13,6 +13,33 @@ const Operand = g.Operand;
 
 const ExtendedStructSet = std.StringHashMap(void);
 
+const allowed_vendors = [_][]const u8{
+    "KHR",
+    "EXT",
+};
+
+fn isAllowedCapability(name: []const u8) bool {
+    // core capabilities (no vendor suffix) end in a lowercase letter or digit.
+    const last = name[name.len - 1];
+    if (std.ascii.isLower(last) or std.ascii.isDigit(last)) return true;
+    for (allowed_vendors) |vendor| {
+        if (std.mem.endsWith(u8, name, vendor)) return true;
+    }
+    return false;
+}
+
+fn isAllowedExtension(name: []const u8) bool {
+    const spv_prefix = "SPV_";
+    if (!std.mem.startsWith(u8, name, spv_prefix)) return false;
+    const tail = name[spv_prefix.len..];
+    for (allowed_vendors) |vendor| {
+        if (std.mem.startsWith(u8, tail, vendor) and
+            tail.len > vendor.len and tail[vendor.len] == '_')
+            return true;
+    }
+    return false;
+}
+
 const Extension = struct {
     name: []const u8,
     opcode_name: []const u8,
@@ -325,6 +352,43 @@ fn render(
 
     try renderOperandKinds(arena, writer, all_operand_kinds.values(), extended_structs);
     try renderInstructionSet(writer, registry, extensions, all_operand_kinds);
+    try renderExtension(arena, writer, all_operand_kinds.values());
+}
+
+fn renderExtension(
+    arena: Allocator,
+    writer: *std.Io.Writer,
+    kinds: []const OperandKind,
+) !void {
+    try writer.writeAll(
+        \\pub const Extension = enum {
+        \\v1_0,
+        \\v1_1,
+        \\v1_2,
+        \\v1_3,
+        \\v1_4,
+        \\v1_5,
+        \\v1_6,
+        \\
+    );
+
+    var seen_extensions: std.StringHashMapUnmanaged(void) = .empty;
+    defer seen_extensions.deinit(arena);
+
+    for (kinds) |kind| {
+        if (std.mem.eql(u8, "Capability", kind.kind)) {
+            for (kind.enumerants.?) |enumerant| {
+                if (!isAllowedCapability(enumerant.enumerant)) continue;
+                for (enumerant.extensions) |ext| {
+                    if (!isAllowedExtension(ext)) continue;
+                    if (seen_extensions.contains(ext)) continue;
+                    try seen_extensions.put(arena, ext, {});
+                    try writer.print("{s},\n", .{ext});
+                }
+            }
+        }
+    }
+    try writer.writeAll("};\n");
 }
 
 fn renderInstructionSet(
@@ -687,10 +751,13 @@ fn renderValueEnum(
 
     const enum_indices = enum_map.values();
 
+    const is_capability = std.mem.eql(u8, "Capability", enumeration.kind);
+
     try writer.print("pub const {f} = enum(u32) {{\n", .{std.zig.fmtId(enumeration.kind)});
 
     for (enum_indices) |i| {
         const enumerant = enumerants[i];
+        if (is_capability and !isAllowedCapability(enumerant.enumerant)) continue;
         // if (enumerant.value != .int) return error.InvalidRegistry;
 
         switch (enumerant.value) {
@@ -702,11 +769,48 @@ fn renderValueEnum(
     try writer.writeByte('\n');
 
     for (aliases.items) |alias| {
+        if (is_capability and (!isAllowedCapability(enumerants[alias.enumerant].enumerant) or
+            !isAllowedCapability(enumerants[alias.alias].enumerant))) continue;
         try writer.print("pub const {f} = {f}.{f};\n", .{
             formatId(enumerants[alias.enumerant].enumerant),
             std.zig.fmtId(enumeration.kind),
             formatId(enumerants[alias.alias].enumerant),
         });
+    }
+
+    if (is_capability) {
+        try writer.writeAll(
+            \\
+            \\pub fn dependencies(self: Capability) []const Extension {
+            \\ return switch (self) {
+        );
+
+        for (enum_indices) |i| {
+            const enumerant = enumerants[i];
+            if (!isAllowedCapability(enumerant.enumerant)) continue;
+
+            // Convert version to enum.
+            // None is for reserved
+            // Example: "None" -> .v1_0
+            // Example: "1.5" -> .v1_5
+            const enum_version = enumerant.version.?;
+            const version: [4]u8 = .{ 'v', '1', '_', if (enum_version[0] == 'N') '0' else enum_version[2] };
+
+            try writer.print("\n.{f} => &.{{.{s},", .{ formatId(enumerant.enumerant), version });
+            for (enumerant.extensions) |extension| {
+                if (!isAllowedExtension(extension)) continue;
+                try writer.print(".{s},", .{extension});
+            }
+            try writer.writeAll("},");
+        }
+
+        try writer.writeAll(
+            \\};
+            \\}
+            \\};
+            \\
+        );
+        return;
     }
 
     if (!extended_structs.contains(enumeration.kind)) {

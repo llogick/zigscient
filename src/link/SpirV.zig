@@ -12,7 +12,6 @@ const Air = @import("../Air.zig");
 const Type = @import("../Type.zig");
 const codegen = @import("../codegen.zig");
 const CodeGen = @import("../codegen/spirv/CodeGen.zig");
-const Module = @import("../codegen/spirv/Module.zig");
 const BinaryModule = @import("SpirV/BinaryModule.zig");
 const lower_invocation_globals = @import("SpirV/lower_invocation_globals.zig");
 const dedup_types = @import("SpirV/dedup_types.zig");
@@ -147,6 +146,21 @@ pub fn loadInput(linker: *Linker, input: link.Input) !void {
 
             const id_bound = all_words[3];
             const instructions = try gpa.dupe(Word, all_words[5..]);
+            errdefer gpa.free(instructions);
+
+            // OpCapability instructions appear at the top of the module
+            // so we can stop scanning as soon as we hit anything else.
+            var it: BinaryModule.Instruction.Iterator = .init(instructions, 0);
+            const has_linkage = while (it.next()) |inst| switch (inst.opcode) {
+                .OpCapability => {
+                    const cap: spec.Capability = @enumFromInt(inst.operands[0]);
+                    if (cap == .linkage) break true;
+                },
+                else => break false,
+            } else false;
+            if (!has_linkage) {
+                return diags.fail("SPIR-V object '{f}' is missing the Linkage capability and cannot be linked", .{obj.path});
+            }
 
             try linker.external_objects.append(gpa, .{
                 .instructions = instructions,
@@ -594,63 +608,54 @@ fn emitPreamble(
     capabilities: *Section,
     extensions: *Section,
     memory_model: *Section,
-) error{OutOfMemory}!void {
-    try capabilities.emit(gpa, .OpCapability, .{ .capability = .int8 });
-    try capabilities.emit(gpa, .OpCapability, .{ .capability = .int16 });
+) !void {
+    var caps: std.EnumSet(spec.Capability) = .empty;
+    var exts: std.StringHashMapUnmanaged(void) = .empty;
+    defer exts.deinit(gpa);
 
     switch (target.os.tag) {
-        .opengl => {
-            try capabilities.emit(gpa, .OpCapability, .{ .capability = .shader });
-            try capabilities.emit(gpa, .OpCapability, .{ .capability = .matrix });
-        },
-        .vulkan => {
-            try capabilities.emit(gpa, .OpCapability, .{ .capability = .shader });
-            try capabilities.emit(gpa, .OpCapability, .{ .capability = .matrix });
-            if (target.cpu.arch == .spirv64) {
-                try extensions.emit(gpa, .OpExtension, .{ .name = "SPV_KHR_physical_storage_buffer" });
-                try capabilities.emit(gpa, .OpCapability, .{ .capability = .physical_storage_buffer_addresses });
-            }
-        },
+        .opengl, .vulkan => caps.insert(.shader),
         .opencl, .amdhsa => {
-            try capabilities.emit(gpa, .OpCapability, .{ .capability = .kernel });
-            try capabilities.emit(gpa, .OpCapability, .{ .capability = .addresses });
+            caps.insert(.kernel);
+            caps.insert(.addresses);
         },
         else => unreachable,
     }
-    if (target.cpu.arch == .spirv64)
-        try capabilities.emit(gpa, .OpCapability, .{ .capability = .int64 });
-    if (target.cpu.has(.spirv, .int64))
-        try capabilities.emit(gpa, .OpCapability, .{ .capability = .int64 });
-    if (target.cpu.has(.spirv, .float16)) {
-        if (target.os.tag == .opencl) try extensions.emit(gpa, .OpExtension, .{ .name = "cl_khr_fp16" });
-        try capabilities.emit(gpa, .OpCapability, .{ .capability = .float16 });
+    if (target.os.tag == .vulkan and target.cpu.arch == .spirv64) {
+        caps.insert(.physical_storage_buffer_addresses);
+        try exts.put(gpa, "SPV_KHR_physical_storage_buffer", {});
     }
-    if (target.cpu.has(.spirv, .float64))
-        try capabilities.emit(gpa, .OpCapability, .{ .capability = .float64 });
-    if (target.cpu.has(.spirv, .generic_pointer))
-        try capabilities.emit(gpa, .OpCapability, .{ .capability = .generic_pointer });
-    if (target.cpu.has(.spirv, .vector16))
-        try capabilities.emit(gpa, .OpCapability, .{ .capability = .vector16 });
-    if (target.cpu.has(.spirv, .storage_push_constant16)) {
-        try extensions.emit(gpa, .OpExtension, .{ .name = "SPV_KHR_16bit_storage" });
-        try capabilities.emit(gpa, .OpCapability, .{ .capability = .storage_push_constant16 });
+    if (has_linkage) caps.insert(.linkage);
+
+    inline for (@typeInfo(spec.Capability).@"enum".field_names) |cap_name| {
+        if (target.cpu.has(.spirv, @field(std.Target.spirv.Feature, cap_name)))
+            caps.insert(@field(spec.Capability, cap_name));
     }
-    if (target.cpu.has(.spirv, .arbitrary_precision_integers)) {
-        try extensions.emit(gpa, .OpExtension, .{ .name = "SPV_INTEL_arbitrary_precision_integers" });
-        try capabilities.emit(gpa, .OpCapability, .{ .capability = .arbitrary_precision_integers_intel });
+    inline for (@typeInfo(spec.Extension).@"enum".field_names) |ext_name| {
+        switch (@field(spec.Extension, ext_name)) {
+            .v1_0, .v1_1, .v1_2, .v1_3, .v1_4, .v1_5, .v1_6 => {},
+            else => if (target.cpu.has(.spirv, @field(std.Target.spirv.Feature, ext_name)))
+                try exts.put(gpa, ext_name, {}),
+        }
     }
-    if (target.cpu.has(.spirv, .variable_pointers)) {
-        try extensions.emit(gpa, .OpExtension, .{ .name = "SPV_KHR_variable_pointers" });
-        try capabilities.emit(gpa, .OpCapability, .{ .capability = .variable_pointers_storage_buffer });
-        try capabilities.emit(gpa, .OpCapability, .{ .capability = .variable_pointers });
-    }
-    if (has_linkage)
-        try capabilities.emit(gpa, .OpCapability, .{ .capability = .linkage });
+
+    var cit = caps.iterator();
+    while (cit.next()) |cap| try capabilities.emit(gpa, .OpCapability, .{ .capability = cap });
+    var eit = exts.iterator();
+    while (eit.next()) |e| try extensions.emit(gpa, .OpExtension, .{ .name = e.key_ptr.* });
 
     const addressing_model: spec.AddressingModel = switch (target.os.tag) {
         .opengl => .logical,
-        .vulkan => if (target.cpu.arch == .spirv32) .logical else .physical_storage_buffer64,
-        .opencl => if (target.cpu.arch == .spirv32) .physical32 else .physical64,
+        .vulkan => switch (target.cpu.arch) {
+            .spirv32 => .logical,
+            .spirv64 => .physical_storage_buffer64,
+            else => unreachable,
+        },
+        .opencl => switch (target.cpu.arch) {
+            .spirv32 => .physical32,
+            .spirv64 => .physical64,
+            else => unreachable,
+        },
         .amdhsa => .physical64,
         else => unreachable,
     };
@@ -659,6 +664,7 @@ fn emitPreamble(
         .memory_model = switch (target.os.tag) {
             .opencl => .open_cl,
             .vulkan, .opengl => .glsl450,
+            .amdhsa => unreachable, // TODO
             else => unreachable,
         },
     });

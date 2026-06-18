@@ -1,4 +1,5 @@
 const builtin = @import("builtin");
+const spirv_spec = @import("spirv_spec");
 
 const std = @import("std");
 const Io = std.Io;
@@ -47,6 +48,43 @@ const ArchTarget = struct {
     extra_features: []const Feature = &.{},
     omit_cpus: []const []const u8 = &.{},
     branch_quota: ?usize = null,
+};
+
+const spirv_extra_features = blk: {
+    const caps_info = @typeInfo(spirv_spec.Capability).@"enum";
+    const exts_info = @typeInfo(spirv_spec.Extension).@"enum";
+    const caps_len = caps_info.field_names.len;
+    const exts_len = exts_info.field_names.len;
+
+    var features: [caps_len + exts_len]Feature = undefined;
+    for (
+        caps_info.field_names,
+        caps_info.field_values,
+        features[0..caps_len],
+    ) |name, value, *feature| {
+        feature.* = .{
+            .zig_name = name,
+            .desc = "Enable " ++ name ++ " capability",
+            .deps = &struct {
+                const extensions = spirv_spec.Capability.dependencies(@enumFromInt(value));
+                const deps: [extensions.len][]const u8 = inner: {
+                    var out: [extensions.len][]const u8 = undefined;
+                    for (extensions, 0..) |ext, i| out[i] = @tagName(ext);
+                    break :inner out;
+                };
+            }.deps,
+        };
+    }
+
+    for (exts_info.field_names, features[caps_len..]) |name, *feature| {
+        feature.* = .{
+            .zig_name = name,
+            .desc = "Enable " ++ name ++ " extension",
+            .deps = &.{},
+        };
+    }
+
+    break :blk features;
 };
 
 const targets = [_]ArchTarget{
@@ -1443,83 +1481,7 @@ const targets = [_]ArchTarget{
             .td_name = "SPIRV",
         },
         .branch_quota = 2000,
-        .extra_features = &.{
-            .{
-                .zig_name = "v1_0",
-                .desc = "Enable version 1.0",
-                .deps = &.{},
-            },
-            .{
-                .zig_name = "v1_1",
-                .desc = "Enable version 1.1",
-                .deps = &.{"v1_0"},
-            },
-            .{
-                .zig_name = "v1_2",
-                .desc = "Enable version 1.2",
-                .deps = &.{"v1_1"},
-            },
-            .{
-                .zig_name = "v1_3",
-                .desc = "Enable version 1.3",
-                .deps = &.{"v1_2"},
-            },
-            .{
-                .zig_name = "v1_4",
-                .desc = "Enable version 1.4",
-                .deps = &.{"v1_3"},
-            },
-            .{
-                .zig_name = "v1_5",
-                .desc = "Enable version 1.5",
-                .deps = &.{"v1_4"},
-            },
-            .{
-                .zig_name = "v1_6",
-                .desc = "Enable version 1.6",
-                .deps = &.{"v1_5"},
-            },
-            .{
-                .zig_name = "int64",
-                .desc = "Enable Int64 capability",
-                .deps = &.{"v1_0"},
-            },
-            .{
-                .zig_name = "float16",
-                .desc = "Enable Float16 capability",
-                .deps = &.{"v1_0"},
-            },
-            .{
-                .zig_name = "float64",
-                .desc = "Enable Float64 capability",
-                .deps = &.{"v1_0"},
-            },
-            .{
-                .zig_name = "storage_push_constant16",
-                .desc = "Enable SPV_KHR_16bit_storage extension and the StoragePushConstant16 capability",
-                .deps = &.{"v1_3"},
-            },
-            .{
-                .zig_name = "arbitrary_precision_integers",
-                .desc = "Enable SPV_INTEL_arbitrary_precision_integers extension and the ArbitraryPrecisionIntegersINTEL capability",
-                .deps = &.{"v1_5"},
-            },
-            .{
-                .zig_name = "generic_pointer",
-                .desc = "Enable GenericPointer capability",
-                .deps = &.{"v1_0"},
-            },
-            .{
-                .zig_name = "vector16",
-                .desc = "Enable Vector16 capability",
-                .deps = &.{"v1_0"},
-            },
-            .{
-                .zig_name = "variable_pointers",
-                .desc = "Enable SPV_KHR_variable_pointers extension and the VariablePointers capability",
-                .deps = &.{"v1_0"},
-            },
-        },
+        .extra_features = &spirv_extra_features,
         .extra_cpus = &.{
             .{
                 .llvm_name = null,

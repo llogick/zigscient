@@ -61,8 +61,6 @@ cache: struct {
     struct_types: std.array_hash_map.Custom(StructType, Id, StructType.HashContext, true) = .empty,
     fn_types: std.array_hash_map.Custom(FnType, Id, FnType.HashContext, true) = .empty,
 
-    capabilities: std.AutoHashMapUnmanaged(spec.Capability, void) = .empty,
-    extensions: std.StringHashMapUnmanaged(void) = .empty,
     extended_instruction_set: std.AutoHashMapUnmanaged(spec.InstructionSet, Id) = .empty,
     decorations: std.AutoHashMapUnmanaged(struct { Id, spec.Decoration }, void) = .empty,
     builtins: std.AutoHashMapUnmanaged(struct { spec.BuiltIn, spec.StorageClass }, Decl.Index) = .empty,
@@ -75,8 +73,6 @@ cache: struct {
 } = .{},
 /// Module layout, according to SPIR-V Spec section 2.4, "Logical Layout of a Module".
 sections: struct {
-    capabilities: Section = .{},
-    extensions: Section = .{},
     extended_instruction_set: Section = .{},
     memory_model: Section = .{},
     execution_modes: Section = .{},
@@ -211,8 +207,6 @@ pub fn deinit(module: *Module) void {
     module.intern_map.deinit(module.gpa);
     module.ptr_types.deinit(module.gpa);
 
-    module.sections.capabilities.deinit(module.gpa);
-    module.sections.extensions.deinit(module.gpa);
     module.sections.extended_instruction_set.deinit(module.gpa);
     module.sections.memory_model.deinit(module.gpa);
     module.sections.execution_modes.deinit(module.gpa);
@@ -230,8 +224,6 @@ pub fn deinit(module: *Module) void {
     module.cache.struct_types.deinit(module.gpa);
     module.cache.fn_types.deinit(module.gpa);
     module.cache.spirv_types.deinit(module.gpa);
-    module.cache.capabilities.deinit(module.gpa);
-    module.cache.extensions.deinit(module.gpa);
     module.cache.extended_instruction_set.deinit(module.gpa);
     module.cache.decorations.deinit(module.gpa);
     module.cache.builtins.deinit(module.gpa);
@@ -302,270 +294,6 @@ pub fn addEntryPointDeps(
     }
 }
 
-fn entryPoints(module: *Module) !Section {
-    const target = module.zcu.getTarget();
-
-    var entry_points = Section{};
-    errdefer entry_points.deinit(module.gpa);
-
-    var interface = std.array_list.Managed(Id).init(module.gpa);
-    defer interface.deinit();
-
-    var seen: std.bit_set.Dynamic = try .initEmpty(module.gpa, module.decls.items.len);
-    defer seen.deinit(module.gpa);
-
-    for (module.entry_points.keys(), module.entry_points.values()) |entry_point_id, entry_point| {
-        interface.items.len = 0;
-        seen.setRangeValue(.{ .start = 0, .end = module.decls.items.len }, false);
-
-        const exec_model: spec.ExecutionModel = switch (target.os.tag) {
-            .vulkan, .opengl => switch (entry_point.cc) {
-                .spirv_vertex => .vertex,
-                .spirv_fragment => .fragment,
-                .spirv_kernel => .gl_compute,
-                .spirv_task => .task_ext,
-                .spirv_mesh => .mesh_ext,
-                // TODO: We should integrate with the Linkage capability and export this function
-                .spirv_device => continue,
-                else => unreachable,
-            },
-            .opencl => switch (entry_point.cc) {
-                .spirv_kernel => .kernel,
-                // TODO: We should integrate with the Linkage capability and export this function
-                .spirv_device => continue,
-                else => unreachable,
-            },
-            else => unreachable,
-        };
-        try module.addEntryPointDeps(entry_point.decl_index, &seen, &interface);
-        try entry_points.emit(module.gpa, .OpEntryPoint, .{
-            .execution_model = exec_model,
-            .entry_point = entry_point_id,
-            .name = entry_point.name,
-            .interface = interface.items,
-        });
-
-        switch (entry_point.cc) {
-            .spirv_kernel, .spirv_task => |kernel| {
-                try module.sections.execution_modes.emit(module.gpa, .OpExecutionMode, .{
-                    .entry_point = entry_point_id,
-                    .mode = .{ .local_size = .{
-                        .x_size = kernel.x,
-                        .y_size = kernel.y,
-                        .z_size = kernel.z,
-                    } },
-                });
-            },
-            .spirv_fragment => |fragment| {
-                try module.sections.execution_modes.emit(module.gpa, .OpExecutionMode, .{
-                    .entry_point = entry_point_id,
-                    .mode = if (target.os.tag == .vulkan) .origin_upper_left else .origin_lower_left,
-                });
-                if (fragment.pixel_centered_integer) {
-                    try module.sections.execution_modes.emit(module.gpa, .OpExecutionMode, .{
-                        .entry_point = entry_point_id,
-                        .mode = .pixel_center_integer,
-                    });
-                }
-
-                const exec_mode: ?spec.ExecutionMode.Extended = switch (fragment.depth_assumption) {
-                    .none => null,
-                    .greater => .depth_greater,
-                    .less => .depth_less,
-                    .unchanged => .depth_unchanged,
-                };
-                if (exec_mode) |mode| {
-                    try module.sections.execution_modes.emit(module.gpa, .OpExecutionMode, .{
-                        .entry_point = entry_point_id,
-                        .mode = mode,
-                    });
-                }
-            },
-            .spirv_mesh => |mesh| {
-                try module.sections.execution_modes.emit(module.gpa, .OpExecutionMode, .{
-                    .entry_point = entry_point_id,
-                    .mode = .{ .output_vertices = .{ .vertex_count = mesh.max_vertices } },
-                });
-                try module.sections.execution_modes.emit(module.gpa, .OpExecutionMode, .{
-                    .entry_point = entry_point_id,
-                    .mode = .{ .output_primitives_ext = .{ .primitive_count = mesh.max_primitives } },
-                });
-
-                try module.sections.execution_modes.emit(module.gpa, .OpExecutionMode, .{
-                    .entry_point = entry_point_id,
-                    .mode = switch (mesh.stage_output) {
-                        .output_points => .output_points,
-                        .output_lines => .output_lines_ext,
-                        .output_triangles => .output_triangles_ext,
-                    },
-                });
-            },
-            else => {}, // TODO: should this be unreachable?
-        }
-    }
-
-    return entry_points;
-}
-
-pub fn finalize(module: *Module, gpa: Allocator) ![]Word {
-    const target = module.zcu.getTarget();
-
-    // Emit capabilities and extensions
-    switch (target.os.tag) {
-        .opengl => {
-            try module.addCapability(.shader);
-            try module.addCapability(.matrix);
-        },
-        .vulkan => {
-            try module.addCapability(.shader);
-            try module.addCapability(.matrix);
-            if (target.cpu.arch == .spirv64) {
-                try module.addExtension("SPV_KHR_physical_storage_buffer");
-                try module.addCapability(.physical_storage_buffer_addresses);
-            }
-        },
-        .opencl, .amdhsa => {
-            try module.addCapability(.kernel);
-            try module.addCapability(.addresses);
-        },
-        else => unreachable,
-    }
-    if (target.cpu.arch == .spirv64) try module.addCapability(.int64);
-    if (target.cpu.has(.spirv, .int64)) try module.addCapability(.int64);
-    if (target.cpu.has(.spirv, .float16)) {
-        if (target.os.tag == .opencl) try module.addExtension("cl_khr_fp16");
-        try module.addCapability(.float16);
-    }
-    if (target.cpu.has(.spirv, .float64)) try module.addCapability(.float64);
-    if (target.cpu.has(.spirv, .generic_pointer)) try module.addCapability(.generic_pointer);
-    if (target.cpu.has(.spirv, .vector16)) try module.addCapability(.vector16);
-    if (target.cpu.has(.spirv, .storage_push_constant16)) {
-        try module.addExtension("SPV_KHR_16bit_storage");
-        try module.addCapability(.storage_push_constant16);
-    }
-    if (target.cpu.has(.spirv, .arbitrary_precision_integers)) {
-        try module.addExtension("SPV_INTEL_arbitrary_precision_integers");
-        try module.addCapability(.arbitrary_precision_integers_intel);
-    }
-    if (target.cpu.has(.spirv, .variable_pointers)) {
-        try module.addExtension("SPV_KHR_variable_pointers");
-        try module.addCapability(.variable_pointers_storage_buffer);
-        try module.addCapability(.variable_pointers);
-    }
-    // These are well supported
-    try module.addCapability(.int8);
-    try module.addCapability(.int16);
-
-    // Emit memory model
-    const addressing_model: spec.AddressingModel = switch (target.os.tag) {
-        .opengl => .logical,
-        .vulkan => if (target.cpu.arch == .spirv32) .logical else .physical_storage_buffer64,
-        .opencl => if (target.cpu.arch == .spirv32) .physical32 else .physical64,
-        .amdhsa => .physical64,
-        else => unreachable,
-    };
-    try module.sections.memory_model.emit(module.gpa, .OpMemoryModel, .{
-        .addressing_model = addressing_model,
-        .memory_model = switch (target.os.tag) {
-            .opencl => .open_cl,
-            .vulkan, .opengl => .glsl450,
-            else => unreachable,
-        },
-    });
-
-    var entry_points = try module.entryPoints();
-    defer entry_points.deinit(module.gpa);
-
-    const version: spec.Version = .{
-        .major = 1,
-        .minor = blk: {
-            // Prefer higher versions
-            if (target.cpu.has(.spirv, .v1_6)) break :blk 6;
-            if (target.cpu.has(.spirv, .v1_5)) break :blk 5;
-            if (target.cpu.has(.spirv, .v1_4)) break :blk 4;
-            if (target.cpu.has(.spirv, .v1_3)) break :blk 3;
-            if (target.cpu.has(.spirv, .v1_2)) break :blk 2;
-            if (target.cpu.has(.spirv, .v1_1)) break :blk 1;
-            break :blk 0;
-        },
-    };
-
-    const zig_version = @import("builtin").zig_version;
-    const zig_spirv_compiler_version = comptime (zig_version.major << 12) | (zig_version.minor << 7) | zig_version.patch;
-
-    // A SPIR-V Generator Magic Number is a 32 bit word: The high order 16
-    // bits are a tool ID, which should be unique across all SPIR-V
-    // generators. The low order 16 bits are reserved for use as a tool
-    // version number, or any other purpose the tool supplier chooses.
-    // Only the tool IDs are reserved with Khronos.
-    // See https://github.com/KhronosGroup/SPIRV-Headers/blob/f2e4bd213104fe323a01e935df56557328d37ac8/include/spirv/spir-v.xml#L17C5-L21C54
-    const generator_id: u32 = (spec.zig_generator_id << 16) | zig_spirv_compiler_version;
-
-    const header = [_]Word{
-        spec.magic_number,
-        version.toWord(),
-        generator_id,
-        module.idBound(),
-        0, // Schema (currently reserved for future use)
-    };
-
-    var source = Section{};
-    defer source.deinit(module.gpa);
-    try module.sections.debug_strings.emit(module.gpa, .OpSource, .{
-        .source_language = .zig,
-        .version = zig_spirv_compiler_version,
-        // We cannot emit these because the Khronos translator does not parse this instruction
-        // correctly.
-        // See https://github.com/KhronosGroup/SPIRV-LLVM-Translator/issues/2188
-        .file = null,
-        .source = null,
-    });
-
-    // Note: needs to be kept in order according to section 2.3!
-    const buffers = &[_][]const Word{
-        &header,
-        module.sections.capabilities.toWords(),
-        module.sections.extensions.toWords(),
-        module.sections.extended_instruction_set.toWords(),
-        module.sections.memory_model.toWords(),
-        entry_points.toWords(),
-        module.sections.execution_modes.toWords(),
-        source.toWords(),
-        module.sections.debug_strings.toWords(),
-        module.sections.debug_names.toWords(),
-        module.sections.annotations.toWords(),
-        module.sections.globals.toWords(),
-        module.sections.functions.toWords(),
-    };
-
-    var total_result_size: usize = 0;
-    for (buffers) |buffer| {
-        total_result_size += buffer.len;
-    }
-    const result = try gpa.alloc(Word, total_result_size);
-    errdefer comptime unreachable;
-
-    var offset: usize = 0;
-    for (buffers) |buffer| {
-        @memcpy(result[offset..][0..buffer.len], buffer);
-        offset += buffer.len;
-    }
-
-    return result;
-}
-
-pub fn addCapability(module: *Module, cap: spec.Capability) !void {
-    const entry = try module.cache.capabilities.getOrPut(module.gpa, cap);
-    if (entry.found_existing) return;
-    try module.sections.capabilities.emit(module.gpa, .OpCapability, .{ .capability = cap });
-}
-
-pub fn addExtension(module: *Module, ext: []const u8) !void {
-    const entry = try module.cache.extensions.getOrPut(module.gpa, ext);
-    if (entry.found_existing) return;
-    try module.sections.extensions.emit(module.gpa, .OpExtension, .{ .name = ext });
-}
-
 /// Imports or returns the existing id of an extended instruction set
 pub fn importInstructionSet(module: *Module, set: spec.InstructionSet) !Id {
     assert(set != .core);
@@ -622,28 +350,17 @@ pub fn opaqueType(module: *Module, name: []const u8) !Id {
 pub fn backingIntBits(module: *Module, bits: u16) struct { u16, bool } {
     assert(bits != 0);
     const target = module.zcu.getTarget();
-
-    if (target.cpu.has(.spirv, .arbitrary_precision_integers) and bits <= 32) {
-        return .{ bits, false };
-    }
-
-    // We require Int8 and Int16 capabilities and benefit Int64 when available.
-    // 32-bit integers are always supported (see spec, 2.16.1, Data rules).
     const ints = [_]struct { bits: u16, enabled: bool }{
-        .{ .bits = 8, .enabled = true },
-        .{ .bits = 16, .enabled = true },
+        .{ .bits = 8, .enabled = target.cpu.has(.spirv, .int8) },
+        .{ .bits = 16, .enabled = target.cpu.has(.spirv, .int16) },
         .{ .bits = 32, .enabled = true },
-        .{
-            .bits = 64,
-            .enabled = target.cpu.has(.spirv, .int64) or target.cpu.arch == .spirv64,
-        },
+        .{ .bits = 64, .enabled = target.cpu.has(.spirv, .int64) or target.cpu.arch == .spirv64 },
     };
 
     for (ints) |int| {
         if (bits <= int.bits and int.enabled) return .{ int.bits, false };
     }
 
-    // Big int
     return .{ std.mem.alignForward(u16, bits, big_int_bits), true };
 }
 
