@@ -98,6 +98,24 @@ test "array concat with tuple" {
     }
 }
 
+test "array concat with undefined tuple" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
+    {
+        const array: [2]u64 = .{ 1, 2 };
+        var seq = array ++ @as(struct { u32, u16 }, undefined);
+        seq[2] = 3;
+        seq[3] = 4;
+        try std.testing.expectEqualSlices(u64, &.{ 1, 2, 3, 4 }, &seq);
+    }
+    {
+        const array: [2]u64 = undefined;
+        var seq = @as(struct { u32, u16 }, undefined) ++ array;
+        for (&seq, 1..) |*s, i| s.* = i;
+        try std.testing.expectEqualSlices(u64, &.{ 1, 2, 3, 4 }, &seq);
+    }
+}
+
 test "array init with concat" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 

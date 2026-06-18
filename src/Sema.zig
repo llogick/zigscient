@@ -13481,7 +13481,8 @@ fn zirArrayCat(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Ai
             while (elem_i < lhs_len) : (elem_i += 1) {
                 const lhs_elem_i = elem_i;
                 const elem_default_val: ?Value = if (lhs_is_tuple) lhs_ty.structFieldDefaultValue(lhs_elem_i, zcu) else null;
-                const elem_val = elem_default_val orelse try lhs_sub_val.elemValue(pt, lhs_elem_i);
+                const elem_val = elem_default_val orelse
+                    if (lhs_sub_val.isUndef(zcu)) try pt.undefValue(resolved_elem_ty) else try lhs_sub_val.elemValue(pt, lhs_elem_i);
                 const operand_src = block.src(.{ .array_cat_lhs = .{
                     .array_cat_offset = inst_data.src_node,
                     .elem_index = elem_i,
@@ -13493,7 +13494,8 @@ fn zirArrayCat(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Ai
             while (elem_i < result_len) : (elem_i += 1) {
                 const rhs_elem_i = elem_i - lhs_len;
                 const elem_default_val: ?Value = if (rhs_is_tuple) rhs_ty.structFieldDefaultValue(rhs_elem_i, zcu) else null;
-                const elem_val = elem_default_val orelse try rhs_sub_val.elemValue(pt, rhs_elem_i);
+                const elem_val = elem_default_val orelse
+                    if (rhs_sub_val.isUndef(zcu)) try pt.undefValue(resolved_elem_ty) else try rhs_sub_val.elemValue(pt, rhs_elem_i);
                 const operand_src = block.src(.{ .array_cat_rhs = .{
                     .array_cat_offset = inst_data.src_node,
                     .elem_index = @intCast(rhs_elem_i),
