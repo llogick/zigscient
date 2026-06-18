@@ -1997,13 +1997,13 @@ const c_abi_targets = blk: {
             },
             .use_llvm = true,
         },
-        .{
-            .target = .{
-                .cpu_arch = .x86_64,
-                .os_tag = .linux,
-                .abi = .muslx32,
-            },
-        },
+        // .{
+        //     .target = .{
+        //         .cpu_arch = .x86_64,
+        //         .os_tag = .linux,
+        //         .abi = .muslx32,
+        //     },
+        // },
 
         // WASI Targets
 
