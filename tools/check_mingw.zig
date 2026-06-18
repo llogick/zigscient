@@ -28,6 +28,8 @@ pub fn main(init: std.process.Init) !void {
 
     while (try walker.next(io)) |entry| {
         if (entry.kind != .file) continue;
+        // Only .def.in files need preprocessing
+        if (!std.mem.endsWith(u8, entry.basename, ".def.in")) continue;
 
         var fail = false;
         for (&targets) |*target| {

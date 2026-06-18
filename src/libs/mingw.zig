@@ -226,6 +226,8 @@ pub fn buildImportLib(comp: *Compilation, lib_name: []const u8) !void {
         },
         else => |e| return e,
     };
+    // Only .def.in files need preprocessing
+    const def_needs_preprocessing = mem.endsWith(u8, def_file_path, ".def.in");
 
     const target = comp.getTarget();
 
@@ -292,22 +294,25 @@ pub fn buildImportLib(comp: *Compilation, lib_name: []const u8) !void {
     }
 
     const members = members: {
-        const input = pp: {
-            var aw: Io.Writer.Allocating = .init(gpa);
-            errdefer aw.deinit();
+        const input = switch (def_needs_preprocessing) {
+            true => pp: {
+                var aw: Io.Writer.Allocating = .init(gpa);
+                errdefer aw.deinit();
 
-            var pp_arena = std.heap.ArenaAllocator.init(gpa);
-            defer pp_arena.deinit();
-            var pp: Preprocessor = .{
-                .io = io,
-                .arena = pp_arena.allocator(),
-                .include_dir = include_dir,
-                .target = target,
-            };
-            try pp.preprocess(def_file_path);
-            try pp.prettyPrintTokens(&aw.writer);
+                var pp_arena = std.heap.ArenaAllocator.init(gpa);
+                defer pp_arena.deinit();
+                var pp: Preprocessor = .{
+                    .io = io,
+                    .arena = pp_arena.allocator(),
+                    .include_dir = include_dir,
+                    .target = target,
+                };
+                try pp.preprocess(def_file_path);
+                try pp.prettyPrintTokens(&aw.writer);
 
-            break :pp try aw.toOwnedSliceSentinel(0);
+                break :pp try aw.toOwnedSliceSentinel(0);
+            },
+            false => try Io.Dir.cwd().readFileAllocOptions(io, def_file_path, gpa, .unlimited, .of(u8), 0),
         };
         defer gpa.free(input);
 

@@ -254,12 +254,6 @@ pub fn nextNoWS(self: *Tokenizer) Token {
     return tok;
 }
 
-pub fn nextNoWSComments(self: *Tokenizer) Token {
-    var tok = self.next();
-    while (tok.id == .whitespace) tok = self.next();
-    return tok;
-}
-
 fn expectToken(expected: Token.Id, actual: Token) !void {
     try std.testing.expectEqual(expected, actual.id);
 }
