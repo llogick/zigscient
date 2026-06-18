@@ -282,6 +282,8 @@ fn libCGenericName(target: *const std.Target) [:0]const u8 {
         => return "musl",
         .eabi,
         .eabihf,
+        .abin32,
+        .x32,
         .ilp32,
         .android,
         .androideabi,

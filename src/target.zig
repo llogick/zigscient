@@ -164,7 +164,10 @@ pub fn hasValgrindSupport(target: *const std.Target, backend: std.lang.CompilerB
             else => false,
         },
         .x86_64 => switch (target.os.tag) {
-            .linux => target.abi != .gnux32 and target.abi != .muslx32,
+            .linux => switch (target.abi) {
+                .gnux32, .muslx32, .x32 => false,
+                else => true,
+            },
             .freebsd, .illumos => true,
             .windows => !ofmt_c_msvc,
             else => false,
@@ -700,7 +703,7 @@ pub fn llvmMachineAbi(target: *const std.Target) ?[:0]const u8 {
         },
         .mips, .mipsel => "o32",
         .mips64, .mips64el => switch (target.abi) {
-            .gnuabin32, .muslabin32 => "n32",
+            .gnuabin32, .muslabin32, .abin32 => "n32",
             else => "n64",
         },
         .powerpc64 => if (target.os.tag == .ps3) "elfv1" else "elfv2",

@@ -219,8 +219,8 @@ pub fn clone() callconv(.naked) u32 {
         \\ move $fp, $zero
         \\ move $ra, $zero
         \\
-        \\ ld $t9, 0($sp)
-        \\ ld $a0, 4($sp)
+        \\ lw $t9, 0($sp)
+        \\ lw $a0, 4($sp)
         \\ jalr $t9
         \\
         \\ move $a0, $v0

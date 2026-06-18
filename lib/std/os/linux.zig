@@ -43,7 +43,7 @@ const arch_bits = switch (native_arch) {
     .microblaze, .microblazeel => @import("linux/microblaze.zig"),
     .mips, .mipsel => @import("linux/mips.zig"),
     .mips64, .mips64el => switch (builtin.abi) {
-        .gnuabin32, .muslabin32 => @import("linux/mipsn32.zig"),
+        .gnuabin32, .muslabin32, .abin32 => @import("linux/mipsn32.zig"),
         else => @import("linux/mips64.zig"),
     },
     .or1k => @import("linux/or1k.zig"),
@@ -57,7 +57,7 @@ const arch_bits = switch (native_arch) {
     .sparc64 => @import("linux/sparc64.zig"),
     .x86 => @import("linux/x86.zig"),
     .x86_64 => switch (builtin.abi) {
-        .gnux32, .muslx32 => @import("linux/x32.zig"),
+        .gnux32, .muslx32, .x32 => @import("linux/x32.zig"),
         else => @import("linux/x86_64.zig"),
     },
     .xtensa, .xtensaeb => @import("linux/xtensa.zig"),
@@ -144,7 +144,7 @@ pub const SYS = switch (native_arch) {
     .microblaze, .microblazeel => syscalls.Microblaze,
     .mips, .mipsel => syscalls.MipsO32,
     .mips64, .mips64el => switch (builtin.abi) {
-        .gnuabin32, .muslabin32 => syscalls.MipsN32,
+        .gnuabin32, .muslabin32, .abin32 => syscalls.MipsN32,
         else => syscalls.MipsN64,
     },
     .or1k => syscalls.OpenRisc,
@@ -158,7 +158,7 @@ pub const SYS = switch (native_arch) {
     .sparc64 => syscalls.Sparc64,
     .x86 => syscalls.X86,
     .x86_64 => switch (builtin.abi) {
-        .gnux32, .muslx32 => syscalls.X32,
+        .gnux32, .muslx32, .x32 => syscalls.X32,
         else => syscalls.X64,
     },
     .xtensa, .xtensaeb => syscalls.Xtensa,
@@ -1828,8 +1828,10 @@ pub fn lseek(fd: fd_t, offset: off_t, whence: u32) u64 {
     return switch (builtin.abi) {
         .gnuabin32,
         .muslabin32,
+        .abin32,
         .gnux32,
         .muslx32,
+        .x32,
         => syscall_lseek(fd, offset, whence),
         else => syscall3(.lseek, @as(u32, @bitCast(fd)), @as(u64, @bitCast(offset)), whence),
     };
@@ -2006,7 +2008,7 @@ pub const F = struct {
             const SETLKW = 35;
         },
         .mips64, .mips64el => switch (native_abi) {
-            .gnuabin32, .muslabin32 => struct {
+            .gnuabin32, .muslabin32, .abin32 => struct {
                 const GETLK = 33;
                 const SETLK = 34;
                 const SETLKW = 35;
@@ -3187,7 +3189,7 @@ pub fn tee(src: fd_t, dest: fd_t, len: usize, flags: u32) usize {
 }
 
 pub const Sysinfo = switch (native_abi) {
-    .gnux32, .muslx32 => extern struct {
+    .gnux32, .muslx32, .x32 => extern struct {
         /// Seconds since boot
         uptime: i64,
         /// 1, 5, and 15 minute load averages
@@ -10753,11 +10755,11 @@ pub const AUDIT = struct {
             .mips => .MIPS,
             .mipsel => .MIPSEL,
             .mips64 => switch (native_abi) {
-                .gnuabin32, .muslabin32 => .MIPS64N32,
+                .gnuabin32, .muslabin32, .abin32 => .MIPS64N32,
                 else => .MIPS64,
             },
             .mips64el => switch (native_abi) {
-                .gnuabin32, .muslabin32 => .MIPSEL64N32,
+                .gnuabin32, .muslabin32, .abin32 => .MIPSEL64N32,
                 else => .MIPSEL64,
             },
             .or1k => .OPENRISC,

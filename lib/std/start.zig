@@ -373,7 +373,7 @@ fn _start() callconv(.naked) noreturn {
             \\ jalr $t9
             ,
             .mips64, .mips64el => switch (builtin.abi) {
-                .gnuabin32, .muslabin32 =>
+                .gnuabin32, .muslabin32, .abin32 =>
                 \\ move $fp, $zero
                 \\ bal 1f
                 \\ .gpword .

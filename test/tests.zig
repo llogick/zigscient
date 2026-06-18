@@ -625,6 +625,14 @@ const module_test_targets = blk: {
             .target = .{
                 .cpu_arch = .mips64,
                 .os_tag = .linux,
+                .abi = .abin32,
+            },
+            .extra_target = true,
+        },
+        .{
+            .target = .{
+                .cpu_arch = .mips64,
+                .os_tag = .linux,
                 .abi = .muslabi64,
             },
             .link_libc = true,
@@ -682,6 +690,14 @@ const module_test_targets = blk: {
                 .os_tag = .linux,
                 .abi = .none,
             },
+        },
+        .{
+            .target = .{
+                .cpu_arch = .mips64el,
+                .os_tag = .linux,
+                .abi = .abin32,
+            },
+            .extra_target = true,
         },
         .{
             .target = .{
@@ -1149,17 +1165,8 @@ const module_test_targets = blk: {
             .target = .{
                 .cpu_arch = .x86_64,
                 .os_tag = .linux,
-                .abi = .gnu,
+                .abi = .x32,
             },
-            .link_libc = true,
-        },
-        .{
-            .target = .{
-                .cpu_arch = .x86_64,
-                .os_tag = .linux,
-                .abi = .gnux32,
-            },
-            .link_libc = true,
             .extra_target = true,
         },
         .{
@@ -1175,25 +1182,6 @@ const module_test_targets = blk: {
                 .cpu_arch = .x86_64,
                 .os_tag = .linux,
                 .abi = .musl,
-            },
-            .linkage = .dynamic,
-            .link_libc = true,
-            .extra_target = true,
-        },
-        .{
-            .target = .{
-                .cpu_arch = .x86_64,
-                .os_tag = .linux,
-                .abi = .muslx32,
-            },
-            .link_libc = true,
-            .extra_target = true,
-        },
-        .{
-            .target = .{
-                .cpu_arch = .x86_64,
-                .os_tag = .linux,
-                .abi = .muslx32,
             },
             .linkage = .dynamic,
             .link_libc = true,
@@ -1208,6 +1196,42 @@ const module_test_targets = blk: {
             .link_libc = true,
             .use_llvm = true,
             .use_lld = false,
+        },
+        .{
+            .target = .{
+                .cpu_arch = .x86_64,
+                .os_tag = .linux,
+                .abi = .muslx32,
+            },
+            .link_libc = true,
+            .extra_target = true,
+        },
+        .{
+            .target = .{
+                .cpu_arch = .x86_64,
+                .os_tag = .linux,
+                .abi = .muslx32,
+            },
+            .linkage = .dynamic,
+            .link_libc = true,
+            .extra_target = true,
+        },
+        .{
+            .target = .{
+                .cpu_arch = .x86_64,
+                .os_tag = .linux,
+                .abi = .gnu,
+            },
+            .link_libc = true,
+        },
+        .{
+            .target = .{
+                .cpu_arch = .x86_64,
+                .os_tag = .linux,
+                .abi = .gnux32,
+            },
+            .link_libc = true,
+            .extra_target = true,
         },
 
         // Darwin Targets

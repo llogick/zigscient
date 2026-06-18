@@ -104,7 +104,7 @@ pub fn getExternalExecutor(io: Io, candidate: *const std.Target, options: GetExt
                 => .{ .qemu = switch (t) {
                     .x86 => "qemu-i386",
                     .x86_64 => switch (candidate.abi) {
-                        .gnux32, .muslx32 => return bad_result,
+                        .gnux32, .muslx32, .x32 => return bad_result,
                         else => "qemu-x86_64",
                     },
                     else => "qemu-" ++ @tagName(t),
@@ -146,7 +146,7 @@ pub fn getExternalExecutor(io: Io, candidate: *const std.Target, options: GetExt
                         .powerpc64 => "qemu-ppc64",
                         .powerpc64le => "qemu-ppc64le",
                         .mips64, .mips64el => switch (candidate.abi) {
-                            .gnuabin32, .muslabin32 => if (t == .mips64el) "qemu-mipsn32el" else "qemu-mipsn32",
+                            .gnuabin32, .muslabin32, .abin32 => if (t == .mips64el) "qemu-mipsn32el" else "qemu-mipsn32",
                             else => "qemu-" ++ @tagName(t),
                         },
                         // TODO: Actually check the SuperH version.

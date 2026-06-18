@@ -285,6 +285,8 @@ pub fn targetTriple(allocator: Allocator, target: *const std.Target) ![]const u8
         .ilp32 => "unknown",
         .eabi => "eabi",
         .eabihf => "eabihf",
+        .abin32 => "unknown",
+        .x32 => "muslx32", // https://github.com/ziglang/zig/issues/25649
         .android => "android",
         .androideabi => "androideabi",
         .musl => switch (target.os.tag) {
@@ -377,11 +379,11 @@ pub fn dataLayout(target: *const std.Target) []const u8 {
         .mips => "E-m:m-p:32:32-i8:8:32-i16:16:32-i64:64-n32-S64",
         .mipsel => "e-m:m-p:32:32-i8:8:32-i16:16:32-i64:64-n32-S64",
         .mips64 => switch (target.abi) {
-            .gnuabin32, .muslabin32 => "E-m:e-p:32:32-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128",
+            .gnuabin32, .muslabin32, .abin32 => "E-m:e-p:32:32-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128",
             else => "E-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128",
         },
         .mips64el => switch (target.abi) {
-            .gnuabin32, .muslabin32 => "e-m:e-p:32:32-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128",
+            .gnuabin32, .muslabin32, .abin32 => "e-m:e-p:32:32-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128",
             else => "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128",
         },
         .m68k => "E-m:e-p:32:16:32-i8:8:8-i16:16:16-i32:16:32-n8:16:32-a:0:16-S16",
@@ -446,7 +448,7 @@ pub fn dataLayout(target: *const std.Target) []const u8 {
         .x86_64 => if (target.os.tag.isDarwin() or target.ofmt == .macho)
             "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
         else switch (target.abi) {
-            .gnux32, .muslx32 => "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+            .gnux32, .muslx32, .x32 => "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
             else => if ((target.os.tag == .windows or target.os.tag == .uefi) and target.ofmt == .coff)
                 "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
             else

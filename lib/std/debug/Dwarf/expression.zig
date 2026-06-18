@@ -1158,7 +1158,7 @@ test "basics" {
 
         // TODO: Test fbreg (once implemented): mock a DIE and point compile_unit.frame_base at it
 
-        mem.writeInt(usize, reg_bytes[0..@sizeOf(usize)], 0xee, native_endian);
+        mem.writeInt(std.debug.cpu_context.Native.Gpr, reg_bytes[0..@sizeOf(std.debug.cpu_context.Native.Gpr)], 0xee, native_endian);
         (try regNative(&cpu_context, fp_reg_num)).* = 1;
         (try regNative(&cpu_context, ip_reg_num)).* = 2;
 
@@ -1566,7 +1566,7 @@ test "basics" {
         context = .{ .cpu_context = &cpu_context };
 
         const reg_bytes = try cpu_context.dwarfRegisterBytes(0);
-        mem.writeInt(usize, reg_bytes[0..@sizeOf(usize)], 0xee, native_endian);
+        mem.writeInt(std.debug.cpu_context.Native.Gpr, reg_bytes[0..@sizeOf(std.debug.cpu_context.Native.Gpr)], 0xee, native_endian);
 
         var sub_program: std.Io.Writer.Allocating = .init(allocator);
         defer sub_program.deinit();

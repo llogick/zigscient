@@ -1171,7 +1171,7 @@ const LinuxThreadImpl = struct {
                       [len] "{ecx}" (self.mapped.len),
                 ),
                 .x86_64 => asm volatile (switch (target.abi) {
-                        .gnux32, .muslx32 =>
+                        .gnux32, .muslx32, .x32 =>
                         \\  movl $0x4000000b, %%eax # SYS_munmap
                         \\  syscall
                         \\  movl $0x4000003c, %%eax # SYS_exit
@@ -1286,7 +1286,7 @@ const LinuxThreadImpl = struct {
                       [len] "{$5}" (self.mapped.len),
                 ),
                 .mips64, .mips64el => asm volatile (switch (target.abi) {
-                        .gnuabin32, .muslabin32 =>
+                        .gnuabin32, .muslabin32, .abin32 =>
                         \\ li $v0, 6011 # SYS_munmap
                         \\ syscall
                         \\ li $v0, 6058 # SYS_exit

@@ -159,6 +159,7 @@ const targets = [_]std.Target.Query{
     .{ .cpu_arch = .mipsel, .os_tag = .rtems, .abi = .eabihf },
 
     .{ .cpu_arch = .mips64, .os_tag = .freestanding, .abi = .none },
+    .{ .cpu_arch = .mips64, .os_tag = .linux, .abi = .abin32 },
     .{ .cpu_arch = .mips64, .os_tag = .linux, .abi = .gnuabi64 },
     .{ .cpu_arch = .mips64, .os_tag = .linux, .abi = .gnuabin32 },
     .{ .cpu_arch = .mips64, .os_tag = .linux, .abi = .muslabi64 },
@@ -167,6 +168,7 @@ const targets = [_]std.Target.Query{
     .{ .cpu_arch = .mips64, .os_tag = .openbsd, .abi = .none },
 
     .{ .cpu_arch = .mips64el, .os_tag = .freestanding, .abi = .none },
+    .{ .cpu_arch = .mips64el, .os_tag = .linux, .abi = .abin32 },
     .{ .cpu_arch = .mips64el, .os_tag = .linux, .abi = .gnuabi64 },
     .{ .cpu_arch = .mips64el, .os_tag = .linux, .abi = .gnuabin32 },
     .{ .cpu_arch = .mips64el, .os_tag = .linux, .abi = .muslabi64 },
@@ -331,6 +333,7 @@ const targets = [_]std.Target.Query{
     .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .muslx32 },
     .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .none },
     .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .ohos },
+    .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .x32 },
     .{ .cpu_arch = .x86_64, .os_tag = .maccatalyst, .abi = .none },
     .{ .cpu_arch = .x86_64, .os_tag = .macos, .abi = .none },
     .{ .cpu_arch = .x86_64, .os_tag = .netbsd, .abi = .none },

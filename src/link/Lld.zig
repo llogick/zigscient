@@ -1295,21 +1295,21 @@ fn getLDMOption(target: *const std.Target) ?[]const u8 {
         },
         .mips64 => switch (target.os.tag) {
             .freebsd => switch (target.abi) {
-                .gnuabin32, .muslabin32 => "elf32btsmipn32_fbsd",
+                .gnuabin32, .muslabin32, .abin32 => "elf32btsmipn32_fbsd",
                 else => "elf64btsmip_fbsd",
             },
             else => switch (target.abi) {
-                .gnuabin32, .muslabin32 => "elf32btsmipn32",
+                .gnuabin32, .muslabin32, .abin32 => "elf32btsmipn32",
                 else => "elf64btsmip",
             },
         },
         .mips64el => switch (target.os.tag) {
             .freebsd => switch (target.abi) {
-                .gnuabin32, .muslabin32 => "elf32ltsmipn32_fbsd",
+                .gnuabin32, .muslabin32, .abin32 => "elf32ltsmipn32_fbsd",
                 else => "elf64ltsmip_fbsd",
             },
             else => switch (target.abi) {
-                .gnuabin32, .muslabin32 => "elf32ltsmipn32",
+                .gnuabin32, .muslabin32, .abin32 => "elf32ltsmipn32",
                 else => "elf64ltsmip",
             },
         },
@@ -1336,7 +1336,7 @@ fn getLDMOption(target: *const std.Target) ?[]const u8 {
             else => "elf_i386",
         },
         .x86_64 => switch (target.abi) {
-            .gnux32, .muslx32 => "elf32_x86_64",
+            .gnux32, .muslx32, .x32 => "elf32_x86_64",
             else => "elf_x86_64",
         },
         else => null,
