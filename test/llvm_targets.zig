@@ -154,7 +154,7 @@ const targets = [_]std.Target.Query{
     .{ .cpu_arch = .mipsel, .os_tag = .linux, .abi = .musleabihf },
     .{ .cpu_arch = .mipsel, .os_tag = .netbsd, .abi = .eabi },
     .{ .cpu_arch = .mipsel, .os_tag = .netbsd, .abi = .eabihf },
-    .{ .cpu_arch = .mipsel, .os_tag = .psx, .abi = .eabi },
+    // .{ .cpu_arch = .mipsel, .os_tag = .psx, .abi = .eabi },
     .{ .cpu_arch = .mipsel, .os_tag = .psp, .abi = .eabihf },
     .{ .cpu_arch = .mipsel, .os_tag = .rtems, .abi = .eabi },
     .{ .cpu_arch = .mipsel, .os_tag = .rtems, .abi = .eabihf },
