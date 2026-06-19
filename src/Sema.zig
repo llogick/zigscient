@@ -3095,7 +3095,6 @@ fn zirRefDeref(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Ai
     const zcu = pt.zcu;
     const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].un_node;
     const src = block.nodeOffset(inst_data.src_node);
-    const ptr_src = block.src(.{ .node_offset_deref_ptr = inst_data.src_node });
     const operand = sema.resolveInst(inst_data.operand);
     const operand_ty = sema.typeOf(operand);
 
@@ -3104,15 +3103,26 @@ fn zirRefDeref(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Ai
     const ptr_info = operand_ty.ptrInfo(zcu);
     return switch (ptr_info.flags.size) {
         .many, .slice => unreachable, // cannot be dereferenced
-        .c => ptr: {
-            var single_ptr_flags = ptr_info.flags;
-            single_ptr_flags.size = .one;
-            single_ptr_flags.is_allowzero = false;
-            const single_ptr_ty = try pt.ptrType(.{
-                .child = ptr_info.child,
-                .flags = single_ptr_flags,
+        .c => single_ptr: {
+            const single_ptr_ty = try pt.ptrType(p: {
+                var p = ptr_info;
+                p.flags.size = .one;
+                p.flags.is_allowzero = false;
+                break :p p;
             });
-            break :ptr try sema.coerceCompatiblePtrs(block, single_ptr_ty, operand, ptr_src);
+            // https://github.com/ziglang/zig/issues/6597
+            if (sema.resolveValue(operand)) |operand_val| {
+                if (!operand_val.isNull(zcu)) {
+                    break :single_ptr try sema.coerceInMemory(operand_val, single_ptr_ty);
+                }
+            }
+            if (block.wantSafety()) {
+                const is_non_null = try block.addUnOp(.is_non_null, operand);
+                try sema.addSafetyCheck(block, src, is_non_null, .unwrap_null);
+            }
+            const single_ptr = try block.addBitCast(single_ptr_ty, operand);
+            try sema.checkKnownAllocPtr(block, operand, single_ptr);
+            break :single_ptr single_ptr;
         },
         .one => operand,
     };
@@ -30617,6 +30627,11 @@ fn analyzeLoad(
         break :msg msg;
     });
 
+    // https://github.com/ziglang/zig/issues/6597
+    if (block.wantSafety() and ptr_ty.isCPtr(zcu)) {
+        const is_non_null = try block.addUnOp(.is_non_null, ptr);
+        try sema.addSafetyCheck(block, src, is_non_null, .unwrap_null);
+    }
     return block.addTyOp(.load, elem_ty, ptr);
 }
 

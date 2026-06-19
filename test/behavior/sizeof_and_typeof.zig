@@ -423,3 +423,8 @@ test "@sizeOf struct is resolved when used as operand of slicing" {
     S.buf[@sizeOf(dummy)..][0] = 0;
     try expect(S.buf[0] == 0);
 }
+
+test "@TypeOf null C pointer dereference" {
+    comptime assert(@TypeOf(@as([*c]u8, null).*) == u8);
+    comptime assert(@TypeOf(&@as([*c]u8, null).*) == *u8);
+}
