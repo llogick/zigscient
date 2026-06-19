@@ -9438,7 +9438,7 @@ pub const timezone = extern struct {
 /// The timespec struct used by the kernel.
 pub const kernel_timespec = extern struct {
     sec: i64,
-    nsec: i64,
+    nsec: isize,
 
     /// For use with `utimensat` and `futimens`.
     pub const NOW: timespec = .{
@@ -9460,7 +9460,11 @@ pub const UTIME = struct {
 };
 
 // https://github.com/ziglang/zig/issues/4726#issuecomment-2190337877
-pub const timespec = if (native_arch == .hexagon or native_arch == .riscv32) kernel_timespec else extern struct {
+const use_kernel_timespec = native_arch == .hexagon or native_arch == .riscv32 or switch (native_abi) {
+    .gnux32, .muslx32, .x32 => true,
+    else => false,
+};
+pub const timespec = if (use_kernel_timespec) kernel_timespec else extern struct {
     sec: isize,
     nsec: isize,
 };

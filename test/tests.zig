@@ -627,7 +627,6 @@ const module_test_targets = blk: {
                 .os_tag = .linux,
                 .abi = .abin32,
             },
-            .extra_target = true,
         },
         .{
             .target = .{
@@ -654,7 +653,6 @@ const module_test_targets = blk: {
                 .abi = .muslabin32,
             },
             .link_libc = true,
-            .extra_target = true,
         },
         .{
             .target = .{
@@ -681,7 +679,6 @@ const module_test_targets = blk: {
                 .abi = .gnuabin32,
             },
             .link_libc = true,
-            .extra_target = true,
         },
 
         .{
@@ -1167,7 +1164,6 @@ const module_test_targets = blk: {
                 .os_tag = .linux,
                 .abi = .x32,
             },
-            .extra_target = true,
         },
         .{
             .target = .{
@@ -1204,7 +1200,6 @@ const module_test_targets = blk: {
                 .abi = .muslx32,
             },
             .link_libc = true,
-            .extra_target = true,
         },
         .{
             .target = .{
@@ -1231,7 +1226,6 @@ const module_test_targets = blk: {
                 .abi = .gnux32,
             },
             .link_libc = true,
-            .extra_target = true,
         },
 
         // Darwin Targets

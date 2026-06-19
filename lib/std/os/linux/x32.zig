@@ -130,7 +130,7 @@ pub fn clone() callconv(.naked) u32 {
         \\      mov %%rdx,%%rdi
         \\      mov %%r8,%%rdx
         \\      mov %%r9,%%r8
-        \\      mov 8(%%rsp),%%r10
+        \\      mov 8(%%rsp),%%r10d
         \\      mov %%r11,%%r9
         \\      and $-16,%%rsi
         \\      sub $8,%%rsi
@@ -175,7 +175,7 @@ pub fn restore_rt() callconv(.naked) noreturn {
     }
 }
 
-pub const time_t = i32;
+pub const time_t = i64;
 
 pub const VDSO = struct {
     pub const CGT_SYM = "__vdso_clock_gettime";
