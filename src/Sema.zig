@@ -6468,22 +6468,6 @@ const CallArgsInfo = union(enum) {
         const uncoerced_arg: Air.Inst.Ref = switch (cai) {
             inline .resolved, .call_builtin => |resolved| resolved.args[arg_index],
             .zir_call => |zir_call| arg_val: {
-                const has_bound_arg = zir_call.bound_arg != .none;
-                if (arg_index == 0 and has_bound_arg) {
-                    break :arg_val zir_call.bound_arg;
-                }
-                const real_arg_idx = arg_index - @intFromBool(has_bound_arg);
-
-                const arg_body = if (real_arg_idx == 0) blk: {
-                    const start = zir_call.num_args;
-                    const end = @intFromEnum(zir_call.args_body[0]);
-                    break :blk zir_call.args_body[start..end];
-                } else blk: {
-                    const start = @intFromEnum(zir_call.args_body[real_arg_idx - 1]);
-                    const end = @intFromEnum(zir_call.args_body[real_arg_idx]);
-                    break :blk zir_call.args_body[start..end];
-                };
-
                 // Generate args to comptime params in comptime block
                 const parent_comptime = block.comptime_reason;
                 defer block.comptime_reason = parent_comptime;
@@ -6505,11 +6489,27 @@ const CallArgsInfo = union(enum) {
                         };
                     }
                 }
-                // Give the arg its result type
-                const provide_param_ty: Type = maybe_param_ty orelse .generic_poison;
-                sema.inst_map.putAssumeCapacity(zir_call.call_inst, Air.internedToRef(provide_param_ty.toIntern()));
-                // Resolve the arg!
-                const uncoerced_arg = try sema.resolveInlineBody(block, arg_body, zir_call.call_inst);
+
+                const has_bound_arg = zir_call.bound_arg != .none;
+                const uncoerced_arg = if (arg_index == 0 and has_bound_arg) zir_call.bound_arg else arg: {
+                    const real_arg_idx = arg_index - @intFromBool(has_bound_arg);
+
+                    const arg_body = if (real_arg_idx == 0) blk: {
+                        const start = zir_call.num_args;
+                        const end = @intFromEnum(zir_call.args_body[0]);
+                        break :blk zir_call.args_body[start..end];
+                    } else blk: {
+                        const start = @intFromEnum(zir_call.args_body[real_arg_idx - 1]);
+                        const end = @intFromEnum(zir_call.args_body[real_arg_idx]);
+                        break :blk zir_call.args_body[start..end];
+                    };
+
+                    // Give the arg its result type
+                    const provide_param_ty: Type = maybe_param_ty orelse .generic_poison;
+                    sema.inst_map.putAssumeCapacity(zir_call.call_inst, Air.internedToRef(provide_param_ty.toIntern()));
+                    // Resolve the arg!
+                    break :arg try sema.resolveInlineBody(block, arg_body, zir_call.call_inst);
+                };
 
                 if (block.isComptime() and !try sema.isComptimeKnown(uncoerced_arg)) {
                     return sema.failWithNeededComptime(block, cai.argSrc(block, arg_index), null);
