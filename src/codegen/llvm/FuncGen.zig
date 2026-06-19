@@ -6663,7 +6663,7 @@ const ParamTypeIterator = struct {
             .async => {
                 @panic("TODO implement async function lowering in the LLVM backend");
             },
-            .x86_64_sysv => return it.nextSystemV(ty),
+            .x86_64_sysv, .x86_64_x32 => return it.nextSystemV(ty),
             .x86_64_win => return it.nextWin64(ty),
             .x86_stdcall => {
                 it.zig_index += 1;
@@ -6940,7 +6940,7 @@ pub fn firstParamSRet(fn_info: InternPool.Key.FuncType, zcu: *Zcu, target: *cons
 
     return switch (fn_info.cc) {
         .auto => returnTypeByRef(zcu, target, return_type),
-        .x86_64_sysv => firstParamSRetSystemV(return_type, zcu, target),
+        .x86_64_sysv, .x86_64_x32 => firstParamSRetSystemV(return_type, zcu, target),
         .x86_64_win => x86_64_abi.classifyWindows(return_type, zcu, target, .ret) == .memory,
         .x86_sysv, .x86_win => isByRef(return_type, zcu),
         .x86_stdcall => !isScalar(zcu, return_type),
@@ -6999,7 +6999,7 @@ pub fn lowerFnRetTy(o: *Object, fn_info: InternPool.Key.FuncType) Allocator.Erro
     switch (fn_info.cc) {
         .@"inline" => unreachable,
         .auto => return if (returnTypeByRef(zcu, target, return_type)) .void else o.lowerType(return_type),
-        .x86_64_sysv => return lowerSystemVFnRetTy(o, fn_info),
+        .x86_64_sysv, .x86_64_x32 => return lowerSystemVFnRetTy(o, fn_info),
         .x86_64_win => return lowerWin64FnRetTy(o, fn_info),
         .x86_stdcall => return if (isScalar(zcu, return_type)) o.lowerType(return_type) else .void,
         .x86_fastcall => return lowerX86FastcallFnRetTy(o, zcu, return_type),
