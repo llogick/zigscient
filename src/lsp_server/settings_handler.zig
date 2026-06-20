@@ -29,14 +29,8 @@ pub const Manager = struct {
         .wasi => std.process.Preopens,
         else => void,
     },
-    build_runner_supported: union(enum) {
-        /// If returned, guarantees `zig_exe != null`.
-        yes,
-        /// no suitable build runner could be resolved based on the `zig_exe`
-        /// If returned, guarantees `zig_exe != null`.
-        no,
-        no_dont_error,
-    },
+    /// Build System Support check
+    bss_check: BssCheckState,
     impl: struct {
         is_dirty: bool,
         configs: std.EnumArray(Tag, UnresolvedConfig),
@@ -46,6 +40,16 @@ pub const Manager = struct {
         /// often in one session.
         arena: std.heap.ArenaAllocator.State,
     },
+
+    pub const BssCheckState = enum {
+        failure,
+        /// Check hasn't been performed yet
+        pending,
+        /// Minimum requirements to read Configuration met
+        partial,
+        /// Can read Configuration and make steps
+        success,
+    };
 
     pub fn init(
         io: std.Io,
@@ -63,7 +67,7 @@ pub const Manager = struct {
             .zig_exe = null,
             .zig_lib_dir = null,
             .global_cache_dir = null,
-            .build_runner_supported = .no_dont_error,
+            .bss_check = .pending,
             .wasi_preopens = switch (builtin.os.tag) {
                 .wasi => try std.process.Preopens.init(arena_allocator.allocator()),
                 else => {},
@@ -263,70 +267,11 @@ pub const Manager = struct {
             comptime unreachable;
         }
 
-        if (config.build_runner_path == null) blk: {
-            if (true) break :blk; // Disable the build_runner
-            if (!std.process.can_spawn) break :blk;
-            const zig_exe = manager.zig_exe orelse break :blk;
-            const global_cache_dir = manager.global_cache_dir orelse break :blk;
-
-            if (!@import("build_runner/check.zig").isBuildRunnerSupported(zig_exe.version)) {
-                manager.build_runner_supported = .no;
-                break :blk;
-            }
-
-            const build_runner_source = @embedFile("build_runner/build_runner.zig");
-            const build_runner_config_source = @embedFile("build_runner/shared.zig");
-
-            const build_runner_hash = get_hash: {
-                const Hasher = std.crypto.auth.siphash.SipHash128(1, 3);
-
-                var hasher: Hasher = .init(&@splat(0));
-                hasher.update(build_runner_source);
-                hasher.update(build_runner_config_source);
-                break :get_hash hasher.finalResult();
-            };
-
-            const cache_path = try global_cache_dir.join(manager.allocator, &.{ "build_runner", &std.fmt.bytesToHex(build_runner_hash, .lower) });
-            defer manager.allocator.free(cache_path);
-
-            std.debug.assert(std.fs.path.isAbsolute(cache_path));
-            var cache_dir = std.Io.Dir.cwd().createDirPathOpen(io, cache_path, .{}) catch |err| switch (err) {
-                error.Canceled => return error.Canceled,
-                else => {
-                    log.err("failed to open directory '{s}': {}", .{ cache_path, err });
-                    break :blk;
-                },
-            };
-            defer cache_dir.close(io);
-
-            cache_dir.writeFile(io, .{
-                .sub_path = "shared.zig",
-                .data = build_runner_config_source,
-                .flags = .{ .exclusive = true },
-            }) catch |err| switch (err) {
-                error.Canceled => return error.Canceled,
-                error.PathAlreadyExists => {},
-                else => {
-                    log.err("failed to write file '{s}/shared.zig': {}", .{ cache_path, err });
-                    break :blk;
-                },
-            };
-
-            cache_dir.writeFile(io, .{
-                .sub_path = "build_runner.zig",
-                .data = build_runner_source,
-                .flags = .{ .exclusive = true },
-            }) catch |err| switch (err) {
-                error.Canceled => return error.Canceled,
-                error.PathAlreadyExists => {},
-                else => {
-                    log.err("failed to write file '{s}/build_runner.zig': {}", .{ cache_path, err });
-                    break :blk;
-                },
-            };
-
-            config.build_runner_path = try std.fs.path.join(arena, &.{ cache_path, "build_runner.zig" });
-            manager.build_runner_supported = .yes;
+        brunner: {
+            if (!std.process.can_spawn) break :brunner;
+            const zig_exe = manager.zig_exe orelse break :brunner;
+            manager.bss_check = if (@import("build_runner/check.zig").isBuildRunnerSupported(zig_exe.version)) .partial else .failure;
+            if (manager.bss_check == .partial and manager.self_file_path != null) manager.bss_check = .success;
         }
 
         if (config.builtin_path == null) blk: {
@@ -598,7 +543,6 @@ pub const FileConfigInfo = struct {
 pub const file_system_config_options: []const FileConfigInfo = &.{
     .{ .name = "zig_exe_path", .kind = .file, .is_accessible = true },
     .{ .name = "builtin_path", .kind = .file, .is_accessible = true },
-    .{ .name = "build_runner_path", .kind = .file, .is_accessible = true },
     .{ .name = "zig_lib_path", .kind = .directory, .is_accessible = true },
     .{ .name = "global_cache_path", .kind = .directory, .is_accessible = false },
 };
@@ -846,7 +790,6 @@ pub fn resolveConfiguration(server: *Server) error{ Canceled, OutOfMemory }!void
 
     const new_zig_exe_path: bool = result.did_change.zig_exe_path;
     const new_zig_lib_path: bool = result.did_change.zig_lib_path;
-    const new_build_runner_path: bool = result.did_change.build_runner_path;
     // const new_enable_build_on_save: bool = result.did_change.enable_build_on_save;
     // const new_build_on_save_args: bool = result.did_change.build_on_save_args;
     const new_force_autofix: bool = result.did_change.force_autofix;
@@ -876,7 +819,7 @@ pub fn resolveConfiguration(server: *Server) error{ Canceled, OutOfMemory }!void
     // }
 
     if (server.status == .initialized and DocumentStore.supports_build_system) {
-        if (new_zig_exe_path or new_zig_lib_path or new_build_runner_path) {
+        if (new_zig_exe_path or new_zig_lib_path) {
             for (server.document_store.build_files.keys()) |build_file_uri| {
                 server.document_store.invalidateBuildFile(build_file_uri);
             }
@@ -924,48 +867,37 @@ pub fn resolveConfiguration(server: *Server) error{ Canceled, OutOfMemory }!void
     check: {
         if (server.status != .initialized) break :check;
 
-        switch (server.config_manager.build_runner_supported) {
-            .yes, .no_dont_error => break :check,
-            .no => {},
-        }
+        switch (server.config_manager.bss_check) {
+            .pending, .success => break :check,
+            .partial => {
+                server.showMessage(
+                    .Warning,
+                    "Zigscient: Build System: Could not determine path to self; Only minimal Build System support available.",
+                    .{},
+                );
+            },
+            .failure => {
+                const zig_version = server.config_manager.zig_exe.?.version;
 
-        const zig_version = server.config_manager.zig_exe.?.version;
-        const zls_version = build_options.semantic_version;
-
-        const zig_version_is_tagged = zig_version.pre == null;
-        const zls_version_is_tagged = zls_version.pre == null;
-
-        if (zig_version_is_tagged) {
-            server.showMessage(
-                .Warning,
-                "Zig version {f} isn't supported by Zigscient {f} 's build_runner. The server won't be able to resolve project modules information.",
-                .{ zig_version, zls_version },
-            );
-        } else if (zls_version_is_tagged) {
-            server.showMessage(
-                .Warning,
-                "Compatibility mismatch: This version of Zigscient {f} is designed for use with Zig {}.{}. You're currently running Zig {f}",
-                .{ zls_version, zls_version.major, zls_version.minor, zig_version },
-            );
-        } else {
-            server.showMessage(
-                .Warning,
-                "Incompatible Zig version: Zigscient {f} requires at least Zig {s} to function properly. You're currently running Zig {f}",
-                .{ zls_version, build_options.minimum_runtime_zig_version_string, zig_version },
-            );
+                server.showMessage(
+                    .Warning,
+                    "Zigscient: Build System: Unsupported Zig version: `{f}` . Minimum supported Zig version {q} .",
+                    .{ zig_version, build_options.minimum_runtime_zig_version_string },
+                );
+            },
         }
     }
 
     if (server.config_manager.config.enable_build_on_save orelse false) {
         if (!BuildOnSaveSupport.isSupportedComptime()) {
             // This message is not very helpful but it relatively uncommon to happen anyway.
-            log.info("'enable_build_on_save' is ignored because build on save is not supported by this build of the server.", .{});
+            log.info("'enable_build_on_save' is ignored because build-on-save is not supported by this build of the server.", .{});
         } else if (server.status == .initialized and (server.config_manager.config.zig_exe_path == null or server.config_manager.zig_lib_dir == null)) {
             log.warn("'enable_build_on_save' is ignored because Zig could not be found", .{});
         } else if (server.status == .initialized and !server.client_capabilities.supports_publish_diagnostics) {
             log.warn("'enable_build_on_save' is ignored because it is not supported by {s}", .{server.client_capabilities.client_name orelse "your editor"});
-        } else if (server.status == .initialized and server.config_manager.build_runner_supported == .no and server.config_manager.config.build_runner_path == null) {
-            log.warn("'enable_build_on_save' is ignored because no build runner is available", .{});
+        } else if (server.status == .initialized and server.config_manager.bss_check != .success) {
+            log.warn("'enable_build_on_save' is ignored because the Build System check failed", .{});
         } else if (server.status == .initialized and server.config_manager.zig_exe != null) {
             switch (BuildOnSaveSupport.isSupportedRuntime(server.config_manager.zig_exe.?.version)) {
                 .supported => {},

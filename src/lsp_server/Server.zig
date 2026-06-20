@@ -943,11 +943,11 @@ fn didChangeConfigurationHandler(server: *Server, arena: std.mem.Allocator, noti
 pub fn createDocumentStoreConfig(config_manager: *const settings_handler.Manager) DocumentStore.Settings {
     return .{
         .self_file_path = config_manager.self_file_path,
-        .environ_map = config_manager.environ_map,
         .zig_exe_path = config_manager.config.zig_exe_path,
         .zig_lib_dir = config_manager.zig_lib_dir,
-        .build_runner_path = config_manager.config.build_runner_path,
         .builtin_path = config_manager.config.builtin_path,
+        .bss_check = config_manager.bss_check,
+        .environ_map = config_manager.environ_map,
         .global_cache_dir = config_manager.global_cache_dir,
         .wasi_preopens = config_manager.wasi_preopens,
         .disable_notifications = config_manager.config.disable_notifications,

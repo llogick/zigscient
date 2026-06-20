@@ -195,6 +195,8 @@ pub fn main(init: std.process.Init.Minimal) anyerror!u8 {
     log.info("{q}", .{cli_opts.argv0});
     log.info("", .{});
 
+    if (self_file_path == null) log.warn("Could not determine path to self; Only minimal Build System support available.", .{});
+
     var config_manager: lsp_server.settings_handler.Manager = try .init(io, gpa, &environ_map, self_file_path);
     defer config_manager.deinit();
 

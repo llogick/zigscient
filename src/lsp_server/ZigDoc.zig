@@ -603,7 +603,7 @@ pub fn handleRootIdComment(zig_doc: *ZigDoc, ds: *DocumentStore, send_notificati
         }
     }
 
-    if (config.roots.tailor_run_state == .pending) ds.tailor_run_group.async(ds.io, BldDoc.triggerTailorRun, .{ build_file, ds });
+    if (ds.config.bss_check == .success and config.roots.tailor_run_state == .pending) ds.tailor_run_group.async(ds.io, BldDoc.triggerTailorRun, .{ build_file, ds });
 
     if (!send_noti or ds.config.disable_notifications) return;
 

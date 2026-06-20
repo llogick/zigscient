@@ -166,6 +166,7 @@ pub fn triggerTailorRun(self: *BldDoc, ds: *DocumentStore) std.Io.Cancelable!voi
 
 pub fn runTailor(build_file: *BldDoc, ds: *DocumentStore) !void {
     if (!std.process.can_spawn) return;
+    if (ds.config.bss_check != .success) return;
 
     const io = ds.io;
     const self_file_path = ds.config.self_file_path orelse return;
@@ -336,6 +337,8 @@ fn destroyCompilation(self: *BldDoc, ds: *DocumentStore, do_retain_capacity: boo
 }
 
 fn initCompilation(self: *BldDoc, ds: *DocumentStore) error{ Canceled, OutOfMemory }!void {
+    if (ds.config.bss_check != .success) return;
+
     const cfg = self.getConfiguration(ds.io);
     defer cfg.release(ds.io);
 

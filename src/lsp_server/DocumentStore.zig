@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const lsp_server = @import("lsp-server");
 const URI = @import("uri.zig");
 const analysis = @import("analysis.zig");
 const offsets = @import("offsets.zig");
@@ -82,11 +83,11 @@ pub fn computeHash(bytes: []const u8) Hash {
 // TODO this shouldn't be a thing -- just take a pointer to the Server's cfg
 pub const Settings = struct {
     self_file_path: ?[]const u8,
-    environ_map: *std.process.Environ.Map,
     zig_exe_path: ?[]const u8,
     zig_lib_dir: ?std.Build.Cache.Directory,
-    build_runner_path: ?[]const u8,
     builtin_path: ?[]const u8,
+    bss_check: lsp_server.settings_handler.Manager.BssCheckState,
+    environ_map: *std.process.Environ.Map,
     global_cache_dir: ?std.Build.Cache.Directory,
     wasi_preopens: switch (builtin.os.tag) {
         .wasi => std.process.Preopens,
@@ -313,8 +314,8 @@ pub fn refreshDocumentFromFileSystem(self: *DocumentStore, uri: Uri, should_dele
 pub fn invalidateBuildFile(self: *DocumentStore, build_file_uri: Uri) void {
     comptime std.debug.assert(supports_build_system);
 
+    if (self.config.bss_check != .partial and self.config.bss_check != .success) return;
     if (self.config.zig_exe_path == null) return;
-    // if (self.config.build_runner_path == null) return;
     if (self.config.global_cache_dir == null) return;
     if (self.config.zig_lib_dir == null) return;
 

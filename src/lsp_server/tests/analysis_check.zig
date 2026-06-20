@@ -102,11 +102,11 @@ pub fn main(init: std.process.Init) Error!void {
 
     var config: lsp_server.DocumentStore.Settings = .{
         .self_file_path = null,
-        .environ_map = &environ_map,
         .zig_exe_path = zig_exe_path,
         .zig_lib_dir = zig_lib_dir,
-        .build_runner_path = null,
         .builtin_path = null,
+        .bss_check = .pending,
+        .environ_map = &environ_map,
         .global_cache_dir = null,
         .wasi_preopens = switch (builtin.target.os.tag) {
             .wasi => try std.process.Preopens.init(arena),
