@@ -5287,33 +5287,51 @@ fn resolveBlockBody(
             return sema.resolveAnalyzedBlock(parent_block, src, child_block, merges, need_debug_scope);
         } else |err| switch (err) {
             error.ComptimeBreak => {
+                const break_inst = sema.comptime_break_inst;
+                const break_data = sema.code.instructions.items(.data)[@intFromEnum(break_inst)].@"break";
+                const extra = sema.code.extraData(Zir.Inst.Break, break_data.payload_index).data;
+                const breaks_to_body = extra.block_inst == body_inst;
+
                 // Comptime control flow is happening, however child_block may still contain
                 // runtime instructions which need to be copied to the parent block.
                 if (need_debug_scope and child_block.instructions.items.len > 0) {
-                    // We need a runtime block for scoping reasons.
-                    _ = try child_block.addBr(merges.block_inst, .void_value);
+                    // We need a runtime block for scoping reasons. The break
+                    // operand may have been produced by a runtime instruction
+                    // inside `child_blocks`.
+                    const operand = sema.resolveInst(break_data.operand);
+                    const operand_ty = sema.typeOf(operand);
+                    _ = try child_block.addBr(merges.block_inst, operand);
                     try parent_block.instructions.append(sema.gpa, merges.block_inst);
                     try sema.air_extra.ensureUnusedCapacity(sema.gpa, @typeInfo(Air.Block).@"struct".field_names.len +
                         child_block.instructions.items.len);
                     sema.air_instructions.items(.data)[@intFromEnum(merges.block_inst)] = .{ .ty_pl = .{
-                        .ty = .void_type,
+                        .ty = Air.internedToRef(operand_ty.toIntern()),
                         .payload = sema.addExtraAssumeCapacity(Air.Block{
                             .body_len = @intCast(child_block.instructions.items.len),
                         }),
                     } };
                     sema.air_extra.appendSliceAssumeCapacity(@ptrCast(child_block.instructions.items));
+
+                    // The block result now holds the operand value, so we remap
+                    // the operand such that an enclosing scope which resolves
+                    // it picks up the block result rather than the internal
+                    // block instruction.
+                    if (break_data.operand.toIndex()) |operand_zir| {
+                        sema.inst_map.putAssumeCapacity(operand_zir, merges.block_inst.toRef());
+                    }
+                    if (breaks_to_body) {
+                        return merges.block_inst.toRef();
+                    } else {
+                        return error.ComptimeBreak;
+                    }
                 } else {
                     // We can copy instructions directly to the parent block.
                     try parent_block.instructions.appendSlice(sema.gpa, child_block.instructions.items);
-                }
-
-                const break_inst = sema.comptime_break_inst;
-                const break_data = sema.code.instructions.items(.data)[@intFromEnum(break_inst)].@"break";
-                const extra = sema.code.extraData(Zir.Inst.Break, break_data.payload_index).data;
-                if (extra.block_inst == body_inst) {
-                    return sema.resolveInst(break_data.operand);
-                } else {
-                    return error.ComptimeBreak;
+                    if (breaks_to_body) {
+                        return sema.resolveInst(break_data.operand);
+                    } else {
+                        return error.ComptimeBreak;
+                    }
                 }
             },
             else => |e| return e,

@@ -82,23 +82,19 @@ pub fn writeInst(
 }
 
 pub fn dump(air: Air, pt: Zcu.PerThread, liveness: ?Air.Liveness) void {
-    const comp = pt.zcu.comp;
-    const io = comp.io;
-    var buffer: [512]u8 = undefined;
-    const stderr = try io.lockStderr(&buffer, null);
-    defer io.unlockStderr();
+    var buffer: [4096]u8 = undefined;
+    const stderr = std.debug.lockStderr(&buffer);
+    defer std.debug.unlockStderr();
     const w = &stderr.file_writer.interface;
-    air.write(w, pt, liveness);
+    air.write(w, pt, liveness) catch return;
 }
 
 pub fn dumpInst(air: Air, inst: Air.Inst.Index, pt: Zcu.PerThread, liveness: ?Air.Liveness) void {
-    const comp = pt.zcu.comp;
-    const io = comp.io;
-    var buffer: [512]u8 = undefined;
-    const stderr = try io.lockStderr(&buffer, null);
-    defer io.unlockStderr();
+    var buffer: [4096]u8 = undefined;
+    const stderr = std.debug.lockStderr(&buffer);
+    defer std.debug.unlockStderr();
     const w = &stderr.file_writer.interface;
-    air.writeInst(w, inst, pt, liveness);
+    air.writeInst(w, inst, pt, liveness) catch return;
 }
 
 const Writer = struct {

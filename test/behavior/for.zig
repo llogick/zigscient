@@ -547,3 +547,20 @@ test "labeled break from else" {
     try S.doTheTest(5);
     try comptime S.doTheTest(5);
 }
+
+test "value break from inline for" {
+    const S = struct {
+        fn doTheTest() !void {
+            const x = inline for (0..2) |_| {
+                if (true) {
+                    var idx: u32 = 0;
+                    idx += 1;
+                    break idx;
+                }
+            };
+            try expect(x == 1);
+        }
+    };
+    try S.doTheTest();
+    try comptime S.doTheTest();
+}
