@@ -16,7 +16,7 @@ fn fetch64(ptr: [*]const u8, offset: usize) u64 {
 pub const CityHash32 = struct {
     const Self = @This();
 
-    // Magic numbers for 32-bit hashing.  Copied from Murmur3.
+    // Magic numbers for 32-bit hashing. Copied from Murmur3.
     const c1: u32 = 0xcc9e2d51;
     const c2: u32 = 0x1b873593;
 

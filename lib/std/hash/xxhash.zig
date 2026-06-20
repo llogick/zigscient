@@ -760,7 +760,7 @@ pub const XxHash3 = struct {
         var accumulator_copy = self.accumulator;
         var last_block_copy: [block_bytes]u8 = undefined;
 
-        // Digest the last block onthe Accumulator copy.
+        // Digest the last block on the Accumulator copy.
         return accumulator_copy.digest(self.total_len, last_block: {
             if (self.buffered >= block_bytes) {
                 const block_count = ((self.buffered - 1) / block_bytes) * block_bytes;
