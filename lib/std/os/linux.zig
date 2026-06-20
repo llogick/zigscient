@@ -9438,7 +9438,7 @@ pub const timezone = extern struct {
 /// The timespec struct used by the kernel.
 pub const kernel_timespec = extern struct {
     sec: i64,
-    nsec: isize,
+    nsec: i64,
 
     /// For use with `utimensat` and `futimens`.
     pub const NOW: timespec = .{
