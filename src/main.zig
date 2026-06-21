@@ -911,6 +911,7 @@ const CliModule = struct {
     inherited: Package.Module.CreateOptions.Inherited,
     target_arch_os_abi: ?[]const u8,
     target_mcpu: ?[]const u8,
+    dynamic_linker: ?[]const u8,
 
     deps: []const Dep,
     resolved: ?*Package.Module,
@@ -961,6 +962,7 @@ pub const CompilationState = struct {
     emit_implib_arg_provided: bool = false,
     target_arch_os_abi: ?[]const u8 = null,
     target_mcpu: ?[]const u8 = null,
+    dynamic_linker: ?[]const u8 = null,
     emit_h: Emit = .no,
     soname: SOName = undefined,
     want_compiler_rt: ?bool = null,
@@ -1074,7 +1076,6 @@ pub const CompilationState = struct {
         // Populated just before the call to `createModule`.
         .dirs = undefined,
         .object_format = null,
-        .dynamic_linker = null,
         .modules = .empty,
         .opts = .{
             .is_test = undefined,
@@ -1185,6 +1186,7 @@ pub fn buildOutputType(
     cs.emit_implib_arg_provided = false;
     cs.target_arch_os_abi = null;
     cs.target_mcpu = null;
+    cs.dynamic_linker = null;
     cs.emit_h = .no;
     cs.soname = undefined;
     cs.want_compiler_rt = null;
@@ -1300,7 +1302,6 @@ pub fn buildOutputType(
         // Populated just before the call to `createModule`.
         .dirs = undefined,
         .object_format = null,
-        .dynamic_linker = null,
         .modules = .empty,
         .opts = .{
             .is_test = switch (arg_mode) {
@@ -1419,6 +1420,7 @@ pub fn buildOutputType(
                             &cs.cc_argv,
                             &cs.target_arch_os_abi,
                             &cs.target_mcpu,
+                            &cs.dynamic_linker,
                             &cs.deps,
                             &cs.c_source_files_owner_index,
                             &cs.rc_source_files_owner_index,
@@ -1637,9 +1639,9 @@ pub fn buildOutputType(
                     } else if (mem.cutPrefix(u8, arg, "-O")) |rest| {
                         cs.mod_opts.optimize_mode = parseOptimizeMode(rest);
                     } else if (mem.eql(u8, arg, "--dynamic-linker")) {
-                        cs.create_module.dynamic_linker = args_iter.nextOrFatal();
+                        cs.dynamic_linker = args_iter.nextOrFatal();
                     } else if (mem.eql(u8, arg, "--no-dynamic-linker")) {
-                        cs.create_module.dynamic_linker = "";
+                        cs.dynamic_linker = "";
                     } else if (mem.eql(u8, arg, "--sysroot")) {
                         const next_arg = args_iter.nextOrFatal();
                         cs.create_module.sysroot = next_arg;
@@ -2086,7 +2088,7 @@ pub fn buildOutputType(
                         const lang = if (rest.len == 0) args_iter.nextOrFatal() else rest;
                         if (mem.eql(u8, lang, "none")) {
                             file_ext = null;
-                        } else if (Compilation.LangToExt.get(lang)) |got_ext| {
+                        } else if (Compilation.FileExt.from_lang.get(lang)) |got_ext| {
                             file_ext = got_ext;
                         } else {
                             fatal("language not recognized: {s}", .{lang});
@@ -2223,7 +2225,7 @@ pub fn buildOutputType(
                         const lang = mem.sliceTo(it.only_arg, 0);
                         if (mem.eql(u8, lang, "none")) {
                             file_ext = null;
-                        } else if (Compilation.LangToExt.get(lang)) |got_ext| {
+                        } else if (Compilation.FileExt.from_lang.get(lang)) |got_ext| {
                             file_ext = got_ext;
                         } else {
                             fatal("language not recognized: {q}", .{lang});
@@ -2918,12 +2920,11 @@ pub fn buildOutputType(
                     mem.eql(u8, arg, "--dynamic-linker") or
                     mem.eql(u8, arg, "-dynamic-linker"))
                 {
-                    cs.create_module.dynamic_linker = linker_args_it.nextOrFatal();
-                } else if (mem.eql(u8, arg, "-I") or
-                    mem.eql(u8, arg, "--no-dynamic-linker") or
+                    cs.dynamic_linker = linker_args_it.nextOrFatal();
+                } else if (mem.eql(u8, arg, "--no-dynamic-linker") or
                     mem.eql(u8, arg, "-no-dynamic-linker"))
                 {
-                    cs.create_module.dynamic_linker = "";
+                    cs.dynamic_linker = "";
                 } else if (mem.eql(u8, arg, "-E") or
                     mem.eql(u8, arg, "--export-dynamic") or
                     mem.eql(u8, arg, "-export-dynamic"))
@@ -3500,6 +3501,7 @@ pub fn buildOutputType(
             .inherited = cs.mod_opts,
             .target_arch_os_abi = cs.target_arch_os_abi,
             .target_mcpu = cs.target_mcpu,
+            .dynamic_linker = cs.dynamic_linker,
             .deps = try cs.deps.toOwnedSlice(arena),
             .resolved = null,
             .c_source_files_start = cs.c_source_files_owner_index,
@@ -4170,10 +4172,59 @@ pub fn buildOutputType(
         if (cs.test_exec_args.items.len == 0 and target.ofmt == .c and emit_bin_resolved != .no) {
             // Default to using `zig run` to execute the produced .c code from `zig test`.
             try cs.test_exec_args.appendSlice(arena, &.{ cs.self_exe_path, "run" });
-            if (cs.dirs.zig_lib.path) |p| {
-                try cs.test_exec_args.appendSlice(arena, &.{ "-I", p });
+            // Skip passing `-ofmt`, we want the default for the target, not `.c` anymore.
+
+            var prev_has_cflags = false;
+            var prev_has_rcflags = false;
+            if (cs.dirs.zig_lib.path) |zig_lib_path| {
+                try cs.test_exec_args.appendSlice(arena, &.{ "-cflags", "-I", zig_lib_path, "--" });
+                prev_has_cflags = true;
+            }
+            try cs.test_exec_args.append(arena, null);
+            for (cs.create_module.modules.keys(), cs.create_module.modules.values()) |mod_name, mod| {
+                for (cs.create_module.c_source_files.items[mod.c_source_files_start..mod.c_source_files_end]) |c_source_file| {
+                    const cflags_len = c_source_file.extra_flags.len + c_source_file.cache_exempt_flags.len;
+                    if (prev_has_cflags or cflags_len > 0) {
+                        try cs.test_exec_args.ensureUnusedCapacity(arena, 1 + cflags_len + 1);
+                        cs.test_exec_args.appendAssumeCapacity("-cflags");
+                        for (c_source_file.extra_flags) |extra_flag| cs.test_exec_args.appendAssumeCapacity(extra_flag);
+                        for (c_source_file.cache_exempt_flags) |cache_exempt_flag| cs.test_exec_args.appendAssumeCapacity(cache_exempt_flag);
+                        cs.test_exec_args.appendAssumeCapacity("--");
+                    }
+                    prev_has_cflags = cflags_len > 0;
+                    if (c_source_file.ext) |ext| try cs.test_exec_args.appendSlice(arena, &.{ "-x", ext.toLang() });
+                    try cs.test_exec_args.append(arena, c_source_file.src_path);
+                    if (c_source_file.ext) |_| try cs.test_exec_args.appendSlice(arena, &.{ "-x", "none" });
+                }
+                for (cs.create_module.rc_source_files.items[mod.rc_source_files_start..mod.rc_source_files_end]) |rc_source_file| {
+                    const rcflags_len = rc_source_file.extra_flags.len;
+                    if (prev_has_rcflags or rcflags_len > 0) {
+                        try cs.test_exec_args.ensureUnusedCapacity(arena, 1 + rcflags_len + 1);
+                        cs.test_exec_args.appendAssumeCapacity("-rcflags");
+                        for (rc_source_file.extra_flags) |extra_flag| cs.test_exec_args.appendAssumeCapacity(extra_flag);
+                        cs.test_exec_args.appendAssumeCapacity("--");
+                    }
+                    prev_has_rcflags = rcflags_len > 0;
+                    try cs.test_exec_args.append(arena, rc_source_file.src_path);
+                }
+                if (mod.target_arch_os_abi) |triple| try cs.test_exec_args.appendSlice(arena, &.{ "-target", triple });
+                if (mod.target_mcpu) |mcpu| try cs.test_exec_args.appendSlice(arena, &.{ "-mcpu", mcpu });
+                if (mod.dynamic_linker) |dl| if (dl.len > 0)
+                    try cs.test_exec_args.appendSlice(arena, &.{ "--dynamic-linker", dl })
+                else
+                    try cs.test_exec_args.append(arena, "--no-dynamic-linker");
+                try cs.test_exec_args.ensureUnusedCapacity(arena, mod.cc_argv.len);
+                for (mod.cc_argv) |cc_arg| cs.test_exec_args.appendAssumeCapacity(cc_arg);
+                for (mod.deps) |dep| try cs.test_exec_args.appendSlice(arena, &.{
+                    "--dep",
+                    if (std.mem.eql(u8, dep.key, dep.value)) dep.value else try std.fmt.allocPrint(arena, "{s}={s}", .{ dep.key, dep.value }),
+                });
+                try cs.test_exec_args.append(arena, try std.fmt.allocPrint(arena, "-M{s}", .{mod_name}));
             }
 
+            try cs.test_exec_args.ensureUnusedCapacity(arena, comp.global_cc_argv.len);
+            for (comp.global_cc_argv) |global_cc_arg| cs.test_exec_args.appendAssumeCapacity(global_cc_arg);
+            if (cs.create_module.resolved_options.link_libcpp) try cs.test_exec_args.append(arena, "-lc++");
             if (cs.create_module.resolved_options.link_libc) {
                 try cs.test_exec_args.append(arena, "-lc");
             } else if (target.os.tag == .windows) {
@@ -4183,21 +4234,10 @@ pub fn buildOutputType(
                 });
             }
 
-            const first_cli_mod = cs.create_module.modules.values()[0];
-            if (first_cli_mod.target_arch_os_abi) |triple| {
-                try cs.test_exec_args.appendSlice(arena, &.{ "-target", triple });
-            }
-            if (first_cli_mod.target_mcpu) |mcpu| {
-                try cs.test_exec_args.append(arena, try std.fmt.allocPrint(arena, "-mcpu={s}", .{mcpu}));
-            }
-            if (cs.create_module.dynamic_linker) |dl| {
-                if (dl.len > 0) {
-                    try cs.test_exec_args.appendSlice(arena, &.{ "--dynamic-linker", dl });
-                } else {
-                    try cs.test_exec_args.append(arena, "--no-dynamic-linker");
-                }
-            }
-            try cs.test_exec_args.append(arena, null); // placeholder for the path of the emitted C source file
+            try cs.test_exec_args.ensureUnusedCapacity(arena, 2 * log_scopes.items.len + @intFromBool(cs.verbose_link) + @intFromBool(cs.verbose_cc));
+            for (log_scopes.items) |log_scope| cs.test_exec_args.appendSliceAssumeCapacity(&.{ "--debug-log", log_scope });
+            if (cs.verbose_link) cs.test_exec_args.appendAssumeCapacity("--verbose-link");
+            if (cs.verbose_cc) cs.test_exec_args.appendAssumeCapacity("--verbose-cc");
         }
 
         try runOrTest(
@@ -4226,7 +4266,6 @@ const CreateModule = struct {
     dirs: Compilation.Directories,
     modules: std.array_hash_map.String(CliModule),
     opts: Compilation.Config.Options,
-    dynamic_linker: ?[]const u8,
     object_format: ?[]const u8,
     /// undefined until createModule() for the root module is called.
     resolved_options: Compilation.Config,
@@ -4288,7 +4327,7 @@ fn createModule(
         var target_parse_options: std.Target.Query.ParseOptions = .{
             .arch_os_abi = cli_mod.target_arch_os_abi orelse "native",
             .cpu_features = cli_mod.target_mcpu,
-            .dynamic_linker = create_module.dynamic_linker,
+            .dynamic_linker = cli_mod.dynamic_linker,
             .object_format = create_module.object_format,
         };
 
@@ -8194,6 +8233,7 @@ fn handleModArg(
     cc_argv: *std.ArrayList([]const u8),
     target_arch_os_abi: *?[]const u8,
     target_mcpu: *?[]const u8,
+    dynamic_linker: *?[]const u8,
     deps: *std.ArrayList(CliModule.Dep),
     c_source_files_owner_index: *usize,
     rc_source_files_owner_index: *usize,
@@ -8242,6 +8282,7 @@ fn handleModArg(
         .inherited = mod_opts.*,
         .target_arch_os_abi = target_arch_os_abi.*,
         .target_mcpu = target_mcpu.*,
+        .dynamic_linker = dynamic_linker.*,
         .deps = try deps.toOwnedSlice(arena),
         .resolved = null,
         .c_source_files_start = c_source_files_owner_index.*,
@@ -8253,6 +8294,7 @@ fn handleModArg(
     mod_opts.* = .{};
     target_arch_os_abi.* = null;
     target_mcpu.* = null;
+    dynamic_linker.* = null;
     c_source_files_owner_index.* = create_module.c_source_files.items.len;
     rc_source_files_owner_index.* = create_module.rc_source_files.items.len;
 }

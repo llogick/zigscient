@@ -24,59 +24,40 @@ pub const Class = enum {
     float,
     /// A `Class.sse` containing two `f32`s.
     float_combine,
-    /// Clang passes each vector element in a separate `Class.integer`, but returns as `Class.memory`.
+    /// Clang uses different element sizes depending on the vector length.
+    bool_vector_mask,
+    /// Clang passes each vector element in a separate `Class.integer`.
     integer_per_element,
+    /// Clang passes each vector element in a separate `Class.sse`.
+    sse_per_element,
+    /// Just complete insanity, idk what to say.
+    sse_sse_x87_per_qword,
+    /// Clang passes each 16 bytes in a separate `Class.sse`.
+    sse_per_xword,
+    /// Clang passes each 32 bytes in a separate `Class.sse`.
+    sse_per_yword,
+    /// Clang passes each 64 bytes in a separate `Class.sse`.
+    sse_per_zword,
 
-    pub const one_integer: [8]Class = .{
-        .integer, .none, .none, .none,
-        .none,    .none, .none, .none,
-    };
-    pub const two_integers: [8]Class = .{
-        .integer, .integer, .none, .none,
-        .none,    .none,    .none, .none,
-    };
-    pub const three_integers: [8]Class = .{
-        .integer, .integer, .integer, .none,
-        .none,    .none,    .none,    .none,
-    };
-    pub const four_integers: [8]Class = .{
-        .integer, .integer, .integer, .integer,
-        .none,    .none,    .none,    .none,
-    };
-    pub const len_integers: [8]Class = .{
-        .integer_per_element, .none, .none, .none,
-        .none,                .none, .none, .none,
-    };
+    pub const zero_bit: [8]Class = .{ .none, .none, .none, .none, .none, .none, .none, .none };
+
+    pub const one_integer: [8]Class = .{ .integer, .none, .none, .none, .none, .none, .none, .none };
+    pub const two_integers: [8]Class = .{ .integer, .integer, .none, .none, .none, .none, .none, .none };
+    pub const three_integers: [8]Class = .{ .integer, .integer, .integer, .none, .none, .none, .none, .none };
+    pub const four_integers: [8]Class = .{ .integer, .integer, .integer, .integer, .none, .none, .none, .none };
+    pub const len_integers: [8]Class = .{ .integer_per_element, .none, .none, .none, .none, .none, .none, .none };
 
     pub const @"f16" = @"f64";
-    pub const @"f32": [8]Class = .{
-        .float, .none, .none, .none,
-        .none,  .none, .none, .none,
-    };
-    pub const @"f64": [8]Class = .{
-        .sse,  .none, .none, .none,
-        .none, .none, .none, .none,
-    };
-    pub const @"f80": [8]Class = .{
-        .x87,  .x87up, .none, .none,
-        .none, .none,  .none, .none,
-    };
-    pub const @"f128": [8]Class = .{
-        .sse,  .sseup, .none, .none,
-        .none, .none,  .none, .none,
-    };
+    pub const @"f32": [8]Class = .{ .float, .none, .none, .none, .none, .none, .none, .none };
+    pub const @"f64": [8]Class = .{ .sse, .none, .none, .none, .none, .none, .none, .none };
+    pub const @"f80": [8]Class = .{ .x87, .x87up, .none, .none, .none, .none, .none, .none };
+    pub const @"f128": [8]Class = .{ .sse, .sseup, .none, .none, .none, .none, .none, .none };
 
     /// COMPLEX_X87: This class consists of types that will be returned via the x87
     ///     FPU.
-    pub const complex_x87: [8]Class = .{
-        .x87,  .x87up, .x87,  .x87up,
-        .none, .none,  .none, .none,
-    };
+    pub const complex_x87: [8]Class = .{ .x87, .x87up, .x87, .x87up, .none, .none, .none, .none };
 
-    pub const stack: [8]Class = .{
-        .memory, .none, .none, .none,
-        .none,   .none, .none, .none,
-    };
+    pub const stack: [8]Class = .{ .memory, .none, .none, .none, .none, .none, .none, .none };
 
     pub fn isX87(class: Class) bool {
         return switch (class) {
@@ -112,7 +93,7 @@ pub const Class = enum {
 
 pub const Context = enum { ret, arg, other };
 
-pub fn classifyWindows(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Context) Class {
+pub fn classifyWindows(init_ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Context) Class {
     // https://docs.microsoft.com/en-gb/cpp/build/x64-calling-convention?view=vs-2017
     // "There's a strict one-to-one correspondence between a function call's arguments
     // and the registers used for those arguments. Any argument that doesn't fit in 8
@@ -121,13 +102,13 @@ pub fn classifyWindows(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
     // "All floating point operations are done using the 16 XMM registers."
     // "Structs and unions of size 8, 16, 32, or 64 bits, and __m64 types, are passed
     // as if they were integers of the same size."
-    return switch (ty.zigTypeTag(zcu)) {
+    var ty = init_ty;
+    while (true) return switch (ty.zigTypeTag(zcu)) {
+        .void => return .none,
+        .bool,
         .pointer,
         .int,
-        .bool,
         .@"enum",
-        .void,
-        .noreturn,
         .error_set,
         .@"struct",
         .@"union",
@@ -137,7 +118,7 @@ pub fn classifyWindows(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
         .@"anyframe",
         .frame,
         => switch (ty.abiSize(zcu)) {
-            0 => unreachable,
+            0 => .none,
             1, 2, 4, 8 => .integer,
             else => switch (ty.zigTypeTag(zcu)) {
                 .int => .win_i128,
@@ -148,15 +129,43 @@ pub fn classifyWindows(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
                 else => .memory,
             },
         },
-
+        .noreturn => unreachable,
         .float => switch (ty.floatBits(target)) {
             16, 32, 64 => .sse,
             80 => .memory,
             128 => if (ctx == .arg) .memory else .sse,
             else => unreachable,
         },
-        .vector => .sse,
-
+        .vector => {
+            const len = ty.vectorLen(zcu);
+            if (len == 0) return .none;
+            const elem_ty = ty.childType(zcu);
+            if (len == 1) {
+                ty = elem_ty;
+                continue;
+            }
+            const reg_size: u64, const split_class: Class = if (target.cpu.has(.x86, .avx512f))
+                .{ 64, .sse_per_zword }
+            else if (target.cpu.has(.x86, .avx))
+                .{ 32, .sse_per_yword }
+            else
+                .{ 16, .sse_per_xword };
+            if (elem_ty.toIntern() == .bool_type) {
+                if (len > reg_size) return if (ctx == .arg) .integer_per_element else .memory;
+                return .bool_vector_mask;
+            }
+            const elem_size = elem_ty.abiSize(zcu);
+            const unaligned_size = elem_size * len;
+            if ((unaligned_size <= 8 or unaligned_size > reg_size) and !std.math.isPowerOfTwo(len)) {
+                if (ctx == .ret and len > Win64.c_abi_int_return_regs.len) return .memory;
+                if (!elem_ty.isRuntimeFloat()) return .integer_per_element;
+                if (ctx == .ret and len > 2 and elem_size == 8) return .sse_sse_x87_per_qword;
+                return .sse_per_element;
+            }
+            if (unaligned_size <= reg_size) return if (ctx == .arg) .memory else .sse;
+            if (ctx == .ret and unaligned_size > reg_size * Win64.c_abi_sse_return_regs.len) return .memory;
+            return split_class;
+        },
         .type,
         .comptime_float,
         .comptime_int,
@@ -174,19 +183,18 @@ pub fn classifyWindows(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
 /// the beginning of the array; unused slots are filled with .none.
 pub fn classifySystemV(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Context) [8]Class {
     switch (ty.zigTypeTag(zcu)) {
-        .pointer => switch (ty.ptrSize(zcu)) {
-            .slice => return Class.two_integers,
-            else => return Class.one_integer,
-        },
+        .void => return Class.zero_bit,
+        .bool => return Class.one_integer,
+        .noreturn => unreachable,
         .int, .@"enum", .error_set => {
             const bits = ty.intInfo(zcu).bits;
+            if (bits == 0) return Class.zero_bit;
             if (bits <= 64 * 1) return Class.one_integer;
             if (bits <= 64 * 2) return Class.two_integers;
             if (bits <= 64 * 3) return Class.three_integers;
             if (bits <= 64 * 4) return Class.four_integers;
             return Class.stack;
         },
-        .bool, .void, .noreturn => return Class.one_integer,
         .float => switch (ty.floatBits(target)) {
             16 => {
                 if (ctx == .other) return Class.stack;
@@ -205,61 +213,61 @@ pub fn classifySystemV(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
             80 => return Class.f80,
             else => unreachable,
         },
+        .pointer => switch (ty.ptrSize(zcu)) {
+            .slice => return Class.two_integers,
+            else => return Class.one_integer,
+        },
         .vector => {
+            const len = ty.vectorLen(zcu);
+            if (len == 0) return Class.zero_bit;
             const elem_ty = ty.childType(zcu);
-            const bits = elem_ty.bitSize(zcu) * ty.arrayLen(zcu);
             if (elem_ty.toIntern() == .bool_type) {
-                if (bits <= 32) return Class.one_integer;
-                if (bits <= 64) return Class.f64;
-                if (ctx == .other) return Class.stack;
-                if (bits <= 128) return Class.len_integers;
-                if (bits <= 256 and target.cpu.has(.x86, .avx)) return Class.len_integers;
-                if (bits <= 512 and target.cpu.has(.x86, .avx512f)) return Class.len_integers;
+                if (len <= 32) return Class.one_integer;
+                if (len <= 64) return Class.f64;
+                if (ctx != .arg) return Class.stack;
+                if (len <= 128) return Class.len_integers;
+                if (len <= 256 and target.cpu.has(.x86, .avx)) return Class.len_integers;
+                if (len <= 512 and target.cpu.has(.x86, .avx512f)) return Class.len_integers;
                 return Class.stack;
             }
-            if (elem_ty.isRuntimeFloat() and elem_ty.floatBits(target) == 80) {
-                if (bits <= 80 * 1) return Class.f80;
-                if (bits <= 80 * 2) return Class.complex_x87;
+            if (elem_ty.isRuntimeFloat() and elem_ty.floatBits(target) == 80) switch (len) {
+                0 => unreachable,
+                1 => return Class.f80,
+                2 => return Class.complex_x87,
+                else => return Class.stack,
+            };
+            const unaligned_size = elem_ty.abiSize(zcu) * len;
+            if (unaligned_size <= 4) return Class.one_integer;
+            if (ctx == .arg and unaligned_size == 8 * 1 * 1 and len == 1 and
+                elem_ty.isRuntimeFloat()) return Class.stack; // what
+            if (unaligned_size <= 8 * 1) return .{ .sse, .none, .none, .none, .none, .none, .none, .none };
+            if (unaligned_size <= 8 * 2) return .{ .sse, .sseup, .none, .none, .none, .none, .none, .none };
+            if (!target.cpu.has(.x86, .avx)) {
+                if (ctx == .ret) switch (unaligned_size) {
+                    else => {},
+                    8 * 3 => if (len == 3) return if (elem_ty.isRuntimeFloat()) .{
+                        .sse_sse_x87_per_qword, .none, .none, .none, .none, .none, .none, .none, // how
+                    } else Class.len_integers, // why
+                    8 * 2 * 2, 8 * 2 * 4 => return .{ .sse_per_xword, .none, .none, .none, .none, .none, .none, .none },
+                };
                 return Class.stack;
             }
-            if (bits <= 64 * 1) return .{
-                .sse,  .none, .none, .none,
-                .none, .none, .none, .none,
-            };
-            if (bits <= 64 * 2) return .{
-                .sse,  .sseup, .none, .none,
-                .none, .none,  .none, .none,
-            };
-            if (ctx == .arg and !target.cpu.has(.x86, .avx)) return Class.stack;
-            if (bits <= 64 * 3) return .{
-                .sse,  .sseup, .sseup, .none,
-                .none, .none,  .none,  .none,
-            };
-            if (bits <= 64 * 4) return .{
-                .sse,  .sseup, .sseup, .sseup,
-                .none, .none,  .none,  .none,
-            };
-            if (ctx == .arg and !target.cpu.has(.x86, .avx512f)) return Class.stack;
-            if (bits <= 64 * 5) return .{
-                .sse,   .sseup, .sseup, .sseup,
-                .sseup, .none,  .none,  .none,
-            };
-            if (bits <= 64 * 6) return .{
-                .sse,   .sseup, .sseup, .sseup,
-                .sseup, .sseup, .none,  .none,
-            };
-            if (bits <= 64 * 7) return .{
-                .sse,   .sseup, .sseup, .sseup,
-                .sseup, .sseup, .sseup, .none,
-            };
-            if (bits <= 64 * 8 or (ctx == .ret and bits <= @as(u64, if (target.cpu.has(.x86, .avx512f))
-                64 * 32
-            else if (target.cpu.has(.x86, .avx))
-                64 * 16
-            else
-                64 * 8))) return .{
-                .sse,   .sseup, .sseup, .sseup,
-                .sseup, .sseup, .sseup, .sseup,
+            if (unaligned_size <= 8 * 3) return .{ .sse, .sseup, .sseup, .none, .none, .none, .none, .none };
+            if (unaligned_size <= 8 * 4) return .{ .sse, .sseup, .sseup, .sseup, .none, .none, .none, .none };
+            if (!target.cpu.has(.x86, .avx512f)) {
+                if (ctx == .ret) switch (unaligned_size) {
+                    else => {},
+                    8 * 4 * 2, 8 * 4 * 4 => return .{ .sse_per_yword, .none, .none, .none, .none, .none, .none, .none },
+                };
+                return Class.stack;
+            }
+            if (unaligned_size <= 8 * 5) return .{ .sse, .sseup, .sseup, .sseup, .sseup, .none, .none, .none };
+            if (unaligned_size <= 8 * 6) return .{ .sse, .sseup, .sseup, .sseup, .sseup, .sseup, .none, .none };
+            if (unaligned_size <= 8 * 7) return .{ .sse, .sseup, .sseup, .sseup, .sseup, .sseup, .sseup, .none };
+            if (unaligned_size <= 8 * 8) return .{ .sse, .sseup, .sseup, .sseup, .sseup, .sseup, .sseup, .sseup };
+            if (ctx == .ret) switch (unaligned_size) {
+                else => {},
+                8 * 8 * 2, 8 * 8 * 4 => return .{ .sse_per_zword, .none, .none, .none, .none, .none, .none, .none },
             };
             return Class.stack;
         },
@@ -275,6 +283,7 @@ pub fn classifySystemV(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
             // "If the size of the aggregate exceeds a single eightbyte, each is classified
             // separately.".
             const ty_size = ty.abiSize(zcu);
+            if (ty_size == 0) return Class.zero_bit;
             switch (ty.containerLayout(zcu)) {
                 .auto => unreachable,
                 .@"extern" => {},
@@ -325,6 +334,7 @@ pub fn classifySystemV(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
         },
         .array => {
             const ty_size = ty.abiSize(zcu);
+            if (ty_size == 0) return Class.zero_bit;
             if (ty_size <= 8) return Class.one_integer;
             if (ty_size <= 16) return Class.two_integers;
             return Class.stack;
@@ -457,7 +467,7 @@ pub const SysV = struct {
     pub const c_abi_int_param_regs = [_]Register{ .rdi, .rsi, .rdx, .rcx, .r8, .r9 };
     pub const c_abi_x87_param_regs = x87_regs[0..0];
     pub const c_abi_sse_param_regs = sse_avx_regs[0..8];
-    pub const c_abi_int_return_regs = [_]Register{ .rax, .rdx };
+    pub const c_abi_int_return_regs = [_]Register{ .rax, .rdx, .rcx };
     pub const c_abi_x87_return_regs = x87_regs[0..2];
     pub const c_abi_sse_return_regs = sse_avx_regs[0..4];
 };
@@ -474,9 +484,9 @@ pub const Win64 = struct {
     pub const c_abi_int_param_regs = [_]Register{ .rcx, .rdx, .r8, .r9 };
     pub const c_abi_x87_param_regs = x87_regs[0..0];
     pub const c_abi_sse_param_regs = sse_avx_regs[0..4];
-    pub const c_abi_int_return_regs = [_]Register{.rax};
-    pub const c_abi_x87_return_regs = x87_regs[0..0];
-    pub const c_abi_sse_return_regs = sse_avx_regs[0..1];
+    pub const c_abi_int_return_regs = [_]Register{ .rax, .rdx, .rcx };
+    pub const c_abi_x87_return_regs = x87_regs[0..1];
+    pub const c_abi_sse_return_regs = sse_avx_regs[0..4];
 };
 
 pub fn getCalleePreservedRegs(cc: std.lang.CallingConvention.Tag) []const Register {

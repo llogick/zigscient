@@ -313,14 +313,14 @@ fn linkAsArchive(lld: *Lld, arena: Allocator) !void {
         object_files.appendAssumeCapacity(try input.path().?.toStringZ(arena));
     }
 
-    try object_files.ensureUnusedCapacity(arena, comp.c_object_table.count() +
-        comp.win32_resource_table.count() + 2);
+    try object_files.ensureUnusedCapacity(arena, comp.c_objects.items.len +
+        comp.win32_resources.items.len + 2);
 
-    for (comp.c_object_table.keys()) |key| {
-        object_files.appendAssumeCapacity(try key.status.success.object_path.toStringZ(arena));
+    for (comp.c_objects.items) |c_object| {
+        object_files.appendAssumeCapacity(try c_object.status.success.object_path.toStringZ(arena));
     }
-    for (comp.win32_resource_table.keys()) |key| {
-        object_files.appendAssumeCapacity(try arena.dupeSentinel(u8, key.status.success.res_path, 0));
+    for (comp.win32_resources.items) |win32_resource| {
+        object_files.appendAssumeCapacity(try arena.dupeSentinel(u8, win32_resource.status.success.res_path, 0));
     }
     if (zcu_obj_path) |p| object_files.appendAssumeCapacity(try p.toStringZ(arena));
     if (compiler_rt_path) |p| object_files.appendAssumeCapacity(try p.toStringZ(arena));
@@ -395,8 +395,8 @@ fn coffLink(lld: *Lld, arena: Allocator) !void {
         const the_object_path = blk: {
             if (link.firstObjectInput(comp.link_inputs)) |obj| break :blk obj.path;
 
-            if (comp.c_object_table.count() != 0)
-                break :blk comp.c_object_table.keys()[0].status.success.object_path;
+            if (comp.c_objects.items.len != 0)
+                break :blk comp.c_objects.items[0].status.success.object_path;
 
             if (zcu_obj_path) |p|
                 break :blk p;
@@ -546,12 +546,12 @@ fn coffLink(lld: *Lld, arena: Allocator) !void {
             },
         };
 
-        for (comp.c_object_table.keys()) |key| {
-            try argv.append(try key.status.success.object_path.toString(arena));
+        for (comp.c_objects.items) |c_object| {
+            try argv.append(try c_object.status.success.object_path.toString(arena));
         }
 
-        for (comp.win32_resource_table.keys()) |key| {
-            try argv.append(key.status.success.res_path);
+        for (comp.win32_resources.items) |win32_resource| {
+            try argv.append(win32_resource.status.success.res_path);
         }
 
         if (zcu_obj_path) |p| {
@@ -805,8 +805,8 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
         const the_object_path = blk: {
             if (link.firstObjectInput(comp.link_inputs)) |obj| break :blk obj.path;
 
-            if (comp.c_object_table.count() != 0)
-                break :blk comp.c_object_table.keys()[0].status.success.object_path;
+            if (comp.c_objects.items.len != 0)
+                break :blk comp.c_objects.items[0].status.success.object_path;
 
             if (zcu_obj_path) |p|
                 break :blk p;
@@ -1099,8 +1099,8 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
             whole_archive = false;
         }
 
-        for (comp.c_object_table.keys()) |key| {
-            try argv.append(try key.status.success.object_path.toString(arena));
+        for (comp.c_objects.items) |c_object| {
+            try argv.append(try c_object.status.success.object_path.toString(arena));
         }
 
         if (zcu_obj_path) |p| {
@@ -1381,8 +1381,8 @@ fn wasmLink(lld: *Lld, arena: Allocator) !void {
         const the_object_path = blk: {
             if (link.firstObjectInput(comp.link_inputs)) |obj| break :blk obj.path;
 
-            if (comp.c_object_table.count() != 0)
-                break :blk comp.c_object_table.keys()[0].status.success.object_path;
+            if (comp.c_objects.items.len != 0)
+                break :blk comp.c_objects.items[0].status.success.object_path;
 
             if (zcu_obj_path) |p|
                 break :blk p;
@@ -1566,8 +1566,8 @@ fn wasmLink(lld: *Lld, arena: Allocator) !void {
             whole_archive = false;
         }
 
-        for (comp.c_object_table.keys()) |key| {
-            try argv.append(try key.status.success.object_path.toString(arena));
+        for (comp.c_objects.items) |c_object| {
+            try argv.append(try c_object.status.success.object_path.toString(arena));
         }
         if (zcu_obj_path) |p| {
             try argv.append(try p.toString(arena));

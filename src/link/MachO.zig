@@ -377,9 +377,9 @@ pub fn flush(
     // This is a set of object files emitted by clang in a single `build-exe` invocation.
     // For instance, the implicit `a.o` as compiled by `zig build-exe a.c` will end up
     // in this set.
-    try positionals.ensureUnusedCapacity(comp.c_object_table.keys().len);
-    for (comp.c_object_table.keys()) |key| {
-        positionals.appendAssumeCapacity(try link.openObjectInput(io, diags, key.status.success.object_path));
+    try positionals.ensureUnusedCapacity(comp.c_objects.items.len);
+    for (comp.c_objects.items) |c_object| {
+        positionals.appendAssumeCapacity(try link.openObjectInput(io, diags, c_object.status.success.object_path));
     }
 
     if (zcu_obj_path) |path| try positionals.append(try link.openObjectInput(io, diags, path));
@@ -657,8 +657,8 @@ fn dumpArgv(self: *MachO, comp: *Compilation) !void {
             .dso_exact => |dso_exact| try argv.appendSlice(&.{ "-l", dso_exact.name }),
         };
 
-        for (comp.c_object_table.keys()) |key| {
-            try argv.append(try key.status.success.object_path.toString(arena));
+        for (comp.c_objects.items) |c_object| {
+            try argv.append(try c_object.status.success.object_path.toString(arena));
         }
 
         if (zcu_obj_path) |p| {
@@ -749,8 +749,8 @@ fn dumpArgv(self: *MachO, comp: *Compilation) !void {
             .dso_exact => |dso_exact| try argv.appendSlice(&.{ "-l", dso_exact.name }),
         };
 
-        for (comp.c_object_table.keys()) |key| {
-            try argv.append(try key.status.success.object_path.toString(arena));
+        for (comp.c_objects.items) |c_object| {
+            try argv.append(try c_object.status.success.object_path.toString(arena));
         }
 
         if (zcu_obj_path) |p| {

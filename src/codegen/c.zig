@@ -328,6 +328,9 @@ fn isReservedIdent(ident: []const u8) bool {
         return true;
     }
 
+    // zig.h
+    if (mem.startsWith(u8, ident, "zig_")) return true;
+
     return reserved_idents.has(ident);
 }
 
@@ -3755,7 +3758,7 @@ fn airCmpLteErrorsLen(f: *Function, inst: Air.Inst.Index) !CValue {
     try f.writeCValue(w, local, .other);
     try w.writeAll(" = ");
     try f.writeCValue(w, operand, .other);
-    try w.print(" < sizeof({f}) / sizeof(*{0f});", .{fmtIdentSolo("zig_errorName")});
+    try w.writeAll(" < sizeof(zig_errorName) / sizeof(*zig_errorName);");
     try f.newline();
     return local;
 }

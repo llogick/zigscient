@@ -6789,22 +6789,30 @@ const ParamTypeIterator = struct {
                     return .abi_sized_int;
                 }
             },
-            .win_i128 => {
+            .sse,
+            .bool_vector_mask,
+            .integer_per_element,
+            .sse_per_element,
+            .sse_sse_x87_per_qword,
+            .sse_per_xword,
+            .sse_per_yword,
+            .sse_per_zword,
+            => {
                 it.zig_index += 1;
                 it.llvm_index += 1;
-                return .byref;
+                return .byval;
             },
+            .sseup, .x87, .x87up, .none, .float, .float_combine => unreachable,
             .memory => {
                 it.zig_index += 1;
                 it.llvm_index += 1;
                 return .byref_mut;
             },
-            .sse => {
+            .win_i128 => {
                 it.zig_index += 1;
                 it.llvm_index += 1;
-                return .byval;
+                return .byref;
             },
-            else => unreachable,
         }
     }
 
@@ -6867,9 +6875,14 @@ const ParamTypeIterator = struct {
                 .none => break,
                 .memory => unreachable, // handled above
                 .win_i128 => unreachable, // windows only
-                .integer_per_element => {
-                    @panic("TODO");
-                },
+                .bool_vector_mask,
+                .integer_per_element,
+                .sse_per_element,
+                .sse_sse_x87_per_qword,
+                .sse_per_xword,
+                .sse_per_yword,
+                .sse_per_zword,
+                => unreachable, // vectors already handled by `isScalar` above
             }
             offset += 8;
         }
@@ -6912,7 +6925,7 @@ pub fn iterateParamTypes(object: *Object, fn_info: InternPool.Key.FuncType) Para
         .fn_info = fn_info,
         .zig_index = 0,
         .llvm_index = 0,
-        .types_len = 0,
+        .types_len = undefined,
         .types_buffer = undefined,
         .offsets_buffer = undefined,
         .byval_attr = false,
@@ -6979,6 +6992,7 @@ fn firstParamSRetX86Fastcall(zcu: *Zcu, ty: Type) bool {
 }
 
 fn firstParamSRetSystemV(ty: Type, zcu: *Zcu, target: *const std.Target) bool {
+    if (isScalar(zcu, ty)) return false;
     const class = x86_64_abi.classifySystemV(ty, zcu, target, .ret);
     if (class[0] == .memory) return true;
     if (class[0] == .x87 and class[2] != .none) return true;
@@ -7078,10 +7092,24 @@ fn lowerWin64FnRetTy(o: *Object, fn_info: InternPool.Key.FuncType) Allocator.Err
                 return o.builder.intType(@intCast(return_type.abiSize(zcu) * 8));
             }
         },
+        .sse,
+        .bool_vector_mask,
+        .integer_per_element,
+        .sse_per_element,
+        .sse_sse_x87_per_qword,
+        .sse_per_xword,
+        .sse_per_yword,
+        .sse_per_zword,
+        => return o.lowerType(return_type),
+        .sseup,
+        .x87,
+        .x87up,
+        .none,
+        .float,
+        .float_combine,
+        => unreachable,
         .win_i128 => return o.builder.vectorType(.normal, 2, .i64),
         .memory => return .void,
-        .sse => return o.lowerType(return_type),
-        else => unreachable,
     }
 }
 
@@ -7129,8 +7157,16 @@ fn lowerSystemVFnRetTy(o: *Object, fn_info: InternPool.Key.FuncType) Allocator.E
             },
             .x87up => continue,
             .none => break,
-            .memory, .integer_per_element => return .void,
+            .memory => return .void,
             .win_i128 => unreachable, // windows only
+            .bool_vector_mask,
+            .integer_per_element,
+            .sse_per_element,
+            .sse_sse_x87_per_qword,
+            .sse_per_xword,
+            .sse_per_yword,
+            .sse_per_zword,
+            => unreachable, // vectors already handled by `isScalar` above
         }
     }
     const first_non_integer = std.mem.indexOfNone(x86_64_abi.Class, &classes, &.{.integer});

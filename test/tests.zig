@@ -2018,12 +2018,43 @@ const c_abi_targets = blk: {
                 .abi = .gnu,
             },
         },
+
+        //.{
+        //    .target = .{
+        //        .cpu_arch = .x86_64,
+        //        .os_tag = .windows,
+        //        .abi = .gnu,
+        //    },
+        //    .use_llvm = false,
+        //    .c_defines = &.{"ZIG_BACKEND_STAGE2_X86_64"},
+        //},
+        //.{
+        //    .target = .{
+        //        .cpu_arch = .x86_64,
+        //        .cpu_model = .{ .explicit = &std.Target.x86.cpu.x86_64_v2 },
+        //        .os_tag = .windows,
+        //        .abi = .gnu,
+        //    },
+        //    .use_llvm = false,
+        //    .c_defines = &.{"ZIG_BACKEND_STAGE2_X86_64"},
+        //},
+        //.{
+        //    .target = .{
+        //        .cpu_arch = .x86_64,
+        //        .cpu_model = .{ .explicit = &std.Target.x86.cpu.x86_64_v3 },
+        //        .os_tag = .windows,
+        //        .abi = .gnu,
+        //    },
+        //    .use_llvm = false,
+        //    .c_defines = &.{"ZIG_BACKEND_STAGE2_X86_64"},
+        //},
         .{
             .target = .{
                 .cpu_arch = .x86_64,
                 .os_tag = .windows,
                 .abi = .gnu,
             },
+            .use_llvm = true,
         },
     };
 };

@@ -933,8 +933,8 @@ pub const File = struct {
             // Until then, we do `lld -r -o output.o input.o` even though the output is the same
             // as the input. For the preprocessing case (`zig cc -E -o foo`) we copy the file
             // to the final location. See also the corresponding TODO in Coff linking.
-            assert(comp.c_object_table.count() == 1);
-            const the_key = comp.c_object_table.keys()[0];
+            assert(comp.c_objects.items.len == 1);
+            const the_key = comp.c_objects.items[0];
             const cached_pp_file_path = the_key.status.success.object_path;
             Io.Dir.copyFile(
                 cached_pp_file_path.root_dir.handle,

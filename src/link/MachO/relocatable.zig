@@ -9,8 +9,8 @@ pub fn flushObject(macho_file: *MachO, comp: *Compilation, module_obj_path: ?Pat
     try positionals.ensureUnusedCapacity(comp.link_inputs.len);
     positionals.appendSliceAssumeCapacity(comp.link_inputs);
 
-    for (comp.c_object_table.keys()) |key| {
-        try positionals.append(try link.openObjectInput(io, diags, key.status.success.object_path));
+    for (comp.c_objects.items) |c_object| {
+        try positionals.append(try link.openObjectInput(io, diags, c_object.status.success.object_path));
     }
 
     if (module_obj_path) |path| try positionals.append(try link.openObjectInput(io, diags, path));
@@ -86,8 +86,8 @@ pub fn flushStaticLib(macho_file: *MachO, comp: *Compilation, module_obj_path: ?
     try positionals.ensureUnusedCapacity(comp.link_inputs.len);
     positionals.appendSliceAssumeCapacity(comp.link_inputs);
 
-    for (comp.c_object_table.keys()) |key| {
-        try positionals.append(try link.openObjectInput(io, diags, key.status.success.object_path));
+    for (comp.c_objects.items) |c_object| {
+        try positionals.append(try link.openObjectInput(io, diags, c_object.status.success.object_path));
     }
 
     if (module_obj_path) |path| try positionals.append(try link.openObjectInput(io, diags, path));

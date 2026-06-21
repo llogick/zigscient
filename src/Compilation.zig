@@ -104,16 +104,12 @@ native_system_include_paths: []const []const u8,
 /// Corresponds to `-u <symbol>` for ELF/MachO and `/include:<symbol>` for COFF/PE.
 force_undefined_symbols: std.array_hash_map.String(void),
 
-c_object_table: std.array_hash_map.Auto(*CObject, void) = .empty,
-win32_resource_table: if (dev.env.supports(.win32_resource)) std.array_hash_map.Auto(*Win32Resource, void) else struct {
-    pub fn keys(_: @This()) [0]void {
-        return .{};
-    }
-    pub fn count(_: @This()) u0 {
-        return 0;
-    }
+c_objects: std.ArrayList(*CObject) = .empty,
+win32_resources: if (dev.env.supports(.win32_resource)) std.ArrayList(*Win32Resource) else struct {
+    items: [0]*struct {},
+    pub const empty: @This() = .{ .items = .{} };
     pub fn deinit(_: @This(), _: Allocator) void {}
-} = .{},
+} = .empty,
 
 link_diags: link.Diags,
 link_queue: link.Queue = .empty,
@@ -917,21 +913,6 @@ pub const CrtFile = struct {
         self.* = undefined;
     }
 };
-
-/// Supported languages for "zig clang -x <lang>".
-/// Loosely based on llvm-project/clang/include/clang/Driver/Types.def
-pub const LangToExt = std.StaticStringMap(FileExt).initComptime(.{
-    .{ "c", .c },
-    .{ "c-header", .h },
-    .{ "c++", .cpp },
-    .{ "c++-header", .hpp },
-    .{ "objective-c", .m },
-    .{ "objective-c-header", .hm },
-    .{ "objective-c++", .mm },
-    .{ "objective-c++-header", .hmm },
-    .{ "assembler", .assembly },
-    .{ "assembler-with-cpp", .assembly_with_cpp },
-});
 
 /// For passing to a C compiler.
 pub const CSourceFile = struct {
@@ -2492,8 +2473,10 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
     };
     errdefer comp.destroy();
 
+    if (target.ofmt == .c) return comp;
+
     // Add a `CObject` for each `c_source_files`.
-    try comp.c_object_table.ensureTotalCapacity(gpa, options.c_source_files.len);
+    try comp.c_objects.ensureTotalCapacity(gpa, options.c_source_files.len);
     for (options.c_source_files) |c_source_file| {
         const c_object = try gpa.create(CObject);
         errdefer gpa.destroy(c_object);
@@ -2502,7 +2485,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
             .status = .{ .new = {} },
             .src = c_source_file,
         };
-        comp.c_object_table.putAssumeCapacityNoClobber(c_object, {});
+        comp.c_objects.appendAssumeCapacity(c_object);
     }
 
     // Add a `Win32Resource` for each `rc_source_files` and one for `manifest_file`.
@@ -2510,7 +2493,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
         options.rc_source_files.len + @intFromBool(options.manifest_file != null);
     if (win32_resource_count > 0) {
         dev.check(.win32_resource);
-        try comp.win32_resource_table.ensureTotalCapacity(gpa, win32_resource_count);
+        try comp.win32_resources.ensureTotalCapacity(gpa, win32_resource_count);
         for (options.rc_source_files) |rc_source_file| {
             const win32_resource = try gpa.create(Win32Resource);
             errdefer gpa.destroy(win32_resource);
@@ -2519,7 +2502,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                 .status = .{ .new = {} },
                 .src = .{ .rc = rc_source_file },
             };
-            comp.win32_resource_table.putAssumeCapacityNoClobber(win32_resource, {});
+            comp.win32_resources.appendAssumeCapacity(win32_resource);
         }
 
         if (options.manifest_file) |manifest_path| {
@@ -2530,11 +2513,11 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                 .status = .{ .new = {} },
                 .src = .{ .manifest = manifest_path },
             };
-            comp.win32_resource_table.putAssumeCapacityNoClobber(win32_resource, {});
+            comp.win32_resources.appendAssumeCapacity(win32_resource);
         }
     }
 
-    if (comp.emit_bin != null and target.ofmt != .c) {
+    if (comp.emit_bin != null) {
         if (!comp.skip_linker_dependencies) {
             // If we need to build libc for the target, add work items for it.
             // We go through the work queue so that building can be done in parallel.
@@ -2755,20 +2738,20 @@ pub fn destroy(comp: *Compilation) void {
         openbsd_file.deinit(gpa, io);
     }
 
-    for (comp.c_object_table.keys()) |key| {
-        key.destroy(gpa, io);
+    for (comp.c_objects.items) |c_object| {
+        c_object.destroy(gpa, io);
     }
-    comp.c_object_table.deinit(gpa);
+    comp.c_objects.deinit(gpa);
 
     for (comp.failed_c_objects.values()) |bundle| {
         bundle.destroy(gpa);
     }
     comp.failed_c_objects.deinit(gpa);
 
-    for (comp.win32_resource_table.keys()) |key| {
-        key.destroy(gpa, io);
+    for (comp.win32_resources.items) |win32_resource| {
+        win32_resource.destroy(gpa, io);
     }
-    comp.win32_resource_table.deinit(gpa);
+    comp.win32_resources.deinit(gpa);
 
     for (comp.failed_win32_resources.values()) |*value| {
         value.deinit(gpa);
@@ -3022,8 +3005,8 @@ pub fn update(comp: *Compilation, main_progress_node: std.Progress.Node) UpdateE
         // changes. For now, to avoid crashing the linker in this case, don't kick off C object
         // updates if we've done prelink already. https://codeberg.org/ziglang/zig/issues/32081
     } else {
-        try comp.c_object_work_queue.ensureUnusedCapacity(gpa, comp.c_object_table.count());
-        for (comp.c_object_table.keys()) |c_object| {
+        try comp.c_object_work_queue.ensureUnusedCapacity(gpa, comp.c_objects.items.len);
+        for (comp.c_objects.items) |c_object| {
             comp.c_object_work_queue.pushBackAssumeCapacity(c_object);
             try comp.appendFileSystemInput(try .fromUnresolved(arena, comp.dirs, &.{c_object.src.src_path}));
         }
@@ -3038,8 +3021,8 @@ pub fn update(comp: *Compilation, main_progress_node: std.Progress.Node) UpdateE
 
     // For compiling Win32 resources, we rely on the cache hash system to avoid duplicating work.
     // Add a Job for each Win32 resource file.
-    try comp.win32_resource_work_queue.ensureUnusedCapacity(gpa, comp.win32_resource_table.count());
-    for (comp.win32_resource_table.keys()) |win32_resource| {
+    try comp.win32_resource_work_queue.ensureUnusedCapacity(gpa, comp.win32_resources.items.len);
+    for (comp.win32_resources.items) |win32_resource| {
         comp.win32_resource_work_queue.pushBackAssumeCapacity(win32_resource);
         switch (win32_resource.src) {
             .rc => |f| {
@@ -3146,9 +3129,9 @@ pub fn update(comp: *Compilation, main_progress_node: std.Progress.Node) UpdateE
         return;
     }
 
-    if (comp.zcu == null and comp.config.output_mode == .Obj and comp.c_object_table.count() == 1) {
+    if (comp.zcu == null and comp.config.output_mode == .Obj and comp.c_objects.items.len == 1) {
         // This is `zig build-obj foo.c`. We can emit asm and LLVM IR/bitcode.
-        const c_obj_path = comp.c_object_table.keys()[0].status.success.object_path;
+        const c_obj_path = comp.c_objects.items[0].status.success.object_path;
         if (comp.emit_asm) |path| try comp.emitFromCObject(arena, c_obj_path, ".s", path);
         if (comp.emit_llvm_ir) |path| try comp.emitFromCObject(arena, c_obj_path, ".ll", path);
         if (comp.emit_llvm_bc) |path| try comp.emitFromCObject(arena, c_obj_path, ".bc", path);
@@ -3488,14 +3471,14 @@ fn addNonIncrementalStuffToCacheManifest(
 
     try link.hashInputs(man, comp.link_inputs);
 
-    for (comp.c_object_table.keys()) |key| {
-        _ = try man.addFile(key.src.src_path, null);
-        man.hash.addOptional(key.src.ext);
-        man.hash.addListOfBytes(key.src.extra_flags);
+    for (comp.c_objects.items) |c_object| {
+        _ = try man.addFile(c_object.src.src_path, null);
+        man.hash.addOptional(c_object.src.ext);
+        man.hash.addListOfBytes(c_object.src.extra_flags);
     }
 
-    for (comp.win32_resource_table.keys()) |key| {
-        switch (key.src) {
+    for (comp.win32_resources.items) |win32_resource| {
+        switch (win32_resource.src) {
             .rc => |rc_src| {
                 _ = try man.addFile(rc_src.src_path, null);
                 man.hash.addListOfBytes(rc_src.extra_flags);
@@ -5601,9 +5584,10 @@ fn updateCObject(comp: *Compilation, c_object: *CObject, c_obj_prog_node: std.Pr
         c_source_basename[0 .. c_source_basename.len - fs.path.extension(c_source_basename).len];
 
     const target = comp.getTarget();
+    assert(target.ofmt != .c);
     const o_ext = target.ofmt.fileExt(target.cpu.arch);
     const digest = if (!comp.disable_c_depfile and try man.hit()) man.final() else blk: {
-        var argv = std.array_list.Managed([]const u8).init(gpa);
+        var argv: std.array_list.Managed([]const u8) = .init(gpa);
         defer argv.deinit();
 
         // In case we are doing passthrough mode, we need to detect -S and -emit-llvm.
@@ -7066,6 +7050,33 @@ pub const FileExt = enum {
             .unknown => "",
         };
     }
+
+    /// The value accepted by "zig clang -x <lang>" and passed to "clang -x <lang>".
+    pub fn toLang(ext: FileExt) ?[]const u8 {
+        return switch (ext) {
+            else => null,
+            .c => "c",
+            .h => "c-header",
+            .cpp => "c++",
+            .hpp => "c++-header",
+            .m => "objective-c",
+            .hm => "objective-c-header",
+            .mm => "objective-c++",
+            .hmm => "objective-c++-header",
+            .assembly => "assembler",
+            .assembly_with_cpp => "assembler-with-cpp",
+        };
+    }
+
+    /// Supported languages for "zig clang -x <lang>".
+    /// Loosely based on llvm-project/clang/include/clang/Driver/Types.def
+    pub const from_lang = std.StaticStringMap(FileExt).initComptime(init: {
+        var init: []const struct { []const u8, FileExt } = &.{};
+        for (std.enums.values(FileExt)) |file_ext| if (file_ext.toLang()) |lang| {
+            init = init ++ .{.{ lang, file_ext }};
+        };
+        break :init init;
+    });
 };
 
 pub fn hasObjectExt(filename: []const u8) bool {

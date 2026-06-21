@@ -56,6 +56,10 @@ pub const Env = enum {
     /// - `zig build-* -fincremental -fno-llvm -fno-lld -target x86_64-linux --listen=-`
     @"x86_64-linux",
 
+    /// - sema
+    /// - `zig build-* -fincremental -fno-llvm -fno-lld -target x86_64-windows --listen=-`
+    @"x86_64-windows",
+
     pub inline fn supports(comptime dev_env: Env, comptime feature: Feature) bool {
         return switch (dev_env) {
             .full => true,
@@ -222,6 +226,16 @@ pub const Env = enum {
                 .x86_64_backend,
                 .elf_linker,
                 .elf2_linker,
+                => true,
+                else => Env.sema.supports(feature),
+            },
+            .@"x86_64-windows" => switch (feature) {
+                .build_command,
+                .stdio_listen,
+                .incremental,
+                .legalize,
+                .x86_64_backend,
+                .coff2_linker,
                 => true,
                 else => Env.sema.supports(feature),
             },

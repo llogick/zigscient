@@ -4557,9 +4557,12 @@ static inline void zig_msvc_atomic_store_i128(zig_i128 volatile* obj, zig_i128 a
 #include <intrin.h>
 #endif
 
+static inline void* zig_e_zig_windows_teb(void) zig_mangled(zig_e_zig_windows_teb, "zig_windows_teb");
+static inline void* zig_e_zig_windows_peb(void) zig_mangled(zig_e_zig_windows_peb, "zig_windows_peb");
+
 #if defined(zig_thumb)
 
-static inline void* zig_windows_teb(void) {
+static inline void* zig_e_zig_windows_teb(void) {
     void* teb = 0;
 #if defined(zig_msvc)
     teb = (void*)_MoveFromCoprocessor(15, 0, 13, 0, 2);
@@ -4571,7 +4574,7 @@ static inline void* zig_windows_teb(void) {
 
 #elif defined(zig_aarch64)
 
-static inline void* zig_windows_teb(void) {
+static inline void* zig_e_zig_windows_teb(void) {
     void* teb = 0;
 #if defined(zig_msvc)
     teb = (void*)__readx18qword(0x0);
@@ -4583,7 +4586,7 @@ static inline void* zig_windows_teb(void) {
 
 #elif defined(zig_x86_32)
 
-static inline void* zig_windows_teb(void) {
+static inline void* zig_e_zig_windows_teb(void) {
     void* teb = 0;
 #if defined(zig_msvc)
     teb = (void*)__readfsdword(0x18);
@@ -4593,7 +4596,7 @@ static inline void* zig_windows_teb(void) {
     return teb;
 }
 
-static inline void* zig_windows_peb(void) {
+static inline void* zig_e_zig_windows_peb(void) {
     void* peb = 0;
 #if defined(zig_msvc)
     peb = (void*)__readfsdword(0x30);
@@ -4605,7 +4608,7 @@ static inline void* zig_windows_peb(void) {
 
 #elif defined(zig_x86_64)
 
-static inline void* zig_windows_teb(void) {
+static inline void* zig_e_zig_windows_teb(void) {
     void* teb = 0;
 #if defined(zig_msvc)
     teb = (void*)__readgsqword(0x30);
@@ -4615,7 +4618,7 @@ static inline void* zig_windows_teb(void) {
     return teb;
 }
 
-static inline void* zig_windows_peb(void) {
+static inline void* zig_e_zig_windows_peb(void) {
     void* peb = 0;
 #if defined(zig_msvc)
     peb = (void*)__readgsqword(0x60);
@@ -4629,7 +4632,9 @@ static inline void* zig_windows_peb(void) {
 
 #if defined(zig_loongarch)
 
-static inline void zig_loongarch_cpucfg(uint32_t word, uint32_t* result) {
+static inline void zig_e_zig_loongarch_cpucfg(uint32_t word, uint32_t* result) zig_mangled(zig_e_zig_loongarch_cpucfg, "zig_loongarch_cpucfg");
+
+static inline void zig_e_zig_loongarch_cpucfg(uint32_t word, uint32_t* result) {
 #if defined(zig_gnuc_asm)
     __asm__("cpucfg %[result], %[word]" : [result] "=r" (result) : [word] "r" (word));
 #else
@@ -4639,7 +4644,10 @@ static inline void zig_loongarch_cpucfg(uint32_t word, uint32_t* result) {
 
 #elif defined(zig_x86) && !defined(zig_x86_16)
 
-static inline void zig_x86_cpuid(uint32_t leaf_id, uint32_t subid, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx) {
+static inline void zig_e_zig_x86_cpuid(uint32_t leaf_id, uint32_t subid, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx) zig_mangled(zig_e_zig_x86_cpuid, "zig_x86_cpuid");
+static inline uint32_t zig_e_zig_x86_get_xcr0(void) zig_mangled(zig_e_zig_x86_get_xcr0, "zig_x86_get_xcr0");
+
+static inline void zig_e_zig_x86_cpuid(uint32_t leaf_id, uint32_t subid, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx) {
 #if defined(zig_msvc)
     int cpu_info[4];
     __cpuidex(cpu_info, leaf_id, subid);
@@ -4657,7 +4665,7 @@ static inline void zig_x86_cpuid(uint32_t leaf_id, uint32_t subid, uint32_t* eax
 #endif
 }
 
-static inline uint32_t zig_x86_get_xcr0(void) {
+static inline uint32_t zig_e_zig_x86_get_xcr0(void) {
 #if defined(zig_msvc)
     return (uint32_t)_xgetbv(0);
 #elif defined(zig_gnuc_asm)
