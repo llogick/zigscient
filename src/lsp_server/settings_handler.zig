@@ -16,7 +16,7 @@ pub const Manager = struct {
     allocator: std.mem.Allocator,
     environ_map: *std.process.Environ.Map,
     config: Settings,
-    self_file_path: ?[]const u8 = null,
+    self_file_path: ?[]const u8,
     zig_exe: ?struct {
         /// Same as `Manager.config.zig_exe_path.?`
         path: []const u8,
@@ -268,7 +268,7 @@ pub const Manager = struct {
         }
 
         brunner: {
-            if (!std.process.can_spawn) break :brunner;
+            if (!std.process.can_spawn or builtin.is_test) break :brunner;
             const zig_exe = manager.zig_exe orelse break :brunner;
             manager.bss_check = if (@import("build_runner/check.zig").isBuildRunnerSupported(zig_exe.version)) .partial else .failure;
             if (manager.bss_check == .partial and manager.self_file_path != null) manager.bss_check = .success;
