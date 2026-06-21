@@ -192,7 +192,6 @@ pub fn main(init: process.Init.Minimal) !void {
         .local_cache_root = local_cache_directory,
         .zig_lib_directory = zig_lib_directory,
         .build_root_directory = build_root_directory,
-        .reference_trace = if (override == .active) 12 else null,
     };
 
     graph.cache.addPrefix(.{ .path = null, .handle = cwd });
@@ -587,6 +586,8 @@ pub fn main(init: process.Init.Minimal) !void {
         .root_dir = .cwd(),
         .sub_path = cwd_relative,
     } else try install_prefix_path.join(arena, "include");
+
+    if (graph.reference_trace == null and override == .active) graph.reference_trace = 12;
 
     var maker: Maker = .{
         .gpa = gpa,
