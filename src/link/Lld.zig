@@ -304,14 +304,16 @@ fn linkAsArchive(lld: *Lld, arena: Allocator) !void {
     // insight as to what's going on here you can read that function body which is more
     // well-commented.
 
-    const link_inputs = comp.link_inputs;
-
     var object_files: std.ArrayList([*:0]const u8) = .empty;
 
-    try object_files.ensureUnusedCapacity(arena, link_inputs.len);
-    for (link_inputs) |input| {
-        object_files.appendAssumeCapacity(try input.path().?.toStringZ(arena));
-    }
+    try object_files.ensureUnusedCapacity(arena, comp.link_inputs.len);
+    for (comp.link_inputs) |input| switch (input) {
+        .res, .dso, .dso_exact => {}, // shared libraries should not be included in static archives
+        .object, .archive => {
+            const path = try input.path().?.toStringZ(arena);
+            object_files.appendAssumeCapacity(path);
+        },
+    };
 
     try object_files.ensureUnusedCapacity(arena, comp.c_objects.items.len +
         comp.win32_resources.items.len + 2);
