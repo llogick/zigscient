@@ -2306,6 +2306,7 @@ fn spawnChildAndCollect(
     };
 
     if (conf_run.flags.stdio == .zig_test) {
+        try setColorEnvironmentVariables(&conf_run, environ_map, graph.stderr_mode.?);
         const started: Io.Clock.Timestamp = .now(io, .awake);
         const result = evalZigTest(run, run_index, maker, progress_node, spawn_options, fuzz_context) catch |err| switch (err) {
             error.Canceled => |e| return e,
