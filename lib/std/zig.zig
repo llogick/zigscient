@@ -774,7 +774,7 @@ pub const EnvVar = enum {
     ZIG_VERBOSE_CC,
     ZIG_DEBUG_CMD,
     ZIG_IS_DETECTING_LIBC_PATHS,
-    ZIG_IS_TRYING_TO_NOT_CALL_ITSELF,
+    ZIG_IS_AVOIDING_CALLING_ITSELF,
 
     // C toolchain integration
     NIX_CFLAGS_COMPILE,

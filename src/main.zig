@@ -301,7 +301,7 @@ pub fn mainArgs(
         // However it's possible Zig is installed as *that* C compiler as well, which is
         // why we have this additional environment variable here to check.
 
-        const inf_loop_env_key: EnvVar = .ZIG_IS_TRYING_TO_NOT_CALL_ITSELF;
+        const inf_loop_env_key: EnvVar = .ZIG_IS_AVOIDING_CALLING_ITSELF;
         if (inf_loop_env_key.isSet(environ_map)) {
             fatal("{s}", .{
                 "The compilation links against libc, but Zig is unable to provide a libc " ++
