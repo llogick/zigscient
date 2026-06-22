@@ -5212,7 +5212,7 @@ fn addReferenceTraceFrame(
             .span_end = span.end,
             .line = @intCast(loc.line),
             .column = @intCast(loc.column),
-            .source_line = 0,
+            .source_line = try eb.addString(loc.source_line), // the lsp_server depends on this to communicate line:column and span(s)
         }),
     });
 }
