@@ -445,7 +445,10 @@ pub fn reallocAdvanced(
 /// To free a single item, see `destroy`.
 pub fn free(self: Allocator, memory: anytype) void {
     const slice_info = @typeInfo(@TypeOf(memory)).pointer;
-    comptime assert(slice_info.size == .slice);
+    if (slice_info.size != .slice) {
+        // slicing with comptime-known start and end results in *[len]T, which may be free'd
+        comptime assert(slice_info.size == .one and @typeInfo(slice_info.child) == .array);
+    }
     const bytes: []u8 = @ptrCast(@constCast(mem.absorbSentinel(memory)));
     if (bytes.len == 0) return;
     @memset(bytes, undefined);
