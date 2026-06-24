@@ -622,27 +622,19 @@ pub fn count(comptime fmt: []const u8, args: anytype) usize {
     return @intCast(dw.count + dw.writer.end);
 }
 
+/// Deprecated in favor of `Allocator.print`.
 pub fn allocPrint(gpa: Allocator, comptime fmt: []const u8, args: anytype) Allocator.Error![]u8 {
-    var aw = try Writer.Allocating.initCapacity(gpa, fmt.len);
-    defer aw.deinit();
-    aw.writer.print(fmt, args) catch |err| switch (err) {
-        error.WriteFailed => return error.OutOfMemory,
-    };
-    return aw.toOwnedSlice();
+    return gpa.print(fmt, args);
 }
 
+/// Deprecated in favor of `Allocator.printSentinel`.
 pub fn allocPrintSentinel(
     gpa: Allocator,
     comptime fmt: []const u8,
     args: anytype,
     comptime sentinel: u8,
 ) Allocator.Error![:sentinel]u8 {
-    var aw = try Writer.Allocating.initCapacity(gpa, fmt.len);
-    defer aw.deinit();
-    aw.writer.print(fmt, args) catch |err| switch (err) {
-        error.WriteFailed => return error.OutOfMemory,
-    };
-    return aw.toOwnedSliceSentinel(sentinel);
+    return gpa.printSentinel(fmt, args, sentinel);
 }
 
 pub inline fn comptimePrint(comptime fmt: []const u8, args: anytype) *const [count(fmt, args):0]u8 {

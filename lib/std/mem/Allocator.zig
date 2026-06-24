@@ -1,11 +1,12 @@
 //! The standard memory allocation interface.
+const Allocator = @This();
+
+const builtin = @import("builtin");
 
 const std = @import("../std.zig");
 const assert = std.debug.assert;
 const math = std.math;
 const mem = std.mem;
-const Allocator = @This();
-const builtin = @import("builtin");
 const Alignment = std.mem.Alignment;
 
 pub const Error = error{OutOfMemory};
@@ -469,6 +470,61 @@ pub fn dupeSentinel(
     @memcpy(new_buf[0..m.len], m);
     new_buf[m.len] = sentinel;
     return new_buf[0..m.len :sentinel];
+}
+
+/// Allocates a formatted string which is returned on success.
+///
+/// Returned slice can be deallocated with `free`. If an arena-style allocator
+/// is used instead, such as `std.heap.ArenaAllocator`, then no call to `free`
+/// is necessary.
+///
+/// See `std.Io.Writer.print`.
+pub fn print(a: Allocator, comptime format: []const u8, args: anytype) Error![]u8 {
+    var aw = try std.Io.Writer.Allocating.initCapacity(a, format.len);
+    defer aw.deinit();
+    aw.writer.print(format, args) catch |err| switch (err) {
+        error.WriteFailed => return error.OutOfMemory,
+    };
+    return aw.toOwnedSlice();
+}
+
+test print {
+    const x: i32 = -1;
+    const y: []const u8 = "hi";
+    const a = std.testing.allocator;
+    const s = try print(a, "{d}={s}", .{ x, y });
+    defer free(a, s);
+    try std.testing.expectEqualStrings("-1=hi", s);
+}
+
+/// Like `print` but returned slice has the provided sentinel.
+///
+/// Returned slice can be deallocated with `free`. If an arena-style allocator
+/// is used instead, such as `std.heap.ArenaAllocator`, then no call to `free`
+/// is necessary. Illegal behavior occurs if the returned slice is type-coerced
+/// to a slice without the sentinel and then passed to `free`.
+pub fn printSentinel(
+    a: Allocator,
+    comptime format: []const u8,
+    args: anytype,
+    comptime sentinel: u8,
+) Allocator.Error![:sentinel]u8 {
+    var aw = try std.Io.Writer.Allocating.initCapacity(a, format.len);
+    defer aw.deinit();
+    aw.writer.print(format, args) catch |err| switch (err) {
+        error.WriteFailed => return error.OutOfMemory,
+    };
+    return aw.toOwnedSliceSentinel(sentinel);
+}
+
+test printSentinel {
+    const x: i32 = -1;
+    const y: []const u8 = "hi";
+    const a = std.testing.allocator;
+    const s = try printSentinel(a, "{d}={s}", .{ x, y }, 0);
+    defer free(a, s);
+    try std.testing.expectEqualStrings("-1=hi", s);
+    try std.testing.expectEqual(0, s[s.len]);
 }
 
 /// An allocator that always fails to allocate.
