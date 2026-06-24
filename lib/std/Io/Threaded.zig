@@ -8176,31 +8176,16 @@ fn dirReadLinkWindows(dir: Dir, sub_path: []const u8, buffer: []u8) Dir.ReadLink
     defer windows.CloseHandle(result_handle);
 
     var reparse_buf: [windows.MAXIMUM_REPARSE_DATA_BUFFER_SIZE]u8 align(@alignOf(windows.REPARSE_DATA_BUFFER)) = undefined;
-
-    syscall = try .start();
-    while (true) switch (windows.ntdll.NtFsControlFile(
-        result_handle,
-        null, // event
-        null, // APC routine
-        null, // APC context
-        &io_status_block,
-        .GET_REPARSE_POINT,
-        null, // input buffer
-        0, // input buffer length
-        &reparse_buf,
-        reparse_buf.len,
-    )) {
-        .SUCCESS => {
-            syscall.finish();
-            break;
-        },
-        .CANCELLED => {
-            try syscall.checkCancel();
-            continue;
-        },
-        .NOT_A_REPARSE_POINT => return syscall.fail(error.NotLink),
-        else => |status| return syscall.unexpectedNtstatus(status),
-    };
+    switch ((try deviceIoControl(&.{
+        .file = .{ .handle = result_handle, .flags = .{ .nonblocking = true } },
+        .code = .GET_REPARSE_POINT,
+        .out = &reparse_buf,
+    })).u.Status) {
+        .SUCCESS => {},
+        .CANCELLED => unreachable,
+        .NOT_A_REPARSE_POINT => return error.NotLink,
+        else => |status| return windows.unexpectedStatus(status),
+    }
 
     const reparse_struct: *const windows.REPARSE_DATA_BUFFER = @ptrCast(@alignCast(&reparse_buf));
     const IoReparseTagInt = @typeInfo(windows.IO_REPARSE_TAG).@"struct".backing_integer.?;
