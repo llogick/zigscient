@@ -46,7 +46,7 @@ pub fn parse(allocator: Allocator, io: Io, libc_file: []const u8, target: *const
     const field_names = comptime std.meta.fieldNames(LibCInstallation);
     const FoundKey = struct {
         found: bool,
-        allocated: ?[:0]u8,
+        allocated: ?[]u8,
     };
 
     var found_keys: [field_names.len]FoundKey = @splat(.{ .found = false, .allocated = null });
@@ -60,7 +60,7 @@ pub fn parse(allocator: Allocator, io: Io, libc_file: []const u8, target: *const
     const contents = try Io.Dir.cwd().readFileAlloc(io, libc_file, allocator, .limited(std.math.maxInt(usize)));
     defer allocator.free(contents);
 
-    var it = std.mem.tokenizeScalar(u8, contents, '\n');
+    var it = std.mem.tokenizeAny(u8, contents, "\n\r");
     while (it.next()) |line| {
         if (line.len == 0 or line[0] == '#') continue;
         var line_it = std.mem.splitScalar(u8, line, '=');
@@ -72,7 +72,7 @@ pub fn parse(allocator: Allocator, io: Io, libc_file: []const u8, target: *const
                 if (value.len == 0) {
                     @field(self, field_name) = null;
                 } else {
-                    found_keys[i].allocated = try allocator.dupeSentinel(u8, value, 0);
+                    found_keys[i].allocated = try allocator.dupe(u8, value);
                     @field(self, field_name) = found_keys[i].allocated;
                 }
                 break;
