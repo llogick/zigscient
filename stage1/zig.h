@@ -11,8 +11,6 @@
 #elif defined(__GNUC__)
 #define zig_gcc
 #define zig_gnuc
-#elif defined(__IBMC__)
-#define zig_xlc
 #elif defined(__TINYC__)
 #define zig_tinyc
 #elif defined(__slimcc__)
@@ -28,8 +26,18 @@
 #define zig_arm
 #elif defined(__arm__)
 #define zig_arm
+#elif defined(__arc__)
+#define zig_arc
+#elif defined(__csky__)
+#define zig_csky
 #elif defined(__hexagon__)
 #define zig_hexagon
+#elif defined(__hppa__) && defined(_LP64)
+#define zig_hppa64
+#define zig_hppa
+#elif defined(__hppa__)
+#define zig_hppa32
+#define zig_hppa
 #elif defined(__kvx__)
 #define zig_kvx
 #elif defined(__loongarch32)
@@ -42,6 +50,8 @@
 #define zig_m68k
 #elif defined(__m88k__)
 #define zig_m88k
+#elif defined(__microblaze__)
+#define zig_microblaze
 #elif defined(__mips64)
 #define zig_mips64
 #define zig_mips
@@ -64,6 +74,8 @@
 #define zig_riscv
 #elif defined(__s390x__)
 #define zig_s390x
+#elif defined(__sh__)
+#define zig_sh
 #elif defined(__sparc__) && defined(__arch64__)
 #define zig_sparc64
 #define zig_sparc
@@ -100,32 +112,30 @@
 #define zig_big_endian 1
 #endif
 
-#if defined(__MACH__)
+#if defined(__APPLE__)
 #define zig_darwin
 #elif defined(__DragonFly__)
 #define zig_dragonfly
-#define zig_bsd
 #elif defined(__EMSCRIPTEN__)
 #define zig_emscripten
 #elif defined(__FreeBSD__)
 #define zig_freebsd
-#define zig_bsd
 #elif defined(__Fuchsia__)
 #define zig_fuchsia
 #elif defined(__HAIKU__)
 #define zig_haiku
 #elif defined(__gnu_hurd__)
 #define zig_hurd
+#elif defined(__illumos__)
+#define zig_illumos
 #elif defined(__linux__)
 #define zig_linux
 #elif defined(__NetBSD__)
 #define zig_netbsd
-#define zig_bsd
 #elif defined(__OpenBSD__)
 #define zig_openbsd
-#define zig_bsd
-#elif defined(__SVR4)
-#define zig_solaris
+#elif defined(__serenity__)
+#define zig_serenity
 #elif defined(__wasi__)
 #define zig_wasi
 #elif defined(_WIN32)
@@ -404,14 +414,22 @@
 #define zig_trap() __asm__ volatile("udf #0xfe")
 #elif defined(zig_arm) || defined(zig_aarch64)
 #define zig_trap() __asm__ volatile("udf #0xfdee")
+#elif defined(zig_arc)
+#define zig_trap() __asm__ volatile("unimp_s")
+#elif defined(zig_csky)
+#define zig_trap() __asm__ volatile(".word 0x3fff")
 #elif defined(zig_hexagon)
 #define zig_trap() __asm__ volatile("r27:26 = memd(#0xbadc0fee)")
+#elif defined(zig_hppa)
+#define zig_trap() __asm__ volatile("iitlbp %r0, (%sr0, %r0)")
 #elif defined(zig_kvx) || defined(zig_loongarch) || defined(zig_powerpc)
 #define zig_trap() __asm__ volatile(".word 0x0")
 #elif defined(zig_m68k)
 #define zig_trap() __asm__ volatile("illegal")
 #elif defined(zig_m88k)
 #define zig_trap() __asm__ volatile("tb0 0, %%r0, 511")
+#elif defined(zig_microblaze)
+#define zig_trap() __asm__ volatile("getd r0, r0")
 #elif defined(zig_mips)
 #define zig_trap() __asm__ volatile(".word 0x3d")
 #elif defined(zig_or1k)
@@ -420,6 +438,8 @@
 #define zig_trap() __asm__ volatile("unimp")
 #elif defined(zig_s390x)
 #define zig_trap() __asm__ volatile("j 0x2")
+#elif defined(zig_sh)
+#define zig_trap() __asm__ volatile(".word 0x0001")
 #elif defined(zig_sparc)
 #define zig_trap() __asm__ volatile("illtrap")
 #elif defined(zig_x86_16)
@@ -446,16 +466,22 @@
 
 #if defined(zig_alpha)
 #define zig_breakpoint() __asm__ volatile("call_pal 0x000080")
-#elif defined(zig_arm)
+#elif defined(zig_arm) || defined(zig_csky)
 #define zig_breakpoint() __asm__ volatile("bkpt #0x0")
 #elif defined(zig_aarch64)
 #define zig_breakpoint() __asm__ volatile("brk #0xf000")
+#elif defined(zig_arc)
+#define zig_breakpoint() __asm__ volatile("brk_s")
 #elif defined(zig_hexagon)
 #define zig_breakpoint() __asm__ volatile("brkpt")
+#elif defined(zig_hppa)
+#define zig_breakpoint() __asm__ volatile("break 0x04, 0x0008")
 #elif defined(zig_kvx) || defined(zig_loongarch)
 #define zig_breakpoint() __asm__ volatile("break 0x0")
 #elif defined(zig_m88k)
 #define zig_breakpoint() __asm__ volatile("illop1")
+#elif defined(zig_microblaze)
+#define zig_breakpoint() __asm__ volatile("brki r16, 0x0018")
 #elif defined(zig_mips)
 #define zig_breakpoint() __asm__ volatile("break")
 #elif defined(zig_or1k)
@@ -466,6 +492,8 @@
 #define zig_breakpoint() __asm__ volatile("ebreak")
 #elif defined(zig_s390x)
 #define zig_breakpoint() __asm__ volatile("j 0x6")
+#elif defined(zig_sh)
+#define zig_breakpoint() __asm__ volatile("trapa #0xc3")
 #elif defined(zig_sparc)
 #define zig_breakpoint() __asm__ volatile("ta 0x1")
 #elif defined(zig_x86)
@@ -4529,9 +4557,12 @@ static inline void zig_msvc_atomic_store_i128(zig_i128 volatile* obj, zig_i128 a
 #include <intrin.h>
 #endif
 
+static inline void* zig_e_zig_windows_teb(void) zig_mangled(zig_e_zig_windows_teb, "zig_windows_teb");
+static inline void* zig_e_zig_windows_peb(void) zig_mangled(zig_e_zig_windows_peb, "zig_windows_peb");
+
 #if defined(zig_thumb)
 
-static inline void* zig_windows_teb(void) {
+static inline void* zig_e_zig_windows_teb(void) {
     void* teb = 0;
 #if defined(zig_msvc)
     teb = (void*)_MoveFromCoprocessor(15, 0, 13, 0, 2);
@@ -4543,7 +4574,7 @@ static inline void* zig_windows_teb(void) {
 
 #elif defined(zig_aarch64)
 
-static inline void* zig_windows_teb(void) {
+static inline void* zig_e_zig_windows_teb(void) {
     void* teb = 0;
 #if defined(zig_msvc)
     teb = (void*)__readx18qword(0x0);
@@ -4555,7 +4586,7 @@ static inline void* zig_windows_teb(void) {
 
 #elif defined(zig_x86_32)
 
-static inline void* zig_windows_teb(void) {
+static inline void* zig_e_zig_windows_teb(void) {
     void* teb = 0;
 #if defined(zig_msvc)
     teb = (void*)__readfsdword(0x18);
@@ -4565,7 +4596,7 @@ static inline void* zig_windows_teb(void) {
     return teb;
 }
 
-static inline void* zig_windows_peb(void) {
+static inline void* zig_e_zig_windows_peb(void) {
     void* peb = 0;
 #if defined(zig_msvc)
     peb = (void*)__readfsdword(0x30);
@@ -4577,7 +4608,7 @@ static inline void* zig_windows_peb(void) {
 
 #elif defined(zig_x86_64)
 
-static inline void* zig_windows_teb(void) {
+static inline void* zig_e_zig_windows_teb(void) {
     void* teb = 0;
 #if defined(zig_msvc)
     teb = (void*)__readgsqword(0x30);
@@ -4587,7 +4618,7 @@ static inline void* zig_windows_teb(void) {
     return teb;
 }
 
-static inline void* zig_windows_peb(void) {
+static inline void* zig_e_zig_windows_peb(void) {
     void* peb = 0;
 #if defined(zig_msvc)
     peb = (void*)__readgsqword(0x60);
@@ -4601,7 +4632,9 @@ static inline void* zig_windows_peb(void) {
 
 #if defined(zig_loongarch)
 
-static inline void zig_loongarch_cpucfg(uint32_t word, uint32_t* result) {
+static inline void zig_e_zig_loongarch_cpucfg(uint32_t word, uint32_t* result) zig_mangled(zig_e_zig_loongarch_cpucfg, "zig_loongarch_cpucfg");
+
+static inline void zig_e_zig_loongarch_cpucfg(uint32_t word, uint32_t* result) {
 #if defined(zig_gnuc_asm)
     __asm__("cpucfg %[result], %[word]" : [result] "=r" (result) : [word] "r" (word));
 #else
@@ -4611,7 +4644,10 @@ static inline void zig_loongarch_cpucfg(uint32_t word, uint32_t* result) {
 
 #elif defined(zig_x86) && !defined(zig_x86_16)
 
-static inline void zig_x86_cpuid(uint32_t leaf_id, uint32_t subid, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx) {
+static inline void zig_e_zig_x86_cpuid(uint32_t leaf_id, uint32_t subid, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx) zig_mangled(zig_e_zig_x86_cpuid, "zig_x86_cpuid");
+static inline uint32_t zig_e_zig_x86_get_xcr0(void) zig_mangled(zig_e_zig_x86_get_xcr0, "zig_x86_get_xcr0");
+
+static inline void zig_e_zig_x86_cpuid(uint32_t leaf_id, uint32_t subid, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx) {
 #if defined(zig_msvc)
     int cpu_info[4];
     __cpuidex(cpu_info, leaf_id, subid);
@@ -4629,7 +4665,7 @@ static inline void zig_x86_cpuid(uint32_t leaf_id, uint32_t subid, uint32_t* eax
 #endif
 }
 
-static inline uint32_t zig_x86_get_xcr0(void) {
+static inline uint32_t zig_e_zig_x86_get_xcr0(void) {
 #if defined(zig_msvc)
     return (uint32_t)_xgetbv(0);
 #elif defined(zig_gnuc_asm)

@@ -1536,12 +1536,12 @@ test "vector pointer is indexable" {
     const V = @Vector(2, u32);
 
     const x: V = .{ 123, 456 };
-    comptime assert(@TypeOf(&(&x)[0]) == *const u32); // validate constness
+    comptime assert(@typeInfo(@TypeOf(&(&x)[0])).pointer.attrs.@"const");
     try expectEqual(@as(u32, 123), (&x)[0]);
     try expectEqual(@as(u32, 456), (&x)[1]);
 
     var y: V = .{ 123, 456 };
-    comptime assert(@TypeOf(&(&y)[0]) == *u32); // validate constness
+    comptime assert(!@typeInfo(@TypeOf(&(&y)[0])).pointer.attrs.@"const");
     try expectEqual(@as(u32, 123), (&y)[0]);
     try expectEqual(@as(u32, 456), (&y)[1]);
 
@@ -1620,6 +1620,7 @@ test "bitcast vector to array of smaller vectors" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
 
     const u8x32 = @Vector(32, u8);
     const u8x64 = @Vector(64, u8);

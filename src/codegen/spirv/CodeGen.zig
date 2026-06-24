@@ -34,7 +34,7 @@ const CodeGen = @This();
 
 pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
     return comptime &.initMany(&.{
-        .expand_intcast_safe,
+        .expand_int_cast_safe,
         .expand_int_from_float_safe,
         .expand_int_from_float_optimized_safe,
         .expand_add_safe,
@@ -1848,7 +1848,17 @@ fn resolveType(cg: *CodeGen, ty: Type, repr: Repr) Error!Id {
         .pointer => {
             const ptr_info = ty.ptrInfo(zcu);
 
-            const child_ty: Type = .fromInterned(ptr_info.child);
+            const child_ty: Type = switch (ptr_info.packed_offset.host_size) {
+                0 => .fromInterned(ptr_info.child),
+                else => switch (ptr_info.flags.vector_index) {
+                    // Accepted proposal https://github.com/ziglang/zig/issues/24061 will eliminate these usages of `pt`.
+                    .none => try pt.intType(.unsigned, ptr_info.packed_offset.host_size * 8),
+                    else => try pt.vectorType(.{
+                        .child = ptr_info.child,
+                        .len = ptr_info.packed_offset.host_size,
+                    }),
+                },
+            };
             const child_ty_id = try cg.resolveType(child_ty, .indirect);
             const storage_class = cg.module.storageClass(ptr_info.flags.address_space);
             const ptr_ty_id = try cg.module.ptrType(child_ty_id, storage_class);
@@ -3847,12 +3857,19 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) Error!void {
             .min => try cg.airMinMax(inst, .min),
             .max => try cg.airMinMax(inst, .max),
 
-            .bitcast         => try cg.airBitCast(inst),
-            .intcast, .trunc => try cg.airIntCast(inst),
-            .float_from_int  => try cg.airFloatFromInt(inst),
-            .int_from_float  => try cg.airIntFromFloat(inst),
-            .fpext, .fptrunc => try cg.airFloatCast(inst),
-            .not             => try cg.airNot(inst),
+            .bit_cast         => try cg.airBitCast(inst),
+            .ptr_cast         => try cg.airBitCast(inst),
+            .ptr_from_int     => try cg.airBitCast(inst),
+            .int_from_ptr     => try cg.airBitCast(inst),
+            .error_cast       => try cg.airBitCast(inst),
+            .error_from_int   => try cg.airBitCast(inst),
+            .int_from_error   => try cg.airBitCast(inst),
+            .union_from_enum  => try cg.airBitCast(inst),
+            .int_cast, .trunc => try cg.airIntCast(inst),
+            .float_from_int   => try cg.airFloatFromInt(inst),
+            .int_from_float   => try cg.airIntFromFloat(inst),
+            .fpext, .fptrunc  => try cg.airFloatCast(inst),
+            .not              => try cg.airNot(inst),
 
             .array_to_slice => try cg.airArrayToSlice(inst),
             .slice          => try cg.airSlice(inst),
@@ -6913,13 +6930,15 @@ fn airLoad(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     const zcu = cg.module.zcu;
     const pt = cg.pt;
     const ty_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
-    const ptr_ty = cg.typeOf(ty_op.operand);
-    const ptr_info = ptr_ty.ptrInfo(zcu);
-    const elem_ty = cg.typeOfIndex(inst);
-    const operand = try cg.resolve(ty_op.operand);
-    if (!ptr_ty.isVolatilePtr(zcu) and cg.liveness.isUnused(inst)) return null;
 
-    if (cg.virtual_allocas.get(operand)) |stored| return stored.?;
+    const ptr_info = cg.typeOf(ty_op.operand).ptrInfo(zcu);
+
+    const elem_ty = cg.typeOfIndex(inst);
+    const operand_ptr_id = try cg.resolve(ty_op.operand);
+
+    assert(ptr_info.child == elem_ty.toIntern());
+
+    if (cg.virtual_allocas.get(operand_ptr_id)) |stored| return stored.?;
 
     if (ptr_info.packed_offset.host_size != 0 and
         ptr_info.flags.vector_index == .none)
@@ -6927,7 +6946,7 @@ fn airLoad(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
         const host_bits: u16 = ptr_info.packed_offset.host_size * 8;
         const elem_bit_size: u16 = @intCast(elem_ty.bitSize(zcu));
         const host_int_ty = try pt.intType(.unsigned, host_bits);
-        const host_val = try cg.load(host_int_ty, operand, .{ .is_volatile = ptr_ty.isVolatilePtr(zcu) });
+        const host_val = try cg.load(host_int_ty, operand_ptr_id, .{ .is_volatile = ptr_info.flags.is_volatile });
         const signedness: Signedness = if (elem_ty.isInt(zcu)) elem_ty.intInfo(zcu).signedness else .unsigned;
         const field_int_ty = try pt.intType(signedness, elem_bit_size);
         const narrowed = if (ptr_info.packed_offset.bit_offset > 0) blk: {
@@ -6946,21 +6965,30 @@ fn airLoad(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
         return try cg.bitCast(elem_ty, field_int_ty, result_id);
     }
 
-    return try cg.load(elem_ty, operand, .{ .is_volatile = ptr_ty.isVolatilePtr(zcu) });
+    const ptr_id = switch (ptr_info.flags.vector_index) {
+        .none => operand_ptr_id,
+        else => |index| ptr_id: {
+            const elem_ptr_ty_id = try cg.module.ptrType(
+                try cg.resolveType(elem_ty, .indirect),
+                cg.module.storageClass(ptr_info.flags.address_space),
+            );
+            break :ptr_id try cg.accessChain(elem_ptr_ty_id, operand_ptr_id, &.{@intFromEnum(index)});
+        },
+    };
+    return try cg.load(elem_ty, ptr_id, .{ .is_volatile = ptr_info.flags.is_volatile });
 }
 
 fn airStore(cg: *CodeGen, inst: Air.Inst.Index) !void {
     const zcu = cg.module.zcu;
     const pt = cg.pt;
     const bin_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].bin_op;
-    const ptr_ty = cg.typeOf(bin_op.lhs);
-    const ptr_info = ptr_ty.ptrInfo(zcu);
-    const elem_ty = ptr_ty.childType(zcu);
-    const ptr = try cg.resolve(bin_op.lhs);
-    const value = try cg.resolve(bin_op.rhs);
+    const ptr_info = cg.typeOf(bin_op.lhs).ptrInfo(zcu);
+    const elem_ty: Type = .fromInterned(ptr_info.child);
+    const operand_ptr_id = try cg.resolve(bin_op.lhs);
+    const value_id = try cg.resolve(bin_op.rhs);
 
-    if (cg.virtual_allocas.getPtr(ptr)) |slot| {
-        slot.* = value;
+    if (cg.virtual_allocas.getPtr(operand_ptr_id)) |slot| {
+        slot.* = value_id;
         return;
     }
 
@@ -6969,19 +6997,19 @@ fn airStore(cg: *CodeGen, inst: Air.Inst.Index) !void {
     {
         const host_bits: u16 = ptr_info.packed_offset.host_size * 8;
         const host_int_ty = try pt.intType(.unsigned, host_bits);
-        const host_val = try cg.load(host_int_ty, ptr, .{ .is_volatile = ptr_ty.isVolatilePtr(zcu) });
+        const host_val = try cg.load(host_int_ty, operand_ptr_id, .{ .is_volatile = ptr_info.flags.is_volatile });
         const elem_bit_size: u16 = @intCast(elem_ty.bitSize(zcu));
         const signedness: Signedness = if (elem_ty.isInt(zcu)) elem_ty.intInfo(zcu).signedness else .unsigned;
         const field_int_ty = try pt.intType(signedness, elem_bit_size);
 
         var value_as_int: Id = undefined;
         if (elem_ty.ip_index == .bool_type) {
-            value_as_int = try cg.convertToIndirect(.bool, value);
+            value_as_int = try cg.convertToIndirect(.bool, value_id);
             value_as_int = try cg.bitCast(field_int_ty, .u1, value_as_int);
         } else if (elem_ty.isInt(zcu)) {
-            value_as_int = value;
+            value_as_int = value_id;
         } else {
-            value_as_int = try cg.bitCast(field_int_ty, elem_ty, value);
+            value_as_int = try cg.bitCast(field_int_ty, elem_ty, value_id);
         }
 
         const extended = blk: {
@@ -7002,11 +7030,22 @@ fn airStore(cg: *CodeGen, inst: Air.Inst.Index) !void {
         const combined = try cg.buildBinary(.OpBitwiseOr, cleared, shifted_val);
         const combined_id = try combined.materialize(cg);
 
-        try cg.store(host_int_ty, ptr, combined_id, .{ .is_volatile = ptr_ty.isVolatilePtr(zcu) });
+        try cg.store(host_int_ty, operand_ptr_id, combined_id, .{ .is_volatile = ptr_info.flags.is_volatile });
         return;
     }
 
-    try cg.store(elem_ty, ptr, value, .{ .is_volatile = ptr_ty.isVolatilePtr(zcu) });
+    const ptr_id = switch (ptr_info.flags.vector_index) {
+        .none => operand_ptr_id,
+        else => |index| ptr_id: {
+            const elem_ptr_ty_id = try cg.module.ptrType(
+                try cg.resolveType(elem_ty, .indirect),
+                cg.module.storageClass(ptr_info.flags.address_space),
+            );
+            break :ptr_id try cg.accessChain(elem_ptr_ty_id, operand_ptr_id, &.{@intFromEnum(index)});
+        },
+    };
+
+    try cg.store(elem_ty, ptr_id, value_id, .{ .is_volatile = ptr_info.flags.is_volatile });
 }
 
 fn airRet(cg: *CodeGen, inst: Air.Inst.Index) !void {

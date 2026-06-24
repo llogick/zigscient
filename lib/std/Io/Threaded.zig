@@ -14188,9 +14188,11 @@ fn addressUnixToPosix(a: *const net.UnixAddress, storage: *UnixAddress) posix.so
 }
 
 fn address4FromPosix(in: *const posix.sockaddr.in) net.Ip4Address {
+    // The network byte order address in `in.addr` is already the byte order we want.
+    const addr_bytes: *const [4]u8 = @ptrCast(&in.addr);
     return .{
         .port = std.mem.bigToNative(u16, in.port),
-        .bytes = @bitCast(in.addr),
+        .bytes = addr_bytes.*,
     };
 }
 
@@ -14204,9 +14206,11 @@ fn address6FromPosix(in6: *const posix.sockaddr.in6) net.Ip6Address {
 }
 
 fn address4ToPosix(a: net.Ip4Address) posix.sockaddr.in {
+    // The byte order of `a.bytes` is already equivalent to a network byte order address.
+    const addr_raw: *align(1) const u32 = @ptrCast(&a.bytes);
     return .{
         .port = std.mem.nativeToBig(u16, a.port),
-        .addr = @bitCast(a.bytes),
+        .addr = addr_raw.*,
     };
 }
 

@@ -64,10 +64,21 @@ inline fn limb(limbs: []const u32, index: usize) u32 {
 pub inline fn floatFromBigInt(comptime T: type, comptime signedness: std.builtin.Signedness, x: []const u32) T {
     switch (x.len) {
         0 => return 0,
-        inline 1...4 => |limbs_len| return @floatFromInt(@as(
-            @Int(signedness, 32 * limbs_len),
-            @bitCast(x[0..limbs_len].*),
-        )),
+        inline 1...4 => |limbs_len| {
+            const low_to_high: [limbs_len]u32 = switch (@import("builtin").cpu.arch.endian()) {
+                .little => x[0..limbs_len].*,
+                .big => switch (limbs_len) {
+                    1 => .{x[0]},
+                    2 => .{ x[1], x[0] },
+                    3 => .{ x[2], x[1], x[0] },
+                    4 => .{ x[3], x[2], x[1], x[0] },
+                    else => comptime unreachable,
+                },
+            };
+            const I = @Int(signedness, 32 * limbs_len);
+            const int: I = @bitCast(low_to_high);
+            return @floatFromInt(int);
+        },
         else => {},
     }
 

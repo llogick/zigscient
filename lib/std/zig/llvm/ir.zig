@@ -696,6 +696,7 @@ pub const ModuleBlock = struct {
             ModuleBlock.FunctionBlock.Select,
             ModuleBlock.FunctionBlock.SelectFast,
             ModuleBlock.FunctionBlock.Cast,
+            ModuleBlock.FunctionBlock.TruncNoWrap,
             ModuleBlock.FunctionBlock.Alloca,
             ModuleBlock.FunctionBlock.GetElementPtr,
             ModuleBlock.FunctionBlock.ExtractValue,
@@ -1084,6 +1085,24 @@ pub const ModuleBlock = struct {
             val: u32,
             type_index: Builder.Type,
             opcode: CastOpcode,
+        };
+
+        pub const TruncNoWrap = struct {
+            pub const Flags = packed struct(u2) {
+                no_unsigned_wrap: bool,
+                no_signed_wrap: bool,
+            };
+            pub const ops = [_]AbbrevOp{
+                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_CAST) },
+                ValueAbbrev,
+                .{ .fixed_runtime = Builder.Type },
+                .{ .literal = @intFromEnum(Builder.CastOpcode.trunc) },
+                .{ .fixed = @bitSizeOf(Flags) },
+            };
+
+            val: u32,
+            type_index: Builder.Type,
+            flags: Flags,
         };
 
         pub const Alloca = struct {

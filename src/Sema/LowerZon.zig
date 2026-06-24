@@ -815,20 +815,15 @@ fn lowerStruct(self: *LowerZon, node: Zoir.Node.Index, res_ty: Type) !InternPool
         .@"packed" => result: {
             const arena = self.sema.arena;
             const buf = try arena.alloc(u8, @intCast((res_ty.bitSize(zcu) + 7) / 8));
+            @memset(buf, 0);
             var bit_offset: u16 = 0;
             for (field_values) |field_ip| {
                 const field_val: Value = .fromInterned(field_ip);
-                field_val.writeToPackedMemory(zcu, buf, bit_offset) catch |err| switch (err) {
-                    error.ReinterpretDeclRef => unreachable, // bitpack fields cannot be pointers
-                    error.OutOfMemory => |e| return e,
-                };
+                field_val.writeToPackedMemory(zcu, buf, bit_offset);
                 bit_offset += @intCast(field_val.typeOf(zcu).bitSize(zcu));
             }
             assert(bit_offset == res_ty.bitSize(zcu));
-            break :result Value.readFromPackedMemory(res_ty, pt, buf, 0, arena) catch |err| switch (err) {
-                error.IllDefinedMemoryLayout => unreachable, // bitpacks have well-defined layout
-                error.OutOfMemory => |e| return e,
-            };
+            break :result try .readFromPackedMemory(res_ty, pt, buf, 0);
         },
     };
     return result.toIntern();
@@ -981,9 +976,7 @@ fn lowerUnion(self: *LowerZon, node: Zoir.Node.Index, res_ty: Type) !InternPool.
     };
     const result: Value = switch (union_info.layout) {
         .auto, .@"extern" => try pt.unionValue(res_ty, tag, val),
-        .@"packed" => try self.sema.bitCastVal(val, res_ty, 0, 0, 0) orelse {
-            unreachable; // `null` is only possible if the input value contains a pointer, which a packed union cannot.
-        },
+        .@"packed" => try self.sema.bitCastVal(val, res_ty),
     };
     return result.toIntern();
 }

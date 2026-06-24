@@ -4602,8 +4602,12 @@ fn runCodegenInner(pt: Zcu.PerThread, func_index: InternPool.Index, air: *Air) e
     tracy_trace.addText(fqn.toSlice(ip));
     tracy_trace.addTextFmt("func_ip_index={d}", .{func_index});
 
+    Air.Verify.run(pt, func_index, air);
+
     if (codegen.legalizeFeatures(pt, nav)) |features| {
         try air.legalize(pt, features);
+        // Verify the AIR again post-legalization.
+        Air.Verify.run(pt, func_index, air);
     }
 
     var liveness: ?Air.Liveness = if (codegen.wantsLiveness(pt, nav))

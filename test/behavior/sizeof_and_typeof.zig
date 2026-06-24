@@ -151,9 +151,6 @@ test "branching logic inside @TypeOf" {
 test "@bitSizeOf" {
     try expect(@bitSizeOf(u2) == 2);
     try expect(@bitSizeOf(u8) == @sizeOf(u8) * 8);
-    try expect(@bitSizeOf(struct {
-        a: u2,
-    }) == 8);
     try expect(@bitSizeOf(packed struct {
         a: u2,
     }) == 2);
@@ -279,14 +276,6 @@ test "@offsetOf zero-bit field" {
         c: u32,
     };
     try expect(@offsetOf(S, "b") == @offsetOf(S, "c"));
-}
-
-test "@bitSizeOf on array of structs" {
-    const S = struct {
-        foo: u64,
-    };
-
-    try expectEqual(128, @bitSizeOf([2]S));
 }
 
 test "lazy abi size used in comparison" {

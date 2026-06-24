@@ -18,24 +18,23 @@ pub fn classifyType(ty: Type, zcu: *Zcu, ctx: Context) Class {
     const max_direct_size = target.ptrBitWidth() * 2;
     switch (ty.zigTypeTag(zcu)) {
         .@"struct" => {
-            const bit_size = ty.bitSize(zcu);
             if (ty.containerLayout(zcu) == .@"packed") {
-                if (bit_size > max_direct_size) return .memory;
+                if (ty.bitSize(zcu) > max_direct_size) return .memory;
                 return .byval;
             }
+            const bit_size = ty.abiSize(zcu) * 8;
             if (bit_size > max_direct_size) return .memory;
             // TODO: for bit_size <= 32 using byval is more correct, but that needs inreg argument attribute
             const count = @as(u8, @intCast(std.mem.alignForward(u64, bit_size, 32) / 32));
             return .{ .i32_array = count };
         },
         .@"union" => {
-            const bit_size = ty.bitSize(zcu);
             if (ty.containerLayout(zcu) == .@"packed") {
-                if (bit_size > max_direct_size) return .memory;
+                if (ty.bitSize(zcu) > max_direct_size) return .memory;
                 return .byval;
             }
+            const bit_size = ty.abiSize(zcu) * 8;
             if (bit_size > max_direct_size) return .memory;
-
             return .byval;
         },
         .bool => return .byval,

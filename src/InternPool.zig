@@ -6009,13 +6009,7 @@ pub const Alignment = enum(u6) {
         return r;
     }
 
-    const LlvmBuilderAlignment = std.zig.llvm.Builder.Alignment;
-
-    pub fn toLlvm(a: Alignment) LlvmBuilderAlignment {
-        return @enumFromInt(@intFromEnum(a));
-    }
-
-    pub fn fromLlvm(a: LlvmBuilderAlignment) Alignment {
+    pub fn toLlvm(a: Alignment) std.zig.llvm.Builder.Alignment {
         return @enumFromInt(@intFromEnum(a));
     }
 };

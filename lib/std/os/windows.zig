@@ -4189,19 +4189,11 @@ pub const GUID = extern struct {
     Data3: u16,
     Data4: [8]u8,
 
-    const hex_offsets = switch (builtin.target.cpu.arch.endian()) {
-        .big => [16]u6{
-            0,  2,  4,  6,
-            9,  11, 14, 16,
-            19, 21, 24, 26,
-            28, 30, 32, 34,
-        },
-        .little => [16]u6{
-            6,  4,  2,  0,
-            11, 9,  16, 14,
-            19, 21, 24, 26,
-            28, 30, 32, 34,
-        },
+    const hex_offsets: [16]u6 = .{
+        6,  4,  2,  0,
+        11, 9,  16, 14,
+        19, 21, 24, 26,
+        28, 30, 32, 34,
     };
 
     pub fn parse(s: []const u8) GUID {
@@ -4216,12 +4208,21 @@ pub const GUID = extern struct {
         assert(s[13] == '-');
         assert(s[18] == '-');
         assert(s[23] == '-');
-        var bytes: [16]u8 = undefined;
-        for (hex_offsets, 0..) |hex_offset, i| {
-            bytes[i] = (try std.fmt.charToDigit(s[hex_offset], 16)) << 4 |
-                try std.fmt.charToDigit(s[hex_offset + 1], 16);
-        }
-        return @as(GUID, @bitCast(bytes));
+        var raw1: [4]u8 = undefined;
+        var raw2: [2]u8 = undefined;
+        var raw3: [2]u8 = undefined;
+        var raw4: [8]u8 = undefined;
+        assert((try std.fmt.hexToBytes(&raw1, s[0..8])).len == raw1.len);
+        assert((try std.fmt.hexToBytes(&raw2, s[9..13])).len == raw2.len);
+        assert((try std.fmt.hexToBytes(&raw3, s[14..18])).len == raw3.len);
+        assert((try std.fmt.hexToBytes(raw4[0..2], s[19..23])).len == 2);
+        assert((try std.fmt.hexToBytes(raw4[2..8], s[24..36])).len == 6);
+        return .{
+            .Data1 = @byteSwap(@as(u32, @bitCast(raw1))),
+            .Data2 = @byteSwap(@as(u16, @bitCast(raw2))),
+            .Data3 = @byteSwap(@as(u16, @bitCast(raw3))),
+            .Data4 = raw4,
+        };
     }
 
     pub fn format(self: GUID, w: *std.Io.Writer) std.Io.Writer.Error!void {
@@ -4233,28 +4234,28 @@ pub const GUID = extern struct {
             self.Data4[2..8],
         });
     }
-};
 
-test GUID {
-    try std.testing.expectEqual(
-        GUID{
+    test parse {
+        const expected: GUID = .{
             .Data1 = 0x01234567,
             .Data2 = 0x89ab,
             .Data3 = 0xef10,
             .Data4 = "\x32\x54\x76\x98\xba\xdc\xfe\x91".*,
-        },
-        GUID.parse("{01234567-89AB-EF10-3254-7698badcfe91}"),
-    );
-    try std.testing.expectFmt(
-        "{01234567-89ab-ef10-3254-7698badcfe91}",
-        "{f}",
-        .{GUID.parse("{01234567-89AB-EF10-3254-7698badcfe91}")},
-    );
-    try std.testing.expectFmt(
-        "{00000001-0001-0001-0001-000000000001}",
-        "{f}",
-        .{GUID{ .Data1 = 1, .Data2 = 1, .Data3 = 1, .Data4 = [_]u8{ 0, 1, 0, 0, 0, 0, 0, 1 } }},
-    );
+        };
+        try std.testing.expectEqual(expected, GUID.parse("{01234567-89AB-EF10-3254-7698badcfe91}"));
+    }
+
+    test format {
+        const guid0: GUID = .{ .Data1 = 1, .Data2 = 1, .Data3 = 1, .Data4 = .{ 0, 1, 0, 0, 0, 0, 0, 1 } };
+        try std.testing.expectFmt("{00000001-0001-0001-0001-000000000001}", "{f}", .{guid0});
+
+        const guid1: GUID = .parse("{01234567-89AB-EF10-3254-7698badcfe91}");
+        try std.testing.expectFmt("{01234567-89ab-ef10-3254-7698badcfe91}", "{f}", .{guid1});
+    }
+};
+
+test {
+    _ = GUID;
 }
 
 pub const COORD = extern struct {

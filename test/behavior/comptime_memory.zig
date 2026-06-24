@@ -583,3 +583,19 @@ test "comptime store to extern struct reinterpreted as byte array" {
 
     comptime std.debug.assert(val.x == 0);
 }
+
+test "reinterpret sentinel-terminated array as packed struct" {
+    const S = packed struct(u16) { lo: u8, hi: u8 };
+    const data: [2:0]u8 = .{ 0x12, 0x34 };
+    const ptr: *align(1) const S = @ptrCast(&data);
+    switch (endian) {
+        .little => {
+            try testing.expect(ptr.lo == 0x12);
+            try testing.expect(ptr.hi == 0x34);
+        },
+        .big => {
+            try testing.expect(ptr.lo == 0x34);
+            try testing.expect(ptr.hi == 0x12);
+        },
+    }
+}

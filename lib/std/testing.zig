@@ -141,39 +141,45 @@ fn expectEqualInner(comptime T: type, expected: T, actual: T) !void {
             try expectEqualSlices(info.child, &expect_array, &actual_array);
         },
 
-        .@"struct" => |structType| {
-            inline for (structType.field_names) |field_name| {
+        .@"struct" => |@"struct"| {
+            inline for (@"struct".field_names) |field_name| {
                 try expectEqual(@field(expected, field_name), @field(actual, field_name));
             }
         },
 
-        .@"union" => |union_info| {
-            if (union_info.tag_type == null) {
-                const first_size = @bitSizeOf(union_info.field_types[0]);
-                inline for (union_info.field_types) |field_type| {
+        .@"union" => |@"union"| if (@"union".backing_integer) |Int| {
+            try expectEqual(@as(Int, @bitCast(expected)), @as(Int, @bitCast(actual)));
+        } else switch (@"union".layout) {
+            .@"packed" => {
+                const Int = @Int(.unsigned, @bitSizeOf(T));
+                try expectEqual(@as(Int, @bitCast(expected)), @as(Int, @bitCast(actual)));
+            },
+            .@"extern" => {
+                const first_size = @bitSizeOf(@"union".field_types[0]);
+                inline for (@"union".field_types) |field_type| {
                     if (@bitSizeOf(field_type) != first_size) {
-                        @compileError("Unable to compare untagged unions with varying field sizes for type " ++ @typeName(@TypeOf(actual)));
+                        @compileError("Unable to compare extern unions with varying field sizes for type " ++ @typeName(T));
                     }
                 }
-
-                const BackingInt = @Int(.unsigned, @bitSizeOf(T));
+                const FieldInt = @Int(.unsigned, first_size);
+                const expected_field = @field(expected, @"union".field_names[0]);
+                const actual_field = @field(actual, @"union".field_names[0]);
                 return expectEqual(
-                    @as(BackingInt, @bitCast(expected)),
-                    @as(BackingInt, @bitCast(actual)),
+                    @as(FieldInt, @bitCast(expected_field)),
+                    @as(FieldInt, @bitCast(actual_field)),
                 );
-            }
+            },
+            .auto => {
+                const Tag = @"union".tag_type orelse @compileError("byteSwapAllFields expects packed, extern, or tagged union");
 
-            const Tag = std.meta.Tag(@TypeOf(expected));
-
-            const expectedTag = @as(Tag, expected);
-            const actualTag = @as(Tag, actual);
-
-            try expectEqual(expectedTag, actualTag);
-
-            // we only reach this switch if the tags are equal
-            switch (expected) {
-                inline else => |val, tag| try expectEqual(val, @field(actual, @tagName(tag))),
-            }
+                try expectEqual(@as(Tag, expected), @as(Tag, actual));
+                switch (expected) {
+                    inline else => |expected_payload, tag| {
+                        const actual_payload = @field(actual, @tagName(tag));
+                        try expectEqual(expected_payload, actual_payload);
+                    },
+                }
+            },
         },
 
         .optional => {

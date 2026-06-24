@@ -248,7 +248,6 @@ pub fn toBool(val: Value) bool {
 pub fn writeToMemory(val: Value, zcu: *const Zcu, buffer: []u8) error{
     ReinterpretDeclRef,
     IllDefinedMemoryLayout,
-    Unimplemented,
     OutOfMemory,
 }!void {
     const target = zcu.getTarget();
@@ -257,35 +256,50 @@ pub fn writeToMemory(val: Value, zcu: *const Zcu, buffer: []u8) error{
     const ty = val.typeOf(zcu);
     if (val.isUndef(zcu)) {
         const size: usize = @intCast(ty.abiSize(zcu));
-        @memset(buffer[0..size], 0xaa);
+        @memset(buffer[0..size], 0xAA);
         return;
     }
-    switch (ty.zigTypeTag(zcu)) {
+    tag: switch (ty.zigTypeTag(zcu)) {
+        .type => return error.IllDefinedMemoryLayout,
+        .comptime_float => return error.IllDefinedMemoryLayout,
+        .comptime_int => return error.IllDefinedMemoryLayout,
+        .undefined => return error.IllDefinedMemoryLayout,
+        .null => return error.IllDefinedMemoryLayout,
+        .error_union => return error.IllDefinedMemoryLayout,
+        .enum_literal => return error.IllDefinedMemoryLayout,
+        .@"fn" => return error.IllDefinedMemoryLayout,
+        .spirv => return error.IllDefinedMemoryLayout,
+        .@"opaque" => unreachable,
+        .frame => unreachable,
+        .@"anyframe" => unreachable,
+        .noreturn => unreachable,
         .void => {},
         .bool => {
             buffer[0] = @intFromBool(val.toBool());
         },
-        .int, .@"enum", .error_set, .pointer => |tag| {
-            const int_ty = if (tag == .pointer) int_ty: {
-                if (ty.isSlice(zcu)) return error.IllDefinedMemoryLayout;
-                if (ip.getBackingAddrTag(val.toIntern()).? != .int) return error.ReinterpretDeclRef;
-                break :int_ty Type.usize;
-            } else ty;
-            const int_info = int_ty.intInfo(zcu);
-            const bits = int_info.bits;
-            const byte_count: u16 = @intCast((@as(u17, bits) + 7) / 8);
-
+        .pointer => {
+            if (ty.isSlice(zcu)) return error.IllDefinedMemoryLayout;
+            if (ip.getBackingAddrTag(val.toIntern()).? != .int) return error.ReinterpretDeclRef;
+            continue :tag .int;
+        },
+        .int, .@"enum", .error_set => {
             var bigint_buffer: BigIntSpace = undefined;
             const bigint = val.toBigInt(&bigint_buffer, zcu);
-            bigint.writeTwosComplement(buffer[0..byte_count], endian);
+            bigint.writeTwosComplement(buffer[0..@intCast(ty.abiSize(zcu))], endian);
         },
-        .float => switch (ty.floatBits(target)) {
-            16 => std.mem.writeInt(u16, buffer[0..2], @bitCast(val.toFloat(f16, zcu)), endian),
-            32 => std.mem.writeInt(u32, buffer[0..4], @bitCast(val.toFloat(f32, zcu)), endian),
-            64 => std.mem.writeInt(u64, buffer[0..8], @bitCast(val.toFloat(f64, zcu)), endian),
-            80 => std.mem.writeInt(u80, buffer[0..10], @bitCast(val.toFloat(f80, zcu)), endian),
-            128 => std.mem.writeInt(u128, buffer[0..16], @bitCast(val.toFloat(f128, zcu)), endian),
-            else => unreachable,
+        .float => {
+            const float_bits = ty.floatBits(target);
+            switch (float_bits) {
+                16 => std.mem.writeInt(u16, buffer[0..2], @bitCast(val.toFloat(f16, zcu)), endian),
+                32 => std.mem.writeInt(u32, buffer[0..4], @bitCast(val.toFloat(f32, zcu)), endian),
+                64 => std.mem.writeInt(u64, buffer[0..8], @bitCast(val.toFloat(f64, zcu)), endian),
+                80 => std.mem.writeInt(u80, buffer[0..10], @bitCast(val.toFloat(f80, zcu)), endian),
+                128 => std.mem.writeInt(u128, buffer[0..16], @bitCast(val.toFloat(f128, zcu)), endian),
+                else => unreachable,
+            }
+            const float_bytes = @divExact(float_bits, 8);
+            const total_bytes: usize = @intCast(ty.abiSize(zcu));
+            @memset(buffer[float_bytes..total_bytes], 0); // padding
         },
         .array => {
             const aggregate = ip.indexToKey(val.toIntern()).aggregate;
@@ -302,28 +316,33 @@ pub fn writeToMemory(val: Value, zcu: *const Zcu, buffer: []u8) error{
                 }
                 buf_off += elem_size;
             }
+            if (ty.sentinel(zcu)) |sentinel_val| {
+                try sentinel_val.writeToMemory(zcu, buffer[buf_off..]);
+            }
         },
-        .vector => {
-            // We use byte_count instead of abi_size here, so that any padding bytes
-            // follow the data bytes, on both big- and little-endian systems.
-            const byte_count = (@as(usize, @intCast(ty.bitSize(zcu))) + 7) / 8;
-            return writeToPackedMemory(val, zcu, buffer[0..byte_count], 0);
-        },
+        .vector => return error.IllDefinedMemoryLayout,
         .@"struct" => {
             const struct_type = zcu.typeToStruct(ty) orelse return error.IllDefinedMemoryLayout;
             switch (struct_type.layout) {
                 .auto => return error.IllDefinedMemoryLayout,
-                .@"extern" => for (0..struct_type.field_types.len) |field_index| {
-                    const off: usize = @intCast(ty.structFieldOffset(field_index, zcu));
-                    const field_val = Value.fromInterned(switch (ip.indexToKey(val.toIntern()).aggregate.storage) {
-                        .bytes => |bytes| {
-                            buffer[off] = bytes.at(field_index, ip);
-                            continue;
-                        },
-                        .elems => |elems| elems[field_index],
-                        .repeated_elem => |elem| elem,
-                    });
-                    try writeToMemory(field_val, zcu, buffer[off..]);
+                .@"extern" => {
+                    var last_off: usize = 0;
+                    for (struct_type.field_types.get(ip), 0..) |field_ty_ip, field_index| {
+                        const off: usize = @intCast(ty.structFieldOffset(field_index, zcu));
+                        @memset(buffer[last_off..off], 0xAA);
+                        const field_val = Value.fromInterned(switch (ip.indexToKey(val.toIntern()).aggregate.storage) {
+                            .bytes => |bytes| {
+                                buffer[off] = bytes.at(field_index, ip);
+                                continue;
+                            },
+                            .elems => |elems| elems[field_index],
+                            .repeated_elem => |elem| elem,
+                        });
+                        try writeToMemory(field_val, zcu, buffer[off..]);
+                        last_off = @intCast(off + Type.fromInterned(field_ty_ip).abiSize(zcu));
+                    }
+                    const struct_size: usize = @intCast(ty.abiSize(zcu));
+                    @memset(buffer[last_off..struct_size], 0xAA);
                 },
                 .@"packed" => {
                     const int_index = ip.indexToKey(val.toIntern()).bitpack.backing_int_val;
@@ -335,6 +354,9 @@ pub fn writeToMemory(val: Value, zcu: *const Zcu, buffer: []u8) error{
             .auto => return error.IllDefinedMemoryLayout, // Sema is supposed to have emitted a compile error already
             .@"extern" => {
                 const payload_val = val.unionPayload(zcu);
+                const payload_size: usize = @intCast(payload_val.typeOf(zcu).abiSize(zcu));
+                const union_size: usize = @intCast(ty.abiSize(zcu));
+                @memset(buffer[payload_size..union_size], 0xAA);
                 return writeToMemory(payload_val, zcu, buffer);
             },
             .@"packed" => {
@@ -352,7 +374,6 @@ pub fn writeToMemory(val: Value, zcu: *const Zcu, buffer: []u8) error{
                 @memset(buffer[0..@intCast(byte_count)], 0); // null pointer
             }
         },
-        else => return error.Unimplemented,
     }
 }
 
@@ -360,12 +381,15 @@ pub fn writeToMemory(val: Value, zcu: *const Zcu, buffer: []u8) error{
 ///
 /// Both the start and the end of the provided buffer must be tight, since
 /// big-endian packed memory layouts start at the end of the buffer.
+///
+/// Supports arrays and vectors, for which the value is written in logical bit
+/// order, i.e. with the first element at bit offset 0.
 pub fn writeToPackedMemory(
     val: Value,
     zcu: *const Zcu,
     buffer: []u8,
     bit_offset: usize,
-) error{ ReinterpretDeclRef, OutOfMemory }!void {
+) void {
     const ip = &zcu.intern_pool;
     const target = zcu.getTarget();
     const endian = target.cpu.arch.endian();
@@ -392,13 +416,7 @@ pub fn writeToPackedMemory(
         },
         .@"enum" => {
             const int_val = val.intFromEnum(zcu);
-            return int_val.writeToPackedMemory(zcu, buffer, bit_offset);
-        },
-        .pointer => {
-            assert(!ty.isSlice(zcu)); // No well defined layout.
-            if (ip.getBackingAddrTag(val.toIntern()).? != .int) return error.ReinterpretDeclRef;
-            const addr = val.toUnsignedInt(zcu);
-            std.mem.writeVarPackedInt(buffer, bit_offset, zcu.getTarget().ptrBitWidth(), addr, endian);
+            int_val.writeToPackedMemory(zcu, buffer, bit_offset);
         },
         .int => {
             const bits = ty.intInfo(zcu).bits;
@@ -416,47 +434,46 @@ pub fn writeToPackedMemory(
             128 => std.mem.writePackedInt(u128, buffer, bit_offset, @bitCast(val.toFloat(f128, zcu)), endian),
             else => unreachable,
         },
-        .vector => {
-            const elem_ty = ty.childType(zcu);
-            const elem_bit_size: u16 = @intCast(elem_ty.bitSize(zcu));
-            const len: usize = @intCast(ty.arrayLen(zcu));
-
-            var bits: u16 = 0;
-            var elem_i: usize = 0;
-            const aggregate = ip.indexToKey(val.toIntern()).aggregate;
-            while (elem_i < len) : (elem_i += 1) {
-                // On big-endian systems, LLVM reverses the element order of vectors by default
-                const tgt_elem_i = if (endian == .big) len - elem_i - 1 else elem_i;
-                switch (aggregate.storage) {
-                    .bytes => |bytes| std.mem.writePackedInt(u8, buffer, bit_offset + bits, bytes.at(tgt_elem_i, ip), endian),
-                    .elems => |elems| try Value.fromInterned(elems[tgt_elem_i]).writeToPackedMemory(zcu, buffer, bit_offset + bits),
-                    .repeated_elem => |elem| try Value.fromInterned(elem).writeToPackedMemory(zcu, buffer, bit_offset + bits),
-                }
-                bits += elem_bit_size;
-            }
-        },
         .@"struct", .@"union" => {
             assert(ty.containerLayout(zcu) == .@"packed");
             const int_val: Value = .fromInterned(ip.indexToKey(val.toIntern()).bitpack.backing_int_val);
-            return int_val.writeToPackedMemory(zcu, buffer, bit_offset);
+            int_val.writeToPackedMemory(zcu, buffer, bit_offset);
         },
-        .optional => {
-            assert(ty.isPtrLikeOptional(zcu));
-            if (val.optionalValue(zcu)) |ptr_val| {
-                return ptr_val.writeToPackedMemory(zcu, buffer, bit_offset);
-            } else {
-                return Value.zero_usize.writeToPackedMemory(zcu, buffer, bit_offset);
+        .array, .vector => {
+            const elem_bits: usize = @intCast(ty.childType(zcu).bitSize(zcu));
+            const len: usize = @intCast(ty.arrayLen(zcu));
+            var elem_bit_off: usize = bit_offset;
+            switch (ip.indexToKey(val.toIntern()).aggregate.storage) {
+                .repeated_elem => |elem_val_ip| {
+                    const elem_val: Value = .fromInterned(elem_val_ip);
+                    for (0..len) |_| {
+                        elem_val.writeToPackedMemory(zcu, buffer, elem_bit_off);
+                        elem_bit_off += elem_bits;
+                    }
+                },
+                .elems => |elems| for (elems[0..len]) |elem_val_ip| {
+                    const elem_val: Value = .fromInterned(elem_val_ip);
+                    elem_val.writeToPackedMemory(zcu, buffer, elem_bit_off);
+                    elem_bit_off += elem_bits;
+                },
+                .bytes => |bytes| for (bytes.toSlice(len, ip)) |raw_byte| {
+                    std.mem.writeVarPackedInt(buffer, elem_bit_off, elem_bits, raw_byte, endian);
+                    elem_bit_off += elem_bits;
+                },
+            }
+            if (ty.sentinel(zcu)) |sentinel_val| {
+                sentinel_val.writeToPackedMemory(zcu, buffer, elem_bit_off);
             }
         },
-        else => @panic("TODO implement writeToPackedMemory for more types"),
+        else => unreachable,
     }
 }
 
-/// Load a Value from the contents of `buffer`, where `ty` is an unsigned integer type.
+/// Load a Value from the contents of `buffer`, where `ty` is any integer type.
 ///
 /// Asserts that buffer.len >= ty.abiSize(). The buffer is allowed to extend past
 /// the end of the value in memory.
-pub fn readUintFromMemory(
+pub fn readIntFromMemory(
     ty: Type,
     pt: Zcu.PerThread,
     buffer: []const u8,
@@ -465,23 +482,28 @@ pub fn readUintFromMemory(
     const zcu = pt.zcu;
     const endian = zcu.getTarget().cpu.arch.endian();
 
-    assert(ty.isUnsignedInt(zcu));
-    const bits = ty.intInfo(zcu).bits;
-    const byte_count: u16 = @intCast((@as(u17, bits) + 7) / 8);
+    const int = ty.intInfo(zcu);
+    const abi_size: usize = @intCast(ty.abiSize(zcu));
+    const exact_buf = buffer[0..abi_size];
 
-    assert(buffer.len >= byte_count);
-
-    if (bits <= 64) {
-        const val = std.mem.readVarInt(u64, buffer[0..byte_count], endian);
-        const result = (val << @as(u6, @intCast(64 - bits))) >> @as(u6, @intCast(64 - bits));
-        return pt.intValue(ty, result);
+    if (abi_size <= 8) {
+        const shift: u6 = @intCast(64 - int.bits);
+        switch (int.signedness) {
+            .unsigned => {
+                const x = std.mem.readVarInt(u64, exact_buf, endian);
+                return pt.intValue(ty, (x << shift) >> shift);
+            },
+            .signed => {
+                const x = std.mem.readVarInt(i64, exact_buf, endian);
+                return pt.intValue(ty, (x << shift) >> shift);
+            },
+        }
     } else {
-        const Limb = std.math.big.Limb;
-        const limb_count = (byte_count + @sizeOf(Limb) - 1) / @sizeOf(Limb);
-        const limbs_buffer = try arena.alloc(Limb, limb_count);
+        const limb_count = std.math.big.int.calcTwosCompLimbCount(int.bits);
+        const limbs_buffer = try arena.alloc(std.math.big.Limb, limb_count);
 
         var bigint: BigIntMutable = .init(limbs_buffer, 0);
-        bigint.readTwosComplement(buffer[0..byte_count], bits, endian, .unsigned);
+        bigint.readTwosComplement(exact_buf, int.bits, endian, int.signedness);
         return pt.intValue_big(ty, bigint.toConst());
     }
 }
@@ -490,17 +512,17 @@ pub fn readUintFromMemory(
 ///
 /// Both the start and the end of the provided buffer must be tight, since
 /// big-endian packed memory layouts start at the end of the buffer.
+///
+/// Supports arrays and vectors, for which the value is read in logical bit
+/// order, i.e. with the first element at bit offset 0.
 pub fn readFromPackedMemory(
     ty: Type,
     pt: Zcu.PerThread,
     buffer: []const u8,
     bit_offset: usize,
-    gpa: Allocator,
-) error{
-    IllDefinedMemoryLayout,
-    OutOfMemory,
-}!Value {
+) Allocator.Error!Value {
     const zcu = pt.zcu;
+    const gpa = zcu.comp.gpa;
     const target = zcu.getTarget();
     const endian = target.cpu.arch.endian();
     switch (ty.zigTypeTag(zcu)) {
@@ -543,7 +565,7 @@ pub fn readFromPackedMemory(
         },
         .@"enum" => {
             const int_ty = ty.intTagType(zcu);
-            const int_val = try Value.readFromPackedMemory(int_ty, pt, buffer, bit_offset, gpa);
+            const int_val: Value = try .readFromPackedMemory(int_ty, pt, buffer, bit_offset);
             return pt.getCoerced(int_val, ty);
         },
         .float => return Value.fromInterned(try pt.intern(.{ .float = .{
@@ -557,40 +579,25 @@ pub fn readFromPackedMemory(
                 else => unreachable,
             },
         } })),
-        .vector => {
-            const elem_ty = ty.childType(zcu);
-            const elems = try gpa.alloc(InternPool.Index, @intCast(ty.arrayLen(zcu)));
-            defer gpa.free(elems);
-
-            var bits: u16 = 0;
-            const elem_bit_size: u16 = @intCast(elem_ty.bitSize(zcu));
-            for (elems, 0..) |_, i| {
-                // On big-endian systems, LLVM reverses the element order of vectors by default
-                const tgt_elem_i = if (endian == .big) elems.len - i - 1 else i;
-                elems[tgt_elem_i] = (try readFromPackedMemory(elem_ty, pt, buffer, bit_offset + bits, gpa)).toIntern();
-                bits += elem_bit_size;
-            }
-            return pt.aggregateValue(ty, elems);
-        },
         .@"struct", .@"union" => {
             assert(ty.containerLayout(zcu) == .@"packed");
-            const int_val: Value = try .readFromPackedMemory(ty.bitpackBackingInt(zcu), pt, buffer, bit_offset, gpa);
+            const int_val: Value = try .readFromPackedMemory(ty.bitpackBackingInt(zcu), pt, buffer, bit_offset);
             return pt.bitpackValue(ty, int_val);
         },
-        .pointer => {
-            assert(!ty.isSlice(zcu)); // No well defined layout.
-            const addr = (try readFromPackedMemory(Type.usize, pt, buffer, bit_offset, gpa)).toUnsignedInt(zcu);
-            return pt.ptrIntValue(ty, addr);
+        .array, .vector => {
+            const elem_ty = ty.childType(zcu);
+            const elem_bits: usize = @intCast(elem_ty.bitSize(zcu));
+            const elems_buf = try gpa.alloc(InternPool.Index, @intCast(ty.arrayLen(zcu)));
+            defer gpa.free(elems_buf);
+            var elem_bit_off: usize = bit_offset;
+            for (elems_buf) |*elem| {
+                const elem_val = try readFromPackedMemory(elem_ty, pt, buffer, elem_bit_off);
+                elem.* = elem_val.toIntern();
+                elem_bit_off += elem_bits;
+            }
+            return pt.aggregateValue(ty, elems_buf);
         },
-        .optional => {
-            assert(ty.isPtrLikeOptional(zcu));
-            const addr = (try readFromPackedMemory(Type.usize, pt, buffer, bit_offset, gpa)).toUnsignedInt(zcu);
-            return .fromInterned(try pt.intern(.{ .opt = .{
-                .ty = ty.toIntern(),
-                .val = if (addr == 0) .none else (try pt.ptrIntValue(ty.childType(zcu), addr)).toIntern(),
-            } }));
-        },
-        else => @panic("TODO implement readFromPackedMemory for more types"),
+        else => unreachable,
     }
 }
 
@@ -887,14 +894,9 @@ pub fn fieldValue(val: Value, pt: Zcu.PerThread, index: usize) !Value {
             const bfa = bfa_state.allocator();
             const buf = try bfa.alloc(u8, @intCast((ty.bitSize(zcu) + 7) / 8));
             defer bfa.free(buf);
-            int_val.writeToPackedMemory(zcu, buf, 0) catch |err| switch (err) {
-                error.ReinterpretDeclRef => unreachable, // it's an integer
-                error.OutOfMemory => |e| return e,
-            };
-            return Value.readFromPackedMemory(field_ty, pt, buf, field_bit_offset, bfa) catch |err| switch (err) {
-                error.IllDefinedMemoryLayout => unreachable, // it's a bitpack
-                error.OutOfMemory => |e| return e,
-            };
+            @memset(buf, 0);
+            int_val.writeToPackedMemory(zcu, buf, 0);
+            return .readFromPackedMemory(field_ty, pt, buf, field_bit_offset);
         },
         else => unreachable,
     };
@@ -1619,7 +1621,6 @@ pub fn hasRepeatedByteRepr(val: Value, zcu: *const Zcu) !?u8 {
         // code late in compilation. So, this error handling is too aggressive and
         // causes some false negatives, causing less-than-ideal code generation.
         error.IllDefinedMemoryLayout => return null,
-        error.Unimplemented => return null,
     };
     const first_byte = byte_buffer[0];
     for (byte_buffer[1..]) |byte| {

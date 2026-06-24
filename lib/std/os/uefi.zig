@@ -218,7 +218,7 @@ pub const TimeCapabilities = extern struct {
 pub const FileHandle = *opaque {};
 
 test "GUID formatting" {
-    const bytes = [_]u8{ 137, 60, 203, 50, 128, 128, 124, 66, 186, 19, 80, 73, 135, 59, 194, 135 };
+    const bytes: [16]u8 = .{ 137, 60, 203, 50, 128, 128, 124, 66, 186, 19, 80, 73, 135, 59, 194, 135 };
     const guid: Guid = @bitCast(bytes);
 
     const str = try std.fmt.allocPrint(std.testing.allocator, "{f}", .{guid});

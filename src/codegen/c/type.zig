@@ -514,40 +514,39 @@ pub const CType = union(enum) {
         }
     }
     fn classifyBitInt(signedness: std.lang.Signedness, bits: u16, zcu: *const Zcu) IntClass {
-        const is_ez80 = zcu.getTarget().cpu.arch == .ez80;
-        return switch (bits) {
+        const target = zcu.getTarget();
+        return switch (std.zig.target.intByteSize(target, bits)) {
             0 => .void,
-            1...8 => switch (signedness) {
+            1 => switch (signedness) {
                 .unsigned => .{ .small = .uint8_t },
                 .signed => .{ .small = .int8_t },
             },
-            9...16 => switch (signedness) {
+            2 => switch (signedness) {
                 .unsigned => .{ .small = .uint16_t },
                 .signed => .{ .small = .int16_t },
             },
-            17...24 => switch (signedness) {
-                .unsigned => .{ .small = if (is_ez80) .uint24_t else .uint32_t },
-                .signed => .{ .small = if (is_ez80) .int24_t else .int32_t },
+            3 => switch (signedness) {
+                .unsigned => .{ .small = .uint24_t },
+                .signed => .{ .small = .int24_t },
             },
-            25...32 => switch (signedness) {
+            4 => switch (signedness) {
                 .unsigned => .{ .small = .uint32_t },
                 .signed => .{ .small = .int32_t },
             },
-            33...48 => switch (signedness) {
-                .unsigned => .{ .small = if (is_ez80) .uint48_t else .uint64_t },
-                .signed => .{ .small = if (is_ez80) .int48_t else .int64_t },
+            6 => switch (signedness) {
+                .unsigned => .{ .small = .uint48_t },
+                .signed => .{ .small = .int48_t },
             },
-            49...64 => switch (signedness) {
+            8 => switch (signedness) {
                 .unsigned => .{ .small = .uint64_t },
                 .signed => .{ .small = .int64_t },
             },
-            65...128 => switch (signedness) {
+            16 => switch (signedness) {
                 .unsigned => .{ .small = .zig_u128 },
                 .signed => .{ .small = .zig_i128 },
             },
-            else => {
+            else => |n| {
                 @branchHint(.unlikely);
-                const target = zcu.getTarget();
                 const limb_bytes = std.zig.target.intAlignment(target, bits);
                 return .{ .big = .{
                     .limb_size = switch (limb_bytes) {
@@ -558,10 +557,7 @@ pub const CType = union(enum) {
                         16 => .@"128",
                         else => unreachable,
                     },
-                    .limbs_len = @divExact(
-                        std.zig.target.intByteSize(target, bits),
-                        limb_bytes,
-                    ),
+                    .limbs_len = @divExact(n, limb_bytes),
                 } };
             },
         };

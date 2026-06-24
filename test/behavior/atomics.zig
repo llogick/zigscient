@@ -358,7 +358,6 @@ test "atomics with different types" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-    if (builtin.target.cpu.arch.endian() == .big) return error.SkipZigTest; // #24282
 
     try testAtomicsWithType(bool, true, false);
 

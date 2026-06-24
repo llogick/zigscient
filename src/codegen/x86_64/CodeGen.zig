@@ -47,7 +47,6 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
         .scalarize_shl,
         .scalarize_shl_exact,
         .scalarize_shl_sat,
-        .scalarize_bitcast,
         .scalarize_ctz,
         .scalarize_popcount,
         .scalarize_byte_swap,
@@ -58,11 +57,13 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
         .scalarize_shuffle_two,
         .scalarize_select,
 
-        //.unsplat_shift_rhs,
-        .reduce_one_elem_to_bitcast,
-        .splat_one_elem_to_bitcast,
+        .scalarize_bit_cast_padded_elems,
 
-        .expand_intcast_safe,
+        //.unsplat_shift_rhs,
+        .reduce_one_elem_to_bit_cast,
+        .splat_one_elem_to_bit_cast,
+
+        .expand_int_cast_safe,
         .expand_int_from_float_safe,
         .expand_int_from_float_optimized_safe,
         .expand_add_safe,
@@ -67433,7 +67434,15 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 };
                 try res[0].finish(inst, &.{ty_op.operand}, &ops, cg);
             },
-            .bitcast => try cg.airBitCast(inst),
+            .bit_cast,
+            .ptr_cast,
+            .ptr_from_int,
+            .int_from_ptr,
+            .error_cast,
+            .error_from_int,
+            .int_from_error,
+            .union_from_enum,
+            => try cg.airBitCast(inst),
             .block => {
                 const block = cg.air.unwrapBlock(inst);
                 if (!cg.mod.strip) try cg.asmPseudo(.pseudo_dbg_enter_block_none);
@@ -93374,7 +93383,7 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 };
                 try res[0].finish(inst, &.{ty_op.operand}, &ops, cg);
             },
-            .intcast => |air_tag| {
+            .int_cast => |air_tag| {
                 const ty_op = air_datas[@intFromEnum(inst)].ty_op;
                 const dst_ty = ty_op.ty.toType();
                 const src_ty = cg.typeOf(ty_op.operand);
@@ -98132,7 +98141,7 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 };
                 try res[0].finish(inst, &.{ty_op.operand}, &ops, cg);
             },
-            .intcast_safe => unreachable,
+            .int_cast_safe => unreachable,
             .trunc => |air_tag| {
                 const ty_op = air_datas[@intFromEnum(inst)].ty_op;
                 var ops = try cg.tempsFromOperands(inst, .{ty_op.operand});
@@ -104350,7 +104359,7 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 var ops = try cg.tempsFromOperands(inst, .{ bin_op.lhs, bin_op.rhs });
                 try ops[0].toSlicePtr(cg);
                 const dst_ty = ty_pl.ty.toType();
-                if (dst_ty.ptrInfo(zcu).flags.vector_index == .none) zero_offset: {
+                zero_offset: {
                     const elem_size = dst_ty.childType(zcu).abiSize(zcu);
                     if (hack_around_sema_opv_bugs and elem_size == 0) break :zero_offset;
                     while (true) for (&ops) |*op| {
@@ -179053,8 +179062,11 @@ fn genSetReg(
     const zcu = pt.zcu;
     const abi_size: u32 = @intCast(ty.abiSize(zcu));
     const dst_alias = registerAlias(dst_reg, @intCast(cg.unalignedSize(ty)));
-    if (ty.bitSize(zcu) > dst_alias.size().bitSize(cg.target))
-        return cg.fail("genSetReg called with a value larger than dst_reg", .{});
+    {
+        const ty_bit_size = if (ty.hasBitRepresentation(zcu)) ty.bitSize(zcu) else 8 * abi_size;
+        if (ty_bit_size > dst_alias.size().bitSize(cg.target))
+            return cg.fail("genSetReg called with a value larger than dst_reg", .{});
+    }
     switch (src_mcv) {
         .none,
         .unreach,
@@ -180127,14 +180139,19 @@ fn airBitCast(self: *CodeGen, inst: Air.Inst.Index) !void {
             break :dst dst_mcv;
         };
 
-        if (dst_ty.isRuntimeFloat()) break :result dst_mcv;
+        switch (dst_ty.zigTypeTag(zcu)) {
+            .float, .error_union, .error_set, .vector => break :result dst_mcv,
+            .@"struct", .@"union" => if (dst_ty.containerLayout(zcu) != .@"packed") break :result dst_mcv,
+            .optional, .pointer => if (!dst_ty.isPtrAtRuntime(zcu)) break :result dst_mcv,
+            else => {},
+        }
 
         if (dst_ty.isAbiInt(zcu) and src_ty.isAbiInt(zcu) and src_ty.zigTypeTag(zcu) != .@"struct" and
             dst_ty.intInfo(zcu).signedness == src_ty.intInfo(zcu).signedness) break :result dst_mcv;
 
         const abi_size = dst_ty.abiSize(zcu);
         const bit_size = dst_ty.bitSize(zcu);
-        if (abi_size * 8 <= bit_size or dst_ty.isVector(zcu)) break :result dst_mcv;
+        if (abi_size * 8 <= bit_size) break :result dst_mcv;
 
         const dst_limbs_len = std.math.divCeil(u31, @intCast(bit_size), 64) catch unreachable;
         const high_mcv: MCValue = switch (dst_mcv) {
@@ -182410,7 +182427,7 @@ fn truncateRegister(self: *CodeGen, ty: Type, reg: Register) !void {
     const zcu = pt.zcu;
     const int_info: InternPool.Key.IntType = if (ty.isAbiInt(zcu)) ty.intInfo(zcu) else .{
         .signedness = .unsigned,
-        .bits = @intCast(ty.bitSize(zcu)),
+        .bits = @intCast(if (ty.hasBitRepresentation(zcu)) ty.bitSize(zcu) else ty.abiSize(zcu) * 8),
     };
     const shift = std.math.cast(u6, 64 - int_info.bits % 64) orelse return;
     try self.spillEflagsIfOccupied();
@@ -182448,10 +182465,6 @@ fn regBitSize(self: *CodeGen, ty: Type) u64 {
             else => unreachable,
         },
     };
-}
-
-fn regExtraBits(self: *CodeGen, ty: Type) u64 {
-    return self.regBitSize(ty) - ty.bitSize(self.pt.zcu);
 }
 
 fn hasFeature(cg: *CodeGen, feature: std.Target.x86.Feature) bool {
@@ -182569,7 +182582,7 @@ fn nonBoolScalarBitSize(cg: *CodeGen, ty: Type) u32 {
             .bool_type => vector_type.len,
             else => @intCast(Type.fromInterned(vector_type.child).bitSize(zcu)),
         },
-        else => @intCast(ty.bitSize(zcu)),
+        else => if (ty.hasBitRepresentation(zcu) or ty.isAbiInt(zcu)) @intCast(ty.bitSize(zcu)) else @intCast(ty.abiSize(zcu) * 8),
     };
 }
 
@@ -192242,7 +192255,8 @@ const Select = struct {
                 .src0_bit_size => @intCast(s.cg.nonBoolScalarBitSize(Select.Operand.Ref.src0.typeOf(s))),
                 .@"8_size_sub_bit_size" => {
                     const ty = op.flags.base.ref.typeOf(s);
-                    break :lhs @intCast(8 * ty.abiSize(s.cg.pt.zcu) - ty.bitSize(s.cg.pt.zcu));
+                    const bit_size = s.cg.intInfo(ty).?.bits;
+                    break :lhs @intCast(8 * ty.abiSize(s.cg.pt.zcu) - bit_size);
                 },
                 .len => @intCast(op.flags.base.ref.typeOf(s).vectorLen(s.cg.pt.zcu)),
                 .elem_limbs => @intCast(@divExact(

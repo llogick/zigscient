@@ -3215,7 +3215,8 @@ pub const Storage = enum {
                 .@"extern" => {
                     const n = @divExact(@sizeOf(Field), @sizeOf(u32));
                     defer i.* += n;
-                    return @bitCast(buffer[i.*..][0..n].*);
+                    const ptr: *align(@alignOf(u32)) const Field = @ptrCast(buffer[i.*..][0..n]);
+                    return ptr.*;
                 },
             },
             else => comptime unreachable,
@@ -3381,7 +3382,8 @@ pub const Storage = enum {
                 },
                 .@"extern" => {
                     const n = @divExact(@sizeOf(Field), @sizeOf(u32));
-                    buffer[i..][0..n].* = @bitCast(value);
+                    const ptr: *align(@alignOf(Field)) const [n]u32 = @ptrCast(&value);
+                    buffer[i..][0..n].* = ptr.*;
                     return n;
                 },
             },

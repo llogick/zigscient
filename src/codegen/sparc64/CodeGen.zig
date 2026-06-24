@@ -538,7 +538,14 @@ fn genBody(self: *Self, body: []const Air.Inst.Index) InnerError!void {
             .ret_ptr         => try self.airRetPtr(inst),
             .arg             => try self.airArg(inst),
             .assembly        => try self.airAsm(inst),
-            .bitcast         => try self.airBitCast(inst),
+            .bit_cast        => try self.airBitCast(inst),
+            .ptr_cast        => try self.airBitCast(inst),
+            .ptr_from_int    => try self.airBitCast(inst),
+            .int_from_ptr    => try self.airBitCast(inst),
+            .error_cast      => try self.airBitCast(inst),
+            .error_from_int  => try self.airBitCast(inst),
+            .int_from_error  => try self.airBitCast(inst),
+            .union_from_enum => try self.airBitCast(inst),
             .block           => try self.airBlock(inst),
             .br              => try self.airBr(inst),
             .repeat          => return self.fail("TODO implement `repeat`", .{}),
@@ -550,7 +557,7 @@ fn genBody(self: *Self, body: []const Air.Inst.Index) InnerError!void {
             .cond_br         => try self.airCondBr(inst),
             .fptrunc         => @panic("TODO try self.airFptrunc(inst)"),
             .fpext           => @panic("TODO try self.airFpext(inst)"),
-            .intcast         => try self.airIntCast(inst),
+            .int_cast        => try self.airIntCast(inst),
             .trunc           => try self.airTrunc(inst),
             .is_non_null     => try self.airIsNonNull(inst),
             .is_non_null_ptr => @panic("TODO try self.airIsNonNullPtr(inst)"),
@@ -689,7 +696,7 @@ fn genBody(self: *Self, body: []const Air.Inst.Index) InnerError!void {
             .add_safe,
             .sub_safe,
             .mul_safe,
-            .intcast_safe,
+            .int_cast_safe,
             .int_from_float_safe,
             .int_from_float_optimized_safe,
             => @panic("TODO implement safety_checked_instructions"),
@@ -1659,7 +1666,7 @@ fn airIntCast(self: *Self, inst: Air.Inst.Index) !void {
     const info_a = operand_ty.intInfo(zcu);
     const info_b = self.typeOfIndex(inst).intInfo(zcu);
     if (info_a.signedness != info_b.signedness)
-        return self.fail("TODO gen intcast sign safety in semantic analysis", .{});
+        return self.fail("TODO gen int_cast sign safety in semantic analysis", .{});
 
     if (info_a.bits == info_b.bits)
         return self.finishAir(inst, operand, .{ ty_op.operand, .none, .none });

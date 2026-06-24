@@ -593,8 +593,8 @@ fn Custom(
             fingerprint: FingerPrint = free,
             used: u1 = 0,
 
-            const slot_free = @as(u8, @bitCast(Metadata{ .fingerprint = free }));
-            const slot_tombstone = @as(u8, @bitCast(Metadata{ .fingerprint = tombstone }));
+            const slot_free: u8 = @bitCast(Metadata{ .fingerprint = free });
+            const slot_tombstone: u8 = @bitCast(Metadata{ .fingerprint = tombstone });
 
             pub fn isUsed(self: Metadata) bool {
                 return self.used == 1;

@@ -14501,6 +14501,7 @@ test "@Vector(4, f64)" {
     if (builtin.cpu.arch.isMIPS32()) return error.SkipZigTest;
     if (builtin.cpu.arch.isPowerPC64()) return error.SkipZigTest;
     if (builtin.cpu.arch == .s390x) return error.SkipZigTest;
+    if (builtin.cpu.arch.isArm()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/35899
 
     const v = c_ret_vector_4_f64();
     try expect(v[0] == 33);
@@ -14570,6 +14571,7 @@ test "@Vector(8, f64)" {
     if (builtin.cpu.arch.isMIPS32()) return error.SkipZigTest;
     if (builtin.cpu.arch.isPowerPC64()) return error.SkipZigTest;
     if (builtin.cpu.arch == .s390x) return error.SkipZigTest;
+    if (builtin.cpu.arch.isArm()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/35899
 
     const v = c_ret_vector_8_f64();
     try expect(v[0] == 81);
@@ -17109,7 +17111,8 @@ const byval_tail_callsite_attr = struct {
         }
 
         fn cast(self: MyRect) struct_Rect {
-            return @bitCast(self);
+            const ptr: *const struct_Rect = @ptrCast(&self);
+            return ptr.*;
         }
 
         extern fn c_byval_tail_callsite_attr(struct_Rect) f64;

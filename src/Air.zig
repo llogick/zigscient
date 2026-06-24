@@ -17,6 +17,7 @@ const print = @import("Air/print.zig");
 
 pub const Legalize = @import("Air/Legalize.zig");
 pub const Liveness = @import("Air/Liveness.zig");
+pub const Verify = @import("Air/Verify.zig");
 
 instructions: std.MultiArrayList(Inst).Slice,
 /// The meaning of this data is determined by `Inst.Tag` value.
@@ -276,10 +277,50 @@ pub const Inst = struct {
         /// Boolean or binary NOT.
         /// Uses the `ty_op` field.
         not,
-        /// Reinterpret the bits of a value as a different type.  This is like `@bitCast` but
-        /// also supports enums and pointers.
+        /// Implements `@bitCast`.
+        ///
         /// Uses the `ty_op` field.
-        bitcast,
+        bit_cast,
+        /// Cast a pointer to a different pointer type. The result type is a slice iff the operand
+        /// type is a slice (the length of the slice does not change). All other pointer attributes
+        /// except for the address space may change.
+        ///
+        /// Supports vectors of pointers.
+        ///
+        /// Uses the `ty_op` field.
+        ptr_cast,
+        /// Cast an integer to a pointer (not a slice). Operand type is always `usize`.
+        ///
+        /// Supports vectors of integers.
+        ///
+        /// Uses the `ty_op` field.
+        ptr_from_int,
+        /// Cast a pointer (not a slice) to an integer. Result type is always `usize`.
+        ///
+        /// Supports vectors of pointers.
+        ///
+        /// Uses the `ty_op` field.
+        int_from_ptr,
+        /// Cast an error set `E1` to a different error set `E2`, or cast an error union `E1!T` to
+        /// an error union `E2!T` with the same payload type but a different error set type.
+        ///
+        /// Uses the `ty_op` field.
+        error_cast,
+        /// Cast an integer to an error set type. The integer operand type is unsigned and has bit
+        /// width equal to `zcu.errorSetBits()`.
+        ///
+        /// Uses the `ty_op` field.
+        error_from_int,
+        /// Cast an error set to an integer type. The integer destination type is unsigned and has
+        /// bit width equal to `zcu.errorSetBits()`.
+        ///
+        /// Uses the `ty_op` field.
+        int_from_error,
+        /// Cast an enum value to a tagged union, whose tag type is that enum, and which has no
+        /// payload bits (i.e. all payloads are equivalent to `void`).
+        ///
+        /// Uses the `ty_op` field.
+        union_from_enum,
         /// A block runs its body which always ends with a `noreturn` instruction,
         /// so the only way to proceed to the code after the `block` is to encounter a `br`
         /// that targets this `block`.  If the `block` type is `noreturn`,
@@ -589,13 +630,13 @@ pub const Inst = struct {
         /// the integer tag type of the enum.
         /// See `trunc` for integer truncation.
         /// Uses the `ty_op` field.
-        intcast,
-        /// Like `intcast`, but includes two safety checks:
+        int_cast,
+        /// Like `int_cast`, but includes two safety checks:
         /// * triggers a safety panic if the cast truncates bits
         /// * triggers a safety panic if the destination type is an exhaustive enum
         ///   and the operand is not a valid value of this type; i.e. equivalent to
         ///   a safety check based on `.is_named_enum_value`
-        intcast_safe,
+        int_cast_safe,
         /// Truncate higher bits from an integer, resulting in an integer type with the same
         /// sign but an equal or smaller number of bits.
         /// Uses the `ty_op` field.
@@ -955,7 +996,7 @@ pub const Inst = struct {
         /// here is runtime-known, which is usually not allowed for vectors. `Legalize` may emit
         /// this instruction when scalarizing vector operations.
         ///
-        /// Uses the `bin_op` field. `lhs` is the vector pointer. `rhs` is the element index. Result
+        /// Uses the `bin_op` field. `lhs` is the vector value. `rhs` is the element index. Result
         /// type is the vector element type.
         legalize_vec_elem_val,
 
@@ -1667,12 +1708,19 @@ pub fn typeOfIndex(air: *const Air, inst: Air.Inst.Index, ip: *const InternPool)
         => return datas[@intFromEnum(inst)].ty_pl.ty.toType(),
 
         .not,
-        .bitcast,
+        .bit_cast,
+        .ptr_cast,
+        .ptr_from_int,
+        .int_from_ptr,
+        .error_cast,
+        .error_from_int,
+        .int_from_error,
+        .union_from_enum,
         .load,
         .fpext,
         .fptrunc,
-        .intcast,
-        .intcast_safe,
+        .int_cast,
+        .int_cast_safe,
         .trunc,
         .optional_payload,
         .optional_payload_ptr,
@@ -1913,7 +1961,7 @@ pub fn mustLower(air: Air, inst: Air.Inst.Index, ip: *const InternPool) bool {
         .add_safe,
         .sub_safe,
         .mul_safe,
-        .intcast_safe,
+        .int_cast_safe,
         .int_from_float_safe,
         .int_from_float_optimized_safe,
         .legalize_vec_store_elem,
@@ -1965,7 +2013,14 @@ pub fn mustLower(air: Air, inst: Air.Inst.Index, ip: *const InternPool) bool {
         .shl_sat,
         .xor,
         .not,
-        .bitcast,
+        .bit_cast,
+        .ptr_cast,
+        .ptr_from_int,
+        .int_from_ptr,
+        .error_cast,
+        .error_from_int,
+        .int_from_error,
+        .union_from_enum,
         .ret_addr,
         .frame_addr,
         .clz,
@@ -2009,7 +2064,7 @@ pub fn mustLower(air: Air, inst: Air.Inst.Index, ip: *const InternPool) bool {
         .is_non_err,
         .fptrunc,
         .fpext,
-        .intcast,
+        .int_cast,
         .trunc,
         .optional_payload,
         .optional_payload_ptr,

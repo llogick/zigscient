@@ -1848,18 +1848,18 @@ pub fn readVarPackedInt(
     if (@bitSizeOf(T) <= 8) {
         // These are the same shifts/masks we perform below, but adds `@truncate`/`@intCast`
         // where needed since int is smaller than a byte.
-        const value = if (read_size == 1) b: {
-            break :b @as(uN, @truncate(read_bytes[0] >> bit_shift));
+        const value: uN = if (read_size == 1) b: {
+            break :b @truncate(read_bytes[0] >> bit_shift);
         } else b: {
             const i: u1 = @intFromBool(endian == .big);
-            const head = @as(uN, @truncate(read_bytes[i] >> bit_shift));
-            const tail_shift = @as(Log2N, @intCast(@as(u4, 8) - bit_shift));
-            const tail = @as(uN, @truncate(read_bytes[1 - i]));
+            const head: uN = @truncate(read_bytes[i] >> bit_shift);
+            const tail_shift: Log2N = @intCast(@as(u4, 8) - bit_shift);
+            const tail: uN = @truncate(read_bytes[1 - i]);
             break :b (tail << tail_shift) | head;
         };
         switch (signedness) {
-            .signed => return @as(T, @intCast((@as(iN, @bitCast(value)) << pad) >> pad)),
-            .unsigned => return @as(T, @intCast((@as(uN, @bitCast(value)) << pad) >> pad)),
+            .signed => return @intCast((@as(iN, @bitCast(value)) << pad) >> pad),
+            .unsigned => return @intCast((value << pad) >> pad),
         }
     }
 
@@ -1880,8 +1880,8 @@ pub fn readVarPackedInt(
         },
     }
     switch (signedness) {
-        .signed => return @as(T, @intCast((@as(iN, @bitCast(int)) << pad) >> pad)),
-        .unsigned => return @as(T, @intCast((@as(uN, @bitCast(int)) << pad) >> pad)),
+        .signed => return @intCast((@as(iN, @bitCast(int)) << pad) >> pad),
+        .unsigned => return @intCast((int << pad) >> pad),
     }
 }
 
@@ -1896,8 +1896,13 @@ test readVarPackedInt {
 /// The bit count of T must be evenly divisible by 8.
 /// This function cannot fail and cannot cause undefined behavior.
 pub inline fn readInt(comptime T: type, buffer: *const [@divExact(@typeInfo(T).int.bits, 8)]u8, endian: Endian) T {
-    const value: T = @bitCast(buffer.*);
-    return if (endian == native_endian) value else @byteSwap(value);
+    // Zig's logical bit order aligns with a little-endian byte array, so when reading in big-endian
+    // we must `@byteSwap` the int after we `@bitCast` to it.
+    const little_val: T = @bitCast(buffer.*);
+    return switch (endian) {
+        .little => little_val,
+        .big => @byteSwap(little_val),
+    };
 }
 
 test readInt {
@@ -1940,13 +1945,15 @@ fn readPackedIntLittle(comptime T: type, bytes: []const u8, bit_offset: usize) T
     // Read by loading a LoadInt, and then follow it up with a 1-byte read
     // of the tail if bit_offset pushed us over a byte boundary.
     const read_bytes = bytes[bit_offset / 8 ..];
-    const val = @as(uN, @truncate(readInt(LoadInt, read_bytes[0..load_size], .little) >> bit_shift));
+    const val: uN = @truncate(readInt(LoadInt, read_bytes[0..load_size], .little) >> bit_shift);
     if (bit_shift > load_tail_bits) {
         const tail_bits = @as(Log2N, @intCast(bit_shift - load_tail_bits));
         const tail_byte = read_bytes[load_size];
         const tail_truncated = if (bit_count < 8) @as(uN, @truncate(tail_byte)) else @as(uN, tail_byte);
-        return @as(T, @bitCast(val | (tail_truncated << (@as(Log2N, @truncate(bit_count)) -% tail_bits))));
-    } else return @as(T, @bitCast(val));
+        return @bitCast(val | (tail_truncated << (@as(Log2N, @truncate(bit_count)) -% tail_bits)));
+    } else {
+        return @bitCast(val);
+    }
 }
 
 fn readPackedIntBig(comptime T: type, bytes: []const u8, bit_offset: usize) T {
@@ -1972,8 +1979,10 @@ fn readPackedIntBig(comptime T: type, bytes: []const u8, bit_offset: usize) T {
     if (bit_shift > load_tail_bits) {
         const tail_bits = @as(Log2N, @intCast(bit_shift - load_tail_bits));
         const tail_byte = if (bit_count < 8) @as(uN, @truncate(read_bytes[0])) else @as(uN, read_bytes[0]);
-        return @as(T, @bitCast(val | (tail_byte << (@as(Log2N, @truncate(bit_count)) -% tail_bits))));
-    } else return @as(T, @bitCast(val));
+        return @bitCast(val | (tail_byte << (@as(Log2N, @truncate(bit_count)) -% tail_bits)));
+    } else {
+        return @bitCast(val);
+    }
 }
 
 /// Loads an integer from packed memory.
@@ -2011,7 +2020,12 @@ test "comptime read/write int" {
 /// This function always succeeds, has defined behavior for all inputs, but
 /// the integer bit width must be divisible by 8.
 pub inline fn writeInt(comptime T: type, buffer: *[@divExact(@typeInfo(T).int.bits, 8)]u8, value: T, endian: Endian) void {
-    buffer.* = @bitCast(if (endian == native_endian) value else @byteSwap(value));
+    // Zig's logical bit order aligns with a little-endian byte array, so when writing in big-endian
+    // we must `@byteSwap` the int before we `@bitCast` to an array.
+    buffer.* = switch (endian) {
+        .little => @bitCast(value),
+        .big => @bitCast(@byteSwap(value)),
+    };
 }
 
 test writeInt {
@@ -2209,10 +2223,10 @@ pub fn byteSwapAllFields(comptime S: type, ptr: *S) void {
 /// (Changing their endianness)
 pub fn byteSwapAllFieldsAligned(comptime S: type, comptime a: Alignment, ptr: *align(a.toByteUnits()) S) void {
     switch (@typeInfo(S)) {
-        .@"struct" => |struct_info| {
-            if (struct_info.backing_integer) |Int| {
+        .@"struct" => |@"struct"| {
+            if (@"struct".backing_integer) |Int| {
                 ptr.* = @bitCast(@byteSwap(@as(Int, @bitCast(ptr.*))));
-            } else inline for (struct_info.field_types, struct_info.field_names, struct_info.field_attrs) |f_type, f_name, f_attr| {
+            } else inline for (@"struct".field_types, @"struct".field_names, @"struct".field_attrs) |f_type, f_name, f_attr| {
                 switch (@typeInfo(f_type)) {
                     .@"struct" => byteSwapAllFieldsAligned(f_type, .fromByteUnits(f_attr.@"align" orelse @alignOf(f_type)), &@field(ptr, f_name)),
                     .@"union", .array => byteSwapAllFieldsAligned(f_type, .fromByteUnits(f_attr.@"align" orelse @alignOf(f_type)), &@field(ptr, f_name)),
@@ -2220,8 +2234,8 @@ pub fn byteSwapAllFieldsAligned(comptime S: type, comptime a: Alignment, ptr: *a
                         @field(ptr, f_name) = @enumFromInt(@byteSwap(@intFromEnum(@field(ptr, f_name))));
                     },
                     .bool => {},
-                    .float => |float_info| {
-                        @field(ptr, f_name) = @bitCast(@byteSwap(@as(@Int(.unsigned, float_info.bits), @bitCast(@field(ptr, f_name)))));
+                    .float => |float| {
+                        @field(ptr, f_name) = @bitCast(@byteSwap(@as(@Int(.unsigned, float.bits), @bitCast(@field(ptr, f_name)))));
                     },
                     else => {
                         @field(ptr, f_name) = @byteSwap(@field(ptr, f_name));
@@ -2229,23 +2243,26 @@ pub fn byteSwapAllFieldsAligned(comptime S: type, comptime a: Alignment, ptr: *a
                 }
             }
         },
-        .@"union" => |union_info| {
-            if (union_info.tag_type != null) {
-                @compileError("byteSwapAllFields expects an untagged union");
+        .@"union" => |@"union"| if (@"union".backing_integer) |Int| {
+            ptr.* = @bitCast(@byteSwap(@as(Int, @bitCast(ptr.*))));
+        } else {
+            if (@"union".layout != .@"extern") {
+                @compileError("byteSwapAllFields expects a packed or extern union");
             }
 
-            const first_size = @bitSizeOf(union_info.field_types[0]);
-            inline for (union_info.field_types) |field_type| {
+            const first_size = @bitSizeOf(@"union".field_types[0]);
+            inline for (@"union".field_types) |field_type| {
                 if (@bitSizeOf(field_type) != first_size) {
                     @compileError("Unable to byte-swap unions with varying field sizes");
                 }
             }
 
-            const BackingInt = @Int(.unsigned, @bitSizeOf(S));
-            ptr.* = @bitCast(@byteSwap(@as(BackingInt, @bitCast(ptr.*))));
+            const FieldInt = @Int(.unsigned, first_size);
+            const field_ptr = &@field(ptr, @"union".field_names[0]);
+            field_ptr.* = @bitCast(@byteSwap(@as(FieldInt, @bitCast(field_ptr.*))));
         },
-        .array => |info| {
-            byteSwapAllElements(info.child, ptr);
+        .array => |array| {
+            byteSwapAllElements(array.child, ptr);
         },
         else => {
             ptr.* = @byteSwap(ptr.*);
@@ -2291,7 +2308,7 @@ test byteSwapAllFields {
         .f2 = 0x12345678,
         .f3 = .{0x12},
         .f4 = true,
-        .f5 = @as(f32, @bitCast(@as(u32, 0x4640e400))),
+        .f5 = @bitCast(@as(u32, 0x4640e400)),
         .f6 = .{ .f0 = 0x1234 },
     };
     var k = K{
@@ -2300,7 +2317,7 @@ test byteSwapAllFields {
         .f2 = 0x1234,
         .f3 = .{0x12},
         .f4 = false,
-        .f5 = @as(f32, @bitCast(@as(u32, 0x45d42800))),
+        .f5 = @bitCast(@as(u32, 0x45d42800)),
     };
     var p: P = @bitCast(@as(u32, 0x01234567));
     var a: A = A{
@@ -2318,7 +2335,7 @@ test byteSwapAllFields {
         .f2 = 0x78563412,
         .f3 = .{0x12},
         .f4 = true,
-        .f5 = @as(f32, @bitCast(@as(u32, 0x00e44046))),
+        .f5 = @bitCast(@as(u32, 0x00e44046)),
         .f6 = .{ .f0 = 0x3412 },
     }, s);
     try std.testing.expectEqual(K{
@@ -2327,7 +2344,7 @@ test byteSwapAllFields {
         .f2 = 0x3412,
         .f3 = .{0x12},
         .f4 = false,
-        .f5 = @as(f32, @bitCast(@as(u32, 0x0028d445))),
+        .f5 = @bitCast(@as(u32, 0x0028d445)),
     }, k);
     try std.testing.expectEqual(@as(P, @bitCast(@as(u32, 0x67452301))), p);
     try std.testing.expectEqual(A{
@@ -2348,8 +2365,9 @@ pub fn byteSwapAllElements(comptime Elem: type, slice: []Elem) void {
                 elem.* = @enumFromInt(@byteSwap(@intFromEnum(elem.*)));
             },
             .bool => {},
-            .float => |float_info| {
-                elem.* = @bitCast(@byteSwap(@as(@Int(.unsigned, float_info.bits), @bitCast(elem.*))));
+            .float => |float| {
+                const int_repr: @Int(.unsigned, float.bits) = @bitCast(elem.*);
+                elem.* = @bitCast(@byteSwap(int_repr));
             },
             else => {
                 elem.* = @byteSwap(elem.*);
@@ -3870,25 +3888,29 @@ inline fn reverseVector(comptime N: usize, comptime T: type, a: []T) [N]T {
 pub fn reverse(comptime T: type, items: []T) void {
     var i: usize = 0;
     const end = items.len / 2;
-    if (use_vectors and
-        !@inComptime() and
-        @bitSizeOf(T) > 0 and
-        std.math.isPowerOfTwo(@bitSizeOf(T)))
-    {
-        if (std.simd.suggestVectorLength(T)) |simd_size| {
-            if (simd_size <= end) {
-                const simd_end = end - (simd_size - 1);
-                while (i < simd_end) : (i += simd_size) {
-                    const left_slice = items[i .. i + simd_size];
-                    const right_slice = items[items.len - i - simd_size .. items.len - i];
 
-                    const left_shuffled: [simd_size]T = reverseVector(simd_size, T, left_slice);
-                    const right_shuffled: [simd_size]T = reverseVector(simd_size, T, right_slice);
+    vec: {
+        if (!use_vectors) break :vec;
+        if (@inComptime()) break :vec;
+        switch (@typeInfo(T)) {
+            .int, .float => {},
+            .pointer => |pointer| if (pointer.size == .slice) break :vec,
+            else => break :vec,
+        }
+        if (@bitSizeOf(T) == 0 or !comptime std.math.isPowerOfTwo(@bitSizeOf(T))) break :vec;
+        const simd_size = std.simd.suggestVectorLength(T) orelse break :vec;
+        if (simd_size > end) break :vec;
 
-                    @memcpy(right_slice, &left_shuffled);
-                    @memcpy(left_slice, &right_shuffled);
-                }
-            }
+        const simd_end = end - (simd_size - 1);
+        while (i < simd_end) : (i += simd_size) {
+            const left_slice = items[i .. i + simd_size];
+            const right_slice = items[items.len - i - simd_size .. items.len - i];
+
+            const left_shuffled: [simd_size]T = reverseVector(simd_size, T, left_slice);
+            const right_shuffled: [simd_size]T = reverseVector(simd_size, T, right_slice);
+
+            @memcpy(right_slice, &left_shuffled);
+            @memcpy(left_slice, &right_shuffled);
         }
     }
 
@@ -5009,8 +5031,8 @@ test "read/write(Var)PackedInt" {
                     for ([_]PackedType{
                         ~@as(PackedType, 0), // all ones: -1 iN / maxInt uN
                         @as(PackedType, 0), // all zeros: 0 iN / 0 uN
-                        @as(PackedType, @bitCast(@as(iPackedType, math.maxInt(iPackedType)))), // maxInt iN
-                        @as(PackedType, @bitCast(@as(iPackedType, math.minInt(iPackedType)))), // maxInt iN
+                        @bitCast(@as(iPackedType, math.maxInt(iPackedType))), // maxInt iN
+                        @bitCast(@as(iPackedType, math.minInt(iPackedType))), // maxInt iN
                         random.int(PackedType), // random
                         random.int(PackedType), // random
                     }) |write_value| {

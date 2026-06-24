@@ -80,10 +80,18 @@ pub inline fn bigIntFromFloat(comptime signedness: std.builtin.Signedness, resul
     switch (result.len) {
         0 => return,
         inline 1...4 => |limbs_len| {
-            result[0..limbs_len].* = @bitCast(@as(
-                @Int(signedness, 32 * limbs_len),
-                @intFromFloat(a),
-            ));
+            const I = @Int(signedness, 32 * limbs_len);
+            const low_to_high: [limbs_len]u32 = @bitCast(@as(I, @intFromFloat(a)));
+            result[0..limbs_len].* = switch (@import("builtin").cpu.arch.endian()) {
+                .little => low_to_high,
+                .big => switch (limbs_len) {
+                    1 => .{low_to_high[0]},
+                    2 => .{ low_to_high[1], low_to_high[0] },
+                    3 => .{ low_to_high[2], low_to_high[1], low_to_high[0] },
+                    4 => .{ low_to_high[3], low_to_high[2], low_to_high[1], low_to_high[0] },
+                    else => comptime unreachable,
+                },
+            };
             return;
         },
         else => {},

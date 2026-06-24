@@ -592,11 +592,7 @@ pub const Ip6Address = struct {
                         if (remaining != 0) return .incomplete;
                     }
 
-                    // Workaround that can be removed when this proposal is
-                    // implemented https://github.com/ziglang/zig/issues/19755
-                    if ((comptime @import("builtin").cpu.arch.endian()) != .big) {
-                        for (&parts) |*part| part.* = @byteSwap(part.*);
-                    }
+                    for (&parts) |*part| part.* = @byteSwap(part.*);
 
                     return .{ .success = .{
                         .bytes = @bitCast(parts),

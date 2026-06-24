@@ -61,12 +61,6 @@ pub fn __umodti3(a: u128, b: u128) callconv(.c) u128 {
     return r;
 }
 
-const lo = switch (builtin.cpu.arch.endian()) {
-    .big => 1,
-    .little => 0,
-};
-const hi = 1 - lo;
-
 // Let _u1 and _u0 be the high and low limbs of U respectively.
 // Returns U / v_ and sets r = U % v_.
 fn divwide_generic(comptime T: type, _u1: T, _u0: T, v_: T, r: *T) T {
@@ -158,22 +152,22 @@ pub fn udivmod(comptime T: type, a_: T, b_: T, maybe_rem: ?*T) T {
         return 0;
     }
 
-    const a: [2]HalfT = @bitCast(a_);
-    const b: [2]HalfT = @bitCast(b_);
+    const a: [2]HalfT = @bitCast(a_); // [0] is low bits, [1] is high bits
+    const b: [2]HalfT = @bitCast(b_); // [0] is low bits, [1] is high bits
     var q: [2]HalfT = undefined;
     var r: [2]HalfT = undefined;
 
     // When the divisor fits in 64 bits, we can use an optimized path
-    if (b[hi] == 0) {
-        r[hi] = 0;
-        if (a[hi] < b[lo]) {
+    if (b[1] == 0) {
+        r[1] = 0;
+        if (a[1] < b[0]) {
             // The result fits in 64 bits
-            q[hi] = 0;
-            q[lo] = divwide(HalfT, a[hi], a[lo], b[lo], &r[lo]);
+            q[1] = 0;
+            q[0] = divwide(HalfT, a[1], a[0], b[0], &r[0]);
         } else {
             // First, divide with the high part to get the remainder. After that a_hi < b_lo.
-            q[hi] = a[hi] / b[lo];
-            q[lo] = divwide(HalfT, a[hi] % b[lo], a[lo], b[lo], &r[lo]);
+            q[1] = a[1] / b[0];
+            q[0] = divwide(HalfT, a[1] % b[0], a[0], b[0], &r[0]);
         }
         if (maybe_rem) |rem| {
             rem.* = @bitCast(r);
@@ -181,21 +175,21 @@ pub fn udivmod(comptime T: type, a_: T, b_: T, maybe_rem: ?*T) T {
         return @bitCast(q);
     }
 
-    // Large-divisor case: b[hi] != 0, so the quotient fits in one HalfT word.
+    // Large-divisor case: b[1] != 0, so the quotient fits in one HalfT word.
     //
     // Trial quotient via divwide (Knuth Vol 2, Section 4.3.1):
     // Normalize the divisor so its high half has the MSB set, then use divwide
     // on the top bits to get a trial quotient that is at most 1 too large.
     // This replaces the O(shift) bit-by-bit loop with O(1) operations.
-    const s: Log2Int(HalfT) = @intCast(@clz(b[hi]));
+    const s: Log2Int(HalfT) = @intCast(@clz(b[1]));
 
     if (s == 0) {
-        // b[hi] already has its MSB set, so b >= 2^(T_bits - 1). Since a >= b
+        // b[1] already has its MSB set, so b >= 2^(T_bits - 1). Since a >= b
         // (we passed the b_ > a_ check), a >= 2^(T_bits - 1) too, meaning
-        // a[hi] also has its MSB set. Therefore a / b < 2, and the quotient
+        // a[1] also has its MSB set. Therefore a / b < 2, and the quotient
         // is exactly 1.
         q = @bitCast(@as(T, 0));
-        q[lo] = 1;
+        q[0] = 1;
         if (maybe_rem) |rem| {
             rem.* = a_ - b_;
         }
@@ -207,12 +201,12 @@ pub fn udivmod(comptime T: type, a_: T, b_: T, maybe_rem: ?*T) T {
         std.math.IntFittingRange(0, half_bits),
         @intCast(s),
     ));
-    const bn_hi: HalfT = (b[hi] << s) | (b[lo] >> sr);
+    const bn_hi: HalfT = (b[1] << s) | (b[0] >> sr);
 
     // Trial numerator: the top (half_bits + s) bits of (a << s), as [a2:a1].
     // a2 < bn_hi is guaranteed since a2 < 2^s and bn_hi >= 2^(half_bits - 1).
-    const a2: HalfT = a[hi] >> sr;
-    const a1: HalfT = (a[hi] << s) | (a[lo] >> sr);
+    const a2: HalfT = a[1] >> sr;
+    const a1: HalfT = (a[1] << s) | (a[0] >> sr);
 
     // Trial quotient via divwide: q_hat = floor([a2:a1] / bn_hi).
     // By Knuth's theorem (normalized divisor), q <= q_hat <= q + 1.
@@ -223,42 +217,42 @@ pub fn udivmod(comptime T: type, a_: T, b_: T, maybe_rem: ?*T) T {
     // Compute the product using HalfT * HalfT -> T widening multiplications,
     // which are native single-instruction ops when HalfT fits in a register
     // (e.g. u64 * u64 -> u128 via mulq on x86_64, mul on aarch64).
-    // product = q_hat * [b[hi]:b[lo]] = [p_top : p_mid : p_lo] (3 half-words)
-    const prod_lo: T = @as(T, q_hat) * @as(T, b[lo]);
-    const prod_hi: T = @as(T, q_hat) * @as(T, b[hi]);
+    // product = q_hat * [b[1]:b[0]] = [p_top : p_mid : p_lo] (3 half-words)
+    const prod_lo: T = @as(T, q_hat) * @as(T, b[0]);
+    const prod_hi: T = @as(T, q_hat) * @as(T, b[1]);
 
     const prod_lo_parts: [2]HalfT = @bitCast(prod_lo);
     const prod_hi_parts: [2]HalfT = @bitCast(prod_hi);
 
-    const mid_add = @addWithOverflow(prod_hi_parts[lo], prod_lo_parts[hi]);
+    const mid_add = @addWithOverflow(prod_hi_parts[0], prod_lo_parts[1]);
     var p_mid: HalfT = mid_add[0];
-    const p_top: HalfT = prod_hi_parts[hi] +% @as(HalfT, mid_add[1]);
-    var p_lo: HalfT = prod_lo_parts[lo];
+    const p_top: HalfT = prod_hi_parts[1] +% @as(HalfT, mid_add[1]);
+    var p_lo: HalfT = prod_lo_parts[0];
 
     // If product > a, decrement q_hat (at most once, guaranteed by Knuth).
-    if (p_top > 0 or p_mid > a[hi] or (p_mid == a[hi] and p_lo > a[lo])) {
+    if (p_top > 0 or p_mid > a[1] or (p_mid == a[1] and p_lo > a[0])) {
         q_hat -= 1;
         // Subtract b from the product for correct remainder computation.
         // After correction, (q_hat * b) fits in T bits, so borrows into
         // p_top cancel it to zero -- we only need [p_mid:p_lo].
-        const sub_lo = @subWithOverflow(p_lo, b[lo]);
+        const sub_lo = @subWithOverflow(p_lo, b[0]);
         p_lo = sub_lo[0];
-        const sub_mid = @subWithOverflow(p_mid, b[hi]);
+        const sub_mid = @subWithOverflow(p_mid, b[1]);
         const sub_mid2 = @subWithOverflow(sub_mid[0], @as(HalfT, sub_lo[1]));
         p_mid = sub_mid2[0];
     }
 
     q = @bitCast(@as(T, 0));
-    q[lo] = q_hat;
+    q[0] = q_hat;
 
     if (maybe_rem) |rem| {
-        // remainder = a - q_hat * b = [a[hi]:a[lo]] - [p_mid:p_lo]
+        // remainder = a - q_hat * b = [a[1]:a[0]] - [p_mid:p_lo]
         // This subtraction is non-negative since q_hat <= true quotient.
-        const rem_lo = @subWithOverflow(a[lo], p_lo);
-        r[lo] = rem_lo[0];
-        const rem_hi = @subWithOverflow(a[hi], p_mid);
+        const rem_lo = @subWithOverflow(a[0], p_lo);
+        r[0] = rem_lo[0];
+        const rem_hi = @subWithOverflow(a[1], p_mid);
         const rem_hi2 = @subWithOverflow(rem_hi[0], @as(HalfT, rem_lo[1]));
-        r[hi] = rem_hi2[0];
+        r[1] = rem_hi2[0];
         rem.* = @bitCast(r);
     }
     return @bitCast(q);

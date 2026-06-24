@@ -1816,7 +1816,7 @@ pub const Linkage = enum(u4) {
     }
 };
 
-pub const Preemption = enum {
+pub const Preemption = enum(u2) {
     dso_preemptable,
     dso_local,
     implicit_dso_local,
@@ -2011,7 +2011,7 @@ pub const AddrSpace = enum(u24) {
     }
 };
 
-pub const ExternallyInitialized = enum {
+pub const ExternallyInitialized = enum(u1) {
     default,
     externally_initialized,
 
@@ -2059,6 +2059,13 @@ pub const Alignment = enum(u6) {
             .default => null,
             else => @as(u64, 1) << @intFromEnum(self),
         };
+    }
+
+    /// Asserts that neither `a` nor `b` is `.default`.
+    pub fn max(a: Alignment, b: Alignment) Alignment {
+        assert(a != .default);
+        assert(b != .default);
+        return @enumFromInt(@max(@intFromEnum(a), @intFromEnum(b)));
     }
 
     pub fn toLlvm(self: Alignment) u6 {
@@ -4314,6 +4321,9 @@ pub const Function = struct {
             @"tail call",
             @"tail call fast",
             trunc,
+            @"trunc nuw",
+            @"trunc nsw",
+            @"trunc nuw nsw",
             udiv,
             @"udiv exact",
             urem,
@@ -4377,7 +4387,10 @@ pub const Function = struct {
                 };
             }
 
-            pub fn toCastOpcode(self: Tag) CastOpcode {
+            /// Does not accept `.@"trunc nuw"`, `.@"trunc nsw"`, or `.@"trunc nuw nsw"`, because
+            /// they do not have distinct `CastOpcode` values, and are instead encoded in bitcode
+            /// using flags on a normal `trunc` operation.
+            fn toCastOpcode(self: Tag) CastOpcode {
                 return switch (self) {
                     .trunc => .trunc,
                     .zext => .zext,
@@ -4572,6 +4585,9 @@ pub const Function = struct {
                     .sext,
                     .sitofp,
                     .trunc,
+                    .@"trunc nuw",
+                    .@"trunc nsw",
+                    .@"trunc nuw nsw",
                     .uitofp,
                     .zext,
                     => wip.extraData(Cast, instruction.data).type,
@@ -4758,6 +4774,9 @@ pub const Function = struct {
                     .sext,
                     .sitofp,
                     .trunc,
+                    .@"trunc nuw",
+                    .@"trunc nsw",
+                    .@"trunc nuw nsw",
                     .uitofp,
                     .zext,
                     => function.extraData(Cast, instruction.data).type,
@@ -5975,6 +5994,9 @@ pub const WipFunction = struct {
             .sext,
             .sitofp,
             .trunc,
+            .@"trunc nuw",
+            .@"trunc nsw",
+            .@"trunc nuw nsw",
             .uitofp,
             .zext,
             => {},
@@ -6583,6 +6605,9 @@ pub const WipFunction = struct {
                     .sext,
                     .sitofp,
                     .trunc,
+                    .@"trunc nuw",
+                    .@"trunc nsw",
+                    .@"trunc nuw nsw",
                     .uitofp,
                     .zext,
                     => {
@@ -9975,6 +10000,9 @@ pub fn print(self: *Builder, w: *Writer) (Writer.Error || Allocator.Error)!void 
                     .sext,
                     .sitofp,
                     .trunc,
+                    .@"trunc nuw",
+                    .@"trunc nsw",
+                    .@"trunc nuw nsw",
                     .uitofp,
                     .zext,
                     => |tag| {
@@ -11649,7 +11677,11 @@ fn convTag(
                     .unneeded => unreachable,
                 },
                 .eq => unreachable,
-                .gt => .trunc,
+                .gt => switch (signedness) {
+                    .unsigned => .@"trunc nuw",
+                    .signed => .@"trunc nsw",
+                    .unneeded => .trunc,
+                },
             },
             .pointer => .inttoptr,
             else => unreachable,
@@ -14960,6 +14992,20 @@ pub fn toBitcode(self: *Builder, allocator: Allocator, producer: Producer) bitco
                                 .val = adapter.getOffsetValueIndex(extra.val),
                                 .type_index = extra.type,
                                 .opcode = kind.toCastOpcode(),
+                            });
+                        },
+                        .@"trunc nuw",
+                        .@"trunc nsw",
+                        .@"trunc nuw nsw",
+                        => |kind| {
+                            const extra = func.extraData(Function.Instruction.Cast, data);
+                            try function_block.writeAbbrev(FunctionBlock.TruncNoWrap{
+                                .val = adapter.getOffsetValueIndex(extra.val),
+                                .type_index = extra.type,
+                                .flags = .{
+                                    .no_unsigned_wrap = kind == .@"trunc nuw" or kind == .@"trunc nuw nsw",
+                                    .no_signed_wrap = kind == .@"trunc nsw" or kind == .@"trunc nuw nsw",
+                                },
                             });
                         },
                         .@"fcmp false",

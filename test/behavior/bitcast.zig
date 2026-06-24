@@ -74,55 +74,6 @@ fn conv_uN(comptime N: usize, x: @Int(.unsigned, N)) @Int(.signed, N) {
     return @as(@Int(.signed, N), @bitCast(x));
 }
 
-test "bitcast uX to bytes" {
-    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-
-    const bit_values = [_]usize{ 1, 48, 27, 512, 493, 293, 125, 204, 112 };
-    inline for (bit_values) |bits| {
-        try testBitCast(bits);
-        try comptime testBitCast(bits);
-    }
-}
-
-fn testBitCastuXToBytes(comptime N: usize) !void {
-
-    // The location of padding bits in these layouts are technically not defined
-    // by LLVM, but we currently allow exotic integers to be cast (at comptime)
-    // to types that expose their padding bits anyway.
-    //
-    // This test at least makes sure those bits are matched by the runtime behavior
-    // on the platforms we target. If the above behavior is restricted after all,
-    // this test should be deleted.
-
-    const T = @Int(.unsigned, N);
-    for ([_]T{ 0, ~@as(T, 0) }) |init_value| {
-        var x: T = init_value;
-        const bytes = std.mem.asBytes(&x);
-
-        const byte_count = (N + 7) / 8;
-        switch (native_endian) {
-            .little => {
-                var byte_i = 0;
-                while (byte_i < (byte_count - 1)) : (byte_i += 1) {
-                    try expect(bytes[byte_i] == 0xff);
-                }
-                try expect(((bytes[byte_i] ^ 0xff) << -%@as(u3, @truncate(N))) == 0);
-            },
-            .big => {
-                var byte_i = byte_count - 1;
-                while (byte_i > 0) : (byte_i -= 1) {
-                    try expect(bytes[byte_i] == 0xff);
-                }
-                try expect(((bytes[byte_i] ^ 0xff) << -%@as(u3, @truncate(N))) == 0);
-            },
-        }
-    }
-}
-
 test "nested bitcast" {
     const S = struct {
         fn moo(x: isize) !void {
@@ -177,39 +128,6 @@ test "@bitCast packed structs at runtime and comptime" {
             try expect(two_halves.half1 == 0x34);
             try expect(two_halves.quarter3 == 0x2);
             try expect(two_halves.quarter4 == 0x1);
-        }
-    };
-    try S.doTheTest();
-    try comptime S.doTheTest();
-}
-
-test "@bitCast extern structs at runtime and comptime" {
-    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
-    const Full = extern struct {
-        number: u16,
-    };
-    const TwoHalves = extern struct {
-        half1: u8,
-        half2: u8,
-    };
-    const S = struct {
-        fn doTheTest() !void {
-            var full = Full{ .number = 0x1234 };
-            _ = &full;
-            const two_halves: TwoHalves = @bitCast(full);
-            switch (native_endian) {
-                .big => {
-                    try expect(two_halves.half1 == 0x12);
-                    try expect(two_halves.half2 == 0x34);
-                },
-                .little => {
-                    try expect(two_halves.half1 == 0x34);
-                    try expect(two_halves.half2 == 0x12);
-                },
-            }
         }
     };
     try S.doTheTest();
@@ -363,32 +281,12 @@ test "comptime @bitCast packed struct to int and back" {
     }
 }
 
-test "comptime bitcast with fields following f80" {
-    if (true) {
-        // https://github.com/ziglang/zig/issues/19387
-        return error.SkipZigTest;
-    }
-
-    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-
-    const FloatT = extern struct { f: f80, x: u128 align(16) };
-    const x: FloatT = .{ .f = 0.5, .x = 123 };
-    var x_as_uint: u256 = comptime @as(u256, @bitCast(x));
-    _ = &x_as_uint;
-
-    try expect(x.f == @as(FloatT, @bitCast(x_as_uint)).f);
-    try expect(x.x == @as(FloatT, @bitCast(x_as_uint)).x);
-}
-
 test "bitcast vector to integer and back" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-    if (builtin.cpu.arch.endian() == .big and builtin.zig_backend == .stage2_llvm) return error.SkipZigTest;
 
     var vec: @Vector(16, bool) = @splat(true);
     vec[1] = false;
@@ -524,75 +422,6 @@ test "@bitCast of packed struct of bools all false" {
     try expect(@as(u8, @as(u4, @bitCast(p))) == 0);
 }
 
-test "@bitCast of extern struct containing pointer" {
-    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
-
-    const S = struct {
-        const A = extern struct {
-            ptr: *const u32,
-        };
-
-        const B = extern struct {
-            ptr: *const i32,
-        };
-
-        fn doTheTest() !void {
-            const x: u32 = 123;
-            var a: A = undefined;
-            a = .{ .ptr = &x };
-            const b: B = @bitCast(a);
-            try expect(b.ptr.* == 123);
-        }
-    };
-
-    try S.doTheTest();
-    try comptime S.doTheTest();
-}
-
-test "@bitCast of extern struct to float" {
-    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
-    const S = struct {
-        const S = extern struct {
-            x: u16,
-            y: u16,
-        };
-        fn doTheTest() !void {
-            var s: S = .{ .x = 0, .y = 0 };
-            _ = &s;
-            const a: f32 = @bitCast(s);
-            try expect(a == 0);
-        }
-    };
-
-    try S.doTheTest();
-    try comptime S.doTheTest();
-}
-
-test "@bitCast of float to extern struct" {
-    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
-    const S = struct {
-        const S = extern struct {
-            x: u32,
-        };
-        fn doTheTest() !void {
-            var a: f32 = -0.0;
-            _ = &a;
-            const s: S = @bitCast(a);
-            try expect(s.x == 0x80000000);
-        }
-    };
-
-    try S.doTheTest();
-    try comptime S.doTheTest();
-}
-
 test "@bitCast of packed struct with void field to integer" {
     const S = packed struct(u8) {
         v: void,
@@ -607,4 +436,149 @@ test "@bitCast of packed struct with void field to integer" {
     };
     try S.doTheTest(123);
     try comptime S.doTheTest(123);
+}
+
+test "@bitCast vector to array with different element size" {
+    const static = struct {
+        fn doTheTest(v: @Vector(4, u5)) !void {
+            const result: [5]u4 = @bitCast(v);
+            // See the definition of `v` in the test proper for these values.
+            try expect(result[0] == 0b0010);
+            try expect(result[1] == 0b1110);
+            try expect(result[2] == 0b0101);
+            try expect(result[3] == 0b0110);
+            try expect(result[4] == 0b0000);
+        }
+    };
+    // The strange digit groupings here are to indicate how this maps to `expected` above.
+    const v: @Vector(4, u5) = .{
+        0b0_0010,
+        0b01_111,
+        0b110_01,
+        0b0000_0,
+    };
+    try static.doTheTest(v);
+    try comptime static.doTheTest(v);
+}
+
+test "@bitCast packed struct to array of bits" {
+    const S = packed struct(u16) {
+        foo: u5,
+        bar: i7,
+        baz: u3,
+        qux: bool,
+        fn doTheTest(val: @This(), comptime Bits: type) !void {
+            const bits: Bits = @bitCast(val);
+
+            // foo
+            try expect(bits[0] == 1);
+            try expect(bits[1] == 0);
+            try expect(bits[2] == 0);
+            try expect(bits[3] == 1);
+            try expect(bits[4] == 0);
+            // bar
+            try expect(bits[5] == 0);
+            try expect(bits[6] == 1);
+            try expect(bits[7] == 1);
+            try expect(bits[8] == 1);
+            try expect(bits[9] == 1);
+            try expect(bits[10] == 1);
+            try expect(bits[11] == 1);
+            // baz
+            try expect(bits[12] == 0);
+            try expect(bits[13] == 1);
+            try expect(bits[14] == 0);
+            // qux
+            try expect(bits[15] == 1);
+        }
+    };
+
+    const val: S = .{
+        .foo = 0b01001,
+        .bar = -2,
+        .baz = 0b010,
+        .qux = true,
+    };
+
+    try val.doTheTest(@Vector(16, u1));
+    try val.doTheTest([16]u1);
+
+    try comptime val.doTheTest(@Vector(16, u1));
+    try comptime val.doTheTest([16]u1);
+}
+
+test "@bitCast nested arrays of vectors" {
+    const Src = [2][2]@Vector(4, u5);
+    const Dest = [5]@Vector(2, u8);
+
+    // The strange digit groupings here are to indicate how this maps to the output.
+    const src: Src = .{ .{
+        .{ 0b00011, 0b00_100, 0b11100, 0b0010_1 },
+        .{ 0b1_0110, 0b11011, 0b101_10, 0b10101 },
+    }, .{
+        .{ 0b10101, 0b00_001, 0b01011, 0b0001_0 },
+        .{ 0b0_0001, 0b01111, 0b111_10, 0b00001 },
+    } };
+
+    const expected: Dest = .{
+        .{ 0b10000011, 0b11110000 },
+        .{ 0b01100010, 0b10110111 },
+        .{ 0b10101101, 0b00110101 },
+        .{ 0b00101100, 0b00010001 },
+        .{ 0b10011110, 0b00001111 },
+    };
+
+    const static = struct {
+        fn doTheTest(src_arg: Src) !void {
+            const actual: Dest = @bitCast(src_arg);
+            for (actual, expected) |actual_vec, expected_vec| {
+                try expect(actual_vec[0] == expected_vec[0]);
+                try expect(actual_vec[1] == expected_vec[1]);
+            }
+        }
+    };
+
+    try static.doTheTest(src);
+    try comptime static.doTheTest(src);
+}
+
+test "@bitCast nested arrays of bool to scalar" {
+    const static = struct {
+        fn doTheTest(src: [4][4]bool) !void {
+            const result: u16 = @bitCast(src);
+            try expect(result == 0b1100_0101_1010_0011);
+        }
+    };
+    const src: [4][4]bool = .{
+        .{ true, true, false, false }, // 0b0011
+        .{ false, true, false, true }, // 0b1010
+        .{ true, false, true, false }, // 0b0101
+        .{ false, false, true, true }, // 0b1100
+    };
+    try static.doTheTest(src);
+    try comptime static.doTheTest(src);
+}
+
+test "@bitCast deeply nested arrays to scalar" {
+    const static = struct {
+        fn doTheTest(src: [2][1][3][5]u4) !void {
+            const signed: i120 = @bitCast(src);
+            try expect(signed < 0); // top nibble is 0x8 so sign bit is 1
+            const unsigned: u120 = @bitCast(src);
+            try expect(unsigned == 0x8873B_5BF6F_F4020_0E7AC_1EFED_40F51);
+            try expect(@as(i120, @bitCast(unsigned)) == signed);
+            try expect(@as(u120, @bitCast(signed)) == unsigned);
+        }
+    };
+    const src: [2][1][3][5]u4 = .{ .{.{
+        .{ 0x1, 0x5, 0xF, 0x0, 0x4 },
+        .{ 0xD, 0xE, 0xF, 0xE, 0x1 },
+        .{ 0xC, 0xA, 0x7, 0xE, 0x0 },
+    }}, .{.{
+        .{ 0x0, 0x2, 0x0, 0x4, 0xF },
+        .{ 0xF, 0x6, 0xF, 0xB, 0x5 },
+        .{ 0xB, 0x3, 0x7, 0x8, 0x8 },
+    }} };
+    try static.doTheTest(src);
+    try comptime static.doTheTest(src);
 }

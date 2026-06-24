@@ -526,7 +526,9 @@ test "sendmsg/recvmsg" {
 
     var address_server: linux.sockaddr.in = .{
         .port = 0,
-        .addr = @bitCast([4]u8{ 127, 0, 0, 1 }),
+        .addr = @as(*align(1) const u32, @ptrCast(
+            &@as([4]u8, .{ 127, 0, 0, 1 }),
+        )).*,
     };
 
     const server = try socket(address_server.family, posix.SOCK.DGRAM, 0);
@@ -1028,7 +1030,9 @@ test "shutdown" {
 
     var address: linux.sockaddr.in = .{
         .port = 0,
-        .addr = @bitCast([4]u8{ 127, 0, 0, 1 }),
+        .addr = @as(*align(1) const u32, @ptrCast(
+            &@as([4]u8, .{ 127, 0, 0, 1 }),
+        )).*,
     };
 
     // Socket bound, expect shutdown to work
@@ -1740,7 +1744,9 @@ test "accept multishot" {
 
     var address: linux.sockaddr.in = .{
         .port = 0,
-        .addr = @bitCast([4]u8{ 127, 0, 0, 1 }),
+        .addr = @as(*align(1) const u32, @ptrCast(
+            &@as([4]u8, .{ 127, 0, 0, 1 }),
+        )).*,
     };
     const listener_socket = try createListenerSocket(&address);
     defer _ = linux.close(listener_socket);
@@ -1842,7 +1848,9 @@ test "accept_direct" {
     defer ring.deinit();
     var address: linux.sockaddr.in = .{
         .port = 0,
-        .addr = @bitCast([4]u8{ 127, 0, 0, 1 }),
+        .addr = @as(*align(1) const u32, @ptrCast(
+            &@as([4]u8, .{ 127, 0, 0, 1 }),
+        )).*,
     };
 
     // register direct file descriptors
@@ -1931,7 +1939,9 @@ test "accept_multishot_direct" {
 
     var address: linux.sockaddr.in = .{
         .port = 0,
-        .addr = @bitCast([4]u8{ 127, 0, 0, 1 }),
+        .addr = @as(*align(1) const u32, @ptrCast(
+            &@as([4]u8, .{ 127, 0, 0, 1 }),
+        )).*,
     };
 
     var registered_fds: [2]linux.fd_t = @splat(-1);
@@ -2041,7 +2051,9 @@ test "socket_direct/socket_direct_alloc/close_direct" {
     // use sockets from registered_fds in connect operation
     var address: linux.sockaddr.in = .{
         .port = 0,
-        .addr = @bitCast([4]u8{ 127, 0, 0, 1 }),
+        .addr = @as(*align(1) const u32, @ptrCast(
+            &@as([4]u8, .{ 127, 0, 0, 1 }),
+        )).*,
     };
     const listener_socket = try createListenerSocket(&address);
     defer _ = linux.close(listener_socket);
@@ -2426,7 +2438,9 @@ test "bind/listen/connect" {
 
     var addr: linux.sockaddr.in = .{
         .port = 0,
-        .addr = @bitCast([4]u8{ 127, 0, 0, 1 }),
+        .addr = @as(*align(1) const u32, @ptrCast(
+            &@as([4]u8, .{ 127, 0, 0, 1 }),
+        )).*,
     };
     const proto: u32 = if (addr.family == linux.AF.UNIX) 0 else linux.IPPROTO.TCP;
 
@@ -2614,7 +2628,9 @@ pub fn createSocketTestHarness(ring: *IoUring) !SocketTestHarness {
     // Create a TCP server socket
     var address: linux.sockaddr.in = .{
         .port = 0,
-        .addr = @bitCast([4]u8{ 127, 0, 0, 1 }),
+        .addr = @as(*align(1) const u32, @ptrCast(
+            &@as([4]u8, .{ 127, 0, 0, 1 }),
+        )).*,
     };
     const listener_socket = try createListenerSocket(&address);
     errdefer _ = linux.close(listener_socket);

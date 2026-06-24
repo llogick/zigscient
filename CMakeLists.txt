@@ -342,7 +342,7 @@ set(ZIG_STAGE2_SOURCES
     src/Package/Module.zig
     src/RangeSet.zig
     src/Sema.zig
-    src/Sema/bitcast.zig
+    src/Sema/reinterpret.zig
     src/Sema/comptime_ptr_access.zig
     src/Sema/type_resolution.zig
     src/Type.zig

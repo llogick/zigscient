@@ -292,8 +292,8 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
         .load,
         .fptrunc,
         .fpext,
-        .intcast,
-        .intcast_safe,
+        .int_cast,
+        .int_cast_safe,
         .trunc,
         .optional_payload,
         .optional_payload_ptr,
@@ -334,7 +334,15 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
             air_inst_index = air_body[air_body_index];
             continue :air_tag air_tags[@intFromEnum(air_inst_index)];
         },
-        .bitcast => {
+        .bit_cast,
+        .ptr_cast,
+        .ptr_from_int,
+        .int_from_ptr,
+        .error_cast,
+        .error_from_int,
+        .int_from_error,
+        .union_from_enum,
+        => {
             const ty_op = air_data[@intFromEnum(air_inst_index)].ty_op;
             maybe_noop: {
                 if (ty_op.ty.toInterned().? != isel.air.typeOf(ty_op.operand, ip).toIntern()) break :maybe_noop;
@@ -3190,7 +3198,15 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
             }
             if (air.next()) |next_air_tag| continue :air_tag next_air_tag;
         },
-        .bitcast => |air_tag| {
+        .bit_cast,
+        .ptr_cast,
+        .ptr_from_int,
+        .int_from_ptr,
+        .error_cast,
+        .error_from_int,
+        .int_from_error,
+        .union_from_enum,
+        => |air_tag| {
             if (isel.live_values.fetchRemove(air.inst_index)) |dst_vi| unused: {
                 defer dst_vi.value.deref(isel);
                 const ty_op = air.data(air.inst_index).ty_op;
@@ -5221,7 +5237,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
             }
             if (air.next()) |next_air_tag| continue :air_tag next_air_tag;
         },
-        .intcast => |air_tag| {
+        .int_cast => |air_tag| {
             if (isel.live_values.fetchRemove(air.inst_index)) |dst_vi| unused: {
                 defer dst_vi.value.deref(isel);
 
@@ -5312,7 +5328,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
             }
             if (air.next()) |next_air_tag| continue :air_tag next_air_tag;
         },
-        .intcast_safe => |air_tag| {
+        .int_cast_safe => |air_tag| {
             if (isel.live_values.fetchRemove(air.inst_index)) |dst_vi| unused: {
                 defer dst_vi.value.deref(isel);
 
@@ -11355,7 +11371,7 @@ fn writeToMemory(isel: *Select, constant: Constant, buffer: []u8) error{OutOfMem
     if (try isel.writeKeyToMemory(ip.indexToKey(constant.toIntern()), buffer)) return true;
     constant.writeToMemory(zcu, buffer) catch |err| switch (err) {
         error.OutOfMemory => |e| return e,
-        error.ReinterpretDeclRef, error.Unimplemented, error.IllDefinedMemoryLayout => return false,
+        error.ReinterpretDeclRef, error.IllDefinedMemoryLayout => return false,
     };
     return true;
 }

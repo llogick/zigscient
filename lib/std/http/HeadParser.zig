@@ -116,11 +116,8 @@ pub fn feed(p: *HeadParser, bytes: []const u8) usize {
 
                     const chunk = bytes[index..][0..vector_len];
                     const v: Vector = chunk.*;
-                    // depends on https://github.com/ziglang/zig/issues/19755
-                    // const matches_r: BitVector = @bitCast(v == @as(Vector, @splat('\r')));
-                    // const matches_n: BitVector = @bitCast(v == @as(Vector, @splat('\n')));
-                    const matches_r: BitVector = @select(u1, v == @as(Vector, @splat('\r')), @as(Vector, @splat(1)), @as(Vector, @splat(0)));
-                    const matches_n: BitVector = @select(u1, v == @as(Vector, @splat('\n')), @as(Vector, @splat(1)), @as(Vector, @splat(0)));
+                    const matches_r: BitVector = @bitCast(v == @as(Vector, @splat('\r')));
+                    const matches_n: BitVector = @bitCast(v == @as(Vector, @splat('\n')));
                     const matches_or: SizeVector = matches_r | matches_n;
 
                     const matches = @reduce(.Add, matches_or);
@@ -331,15 +328,15 @@ pub fn feed(p: *HeadParser, bytes: []const u8) usize {
 }
 
 inline fn int16(array: *const [2]u8) u16 {
-    return @bitCast(array.*);
+    return std.mem.toNative(u16, @bitCast(array.*), .little);
 }
 
 inline fn int24(array: *const [3]u8) u24 {
-    return @bitCast(array.*);
+    return std.mem.toNative(u24, @bitCast(array.*), .little);
 }
 
 inline fn int32(array: *const [4]u8) u32 {
-    return @bitCast(array.*);
+    return std.mem.toNative(u32, @bitCast(array.*), .little);
 }
 
 inline fn intShift(comptime T: type, x: anytype) T {

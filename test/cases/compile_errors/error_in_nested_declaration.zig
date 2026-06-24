@@ -23,7 +23,6 @@ pub export fn entry2() void {
 }
 
 // error
-// backend=selfhosted,llvm
 //
 // :6:20: error: cannot @bitCast to '[]i32'
 // :6:20: note: use @ptrCast to cast from '[]u32'

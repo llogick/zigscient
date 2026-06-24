@@ -30,11 +30,11 @@ pub fn classifyType(ty: Type, zcu: *Zcu, ctx: Context) Class {
     const ip = &zcu.intern_pool;
     switch (ty.zigTypeTag(zcu)) {
         .@"struct" => {
-            const bit_size = ty.bitSize(zcu);
             if (ty.containerLayout(zcu) == .@"packed") {
-                if (bit_size > 64) return .memory;
+                if (ty.bitSize(zcu) > 64) return .memory;
                 return .byval;
             }
+            const bit_size = ty.abiSize(zcu) * 8;
             if (bit_size > max_byval_size) return .memory;
             const float_count = countFloats(ty, zcu, &maybe_float_bits);
             if (float_count <= byval_float_count) return .byval;
@@ -47,17 +47,17 @@ pub fn classifyType(ty: Type, zcu: *Zcu, ctx: Context) Class {
             var i: u32 = 0;
             while (i < fields) : (i += 1) {
                 const field_ty = ty.fieldType(i, zcu);
-                if (field_ty.bitSize(zcu) > 32) return Class.arrSize(bit_size, 64);
+                if (field_ty.abiSize(zcu) > 4) return Class.arrSize(bit_size, 64);
             }
             return Class.arrSize(bit_size, 32);
         },
         .@"union" => {
-            const bit_size = ty.bitSize(zcu);
             const union_obj = zcu.typeToUnion(ty).?;
             if (union_obj.layout == .@"packed") {
-                if (bit_size > 64) return .memory;
+                if (ty.bitSize(zcu) > 64) return .memory;
                 return .byval;
             }
+            const bit_size = ty.abiSize(zcu) * 8;
             if (bit_size > max_byval_size) return .memory;
             const float_count = countFloats(ty, zcu, &maybe_float_bits);
             if (float_count <= byval_float_count) return .byval;
@@ -67,7 +67,7 @@ pub fn classifyType(ty: Type, zcu: *Zcu, ctx: Context) Class {
             }
 
             for (union_obj.field_types.get(ip)) |field_ty| {
-                if (Type.fromInterned(field_ty).bitSize(zcu) > 32) {
+                if (Type.fromInterned(field_ty).abiSize(zcu) > 4) {
                     return Class.arrSize(bit_size, 64);
                 }
             }

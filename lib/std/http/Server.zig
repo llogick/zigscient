@@ -726,7 +726,7 @@ pub const WebSocket = struct {
                 else => @intFromEnum(h1.payload_len),
             };
             if (len > in.buffer.len) return error.MessageOversize;
-            const mask: u32 = @bitCast((try in.takeArray(4)).*);
+            const mask: [4]u8 = (try in.takeArray(4)).*;
             const payload = try in.take(len);
 
             // Skip pongs.
@@ -734,11 +734,16 @@ pub const WebSocket = struct {
 
             // The last item may contain a partial word of unused data.
             const floored_len = (payload.len / 4) * 4;
-            const u32_payload: []align(1) u32 = @ptrCast(payload[0..floored_len]);
-            for (u32_payload) |*elem| elem.* ^= mask;
-            const mask_bytes: []const u8 = @ptrCast(&mask);
-            for (payload[floored_len..], mask_bytes[0 .. payload.len - floored_len]) |*leftover, m|
+
+            const payload_chunks: [][4]u8 = @ptrCast(payload[0..floored_len]);
+            for (payload_chunks) |*chunk| {
+                const mask_i: u32 = @bitCast(mask);
+                const chunk_i: u32 = @bitCast(chunk.*);
+                chunk.* = @bitCast(chunk_i ^ mask_i);
+            }
+            for (payload[floored_len..], mask[0 .. payload.len - floored_len]) |*leftover, m| {
                 leftover.* ^= m;
+            }
 
             return .{
                 .opcode = h0.opcode,

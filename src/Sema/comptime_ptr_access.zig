@@ -14,27 +14,46 @@ pub const ComptimeLoadResult = union(enum) {
 pub fn loadComptimePtr(sema: *Sema, block: *Block, src: LazySrcLoc, ptr: Value) !ComptimeLoadResult {
     const pt = sema.pt;
     const zcu = pt.zcu;
+
     const ptr_info = ptr.typeOf(pt.zcu).ptrInfo(pt.zcu);
-    // TODO: host size for vectors is terrible
-    const host_bits = switch (ptr_info.flags.vector_index) {
-        .none => ptr_info.packed_offset.host_size * 8,
-        else => ptr_info.packed_offset.host_size * Type.fromInterned(ptr_info.child).bitSize(zcu),
-    };
-    const bit_offset = if (host_bits != 0) bit_offset: {
-        const child_bits = Type.fromInterned(ptr_info.child).bitSize(zcu);
-        const bit_offset = ptr_info.packed_offset.bit_offset + switch (ptr_info.flags.vector_index) {
-            .none => 0,
-            else => |idx| switch (pt.zcu.getTarget().cpu.arch.endian()) {
-                .little => child_bits * @intFromEnum(idx),
-                .big => host_bits - child_bits * (@intFromEnum(idx) + 1), // element order reversed on big endian
-            },
-        };
-        if (child_bits + bit_offset > host_bits) {
+    const elem_ty: Type = .fromInterned(ptr_info.child);
+    const host_size = ptr_info.packed_offset.host_size;
+
+    if (host_size == 0) {
+        return loadComptimePtrInner(sema, block, src, ptr, elem_ty, 0);
+    }
+
+    assert(elem_ty.hasBitRepresentation(zcu));
+    if (ptr_info.flags.vector_index == .none) {
+        if (ptr_info.packed_offset.bit_offset + elem_ty.bitSize(zcu) > host_size * 8) {
             return .exceeds_host_size;
         }
-        break :bit_offset bit_offset;
-    } else 0;
-    return loadComptimePtrInner(sema, block, src, ptr, bit_offset, host_bits, Type.fromInterned(ptr_info.child), 0);
+        const load_ty: Type = try pt.intType(.unsigned, host_size * 8);
+        const backing_int_mv = switch (try loadComptimePtrInner(sema, block, src, ptr, load_ty, 0)) {
+            else => |result| return result,
+            .success => |mv| mv,
+        };
+        const backing_int_val = try backing_int_mv.intern(pt, sema.arena);
+        const buf = try sema.arena.alloc(u8, host_size);
+        @memset(buf, 0);
+        backing_int_val.writeToPackedMemory(zcu, buf, 0);
+        const result_val: Value = try .readFromPackedMemory(elem_ty, pt, buf, ptr_info.packed_offset.bit_offset);
+        return .{ .success = .{ .interned = result_val.toIntern() } };
+    }
+    if (@intFromEnum(ptr_info.flags.vector_index) >= host_size) {
+        return .exceeds_host_size;
+    }
+    const load_ty: Type = try pt.vectorType(.{
+        .len = host_size,
+        .child = elem_ty.toIntern(),
+    });
+    const vector_mv = switch (try loadComptimePtrInner(sema, block, src, ptr, load_ty, 0)) {
+        else => |result| return result,
+        .success => |mv| mv,
+    };
+    const vector_val = try vector_mv.intern(pt, sema.arena);
+    const result_val = try vector_val.elemValue(pt, @intFromEnum(ptr_info.flags.vector_index));
+    return .{ .success = .{ .interned = result_val.toIntern() } };
 }
 
 pub const ComptimeStoreResult = union(enum) {
@@ -52,7 +71,8 @@ pub const ComptimeStoreResult = union(enum) {
 };
 
 /// Perform a comptime load of value `store_val` to a pointer.
-/// The pointer's type is ignored.
+///
+/// Asserts that the type of `store_val` equals the element type of the pointer type.
 pub fn storeComptimePtr(
     sema: *Sema,
     block: *Block,
@@ -62,42 +82,84 @@ pub fn storeComptimePtr(
 ) !ComptimeStoreResult {
     const pt = sema.pt;
     const zcu = pt.zcu;
-    const ptr_info = ptr.typeOf(zcu).ptrInfo(zcu);
-    assert(store_val.typeOf(zcu).toIntern() == ptr_info.child);
 
-    {
-        const store_ty: Type = .fromInterned(ptr_info.child);
-        if (!store_ty.comptimeOnly(zcu) and !store_ty.hasRuntimeBits(zcu)) {
-            // zero-bit store; nothing to do
-            return .success;
-        }
+    const ptr_info = ptr.typeOf(pt.zcu).ptrInfo(pt.zcu);
+    const elem_ty: Type = .fromInterned(ptr_info.child);
+    const host_size = ptr_info.packed_offset.host_size;
+    assert(store_val.typeOf(zcu).toIntern() == elem_ty.toIntern());
+
+    if (host_size == 0) {
+        return storeComptimePtrInner(sema, block, src, ptr, store_val);
     }
 
-    // TODO: host size for vectors is terrible
-    const host_bits = switch (ptr_info.flags.vector_index) {
-        .none => ptr_info.packed_offset.host_size * 8,
-        else => ptr_info.packed_offset.host_size * Type.fromInterned(ptr_info.child).bitSize(zcu),
-    };
-    const bit_offset = ptr_info.packed_offset.bit_offset + switch (ptr_info.flags.vector_index) {
-        .none => 0,
-        else => |idx| switch (zcu.getTarget().cpu.arch.endian()) {
-            .little => Type.fromInterned(ptr_info.child).bitSize(zcu) * @intFromEnum(idx),
-            .big => host_bits - Type.fromInterned(ptr_info.child).bitSize(zcu) * (@intFromEnum(idx) + 1), // element order reversed on big endian
-        },
-    };
-    const pseudo_store_ty = if (host_bits > 0) t: {
-        const need_bits = Type.fromInterned(ptr_info.child).bitSize(zcu);
-        if (need_bits + bit_offset > host_bits) {
+    assert(elem_ty.hasBitRepresentation(zcu));
+    if (ptr_info.flags.vector_index == .none) {
+        if (ptr_info.packed_offset.bit_offset + elem_ty.bitSize(zcu) > host_size * 8) {
             return .exceeds_host_size;
         }
-        break :t try sema.pt.intType(.unsigned, @intCast(host_bits));
-    } else Type.fromInterned(ptr_info.child);
+        const backing_ty: Type = try pt.intType(.unsigned, host_size * 8);
+        const backing_int_mv = switch (try loadComptimePtrInner(sema, block, src, ptr, backing_ty, 0)) {
+            .success => |mv| mv,
+            .runtime_load => return .runtime_store,
+            inline else => |payload, tag| return @unionInit(ComptimeStoreResult, @tagName(tag), payload),
+        };
+        const old_backing_int_val = try backing_int_mv.intern(pt, sema.arena);
+        const buf = try sema.arena.alloc(u8, host_size);
+        @memset(buf, 0);
+        old_backing_int_val.writeToPackedMemory(zcu, buf, 0);
+        // Write the new element...
+        store_val.writeToPackedMemory(zcu, buf, ptr_info.packed_offset.bit_offset);
+        // ...then read the resulting backing integer value...
+        const new_backing_int_val: Value = try .readFromPackedMemory(backing_ty, pt, buf, 0);
+        // ...and store that back into memory
+        return storeComptimePtrInner(sema, block, src, ptr, new_backing_int_val);
+    }
 
-    const strat = try prepareComptimePtrStore(sema, block, src, ptr, pseudo_store_ty, 0);
+    if (@intFromEnum(ptr_info.flags.vector_index) >= host_size) {
+        return .exceeds_host_size;
+    }
+    const vec_ty: Type = try pt.vectorType(.{
+        .len = host_size,
+        .child = elem_ty.toIntern(),
+    });
+    const vector_mv = switch (try loadComptimePtrInner(sema, block, src, ptr, vec_ty, 0)) {
+        .success => |mv| mv,
+        .runtime_load => return .runtime_store,
+        inline else => |payload, tag| return @unionInit(ComptimeStoreResult, @tagName(tag), payload),
+    };
+    const old_vector_val = try vector_mv.intern(pt, sema.arena);
+    const elems_buf = try sema.arena.alloc(InternPool.Index, host_size);
+    for (elems_buf, 0..) |*elem, elem_index| {
+        const elem_val = try old_vector_val.elemValue(pt, elem_index);
+        elem.* = elem_val.toIntern();
+    }
+    elems_buf[@intFromEnum(ptr_info.flags.vector_index)] = store_val.toIntern();
+    const new_vector_val = try pt.aggregateValue(vec_ty, elems_buf);
+    return storeComptimePtrInner(sema, block, src, ptr, new_vector_val);
+}
+
+/// Like `storeComptimePtr`, except ignores the type of `ptr`, instead treating it as a single-item
+/// pointer to `store_val.typeOf(zcu)`.
+fn storeComptimePtrInner(
+    sema: *Sema,
+    block: *Block,
+    src: LazySrcLoc,
+    ptr: Value,
+    store_val: Value,
+) !ComptimeStoreResult {
+    const pt = sema.pt;
+    const zcu = pt.zcu;
+    const store_ty = store_val.typeOf(zcu);
+
+    if (store_ty.classify(zcu) == .one_possible_value) {
+        // zero-bit store; nothing to do
+        return .success;
+    }
+
+    const strat = try prepareComptimePtrStore(sema, block, src, ptr, store_ty, 0);
 
     // Propagate errors and handle comptime fields.
     switch (strat) {
-        .direct, .index, .flat_index, .reinterpret => {},
         .comptime_field => {
             // To "store" to a comptime field, just perform a load of the field
             // and see if the store value matches.
@@ -125,79 +187,60 @@ pub fn storeComptimePtr(
         .inactive_union_field => return .inactive_union_field,
         .needed_well_defined => |ty| return .{ .needed_well_defined = ty },
         .out_of_bounds => |ty| return .{ .out_of_bounds = ty },
-    }
 
-    // Check the store is not inside a runtime condition
-    try checkComptimeVarStore(sema, block, src, strat.alloc());
-
-    if (host_bits == 0) {
-        // We can attempt a direct store depending on the strategy.
-        switch (strat) {
-            .direct => |direct| {
-                const want_ty = direct.val.typeOf(zcu);
-                const coerced_store_val = try pt.getCoerced(store_val, want_ty);
-                direct.val.* = .{ .interned = coerced_store_val.toIntern() };
-                return .success;
-            },
-            .index => |index| {
-                const want_ty = index.val.typeOf(zcu).childType(zcu);
-                const coerced_store_val = try pt.getCoerced(store_val, want_ty);
-                try index.val.setElem(pt, sema.arena, @intCast(index.elem_index), .{ .interned = coerced_store_val.toIntern() });
-                return .success;
-            },
-            .flat_index => |flat| {
-                const store_elems = store_val.typeOf(zcu).arrayBase(zcu)[1];
-                const flat_elems = try sema.arena.alloc(InternPool.Index, @intCast(store_elems));
-                {
-                    var next_idx: u64 = 0;
-                    var skip: u64 = 0;
-                    try flattenArray(sema, .{ .interned = store_val.toIntern() }, &skip, &next_idx, flat_elems);
-                }
-                for (flat_elems, 0..) |elem, idx| {
-                    // TODO: recursiveIndex in a loop does a lot of redundant work!
-                    // Better would be to gather all the store targets into an array.
-                    var index: u64 = flat.flat_elem_index + idx;
-                    const val_ptr, const final_idx = (try recursiveIndex(sema, flat.val, &index)).?;
-                    try val_ptr.setElem(pt, sema.arena, @intCast(final_idx), .{ .interned = elem });
-                }
-                return .success;
-            },
-            .reinterpret => {},
-            else => unreachable,
-        }
-    }
-
-    // Either there is a bit offset, or the strategy required reinterpreting.
-    // Therefore, we must perform a bitcast.
-
-    const val_ptr: *MutableValue, const byte_offset: u64 = switch (strat) {
-        .direct => |direct| .{ direct.val, 0 },
-        .index => |index| .{
-            index.val,
-            index.elem_index * index.val.typeOf(zcu).childType(zcu).abiSize(zcu),
+        .direct => |direct| {
+            try checkComptimeVarStore(sema, block, src, direct.alloc);
+            const want_ty = direct.val.typeOf(zcu);
+            const coerced_store_val = try pt.getCoerced(store_val, want_ty);
+            direct.val.* = .{ .interned = coerced_store_val.toIntern() };
+            return .success;
         },
-        .flat_index => |flat| .{ flat.val, flat.flat_elem_index * flat.val.typeOf(zcu).arrayBase(zcu)[0].abiSize(zcu) },
-        .reinterpret => |reinterpret| .{ reinterpret.val, reinterpret.byte_offset },
-        else => unreachable,
-    };
 
-    if (!val_ptr.typeOf(zcu).hasWellDefinedLayout(zcu)) {
-        return .{ .needed_well_defined = val_ptr.typeOf(zcu) };
+        .index => |index| {
+            try checkComptimeVarStore(sema, block, src, index.alloc);
+            const want_ty = index.val.typeOf(zcu).childType(zcu);
+            const coerced_store_val = try pt.getCoerced(store_val, want_ty);
+            try index.val.setElem(pt, sema.arena, @intCast(index.elem_index), .{ .interned = coerced_store_val.toIntern() });
+            return .success;
+        },
+
+        .flat_index => |flat| {
+            try checkComptimeVarStore(sema, block, src, flat.alloc);
+            const store_elems = store_val.typeOf(zcu).arrayBase(zcu)[1];
+            const flat_elems = try sema.arena.alloc(InternPool.Index, @intCast(store_elems));
+            {
+                var next_idx: u64 = 0;
+                var skip: u64 = 0;
+                try flattenArray(sema, .{ .interned = store_val.toIntern() }, &skip, &next_idx, flat_elems);
+            }
+            for (flat_elems, 0..) |elem, idx| {
+                // TODO: recursiveIndex in a loop does a lot of redundant work!
+                // Better would be to gather all the store targets into an array.
+                var index: u64 = flat.flat_elem_index + idx;
+                const val_ptr, const final_idx = (try recursiveIndex(sema, flat.val, &index)).?;
+                try val_ptr.setElem(pt, sema.arena, @intCast(final_idx), .{ .interned = elem });
+            }
+            return .success;
+        },
+
+        .reinterpret => |reinterpret| {
+            try checkComptimeVarStore(sema, block, src, reinterpret.alloc);
+            if (!reinterpret.val.typeOf(zcu).hasWellDefinedLayout(zcu)) {
+                return .{ .needed_well_defined = reinterpret.val.typeOf(zcu) };
+            }
+            if (!store_ty.hasWellDefinedLayout(zcu)) {
+                return .{ .needed_well_defined = store_ty };
+            }
+            const old_val = try reinterpret.val.intern(pt, sema.arena);
+            const new_val = try sema.spliceMemory(
+                old_val,
+                store_val,
+                reinterpret.byte_offset,
+            ) orelse return .runtime_store;
+            reinterpret.val.* = .{ .interned = new_val.toIntern() };
+            return .success;
+        },
     }
-
-    if (!store_val.typeOf(zcu).hasWellDefinedLayout(zcu)) {
-        return .{ .needed_well_defined = store_val.typeOf(zcu) };
-    }
-
-    const new_val = try sema.bitCastSpliceVal(
-        try val_ptr.intern(pt, sema.arena),
-        store_val,
-        byte_offset,
-        host_bits,
-        bit_offset,
-    ) orelse return .runtime_store;
-    val_ptr.* = .{ .interned = new_val.toIntern() };
-    return .success;
 }
 
 /// Perform a comptime load of type `load_ty` from a pointer.
@@ -207,8 +250,6 @@ fn loadComptimePtrInner(
     block: *Block,
     src: LazySrcLoc,
     ptr_val: Value,
-    bit_offset: u64,
-    host_bits: u64,
     load_ty: Type,
     /// If `load_ty` is an array, this is the number of array elements to skip
     /// before `load_ty`. Otherwise, it is ignored and may be `undefined`.
@@ -244,7 +285,7 @@ fn loadComptimePtrInner(
         .eu_payload => |base_ptr_ip| val: {
             const base_ptr = Value.fromInterned(base_ptr_ip);
             const base_ty = base_ptr.typeOf(zcu).childType(zcu);
-            switch (try loadComptimePtrInner(sema, block, src, base_ptr, 0, 0, base_ty, undefined)) {
+            switch (try loadComptimePtrInner(sema, block, src, base_ptr, base_ty, undefined)) {
                 .success => |eu_val| switch (eu_val.unpackErrorUnion(zcu)) {
                     .undef => return .undef,
                     .err => |err| return .{ .err_payload = err },
@@ -256,7 +297,7 @@ fn loadComptimePtrInner(
         .opt_payload => |base_ptr_ip| val: {
             const base_ptr = Value.fromInterned(base_ptr_ip);
             const base_ty = base_ptr.typeOf(zcu).childType(zcu);
-            switch (try loadComptimePtrInner(sema, block, src, base_ptr, 0, 0, base_ty, undefined)) {
+            switch (try loadComptimePtrInner(sema, block, src, base_ptr, base_ty, undefined)) {
                 .success => |eu_val| switch (eu_val.unpackOptional(zcu)) {
                     .undef => return .undef,
                     .null => return .null_payload,
@@ -283,7 +324,7 @@ fn loadComptimePtrInner(
                 .child = base_ty.toIntern(),
             });
 
-            switch (try loadComptimePtrInner(sema, block, src, base_ptr, 0, 0, want_ty, base_index.index)) {
+            switch (try loadComptimePtrInner(sema, block, src, base_ptr, want_ty, base_index.index)) {
                 .success => |arr_val| break :val arr_val,
                 else => |err| return err,
             }
@@ -293,7 +334,7 @@ fn loadComptimePtrInner(
             const base_ty = base_ptr.typeOf(zcu).childType(zcu);
 
             // Field of a slice, or of an auto-layout struct or union.
-            const agg_val = switch (try loadComptimePtrInner(sema, block, src, base_ptr, 0, 0, base_ty, undefined)) {
+            const agg_val = switch (try loadComptimePtrInner(sema, block, src, base_ptr, base_ty, undefined)) {
                 .success => |val| val,
                 else => |err| return err,
             };
@@ -324,7 +365,7 @@ fn loadComptimePtrInner(
         },
     };
 
-    if (ptr.byte_offset == 0 and host_bits == 0) {
+    if (ptr.byte_offset == 0) {
         if (load_ty.zigTypeTag(zcu) != .array or array_offset == 0) {
             if (.ok == try sema.coerceInMemoryAllowed(
                 block,
@@ -343,8 +384,6 @@ fn loadComptimePtrInner(
     }
 
     restructure_array: {
-        if (host_bits != 0) break :restructure_array;
-
         // We might also be changing the length of an array, or restructuring it.
         // e.g. [1][2][3]T -> [3][2]T.
         // This case is important because it's permitted for types with ill-defined layouts.
@@ -402,7 +441,7 @@ fn loadComptimePtrInner(
         cur_offset += load_ty.childType(zcu).abiSize(zcu) * array_offset;
     }
 
-    const need_bytes = if (host_bits > 0) (host_bits + 7) / 8 else load_ty.abiSize(zcu);
+    const need_bytes = load_ty.abiSize(zcu);
 
     if (cur_offset + need_bytes > cur_val.typeOf(zcu).abiSize(zcu)) {
         return .{ .out_of_bounds = cur_val.typeOf(zcu) };
@@ -453,7 +492,7 @@ fn loadComptimePtrInner(
             },
             .@"struct" => switch (cur_ty.containerLayout(zcu)) {
                 .auto => unreachable, // ill-defined layout
-                .@"packed" => break, // let the bitcast logic handle this
+                .@"packed" => break, // let the memory reinterpret logic handle this
                 .@"extern" => for (0..cur_ty.structFieldCount(zcu)) |field_idx| {
                     const start_off = cur_ty.structFieldOffset(field_idx, zcu);
                     const end_off = start_off + cur_ty.fieldType(field_idx, zcu).abiSize(zcu);
@@ -466,9 +505,9 @@ fn loadComptimePtrInner(
             },
             .@"union" => switch (cur_ty.containerLayout(zcu)) {
                 .auto => unreachable, // ill-defined layout
-                .@"packed" => break, // let the bitcast logic handle this
+                .@"packed" => break, // let the memory reinterpret logic handle this
                 .@"extern" => {
-                    // TODO: we have to let bitcast logic handle this for now.
+                    // TODO: we have to let the memory reinterpret logic handle this for now.
                     // Otherwise, we might traverse into a union field which doesn't allow pointers.
                     // Figure out a solution!
                     if (true) break;
@@ -495,27 +534,13 @@ fn loadComptimePtrInner(
 
     // Fast path: check again if we're now at the type we want to load.
     // If so, just return the loaded value.
-    if (cur_offset == 0 and host_bits == 0 and cur_val.typeOf(zcu).toIntern() == load_ty.toIntern()) {
+    if (cur_offset == 0 and cur_val.typeOf(zcu).toIntern() == load_ty.toIntern()) {
         return .{ .success = cur_val };
     }
 
-    var bitcast_src_val = try cur_val.intern(sema.pt, sema.arena);
-
-    if (host_bits != 0) {
-        const src_bit_size = bitcast_src_val.typeOf(zcu).bitSize(zcu);
-        if (src_bit_size > host_bits) {
-            const truncate_ty = try pt.intType(.unsigned, @intCast(host_bits));
-            bitcast_src_val = try pt.getCoerced(bitcast_src_val, truncate_ty);
-        }
-    }
-
-    const result_val = try sema.bitCastVal(
-        bitcast_src_val,
-        load_ty,
-        cur_offset,
-        host_bits,
-        bit_offset,
-    ) orelse return .runtime_load;
+    // Otherwise, use the memory reinterpretation logic to pull out the bytes we need.
+    const reinterpret_val = try cur_val.intern(pt, sema.arena);
+    const result_val = try sema.castMemory(reinterpret_val, load_ty, cur_offset) orelse return .runtime_load;
     return .{ .success = .{ .interned = result_val.toIntern() } };
 }
 
@@ -546,7 +571,7 @@ const ComptimeStoreStrategy = union(enum) {
         val: *MutableValue,
         flat_elem_index: u64,
     },
-    /// This value should be reinterpreted using bitcast logic to perform the
+    /// This value should be reinterpreted using `Sema.spliceMemory` to perform
     /// store. Only returned if `store_ty` and the type of `val` both have
     /// well-defined layouts.
     reinterpret: struct {
@@ -886,7 +911,7 @@ fn prepareComptimePtrStore(
             },
             .@"struct" => switch (cur_ty.containerLayout(zcu)) {
                 .auto => unreachable, // ill-defined layout
-                .@"packed" => break, // let the bitcast logic handle this
+                .@"packed" => break, // let the memory reinterp logic handle this
                 .@"extern" => for (0..cur_ty.structFieldCount(zcu)) |field_idx| {
                     const start_off = cur_ty.structFieldOffset(field_idx, zcu);
                     const end_off = start_off + cur_ty.fieldType(field_idx, zcu).abiSize(zcu);
@@ -899,9 +924,9 @@ fn prepareComptimePtrStore(
             },
             .@"union" => switch (cur_ty.containerLayout(zcu)) {
                 .auto => unreachable, // ill-defined layout
-                .@"packed" => break, // let the bitcast logic handle this
+                .@"packed" => break, // let the memory reinterp logic handle this
                 .@"extern" => {
-                    // TODO: we have to let bitcast logic handle this for now.
+                    // TODO: we have to let the memory reinterp logic handle this for now.
                     // Otherwise, we might traverse into a union field which doesn't allow pointers.
                     // Figure out a solution!
                     if (true) break;

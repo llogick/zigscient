@@ -21,7 +21,7 @@ pub fn classifyType(ty: Type, zcu: *Zcu) Class {
             if (ty.containerLayout(zcu) == .@"packed") return .byval;
             if (countFloats(ty, zcu)) |float| return .{ .float_array = float.count };
 
-            const bit_size = ty.bitSize(zcu);
+            const bit_size = ty.abiSize(zcu) * 8;
             if (bit_size > 128) return .memory;
             if (bit_size > 64) return .double_integer;
             return .integer;
@@ -30,7 +30,7 @@ pub fn classifyType(ty: Type, zcu: *Zcu) Class {
             if (ty.containerLayout(zcu) == .@"packed") return .byval;
             if (countFloats(ty, zcu)) |float| return .{ .float_array = float.count };
 
-            const bit_size = ty.bitSize(zcu);
+            const bit_size = ty.abiSize(zcu) * 8;
             if (bit_size > 128) return .memory;
             if (bit_size > 64) return .double_integer;
             return .integer;

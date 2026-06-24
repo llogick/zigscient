@@ -46,12 +46,12 @@ pub fn jump(self: *Xoshiro256) void {
 
     while (table != 0) : (table >>= 1) {
         if (@as(u1, @truncate(table)) != 0) {
-            s ^= @as(u256, @bitCast(self.s));
+            s ^= @bitCast(self.s);
         }
         _ = self.next();
     }
 
-    self.s = @as([4]u64, @bitCast(s));
+    self.s = @bitCast(s);
 }
 
 pub fn seed(self: *Xoshiro256, init_s: u64) void {

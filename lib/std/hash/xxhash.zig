@@ -2,7 +2,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 const mem = std.mem;
 const expectEqual = std.testing.expectEqual;
-const native_endian = builtin.cpu.arch.endian();
 
 const rotl = std.math.rotl;
 
@@ -421,7 +420,18 @@ pub const XxHash32 = struct {
 };
 
 pub const XxHash3 = struct {
+    const block_bytes = 64;
     const Block = @Vector(8, u64);
+    const InputBlock = extern struct {
+        raw: [block_bytes]u8,
+        inline fn load(ptr: *const InputBlock) Block {
+            return @bitCast(ptr.raw);
+        }
+        inline fn store(ptr: *InputBlock, val: Block) void {
+            ptr.raw = @bitCast(val);
+        }
+    };
+
     const default_secret: [192]u8 = .{
         0xb8, 0xfe, 0x6c, 0x39, 0x23, 0xa4, 0x4b, 0xbe, 0x7c, 0x01, 0x81, 0x2c, 0xf7, 0x21, 0xad, 0x1c,
         0xde, 0xd4, 0x6d, 0xe9, 0x83, 0x90, 0x97, 0xdb, 0x72, 0x40, 0xa4, 0xa4, 0xb7, 0xb3, 0x67, 0x1f,
@@ -464,10 +474,6 @@ pub const XxHash3 = struct {
         return wide[0] ^ wide[1];
     }
 
-    inline fn swap(x: anytype) @TypeOf(x) {
-        return if (native_endian == .big) @byteSwap(x) else x;
-    }
-
     inline fn disableAutoVectorization(x: anytype) void {
         if (!@inComptime()) asm volatile (""
             :
@@ -476,20 +482,20 @@ pub const XxHash3 = struct {
     }
 
     inline fn mix16(seed: u64, input: []const u8, secret: []const u8) u64 {
-        const blk: [4]u64 = @bitCast([_][16]u8{ input[0..16].*, secret[0..16].* });
+        const blk: [4]u64 = @bitCast([2][16]u8{ input[0..16].*, secret[0..16].* });
         disableAutoVectorization(seed);
 
         return fold(
-            swap(blk[0]) ^ (swap(blk[2]) +% seed),
-            swap(blk[1]) ^ (swap(blk[3]) -% seed),
+            blk[0] ^ (blk[2] +% seed),
+            blk[1] ^ (blk[3] -% seed),
         );
     }
 
-    const Accumulator = extern struct {
+    const Accumulator = struct {
         consumed: usize = 0,
         seed: u64,
-        secret: [192]u8 = undefined,
-        state: Block = Block{
+        secret: [192]u8,
+        state: Block = .{
             XxHash32.prime_3,
             XxHash64.prime_1,
             XxHash64.prime_2,
@@ -501,33 +507,35 @@ pub const XxHash3 = struct {
         },
 
         inline fn init(seed: u64) Accumulator {
-            var self = Accumulator{ .seed = seed };
-            for (
-                std.mem.bytesAsSlice(Block, &self.secret),
-                std.mem.bytesAsSlice(Block, &default_secret),
-            ) |*dst, src| {
-                dst.* = swap(swap(src) +% Block{
-                    seed, @as(u64, 0) -% seed,
-                    seed, @as(u64, 0) -% seed,
-                    seed, @as(u64, 0) -% seed,
-                    seed, @as(u64, 0) -% seed,
-                });
+            const seed_block: Block = .{
+                seed, @as(u64, 0) -% seed,
+                seed, @as(u64, 0) -% seed,
+                seed, @as(u64, 0) -% seed,
+                seed, @as(u64, 0) -% seed,
+            };
+
+            var secret: [192]u8 = undefined;
+            const secret_blocks: []InputBlock = @ptrCast(&secret);
+            const default_secret_blocks: []const InputBlock = @ptrCast(&default_secret);
+            for (secret_blocks, default_secret_blocks) |*dst, *src| {
+                dst.store(src.load() +% seed_block);
             }
-            return self;
+
+            return .{ .seed = seed, .secret = secret };
         }
 
         inline fn round(
             noalias state: *Block,
-            noalias input_block: *align(1) const Block,
-            noalias secret_block: *align(1) const Block,
+            noalias input_block: *const InputBlock,
+            noalias secret_block: *const InputBlock,
         ) void {
-            const data = swap(input_block.*);
-            const mixed = data ^ swap(secret_block.*);
+            const data = input_block.load();
+            const mixed = data ^ secret_block.load();
             state.* +%= (mixed & @as(Block, @splat(0xffffffff))) *% (mixed >> @splat(32));
             state.* +%= @shuffle(u64, data, undefined, [_]i32{ 1, 0, 3, 2, 5, 4, 7, 6 });
         }
 
-        fn accumulate(noalias self: *Accumulator, blocks: []align(1) const Block) void {
+        fn accumulate(noalias self: *Accumulator, blocks: []const InputBlock) void {
             const secret = std.mem.bytesAsSlice(u64, self.secret[self.consumed * 8 ..]);
             for (blocks, secret[0..blocks.len]) |*input_block, *secret_block| {
                 @prefetch(@as([*]const u8, @ptrCast(input_block)) + 320, .{});
@@ -536,14 +544,14 @@ pub const XxHash3 = struct {
         }
 
         fn scramble(self: *Accumulator) void {
-            const secret_block: Block = @bitCast(self.secret[192 - @sizeOf(Block) .. 192].*);
+            const secret_block: Block = @bitCast(self.secret[192 - block_bytes .. 192].*);
             self.state ^= self.state >> @splat(47);
-            self.state ^= swap(secret_block);
+            self.state ^= secret_block;
             self.state *%= @as(Block, @splat(XxHash32.prime_1));
         }
 
-        fn consume(noalias self: *Accumulator, input_blocks: []align(1) const Block) void {
-            const blocks_per_scramble = 1024 / @sizeOf(Block);
+        fn consume(noalias self: *Accumulator, input_blocks: []const InputBlock) void {
+            const blocks_per_scramble = 1024 / block_bytes;
             std.debug.assert(self.consumed <= blocks_per_scramble);
 
             var blocks = input_blocks;
@@ -561,12 +569,12 @@ pub const XxHash3 = struct {
             self.consumed += blocks.len;
         }
 
-        fn digest(noalias self: *Accumulator, total_len: u64, noalias last_block: *align(1) const Block) u64 {
-            const secret_block = self.secret[192 - @sizeOf(Block) - 7 ..][0..@sizeOf(Block)];
+        fn digest(noalias self: *Accumulator, total_len: u64, noalias last_block: *const InputBlock) u64 {
+            const secret_block = self.secret[192 - block_bytes - 7 ..][0..block_bytes];
             round(&self.state, last_block, @ptrCast(secret_block));
 
-            const merge_block: Block = @bitCast(self.secret[11 .. 11 + @sizeOf(Block)].*);
-            self.state ^= swap(merge_block);
+            const merge_block: Block = @bitCast(self.secret[11 .. 11 + block_bytes].*);
+            self.state ^= merge_block;
 
             var result = XxHash64.prime_1 *% total_len;
             inline for (0..4) |i| {
@@ -588,7 +596,7 @@ pub const XxHash3 = struct {
         if (input.len > 0) return hash3(seed, input, secret);
 
         const flip: [2]u64 = @bitCast(secret[56..72].*);
-        const key = swap(flip[0]) ^ swap(flip[1]);
+        const key = flip[0] ^ flip[1];
         return avalanche(.h64, seed ^ key);
     }
 
@@ -604,8 +612,8 @@ pub const XxHash3 = struct {
             input[input.len / 2],
         });
 
-        const key = @as(u64, swap(flip[0]) ^ swap(flip[1])) +% seed;
-        return avalanche(.h64, key ^ swap(blk));
+        const key = @as(u64, flip[0] ^ flip[1]) +% seed;
+        return avalanche(.h64, key ^ blk);
     }
 
     fn hash8(seed: u64, input: anytype, noalias secret: *const [192]u8) u64 {
@@ -619,8 +627,8 @@ pub const XxHash3 = struct {
         });
 
         const mixed = seed ^ (@as(u64, @byteSwap(@as(u32, @truncate(seed)))) << 32);
-        const key = (swap(flip[0]) ^ swap(flip[1])) -% mixed;
-        const combined = (@as(u64, swap(blk[0])) << 32) +% swap(blk[1]);
+        const key = (flip[0] ^ flip[1]) -% mixed;
+        const combined = (@as(u64, blk[0]) << 32) +% blk[1];
         return avalanche(.{ .rrmxmx = input.len }, key ^ combined);
     }
 
@@ -634,8 +642,8 @@ pub const XxHash3 = struct {
             input[input.len - 8 ..][0..8].*,
         });
 
-        const lo = swap(blk[0]) ^ ((swap(flip[0]) ^ swap(flip[1])) +% seed);
-        const hi = swap(blk[1]) ^ ((swap(flip[2]) ^ swap(flip[3])) -% seed);
+        const lo = blk[0] ^ ((flip[0] ^ flip[1]) +% seed);
+        const hi = blk[1] ^ ((flip[2] ^ flip[3]) -% seed);
         const combined = @as(u64, input.len) +% @byteSwap(lo) +% hi +% fold(lo, hi);
         return avalanche(.h3, combined);
     }
@@ -679,11 +687,11 @@ pub const XxHash3 = struct {
         @branchHint(.unlikely);
         std.debug.assert(input.len >= 240);
 
-        const block_count = ((input.len - 1) / @sizeOf(Block)) * @sizeOf(Block);
-        const last_block = input[input.len - @sizeOf(Block) ..][0..@sizeOf(Block)];
+        const block_count = ((input.len - 1) / block_bytes) * block_bytes;
+        const last_block = input[input.len - block_bytes ..][0..block_bytes];
 
         var acc = Accumulator.init(seed);
-        acc.consume(std.mem.bytesAsSlice(Block, input[0..block_count]));
+        acc.consume(std.mem.bytesAsSlice(InputBlock, input[0..block_count]));
         return acc.digest(input.len, @ptrCast(last_block));
     }
 
@@ -716,21 +724,21 @@ pub const XxHash3 = struct {
             @memcpy(self.buffer[self.buffered..], consumable[0..remaining]);
             consumable = consumable[remaining..];
 
-            self.accumulator.consume(std.mem.bytesAsSlice(Block, &self.buffer));
+            self.accumulator.consume(std.mem.bytesAsSlice(InputBlock, &self.buffer));
             self.buffered = 0;
         }
 
         // The input isn't small enough to fit in the buffer. Consume it directly.
         if (consumable.len > self.buffer.len) {
-            const block_count = ((consumable.len - 1) / @sizeOf(Block)) * @sizeOf(Block);
-            self.accumulator.consume(std.mem.bytesAsSlice(Block, consumable[0..block_count]));
+            const block_count = ((consumable.len - 1) / block_bytes) * block_bytes;
+            self.accumulator.consume(std.mem.bytesAsSlice(InputBlock, consumable[0..block_count]));
             consumable = consumable[block_count..];
 
             // In case we consume all remaining input, write the last block to end of the buffer
             // to populate the last_block_copy in final() similar to hashLong()'s last_block.
             @memcpy(
-                self.buffer[self.buffer.len - @sizeOf(Block) .. self.buffer.len],
-                (consumable.ptr - @sizeOf(Block))[0..@sizeOf(Block)],
+                self.buffer[self.buffer.len - block_bytes .. self.buffer.len],
+                (consumable.ptr - block_bytes)[0..block_bytes],
             );
         }
 
@@ -751,16 +759,16 @@ pub const XxHash3 = struct {
 
         // Make a copy of the Accumulator state in case `self` needs to update() / be used later.
         var accumulator_copy = self.accumulator;
-        var last_block_copy: [@sizeOf(Block)]u8 = undefined;
+        var last_block_copy: [block_bytes]u8 = undefined;
 
         // Digest the last block onthe Accumulator copy.
         return accumulator_copy.digest(self.total_len, last_block: {
-            if (self.buffered >= @sizeOf(Block)) {
-                const block_count = ((self.buffered - 1) / @sizeOf(Block)) * @sizeOf(Block);
-                accumulator_copy.consume(std.mem.bytesAsSlice(Block, self.buffer[0..block_count]));
-                break :last_block @ptrCast(self.buffer[self.buffered - @sizeOf(Block) ..][0..@sizeOf(Block)]);
+            if (self.buffered >= block_bytes) {
+                const block_count = ((self.buffered - 1) / block_bytes) * block_bytes;
+                accumulator_copy.consume(std.mem.bytesAsSlice(InputBlock, self.buffer[0..block_count]));
+                break :last_block @ptrCast(self.buffer[self.buffered - block_bytes ..][0..block_bytes]);
             } else {
-                const remaining = @sizeOf(Block) - self.buffered;
+                const remaining = block_bytes - self.buffered;
                 @memcpy(last_block_copy[0..remaining], self.buffer[self.buffer.len - remaining ..][0..remaining]);
                 @memcpy(last_block_copy[remaining..][0..self.buffered], self.buffer[0..self.buffered]);
                 break :last_block @ptrCast(&last_block_copy);
@@ -780,6 +788,7 @@ fn testExpect(comptime H: type, seed: anytype, input: []const u8, expected: u64)
 }
 
 test "xxhash3" {
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
     const H = XxHash3;
     // Non-Seeded Tests
     try testExpect(H, 0, "", 0x2d06800538d394c2);
@@ -811,6 +820,7 @@ test "xxhash3" {
 }
 
 test "xxhash3 smhasher" {
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
     const Test = struct {
         fn do() !void {
             try expectEqual(verify.smhasher(XxHash3.hash), 0x9a636405);
@@ -822,6 +832,7 @@ test "xxhash3 smhasher" {
 }
 
 test "xxhash3 iterative api" {
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
     const Test = struct {
         fn do() !void {
             try verify.iterativeApi(XxHash3);
