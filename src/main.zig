@@ -210,15 +210,6 @@ pub fn main(init: std.process.Init.Minimal) anyerror!void {
 
     var environ_map = init.environ.createMap(arena) catch |err| fatal("failed to parse environment: {t}", .{err});
 
-    if (args.len <= 1 or (args.len > 1 and !mem.eql(u8, args[1], "zig") and !mem.eql(u8, args[1], "aro"))) {
-        // _ = try @import("lsp_server/src/main.zig").stage2(gpa, io, init, &environ_map);
-        return;
-    }
-
-    if (mem.eql(u8, args[1], "aro")) {
-        process.exit(@import("translate-c").translateC(gpa, arena, io, args[1..], &environ_map));
-    }
-
     if (args.len <= 2) {
         std.log.info("{s}", .{usage});
         fatal("expected command argument", .{});

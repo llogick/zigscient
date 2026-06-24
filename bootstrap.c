@@ -202,10 +202,8 @@ int main(int argc, char **argv) {
             "--name", "zig2", "-femit-bin=zig2.c",
             "-target", host_triple,
             "--dep", "build_options",
-            "--dep", "aro",
             "-Mroot=src/main.zig",
             "-Mbuild_options=config.zig",
-            "-Maro=lib/compiler/aro/aro.zig",
             NULL,
         };
         print_and_run(child_argv);

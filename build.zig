@@ -801,23 +801,6 @@ fn addCompilerMod(b: *std.Build, options: AddCompilerModOptions) *std.Build.Modu
 
     main_lsp_server_mod.addImport("compiler", compiler_mod);
 
-    const aro_mod = b.createModule(.{
-        .root_source_file = b.path("lib/compiler/aro/aro.zig"),
-    });
-
-    compiler_mod.addImport("aro", aro_mod);
-
-    const aro_compiler_util_mod = b.createModule(.{
-        .root_source_file = b.path("lib/compiler/util.zig"),
-    });
-    aro_compiler_util_mod.addImport("aro", aro_mod);
-    const translate_c_mod = b.createModule(.{
-        .root_source_file = b.path("lib/compiler/translate-c/main.zig"),
-    });
-    translate_c_mod.addImport("aro", aro_mod);
-    translate_c_mod.addImport("aro-compiler-util", aro_compiler_util_mod);
-    compiler_mod.addImport("translate-c", translate_c_mod);
-
     return main_lsp_server_mod;
 }
 

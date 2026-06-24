@@ -5,7 +5,7 @@ const process = std.process;
 const Io = std.Io;
 
 const aro = @import("aro");
-const compiler_util = @import("aro-compiler-util"); // @import("../util.zig");
+const compiler_util = @import("../util.zig");
 const Translator = @import("Translator.zig");
 
 const fast_exit = @import("builtin").mode != .Debug;
