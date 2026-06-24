@@ -1,12 +1,14 @@
-const std = @import("std.zig");
+const mem = @This();
+
 const builtin = @import("builtin");
+const native_endian = builtin.cpu.arch.endian();
+
+const std = @import("std.zig");
 const debug = std.debug;
 const assert = debug.assert;
 const math = std.math;
-const mem = @This();
 const testing = std.testing;
-const Endian = std.builtin.Endian;
-const native_endian = builtin.cpu.arch.endian();
+const Endian = std.lang.Endian;
 
 /// The standard library currently thoroughly depends on byte size
 /// being 8 bits.  (see the use of u8 throughout allocation code as
@@ -5151,4 +5153,51 @@ test "read/write(Var)PackedInt" {
             }
         }
     }
+}
+
+pub const PrintError = error{
+    /// As much as possible was written to the buffer, but it was too small to
+    /// fit all the printed bytes.
+    NoSpaceLeft,
+};
+
+/// Render a formatted string into `buffer`. Returns a slice of `buffer`
+/// starting at index 0 containing the result, or `error.NoSpaceLeft` if one or
+/// more bytes were truncated.
+///
+/// See `std.Io.Writer.print`.
+pub fn print(buffer: []u8, comptime format: []const u8, args: anytype) PrintError![]u8 {
+    var w: std.Io.Writer = .fixed(buffer);
+    w.print(format, args) catch |err| switch (err) {
+        error.WriteFailed => return error.NoSpaceLeft,
+    };
+    return w.buffered();
+}
+
+test print {
+    const x: i32 = -1;
+    const y: []const u8 = "hi";
+    var buffer: [64]u8 = undefined;
+    const s = try print(&buffer, "{d}={s}", .{ x, y });
+    try testing.expectEqualStrings("-1=hi", s);
+}
+
+/// Like `print` but returned slice has the provided sentinel.
+pub fn printSentinel(
+    buffer: []u8,
+    comptime format: []const u8,
+    args: anytype,
+    comptime sentinel: u8,
+) PrintError![:sentinel]u8 {
+    const result = try print(buffer, format ++ [1]u8{sentinel}, args);
+    return result[0 .. result.len - 1 :sentinel];
+}
+
+test printSentinel {
+    const x: i32 = -1;
+    const y: []const u8 = "hi";
+    var buffer: [64]u8 = undefined;
+    const s = try printSentinel(&buffer, "{d}={s}", .{ x, y }, 0);
+    try testing.expectEqualStrings("-1=hi", s);
+    try testing.expectEqual(0, s[s.len]);
 }

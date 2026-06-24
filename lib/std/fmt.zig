@@ -6,8 +6,6 @@ const std = @import("std.zig");
 const math = std.math;
 const assert = std.debug.assert;
 const mem = std.mem;
-const meta = std.meta;
-const lossyCast = math.lossyCast;
 const expectFmt = std.testing.expectFmt;
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
@@ -254,6 +252,13 @@ pub fn printInt(buffer: []u8, value: anytype, base: u8, case: Case, options: Opt
     return w.end;
 }
 
+test printInt {
+    const x: i32 = -3;
+    var buffer: [64]u8 = undefined;
+    const s = buffer[0..printInt(&buffer, x, 10, .lower, .{})];
+    try testing.expectEqualStrings("-3", s);
+}
+
 /// Converts values in the range [0, 100) to a base 10 string.
 pub fn digits2(value: u8) [2]u8 {
     if (builtin.mode == .ReleaseSmall) {
@@ -332,63 +337,63 @@ pub fn parseIntWithGenericCharacter(
 }
 
 test parseInt {
-    try std.testing.expectEqual(-10, try parseInt(i32, "-10", 10));
-    try std.testing.expectEqual(10, try parseInt(i32, "+10", 10));
-    try std.testing.expectEqual(10, try parseInt(u32, "+10", 10));
-    try std.testing.expectError(error.Overflow, parseInt(u32, "-10", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, " 10", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, "10 ", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, "_10_", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, "0x_10_", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, "0x10_", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, "0x_10", 10));
-    try std.testing.expectEqual(255, try parseInt(u8, "255", 10));
-    try std.testing.expectError(error.Overflow, parseInt(u8, "256", 10));
+    try testing.expectEqual(-10, try parseInt(i32, "-10", 10));
+    try testing.expectEqual(10, try parseInt(i32, "+10", 10));
+    try testing.expectEqual(10, try parseInt(u32, "+10", 10));
+    try testing.expectError(error.Overflow, parseInt(u32, "-10", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, " 10", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, "10 ", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, "_10_", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, "0x_10_", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, "0x10_", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, "0x_10", 10));
+    try testing.expectEqual(255, try parseInt(u8, "255", 10));
+    try testing.expectError(error.Overflow, parseInt(u8, "256", 10));
 
     // +0 and -0 should work for unsigned
-    try std.testing.expectEqual(0, try parseInt(u8, "-0", 10));
-    try std.testing.expectEqual(0, try parseInt(u8, "+0", 10));
+    try testing.expectEqual(0, try parseInt(u8, "-0", 10));
+    try testing.expectEqual(0, try parseInt(u8, "+0", 10));
 
     // ensure minInt is parsed correctly
-    try std.testing.expectEqual(math.minInt(i1), try parseInt(i1, "-1", 10));
-    try std.testing.expectEqual(math.minInt(i8), try parseInt(i8, "-128", 10));
-    try std.testing.expectEqual(math.minInt(i43), try parseInt(i43, "-4398046511104", 10));
+    try testing.expectEqual(math.minInt(i1), try parseInt(i1, "-1", 10));
+    try testing.expectEqual(math.minInt(i8), try parseInt(i8, "-128", 10));
+    try testing.expectEqual(math.minInt(i43), try parseInt(i43, "-4398046511104", 10));
 
     // empty string or bare +- is invalid
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, "", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(i32, "", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, "+", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(i32, "+", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, "-", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(i32, "-", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, "", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(i32, "", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, "+", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(i32, "+", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, "-", 10));
+    try testing.expectError(error.InvalidCharacter, parseInt(i32, "-", 10));
 
     // autodectect the base
-    try std.testing.expectEqual(111, try parseInt(i32, "111", 0));
-    try std.testing.expectEqual(111, try parseInt(i32, "1_1_1", 0));
-    try std.testing.expectEqual(111, try parseInt(i32, "1_1_1", 0));
-    try std.testing.expectEqual(7, try parseInt(i32, "+0b111", 0));
-    try std.testing.expectEqual(7, try parseInt(i32, "+0B111", 0));
-    try std.testing.expectEqual(7, try parseInt(i32, "+0b1_11", 0));
-    try std.testing.expectEqual(73, try parseInt(i32, "+0o111", 0));
-    try std.testing.expectEqual(73, try parseInt(i32, "+0O111", 0));
-    try std.testing.expectEqual(73, try parseInt(i32, "+0o11_1", 0));
-    try std.testing.expectEqual(273, try parseInt(i32, "+0x111", 0));
-    try std.testing.expectEqual(-7, try parseInt(i32, "-0b111", 0));
-    try std.testing.expectEqual(-7, try parseInt(i32, "-0b11_1", 0));
-    try std.testing.expectEqual(-73, try parseInt(i32, "-0o111", 0));
-    try std.testing.expectEqual(-273, try parseInt(i32, "-0x111", 0));
-    try std.testing.expectEqual(-273, try parseInt(i32, "-0X111", 0));
-    try std.testing.expectEqual(-273, try parseInt(i32, "-0x1_11", 0));
+    try testing.expectEqual(111, try parseInt(i32, "111", 0));
+    try testing.expectEqual(111, try parseInt(i32, "1_1_1", 0));
+    try testing.expectEqual(111, try parseInt(i32, "1_1_1", 0));
+    try testing.expectEqual(7, try parseInt(i32, "+0b111", 0));
+    try testing.expectEqual(7, try parseInt(i32, "+0B111", 0));
+    try testing.expectEqual(7, try parseInt(i32, "+0b1_11", 0));
+    try testing.expectEqual(73, try parseInt(i32, "+0o111", 0));
+    try testing.expectEqual(73, try parseInt(i32, "+0O111", 0));
+    try testing.expectEqual(73, try parseInt(i32, "+0o11_1", 0));
+    try testing.expectEqual(273, try parseInt(i32, "+0x111", 0));
+    try testing.expectEqual(-7, try parseInt(i32, "-0b111", 0));
+    try testing.expectEqual(-7, try parseInt(i32, "-0b11_1", 0));
+    try testing.expectEqual(-73, try parseInt(i32, "-0o111", 0));
+    try testing.expectEqual(-273, try parseInt(i32, "-0x111", 0));
+    try testing.expectEqual(-273, try parseInt(i32, "-0X111", 0));
+    try testing.expectEqual(-273, try parseInt(i32, "-0x1_11", 0));
 
     // bare binary/octal/decimal prefix is invalid
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, "0b", 0));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, "0o", 0));
-    try std.testing.expectError(error.InvalidCharacter, parseInt(u32, "0x", 0));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, "0b", 0));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, "0o", 0));
+    try testing.expectError(error.InvalidCharacter, parseInt(u32, "0x", 0));
 
     // edge cases which previously errored due to base overflowing T
-    try std.testing.expectEqual(@as(i2, -2), try std.fmt.parseInt(i2, "-10", 2));
-    try std.testing.expectEqual(@as(i4, -8), try std.fmt.parseInt(i4, "-10", 8));
-    try std.testing.expectEqual(@as(i5, -16), try std.fmt.parseInt(i5, "-10", 16));
+    try testing.expectEqual(@as(i2, -2), try std.fmt.parseInt(i2, "-10", 2));
+    try testing.expectEqual(@as(i4, -8), try std.fmt.parseInt(i4, "-10", 8));
+    try testing.expectEqual(@as(i5, -16), try std.fmt.parseInt(i5, "-10", 16));
 }
 
 fn parseIntWithSign(
@@ -475,39 +480,39 @@ pub fn parseUnsigned(comptime T: type, buf: []const u8, base: u8) ParseIntError!
 }
 
 test parseUnsigned {
-    try std.testing.expectEqual(50124, try parseUnsigned(u16, "050124", 10));
-    try std.testing.expectEqual(65535, try parseUnsigned(u16, "65535", 10));
-    try std.testing.expectEqual(65535, try parseUnsigned(u16, "65_535", 10));
-    try std.testing.expectError(error.Overflow, parseUnsigned(u16, "65536", 10));
+    try testing.expectEqual(50124, try parseUnsigned(u16, "050124", 10));
+    try testing.expectEqual(65535, try parseUnsigned(u16, "65535", 10));
+    try testing.expectEqual(65535, try parseUnsigned(u16, "65_535", 10));
+    try testing.expectError(error.Overflow, parseUnsigned(u16, "65536", 10));
 
-    try std.testing.expectEqual(0xffffffffffffffff, try parseUnsigned(u64, "0ffffffffffffffff", 16));
-    try std.testing.expectEqual(0xffffffffffffffff, try parseUnsigned(u64, "0f_fff_fff_fff_fff_fff", 16));
-    try std.testing.expectError(error.Overflow, parseUnsigned(u64, "10000000000000000", 16));
+    try testing.expectEqual(0xffffffffffffffff, try parseUnsigned(u64, "0ffffffffffffffff", 16));
+    try testing.expectEqual(0xffffffffffffffff, try parseUnsigned(u64, "0f_fff_fff_fff_fff_fff", 16));
+    try testing.expectError(error.Overflow, parseUnsigned(u64, "10000000000000000", 16));
 
-    try std.testing.expectEqual(0xDEADBEEF, try parseUnsigned(u32, "DeadBeef", 16));
+    try testing.expectEqual(0xDEADBEEF, try parseUnsigned(u32, "DeadBeef", 16));
 
-    try std.testing.expectEqual(1, try parseUnsigned(u7, "1", 10));
-    try std.testing.expectEqual(8, try parseUnsigned(u7, "1000", 2));
+    try testing.expectEqual(1, try parseUnsigned(u7, "1", 10));
+    try testing.expectEqual(8, try parseUnsigned(u7, "1000", 2));
 
-    try std.testing.expectError(error.InvalidCharacter, parseUnsigned(u32, "f", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseUnsigned(u8, "109", 8));
+    try testing.expectError(error.InvalidCharacter, parseUnsigned(u32, "f", 10));
+    try testing.expectError(error.InvalidCharacter, parseUnsigned(u8, "109", 8));
 
-    try std.testing.expectEqual(1442151747, try parseUnsigned(u32, "NUMBER", 36));
+    try testing.expectEqual(1442151747, try parseUnsigned(u32, "NUMBER", 36));
 
     // these numbers should fit even though the base itself doesn't fit in the destination type
-    try std.testing.expectEqual(0, try parseUnsigned(u1, "0", 10));
-    try std.testing.expectEqual(1, try parseUnsigned(u1, "1", 10));
-    try std.testing.expectError(error.Overflow, parseUnsigned(u1, "2", 10));
-    try std.testing.expectEqual(1, try parseUnsigned(u1, "001", 16));
-    try std.testing.expectEqual(3, try parseUnsigned(u2, "3", 16));
-    try std.testing.expectError(error.Overflow, parseUnsigned(u2, "4", 16));
+    try testing.expectEqual(0, try parseUnsigned(u1, "0", 10));
+    try testing.expectEqual(1, try parseUnsigned(u1, "1", 10));
+    try testing.expectError(error.Overflow, parseUnsigned(u1, "2", 10));
+    try testing.expectEqual(1, try parseUnsigned(u1, "001", 16));
+    try testing.expectEqual(3, try parseUnsigned(u2, "3", 16));
+    try testing.expectError(error.Overflow, parseUnsigned(u2, "4", 16));
 
     // parseUnsigned does not expect a sign
-    try std.testing.expectError(error.InvalidCharacter, parseUnsigned(u8, "+0", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseUnsigned(u8, "-0", 10));
+    try testing.expectError(error.InvalidCharacter, parseUnsigned(u8, "+0", 10));
+    try testing.expectError(error.InvalidCharacter, parseUnsigned(u8, "-0", 10));
 
     // test empty string error
-    try std.testing.expectError(error.InvalidCharacter, parseUnsigned(u8, "", 10));
+    try testing.expectError(error.InvalidCharacter, parseUnsigned(u8, "", 10));
 }
 
 /// Parses a number like '2G', '2Gi', or '2GiB'.
@@ -549,15 +554,15 @@ pub fn parseIntSizeSuffix(buf: []const u8, digit_base: u8) ParseIntError!usize {
 }
 
 test parseIntSizeSuffix {
-    try std.testing.expectEqual(2, try parseIntSizeSuffix("2", 10));
-    try std.testing.expectEqual(2, try parseIntSizeSuffix("2B", 10));
-    try std.testing.expectEqual(2000, try parseIntSizeSuffix("2kB", 10));
-    try std.testing.expectEqual(2000, try parseIntSizeSuffix("2k", 10));
-    try std.testing.expectEqual(2048, try parseIntSizeSuffix("2KiB", 10));
-    try std.testing.expectEqual(2048, try parseIntSizeSuffix("2Ki", 10));
-    try std.testing.expectEqual(10240, try parseIntSizeSuffix("aKiB", 16));
-    try std.testing.expectError(error.InvalidCharacter, parseIntSizeSuffix("", 10));
-    try std.testing.expectError(error.InvalidCharacter, parseIntSizeSuffix("2iB", 10));
+    try testing.expectEqual(2, try parseIntSizeSuffix("2", 10));
+    try testing.expectEqual(2, try parseIntSizeSuffix("2B", 10));
+    try testing.expectEqual(2000, try parseIntSizeSuffix("2kB", 10));
+    try testing.expectEqual(2000, try parseIntSizeSuffix("2k", 10));
+    try testing.expectEqual(2048, try parseIntSizeSuffix("2KiB", 10));
+    try testing.expectEqual(2048, try parseIntSizeSuffix("2Ki", 10));
+    try testing.expectEqual(10240, try parseIntSizeSuffix("aKiB", 16));
+    try testing.expectError(error.InvalidCharacter, parseIntSizeSuffix("", 10));
+    try testing.expectError(error.InvalidCharacter, parseIntSizeSuffix("2iB", 10));
 }
 
 pub const parseFloat = @import("fmt/parse_float.zig").parseFloat;
@@ -588,28 +593,22 @@ pub fn digitToChar(digit: u8, case: Case) u8 {
     };
 }
 
-pub const BufPrintError = error{
-    /// As much as possible was written to the buffer, but it was too small to fit all the printed bytes.
-    NoSpaceLeft,
-};
+/// Deprecated in favor of `mem.PrintError`.
+pub const BufPrintError = mem.PrintError;
 
-/// Print a format string into `buf`. Returns a slice of the bytes printed.
+/// Deprecated in favor of `mem.print`.
 pub fn bufPrint(buf: []u8, comptime fmt: []const u8, args: anytype) BufPrintError![]u8 {
-    var w: Writer = .fixed(buf);
-    w.print(fmt, args) catch |err| switch (err) {
-        error.WriteFailed => return error.NoSpaceLeft,
-    };
-    return w.buffered();
+    return mem.print(buf, fmt, args);
 }
 
+/// Deprecated in favor of `mem.printSentinel`.
 pub fn bufPrintSentinel(
     buf: []u8,
     comptime fmt: []const u8,
     args: anytype,
     comptime sentinel: u8,
 ) BufPrintError![:sentinel]u8 {
-    const result = try bufPrint(buf, fmt ++ [_]u8{sentinel}, args);
-    return result[0 .. result.len - 1 :sentinel];
+    return mem.printSentinel(buf, fmt, args, sentinel);
 }
 
 /// Count the characters needed for format.
@@ -640,7 +639,7 @@ pub fn allocPrintSentinel(
 pub inline fn comptimePrint(comptime fmt: []const u8, args: anytype) *const [count(fmt, args):0]u8 {
     comptime {
         var buf: [count(fmt, args):0]u8 = undefined;
-        _ = bufPrint(&buf, fmt, args) catch unreachable;
+        _ = mem.print(&buf, fmt, args) catch unreachable;
         buf[buf.len] = 0;
         const final = buf;
         return &final;
@@ -649,12 +648,12 @@ pub inline fn comptimePrint(comptime fmt: []const u8, args: anytype) *const [cou
 
 test comptimePrint {
     @setEvalBranchQuota(2000);
-    try std.testing.expectEqual(*const [3:0]u8, @TypeOf(comptimePrint("{}", .{100})));
-    try std.testing.expectEqualSlices(u8, "100", comptimePrint("{}", .{100}));
-    try std.testing.expectEqualStrings("30", comptimePrint("{d}", .{30.0}));
-    try std.testing.expectEqualStrings("30.0", comptimePrint("{d:3.1}", .{30.0}));
-    try std.testing.expectEqualStrings("0.05", comptimePrint("{d}", .{0.05}));
-    try std.testing.expectEqualStrings("5e-2", comptimePrint("{e}", .{0.05}));
+    try testing.expectEqual(*const [3:0]u8, @TypeOf(comptimePrint("{}", .{100})));
+    try testing.expectEqualSlices(u8, "100", comptimePrint("{}", .{100}));
+    try testing.expectEqualStrings("30", comptimePrint("{d}", .{30.0}));
+    try testing.expectEqualStrings("30.0", comptimePrint("{d:3.1}", .{30.0}));
+    try testing.expectEqualStrings("0.05", comptimePrint("{d}", .{0.05}));
+    try testing.expectEqualStrings("5e-2", comptimePrint("{e}", .{0.05}));
 }
 
 test "parse u64 digit too big" {
@@ -667,7 +666,7 @@ test "parse u64 digit too big" {
 
 test "parse unsigned comptime" {
     comptime {
-        try std.testing.expectEqual(2, try parseUnsigned(usize, "2", 10));
+        try testing.expectEqual(2, try parseUnsigned(usize, "2", 10));
     }
 }
 
@@ -772,15 +771,15 @@ test "buffer" {
         var buf1: [32]u8 = undefined;
         var w: Writer = .fixed(&buf1);
         try w.printValue("", .{}, 1234, std.options.fmt_max_depth);
-        try std.testing.expectEqualStrings("1234", w.buffered());
+        try testing.expectEqualStrings("1234", w.buffered());
 
         w = .fixed(&buf1);
         try w.printValue("c", .{}, 'a', std.options.fmt_max_depth);
-        try std.testing.expectEqualStrings("a", w.buffered());
+        try testing.expectEqualStrings("a", w.buffered());
 
         w = .fixed(&buf1);
         try w.printValue("b", .{}, 0b1100, std.options.fmt_max_depth);
-        try std.testing.expectEqualStrings("1100", w.buffered());
+        try testing.expectEqualStrings("1100", w.buffered());
     }
 }
 
@@ -801,7 +800,7 @@ test "array" {
 
     var buf: [100]u8 = undefined;
     try expectFmt(
-        try bufPrint(buf[0..], "array: [3]u8@{x}\n", .{@intFromPtr(&value)}),
+        try mem.print(buf[0..], "array: [3]u8@{x}\n", .{@intFromPtr(&value)}),
         "array: {*}\n",
         .{&value},
     );
@@ -1177,7 +1176,7 @@ test bytesToHex {
     const input = "input slice";
     const encoded = bytesToHex(input, .lower);
     var decoded: [input.len]u8 = undefined;
-    try std.testing.expectEqualSlices(u8, input, try hexToBytes(&decoded, &encoded));
+    try testing.expectEqualSlices(u8, input, try hexToBytes(&decoded, &encoded));
 }
 
 test hexToBytes {
@@ -1189,9 +1188,9 @@ test hexToBytes {
     try expectFmt(repeated, "{X}", .{try hexToBytes(&buf, repeated)});
     try expectFmt("ABCD", "{X}", .{try hexToBytes(&buf, "ABCD")});
     try expectFmt("", "{X}", .{try hexToBytes(&buf, "")});
-    try std.testing.expectError(error.InvalidCharacter, hexToBytes(&buf, "012Z"));
-    try std.testing.expectError(error.InvalidLength, hexToBytes(&buf, "AAA"));
-    try std.testing.expectError(error.NoSpaceLeft, hexToBytes(buf[0..1], "ABAB"));
+    try testing.expectError(error.InvalidCharacter, hexToBytes(&buf, "012Z"));
+    try testing.expectError(error.InvalidLength, hexToBytes(&buf, "AAA"));
+    try testing.expectError(error.NoSpaceLeft, hexToBytes(buf[0..1], "ABAB"));
 }
 
 test "positional" {
@@ -1226,12 +1225,12 @@ test "vector" {
     const vop: @Vector(4, ?*const u64) = [_]?*const u64{ &x[0], null, null, &x[3] };
 
     var expect_buffer: [@sizeOf(usize) * 2 * 4 + 64]u8 = undefined;
-    try expectFmt(try bufPrint(
+    try expectFmt(try mem.print(
         &expect_buffer,
         "{{ {}, {}, {}, {} }}",
         .{ &x[0], &x[1], &x[2], &x[3] },
     ), "{}", .{vp});
-    try expectFmt(try bufPrint(
+    try expectFmt(try mem.print(
         &expect_buffer,
         "{{ {?}, null, null, {?} }}",
         .{ &x[0], &x[3] },
@@ -1348,18 +1347,18 @@ pub fn hex(x: anytype) [@typeInfo(@TypeOf(x)).int.bits / 4]u8 {
 test hex {
     {
         const x = hex(@as(u32, 0xdeadbeef));
-        try std.testing.expect(x.len == 8);
-        try std.testing.expectEqualStrings("efbeadde", &x);
+        try testing.expect(x.len == 8);
+        try testing.expectEqualStrings("efbeadde", &x);
     }
     {
         const s = "[" ++ hex(@as(u48, 0x12345678_abcd)) ++ "]";
-        try std.testing.expect(s.len == 14);
-        try std.testing.expectEqualStrings("[cdab78563412]", s);
+        try testing.expect(s.len == 14);
+        try testing.expectEqualStrings("[cdab78563412]", s);
     }
     {
         const s = "[" ++ hex(@as(u64, 0x12345678_abcdef00)) ++ "]";
-        try std.testing.expect(s.len == 18);
-        try std.testing.expectEqualStrings("[00efcdab78563412]", s);
+        try testing.expect(s.len == 18);
+        try testing.expectEqualStrings("[00efcdab78563412]", s);
     }
 }
 
