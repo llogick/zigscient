@@ -1717,6 +1717,7 @@ pub const Object = struct {
     }
 
     pub fn updateContainerType(o: *Object, pt: Zcu.PerThread, ty: InternPool.Index, success: bool) Allocator.Error!void {
+        _ = o.type_map.remove(ty);
         try o.type_pool.updateContainerType(pt, .{ .llvm = o }, ty, success);
         if (o.named_enum_map.get(ty)) |function_index| {
             try o.updateIsNamedEnumValueFunction(.fromInterned(ty), function_index);

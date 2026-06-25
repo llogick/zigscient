@@ -1,0 +1,31 @@
+#update=initial version
+#file=main.zig
+const Big = struct { arr: [10]u8 };
+pub fn main(init: std.process.Init) !void {
+    var big: Big = undefined;
+    big = .{ .arr = @splat(123) };
+    var stdout_writer = std.Io.File.stdout().writerStreaming(init.io, &.{});
+    const index = big.arr.len - 1;
+    big.arr[index] = 234;
+    stdout_writer.interface.print("arr[{d}] = {d}\n", .{ index, big.arr[index] }) catch |err| switch (err) {
+        error.WriteFailed => return stdout_writer.err.?,
+    };
+}
+const std = @import("std");
+#expect_stdout="arr[9] = 234\n"
+
+#update=increase array length
+#file=main.zig
+const Big = struct { arr: [1000]u8 };
+pub fn main(init: std.process.Init) !void {
+    var big: Big = undefined;
+    big = .{ .arr = @splat(123) };
+    var stdout_writer = std.Io.File.stdout().writerStreaming(init.io, &.{});
+    const index = big.arr.len - 1;
+    big.arr[index] = 234;
+    stdout_writer.interface.print("arr[{d}] = {d}\n", .{ index, big.arr[index] }) catch |err| switch (err) {
+        error.WriteFailed => return stdout_writer.err.?,
+    };
+}
+const std = @import("std");
+#expect_stdout="arr[999] = 234\n"
