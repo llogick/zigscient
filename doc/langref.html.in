@@ -1955,7 +1955,7 @@ or
       TODO talk about C ABI interop<br>
       TODO consider suggesting std.MultiArrayList
       </p>
-      {#see_also|@splat|@shuffle|@select|@reduce#}
+      {#see_also|@splat|@shuffle|@select|@reduce|Slicing by Length#}
 
       {#header_open|Relationship with Arrays#}
       <p>Vectors and {#link|Arrays#} each have a well-defined <strong>bit layout</strong>
@@ -2149,6 +2149,24 @@ or
       {#code|test_slices.zig#}
 
       {#see_also|Pointers|for|Arrays#}
+
+      {#header_open|Slicing by Length#}
+      <p>Even though Zig only has syntax for slicing based on start and end indices, by slicing twice,
+      one can express a <strong>slice by length</strong> operation.</p>
+      <p>The pattern {#syntax#}[a .. a + b]{#endsyntax#} is always better expressed
+      {#syntax#}[a..][0..b]{#endsyntax#} because:</p>
+      <ul>
+        <li>Slices are represented in memory as a pointer and length. Despite
+        syntactically appearing as twice the work, it is actually one less
+        subtraction in machine code.</li>
+        <li>If {#syntax#}a{#endsyntax#} is known at runtime and
+        {#syntax#}b{#endsyntax#} is known at {#link|comptime#}, the former
+        results in a slice but the latter results in a single-item
+        {#link|pointer|Pointers#} to an {#link|array|Arrays#}, a generally more
+        safe type because the length is compile-time known.</li>
+      </ul>
+      {#code|slicing_by_length.zig#}
+      {#header_close#}
 
       {#header_open|Sentinel-Terminated Slices#}
       <p>
