@@ -3153,3 +3153,19 @@ test "coerce enum to union with zero-bit fields through local variables" {
 
     try expect(result == .foo);
 }
+
+test "coercing a coerced function" {
+    const S = struct {
+        fn doTheTest() !void {
+            const bar: fn (anytype, anytype) void = foo;
+            higherOrder(1, bar);
+        }
+
+        fn foo(_: anytype, _: void) void {}
+
+        fn higherOrder(x: anytype, f: fn (@TypeOf(x), void) void) void {
+            _ = f(x, {});
+        }
+    };
+    try S.doTheTest();
+}

@@ -10167,8 +10167,8 @@ pub fn getCoerced(
                         val_item.data + std.meta.fieldIndex(Tag.FuncCoerced, "func").?
                     ]);
                     switch (func.unwrap(ip).getTag(ip)) {
-                        .func_decl => return getCoercedFuncDecl(ip, gpa, io, tid, val, new_ty),
-                        .func_instance => return getCoercedFuncInstance(ip, gpa, io, tid, val, new_ty),
+                        .func_decl => return getCoercedFuncDecl(ip, gpa, io, tid, func, new_ty),
+                        .func_instance => return getCoercedFuncInstance(ip, gpa, io, tid, func, new_ty),
                         else => unreachable,
                     }
                 },
