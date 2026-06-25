@@ -21,7 +21,7 @@ export fn entry4() void {
 
 // error
 // backend=selfhosted
-// target=spirv64-vulkan
+// target=spirv32-vulkan
 //
 // :1:28: error: kernel workgroup dimensions must be at least 1
 // :2:28: error: kernel workgroup dimensions must be at least 1

@@ -613,3 +613,43 @@ test "@typeInfo function with generic return type and inferred error set" {
     const ret_ty = @typeInfo(@TypeOf(S.testFn)).@"fn".return_type;
     comptime assert(ret_ty == null);
 }
+
+test "type info: spirv info" {
+    if (builtin.zig_backend != .stage2_spirv) return error.SkipZigTest;
+
+    try testSpirv();
+    try comptime testSpirv();
+}
+
+fn testSpirv() !void {
+    const image_info = @typeInfo(Image);
+    try expect(image_info.spirv.image.usage.sampled == f32);
+    try expect(image_info.spirv.image.format == .unknown);
+    try expect(image_info.spirv.image.dim == .@"2d");
+    try expect(image_info.spirv.image.depth == .not_depth);
+    try expect(image_info.spirv.image.arrayed == false);
+    try expect(image_info.spirv.image.multisampled == false);
+    try expect(image_info.spirv.image.access == .unknown);
+
+    const sampled_image_info = @typeInfo(SampledImage);
+    try expect(sampled_image_info.spirv.sampled_image == Image);
+
+    const sampler_info = @typeInfo(Sampler);
+    try expect(sampler_info.spirv.sampler == {});
+
+    const runtime_array_info = @typeInfo(RuntimeArray);
+    try expect(runtime_array_info.spirv.runtime_array == f32);
+}
+
+pub const Image = @SpirvType(.{ .image = .{
+    .usage = .{ .sampled = f32 },
+    .format = .unknown,
+    .dim = .@"2d",
+    .depth = .not_depth,
+    .arrayed = false,
+    .multisampled = false,
+    .access = .unknown,
+} });
+pub const SampledImage = @SpirvType(.{ .sampled_image = Image });
+pub const Sampler = @SpirvType(.sampler);
+pub const RuntimeArray = @SpirvType(.{ .runtime_array = f32 });

@@ -357,7 +357,15 @@ fn addFromDirInner(
         var manifest = try TestManifest.parse(ctx.arena, src);
 
         const backends = try manifest.getConfigForKeyAlloc(ctx.arena, "backend", Backend);
-        const targets = try manifest.getConfigForKeyAlloc(ctx.arena, "target", std.Target.Query);
+        const target_strs = try manifest.getConfigForKeyAlloc(ctx.arena, "target", []const u8);
+        const cpu_features_str = manifest.config_map.get("cpu_features") orelse "";
+        const targets = try ctx.arena.alloc(std.Target.Query, target_strs.len);
+        for (targets, target_strs) |*query, target_str| {
+            query.* = try std.Target.Query.parse(.{
+                .arch_os_abi = target_str,
+                .cpu_features = if (cpu_features_str.len == 0) null else cpu_features_str,
+            });
+        }
         const is_test = try manifest.getConfigForKeyAssertSingle("is_test", bool);
         const link_libc = try manifest.getConfigForKeyAssertSingle("link_libc", bool);
         const output_mode = try manifest.getConfigForKeyAssertSingle("output_mode", std.builtin.OutputMode);
@@ -707,6 +715,8 @@ const TestManifestConfigDefaults = struct {
             return "null";
         } else if (std.mem.eql(u8, key, "imports")) {
             return "";
+        } else if (std.mem.eql(u8, key, "cpu_features")) {
+            return "";
         } else unreachable;
     }
 };
@@ -739,6 +749,7 @@ const TestManifest = struct {
         .{ "is_test", {} },
         .{ "output_mode", {} },
         .{ "target", {} },
+        .{ "cpu_features", {} },
         .{ "c_frontend", {} },
         .{ "link_libc", {} },
         .{ "backend", {} },

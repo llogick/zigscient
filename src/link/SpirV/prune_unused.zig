@@ -92,9 +92,7 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
         }
 
         // mark operands of alive function contents
-        if (!canPrune(inst.opcode)) {
-            try markAlive(parser, binary.*, inst, &alive, &id_to_index, &code_offsets, &id_offset_buf);
-        }
+        try markAlive(parser, binary.*, inst, &alive, &id_to_index, &code_offsets, &id_offset_buf);
     }
 
     // rewrite

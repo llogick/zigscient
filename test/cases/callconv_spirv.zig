@@ -7,5 +7,6 @@ export fn mesh() callconv(.{ .spirv_mesh = .{ .stage_output = .output_lines, .ma
 // compile
 // output_mode=Obj
 // backend=selfhosted
-// target=spirv64-vulkan
-// emit_bin=false
+// target=spirv32-vulkan
+// cpu_features=vulkan_v1_2+mesh_shading_ext
+// emit_bin=true

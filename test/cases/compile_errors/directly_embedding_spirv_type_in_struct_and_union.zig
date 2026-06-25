@@ -25,7 +25,7 @@ export fn d() void {
 
 // error
 // backend=selfhosted
-// target=spirv64-vulkan
+// target=spirv32-vulkan
 //
 // :4:8: error: cannot directly embed SPIR-V type 'tmp.Sampler__SpirvType_4' in struct
 // :4:8: note: opaque types have unknown size

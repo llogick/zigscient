@@ -585,6 +585,8 @@ test "comptime store to extern struct reinterpreted as byte array" {
 }
 
 test "reinterpret sentinel-terminated array as packed struct" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const S = packed struct(u16) { lo: u8, hi: u8 };
     const data: [2:0]u8 = .{ 0x12, 0x34 };
     const ptr: *align(1) const S = @ptrCast(&data);

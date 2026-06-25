@@ -838,7 +838,7 @@ pub const Type = union(enum) {
             pub const Usage = union(enum(u2)) {
                 unknown: type,
                 sampled: type,
-                storage,
+                storage: type,
             };
 
             pub const Format = enum(u4) {

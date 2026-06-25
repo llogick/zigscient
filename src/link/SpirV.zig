@@ -1034,10 +1034,6 @@ fn collectEntryPointInterface(
     for (mir.decl_deps) |dep| {
         try collectEntryPointInterface(linker, dep.nav, interface, visited, nav_final_ids, uav_final_ids, frag_infos, gpa);
     }
-
-    for (mir.nav_refs) |ref| {
-        try collectEntryPointInterface(linker, ref.nav, interface, visited, nav_final_ids, uav_final_ids, frag_infos, gpa);
-    }
 }
 
 fn remapAndAppend(
@@ -1078,49 +1074,79 @@ fn remapAndAppendInst(
     for (inst_spec.operands) |operand| {
         const cat = operand.kind.category();
         switch (operand.quantifier) {
-            .required => {
+            .required, .optional => {
                 if (offset >= inst.operands.len) break;
-                if (cat == .id) {
-                    remapSingleId(&inst_slice[1 + offset], id_offset, id_remap);
-                    offset += 1;
-                } else if (cat == .literal) {
-                    offset += operandLiteralWordCount(operand.kind, inst, offset);
-                } else if (cat == .composite) {
-                    remapCompositeOperand(operand.kind, inst_slice, offset, id_offset, id_remap);
-                    offset += 2;
-                } else {
-                    offset += 1;
-                }
-            },
-            .optional => {
-                if (offset >= inst.operands.len) break;
-                if (cat == .id) {
-                    remapSingleId(&inst_slice[1 + offset], id_offset, id_remap);
-                    offset += 1;
-                } else if (cat == .literal) {
-                    offset += operandLiteralWordCount(operand.kind, inst, offset);
-                } else {
-                    offset += 1;
-                }
+                offset += remapOperand(operand.kind, cat, inst, inst_slice, offset, id_offset, id_remap);
             },
             .variadic => {
                 while (offset < inst.operands.len) {
-                    if (cat == .id) {
-                        remapSingleId(&inst_slice[1 + offset], id_offset, id_remap);
-                        offset += 1;
-                    } else if (cat == .literal) {
-                        offset += operandLiteralWordCount(operand.kind, inst, offset);
-                    } else if (cat == .composite) {
-                        if (offset + 1 < inst.operands.len) {
-                            remapCompositeOperand(operand.kind, inst_slice, offset, id_offset, id_remap);
-                        }
-                        offset += 2;
-                    } else {
-                        offset += 1;
-                    }
+                    offset += remapOperand(operand.kind, cat, inst, inst_slice, offset, id_offset, id_remap);
                 }
             },
         }
+    }
+}
+
+fn remapOperand(
+    kind: spec.OperandKind,
+    cat: spec.OperandCategory,
+    inst: BinaryModule.Instruction,
+    inst_slice: []Word,
+    offset: usize,
+    id_offset: Word,
+    id_remap: *const std.AutoHashMapUnmanaged(Id, Id),
+) usize {
+    switch (cat) {
+        .id => {
+            remapSingleId(&inst_slice[1 + offset], id_offset, id_remap);
+            return 1;
+        },
+        .literal => return operandLiteralWordCount(kind, inst, offset),
+        .composite => {
+            remapCompositeOperand(kind, inst_slice, offset, id_offset, id_remap);
+            return 2;
+        },
+        .bit_enum => {
+            const mask = inst_slice[1 + offset];
+            var consumed: usize = 1;
+            for (kind.enumerants()) |e| {
+                if ((mask & e.value) == 0) continue;
+                for (e.parameters) |param_kind| {
+                    if (offset + consumed >= inst.operands.len) return consumed;
+                    consumed += remapOperand(
+                        param_kind,
+                        param_kind.category(),
+                        inst,
+                        inst_slice,
+                        offset + consumed,
+                        id_offset,
+                        id_remap,
+                    );
+                }
+            }
+            return consumed;
+        },
+        .value_enum => {
+            const value = inst_slice[1 + offset];
+            var consumed: usize = 1;
+            for (kind.enumerants()) |e| {
+                if (e.value != value) continue;
+                for (e.parameters) |param_kind| {
+                    if (offset + consumed >= inst.operands.len) return consumed;
+                    consumed += remapOperand(
+                        param_kind,
+                        param_kind.category(),
+                        inst,
+                        inst_slice,
+                        offset + consumed,
+                        id_offset,
+                        id_remap,
+                    );
+                }
+                break;
+            }
+            return consumed;
+        },
     }
 }
 

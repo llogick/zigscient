@@ -10,7 +10,7 @@ const Image = @SpirvType(.{ .image = .{
 } });
 const SampledImage = @SpirvType(.{ .sampled_image = Image });
 const StorageImage = @SpirvType(.{ .image = .{
-    .usage = .storage,
+    .usage = .{ .storage = u32 },
     .format = .unknown,
     .dim = .@"2d",
     .depth = .unknown,

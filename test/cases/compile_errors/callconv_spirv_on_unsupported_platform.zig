@@ -22,6 +22,7 @@ export fn entry4() void {
 // error
 // backend=selfhosted
 // target=spirv64-opencl
+// cpu_features=opencl_v2+mesh_shading_ext
 //
 // :1:28: error: calling convention 'spirv_fragment' not supported by compiler backend 'stage2_spirv'
 // :2:28: error: calling convention 'spirv_vertex' not supported by compiler backend 'stage2_spirv'

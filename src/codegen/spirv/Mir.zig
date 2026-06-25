@@ -6,13 +6,13 @@ const Word = spec.Word;
 const Id = spec.Id;
 
 const InternPool = @import("../../InternPool.zig");
-const Module = @import("Module.zig");
+const CodeGen = @import("CodeGen.zig");
 
 const Mir = @This();
 
 id_bound: Word,
 owner_nav: InternPool.Nav.Index,
-kind: Module.Decl.Kind,
+kind: CodeGen.Decl.Kind,
 decl_result_id: Id,
 extended_instruction_set: []const Word,
 globals: []const Word,
@@ -30,18 +30,18 @@ entry_points: []const EntryPoint,
 pub const NavRef = struct {
     local_id: Id,
     nav: InternPool.Nav.Index,
-    kind: Module.Decl.Kind,
+    kind: CodeGen.Decl.Kind,
 };
 
 pub const UavRef = struct {
     local_id: Id,
     val: InternPool.Index,
     storage_class: spec.StorageClass,
-    kind: Module.Decl.Kind,
+    kind: CodeGen.Decl.Kind,
 };
 
 pub const DeclDep = struct {
-    kind: Module.Decl.Kind,
+    kind: CodeGen.Decl.Kind,
     nav: InternPool.Nav.Index,
 };
 

@@ -8694,14 +8694,25 @@ fn checkReturnTypeAndCallConv(
                 return sema.fail(block, callconv_src, "'pixel_centered_integer' is not supported on this target", .{});
             }
         },
-        .spirv_kernel, .spirv_task => |kernel| {
+        .spirv_kernel => |kernel| {
             if (kernel.x == 0 or kernel.y == 0 or kernel.z == 0) {
                 return sema.fail(block, callconv_src, "kernel workgroup dimensions must be at least 1", .{});
+            }
+        },
+        .spirv_task => |task| {
+            if (task.x == 0 or task.y == 0 or task.z == 0) {
+                return sema.fail(block, callconv_src, "kernel workgroup dimensions must be at least 1", .{});
+            }
+            if (!target.cpu.has(.spirv, .mesh_shading_ext)) {
+                return sema.fail(block, callconv_src, "calling convention '{t}' requires the 'mesh_shading_ext' feature", .{@"callconv"});
             }
         },
         .spirv_mesh => |mesh| {
             if (mesh.max_vertices == 0 or mesh.max_primitives == 0) {
                 return sema.fail(block, callconv_src, "mesh shader 'max_vertices' and 'max_primitives' must be at least 1", .{});
+            }
+            if (!target.cpu.has(.spirv, .mesh_shading_ext)) {
+                return sema.fail(block, callconv_src, "calling convention '{t}' requires the 'mesh_shading_ext' feature", .{@"callconv"});
             }
         },
         else => {},
@@ -8846,7 +8857,7 @@ fn checkMergeAllowed(sema: *Sema, block: *Block, src: LazySrcLoc, peer_ty: Type)
         try sema.errNote(runtime_src, msg, "runtime control flow here", .{});
 
         const backend = target_util.zigBackend(target, zcu.comp.config.use_llvm);
-        try sema.errNote(src, msg, "pointers with address space '{s}' cannot be returned from a branch on target {s}-{s} by compiler backend {s}", .{
+        try sema.errNote(src, msg, "pointers with address space '{s}' cannot be returned from a branch on target '{s}-{s}' by compiler backend '{s}'", .{
             @tagName(as),
             @tagName(target.cpu.arch.family()),
             @tagName(target.os.tag),
@@ -16795,7 +16806,43 @@ fn zirTypeInfo(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Ai
                 .val = (try pt.aggregateValue(type_opaque_ty, &field_values)).toIntern(),
             })));
         },
-        .spirv => unreachable, // TODO: ALI
+        .spirv => {
+            const spirv_info = ip.loadSpirvType(ty.toIntern());
+            const spirv_union_ty = try sema.getStdLangType(src, .@"Type.Spirv");
+            const spirv_tag_ty = spirv_union_ty.unionTagType(zcu).?;
+            const spirv_tag_val = try pt.enumValueFieldIndex(spirv_tag_ty, @intFromEnum(spirv_info.flags.tag));
+            const spirv_payload_val: Value = switch (spirv_info.flags.tag) {
+                .sampler => .void,
+                .sampled_image, .runtime_array => .fromInterned(spirv_info.ty),
+                .image => image: {
+                    const image_ty = try sema.getStdLangType(src, .@"Type.Spirv.Image");
+                    const usage_union_ty = try sema.getStdLangType(src, .@"Type.Spirv.Image.Usage");
+                    const format_ty = try sema.getStdLangType(src, .@"Type.Spirv.Image.Format");
+                    const dim_ty = try sema.getStdLangType(src, .@"Type.Spirv.Image.Dimensionality");
+                    const depth_ty = try sema.getStdLangType(src, .@"Type.Spirv.Image.Depth");
+                    const access_ty = try sema.getStdLangType(src, .@"Type.Spirv.Image.Access");
+                    const usage_tag_ty = usage_union_ty.unionTagType(zcu).?;
+                    const usage_tag_val = try pt.enumValueFieldIndex(usage_tag_ty, @intFromEnum(spirv_info.flags.usage));
+                    const usage_val = try pt.unionValue(usage_union_ty, usage_tag_val, .fromInterned(spirv_info.ty));
+                    const image_field_vals = [_]InternPool.Index{
+                        usage_val.toIntern(),
+                        (try pt.enumValueFieldIndex(format_ty, @intFromEnum(spirv_info.flags.format))).toIntern(),
+                        (try pt.enumValueFieldIndex(dim_ty, @intFromEnum(spirv_info.flags.dim))).toIntern(),
+                        (try pt.enumValueFieldIndex(depth_ty, @intFromEnum(spirv_info.flags.depth))).toIntern(),
+                        (try pt.enumValueFieldIndex(access_ty, @intFromEnum(spirv_info.flags.access))).toIntern(),
+                        Value.makeBool(spirv_info.flags.is_arrayed).toIntern(),
+                        Value.makeBool(spirv_info.flags.is_multisampled).toIntern(),
+                    };
+                    break :image try pt.aggregateValue(image_ty, &image_field_vals);
+                },
+            };
+            const spirv_val = try pt.unionValue(spirv_union_ty, spirv_tag_val, spirv_payload_val);
+            return Air.internedToRef((try pt.internUnion(.{
+                .ty = type_info_ty.toIntern(),
+                .tag = (try pt.enumValueFieldIndex(type_info_tag_ty, @intFromEnum(std.lang.TypeId.spirv))).toIntern(),
+                .val = spirv_val.toIntern(),
+            })));
+        },
         .frame => return sema.failWithUseOfAsync(block, src),
         .@"anyframe" => return sema.failWithUseOfAsync(block, src),
     }
@@ -20596,62 +20643,59 @@ fn zirReifySpirvType(
             break :ip_data .{
                 .name = name,
                 .zir_index = tracked_inst,
-                .ty = switch (usage_tag) {
-                    .sampled, .unknown => blk: {
-                        const sampled_type = usage_val.unionPayload(zcu).toType();
-                        std.hash.autoHash(&hasher, sampled_type.toIntern());
+                .ty = blk: {
+                    const sampled_type = usage_val.unionPayload(zcu).toType();
+                    std.hash.autoHash(&hasher, sampled_type.toIntern());
 
-                        if (target.os.tag != .opencl and sampled_type.toIntern() == .void_type) {
-                            return sema.fail(block, operand_src, "'void' type for '{t}' field is only valid under the 'opencl' os", .{usage_tag});
-                        }
-                        if (target.os.tag == .opencl and sampled_type.toIntern() != .void_type) {
-                            return sema.fail(block, operand_src, "'{t}' field type must be 'void' under the 'opencl' os", .{usage_tag});
+                    if (target.os.tag != .opencl and sampled_type.toIntern() == .void_type) {
+                        return sema.fail(block, operand_src, "'void' type for '{t}' field is only valid under the 'opencl' os", .{usage_tag});
+                    }
+                    if (target.os.tag == .opencl and sampled_type.toIntern() != .void_type) {
+                        return sema.fail(block, operand_src, "'{t}' field type must be 'void' under the 'opencl' os", .{usage_tag});
+                    }
+
+                    if (sampled_type.toIntern() != .void_type and
+                        (!sampled_type.hasRuntimeBits(zcu) or (!sampled_type.isRuntimeFloat() and !sampled_type.isInt(zcu))))
+                    {
+                        return sema.fail(block, operand_src, "invalid '{t}' field value '{f}'", .{ usage_tag, sampled_type.fmt(pt) });
+                    }
+
+                    if (target.os.tag == .vulkan) {
+                        const ok = (sampled_type.isRuntimeFloat() and sampled_type.bitSize(zcu) == 32) or
+                            (sampled_type.isInt(zcu) and (sampled_type.bitSize(zcu) == 32 or sampled_type.bitSize(zcu) == 64));
+                        if (!ok) {
+                            return sema.fail(
+                                block,
+                                operand_src,
+                                "'{t}' field value must be a 32-bit int, 64-bit int or 32-bit float under the 'vulkan' os",
+                                .{usage_tag},
+                            );
                         }
 
-                        if (sampled_type.toIntern() != .void_type and
-                            (!sampled_type.hasRuntimeBits(zcu) or (!sampled_type.isRuntimeFloat() and !sampled_type.isInt(zcu))))
-                        {
-                            return sema.fail(block, operand_src, "invalid '{t}' field value '{f}'", .{ usage_tag, sampled_type.fmt(pt) });
-                        }
-
-                        if (target.os.tag == .vulkan) {
-                            const ok = (sampled_type.isRuntimeFloat() and sampled_type.bitSize(zcu) == 32) or
-                                (sampled_type.isInt(zcu) and (sampled_type.bitSize(zcu) == 32 or sampled_type.bitSize(zcu) == 64));
-                            if (!ok) {
+                        if (format != .unknown) {
+                            const format_kind: enum { float, sint, uint } = switch (format) {
+                                .rgba32f, .rgba16f, .rgba8unorm, .rgba8snorm, .r32f => .float,
+                                .rgba32i, .rgba16i, .rgba8i, .r32i => .sint,
+                                .rgba32u, .rgba16u, .rgba8u, .r32u => .uint,
+                                .unknown => unreachable,
+                            };
+                            const matches = switch (format_kind) {
+                                .float => sampled_type.isRuntimeFloat(),
+                                .sint => sampled_type.isInt(zcu) and sampled_type.intInfo(zcu).signedness == .signed,
+                                .uint => sampled_type.isInt(zcu) and sampled_type.intInfo(zcu).signedness == .unsigned,
+                            };
+                            if (!matches) {
                                 return sema.fail(
                                     block,
                                     operand_src,
-                                    "'{t}' field value must be a 32-bit int, 64-bit int or 32-bit float under the 'vulkan' os",
-                                    .{usage_tag},
+                                    "image 'format' '.{t}' does not match '{t}' type '{f}' under the 'vulkan' os",
+                                    .{ format, usage_tag, sampled_type.fmt(pt) },
                                 );
                             }
-
-                            if (format != .unknown) {
-                                const format_kind: enum { float, sint, uint } = switch (format) {
-                                    .rgba32f, .rgba16f, .rgba8unorm, .rgba8snorm, .r32f => .float,
-                                    .rgba32i, .rgba16i, .rgba8i, .r32i => .sint,
-                                    .rgba32u, .rgba16u, .rgba8u, .r32u => .uint,
-                                    .unknown => unreachable,
-                                };
-                                const matches = switch (format_kind) {
-                                    .float => sampled_type.isRuntimeFloat(),
-                                    .sint => sampled_type.isInt(zcu) and sampled_type.intInfo(zcu).signedness == .signed,
-                                    .uint => sampled_type.isInt(zcu) and sampled_type.intInfo(zcu).signedness == .unsigned,
-                                };
-                                if (!matches) {
-                                    return sema.fail(
-                                        block,
-                                        operand_src,
-                                        "image 'format' '.{t}' does not match '{t}' type '{f}' under the 'vulkan' os",
-                                        .{ format, usage_tag, sampled_type.fmt(pt) },
-                                    );
-                                }
-                            }
                         }
+                    }
 
-                        break :blk sampled_type.toIntern();
-                    },
-                    .storage => .none,
+                    break :blk sampled_type.toIntern();
                 },
                 .flags = .{
                     .tag = .image,

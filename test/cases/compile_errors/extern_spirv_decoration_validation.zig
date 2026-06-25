@@ -8,6 +8,6 @@ comptime {
 
 // error
 // backend=selfhosted
-// target=spirv64-vulkan
+// target=spirv32-vulkan
 //
 // :1:45: error: 'flat' decoration requires 'input' address space

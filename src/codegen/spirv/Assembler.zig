@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
 const CodeGen = @import("CodeGen.zig");
-const Decl = @import("Module.zig").Decl;
+const Decl = @import("CodeGen.zig").Decl;
 
 const spec = @import("spec.zig");
 const Opcode = spec.Opcode;
@@ -56,7 +56,7 @@ const Operand = union(enum) {
 };
 
 pub fn deinit(ass: *Assembler) void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
     for (ass.errors.items) |err| gpa.free(err.msg);
     ass.tokens.deinit(gpa);
     ass.errors.deinit(gpa);
@@ -69,7 +69,7 @@ pub fn deinit(ass: *Assembler) void {
 const Error = error{ AssembleFail, OutOfMemory };
 
 pub fn assemble(ass: *Assembler, src: []const u8) Error!void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
 
     ass.src = src;
     ass.errors.clearRetainingCapacity();
@@ -100,7 +100,7 @@ const ErrorMsg = struct {
 };
 
 fn addError(ass: *Assembler, offset: u32, comptime fmt: []const u8, args: anytype) !void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
     const msg = try std.fmt.allocPrint(gpa, fmt, args);
     errdefer gpa.free(msg);
     try ass.errors.append(gpa, .{
@@ -159,7 +159,7 @@ const AsmValue = union(enum) {
 /// If this function returns `error.AssembleFail`, an explanatory
 /// error message has already been emitted into `ass.errors`.
 fn processInstruction(ass: *Assembler) !void {
-    const module = ass.cg.module;
+    const cg = ass.cg;
     const result: AsmValue = switch (ass.inst.opcode) {
         .OpEntryPoint => {
             return ass.fail(ass.currentToken().start, "cannot export entry points in assembly", .{});
@@ -176,7 +176,7 @@ fn processInstruction(ass: *Assembler) !void {
             const set_tag = std.meta.stringToEnum(spec.InstructionSet, set_name) orelse {
                 return ass.fail(set_name_offset, "unknown instruction set: {s}", .{set_name});
             };
-            break :blk .{ .value = try module.importInstructionSet(set_tag) };
+            break :blk .{ .value = try cg.importInstructionSet(set_tag) };
         },
         else => switch (ass.inst.opcode.class()) {
             .type_declaration => try ass.processTypeInstruction(),
@@ -197,13 +197,12 @@ fn processInstruction(ass: *Assembler) !void {
 
 fn processTypeInstruction(ass: *Assembler) !AsmValue {
     const cg = ass.cg;
-    const gpa = cg.module.gpa;
-    const module = cg.module;
+    const gpa = cg.gpa;
     const operands = ass.inst.operands.items;
-    const section = &module.sections.globals;
+    const section = &cg.sections.globals;
     const id = switch (ass.inst.opcode) {
-        .OpTypeVoid => try module.voidType(),
-        .OpTypeBool => try module.boolType(),
+        .OpTypeVoid => try cg.voidType(),
+        .OpTypeBool => try cg.boolType(),
         .OpTypeInt => blk: {
             const signedness: std.lang.Signedness = switch (operands[2].literal32) {
                 0 => .unsigned,
@@ -216,7 +215,7 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
             const width = std.math.cast(u16, operands[1].literal32) orelse {
                 return ass.fail(0, "int type of {} bits is too large", .{operands[1].literal32});
             };
-            break :blk try module.intType(signedness, width);
+            break :blk try cg.intType(signedness, width);
         },
         .OpTypeFloat => blk: {
             const bits = operands[1].literal32;
@@ -226,11 +225,11 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
                     return ass.fail(0, "{} is not a valid bit count for floats (expected 16, 32 or 64)", .{bits});
                 },
             }
-            break :blk try module.floatType(@intCast(bits));
+            break :blk try cg.floatType(@intCast(bits));
         },
         .OpTypeVector => blk: {
             const child_type = try ass.resolveRefId(operands[1].ref_id);
-            break :blk try module.vectorType(operands[2].literal32, child_type);
+            break :blk try cg.vectorType(operands[2].literal32, child_type);
         },
         .OpTypeArray => {
             // TODO: The length of an OpTypeArray is determined by a constant (which may be a spec constant),
@@ -239,8 +238,8 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
         },
         .OpTypeRuntimeArray => blk: {
             const element_type = try ass.resolveRefId(operands[1].ref_id);
-            const result_id = module.allocId();
-            try section.emit(module.gpa, .OpTypeRuntimeArray, .{
+            const result_id = cg.allocId();
+            try section.emit(cg.gpa, .OpTypeRuntimeArray, .{
                 .id_result = result_id,
                 .element_type = element_type,
             });
@@ -249,8 +248,8 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
         .OpTypePointer => blk: {
             const storage_class: StorageClass = @enumFromInt(operands[1].value);
             const child_type = try ass.resolveRefId(operands[2].ref_id);
-            const result_id = module.allocId();
-            try section.emit(module.gpa, .OpTypePointer, .{
+            const result_id = cg.allocId();
+            try section.emit(cg.gpa, .OpTypePointer, .{
                 .id_result = result_id,
                 .storage_class = storage_class,
                 .type = child_type,
@@ -262,11 +261,11 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
             defer cg.id_scratch.shrinkRetainingCapacity(scratch_top);
             const ids = try cg.id_scratch.addManyAsSlice(gpa, operands[1..].len);
             for (operands[1..], ids) |op, *id| id.* = try ass.resolveRefId(op.ref_id);
-            break :blk try module.structType(ids, null, .none);
+            break :blk try cg.structType(ids, null, .none);
         },
         .OpTypeImage => blk: {
             const sampled_type = try ass.resolveRefId(operands[1].ref_id);
-            const result_id = module.allocId();
+            const result_id = cg.allocId();
             try section.emit(gpa, .OpTypeImage, .{
                 .id_result = result_id,
                 .sampled_type = sampled_type,
@@ -280,13 +279,13 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
             break :blk result_id;
         },
         .OpTypeSampler => blk: {
-            const result_id = module.allocId();
+            const result_id = cg.allocId();
             try section.emit(gpa, .OpTypeSampler, .{ .id_result = result_id });
             break :blk result_id;
         },
         .OpTypeSampledImage => blk: {
             const image_type = try ass.resolveRefId(operands[1].ref_id);
-            const result_id = module.allocId();
+            const result_id = cg.allocId();
             try section.emit(gpa, .OpTypeSampledImage, .{ .id_result = result_id, .image_type = image_type });
             break :blk result_id;
         },
@@ -301,8 +300,8 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
             for (param_types, param_operands) |*param, operand| {
                 param.* = try ass.resolveRefId(operand.ref_id);
             }
-            const result_id = module.allocId();
-            try section.emit(module.gpa, .OpTypeFunction, .{
+            const result_id = cg.allocId();
+            try section.emit(cg.gpa, .OpTypeFunction, .{
                 .id_result = result_id,
                 .return_type = return_type,
                 .id_ref_2 = param_types,
@@ -318,27 +317,27 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
 /// - No forward references are allowed in operands.
 /// - Target section is determined from instruction type.
 fn processGenericInstruction(ass: *Assembler) !?AsmValue {
-    const module = ass.cg.module;
-    const target = module.zcu.getTarget();
+    const cg = ass.cg;
+    const target = cg.zcu.getTarget();
     const operands = ass.inst.operands.items;
     var maybe_spv_decl_index: ?Decl.Index = null;
     const section = switch (ass.inst.opcode.class()) {
-        .constant_creation => &module.sections.globals,
-        .annotation => &module.sections.annotations,
+        .constant_creation => &cg.sections.globals,
+        .annotation => &cg.sections.annotations,
         .type_declaration => unreachable, // Handled elsewhere.
         else => switch (ass.inst.opcode) {
             .OpEntryPoint => unreachable,
-            .OpExecutionMode, .OpExecutionModeId => &module.sections.execution_modes,
+            .OpExecutionMode, .OpExecutionModeId => &cg.sections.execution_modes,
             .OpVariable => section: {
                 const storage_class: spec.StorageClass = @enumFromInt(operands[2].value);
                 if (storage_class == .function) break :section &ass.cg.prologue;
-                maybe_spv_decl_index = try module.allocDecl(.global);
+                maybe_spv_decl_index = try cg.allocDecl(.global);
                 if (!target.cpu.has(.spirv, .v1_4) and storage_class != .input and storage_class != .output) {
                     // Before version 1.4, the interface’s storage classes are limited to the Input and Output
-                    break :section &module.sections.globals;
+                    break :section &cg.sections.globals;
                 }
-                try ass.cg.module.decl_deps.append(module.gpa, maybe_spv_decl_index.?);
-                break :section &module.sections.globals;
+                try ass.cg.decl_deps.append(cg.gpa, maybe_spv_decl_index.?);
+                break :section &cg.sections.globals;
             },
             else => &ass.cg.body,
         },
@@ -348,36 +347,36 @@ fn processGenericInstruction(ass: *Assembler) !?AsmValue {
     const first_word = section.instructions.items.len;
     // At this point we're not quite sure how many operands this instruction is
     // going to have, so insert 0 and patch up the actual opcode word later.
-    try section.ensureUnusedCapacity(module.gpa, 1);
+    try section.ensureUnusedCapacity(cg.gpa, 1);
     section.writeWord(0);
 
     for (operands) |operand| {
         switch (operand) {
             .value, .literal32 => |word| {
-                try section.ensureUnusedCapacity(module.gpa, 1);
+                try section.ensureUnusedCapacity(cg.gpa, 1);
                 section.writeWord(word);
             },
             .literal64 => |dword| {
-                try section.ensureUnusedCapacity(module.gpa, 2);
+                try section.ensureUnusedCapacity(cg.gpa, 2);
                 section.writeDoubleWord(dword);
             },
             .result_id => {
                 maybe_result_id = if (maybe_spv_decl_index) |spv_decl_index|
-                    module.declPtr(spv_decl_index).result_id
+                    cg.declPtr(spv_decl_index).result_id
                 else
-                    module.allocId();
-                try section.ensureUnusedCapacity(module.gpa, 1);
+                    cg.allocId();
+                try section.ensureUnusedCapacity(cg.gpa, 1);
                 section.writeOperand(Id, maybe_result_id.?);
             },
             .ref_id => |index| {
                 const result = try ass.resolveRef(index);
-                try section.ensureUnusedCapacity(module.gpa, 1);
+                try section.ensureUnusedCapacity(cg.gpa, 1);
                 section.writeOperand(spec.Id, result.resultId());
             },
             .string => |offset| {
                 const text = std.mem.sliceTo(ass.inst.string_bytes.items[offset..], 0);
                 const size = std.math.divCeil(usize, text.len + 1, @sizeOf(Word)) catch unreachable;
-                try section.ensureUnusedCapacity(module.gpa, size);
+                try section.ensureUnusedCapacity(cg.gpa, size);
                 section.writeOperand(spec.LiteralString, text);
             },
         }
@@ -430,7 +429,7 @@ fn resolveRefId(ass: *Assembler, ref: AsmValue.Ref) !Id {
 }
 
 fn parseInstruction(ass: *Assembler) !void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
 
     ass.inst.opcode = undefined;
     ass.inst.operands.clearRetainingCapacity();
@@ -522,7 +521,7 @@ fn parseOperand(ass: *Assembler, kind: spec.OperandKind) Error!void {
 
 /// Also handles parsing any required extra operands.
 fn parseBitEnum(ass: *Assembler, kind: spec.OperandKind) !void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
 
     var tok = ass.currentToken();
     try ass.expectToken(.value);
@@ -571,7 +570,7 @@ fn parseBitEnum(ass: *Assembler, kind: spec.OperandKind) !void {
 
 /// Also handles parsing any required extra operands.
 fn parseValueEnum(ass: *Assembler, kind: spec.OperandKind) !void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
 
     const tok = ass.currentToken();
     if (ass.eatToken(.placeholder)) {
@@ -622,7 +621,7 @@ fn parseValueEnum(ass: *Assembler, kind: spec.OperandKind) !void {
 }
 
 fn parseRefId(ass: *Assembler) !void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
 
     const tok = ass.currentToken();
     try ass.expectToken(.result_id);
@@ -638,7 +637,7 @@ fn parseRefId(ass: *Assembler) !void {
 }
 
 fn parseLiteralInteger(ass: *Assembler) !void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
 
     const tok = ass.currentToken();
     if (ass.eatToken(.placeholder)) {
@@ -671,7 +670,7 @@ fn parseLiteralInteger(ass: *Assembler) !void {
 }
 
 fn parseLiteralExtInstInteger(ass: *Assembler) !void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
 
     const tok = ass.currentToken();
     if (ass.eatToken(.placeholder)) {
@@ -699,7 +698,7 @@ fn parseLiteralExtInstInteger(ass: *Assembler) !void {
 }
 
 fn parseString(ass: *Assembler) !void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
 
     const tok = ass.currentToken();
     try ass.expectToken(.string);
@@ -722,46 +721,36 @@ fn parseString(ass: *Assembler) !void {
 }
 
 fn parseContextDependentNumber(ass: *Assembler) !void {
-    const module = ass.cg.module;
-
-    // For context dependent numbers, the actual type to parse is determined by the instruction.
-    // Currently, this operand appears in OpConstant and OpSpecConstant, where the too-be-parsed type
-    // is determined by the result type. That means that in this instructions we have to resolve the
-    // operand type early and look at the result to see how we need to proceed.
+    const cg = ass.cg;
     assert(ass.inst.opcode == .OpConstant or ass.inst.opcode == .OpSpecConstant);
 
     const tok = ass.currentToken();
     const result = try ass.resolveRef(ass.inst.operands.items[0].ref_id);
     const result_id = result.resultId();
-    // We are going to cheat a little bit: The types we are interested in, int and float,
-    // are added to the module and cached via module.intType and module.floatType. Therefore,
-    // we can determine the width of these types by directly checking the cache.
-    // This only works if the Assembler and codegen both use spv.intType and spv.floatType though.
-    // We don't expect there to be many of these types, so just look it up every time.
-    // TODO: Count be improved to be a little bit more efficent.
 
-    {
-        var it = module.cache.int_types.iterator();
-        while (it.next()) |entry| {
-            const id = entry.value_ptr.*;
-            if (id != result_id) continue;
-            const info = entry.key_ptr.*;
-            return try ass.parseContextDependentInt(info.signedness, info.bits);
-        }
-    }
-
-    {
-        var it = module.cache.float_types.iterator();
-        while (it.next()) |entry| {
-            const id = entry.value_ptr.*;
-            if (id != result_id) continue;
-            const info = entry.key_ptr.*;
-            switch (info.bits) {
-                16 => try ass.parseContextDependentFloat(16),
-                32 => try ass.parseContextDependentFloat(32),
-                64 => try ass.parseContextDependentFloat(64),
-                else => return ass.fail(tok.start, "cannot parse {}-bit info literal", .{info.bits}),
-            }
+    const words = cg.sections.globals.instructions.items;
+    var offset: usize = 0;
+    while (offset < words.len) {
+        const word_count = words[offset] >> 16;
+        const opcode: Opcode = @enumFromInt(words[offset] & 0xFFFF);
+        defer offset += word_count;
+        if (word_count == 0) break;
+        switch (opcode) {
+            .OpTypeInt => if (word_count >= 4 and @as(Id, @enumFromInt(words[offset + 1])) == result_id) {
+                const width: u16 = @intCast(words[offset + 2]);
+                const signedness: std.lang.Signedness = if (words[offset + 3] == 0) .unsigned else .signed;
+                return ass.parseContextDependentInt(signedness, width);
+            },
+            .OpTypeFloat => if (word_count >= 3 and @as(Id, @enumFromInt(words[offset + 1])) == result_id) {
+                const bits = words[offset + 2];
+                return switch (bits) {
+                    16 => ass.parseContextDependentFloat(16),
+                    32 => ass.parseContextDependentFloat(32),
+                    64 => ass.parseContextDependentFloat(64),
+                    else => ass.fail(tok.start, "cannot parse {}-bit info literal", .{bits}),
+                };
+            },
+            else => {},
         }
     }
 
@@ -769,7 +758,7 @@ fn parseContextDependentNumber(ass: *Assembler) !void {
 }
 
 fn parseContextDependentInt(ass: *Assembler, signedness: std.lang.Signedness, width: u32) !void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
 
     const tok = ass.currentToken();
     if (ass.eatToken(.placeholder)) {
@@ -820,7 +809,7 @@ fn parseContextDependentInt(ass: *Assembler, signedness: std.lang.Signedness, wi
 }
 
 fn parseContextDependentFloat(ass: *Assembler, comptime width: u16) !void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
 
     const Float = std.meta.Float(width);
     const Int = @Int(.unsigned, width);
@@ -893,7 +882,7 @@ fn tokenText(ass: Assembler, tok: Token) []const u8 {
 /// Tokenize `ass.src` and put the tokens in `ass.tokens`.
 /// Any errors encountered are appended to `ass.errors`.
 fn tokenize(ass: *Assembler) !void {
-    const gpa = ass.cg.module.gpa;
+    const gpa = ass.cg.gpa;
 
     ass.tokens.clearRetainingCapacity();
 
