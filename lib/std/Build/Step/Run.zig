@@ -133,6 +133,8 @@ pub const StdIo = union(enum) {
         expect_stdout_exact: []const u8,
         expect_stdout_match: []const u8,
         expect_term: process.Child.Term,
+        expect_stderr_snapshot: std.Build.LazyPath,
+        expect_stdout_snapshot: std.Build.LazyPath,
     };
 };
 
@@ -681,6 +683,13 @@ pub fn addCheck(run: *Run, new_check: StdIo.Check) void {
         },
         .check => |*checks| checks.append(b.allocator, new_check) catch @panic("OOM"),
         else => @panic("illegal call to addCheck: conflicting helper method calls. Suggest to directly set stdio field of Run instead"),
+    }
+
+    switch (new_check) {
+        .expect_stderr_snapshot,
+        .expect_stdout_snapshot,
+        => |file| run.addFileInput(file),
+        else => {},
     }
 }
 

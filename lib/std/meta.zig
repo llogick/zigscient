@@ -499,6 +499,15 @@ test DeclEnum {
     try expectEqualEnum(enum {}, DeclEnum(D));
 }
 
+pub fn BareUnion(comptime T: type) type {
+    const u = switch (@typeInfo(T)) {
+        .@"union" => |u| u,
+        else => @compileError("expected union type, found '" ++ @typeName(T) ++ "'"),
+    };
+
+    return @Union(u.layout, null, u.field_names, u.field_types[0..], u.field_attrs[0..]);
+}
+
 pub fn Tag(comptime T: type) type {
     return switch (@typeInfo(T)) {
         .@"enum" => |info| info.tag_type,

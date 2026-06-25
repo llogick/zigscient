@@ -1,0 +1,14 @@
+Export directory:
+               0 flags
+               0 time_date_stamp
+            0.00 version
+xxxxxxxxxxxxxxxx name_rva
+               1 ordinal_base
+xxxxxxxxxxxxxxxx number_of_entries
+xxxxxxxxxxxxxxxx number_of_names
+xxxxxxxxxxxxxxxx export_address_table_rva
+xxxxxxxxxxxxxxxx name_pointer_table_rva
+xxxxxxxxxxxxxxxx ordinal_table_rva
+xxxx xxxx xxxxxxxx | foo_array
+xxxx xxxx xxxxxxxx | foo_strong
+xxxx xxxx xxxxxxxx | foo_strong_alias

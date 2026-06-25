@@ -1011,6 +1011,8 @@ fn serialize(b: *std.Build, wc: *Configuration.Wip, writer: *Io.Writer) !void {
                             status: Configuration.Step.Run.ExpectTermStatus,
                             value: u32,
                         } = null;
+                        var expect_stderr_snapshot: ?Configuration.LazyPath.Index = null;
+                        var expect_stdout_snapshot: ?Configuration.LazyPath.Index = null;
                         switch (run.stdio) {
                             .check => |checks| for (checks.items) |check| switch (check) {
                                 .expect_stderr_exact => |bytes| expect_stderr_exact = try wc.addBytes(bytes),
@@ -1027,6 +1029,8 @@ fn serialize(b: *std.Build, wc: *Configuration.Wip, writer: *Io.Writer) !void {
                                     .stopped => |x| .{ .status = .stopped, .value = @intFromEnum(x) },
                                     .unknown => |x| .{ .status = .unknown, .value = x },
                                 },
+                                .expect_stderr_snapshot => |path| expect_stderr_snapshot = try s.addLazyPath(path),
+                                .expect_stdout_snapshot => |path| expect_stdout_snapshot = try s.addLazyPath(path),
                             },
                             else => {},
                         }
@@ -1066,6 +1070,8 @@ fn serialize(b: *std.Build, wc: *Configuration.Wip, writer: *Io.Writer) !void {
                                 .expect_stdout_match = expect_stdout_match.items.len != 0,
                                 .expect_term = expect_term != null,
                                 .expect_term_status = if (expect_term) |t| t.status else .exited,
+                                .expect_stderr_snapshot = expect_stderr_snapshot != null,
+                                .expect_stdout_snapshot = expect_stdout_snapshot != null,
                             },
                             .file_inputs = .{ .slice = try s.initLazyPathList(run.file_inputs.items) },
                             .args = .{ .slice = try s.initArgsList(run.argv.items) },
@@ -1088,6 +1094,8 @@ fn serialize(b: *std.Build, wc: *Configuration.Wip, writer: *Io.Writer) !void {
                             .expect_stdout_exact = .{ .value = if (expect_stdout_exact) |bytes| bytes else null },
                             .expect_stderr_match = .{ .slice = expect_stderr_match.items },
                             .expect_stdout_match = .{ .slice = expect_stdout_match.items },
+                            .expect_stderr_snapshot = .{ .value = expect_stderr_snapshot orelse null },
+                            .expect_stdout_snapshot = .{ .value = expect_stdout_snapshot orelse null },
                             .stdin = .{ .u = switch (run.stdin) {
                                 .none => .none,
                                 .bytes => |bytes| .{ .bytes = try wc.addBytes(bytes) },

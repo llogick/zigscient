@@ -113,6 +113,7 @@ pub fn emitMir(emit: *Emit) Error!void {
                                 .default => true,
                                 .hidden, .protected => false,
                             },
+                            .is_dll_import = @"extern".is_dll_import,
                             .force_pcrel_direct = switch (@"extern".relocation) {
                                 .any => false,
                                 .pcrel => true,
@@ -154,20 +155,13 @@ pub fn emitMir(emit: *Emit) Error!void {
                             @enumFromInt(try elf_file.getGlobalSymbol(extern_func.toSlice(&emit.lower.mir).?, null))
                         else if (emit.bin_file.cast(.elf2)) |elf| try elf.externSymbol(.{
                             .name = extern_func.toSlice(&emit.lower.mir).?,
-                            .lib_name = switch (comp.compiler_rt_strat) {
-                                .none, .lib, .obj, .zcu => null,
-                                .dyn_lib => "compiler_rt",
-                            },
+                            .lib_name = null,
                             .type = .FUNC,
                         }) else if (emit.bin_file.cast(.macho)) |macho_file|
                             @enumFromInt(try macho_file.getGlobalSymbol(extern_func.toSlice(&emit.lower.mir).?, null))
-                        else if (emit.bin_file.cast(.coff2)) |coff| @enumFromInt(@intFromEnum(try coff.globalSymbol(
-                            extern_func.toSlice(&emit.lower.mir).?,
-                            switch (comp.compiler_rt_strat) {
-                                .none, .lib, .obj, .zcu => null,
-                                .dyn_lib => "compiler_rt",
-                            },
-                        ))) else return emit.fail("external symbol unimplemented for {s}", .{@tagName(emit.bin_file.tag)}),
+                        else if (emit.bin_file.cast(.coff2)) |coff| @enumFromInt(@intFromEnum(try coff.globalSymbol(.{
+                            .name = extern_func.toSlice(&emit.lower.mir).?,
+                        }))) else return emit.fail("external symbol unimplemented for {s}", .{@tagName(emit.bin_file.tag)}),
                         .is_extern = true,
                     } },
                 },
@@ -179,7 +173,13 @@ pub fn emitMir(emit: *Emit) Error!void {
                     switch (lowered_inst.encoding.mnemonic) {
                         .call => {
                             reloc.target = .{ .branch = target };
-                            try emit.encodeInst(lowered_inst, reloc_info);
+                            if (target.is_dll_import and emit.bin_file.cast(.coff2) != null) {
+                                try emit.encodeInst(try .new(.none, .call, &.{
+                                    .{ .mem = .initRip(.ptr, 0) },
+                                }, emit.lower.target), reloc_info);
+                            } else {
+                                try emit.encodeInst(lowered_inst, reloc_info);
+                            }
                             continue :lowered_inst;
                         },
                         else => {},
@@ -255,7 +255,25 @@ pub fn emitMir(emit: *Emit) Error!void {
                             else => unreachable,
                         }
                     } else if (emit.bin_file.cast(.coff2)) |_| {
-                        switch (lowered_inst.encoding.mnemonic) {
+                        if (target.is_dll_import) switch (lowered_inst.encoding.mnemonic) {
+                            .lea => try emit.encodeInst(try .new(.none, .mov, &.{
+                                lowered_inst.ops[0],
+                                .{ .mem = .initRip(.ptr, 0) },
+                            }, emit.lower.target), reloc_info),
+                            .mov => {
+                                try emit.encodeInst(try .new(.none, .mov, &.{
+                                    lowered_inst.ops[0],
+                                    .{ .mem = .initRip(.ptr, 0) },
+                                }, emit.lower.target), reloc_info);
+                                try emit.encodeInst(try .new(.none, .mov, &.{
+                                    lowered_inst.ops[0],
+                                    .{ .mem = .initSib(lowered_inst.ops[reloc.op_index].mem.sib.ptr_size, .{ .base = .{
+                                        .reg = lowered_inst.ops[0].reg.to64(),
+                                    } }) },
+                                }, emit.lower.target), &.{});
+                            },
+                            else => unreachable,
+                        } else switch (lowered_inst.encoding.mnemonic) {
                             .lea => try emit.encodeInst(try .new(.none, .lea, &.{
                                 lowered_inst.ops[0],
                                 .{ .mem = .initRip(.none, 0) },
@@ -374,7 +392,7 @@ pub fn emitMir(emit: *Emit) Error!void {
                                     .op_index = 1,
                                     .target = .{ .symbol = .{
                                         .symbol = @enumFromInt(@intFromEnum(
-                                            try coff.globalSymbol("__tls_index", null),
+                                            try coff.globalSymbol(.{ .name = "__tls_index" }),
                                         )),
                                         .is_extern = false,
                                     } },
@@ -409,7 +427,7 @@ pub fn emitMir(emit: *Emit) Error!void {
                                     .op_index = 1,
                                     .target = .{ .symbol = .{
                                         .symbol = @enumFromInt(@intFromEnum(
-                                            try coff.globalSymbol("_tls_index", null),
+                                            try coff.globalSymbol(.{ .name = "_tls_index" }),
                                         )),
                                         .is_extern = false,
                                     } },
@@ -725,6 +743,7 @@ const RelocInfo = struct {
         const Symbol = struct {
             symbol: link.File.SymbolId,
             is_extern: bool,
+            is_dll_import: bool = false,
             force_pcrel_direct: bool = false,
         };
     };
@@ -816,7 +835,7 @@ fn encodeInst(emit: *Emit, lowered_inst: Instruction, reloc_info: []const RelocI
             @enumFromInt(@intFromEnum(emit.atom_id)),
             end_offset - 4,
             @enumFromInt(@intFromEnum(target.symbol)),
-            reloc.off,
+            .{ .known = reloc.off },
             .{ .AMD64 = .REL32 },
         ) else unreachable,
         .branch => |target| if (emit.bin_file.cast(.elf)) |elf_file| {
@@ -854,7 +873,7 @@ fn encodeInst(emit: *Emit, lowered_inst: Instruction, reloc_info: []const RelocI
             @enumFromInt(@intFromEnum(emit.atom_id)),
             end_offset - 4,
             @enumFromInt(@intFromEnum(target.symbol)),
-            reloc.off,
+            .{ .known = reloc.off },
             .{ .AMD64 = .REL32 },
         ) else return emit.fail("TODO implement {s} reloc for {s}", .{
             @tagName(reloc.target), @tagName(emit.bin_file.tag),
@@ -912,7 +931,7 @@ fn encodeInst(emit: *Emit, lowered_inst: Instruction, reloc_info: []const RelocI
             @enumFromInt(@intFromEnum(emit.atom_id)),
             end_offset - 4,
             @enumFromInt(@intFromEnum(target.symbol)),
-            reloc.off,
+            .{ .known = reloc.off },
             .{ .AMD64 = .SECREL },
         ) else return emit.fail("TODO implement {s} reloc for {s}", .{
             @tagName(reloc.target), @tagName(emit.bin_file.tag),

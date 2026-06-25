@@ -1,0 +1,41 @@
+               0 date
+               0 user_id
+               0 group_id
+               0 file_mode
+xxxxxxxxxxxxxxxx size
+   second_linker type
+               | x symbols
+               | x members
+xxxxxxxx __imp_foo_array
+xxxxxxxx __imp_foo_strong
+xxxxxxxx __imp_foo_strong_alias
+               0 version
+            8664 machine (AMD64)
+               0 time_date_stamp
+xxxxxxxxxxxxxxxx size_of_data
+xxxxxxxxxxxxxxxx hint
+            DATA import_type 
+            NAME name_type 
+     symbol name | foo_array
+     import name | foo_array
+             dll | dynamic-lib-data-lib.dll
+               0 version
+            8664 machine (AMD64)
+               0 time_date_stamp
+xxxxxxxxxxxxxxxx size_of_data
+xxxxxxxxxxxxxxxx hint
+            DATA import_type 
+            NAME name_type 
+     symbol name | foo_strong
+     import name | foo_strong
+             dll | dynamic-lib-data-lib.dll
+               0 version
+            8664 machine (AMD64)
+               0 time_date_stamp
+xxxxxxxxxxxxxxxx size_of_data
+xxxxxxxxxxxxxxxx hint
+            DATA import_type 
+            NAME name_type 
+     symbol name | foo_strong_alias
+     import name | foo_strong_alias
+             dll | dynamic-lib-data-lib.dll

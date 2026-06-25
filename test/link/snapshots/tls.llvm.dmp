@@ -1,0 +1,9 @@
+xxxx 00000000     6 NULL            STATIC | .tls$
+   |  Section       [size xxxxxxxx chksum a194a569 relocs 0000 lines 0000]
+xxxx 00000000     1 NULL()          STATIC | obj.threadlocal_write
+xxxx 00000000 UNDEF NULL          EXTERNAL | _tls_index
+xxxx 00000000     6 NULL            STATIC | obj.threadlocal_var
+xxxx 00000004     6 NULL            STATIC | obj.threadlocal_arr
+xxxx 00000040     1 NULL()          STATIC | obj.threadlocal_read
+xxxx 00000000     1 NULL()        EXTERNAL | threadlocal_write
+xxxx 00000040     1 NULL()        EXTERNAL | threadlocal_read

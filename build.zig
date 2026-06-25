@@ -263,7 +263,6 @@ pub fn build(b: *std.Build) !void {
     const is_debug = optimize == .Debug;
     const enable_debug_extensions = b.option(bool, "debug-extensions", "Enable commands and options useful for debugging the compiler") orelse is_debug;
     const enable_logging = b.option(bool, "log", "Enable debug logging with --debug-log") orelse is_debug;
-    const enable_link_snapshots = b.option(bool, "link-snapshot", "Whether to enable linker state snapshots") orelse false;
 
     const opt_version_string = b.option([]const u8, "version-string", "Override Zig version string. Default is to find out with git.");
     const version_slice = bzz.compiler_internals_version;
@@ -324,7 +323,6 @@ pub fn build(b: *std.Build) !void {
 
     exe_options.addOption(bool, "enable_debug_extensions", enable_debug_extensions);
     exe_options.addOption(bool, "enable_logging", enable_logging);
-    exe_options.addOption(bool, "enable_link_snapshots", enable_link_snapshots);
     exe_options.addOption(bool, "enable_tracy", tracy != null);
     exe_options.addOption(bool, "enable_tracy_callstack", tracy_callstack);
     exe_options.addOption(bool, "enable_tracy_allocation", tracy_allocation);
@@ -594,6 +592,15 @@ pub fn build(b: *std.Build) !void {
         .skip_llvm = skip_llvm,
         .max_rss = 3_300_000_000,
     }));
+    test_step.dependOn(tests.addLinkTests(b, .{
+        .test_target_filters = test_target_filters,
+        .test_filters = test_filters,
+        .optimize_modes = optimize_modes,
+        .skip_non_native = skip_non_native,
+        .skip_windows = skip_windows,
+        .skip_llvm = skip_llvm,
+        .max_rss = 100_000_000,
+    }));
     test_step.dependOn(tests.addStackTraceTests(b, test_filters, skip_non_native));
     test_step.dependOn(tests.addErrorTraceTests(b, test_filters, optimize_modes, skip_non_native));
     test_step.dependOn(tests.addCliTests(b));
@@ -720,7 +727,6 @@ fn addWasiUpdateStep(b: *std.Build, version: [:0]const u8) !void {
     exe_options.addOption(std.SemanticVersion, "semver", semver);
     exe_options.addOption(bool, "enable_debug_extensions", false);
     exe_options.addOption(bool, "enable_logging", false);
-    exe_options.addOption(bool, "enable_link_snapshots", false);
     exe_options.addOption(bool, "enable_tracy", false);
     exe_options.addOption(bool, "enable_tracy_callstack", false);
     exe_options.addOption(bool, "enable_tracy_allocation", false);

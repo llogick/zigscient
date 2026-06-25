@@ -587,6 +587,8 @@ pub const Step = extern struct {
         expect_stderr_match: Storage.FlagLengthPrefixedList(.flags2, .expect_stderr_match, Bytes),
         expect_stdout_match: Storage.FlagLengthPrefixedList(.flags2, .expect_stdout_match, Bytes),
         expect_term_value: Storage.FlagOptional(.flags2, .expect_term, u32),
+        expect_stdout_snapshot: Storage.FlagOptional(.flags2, .expect_stdout_snapshot, LazyPath.Index),
+        expect_stderr_snapshot: Storage.FlagOptional(.flags2, .expect_stderr_snapshot, LazyPath.Index),
 
         pub const CapturedStream = extern struct {
             generated_file: GeneratedFileIndex,
@@ -686,7 +688,9 @@ pub const Step = extern struct {
             expect_stdout_match: bool,
             expect_term: bool,
             expect_term_status: ExpectTermStatus,
-            _: u25 = 0,
+            expect_stdout_snapshot: bool,
+            expect_stderr_snapshot: bool,
+            _: u23 = 0,
         };
     };
 

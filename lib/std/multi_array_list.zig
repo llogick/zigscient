@@ -44,7 +44,7 @@ pub fn MultiArrayList(comptime T: type) type {
         const Elem = switch (@typeInfo(T)) {
             .@"struct" => T,
             .@"union" => |u| struct {
-                pub const Bare = @Union(u.layout, null, u.field_names, u.field_types[0..], u.field_attrs[0..]);
+                pub const Bare = std.meta.BareUnion(T);
                 pub const Tag =
                     u.tag_type orelse @compileError("MultiArrayList does not support untagged unions");
                 tags: Tag,

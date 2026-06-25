@@ -7,11 +7,47 @@ pub fn build(b: *std.Build) void {
     const optimize: std.builtin.OptimizeMode = .Debug;
     const target = b.standardTargetOptions(.{});
 
-    const exe_names: []const []const u8 = &.{ "test", "test-dync" };
-    const lib_names: []const []const u8 = &.{ "mathtest", "mathtest-dync" };
-    const lib_link_libc: []const bool = &.{ false, true };
+    const exe_names: []const []const u8 = &.{
+        "test",
+        "test-dync",
+        "test-no-llvm",
+        "test-no-llvm-dync",
+        "test-exe-no-llvm",
+        "test-dync-exe-no-llvm",
+        "test-no-llvm-exe-no-llvm",
+        "test-no-llvm-dync-exe-no-llvm",
+    };
+    const lib_names: []const []const u8 = &.{
+        "mathtest",
+        "mathtest-dync",
+        "mathtest-no-llvm",
+        "mathtest-no-llvm-dync",
+        "mathtest-exe-no-llvm",
+        "mathtest-dync-exe-no-llvm",
+        "mathtest-no-llvm-exe-no-llvm",
+        "mathtest-no-llvm-dync-exe-no-llvm",
+    };
+    const lib_link_libc: []const bool = &.{ false, true, false, true, false, true, false, true };
+    const lib_use_llvm: []const bool = &.{ true, true, false, false, true, true, false, false };
+    const exe_use_llvm: []const bool = &.{ true, true, true, true, false, false, false, false };
 
-    for (exe_names, lib_names, lib_link_libc) |exe_name, lib_name, dyn_libc| {
+    for (
+        exe_names,
+        lib_names,
+        lib_link_libc,
+        lib_use_llvm,
+        exe_use_llvm,
+    ) |exe_name, lib_name, dyn_libc, lib_llvm, exe_llvm| {
+        const no_llvm = !lib_llvm or !exe_llvm;
+        if (no_llvm and target.result.os.tag == .macos) continue; // TODO
+        if (no_llvm and target.result.os.tag == .freebsd) continue; // TODO
+        if (no_llvm and target.result.os.tag == .netbsd) continue; // TODO
+        if (no_llvm and target.result.os.tag == .openbsd) continue; // TODO
+        if (no_llvm and target.result.cpu.arch == .aarch64) continue; // TODO
+        if (no_llvm and target.result.cpu.arch == .loongarch64) continue; // TODO
+        if (no_llvm and target.result.cpu.arch == .powerpc64le) continue; // TODO
+        if (no_llvm and target.result.cpu.arch == .s390x) continue; // TODO
+
         const lib = b.addLibrary(.{
             .linkage = .dynamic,
             .name = lib_name,
@@ -22,6 +58,7 @@ pub fn build(b: *std.Build) void {
                 .optimize = optimize,
                 .link_libc = dyn_libc,
             }),
+            .use_llvm = lib_llvm,
         });
 
         const exe = b.addExecutable(.{
@@ -32,6 +69,7 @@ pub fn build(b: *std.Build) void {
                 .optimize = optimize,
                 .link_libc = true,
             }),
+            .use_llvm = exe_llvm,
         });
         exe.root_module.addCSourceFile(.{
             .file = b.path("test.c"),

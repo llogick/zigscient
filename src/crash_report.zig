@@ -84,6 +84,25 @@ pub const CodegenFunc = if (enabled) struct {
     pub fn stop(_: InternPool.Index) void {}
 };
 
+pub const LinkerOp = if (enabled) struct {
+    lf: *link.File,
+    tid: Zcu.PerThread.Id,
+    threadlocal var current: ?LinkerOp = null;
+    pub fn start(lf: *link.File, tid: Zcu.PerThread.Id) void {
+        std.debug.assert(current == null);
+        current = .{ .lf = lf, .tid = tid };
+    }
+    pub fn stop(lf: *link.File, tid: Zcu.PerThread.Id) void {
+        std.debug.assert(current.?.lf == lf and current.?.tid == tid);
+        current = null;
+    }
+} else struct {
+    const current: ?noreturn = null;
+    // Dummy implementation
+    pub fn start(_: *link.File, _: Zcu.PerThread.Id) void {}
+    pub fn stop(_: *link.File, _: Zcu.PerThread.Id) void {}
+};
+
 fn dumpCrashContext() Io.Writer.Error!void {
     const S = struct {
         /// In the case of recursive panics or segfaults, don't print the context for a second time.
@@ -111,6 +130,15 @@ fn dumpCrashContext() Io.Writer.Error!void {
         try w.print("Generating function '{f}'\n\n", .{func_fqn.fmt(&cg.zcu.intern_pool)});
     } else if (AnalyzeBody.current) |anal| {
         try dumpCrashContextSema(anal, w, &S.crash_heap);
+    } else if (LinkerOp.current) |linker_op| {
+        try w.writeAll("Linker snapshot:\n");
+        switch (try linker_op.lf.dump(w, linker_op.tid)) {
+            .unimplemented => try w.writeAll("(backend does not support link snapshots)"),
+            .needs_extensions => try w.writeAll("(build with -Ddebug-extensions to dump linker state)"),
+            .disabled => try w.writeAll("(run with --debug-link-snapshot to dump linker state)"),
+            .enabled => {},
+        }
+        try w.writeAll("\n\n");
     } else {
         try w.writeAll("(no context)\n\n");
     }
@@ -185,6 +213,7 @@ const Zir = std.zig.Zir;
 
 const Sema = @import("Sema.zig");
 const Zcu = @import("Zcu.zig");
+const link = @import("link.zig");
 const InternPool = @import("InternPool.zig");
 const dev = @import("dev.zig");
 const print_zir = @import("print_zir.zig");

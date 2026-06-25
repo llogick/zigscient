@@ -93,7 +93,7 @@ fn DllMainCRTStartup(
     fdwReason: std.os.windows.DWORD,
     lpReserved: std.os.windows.LPVOID,
 ) callconv(.winapi) std.os.windows.BOOL {
-    if (!builtin.single_threaded and !builtin.link_libc) {
+    if (!builtin.single_threaded) {
         _ = @import("os/windows/tls.zig");
     }
 

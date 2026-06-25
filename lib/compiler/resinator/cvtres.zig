@@ -383,7 +383,7 @@ pub fn writeCoff(
 fn writeSymbol(writer: *std.Io.Writer, symbol: std.coff.Symbol) !void {
     try writer.writeAll(&symbol.name);
     try writer.writeInt(u32, symbol.value, .little);
-    try writer.writeInt(u16, @intFromEnum(symbol.section_number), .little);
+    try writer.writeInt(i16, @intFromEnum(symbol.section_number), .little);
     try writer.writeInt(u8, @intFromEnum(symbol.type.base_type), .little);
     try writer.writeInt(u8, @intFromEnum(symbol.type.complex_type), .little);
     try writer.writeInt(u8, @intFromEnum(symbol.storage_class), .little);

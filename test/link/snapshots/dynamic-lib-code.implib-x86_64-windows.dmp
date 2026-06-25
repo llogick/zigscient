@@ -1,0 +1,32 @@
+               0 date
+               0 user_id
+               0 group_id
+               0 file_mode
+xxxxxxxxxxxxxxxx size
+   second_linker type
+               | x symbols
+               | x members
+xxxxxxxx __imp_foo1
+xxxxxxxx __imp_foo2
+xxxxxxxx foo1
+xxxxxxxx foo2
+               0 version
+            8664 machine (AMD64)
+               0 time_date_stamp
+xxxxxxxxxxxxxxxx size_of_data
+xxxxxxxxxxxxxxxx hint
+            CODE import_type 
+            NAME name_type 
+     symbol name | foo1
+     import name | foo1
+             dll | dynamic-lib-code-lib.dll
+               0 version
+            8664 machine (AMD64)
+               0 time_date_stamp
+xxxxxxxxxxxxxxxx size_of_data
+xxxxxxxxxxxxxxxx hint
+            CODE import_type 
+            NAME name_type 
+     symbol name | foo2
+     import name | foo2
+             dll | dynamic-lib-code-lib.dll

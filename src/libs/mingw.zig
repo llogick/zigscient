@@ -207,8 +207,13 @@ fn addCrtCcArgs(
     });
 }
 
-pub fn buildImportLib(comp: *Compilation, lib_name: []const u8) !void {
+pub fn buildImportLib(comp: *Compilation, lib_name: []const u8, prog_node: std.Progress.Node) !Cache.Path {
     dev.check(.build_import_lib);
+
+    log.debug("buildImportLib({s})", .{lib_name});
+
+    const sub_node = prog_node.start(lib_name, 0);
+    defer sub_node.end();
 
     const gpa = comp.gpa;
     const io = comp.io;
@@ -218,12 +223,7 @@ pub fn buildImportLib(comp: *Compilation, lib_name: []const u8) !void {
     const arena = arena_allocator.allocator();
 
     const def_file_path = findDef(arena, io, comp.getTarget(), comp.dirs.zig_lib, lib_name) catch |err| switch (err) {
-        error.FileNotFound => {
-            log.debug("no {s}.def file available to make a DLL import {s}.lib", .{ lib_name, lib_name });
-            // In this case we will end up putting foo.lib onto the linker line and letting the linker
-            // use its library paths to look for libraries and report any problems.
-            return;
-        },
+        error.FileNotFound => return error.DefNotFound,
         else => |e| return e,
     };
     // Only .def.in files need preprocessing
@@ -263,14 +263,16 @@ pub fn buildImportLib(comp: *Compilation, lib_name: []const u8) !void {
         comp.mutex.lockUncancelable(io);
         defer comp.mutex.unlock(io);
         try comp.crt_files.ensureUnusedCapacity(gpa, 1);
+
+        const crt_file_path: Cache.Path = .{
+            .root_dir = comp.dirs.global_cache,
+            .sub_path = sub_path,
+        };
         comp.crt_files.putAssumeCapacityNoClobber(final_lib_basename, .{
-            .full_object_path = .{
-                .root_dir = comp.dirs.global_cache,
-                .sub_path = sub_path,
-            },
+            .full_object_path = crt_file_path,
             .lock = man.toOwnedLock(),
         });
-        return;
+        return crt_file_path;
     }
 
     const digest = man.final();
@@ -294,6 +296,9 @@ pub fn buildImportLib(comp: *Compilation, lib_name: []const u8) !void {
     }
 
     const members = members: {
+        const members_node = sub_node.start("Members", 0);
+        defer members_node.end();
+
         const input = switch (def_needs_preprocessing) {
             true => pp: {
                 var aw: Io.Writer.Allocating = .init(gpa);
@@ -357,13 +362,15 @@ pub fn buildImportLib(comp: *Compilation, lib_name: []const u8) !void {
 
     comp.mutex.lockUncancelable(io);
     defer comp.mutex.unlock(io);
+    const crt_file_path: Cache.Path = .{
+        .root_dir = comp.dirs.global_cache,
+        .sub_path = lib_final_path,
+    };
     try comp.crt_files.putNoClobber(gpa, final_lib_basename, .{
-        .full_object_path = .{
-            .root_dir = comp.dirs.global_cache,
-            .sub_path = lib_final_path,
-        },
+        .full_object_path = crt_file_path,
         .lock = man.toOwnedLock(),
     });
+    return crt_file_path;
 }
 
 pub fn libExists(

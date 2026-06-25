@@ -2,6 +2,12 @@ const std = @import("std.zig");
 const assert = std.debug.assert;
 const mem = std.mem;
 
+pub const archive_signature = "!<arch>\n";
+pub const archive_end_of_header = "`\n";
+
+pub const pe_signature = "PE\x00\x00";
+pub const pe_pointer_offset = 0x3C;
+
 pub const Header = extern struct {
     /// The number that identifies the type of target machine.
     machine: IMAGE.FILE.MACHINE,
@@ -367,6 +373,36 @@ pub const DebugType = enum(u32) {
     _,
 };
 
+pub fn TlsDirectoryEntry(comptime magic: std.coff.OptionalHeader.Magic) type {
+    return switch (magic) {
+        _ => comptime unreachable,
+        .PE32 => extern struct {
+            raw_data_start_va: u32,
+            raw_data_end_va: u32,
+            tls_index_va: u32,
+            callbacks_va: u32,
+            size_of_zero_fill: u32,
+            characteristics: packed struct(u32) {
+                _reserved_0: u19,
+                alignment: SectionHeader.Flags.Align,
+                _reserved_1: u9,
+            },
+        },
+        .@"PE32+" => extern struct {
+            raw_data_start_va: u64,
+            raw_data_end_va: u64,
+            tls_index_va: u64,
+            callbacks_va: u64,
+            size_of_zero_fill: u32,
+            characteristics: packed struct(u32) {
+                _reserved_0: u19,
+                alignment: SectionHeader.Flags.Align,
+                _reserved_1: u9,
+            },
+        },
+    };
+}
+
 pub const ImportDirectoryEntry = extern struct {
     /// The RVA of the import lookup table.
     /// This table contains a name or ordinal for each import.
@@ -389,56 +425,28 @@ pub const ImportDirectoryEntry = extern struct {
     import_address_table_rva: u32,
 };
 
-pub const ImportLookupEntry32 = struct {
-    pub const ByName = packed struct(u32) {
-        name_table_rva: u31,
-        flag: u1 = 0,
+pub fn ImportLookupTableEntry(comptime magic: std.coff.OptionalHeader.Magic) type {
+    const Payload = packed union(u31) {
+        ordinal: packed struct(u31) {
+            ordinal: u16,
+            _: u15 = 0,
+        },
+        hint_name_rva: u31,
     };
 
-    pub const ByOrdinal = packed struct(u32) {
-        ordinal_number: u16,
-        unused: u15 = 0,
-        flag: u1 = 1,
+    return switch (magic) {
+        _ => comptime unreachable,
+        .PE32 => packed struct(u32) {
+            payload: Payload,
+            is_ordinal: bool,
+        },
+        .@"PE32+" => packed struct(u64) {
+            payload: Payload,
+            _: u32 = 0,
+            is_ordinal: bool,
+        },
     };
-
-    const mask = 0x80000000;
-
-    pub fn getImportByName(raw: u32) ?ByName {
-        if (mask & raw != 0) return null;
-        return @as(ByName, @bitCast(raw));
-    }
-
-    pub fn getImportByOrdinal(raw: u32) ?ByOrdinal {
-        if (mask & raw == 0) return null;
-        return @as(ByOrdinal, @bitCast(raw));
-    }
-};
-
-pub const ImportLookupEntry64 = struct {
-    pub const ByName = packed struct(u64) {
-        name_table_rva: u31,
-        unused: u32 = 0,
-        flag: u1 = 0,
-    };
-
-    pub const ByOrdinal = packed struct(u64) {
-        ordinal_number: u16,
-        unused: u47 = 0,
-        flag: u1 = 1,
-    };
-
-    const mask = 0x8000000000000000;
-
-    pub fn getImportByName(raw: u64) ?ByName {
-        if (mask & raw != 0) return null;
-        return @as(ByName, @bitCast(raw));
-    }
-
-    pub fn getImportByOrdinal(raw: u64) ?ByOrdinal {
-        if (mask & raw == 0) return null;
-        return @as(ByOrdinal, @bitCast(raw));
-    }
-};
+}
 
 /// Every name ends with a NULL byte. IF the NULL byte does not fall on
 /// 2byte boundary, the entry structure is padded to ensure 2byte alignment.
@@ -450,6 +458,50 @@ pub const ImportHintNameEntry = extern struct {
     /// Pointer to NULL terminated ASCII name.
     /// Variable length...
     name: [1]u8,
+};
+
+pub const ExportDirectoryTable = extern struct {
+    /// Reserved
+    flags: u32,
+
+    /// Creation time of this table
+    time_date_stamp: u32,
+
+    major_version: u16,
+    minor_version: u16,
+
+    /// The address of an ASCII string that contains the name of the DLL.
+    /// This address is relative to the image base.
+    name_rva: u32,
+
+    /// The ordinal of the first export in this image
+    ordinal_base: u32,
+
+    /// Number of entries in the export address table
+    number_of_entries: u32,
+
+    /// Number of entries in the name pointer table and ordinal table
+    number_of_names: u32,
+
+    export_address_table_rva: u32,
+    name_pointer_table_rva: u32,
+    ordinal_table_rva: u32,
+};
+
+pub const ExportAddressTableEntry = extern struct {
+    /// If this address is within the export section, then this is the address of the export
+    /// Otherwise, this is the address of a string that specfies a symbol in another DLL:
+    ///   <dll name>.<export name>
+    ///   <dll name>.#<export ordinal>
+    export_or_forwarder_rva: u32,
+};
+
+pub const ExportNamePointerTableEntry = extern struct {
+    name_rva: u32,
+};
+
+pub const ExportOrdinalTableEntry = extern struct {
+    unbiased_ordinal: u16,
 };
 
 pub const SectionHeader = extern struct {
@@ -610,11 +662,15 @@ pub const SectionHeader = extern struct {
                 std.debug.assert(std.math.isPowerOfTwo(n));
                 return @enumFromInt(@ctz(n) + 1);
             }
+
+            pub fn alignment(a: Align) ?std.mem.Alignment {
+                return .fromByteUnitsOptional(a.toByteUnits() orelse null);
+            }
         };
     };
 };
 
-pub const Symbol = struct {
+pub const Symbol = extern struct {
     name: [8]u8,
     value: u32,
     section_number: SectionNumber,
@@ -622,7 +678,7 @@ pub const Symbol = struct {
     storage_class: StorageClass,
     number_of_aux_symbols: u8,
 
-    pub fn sizeOf() usize {
+    pub fn sizeOf() comptime_int {
         return 18;
     }
 
@@ -639,18 +695,18 @@ pub const Symbol = struct {
     }
 };
 
-pub const SectionNumber = enum(u16) {
+pub const SectionNumber = enum(i16) {
     /// The symbol record is not yet assigned a section.
     /// A value of zero indicates that a reference to an external symbol is defined elsewhere.
     /// A value of non-zero is a common symbol with a size that is specified by the value.
     UNDEFINED = 0,
 
     /// The symbol has an absolute (non-relocatable) value and is not an address.
-    ABSOLUTE = 0xffff,
+    ABSOLUTE = -1,
 
     /// The symbol provides general type or debugging information but does not correspond to a section.
     /// Microsoft tools use this setting along with .file records (storage class FILE).
-    DEBUG = 0xfffe,
+    DEBUG = -2,
     _,
 };
 
@@ -822,7 +878,7 @@ pub const StorageClass = enum(u8) {
     _,
 };
 
-pub const FunctionDefinition = struct {
+pub const FunctionDefinition = extern struct {
     /// The symbol-table index of the corresponding .bf (begin function) symbol record.
     tag_index: u32,
 
@@ -841,7 +897,7 @@ pub const FunctionDefinition = struct {
     unused: [2]u8,
 };
 
-pub const SectionDefinition = struct {
+pub const SectionDefinition = extern struct {
     /// The size of section data; the same as SizeOfRawData in the section header.
     length: u32,
 
@@ -863,7 +919,7 @@ pub const SectionDefinition = struct {
     unused: [3]u8,
 };
 
-pub const FileDefinition = struct {
+pub const FileDefinition = extern struct {
     /// An ANSI string that gives the name of the source file.
     /// This is padded with nulls if it is less than the maximum length.
     file_name: [18]u8,
@@ -874,7 +930,7 @@ pub const FileDefinition = struct {
     }
 };
 
-pub const WeakExternalDefinition = struct {
+pub const WeakExternalDefinition = extern struct {
     /// The symbol-table index of sym2, the symbol to be linked if sym1 is not found.
     tag_index: u32,
 
@@ -885,7 +941,7 @@ pub const WeakExternalDefinition = struct {
 
     unused: [10]u8,
 
-    pub fn sizeOf() usize {
+    pub fn sizeOf() comptime_int {
         return 18;
     }
 };
@@ -933,7 +989,7 @@ pub const ComdatSelection = enum(u8) {
     _,
 };
 
-pub const DebugInfoDefinition = struct {
+pub const DebugInfoDefinition = extern struct {
     unused_1: [4]u8,
 
     /// The actual ordinal line number (1, 2, 3, and so on) within the source file, corresponding to the .bf or .ef record.
@@ -971,13 +1027,10 @@ pub const Coff = struct {
 
     // The lifetime of `data` must be longer than the lifetime of the returned Coff
     pub fn init(data: []const u8, is_loaded: bool) error{ EndOfStream, MissingPEHeader }!Coff {
-        const pe_pointer_offset = 0x3C;
-        const pe_magic = "PE\x00\x00";
-
         if (data.len < pe_pointer_offset + 4) return error.EndOfStream;
         const header_offset = mem.readInt(u32, data[pe_pointer_offset..][0..4], .little);
         if (data.len < header_offset + 4) return error.EndOfStream;
-        const is_image = mem.eql(u8, data[header_offset..][0..4], pe_magic);
+        const is_image = mem.eql(u8, data[header_offset..][0..4], pe_signature);
 
         const coff: Coff = .{
             .data = data,
@@ -1348,6 +1401,10 @@ pub const Relocation = extern struct {
     virtual_address: u32,
     symbol_table_index: u32,
     type: u16,
+
+    pub fn sizeOf() comptime_int {
+        return 10;
+    }
 };
 
 pub const IMAGE = struct {
@@ -1465,6 +1522,36 @@ pub const IMAGE = struct {
             _,
             /// AXP 64 (Same as Alpha 64)
             pub const AXP64: IMAGE.FILE.MACHINE = .ALPHA64;
+
+            pub fn RelocationType(comptime machine: IMAGE.FILE.MACHINE) type {
+                return switch (machine) {
+                    .AMD64,
+                    => REL.AMD64,
+                    .ARM,
+                    .ARMNT,
+                    => REL.ARM,
+                    .ARM64,
+                    .ARM64EC,
+                    .ARM64X,
+                    => REL.ARM64,
+                    .I386 => REL.I386,
+                    .IA64 => REL.IA64,
+                    .M32R => REL.M32R,
+                    .MIPS16,
+                    .MIPSFPU,
+                    .MIPSFPU16,
+                    => REL.MIPS,
+                    .POWERPC,
+                    .POWERPCFP,
+                    => REL.PPC,
+                    .SH3,
+                    .SH3DSP,
+                    .SH4,
+                    .SH5,
+                    => REL.SH,
+                    else => void,
+                };
+            }
         };
     };
 
@@ -1918,4 +2005,101 @@ pub const IMAGE = struct {
             _,
         };
     };
+};
+
+pub const ArchiveMemberHeader = extern struct {
+    /// Left-justified '/' terminated member name
+    name: [16]u8,
+    /// Left-justified ASCII decimal: seconds since January 1st, 1970
+    date: [12]u8,
+    /// Left-justified ASCII decimal: user id
+    user_id: [6]u8,
+    /// Left-justified ASCII decimal: group id
+    group_id: [6]u8,
+    /// Left-justified ASCII octal: file mode
+    file_mode: [8]u8,
+    /// Left-justified ASCII decimal: size of the member following this header,
+    /// not including the size of this header.
+    size: [10]u8,
+    /// The literal string '`\n'
+    end_of_header: [2]u8,
+
+    /// Extracts the name of the member by either reading it directly from
+    /// the header, or by finding it inside the longnames member, if provided.
+    pub fn parseName(
+        self: *const ArchiveMemberHeader,
+        opt_longnames: ?[]const u8,
+    ) ![]const u8 {
+        const trim = std.mem.trimEnd(u8, &self.name, &.{' '});
+
+        if (trim.len == 0) return error.BadName;
+        return if (trim[0] == '/') name: {
+            if (trim.len == 1 or
+                trim.len == 2 and trim[1] == '/')
+                break :name trim;
+
+            const offset = std.fmt.parseUnsigned(u50, trim[1..], 10) catch
+                return error.BadName;
+
+            if (opt_longnames) |longnames| {
+                if (offset >= longnames.len) return error.BadName;
+                break :name std.mem.sliceTo(longnames[@intCast(offset)..], 0);
+            } else return error.NoLongNames;
+        } else if (trim[trim.len - 1] == '/')
+            trim[0 .. trim.len - 1]
+        else
+            return error.BadName;
+    }
+
+    fn parseField(field: []const u8, T: type, base: u8) !T {
+        if (std.mem.allEqual(u8, field, ' ')) return 0;
+        if (field[0] == '-')
+            return @bitCast(try std.fmt.parseInt(
+                @Int(.signed, @typeInfo(T).int.bits),
+                std.mem.trimEnd(u8, field, &.{' '}),
+                base,
+            ));
+
+        return std.fmt.parseUnsigned(T, std.mem.trimEnd(u8, field, &.{' '}), base);
+    }
+
+    pub fn parseDate(self: *const ArchiveMemberHeader) !u40 {
+        return parseField(&self.date, u40, 10);
+    }
+
+    pub fn parseUserId(self: *const ArchiveMemberHeader) !u20 {
+        return parseField(&self.user_id, u20, 10);
+    }
+
+    pub fn parseGroupId(self: *const ArchiveMemberHeader) !u20 {
+        return parseField(&self.group_id, u20, 10);
+    }
+
+    pub fn parseFileMode(self: *const ArchiveMemberHeader) !u20 {
+        return parseField(&self.group_id, u20, 8);
+    }
+
+    pub fn parseSize(self: *const ArchiveMemberHeader) !u34 {
+        return parseField(&self.size, u34, 10);
+    }
+
+    pub const Kind = enum {
+        first_linker,
+        second_linker,
+        longnames,
+        coff,
+        import,
+    };
+};
+
+pub const LineNumber = extern struct {
+    type: extern union {
+        symbol_table_index: u32,
+        virtual_address: u32,
+    },
+    line_number: u16,
+
+    pub fn sizeOf() comptime_int {
+        return 6;
+    }
 };

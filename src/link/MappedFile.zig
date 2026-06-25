@@ -26,6 +26,9 @@ updates: std.ArrayList(Node.Index),
 update_prog_node: std.Progress.Node,
 writers: std.SinglyLinkedList,
 io_err: ?IoError,
+/// If locked, modifying the node layout is not allowed.
+/// Modifying node content is always allowed.
+nodes_lock: std.debug.SafetyLock = .{},
 
 pub const growth_factor = 4;
 
@@ -188,6 +191,10 @@ pub const Node = extern struct {
             return ni.get(mf).parent;
         }
 
+        pub fn next(ni: Node.Index, mf: *const MappedFile) Node.Index {
+            return ni.get(mf).next;
+        }
+
         pub fn ChildIterator(comptime direction: enum { prev, next }) type {
             return struct {
                 mf: *const MappedFile,
@@ -330,6 +337,7 @@ pub const Node = extern struct {
         }
 
         pub fn resize(ni: Node.Index, mf: *MappedFile, gpa: std.mem.Allocator, size: u64) Error!void {
+            defer if (std.debug.runtime_safety) mf.verify();
             mf.resizeNode(gpa, ni, size) catch |err| switch (err) {
                 error.OutOfMemory,
                 error.Canceled,
@@ -346,16 +354,23 @@ pub const Node = extern struct {
             }
         }
 
+        pub const RealignNodeOptions = struct {
+            /// Shift the node backwards if possible
+            try_backwards: bool = true,
+            /// If `set, persists `new_alignment` as the node's alignment for future operations.
+            set_alignment: bool = true,
+        };
+
         /// Moves and expands a node such that its offset and size are aligned to `new_alignment`.
-        ///
         /// Asserts that `ni` is not `Node.Index.root`.
         pub fn realign(
             ni: Node.Index,
             mf: *MappedFile,
             gpa: std.mem.Allocator,
             new_alignment: std.mem.Alignment,
+            opts: RealignNodeOptions,
         ) Error!void {
-            mf.realignNode(gpa, ni, new_alignment) catch |err| switch (err) {
+            mf.realignNode(gpa, ni, new_alignment, opts) catch |err| switch (err) {
                 error.OutOfMemory,
                 error.Canceled,
                 => |e| return e,
@@ -364,6 +379,26 @@ pub const Node = extern struct {
                     return error.MappedFileIo;
                 },
             };
+            var writers_it = mf.writers.first;
+            while (writers_it) |writer_node| : (writers_it = writer_node.next) {
+                const w: *Node.Writer = @fieldParentPtr("writer_node", writer_node);
+                w.interface.buffer = w.ni.slice(mf);
+            }
+        }
+
+        /// Shrink a node to `size`, exactly.
+        /// Asserts that the new size can contain all the children.
+        /// If `shift_next` is set, then the following node is shifted backwards into
+        /// the free space as much as alignment allows.
+        /// Asserts that `size` is >= the end of the last child node.
+        pub fn shrink(
+            ni: Node.Index,
+            mf: *MappedFile,
+            gpa: std.mem.Allocator,
+            size: u64,
+            shift_next: bool,
+        ) Error!void {
+            try mf.shrinkNode(gpa, ni, size, shift_next);
             var writers_it = mf.writers.first;
             while (writers_it) |writer_node| : (writers_it = writer_node.next) {
                 const w: *Node.Writer = @fieldParentPtr("writer_node", writer_node);
@@ -530,7 +565,26 @@ fn addNode(mf: *MappedFile, gpa: std.mem.Allocator, opts: struct {
     add_node: AddNodeOptions,
 }) Error!Node.Index {
     if (opts.add_node.moved or opts.add_node.resized) try mf.updates.ensureUnusedCapacity(gpa, 1);
+    mf.nodes_lock.assertUnlocked();
     const offset = opts.add_node.alignment.forward(@intCast(opts.offset));
+    if (opts.parent != .none) {
+        const new_end = offset + opts.add_node.size;
+        switch (opts.next) {
+            .none => {
+                _, const parent_size = opts.parent.location(mf).resolve(mf);
+                if (new_end > parent_size)
+                    try opts.parent.resize(mf, gpa, new_end);
+            },
+            else => |next_ni| {
+                const next_offset, _ = next_ni.location(mf).resolve(mf);
+                if (new_end > next_offset)
+                    try next_ni.realign(mf, gpa, opts.add_node.alignment, .{
+                        .try_backwards = false,
+                        .set_alignment = false,
+                    });
+            },
+        }
+    }
     const location_tag: Node.Location.Tag, const location_payload: Node.Location.Payload = location: {
         if (std.math.cast(u32, offset)) |small_offset| break :location .{ .small, .{
             .small = .{ .offset = small_offset, .size = 0 },
@@ -572,14 +626,12 @@ fn addNode(mf: *MappedFile, gpa: std.mem.Allocator, opts: struct {
         },
         .location_payload = location_payload,
     };
+
     {
-        defer {
-            free_node.flags.moved = false;
-            free_node.flags.resized = false;
-        }
-        _, const parent_size = opts.parent.location(mf).resolve(mf);
-        if (offset > parent_size) try opts.parent.resize(mf, gpa, offset);
         try free_ni.resize(mf, gpa, opts.add_node.size);
+        if (opts.add_node.moved or opts.add_node.resized) try mf.updates.ensureUnusedCapacity(gpa, 1);
+        free_node.flags.moved = false;
+        free_node.flags.resized = false;
     }
     if (opts.add_node.moved) free_ni.movedAssumeCapacity(mf);
     if (opts.add_node.resized) free_ni.resizedAssumeCapacity(mf);
@@ -666,11 +718,63 @@ pub fn addNodeAfter(
     });
 }
 
-fn resizeNode(mf: *MappedFile, gpa: std.mem.Allocator, ni: Node.Index, requested_size: u64) (Allocator.Error || Io.Cancelable || IoError)!void {
+fn shrinkNode(
+    mf: *MappedFile,
+    gpa: std.mem.Allocator,
+    ni: Node.Index,
+    size: u64,
+    shift_next: bool,
+) !void {
+    mf.nodes_lock.assertUnlocked();
+    const node = ni.get(mf);
+    const old_offset, _ = node.location().resolve(mf);
+
+    // This would require unmapping first
+    assert(ni != Node.Index.root);
+    defer if (std.debug.runtime_safety) mf.verify();
+
+    if (node.last != .none) {
+        const last = node.last.get(mf);
+        const last_offset, const last_size = last.location().resolve(mf);
+        assert(last_offset + last_size > size);
+    }
+
+    try mf.large.ensureUnusedCapacity(gpa, 4);
+    try mf.updates.ensureUnusedCapacity(gpa, 2);
+
+    ni.setLocationAssumeCapacity(mf, old_offset, size);
+    if (!shift_next or node.next == .none) return;
+
+    const next = node.next.get(mf);
+    const old_next_offset, const next_size = next.location().resolve(mf);
+    const padding = old_next_offset - (old_offset + size);
+    const new_next_offset = next.flags.alignment.forward(@intCast(old_next_offset - padding));
+
+    if (next.flags.has_content and new_next_offset < old_next_offset) {
+        const old_file_offset = node.next.fileLocation(mf, false).offset;
+        const new_file_offset = (old_file_offset - old_next_offset) + new_next_offset;
+        @memmove(
+            mf.memory_map.memory[@intCast(new_file_offset)..][0..@intCast(next_size)],
+            mf.memory_map.memory[@intCast(old_file_offset)..][0..@intCast(next_size)],
+        );
+        @memset(mf.memory_map.memory[@intCast(new_file_offset + next_size)..@intCast(old_file_offset + next_size)], 0);
+    }
+
+    node.next.setLocationAssumeCapacity(mf, new_next_offset, next_size);
+}
+
+fn resizeNode(
+    mf: *MappedFile,
+    gpa: std.mem.Allocator,
+    ni: Node.Index,
+    requested_size: u64,
+) (Allocator.Error || Io.Cancelable || IoError)!void {
+    mf.nodes_lock.assertUnlocked();
     const io = mf.io;
     const node = ni.get(mf);
     const old_offset, const old_size = node.location().resolve(mf);
     const new_size = node.flags.alignment.forward(@intCast(requested_size));
+
     // Resize the entire file
     if (ni == Node.Index.root) {
         try mf.ensureCapacityForSetLocation(gpa);
@@ -703,6 +807,17 @@ fn resizeNode(mf: *MappedFile, gpa: std.mem.Allocator, ni: Node.Index, requested
     if (is_linux and !mf.flags.fallocate_insert_range_unsupported and
         node.flags.alignment.order(mf.flags.block_size).compare(.gte))
     insert_range: {
+        const range_file_offset = ni.fileLocation(mf, false).offset + old_size;
+        const range_size = node.flags.alignment.forward(
+            @intCast(requested_size +| requested_size / growth_factor),
+        ) - old_size;
+
+        // If this node is being realigned, its current state might not
+        // meet the requirements for fallocate
+        if (!mf.flags.block_size.check(@intCast(range_file_offset)) or
+            !mf.flags.block_size.check(@intCast(range_size)))
+            break :insert_range;
+
         mf.memory_map.write(io) catch |err| switch (err) {
             error.WouldBlock => return error.Unexpected, // file was not opened as non-blocking
             error.NotOpenForWriting => return error.Unexpected, // we definitely opened the file for writing
@@ -712,10 +827,6 @@ fn resizeNode(mf: *MappedFile, gpa: std.mem.Allocator, ni: Node.Index, requested
         const last_offset, const last_size = parent.last.location(mf).resolve(mf);
         const last_end = last_offset + last_size;
         assert(last_end <= old_parent_size);
-        const range_file_offset = ni.fileLocation(mf, false).offset + old_size;
-        const range_size = node.flags.alignment.forward(
-            @intCast(requested_size +| requested_size / growth_factor),
-        ) - old_size;
         _, const file_size = Node.Index.root.location(mf).resolve(mf);
         while (true) switch (linux.errno(switch (std.math.order(range_file_offset, file_size)) {
             .lt => linux.fallocate(
@@ -814,6 +925,7 @@ fn resizeNode(mf: *MappedFile, gpa: std.mem.Allocator, ni: Node.Index, requested
     var last_fixed_ni = ni;
     var first_floating_ni = node.next;
     var shift = new_size - old_size;
+    var max_shift_align: std.mem.Alignment = .@"1";
     var direction: enum { forward, reverse } = .forward;
     while (true) {
         assert(last_fixed_ni != .none);
@@ -830,10 +942,12 @@ fn resizeNode(mf: *MappedFile, gpa: std.mem.Allocator, ni: Node.Index, requested
                 if (new_last_fixed_offset + last_fixed_size <= old_first_floating_offset)
                     break :make_space;
                 assert(direction == .forward);
+                max_shift_align = max_shift_align.max(first_floating.flags.alignment.max(last_fixed.flags.alignment));
                 if (first_floating.flags.fixed) {
-                    shift = first_floating.flags.alignment.forward(@intCast(
+                    shift = max_shift_align.forward(@intCast(
                         @max(shift, first_floating_size),
                     ));
+
                     // Not enough space, try the next node
                     last_fixed_ni = first_floating_ni;
                     first_floating_ni = first_floating.next;
@@ -842,7 +956,7 @@ fn resizeNode(mf: *MappedFile, gpa: std.mem.Allocator, ni: Node.Index, requested
                 // Move the found floating node to make space for preceding fixed nodes
                 const last = parent.last.get(mf);
                 const last_offset, const last_size = last.location().resolve(mf);
-                const new_first_floating_offset = first_floating.flags.alignment.forward(
+                const new_first_floating_offset = max_shift_align.forward(
                     @intCast(@max(new_last_fixed_offset + last_fixed_size, last_offset + last_size)),
                 );
                 const new_parent_size = new_first_floating_offset + first_floating_size;
@@ -903,7 +1017,7 @@ fn resizeNode(mf: *MappedFile, gpa: std.mem.Allocator, ni: Node.Index, requested
             last_fixed_ni.setLocationAssumeCapacity(
                 mf,
                 old_last_fixed_offset,
-                last_fixed_size + shift,
+                new_size,
             );
             return;
         }
@@ -929,8 +1043,10 @@ fn realignNode(
     gpa: std.mem.Allocator,
     ni: Node.Index,
     new_alignment: std.mem.Alignment,
+    opts: Node.Index.RealignNodeOptions,
 ) (Allocator.Error || Io.Cancelable || IoError)!void {
     assert(ni != Node.Index.root); // currently unsupported
+    mf.nodes_lock.assertUnlocked();
 
     const node = ni.get(mf);
     const old_offset, const size = node.location().resolve(mf);
@@ -939,7 +1055,12 @@ fn realignNode(
 
     defer if (std.debug.runtime_safety) mf.verify();
 
+    const prev_alignment = node.flags.alignment;
     node.flags.alignment = new_alignment;
+    defer {
+        // alignment needs to be temporarily set for the resizes below
+        if (!opts.set_alignment) node.flags.alignment = prev_alignment;
+    }
 
     const new_size = node.flags.alignment.forward(@intCast(size));
     if (new_alignment.check(@intCast(old_offset))) {
@@ -955,6 +1076,37 @@ fn realignNode(
             break :trailing_end next_offset;
         },
     };
+
+    if (opts.try_backwards) {
+        const backward_offset = new_alignment.backward(@intCast(old_offset));
+        const prev_end = if (node.prev == .none) 0 else prev: {
+            const prev_offset, const prev_size = node.prev.location(mf).resolve(mf);
+            break :prev prev_offset + prev_size;
+        };
+
+        if (backward_offset >= prev_end) {
+            try mf.ensureCapacityForSetLocation(gpa);
+
+            if (node.flags.has_content) {
+                const old_file_offset = ni.fileLocation(mf, false).offset;
+                const new_file_offset = (old_file_offset - old_offset) + backward_offset;
+                @memmove(
+                    mf.memory_map.memory[@intCast(new_file_offset)..][0..@intCast(size)],
+                    mf.memory_map.memory[@intCast(old_file_offset)..][0..@intCast(size)],
+                );
+                @memset(mf.memory_map.memory[@intCast(new_file_offset + size)..@intCast(old_file_offset + size)], 0);
+            }
+
+            if (backward_offset + new_size <= trailing_end) {
+                ni.setLocationAssumeCapacity(mf, backward_offset, new_size);
+            } else {
+                ni.setLocationAssumeCapacity(mf, backward_offset, size);
+                try mf.resizeNode(gpa, ni, new_size);
+            }
+
+            return;
+        }
+    }
 
     const forward_offset = new_alignment.forward(@intCast(old_offset));
     if (forward_offset + new_size <= trailing_end) {
@@ -1135,6 +1287,12 @@ fn ensureTotalCapacityPreciseInner(mf: *MappedFile, new_capacity: usize) (Alloca
             error.OperationUnsupported => {},
             else => |e| return e,
         }
+
+        mf.memory_map.write(io) catch |err| switch (err) {
+            error.WouldBlock => return error.Unexpected, // file was not opened as non-blocking
+            error.NotOpenForWriting => return error.Unexpected, // we definitely opened the file for writing
+            else => |e| return e,
+        };
         unmap(mf);
     }
 
@@ -1156,11 +1314,12 @@ pub fn unmap(mf: *MappedFile) void {
 }
 
 pub fn flush(mf: *MappedFile) (Io.Cancelable || error{MappedFileIo})!void {
-    mf.memory_map.write(mf.io) catch |err| switch (err) {
+    mf.flushInner() catch |err| switch (err) {
         error.Canceled => |e| return e,
 
         error.WouldBlock, // file was not opened as non-blocking
         error.NotOpenForWriting, // we definitely opened the file for writing
+        error.ReadOnlyFileSystem,
         => {
             mf.io_err = error.Unexpected;
             return error.MappedFileIo;
@@ -1171,6 +1330,11 @@ pub fn flush(mf: *MappedFile) (Io.Cancelable || error{MappedFileIo})!void {
             return error.MappedFileIo;
         },
     };
+}
+
+fn flushInner(mf: *MappedFile) (Io.File.WritePositionalError || Io.File.SetTimestampsError)!void {
+    try mf.memory_map.write(mf.io);
+    if (is_windows) try mf.memory_map.file.setTimestampsNow(mf.io);
 }
 
 fn verify(mf: *MappedFile) void {
@@ -1205,5 +1369,186 @@ fn verifyNode(mf: *MappedFile, parent_ni: Node.Index) void {
         prev_ni = ni;
         prev_end = end;
         ni = node.next;
+    }
+}
+
+const testing = std.testing;
+fn testVerifyContent(mf: *@This(), ni: Node.Index, value: u8, init_len: usize) !void {
+    // Not using std.mem.allEqual, so we can get useful output
+    const slice = ni.slice(mf);
+    var buf: [256]u8 = undefined;
+    @memset(buf[0..init_len], value);
+    @memset(buf[init_len..], 0);
+    try testing.expectEqualSlices(u8, buf[0..slice.len], slice);
+}
+
+test {
+    const gpa = testing.allocator;
+
+    var tmp_dir = testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    var file = try tmp_dir.dir.createFile(testing.io, "test.mf", .{ .read = true });
+    defer file.close(testing.io);
+
+    var mf = try init(file, gpa, testing.io);
+    defer mf.deinit(gpa);
+
+    const a = try mf.addFirstChildNode(gpa, .root, .{ .fixed = true, .alignment = .@"4" });
+    const c = try mf.addLastChildNode(gpa, .root, .{ .fixed = true, .alignment = .@"4" });
+    const b = try mf.addNodeAfter(gpa, a, .{ .fixed = true, .alignment = .@"16" });
+    const d = try mf.addNodeAfter(gpa, b, .{ .alignment = .@"4" });
+
+    const a_init_size = 8;
+    const b_init_size = 16;
+    const c_init_size = 24;
+    const d_init_size = 28;
+
+    // Resize without content
+    {
+        // Verify size is aligned forward
+        try d.resize(&mf, gpa, d_init_size - 1);
+        try a.resize(&mf, gpa, a_init_size - 2);
+        try c.resize(&mf, gpa, c_init_size);
+        try b.resize(&mf, gpa, b_init_size);
+        mf.verify();
+
+        const a_loc, const a_size = a.location(&mf).resolve(&mf);
+        const b_loc, const b_size = b.location(&mf).resolve(&mf);
+        const c_loc, const c_size = c.location(&mf).resolve(&mf);
+        _, const d_size = d.location(&mf).resolve(&mf);
+        try testing.expect(a_size >= a_init_size);
+        try testing.expect(b_size >= b_init_size);
+        try testing.expect(c_size >= c_init_size);
+        try testing.expect(d_size >= d_init_size);
+        try testing.expect(b_loc >= a_loc + a_size);
+        try testing.expect(c_loc >= b_loc + b_size);
+    }
+
+    const a_exp_size = 24;
+    const b_exp_size = 28;
+    const c_exp_size = 48;
+    const d_exp_size = 32;
+
+    // Resize with content
+    {
+        @memset(a.slice(&mf)[0..a_init_size], 0xaa);
+        @memset(b.slice(&mf)[0..b_init_size], 0xbb);
+        @memset(c.slice(&mf)[0..c_init_size], 0xcc);
+        @memset(d.slice(&mf)[0..d_init_size], 0xdd);
+
+        try a.resize(&mf, gpa, a_exp_size);
+        try b.resize(&mf, gpa, b_exp_size);
+        try c.resize(&mf, gpa, c_exp_size);
+        try d.resize(&mf, gpa, d_exp_size);
+        mf.verify();
+
+        const a_loc, const a_size = a.location(&mf).resolve(&mf);
+        const b_loc, const b_size = b.location(&mf).resolve(&mf);
+        const c_loc, const c_size = c.location(&mf).resolve(&mf);
+        _, const d_size = d.location(&mf).resolve(&mf);
+        try testing.expect(a_size >= a_exp_size);
+        try testing.expect(b_size >= b_exp_size);
+        try testing.expect(c_size >= c_exp_size);
+        try testing.expect(d_size >= d_exp_size);
+        try testing.expect(b_loc >= a_loc + a_size);
+        try testing.expect(c_loc >= b_loc + b_size);
+
+        try testVerifyContent(&mf, a, 0xaa, a_init_size);
+        try testVerifyContent(&mf, b, 0xbb, b_init_size);
+        try testVerifyContent(&mf, c, 0xcc, c_init_size);
+        try testVerifyContent(&mf, d, 0xdd, d_init_size);
+    }
+
+    const child_init: []const struct { std.mem.Alignment, usize } = &.{
+        .{ .@"16", 16 },
+        .{ .@"1", 1 },
+        .{ .@"1", 19 },
+        .{ .@"1", 3 },
+        .{ .@"8", 30 },
+        .{ .@"2", 5 },
+        .{ .@"1", 60 },
+        .{ .@"2", 2 },
+        .{ .@"16", 32 },
+    };
+
+    var children: [child_init.len]Node.Index = undefined;
+
+    // Differently-aligned fixed sibling nodes
+    {
+        for (children[0 .. children.len - 1], child_init[0 .. children.len - 1], 0..) |*ni, opts, i| {
+            ni.* = try mf.addLastChildNode(gpa, b, .{
+                .alignment = opts.@"0",
+                .size = opts.@"1",
+                .fixed = true,
+            });
+
+            @memset(ni.slice(&mf)[0..opts.@"1"], @intCast(i + 1));
+        }
+        // Shift differently-aligned nodes by inserting a node
+        children[children.len - 1] = try mf.addNodeAfter(gpa, children[3], .{
+            .alignment = child_init[children.len - 1].@"0",
+            .size = child_init[children.len - 1].@"1",
+            .fixed = true,
+        });
+        @memset(children[children.len - 1].slice(&mf), @intCast(children.len));
+
+        mf.verify();
+        for (children, child_init, 0..) |ni, opts, i| {
+            try testVerifyContent(&mf, ni, @intCast(i + 1), opts.@"1");
+        }
+    }
+
+    // Shifting child nodes forward due via resize of parent.prev
+    {
+        try testing.expect(a.location(&mf).resolve(&mf)[1] < 64);
+        try a.resize(&mf, gpa, 64);
+
+        try testVerifyContent(&mf, a, 0xaa, a_init_size);
+        try testVerifyContent(&mf, c, 0xcc, c_init_size);
+        try testVerifyContent(&mf, d, 0xdd, d_init_size);
+        for (children, child_init, 0..) |ni, opts, i| {
+            try testVerifyContent(&mf, ni, @intCast(i + 1), opts.@"1");
+        }
+    }
+
+    // Re-align last node into trailing free space within parent
+    {
+        try b.resize(&mf, gpa, b.location(&mf).resolve(&mf)[1] + 64);
+
+        const last = children[children.len - 2];
+        try last.realign(&mf, gpa, .@"4", true);
+        mf.verify();
+
+        for (children, child_init, 0..) |ni, opts, i|
+            try testVerifyContent(&mf, ni, @intCast(i + 1), opts.@"1");
+        try testVerifyContent(&mf, c, 0xcc, c_init_size);
+    }
+
+    // Re-align, shifting sibling nodes
+    {
+        try children[1].realign(&mf, gpa, .@"8", true);
+        mf.verify();
+
+        for (children, child_init, 0..) |ni, opts, i|
+            try testVerifyContent(&mf, ni, @intCast(i + 1), opts.@"1");
+        try testVerifyContent(&mf, c, 0xcc, c_init_size);
+    }
+
+    // Shrink and shift start of trailing node into free space
+    {
+        try mf.shrinkNode(gpa, a, 16, true);
+        mf.verify();
+
+        const a_loc, const a_size = a.location(&mf).resolve(&mf);
+        const b_loc, _ = b.location(&mf).resolve(&mf);
+        try testing.expectEqual(b_loc, a_loc + a_size);
+
+        try testVerifyContent(&mf, a, 0xaa, a_init_size);
+        try testVerifyContent(&mf, c, 0xcc, c_init_size);
+        try testVerifyContent(&mf, d, 0xdd, d_init_size);
+        for (children, child_init, 0..) |ni, opts, i| {
+            try testVerifyContent(&mf, ni, @intCast(i + 1), opts.@"1");
+        }
     }
 }

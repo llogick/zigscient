@@ -1671,8 +1671,8 @@ pub fn buildOutputType(
                         dev.check(.stdio_listen);
                         cs.listen = .stdio;
                     } else if (mem.eql(u8, arg, "--debug-link-snapshot")) {
-                        if (!build_options.enable_link_snapshots) {
-                            warn("Zig was compiled without linker snapshots enabled (-Dlink-snapshot). --debug-link-snapshot has no effect.", .{});
+                        if (!build_options.enable_debug_extensions) {
+                            warn("Zig was compiled without debug extensions. --debug-link-snapshot has no effect.", .{});
                         } else {
                             cs.enable_link_snapshots = true;
                         }
