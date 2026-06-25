@@ -1180,6 +1180,7 @@ pub const Reloc = extern struct {
         IA64: std.coff.IMAGE.REL.IA64,
         MIPS: std.coff.IMAGE.REL.MIPS,
         M32R: std.coff.IMAGE.REL.M32R,
+        u16: u16,
     };
 
     pub const Index = enum(u32) {
@@ -3787,7 +3788,7 @@ fn addRelocAssumeCapacity(
 
             // applyLocationRelocs updates `virtual_address`
             // flushSymbolTableIndex updates `symbol_table_index`
-            coff.targetStore(&entry.type, @bitCast(@"type"));
+            coff.targetStore(&entry.type, @"type".u16);
 
             break :sri sri;
         },
@@ -4931,7 +4932,7 @@ fn loadObject(
                 reloc.virtual_address - section.header.virtual_address,
                 symbol.si,
                 .pending,
-                @bitCast(reloc.type),
+                .{ .u16 = reloc.type },
             );
         }
     }
