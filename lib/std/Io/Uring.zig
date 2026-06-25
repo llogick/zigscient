@@ -5183,7 +5183,7 @@ fn netWriteFileUnavailable(
     _ = header;
     _ = file_reader;
     _ = limit;
-    return error.NetworkDown;
+    return error.Unimplemented;
 }
 
 fn netClose(userdata: ?*anyopaque, handles: []const net.Socket.Handle) void {

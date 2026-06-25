@@ -11378,7 +11378,8 @@ fn netWriteFile(
     _ = header;
     _ = file_reader;
     _ = limit;
-    @panic("TODO implement netWriteFile");
+    // TODO implement netWriteFile
+    return error.Unimplemented;
 }
 
 fn fileWriteFilePositional(

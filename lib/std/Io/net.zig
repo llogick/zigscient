@@ -1350,9 +1350,17 @@ pub const Stream = struct {
             SocketNotBound,
         } || Io.UnexpectedError || Io.Cancelable;
 
-        pub const WriteFileError = error{
-            NetworkDown,
-        } || Io.Cancelable || Io.UnexpectedError;
+        pub const WriteFileError = Error || error{
+            /// The `Io` implementation cannot offer a more efficient
+            /// file-to-socket path; the caller should fall back to read-based
+            /// copying. See `Io.Writer.sendFile`.
+            Unimplemented,
+            /// Reached the end of the file being read.
+            EndOfStream,
+            /// The source `File.Reader` failed; detailed diagnostics are found
+            /// on that struct.
+            ReadFailed,
+        };
 
         pub fn init(stream: Stream, io: Io, buffer: []u8) Writer {
             return .{
@@ -1381,10 +1389,25 @@ pub const Stream = struct {
         }
 
         fn sendFile(io_w: *Io.Writer, file_reader: *Io.File.Reader, limit: Io.Limit) Io.Writer.FileError!usize {
-            _ = io_w;
-            _ = file_reader;
-            _ = limit;
-            return error.Unimplemented; // TODO
+            const w: *Writer = @alignCast(@fieldParentPtr("interface", io_w));
+            const io = w.io;
+            const header = io_w.buffered();
+            const handle = w.stream.socket.handle;
+            const n = io.vtable.netWriteFile(io.userdata, handle, header, file_reader, limit) catch |err| switch (err) {
+                error.Canceled => {
+                    w.err = error.Canceled;
+                    return error.WriteFailed;
+                },
+                error.EndOfStream,
+                error.Unimplemented,
+                error.ReadFailed,
+                => |e| return e,
+                else => |e| {
+                    w.write_file_err = e;
+                    return error.WriteFailed;
+                },
+            };
+            return io_w.consume(n);
         }
     };
 
