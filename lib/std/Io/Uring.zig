@@ -917,7 +917,7 @@ pub fn deinit(ev: *Evented) void {
     const idle_stack_end_offset = std.mem.alignForward(
         usize,
         ev.threads.allocated.len * @sizeOf(Thread) + idle_stack_size,
-        std.heap.page_size_max,
+        std.heap.pageSize(),
     );
     for (ev.threads.allocated[1..active_threads]) |*thread| thread.thread.join();
     for (ev.threads.allocated[0..active_threads]) |*thread| thread.deinit(ev.backing_allocator);
