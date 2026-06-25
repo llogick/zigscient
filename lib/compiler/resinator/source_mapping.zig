@@ -636,6 +636,10 @@ fn parseFilename(allocator: Allocator, str: []const u8) error{ OutOfMemory, Inva
                     if (escape_val != 0) escape_val = std.math.mul(u8, @as(u8, @intCast(escape_val)), 16) catch return error.InvalidString;
                     escape_val = std.math.add(u8, @as(u8, @intCast(escape_val)), digit) catch return error.InvalidString;
                     escape_len += 1;
+                    if (escape_len == 2) {
+                        filename.appendAssumeCapacity(@intCast(escape_val));
+                        state = .string;
+                    }
                 },
                 else => {
                     if (escape_len == 0) return error.InvalidString;
@@ -706,6 +710,7 @@ fn testParseFilename(expected: []const u8, input: []const u8) !void {
 test parseFilename {
     try testParseFilename("'\"?\\\t\n\r\x11", "\\'\\\"\\?\\\\\\t\\n\\r\\x11");
     try testParseFilename("\xABz\x53", "\\xABz\\123");
+    try testParseFilename("\xABCDEF", "\\xABCDEF");
     try testParseFilename("⚡⚡", "\\u26A1\\U000026A1");
     try std.testing.expectError(error.InvalidString, parseFilename(std.testing.allocator, "\""));
     try std.testing.expectError(error.InvalidString, parseFilename(std.testing.allocator, "\\"));
@@ -713,7 +718,6 @@ test parseFilename {
     try std.testing.expectError(error.InvalidString, parseFilename(std.testing.allocator, "\\U"));
     try std.testing.expectError(error.InvalidString, parseFilename(std.testing.allocator, "\\x"));
     try std.testing.expectError(error.InvalidString, parseFilename(std.testing.allocator, "\\xZZ"));
-    try std.testing.expectError(error.InvalidString, parseFilename(std.testing.allocator, "\\xABCDEF"));
     try std.testing.expectError(error.InvalidString, parseFilename(std.testing.allocator, "\\777"));
 }
 

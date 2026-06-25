@@ -2746,7 +2746,7 @@ pub const Compiler = struct {
         // 1. Any permutation that does not have PRELOAD in it just uses the
         //    default flags.
         const initial_flags = flags.*;
-        var flags_set = std.enums.EnumSet(rc.CommonResourceAttributes).empty;
+        var flags_set: std.enums.EnumSet(rc.CommonResourceAttributes) = .empty;
         for (tokens) |token| {
             const attribute = rc.CommonResourceAttributes.map.get(token.slice(source)).?;
             flags_set.insert(attribute);
@@ -2769,7 +2769,7 @@ pub const Compiler = struct {
         // 3. If none of DISCARDABLE, SHARED, or PURE is specified, then PRELOAD
         //    implies `flags &= ~SHARED` and LOADONCALL implies `flags |= SHARED`
         const shared_set = comptime blk: {
-            var set = std.enums.EnumSet(rc.CommonResourceAttributes).empty;
+            var set: std.enums.EnumSet(rc.CommonResourceAttributes) = .empty;
             set.insert(.discardable);
             set.insert(.shared);
             set.insert(.pure);
