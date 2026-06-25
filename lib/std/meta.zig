@@ -909,6 +909,15 @@ pub inline fn hasUniqueRepresentation(comptime T: type) bool {
             return @sizeOf(T) == sum_size;
         },
 
+        .@"union" => |info| {
+            if (info.layout == .@"packed") return @sizeOf(T) * 8 == @bitSizeOf(T);
+            inline for (info.field_types) |field_type| {
+                if (@sizeOf(field_type) != @sizeOf(T)) return false;
+                if (!hasUniqueRepresentation(field_type)) return false;
+            }
+            return true;
+        },
+
         .vector => |info| hasUniqueRepresentation(info.child) and
             @sizeOf(T) == @sizeOf(info.child) * info.len,
     };
@@ -977,6 +986,27 @@ test hasUniqueRepresentation {
     };
 
     try testing.expect(!hasUniqueRepresentation(TestUnion4));
+
+    const TestUnion5 = extern union {
+        a: u32,
+        b: i32,
+    };
+
+    try testing.expect(hasUniqueRepresentation(TestUnion5));
+
+    const TestUnion6 = packed union(u7) {
+        a: u7,
+        b: i7,
+    };
+
+    try testing.expect(!hasUniqueRepresentation(TestUnion6));
+
+    const TestUnion7 = packed union(u8) {
+        a: u8,
+        b: i8,
+    };
+
+    try testing.expect(hasUniqueRepresentation(TestUnion7));
 
     inline for ([_]type{ u8, i16, u32, i64 }) |T| {
         try testing.expect(hasUniqueRepresentation(T));
