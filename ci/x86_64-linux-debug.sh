@@ -11,7 +11,7 @@ CACHE_BASENAME="zig+llvm+lld+clang-$TARGET-0.17.0-dev.203+073889523"
 PREFIX="$HOME/deps/$CACHE_BASENAME"
 ZIG="$PREFIX/bin/zig"
 
-export PATH="$HOME/deps/wasmtime-v44.0.0-x86_64-linux:$HOME/deps/qemu-linux-x86_64-11.0.1/bin:$HOME/local/bin:$PATH"
+export PATH="$HOME/deps/wasmtime-v46.0.1-x86_64-linux:$HOME/deps/qemu-linux-x86_64-11.0.1/bin:$HOME/local/bin:$PATH"
 
 # Override the cache directories because they won't actually help other CI runs
 # which will be testing alternate versions of zig, and ultimately would just
