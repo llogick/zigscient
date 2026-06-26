@@ -178027,6 +178027,10 @@ fn airAsm(self: *CodeGen, inst: Air.Inst.Index) !void {
         fixed_mnem_size: {
             const fixed_mnem_size: Memory.Size = switch (mnem_tag) {
                 .clflush => .byte,
+                .crc32 => {
+                    mnem_size.op_has_size.unset(1);
+                    break :fixed_mnem_size;
+                },
                 .fldcw, .fnstcw, .fstcw, .fnstsw, .fstsw => .word,
                 .fldenv, .fnstenv, .fstenv => .none,
                 .frstor, .fsave, .fnsave, .fxrstor, .fxrstor64, .fxsave, .fxsave64 => .none,

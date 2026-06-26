@@ -4952,7 +4952,8 @@ fn airAsm(f: *Function, inst: Air.Inst.Index) !CValue {
         while (it.next()) |output| {
             const constraint = output.constraint;
 
-            if (constraint.len < 2 or constraint[0] != '=' or
+            if (constraint.len < 2 or
+                (constraint[0] != '=' and constraint[0] != '+') or
                 (constraint[1] == '{' and constraint[constraint.len - 1] != '}'))
             {
                 return f.fail("CBE: constraint not supported: '{s}'", .{constraint});
