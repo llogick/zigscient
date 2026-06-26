@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const assert = std.debug.assert;
 const expect = std.testing.expect;
 
 test "try on error union" {
@@ -196,4 +197,15 @@ test "try ptr propagation mutate" {
     };
     try S.doTheTest();
     try comptime S.doTheTest();
+}
+
+test "try pointer expression alignment" {
+    const S = struct {
+        fn doTheTest(p: *align(1) (anyerror!u32)) !void {
+            comptime assert(@TypeOf(&(try p.*)) == *align(1) u32);
+            try expect((try p.*) == 10);
+        }
+    };
+    var x: anyerror!u32 = 10;
+    try S.doTheTest(&x);
 }

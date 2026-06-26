@@ -1574,3 +1574,22 @@ test "repeated switch analysis overrides previous analysis results" {
         };
     }
 }
+
+test "union field pointer capture preserves alignment in inline prong" {
+    const U = union(enum) {
+        a: u32,
+        b: u32,
+        fn doTheTest(u: *align(1) const @This()) !void {
+            switch (u.*) {
+                inline .a, .b => |*a_ptr| {
+                    comptime assert(@TypeOf(a_ptr) == *align(1) const u32);
+                    try expect(a_ptr.* == 123);
+                },
+            }
+        }
+    };
+    try U.doTheTest(&.{ .a = 123 });
+    try U.doTheTest(&.{ .b = 123 });
+    try comptime U.doTheTest(&.{ .a = 123 });
+    try comptime U.doTheTest(&.{ .b = 123 });
+}

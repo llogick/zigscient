@@ -9316,7 +9316,7 @@ fn intCast(
                     break :ok all_in_range;
                 } else ok: {
                     const zero_inst = Air.internedToRef((try pt.intValue(operand_ty, 0)).toIntern());
-                    const is_in_range = try block.addBinOp(.cmp_lte, operand, zero_inst);
+                    const is_in_range = try block.addBinOp(.cmp_eq, operand, zero_inst);
                     break :ok is_in_range;
                 };
                 try sema.addSafetyCheck(block, src, ok, .integer_out_of_bounds);
@@ -12014,15 +12014,12 @@ fn resolveSwitchPayloadCaptureTaggedUnion(
     const field_ty: Type = .fromInterned(union_obj.field_types.get(ip)[field_index]);
     const payload_ref: Air.Inst.Ref = payload_ref: {
         if (capture_by_ref) {
-            const operand_ptr_info = sema.typeOf(loaded_operand).ptrInfo(zcu);
-            const ptr_field_ty = try pt.ptrType(.{
-                .child = field_ty.toIntern(),
-                .flags = .{
-                    .is_const = operand_ptr_info.flags.is_const,
-                    .is_volatile = operand_ptr_info.flags.is_volatile,
-                    .address_space = operand_ptr_info.flags.address_space,
-                },
-            });
+            const ptr_field_ty = try sema.typeOf(loaded_operand).fieldPtrType(field_index, pt);
+            if (try sema.resolveDefinedValue(case_block, operand_src, loaded_operand)) |op_ptr_val| {
+                if (op_ptr_val.isUndef(zcu)) break :payload_ref try pt.undefRef(ptr_field_ty);
+                const field_ptr_val = try op_ptr_val.ptrField(field_index, pt);
+                break :payload_ref .fromValue(try pt.getCoerced(field_ptr_val, ptr_field_ty));
+            }
             break :payload_ref try case_block.addStructFieldPtr(loaded_operand, field_index, ptr_field_ty);
         }
         if (try sema.resolveDefinedValue(case_block, operand_src, loaded_operand)) |union_val| {
@@ -17550,15 +17547,10 @@ fn zirTryPtr(sema: *Sema, parent_block: *Block, inst: Zir.Inst.Index) CompileErr
     const is_cold = sema.branch_hint == .cold;
 
     const operand_ty = sema.typeOf(operand);
-    const ptr_info = operand_ty.ptrInfo(zcu);
-    const res_ty = try pt.ptrType(.{
-        .child = err_union_ty.errorUnionPayload(zcu).toIntern(),
-        .flags = .{
-            .is_const = ptr_info.flags.is_const,
-            .is_volatile = ptr_info.flags.is_volatile,
-            .is_allowzero = ptr_info.flags.is_allowzero,
-            .address_space = ptr_info.flags.address_space,
-        },
+    const res_ty = try pt.ptrType(info: {
+        var new = operand_ty.ptrInfo(zcu);
+        new.child = err_union_ty.errorUnionPayload(zcu).toIntern();
+        break :info new;
     });
     const res_ty_ref = Air.internedToRef(res_ty.toIntern());
     try sema.air_extra.ensureUnusedCapacity(sema.gpa, @typeInfo(Air.TryPtr).@"struct".field_names.len +
@@ -26406,23 +26398,21 @@ fn fieldCallBind(
             .@"struct" => {
                 if (zcu.typeToStruct(concrete_ty)) |struct_type| {
                     const field_index = struct_type.nameIndex(ip, field_name) orelse break :find_field;
-                    const field_ty: Type = .fromInterned(struct_type.field_types.get(ip)[field_index]);
-
-                    return sema.finishFieldCallBind(block, src, ptr_ty, field_ty, field_index, object_ptr);
+                    return sema.finishFieldCallBind(block, src, ptr_ty, field_index, object_ptr);
                 } else if (concrete_ty.isTuple(zcu)) {
                     if (field_name.eqlSlice("len", ip)) {
                         return .{ .direct = try pt.intRef(.usize, concrete_ty.structFieldCount(zcu)) };
                     }
                     if (field_name.toUnsigned(ip)) |field_index| {
                         if (field_index >= concrete_ty.structFieldCount(zcu)) break :find_field;
-                        return sema.finishFieldCallBind(block, src, ptr_ty, concrete_ty.fieldType(field_index, zcu), field_index, object_ptr);
+                        return sema.finishFieldCallBind(block, src, ptr_ty, field_index, object_ptr);
                     }
                 } else {
                     const max = concrete_ty.structFieldCount(zcu);
                     for (0..max) |i_usize| {
                         const i: u32 = @intCast(i_usize);
                         if (field_name == concrete_ty.structFieldName(i, zcu).unwrap().?) {
-                            return sema.finishFieldCallBind(block, src, ptr_ty, concrete_ty.fieldType(i, zcu), i, object_ptr);
+                            return sema.finishFieldCallBind(block, src, ptr_ty, i, object_ptr);
                         }
                     }
                 }
@@ -26538,19 +26528,12 @@ fn finishFieldCallBind(
     block: *Block,
     src: LazySrcLoc,
     ptr_ty: Type,
-    field_ty: Type,
     field_index: u32,
     object_ptr: Air.Inst.Ref,
 ) CompileError!ResolvedFieldCallee {
     const pt = sema.pt;
     const zcu = pt.zcu;
-    const ptr_field_ty = try pt.ptrType(.{
-        .child = field_ty.toIntern(),
-        .flags = .{
-            .is_const = !ptr_ty.ptrIsMutable(zcu),
-            .address_space = ptr_ty.ptrAddressSpace(zcu),
-        },
-    });
+    const ptr_field_ty = try ptr_ty.fieldPtrType(field_index, pt);
 
     const container_ty = ptr_ty.childType(zcu);
     if (container_ty.zigTypeTag(zcu) == .@"struct") {
