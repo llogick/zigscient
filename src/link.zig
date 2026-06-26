@@ -32,6 +32,8 @@ pub const LdScript = @import("link/LdScript.zig");
 pub const Queue = @import("link/Queue.zig");
 pub const ConstPool = @import("link/ConstPool.zig");
 
+pub const loongarch = @import("link/loongarch.zig");
+
 pub const Error = Allocator.Error || Io.Cancelable || error{
     /// An error message has already been stored in persistent state on `Compilation` or `Zcu`, for
     /// instance in `Compilation.link_diags`.
