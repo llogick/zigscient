@@ -756,7 +756,8 @@ pub fn eql(comptime T: type, a: []const T, b: []const T) bool {
     }
 
     if (a.len != b.len) return false;
-    if (a.len == 0 or a.ptr == b.ptr) return true;
+    if (a.len == 0) return true;
+    if (@typeInfo(T) != .float and a.ptr == b.ptr) return true;
 
     for (a, b) |a_elem, b_elem| {
         if (a_elem != b_elem) return false;
@@ -781,6 +782,9 @@ test eql {
 
     try testing.expect(eql(void, &.{ {}, {} }, &.{ {}, {} }));
     try testing.expect(!eql(void, &.{{}}, &.{ {}, {} }));
+
+    const x: [3]f64 = .{ 42.0, math.nan(f64), 3.1415 };
+    try testing.expect(!eql(f64, &x, &x));
 }
 
 /// std.mem.eql heavily optimized for slices of bytes.
@@ -850,20 +854,25 @@ pub const indexOfDiff = findDiff;
 /// Compares two slices and returns the index of the first inequality.
 /// Returns null if the slices are equal.
 pub fn findDiff(comptime T: type, a: []const T, b: []const T) ?usize {
-    const shortest = @min(a.len, b.len);
-    if (a.ptr == b.ptr)
-        return if (a.len == b.len) null else shortest;
-    var index: usize = 0;
-    while (index < shortest) : (index += 1) if (a[index] != b[index]) return index;
-    return if (a.len == b.len) null else shortest;
+    const shorter = @min(a.len, b.len);
+    if (@typeInfo(T) != .float and a.ptr == b.ptr) {
+        return if (a.len == b.len) null else shorter;
+    }
+    for (a[0..shorter], b[0..shorter], 0..) |a_elem, b_elem, i| {
+        if (a_elem != b_elem) return i;
+    }
+    return if (a.len == b.len) null else shorter;
 }
 
 test findDiff {
-    try testing.expectEqual(findDiff(u8, "one", "one"), null);
-    try testing.expectEqual(findDiff(u8, "one two", "one"), 3);
-    try testing.expectEqual(findDiff(u8, "one", "one two"), 3);
-    try testing.expectEqual(findDiff(u8, "one twx", "one two"), 6);
-    try testing.expectEqual(findDiff(u8, "xne", "one"), 0);
+    try testing.expectEqual(null, findDiff(u8, "one", "one"));
+    try testing.expectEqual(3, findDiff(u8, "one two", "one"));
+    try testing.expectEqual(3, findDiff(u8, "one", "one two"));
+    try testing.expectEqual(6, findDiff(u8, "one twx", "one two"));
+    try testing.expectEqual(0, findDiff(u8, "xne", "one"));
+
+    const x: [3]f64 = .{ 42.0, math.nan(f64), 3.1415 };
+    try testing.expectEqual(1, findDiff(f64, &x, &x));
 }
 
 /// Takes a sentinel-terminated pointer and returns a slice preserving pointer attributes.
