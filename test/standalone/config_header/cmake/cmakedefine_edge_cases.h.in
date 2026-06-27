@@ -1,0 +1,41 @@
+// cmakedefine with multi-word string value (truthy)
+#cmakedefine MULTI_WORD "hello world"
+
+// cmakedefine with multi-word string value (falsy)
+#cmakedefine MULTI_WORD_FALSE "hello world"
+
+// cmakedefine with no replacement value (truthy)
+#cmakedefine NO_VALUE
+
+// cmakedefine with no replacement value (falsy)
+#cmakedefine NO_VALUE_FALSE
+
+// cmakedefine01 with underscored variable names (truthy)
+#cmakedefine01 WITH_UNDERSCORE_TRUE
+
+// cmakedefine01 with underscored variable names (falsy)
+#cmakedefine01 WITH_UNDERSCORE_FALSE
+
+// cmakedefine with leading/trailing underscores (truthy)
+#cmakedefine _LEADING 1
+#cmakedefine TRAILING_ 1
+
+// cmakedefine01 with leading/trailing underscores (truthy)
+#cmakedefine01 _UNDER_01
+#cmakedefine01 UNDER_01_
+
+// cmakedefine with @ substitution in the replacement value (truthy)
+#cmakedefine SUBST_VAL @STRING@
+
+// cmakedefine with @ substitution in the replacement value (falsy)
+#cmakedefine SUBST_VAL_FALSE @STRING@
+
+// cmakedefine with @ substitution as the variable name
+#cmakedefine @VAR_NAME@ custom_val
+
+// cmakedefine with dollar-curly substitution as the variable name
+#cmakedefine ${VAR_NAME} custom_val
+
+// @ and $ as literal config values
+@AT_SIGN@
+${DOLLAR_SIGN}

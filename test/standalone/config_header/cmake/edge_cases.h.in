@@ -1,0 +1,42 @@
+// empty lines are preserved
+
+// double-wrapped at-sigils work like single-wrapped
+@@STRING@@
+@${STRING}@
+
+// at-var lookup happens inside dollar-curly before dollar-curly lookup
+${@STRING_PROXY@}
+
+// expanded variables are treated as strings and can be re-substituted
+@STRING_AT@
+${STRING_AT}
+$@STRING_CURLY@
+$${STRING_CURLY}
+${STRING_VAR}
+@STRING_VAR@
+${DOLLAR}{${STRING}}
+@DOLLAR@{${STRING}}
+@DOLLAR@{@STRING@}
+
+// nested dollar-curly expansion from the inside out
+${STRING${UNDERSCORE}PROXY}
+${STRING@UNDERSCORE@PROXY}
+
+// nested dollar-curly — only completed brace blocks are expanded
+${NEST${UNDERSCORE}PROXY}
+${NEST${${NEST_UNDERSCORE${UNDERSCORE}PROXY}}PROXY}
+
+// backslash is invalid in at-var names — preserved as literal
+\@STRING\@
+
+// backslash does not affect dollar-curly expansion
+\${STRING}
+
+// backslash before opening brace breaks dollar-curly identification
+$\{STRING}
+
+// bare at-sigils pass through unchanged with no variable map
+#define AT @
+#define ATAT @@
+#define ATATAT @@@
+#define ATATATAT @@@@

@@ -1,0 +1,62 @@
+/* Some Comment */
+int foo();
+// empty strings are preserved
+
+// line with misc content is preserved
+#define KEPT_VALUE no substitution
+
+// empty @ sigils are preserved
+#define AT_SIGIL_1 @
+#define AT_SIGIL_2 @@
+#define AT_SIGIL_3 @@@
+#define AT_SIGIL_4 @@@@
+
+// simple substitution
+#define SIMPLE_UNDEFINED @undefined@
+#define SIMPLE_DEFINED @defined@
+#define SIMPLE_BOOL_TRUE @boolean_true@
+#define SIMPLE_BOOL_FALSE @boolean_false@
+#define SIMPLE_INTEGER @integer@
+#define SIMPLE_STRING @string@
+
+// double packed substitution
+#define DOUBLE_PACKED @string@@string@
+
+// triple packed substitution
+#define TRIPLE_PACKED @string@@integer@@string@
+
+// double separated substitution
+#define DOUBLE_SEPARATED @integer@.@integer@
+
+// triple separated substitution
+#define TRIPLE_SEPARATED @integer@.@boolean_true@.@integer@
+
+// misc prefix is preserved
+#define MISC_PREFIX false is @boolean_false@
+
+// misc suffix is preserved
+#define MISC_SUFFIX @boolean_true@ is true
+
+// surrounding content is preserved
+#define SURROUNDING what is 6*7? @integer@!
+
+// incomplete key is preserved
+#define INCOMPLETE_KEY @undefined
+
+// @-vars resolved only when they wrap valid characters, otherwise considered literals
+#define DOUBLE_WRAPPED @@string@@
+
+// expanded variables are considered strings after expansion
+#define EXPANDED_STRING @string_at@
+
+// variable name with underscores
+#define UNDERSCORED_VAR @underscored_var@
+
+// backslash before at-sigil does not prevent resolution
+#define BACKSLASH_AT \@string@
+
+// value that is an at-sign itself
+#define AT_SIGN_VALUE @at_sign@
+
+// incomplete key mid-line is preserved, trailing content kept
+#define INCOMPLETE_MID @incomplete trailing content

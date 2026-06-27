@@ -1,0 +1,143 @@
+// cmakedefine — value is null (undefined) → /* #undef */
+#cmakedefine NOVAL unreachable
+
+// cmakedefine — value is true → #define ... 1
+#cmakedefine TRUEVAL 1
+
+// cmakedefine — value is false → /* #undef */
+#cmakedefine FALSEVAL unreachable
+
+// cmakedefine — value is 0 (falsy) → /* #undef */
+#cmakedefine ZEROVAL unreachable
+
+// cmakedefine — value is 1 (truthy) → #define ... 1
+#cmakedefine ONEVAL 1
+
+// cmakedefine — value is 10 (truthy) → #define ... 1
+#cmakedefine TENVAL 1
+
+// cmakedefine — value is non-empty string (truthy) → #define ... 1
+#cmakedefine STRINGVAL 1
+
+// cmakedefine — leading whitespace preserved in output
+    #cmakedefine STRINGVAL 1
+	#cmakedefine STRINGVAL 1
+
+
+// cmakedefine01 — value is {} (defined, no value) → 0
+#cmakedefine01 BOOLNOVAL
+
+// cmakedefine01 — value is true → 1
+#cmakedefine01 BOOLTRUEVAL
+
+// cmakedefine01 — value is false → 0
+#cmakedefine01 BOOLFALSEVAL
+
+// cmakedefine01 — value is 0 (falsy) → 0
+#cmakedefine01 BOOLZEROVAL
+
+// cmakedefine01 — value is 1 (truthy) → 1
+#cmakedefine01 BOOLONEVAL
+
+// cmakedefine01 — value is 10 (truthy) → 1
+#cmakedefine01 BOOLTENVAL
+
+// cmakedefine01 — value is non-empty string (truthy) → 1
+#cmakedefine01 BOOLSTRINGVAL
+
+
+// @-substitution — value is null → empty string
+// @NOVAL@
+
+// @-substitution — null values produce nothing even when packed
+// @NOVAL@@NOVAL@
+
+// @-substitution — null values produce nothing even when separated
+// @NOVAL@.@NOVAL@
+
+// @-substitution — value is true → "1"
+// @TRUEVAL@
+
+// @-substitution — value is false → "0"
+// @FALSEVAL@
+
+// @-substitution — true + false packed → "10"
+// @TRUEVAL@@FALSEVAL@
+
+// @-substitution — false + true separated → "0.1"
+// @FALSEVAL@.@TRUEVAL@
+
+// @-substitution — value is 0 → "0"
+// @ZEROVAL@
+
+// @-substitution — value is 1 → "1"
+// @ONEVAL@
+
+// @-substitution — value is 10 → "10"
+// @TENVAL@
+
+// @-substitution — 0 + 1 packed → "01"
+// @ZEROVAL@@ONEVAL@
+
+// @-substitution — 0 + 10 separated → "0.10"
+// @ZEROVAL@.@TENVAL@
+
+// @-substitution — value is string "test" → "test"
+// @STRINGVAL@
+
+// @-substitution — strings packed → "testtest"
+// @STRINGVAL@@STRINGVAL@
+
+// @-substitution — strings separated → "test.test"
+// @STRINGVAL@.@STRINGVAL@
+
+// @-substitution — mixed null/string/true/zero → "test10"
+// @NOVAL@@STRINGVAL@@TRUEVAL@@ZEROVAL@
+
+// dollar-curly substitution — value is null → empty string
+// ${NOVAL}
+
+// dollar-curly substitution — null values produce nothing even when packed
+// ${NOVAL}${NOVAL}
+
+// dollar-curly substitution — null values produce nothing even when separated
+// ${NOVAL}.${NOVAL}
+
+// dollar-curly substitution — value is true → "1"
+// ${TRUEVAL}
+
+// dollar-curly substitution — value is false → "0"
+// ${FALSEVAL}
+
+// dollar-curly substitution — true + false packed → "10"
+// ${TRUEVAL}${FALSEVAL}
+
+// dollar-curly substitution — false + true separated → "0.1"
+// ${FALSEVAL}.${TRUEVAL}
+
+// dollar-curly substitution — value is 0 → "0"
+// ${ZEROVAL}
+
+// dollar-curly substitution — value is 1 → "1"
+// ${ONEVAL}
+
+// dollar-curly substitution — value is 10 → "10"
+// ${TENVAL}
+
+// dollar-curly substitution — 0 + 1 packed → "01"
+// ${ZEROVAL}${ONEVAL}
+
+// dollar-curly substitution — 0 + 10 separated → "0.10"
+// ${ZEROVAL}.${TENVAL}
+
+// dollar-curly substitution — value is string "test" → "test"
+// ${STRINGVAL}
+
+// dollar-curly substitution — strings packed → "testtest"
+// ${STRINGVAL}${STRINGVAL}
+
+// dollar-curly substitution — strings separated → "test.test"
+// ${STRINGVAL}.${STRINGVAL}
+
+// dollar-curly substitution — mixed null/string/true/zero → "test10"
+// ${NOVAL}${STRINGVAL}${TRUEVAL}${ZEROVAL}

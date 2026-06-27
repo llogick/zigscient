@@ -141,9 +141,6 @@
         .strip_struct_init = .{
             .path = "strip_struct_init",
         },
-        .cmakedefine = .{
-            .path = "cmakedefine",
-        },
         .zerolength_check = .{
             .path = "zerolength_check",
         },
