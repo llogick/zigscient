@@ -61,7 +61,7 @@ const hashes = [_]Hash{
         .init_default = true,
     },
     Hash{
-        .ty = hash.crc.Crc32,
+        .ty = hash.Crc32,
         .name = "crc32",
     },
     Hash{

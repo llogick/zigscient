@@ -455,7 +455,7 @@ fn loadInner(
     };
 
     if (opt_crc) |crc| {
-        if (std.hash.crc.Crc32.hash(mapped_mem) != crc) {
+        if (std.hash.Crc32.hash(mapped_mem) != crc) {
             return error.CrcMismatch;
         }
     }

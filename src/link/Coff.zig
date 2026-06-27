@@ -7,6 +7,7 @@ const std = @import("std");
 const Io = std.Io;
 const assert = std.debug.assert;
 const log = std.log.scoped(.link);
+const Crc32 = std.hash.crc.@"CRC-32/JAMCRC";
 
 const codegen = @import("../codegen.zig");
 const Compilation = @import("../Compilation.zig");
@@ -4599,7 +4600,7 @@ fn loadObject(
                         const sym = si.get(coff);
                         const existing_crc = switch (coff.getNode(sym.ni)) {
                             .input_section => |isi| isi.inputSection(coff).crc,
-                            else => std.hash.crc.Crc32Jamcrc.hash(sym.ni.sliceConst(&coff.mf)),
+                            else => Crc32.hash(sym.ni.sliceConst(&coff.mf)),
                         };
 
                         if (existing_crc == section.comdat_crc) {
