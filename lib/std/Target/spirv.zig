@@ -1766,32 +1766,44 @@ pub const all_features = blk: {
     result[@intFromEnum(Feature.v1_1)] = .{
         .llvm_name = null,
         .description = "Enable v1_1 Extension.",
-        .dependencies = featureSet(&[_]Feature{}),
+        .dependencies = featureSet(&[_]Feature{
+            .v1_0,
+        }),
     };
     result[@intFromEnum(Feature.v1_2)] = .{
         .llvm_name = null,
         .description = "Enable v1_2 Extension.",
-        .dependencies = featureSet(&[_]Feature{}),
+        .dependencies = featureSet(&[_]Feature{
+            .v1_1,
+        }),
     };
     result[@intFromEnum(Feature.v1_3)] = .{
         .llvm_name = null,
         .description = "Enable v1_3 Extension.",
-        .dependencies = featureSet(&[_]Feature{}),
+        .dependencies = featureSet(&[_]Feature{
+            .v1_2,
+        }),
     };
     result[@intFromEnum(Feature.v1_4)] = .{
         .llvm_name = null,
         .description = "Enable v1_4 Extension.",
-        .dependencies = featureSet(&[_]Feature{}),
+        .dependencies = featureSet(&[_]Feature{
+            .v1_3,
+        }),
     };
     result[@intFromEnum(Feature.v1_5)] = .{
         .llvm_name = null,
         .description = "Enable v1_5 Extension.",
-        .dependencies = featureSet(&[_]Feature{}),
+        .dependencies = featureSet(&[_]Feature{
+            .v1_4,
+        }),
     };
     result[@intFromEnum(Feature.v1_6)] = .{
         .llvm_name = null,
         .description = "Enable v1_6 Extension.",
-        .dependencies = featureSet(&[_]Feature{}),
+        .dependencies = featureSet(&[_]Feature{
+            .v1_5,
+        }),
     };
     result[@intFromEnum(Feature.variable_pointers)] = .{
         .llvm_name = null,

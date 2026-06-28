@@ -145,8 +145,6 @@ test "implicit cast to optional to error union to return result loc" {
 }
 
 test "fn returning empty error set can be passed as fn returning any error" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     entry();
     comptime entry();
 }

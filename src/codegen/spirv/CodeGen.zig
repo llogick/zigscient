@@ -1881,17 +1881,8 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
             const parent_ptr_ty = try oac.parent.ptrType(pt);
             const result_ty_id = try cg.resolveType(oac.new_ptr_ty, .direct);
 
-            if (parent_ptr_ty.childType(zcu).isVector(zcu)) {
-                // Vector element ptr accesses are derived as offset_and_cast.
-                // We can just use OpAccessChain.
-                const child_size = oac.new_ptr_ty.childType(zcu).abiSize(zcu);
-                if (oac.byte_offset % child_size == 0) {
-                    return cg.accessChain(
-                        result_ty_id,
-                        parent_ptr_id,
-                        &.{@intCast(@divExact(oac.byte_offset, child_size))},
-                    );
-                }
+            if (oac.new_ptr_ty.ptrInfo(zcu).flags.vector_index != .none) {
+                return parent_ptr_id;
             }
 
             if (oac.byte_offset == 0) {

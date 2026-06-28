@@ -242,7 +242,6 @@ test "tuple in tuple passed to generic function" {
 test "coerce tuple to tuple" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const T = @Tuple(&.{u8});
     const S = struct {

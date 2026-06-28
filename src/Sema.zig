@@ -27034,6 +27034,7 @@ fn elemPtrOneLayerOnly(
                 .vector => try sema.elemPtrVector(block, indexable_src, indexable, elem_index_src, elem_index, init),
                 .array => try sema.elemPtrArray(block, src, indexable_src, indexable, elem_index_src, elem_index, init, oob_safety),
                 .@"struct" => try sema.tupleElemPtr(block, indexable_src, indexable, elem_index, elem_index_src),
+                .spirv => try sema.elemPtrSpirvRuntimeArray(block, indexable, elem_index),
                 else => unreachable, // Guaranteed by checkIndexable
             };
             try sema.checkKnownAllocPtr(block, indexable, elem_ptr);

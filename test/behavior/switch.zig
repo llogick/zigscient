@@ -314,7 +314,6 @@ fn testSwitchEnumPtrCapture() !void {
 
 test "switch handles all cases of number" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try testSwitchHandleAllCases();
     try comptime testSwitchHandleAllCases();
@@ -1576,6 +1575,8 @@ test "repeated switch analysis overrides previous analysis results" {
 }
 
 test "union field pointer capture preserves alignment in inline prong" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const U = union(enum) {
         a: u32,
         b: u32,

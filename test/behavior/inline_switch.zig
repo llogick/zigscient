@@ -81,7 +81,7 @@ test "inline else bool" {
 
 test "inline else error" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const Err = error{ a, b, c };
     var a = Err.a;
     _ = &a;

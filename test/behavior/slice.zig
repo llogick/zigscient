@@ -787,8 +787,6 @@ test "slice bounds in comptime concatenation" {
 }
 
 test "slice sentinel access at comptime" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     {
         const str0 = &[_:0]u8{ '1', '2', '3' };
         const slice0: [:0]const u8 = str0;
@@ -809,7 +807,6 @@ test "slice sentinel access at comptime" {
 test "slicing array with sentinel as end index" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         fn do() !void {
             var array = [_:0]u8{ 1, 2, 3, 4 };

@@ -292,7 +292,6 @@ fn voidFun(a: i32, b: void, c: i32, d: void) !void {
 
 test "call function with empty string" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     acceptsString("");
 }

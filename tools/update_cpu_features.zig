@@ -80,7 +80,20 @@ const spirv_extra_features = blk: {
         feature.* = .{
             .zig_name = name,
             .desc = "Enable " ++ name ++ " extension",
-            .deps = &.{},
+            .deps = if (std.mem.eql(u8, name, "v1_6"))
+                &.{"v1_5"}
+            else if (std.mem.eql(u8, name, "v1_5"))
+                &.{"v1_4"}
+            else if (std.mem.eql(u8, name, "v1_4"))
+                &.{"v1_3"}
+            else if (std.mem.eql(u8, name, "v1_3"))
+                &.{"v1_2"}
+            else if (std.mem.eql(u8, name, "v1_2"))
+                &.{"v1_1"}
+            else if (std.mem.eql(u8, name, "v1_1"))
+                &.{"v1_0"}
+            else
+                &.{},
         };
     }
 

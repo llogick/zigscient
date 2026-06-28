@@ -1077,7 +1077,6 @@ test "initialize sentinel-terminated slice with reference to empty array initial
 }
 
 test "initialize sentinel-terminated many-pointer with reference to empty array initializer" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const a: [*:0]const u8 = &.{};
     comptime assert(a[0] == 0);
 }

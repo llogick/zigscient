@@ -1389,7 +1389,6 @@ fn testOr(comptime T: type, a: T, b: T, expected: T) !void {
 test "or > 128 bits" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try testOr(u140, 0, 1 << 139, 1 << 139);
     try testOr(u140, (1 << 70) | 0xa, (1 << 69) | 0x5, (1 << 70) | (1 << 69) | 0xf);

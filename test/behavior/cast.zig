@@ -433,8 +433,6 @@ test "implicit cast from *[N]T to [*c]T" {
 }
 
 test "*usize to *void" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     var i = @as(usize, 0);
     const v: *void = @ptrCast(&i);
     v.* = {};
