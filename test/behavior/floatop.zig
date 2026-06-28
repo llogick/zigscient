@@ -1544,7 +1544,6 @@ fn testNeg(comptime T: type) !void {
 }
 
 test "negate f80" {
-    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     var f: f80 = 0.0;

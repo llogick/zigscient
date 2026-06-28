@@ -945,7 +945,7 @@ pub inline fn backendSupportsFeature(backend: std.lang.CompilerBackend, comptime
             else => false,
         },
         .field_reordering => switch (backend) {
-            .stage2_aarch64, .stage2_c, .stage2_llvm, .stage2_x86_64 => true,
+            .stage2_aarch64, .stage2_c, .stage2_llvm, .stage2_x86_64, .stage2_wasm => true,
             else => false,
         },
         .separate_thread => switch (backend) {

@@ -14400,13 +14400,6 @@ pub fn nanosecondsFromPosix(timespec: *const posix.timespec) i96 {
 }
 
 fn timestampToPosix(nanoseconds: i96) posix.timespec {
-    if (builtin.zig_backend == .stage2_wasm) {
-        // Workaround for https://codeberg.org/ziglang/zig/issues/30575
-        return .{
-            .sec = @intCast(@divTrunc(nanoseconds, std.time.ns_per_s)),
-            .nsec = @intCast(@rem(nanoseconds, std.time.ns_per_s)),
-        };
-    }
     return .{
         .sec = @intCast(@divFloor(nanoseconds, std.time.ns_per_s)),
         .nsec = @intCast(@mod(nanoseconds, std.time.ns_per_s)),

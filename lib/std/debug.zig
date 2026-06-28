@@ -494,7 +494,6 @@ const use_trap_panic = switch (builtin.zig_backend) {
     .stage2_powerpc,
     .stage2_riscv64,
     .stage2_spirv,
-    .stage2_wasm,
     .stage2_x86,
     => true,
     else => false,

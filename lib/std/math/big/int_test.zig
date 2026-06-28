@@ -2795,7 +2795,6 @@ test "bitNotWrap signed multi" {
 
 test "bitNotWrap more than two limbs" {
     // This test requires int sizes greater than 128 bits.
-    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
 

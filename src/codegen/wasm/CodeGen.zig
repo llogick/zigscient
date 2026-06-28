@@ -4345,7 +4345,7 @@ fn floatNeg(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
             try cg.addMemArg(.i64_load, .{ .offset = 8 + arg.offset(), .alignment = 2 });
             try cg.addImm64(0x8000);
             try cg.addTag(.i64_xor);
-            try cg.addMemArg(.i64_store16, .{ .offset = 8 + result.offset(), .alignment = 2 });
+            try cg.addMemArg(.i64_store, .{ .offset = 8 + result.offset(), .alignment = 2 });
             return result;
         },
         .f128 => {
@@ -6652,15 +6652,12 @@ fn airAggregateInit(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
                 .@"packed" => unreachable, // legalize .expand_packed_aggregate_init
                 else => {
                     const result = try cg.allocStack(result_ty);
-                    const offset = try cg.buildPointerOffset(result, 0, .new); // pointer to offset
-                    var prev_field_offset: u64 = 0;
                     for (elements, 0..) |elem, elem_index| {
                         if (try result_ty.structFieldValueComptime(pt, elem_index) != null) continue;
 
                         const elem_ty = result_ty.fieldType(elem_index, zcu);
                         const field_offset = result_ty.structFieldOffset(elem_index, zcu);
-                        _ = try cg.buildPointerOffset(offset, @intCast(field_offset - prev_field_offset), .modify);
-                        prev_field_offset = field_offset;
+                        const offset = try cg.buildPointerOffset(result, field_offset, .new);
 
                         const value = try cg.resolveInst(elem);
                         try cg.store(offset, value, elem_ty, 0);

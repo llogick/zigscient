@@ -1484,7 +1484,6 @@ test "optional generic function label struct field" {
 
 test "struct fields get automatically reordered" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest; // TODO
 
     const S1 = struct {

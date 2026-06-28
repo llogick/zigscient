@@ -1646,8 +1646,6 @@ test "format f64" {
 }
 
 test "format f80" {
-    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
-
     try check(f80, 0.0, "0e0");
     try check(f80, -0.0, "-0e0");
     try check(f80, 1.0, "1e0");
