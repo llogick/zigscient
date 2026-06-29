@@ -60,6 +60,7 @@ test {
     _ = @import("behavior/nan.zig");
     _ = @import("behavior/null.zig");
     _ = @import("behavior/optional.zig");
+    _ = @import("behavior/overlapping_assign.zig");
     _ = @import("behavior/packed-struct.zig");
     _ = @import("behavior/packed_struct_explicit_backing_int.zig");
     _ = @import("behavior/packed-union.zig");
