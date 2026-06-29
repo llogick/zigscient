@@ -51,6 +51,27 @@ pub fn build(b: *std.Build) void {
     });
     test_step.dependOn(&check_config_header_autoconf_at.step);
 
+    const config_header_meson = b.addConfigHeader(
+        .{ .style = .{
+            .meson = b.path("meson/mesondefine.h.in"),
+        } },
+        .{
+            .version = "1.2.3",
+            .boolean_true = true,
+            .boolean_false = false,
+            .uint_64 = 42,
+            .int_64 = -42,
+            .string = "meson",
+            .ident = .meson,
+            .not_defined = null,
+            .is_defined = {},
+        },
+    );
+    const check_config_header_meson = b.addCheckFile(config_header_meson.getOutputFile(), .{
+        .expected_exact = @embedFile("meson/mesondefine.h"),
+    });
+    test_step.dependOn(&check_config_header_meson.step);
+
     const config_header_blank = b.addConfigHeader(
         .{
             .style = .blank,

@@ -27,6 +27,9 @@ pub const Style = union(enum) {
     /// The configure format supported by CMake. It uses `@FOO@`, `${}` and
     /// `#cmakedefine` for template substitution.
     cmake: std.Build.LazyPath,
+    /// The configure format supported by Meson. It uses `@FOO@`, and
+    /// `#mesondefine` for template substitution.
+    meson: std.Build.LazyPath,
     /// Instead of starting with an input file, start with nothing.
     blank,
     /// Start with nothing, like blank, and output a nasm .asm file.
@@ -34,7 +37,7 @@ pub const Style = union(enum) {
 
     pub fn getPath(style: Style) ?std.Build.LazyPath {
         switch (style) {
-            .autoconf_undef, .autoconf_at, .cmake => |s| return s,
+            .autoconf_undef, .autoconf_at, .cmake, .meson => |s| return s,
             .blank, .nasm => return null,
         }
     }

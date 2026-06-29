@@ -1076,6 +1076,7 @@ pub const Step = extern struct {
             autoconf_undef,
             autoconf_at,
             cmake,
+            meson,
             blank,
             nasm,
 
@@ -1084,6 +1085,7 @@ pub const Step = extern struct {
                     .autoconf_undef => .autoconf_undef,
                     .autoconf_at => .autoconf_at,
                     .cmake => .cmake,
+                    .meson => .meson,
                     .blank => .blank,
                     .nasm => .nasm,
                 };

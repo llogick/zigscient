@@ -1,0 +1,21 @@
+// comments are preserved
+
+// empty lines are preserved
+
+#define VERSION_STR "@version@"
+
+#mesondefine boolean_true /* comment after define is okay */
+
+#mesondefine boolean_false // same for line comment
+
+#mesondefine uint_64
+
+#mesondefine int_64
+
+#mesondefine string
+
+#mesondefine ident
+
+#mesondefine not_defined
+
+#mesondefine is_defined

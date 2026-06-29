@@ -93,6 +93,32 @@ pub fn make(
                 else => |e| return e,
             };
         },
+        .meson => {
+            const tf = template_file.?;
+            const contents = tf.root_dir.handle.readFileAlloc(
+                io,
+                tf.sub_path,
+                arena,
+                input_size_limit,
+            ) catch |err| return step.fail(
+                maker,
+                "unable to read meson input file {f}: {t}",
+                .{ tf, err },
+            );
+
+            renderMeson(
+                maker,
+                step,
+                contents,
+                &aw,
+                value_pairs,
+                &value_map,
+                tf,
+            ) catch |err| switch (err) {
+                error.WriteFailed => return error.OutOfMemory,
+                else => |e| return e,
+            };
+        },
         .blank => {
             renderBlank(conf, &aw.writer, value_pairs, &value_map, include_path, include_guard_override) catch |err| switch (err) {
                 error.WriteFailed => return error.OutOfMemory,
@@ -370,6 +396,62 @@ fn renderCmake(
     if (any_errors) return error.MakeFailed;
 }
 
+fn renderMeson(
+    maker: *Maker,
+    step: *Step,
+    contents: []const u8,
+    aw: *Writer.Allocating,
+    value_pairs: []const Value.Pair,
+    value_map: *const ValueMap,
+    src_path: Path,
+) !void {
+    const w = &aw.writer;
+    const conf = &maker.scanned_config.configuration;
+    const newline = detectNewline(contents);
+
+    try w.writeAll(c_generated_line);
+    try w.writeAll(newline);
+
+    var any_errors = false;
+    var line_index: u32 = 0;
+    var line_it = std.mem.splitScalar(u8, contents, '\n');
+    // https://mesonbuild.com/Configuration.html
+    while (line_it.next()) |raw_line| : (line_index += 1) {
+        const last_line = line_it.index == line_it.buffer.len;
+        const line = std.mem.trimEnd(u8, raw_line, "\r");
+
+        const old_len = aw.written().len;
+        expandVariablesMeson(w, conf, line, value_pairs, value_map) catch |err| switch (err) {
+            error.MissingToken => {
+                try step.addError(maker, "{f}:{d}: error: missing define name", .{ src_path, line_index + 1 });
+                any_errors = true;
+                continue;
+            },
+            error.MissingValue => {
+                const name = aw.written()[old_len..];
+                defer aw.shrinkRetainingCapacity(old_len);
+
+                try step.addError(maker, "{f}:{d}: error: unspecified config header value: {q}", .{
+                    src_path, line_index + 1, name,
+                });
+                any_errors = true;
+                continue;
+            },
+            else => {
+                try step.addError(maker, "{f}:{d}: unable to substitute variable: error: {t}", .{
+                    src_path, line_index + 1, err,
+                });
+                any_errors = true;
+                continue;
+            },
+        };
+        if (!last_line) try w.writeAll(newline);
+    }
+
+    try ensureAllValuesUsed(maker, step, value_map, src_path);
+    if (any_errors) return error.MakeFailed;
+}
+
 fn renderBlank(
     conf: *const Configuration,
     w: *Writer,
@@ -429,6 +511,28 @@ fn renderValueC(conf: *const Configuration, w: *Writer, newline: []const u8, nam
         inline .u64, .i64 => |i| try w.print("#define {s} {d}{s}", .{ name, i, newline }),
         .ident => |ident| return renderValueCIdent(w, newline, name, ident),
         .string => |string| try w.print("#define {s} \"{f}\"{s}", .{ name, std.zig.fmtString(string), newline }),
+    }
+}
+
+fn renderValueMeson(
+    conf: *const Configuration,
+    w: *Writer,
+    name: []const u8,
+    value: Value.Index,
+) !void {
+    switch (value.unpack(conf)) {
+        .undef => try w.print("/* #undef {s} */", .{name}),
+        .defined => try w.print("#define {s}", .{name}),
+        .bool => |b| {
+            if (b) {
+                try w.print("#define {s}", .{name});
+            } else {
+                try w.print("#undef {s}", .{name});
+            }
+        },
+        inline .u64, .i64 => |int| try w.print("#define {s} {d}", .{ name, int }),
+        .ident => |ident| try w.print("#define {s} {s}", .{ name, ident }),
+        .string => |string| try w.print("#define {s} \"{f}\"", .{ name, std.zig.fmtString(string) }),
     }
 }
 
@@ -627,4 +731,37 @@ fn expandVariablesCmake(
     try result.shrinkToLen(arena);
 
     return result.toOwnedSliceAssert();
+}
+
+fn expandVariablesMeson(
+    w: *Writer,
+    conf: *const Configuration,
+    line: []const u8,
+    value_pairs: []const Value.Pair,
+    value_map: *const ValueMap,
+) !void {
+    const mesondefine = "#mesondefine";
+    if (std.mem.startsWith(u8, line, mesondefine)) {
+        const line_offset = mesondefine.len + 1;
+        if (line_offset > line.len) return error.MissingToken;
+
+        var it = std.mem.tokenizeAny(u8, line[line_offset..], " \t\r");
+        const name = it.next() orelse return error.MissingToken;
+
+        const index = value_map.getIndex(name) orelse {
+            // Report the missing key to the caller.
+            try w.writeAll(name);
+            return error.MissingValue;
+        };
+
+        const value = value_pairs[index].index;
+        value_map.values()[index] = true; // Mark as used.
+
+        try renderValueMeson(conf, w, name, value);
+
+        // comments/any other text passthrough unaffected
+        return try w.writeAll(line[line_offset + name.len ..]);
+    }
+
+    try expandVariablesAutoconfAt(w, line, conf, value_pairs, value_map);
 }
