@@ -14,7 +14,7 @@ const Type = @import("../../Type.zig");
 const Value = @import("../../Value.zig");
 const link = @import("../../link.zig");
 const Zcu = @import("../../Zcu.zig");
-const Package = @import("../../Package.zig");
+const Module = @import("../../Module.zig");
 const InternPool = @import("../../InternPool.zig");
 const Compilation = @import("../../Compilation.zig");
 const target_util = @import("../../target.zig");
@@ -66,7 +66,7 @@ liveness: Air.Liveness,
 bin_file: *link.File,
 gpa: Allocator,
 
-mod: *Package.Module,
+mod: *Module,
 target: *const std.Target,
 args: []MCValue,
 ret_mcv: InstTracking,

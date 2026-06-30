@@ -3,7 +3,6 @@ const ObjCopy = @This();
 const std = @import("std");
 const Io = std.Io;
 const Path = std.Build.Cache.Path;
-const allocPrint = std.fmt.allocPrint;
 const Configuration = std.Build.Configuration;
 
 const Step = @import("../Step.zig");
@@ -55,7 +54,7 @@ pub fn make(
             .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest, basename }),
         };
         if (conf_oc.debug_file.value) |debug_file| {
-            const debug_basename = opt_debug_basename orelse try allocPrint(arena, "{s}.debug", .{
+            const debug_basename = opt_debug_basename orelse try arena.print("{s}.debug", .{
                 Io.Dir.path.basename(input_path.sub_path),
             });
             maker.generatedPath(debug_file).* = .{
@@ -92,7 +91,7 @@ pub fn make(
 
     if (conf_oc.pad_to.value) |pad_to| {
         argv.addManyAsArrayAssumeCapacity(2).* = .{
-            "--pad-to", try allocPrint(arena, "{d}", .{pad_to}),
+            "--pad-to", try arena.print("{d}", .{pad_to}),
         };
     }
 
@@ -105,14 +104,14 @@ pub fn make(
         argv.appendAssumeCapacity("--compress-debug-sections");
 
     if (conf_oc.debug_file.value) |debug_file| {
-        const debug_basename = opt_debug_basename orelse try allocPrint(arena, "{s}.debug", .{
+        const debug_basename = opt_debug_basename orelse try arena.print("{s}.debug", .{
             Io.Dir.path.basename(input_path.sub_path),
         });
         const debug_dest_path: Path = .{
             .root_dir = cache_root,
             .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest, debug_basename }),
         };
-        argv.appendAssumeCapacity(try allocPrint(arena, "--extract-to={f}", .{debug_dest_path}));
+        argv.appendAssumeCapacity(try arena.print("--extract-to={f}", .{debug_dest_path}));
         maker.generatedPath(debug_file).* = debug_dest_path;
     }
 
@@ -120,7 +119,7 @@ pub fn make(
 
     for (conf_oc.add_section.slice) |section| {
         argv.appendAssumeCapacity("--add-section");
-        argv.appendAssumeCapacity(try allocPrint(arena, "{s}={f}", .{
+        argv.appendAssumeCapacity(try arena.print("{s}={f}", .{
             section.section_name.slice(conf),
             try maker.resolveLazyPathIndex(arena, section.file_path, step_index),
         }));
@@ -133,14 +132,14 @@ pub fn make(
 
         if (update.flags.alignment.toBytes()) |a| {
             argv.appendAssumeCapacity("--set-section-alignment");
-            argv.appendAssumeCapacity(try allocPrint(arena, "{s}={d}", .{ name, a }));
+            argv.appendAssumeCapacity(try arena.print("{s}={d}", .{ name, a }));
         }
 
         const f = update.flags.section_flags;
         if (f != Configuration.Step.ObjCopy.SectionFlags.default) {
             // trailing comma is allowed
             argv.appendAssumeCapacity("--set-section-flags");
-            argv.appendAssumeCapacity(try allocPrint(arena, "{s}={s}{s}{s}{s}{s}{s}{s}{s}{s}", .{
+            argv.appendAssumeCapacity(try arena.print("{s}={s}{s}{s}{s}{s}{s}{s}{s}{s}", .{
                 name,
                 if (f.alloc) "alloc," else "",
                 if (f.contents) "contents," else "",
@@ -155,8 +154,8 @@ pub fn make(
         }
     }
 
-    argv.appendAssumeCapacity(try allocPrint(arena, "{f}", .{input_path}));
-    argv.appendAssumeCapacity(try allocPrint(arena, "{f}", .{dest_path}));
+    argv.appendAssumeCapacity(try arena.print("{f}", .{input_path}));
+    argv.appendAssumeCapacity(try arena.print("{f}", .{dest_path}));
 
     argv.appendAssumeCapacity("--listen=-");
     _ = Step.evalZigProcess(step_index, maker, argv.items, progress_node, false) catch |err| switch (err) {

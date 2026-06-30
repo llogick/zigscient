@@ -7592,7 +7592,7 @@ pub fn layout(
     is_sysv_var_args: bool,
     saved_gra_len: u7,
     saved_vra_len: u7,
-    mod: *const Package.Module,
+    mod: *const Module,
 ) !usize {
     const zcu = isel.pt.zcu;
     const ip = &zcu.intern_pool;
@@ -12513,7 +12513,7 @@ const assert = std.debug.assert;
 const codegen = @import("../../codegen.zig");
 const Constant = @import("../../Value.zig");
 const InternPool = @import("../../InternPool.zig");
-const Package = @import("../../Package.zig");
+const Module = @import("../../Module.zig");
 const Register = codegen.aarch64.encoding.Register;
 const Select = @This();
 const std = @import("std");

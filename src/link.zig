@@ -21,7 +21,6 @@ const Zcu = @import("Zcu.zig");
 const InternPool = @import("InternPool.zig");
 const Type = @import("Type.zig");
 const Value = @import("Value.zig");
-const Package = @import("Package.zig");
 const dev = @import("dev.zig");
 const target_util = @import("target.zig");
 const codegen = @import("codegen.zig");

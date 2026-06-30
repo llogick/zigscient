@@ -43,8 +43,10 @@ cmake .. \
 
 ninja install
 
+# Must be done after zig cc is finished.
+export ZIG_LIB_DIR="$PWD/../lib"
+
 stage3-release/bin/zig build test docs \
-  --zig-lib-dir "$PWD/../lib" \
   -Denable-macos-sdk \
   -Dstatic-llvm \
   -Dskip-spirv \

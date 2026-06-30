@@ -577,7 +577,7 @@ pub fn resolve(options: Options) ResolveError!Config {
 }
 
 const std = @import("std");
-const Module = @import("../Package.zig").Module;
+const Module = @import("../Module.zig");
 const Config = @This();
 const target_util = @import("../target.zig");
 const build_options = @import("build_options");

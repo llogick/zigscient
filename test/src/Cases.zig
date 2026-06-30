@@ -316,20 +316,19 @@ pub fn addCompile(
 /// Each file should include a test manifest as a contiguous block of comments at
 /// the end of the file. The first line should be the test type, followed by a set of
 /// key-value config values, followed by a blank line, then the expected output.
-pub fn addFromDir(ctx: *Cases, dir: Io.Dir, b: *std.Build) void {
+pub fn addFromDir(ctx: *Cases, dir: Io.Dir, path_from_root: []const u8, b: *std.Build) void {
     var current_file: []const u8 = "none";
-    ctx.addFromDirInner(dir, &current_file, b) catch |err| {
-        std.debug.panicExtra(
-            @returnAddress(),
-            "test harness failed to process file '{s}': {s}\n",
-            .{ current_file, @errorName(err) },
-        );
+    ctx.addFromDirInner(dir, path_from_root, &current_file, b) catch |err| {
+        std.debug.panicExtra(@returnAddress(), "test harness failed to process file {q}: {t}\n", .{
+            current_file, err,
+        });
     };
 }
 
 fn addFromDirInner(
     ctx: *Cases,
     iterable_dir: Io.Dir,
+    path_from_root: []const u8,
     /// This is kept up to date with the currently being processed file so
     /// that if any errors occur the caller knows it happened during this file.
     current_file: *[]const u8,
@@ -340,11 +339,19 @@ fn addFromDirInner(
     var filenames: ArrayList([]const u8) = .empty;
 
     while (try it.next(io)) |entry| {
-        if (entry.kind != .file) continue;
-
         // Ignore stuff such as .swp files
         if (!knownFileExtension(entry.basename)) continue;
-        try filenames.append(ctx.arena, try ctx.arena.dupe(u8, entry.path));
+
+        switch (entry.kind) {
+            .file => {
+                b.dependOnFileContents(b.path(b.pathJoin(&.{ path_from_root, entry.path })));
+                try filenames.append(ctx.arena, try ctx.arena.dupe(u8, entry.path));
+            },
+            .directory => {
+                b.dependOnDirectory(b.path(b.pathJoin(&.{ path_from_root, entry.path })));
+            },
+            else => continue,
+        }
     }
 
     for (filenames.items) |filename| {

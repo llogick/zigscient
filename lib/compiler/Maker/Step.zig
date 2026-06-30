@@ -584,7 +584,7 @@ fn zigProcessUpdate(step_index: Configuration.Step.Index, maker: *Maker, zp: *Zi
                 if (!maker.dump_compile_step_info) if (!std.mem.eql(u8, builtin.zig_version_string, body)) {
                     return s.fail(
                         maker,
-                        "zig version mismatch build runner vs compiler: '{s}' vs '{s}'",
+                        "zig version mismatch build runner vs compiler: {q} vs {q}",
                         .{ builtin.zig_version_string, body },
                     );
                 };
@@ -654,7 +654,7 @@ fn zigProcessUpdate(step_index: Configuration.Step.Index, maker: *Maker, zp: *Zi
                     }
                 }
             },
-            .time_report => if (maker.web_server) |*ws| {
+            .time_report => if (maker.web_server) |ws| {
                 const TimeReport = std.zig.Server.Message.TimeReport;
                 const tr: *align(1) const TimeReport = @ptrCast(body[0..@sizeOf(TimeReport)]);
                 ws.updateTimeReportCompile(.{

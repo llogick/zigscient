@@ -6,7 +6,7 @@ const target_util = @import("../target.zig");
 const Compilation = @import("../Compilation.zig");
 const build_options = @import("build_options");
 const trace = @import("../tracy.zig").trace;
-const Module = @import("../Package/Module.zig");
+const Module = @import("../Module.zig");
 
 const libcxxabi_files = [_][]const u8{
     "src/cxa_aux_runtime.cpp",

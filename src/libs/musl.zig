@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 const mem = std.mem;
 const path = std.fs.path;
 const assert = std.debug.assert;
-const Module = @import("../Package/Module.zig");
+const Module = @import("../Module.zig");
 
 const Compilation = @import("../Compilation.zig");
 const build_options = @import("build_options");

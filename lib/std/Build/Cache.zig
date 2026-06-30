@@ -28,7 +28,7 @@ mutex: Io.Mutex = .init,
 /// are replaced with single-character indicators. This is not to save
 /// space but to eliminate absolute file paths. This improves portability
 /// and usefulness of the cache for advanced use cases.
-prefixes_buffer: [4]Directory = undefined,
+prefixes_buffer: [5]Directory = undefined,
 prefixes_len: usize = 0,
 /// Used to identify prefixes. References external memory.
 cwd: []const u8,
@@ -57,7 +57,7 @@ pub fn prefixes(cache: *const Cache) []const Directory {
     return cache.prefixes_buffer[0..cache.prefixes_len];
 }
 
-const PrefixedPath = struct {
+pub const PrefixedPath = struct {
     prefix: u8,
     sub_path: []const u8,
 
@@ -69,6 +69,15 @@ const PrefixedPath = struct {
         return @truncate(std.hash.Wyhash.hash(pp.prefix, pp.sub_path));
     }
 };
+
+fn findPrefixPath(cache: *const Cache, path: Path) !PrefixedPath {
+    const gpa = cache.gpa;
+    const resolved_path = try std.fs.path.resolve(gpa, &.{
+        cache.cwd, path.root_dir.path orelse ".", path.subPathOrDot(),
+    });
+    errdefer gpa.free(resolved_path);
+    return findPrefixResolved(cache, resolved_path);
+}
 
 fn findPrefix(cache: *const Cache, file_path: []const u8) !PrefixedPath {
     const gpa = cache.gpa;
@@ -91,13 +100,13 @@ fn findPrefixResolved(cache: *const Cache, resolved_path: []u8) !PrefixedPath {
         };
         // Free the resolved path since we're not going to return it
         gpa.free(resolved_path);
-        return PrefixedPath{
+        return .{
             .prefix = i,
             .sub_path = sub_path,
         };
     }
 
-    return PrefixedPath{
+    return .{
         .prefix = 0,
         .sub_path = resolved_path,
     };
@@ -998,20 +1007,34 @@ pub const Manifest = struct {
     /// This is useful for processes that don't know the all the files that are
     /// depended on ahead of time. For example, a source file that can import
     /// other files will need to be recompiled if the imported file is changed.
-    pub fn addFilePost(self: *Manifest, file_path: []const u8) !void {
-        assert(self.manifest_file != null);
+    pub fn addFilePost(man: *Manifest, file_path: []const u8) !void {
+        assert(man.manifest_file != null);
+        const gpa = man.cache.gpa;
+        const prefixed_path = try man.cache.findPrefix(file_path);
+        var keep = false;
+        defer if (!keep) gpa.free(prefixed_path.sub_path);
+        keep = try addPrefixedPathPost(man, prefixed_path);
+    }
 
-        const gpa = self.cache.gpa;
-        const prefixed_path = try self.cache.findPrefix(file_path);
-        errdefer gpa.free(prefixed_path.sub_path);
+    pub fn addPathPost(man: *Manifest, path: Path) !void {
+        assert(man.manifest_file != null);
+        const gpa = man.cache.gpa;
+        const prefixed_path: PrefixedPath = try man.cache.findPrefixPath(path);
+        var keep = false;
+        defer if (!keep) gpa.free(prefixed_path.sub_path);
+        keep = try addPrefixedPathPost(man, prefixed_path);
+    }
 
-        const gop = try self.files.getOrPutAdapted(gpa, prefixed_path, FilesAdapter{});
-        errdefer _ = self.files.pop();
+    /// Low level function. `prefixed_path` references cloned memory. Returns
+    /// whether or not `prefixed_path.sub_path` should be kept.
+    pub fn addPrefixedPathPost(man: *Manifest, prefixed_path: PrefixedPath) !bool {
+        assert(man.manifest_file != null);
+        const gpa = man.cache.gpa;
 
-        if (gop.found_existing) {
-            gpa.free(prefixed_path.sub_path);
-            return;
-        }
+        const gop = try man.files.getOrPutAdapted(gpa, prefixed_path, FilesAdapter{});
+        errdefer _ = man.files.pop();
+
+        if (gop.found_existing) return false;
 
         gop.key_ptr.* = .{
             .prefixed_path = prefixed_path,
@@ -1022,16 +1045,11 @@ pub const Manifest = struct {
             .contents = null,
         };
 
-        self.files.lockPointers();
-        defer self.files.unlockPointers();
+        man.files.lockPointers();
+        defer man.files.unlockPointers();
 
-        try self.populateFileHash(gop.key_ptr);
-    }
-
-    pub fn addPathPost(man: *Manifest, path: Path) !void {
-        _ = man;
-        _ = path;
-        @panic("TODO");
+        try man.populateFileHash(gop.key_ptr);
+        return true;
     }
 
     /// Like `addFilePost` but when the file contents have already been loaded from disk.

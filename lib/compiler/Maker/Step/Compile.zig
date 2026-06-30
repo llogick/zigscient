@@ -10,7 +10,6 @@ const Module = std.Build.Configuration.Module;
 const Io = std.Io;
 const Sha256 = std.crypto.hash.sha2.Sha256;
 const assert = std.debug.assert;
-const allocPrint = std.fmt.allocPrint;
 
 const Step = @import("../Step.zig");
 const Maker = @import("../../Maker.zig");
@@ -206,7 +205,7 @@ fn lowerZigArgs(
     try zig_args.append(gpa, cmd);
 
     if (graph.reference_trace) |some| {
-        try zig_args.append(gpa, try allocPrint(arena, "-freference-trace={d}", .{some}));
+        try zig_args.append(gpa, try arena.print("-freference-trace={d}", .{some}));
     }
     try addFlag(gpa, zig_args, "allow-so-scripts", conf_comp.flags2.allow_so_scripts.toBool() orelse graph.allow_so_scripts);
 
@@ -218,7 +217,7 @@ fn lowerZigArgs(
 
     if (root_module.resolved_target.get(conf).?.query.unwrap()) |query| {
         if (query.get(conf).flags.object_format.unwrap()) |ofmt| {
-            try zig_args.append(gpa, try allocPrint(arena, "-ofmt={t}", .{ofmt}));
+            try zig_args.append(gpa, try arena.print("-ofmt={t}", .{ofmt}));
         }
     }
 
@@ -228,7 +227,7 @@ fn lowerZigArgs(
         .enabled => try zig_args.append(gpa, "-fentry"),
         .symbol_name => {
             const symbol_name = conf_comp.entry.value.?.slice(conf);
-            try zig_args.append(gpa, try allocPrint(arena, "-fentry={s}", .{symbol_name}));
+            try zig_args.append(gpa, try arena.print("-fentry={s}", .{symbol_name}));
         },
     }
 
@@ -237,7 +236,7 @@ fn lowerZigArgs(
     }
 
     if (conf_comp.stack_size.value) |stack_size| {
-        try zig_args.appendSlice(gpa, &.{ "--stack", try allocPrint(arena, "{d}", .{stack_size}) });
+        try zig_args.appendSlice(gpa, &.{ "--stack", try arena.print("{d}", .{stack_size}) });
     }
 
     try addBool(gpa, zig_args, "-ffuzz", fuzz);
@@ -373,7 +372,7 @@ fn lowerZigArgs(
                                     else => |e| return e,
                                 }
                             }
-                            try zig_args.append(gpa, try allocPrint(arena, "{s}{s}", .{
+                            try zig_args.append(gpa, try arena.print("{s}{s}", .{
                                 prefix, system_lib_name,
                             }));
                         }
@@ -553,7 +552,7 @@ fn lowerZigArgs(
                         if (mem.eql(u8, import_cli_name, name_slice)) {
                             zig_args.appendAssumeCapacity(import_cli_name);
                         } else {
-                            zig_args.appendAssumeCapacity(try allocPrint(arena, "{s}={s}", .{
+                            zig_args.appendAssumeCapacity(try arena.print("{s}={s}", .{
                                 name_slice, import_cli_name,
                             }));
                         }
@@ -569,7 +568,7 @@ fn lowerZigArgs(
                     try zig_args.ensureUnusedCapacity(gpa, 1);
                     if (mod.root_source_file.unwrap()) |lp| {
                         const src = try maker.resolveLazyPathIndexAbs(arena, lp, compile_index);
-                        zig_args.appendAssumeCapacity(try allocPrint(arena, "-M{s}={s}", .{ module_cli_name, src }));
+                        zig_args.appendAssumeCapacity(try arena.print("-M{s}={s}", .{ module_cli_name, src }));
                         if (maker.dump_compile_step_info) blk: {
                             var info = maker.compile_steps_info.getPtr(compile_index) orelse break :blk;
                             if (info.args.items.len == 0) {
@@ -581,7 +580,7 @@ fn lowerZigArgs(
                             }
                         }
                     } else if (moduleNeedsCliArg(&mod, conf)) {
-                        zig_args.appendAssumeCapacity(try allocPrint(arena, "-M{s}", .{module_cli_name}));
+                        zig_args.appendAssumeCapacity(try arena.print("-M{s}", .{module_cli_name}));
                     }
                 }
             }
@@ -620,7 +619,7 @@ fn lowerZigArgs(
 
     if (conf_comp.image_base.value) |image_base| {
         (try zig_args.addManyAsArray(gpa, 2)).* = .{
-            "--image-base", try allocPrint(arena, "0x{x}", .{image_base}),
+            "--image-base", try arena.print("0x{x}", .{image_base}),
         };
     }
 
@@ -680,10 +679,10 @@ fn lowerZigArgs(
     if (!conf_comp.flags.link_z_relro) (try zig_args.addManyAsArray(gpa, 2)).* = .{ "-z", "norelro" };
     if (conf_comp.flags.link_z_lazy) (try zig_args.addManyAsArray(gpa, 2)).* = .{ "-z", "lazy" };
     if (conf_comp.link_z_common_page_size.value) |size| (try zig_args.addManyAsArray(gpa, 2)).* = .{
-        "-z", try allocPrint(arena, "common-page-size={d}", .{size}),
+        "-z", try arena.print("common-page-size={d}", .{size}),
     };
     if (conf_comp.link_z_max_page_size.value) |size| (try zig_args.addManyAsArray(gpa, 2)).* = .{
-        "-z", try allocPrint(arena, "max-page-size={d}", .{size}),
+        "-z", try arena.print("max-page-size={d}", .{size}),
     };
     if (conf_comp.flags.link_z_defs) (try zig_args.addManyAsArray(gpa, 2)).* = .{ "-z", "defs" };
 
@@ -704,7 +703,7 @@ fn lowerZigArgs(
     try zig_args.ensureUnusedCapacity(gpa, 1);
     if (graph.debug_compiler_runtime_libs) |mode| switch (mode) {
         .Debug => zig_args.appendAssumeCapacity("--debug-rt"),
-        else => zig_args.appendAssumeCapacity(try allocPrint(arena, "--debug-rt={t}", .{mode})),
+        else => zig_args.appendAssumeCapacity(try arena.print("--debug-rt={t}", .{mode})),
     };
 
     {
@@ -728,15 +727,9 @@ fn lowerZigArgs(
                 const abi = root_module_target.flags.abi.unwrap().?;
                 zig_args.addManyAsArrayAssumeCapacity(2).* = .{
                     "-install_name",
-                    if (conf_comp.install_name.value) |s| s.slice(conf) else try allocPrint(
-                        arena,
-                        "@rpath/{s}{s}{s}",
-                        .{
-                            os_tag.libPrefix(abi),
-                            conf_comp.root_name.slice(conf),
-                            os_tag.dynamicLibSuffix(),
-                        },
-                    ),
+                    if (conf_comp.install_name.value) |s| s.slice(conf) else try arena.print("@rpath/{s}{s}{s}", .{
+                        os_tag.libPrefix(abi), conf_comp.root_name.slice(conf), os_tag.dynamicLibSuffix(),
+                    }),
                 };
             }
         }
@@ -749,12 +742,12 @@ fn lowerZigArgs(
     }
     if (conf_comp.pagezero_size.value) |pagezero_size| {
         (try zig_args.addManyAsArray(gpa, 2)).* = .{
-            "-pagezero_size", try allocPrint(arena, "{x}", .{pagezero_size}),
+            "-pagezero_size", try arena.print("{x}", .{pagezero_size}),
         };
     }
     if (conf_comp.headerpad_size.value) |headerpad_size| {
         (try zig_args.addManyAsArray(gpa, 2)).* = .{
-            "-headerpad", try allocPrint(arena, "{x}", .{headerpad_size}),
+            "-headerpad", try arena.print("{x}", .{headerpad_size}),
         };
     }
     try addBool(gpa, zig_args, "-headerpad_max_install_names", conf_comp.flags.headerpad_max_install_names);
@@ -777,13 +770,13 @@ fn lowerZigArgs(
     {
         try zig_args.ensureUnusedCapacity(gpa, 4);
         if (conf_comp.initial_memory.value) |initial_memory| {
-            zig_args.appendAssumeCapacity(try allocPrint(arena, "--initial-memory={d}", .{initial_memory}));
+            zig_args.appendAssumeCapacity(try arena.print("--initial-memory={d}", .{initial_memory}));
         }
         if (conf_comp.max_memory.value) |max_memory| {
-            zig_args.appendAssumeCapacity(try allocPrint(arena, "--max-memory={d}", .{max_memory}));
+            zig_args.appendAssumeCapacity(try arena.print("--max-memory={d}", .{max_memory}));
         }
         if (conf_comp.global_base.value) |global_base| {
-            zig_args.appendAssumeCapacity(try allocPrint(arena, "--global-base={d}", .{global_base}));
+            zig_args.appendAssumeCapacity(try arena.print("--global-base={d}", .{global_base}));
         }
         switch (conf_comp.flags3.wasi_exec_model) {
             .default => {},
@@ -814,7 +807,7 @@ fn lowerZigArgs(
 
     for (graph.search_prefixes.items) |search_prefix| {
         var prefix_dir = cwd.openDir(io, search_prefix, .{}) catch |err| {
-            return step.fail(maker, "unable to open prefix directory '{s}': {t}", .{ search_prefix, err });
+            return step.fail(maker, "unable to open prefix directory {q}: {t}", .{ search_prefix, err });
         };
         defer prefix_dir.close(io);
 
@@ -828,7 +821,7 @@ fn lowerZigArgs(
             });
         } else |err| switch (err) {
             error.FileNotFound => {},
-            else => |e| return step.fail(maker, "unable to access '{s}/lib' directory: {t}", .{ search_prefix, e }),
+            else => |e| return step.fail(maker, "unable to access {s}/lib directory: {t}", .{ search_prefix, e }),
         }
 
         if (prefix_dir.access(io, "include", .{})) |_| {
@@ -837,7 +830,7 @@ fn lowerZigArgs(
             });
         } else |err| switch (err) {
             error.FileNotFound => {},
-            else => |e| return step.fail(maker, "unable to access '{s}/include' directory: {t}", .{ search_prefix, e }),
+            else => |e| return step.fail(maker, "unable to access {s}/include directory: {t}", .{ search_prefix, e }),
         }
     }
 
@@ -849,15 +842,15 @@ fn lowerZigArgs(
 
     if (conf_comp.flags3.build_id.unwrap(conf_comp.build_id.value, conf) orelse graph.build_id) |build_id| {
         try zig_args.append(gpa, switch (build_id) {
-            .hexstring => |hs| try allocPrint(arena, "--build-id=0x{x}", .{hs.toSlice()}),
-            .none, .fast, .uuid, .sha1, .md5 => try allocPrint(arena, "--build-id={t}", .{build_id}),
+            .hexstring => |hs| try arena.print("--build-id=0x{x}", .{hs.toSlice()}),
+            .none, .fast, .uuid, .sha1, .md5 => try arena.print("--build-id={t}", .{build_id}),
         });
     }
 
     const opt_zig_lib_dir: ?[]const u8 = if (conf_comp.zig_lib_dir.value) |dir|
         try maker.resolveLazyPathIndexAbs(arena, dir, compile_index)
     else if (graph.zig_lib_directory.path) |_|
-        try allocPrint(arena, "{f}", .{graph.zig_lib_directory})
+        try arena.print("{f}", .{graph.zig_lib_directory})
     else
         null;
 
@@ -885,7 +878,7 @@ fn lowerZigArgs(
     try addBool(gpa, zig_args, "-municode", conf_comp.flags.mingw_unicode_entry_point);
 
     if (conf_comp.error_limit.value orelse graph.error_limit) |err_limit| (try zig_args.addManyAsArray(gpa, 2)).* = .{
-        "--error-limit", try allocPrint(arena, "{d}", .{err_limit}),
+        "--error-limit", try arena.print("{d}", .{err_limit}),
     };
 
     try addFlag(gpa, zig_args, "incremental", conf_comp.flags4.incremental.toBool() orelse graph.incremental);
@@ -1189,7 +1182,7 @@ const CliNamedModules = struct {
                     try result.modules.putNoClobber(arena, mod, {});
                     break;
                 }
-                name = try allocPrint(arena, "{s}{d}", .{ orig_name_slice, n });
+                name = try arena.print("{s}{d}", .{ orig_name_slice, n });
                 n += 1;
             }
         }
@@ -1344,7 +1337,7 @@ fn appendModuleFlags(
     }
 
     for (m.export_symbol_names.slice) |symbol_name| {
-        try zig_args.append(gpa, try allocPrint(arena, "--export={s}", .{symbol_name.slice(conf)}));
+        try zig_args.append(gpa, try arena.print("--export={s}", .{symbol_name.slice(conf)}));
     }
 
     try zig_args.ensureUnusedCapacity(gpa, 2 * m.include_dirs.len);
@@ -1412,7 +1405,7 @@ pub fn appendIncludeDirFlags(
             zig_args.appendAssumeCapacity(try path.toString(arena));
         },
         .embed_path => |lazy_path| {
-            zig_args.appendAssumeCapacity(try allocPrint(arena, "--embed-dir={f}", .{
+            zig_args.appendAssumeCapacity(try arena.print("--embed-dir={f}", .{
                 try maker.resolveLazyPathIndex(arena, lazy_path, asking_step),
             }));
         },

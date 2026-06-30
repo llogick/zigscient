@@ -42,13 +42,16 @@ unset CXX
 
 ninja install
 
+# Must be done after zig cc is finished.
+export ZIG_LIB_DIR="$PWD/../lib"
+export ZIG_DEBUG_MAKER=1
+
 # simultaneously test building self-hosted without LLVM and with 32-bit arm
 stage3-debug/bin/zig build \
   -Dtarget=arm-linux-musleabihf \
   -Dno-lib
 
 stage3-debug/bin/zig build test docs \
-  --maker-opt=Debug \
   --maxrss ${ZSF_MAX_RSS:-0} \
   -Dlldb=$HOME/deps/lldb-zig/Debug-7c1090fd46/bin/lldb \
   -fqemu \
@@ -63,7 +66,6 @@ stage3-debug/bin/zig build test docs \
   -Dskip-llvm \
   -Dtarget=native-native-musl \
   --search-prefix "$PREFIX" \
-  --zig-lib-dir "$PWD/../lib" \
   -Denable-superhtml \
   --test-timeout 10m
 

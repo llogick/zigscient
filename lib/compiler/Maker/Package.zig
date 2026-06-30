@@ -1,9 +1,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-pub const Module = @import("Package/Module.zig");
-pub const Fetch = @import("Package/Fetch.zig");
-pub const build_zig_basename = "build.zig";
+pub const Fetch = @import("Fetch.zig");
 pub const Manifest = @import("Package/Manifest.zig");
 
 pub const Fingerprint = packed struct(u64) {

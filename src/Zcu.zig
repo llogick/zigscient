@@ -25,7 +25,7 @@ const Compilation = @import("Compilation.zig");
 const Cache = std.Build.Cache;
 pub const Value = @import("Value.zig");
 pub const Type = @import("Type.zig");
-const Package = @import("Package.zig");
+const Module = @import("Module.zig");
 const link = @import("link.zig");
 pub const Air = @import("Air.zig");
 const Zir = std.zig.Zir;
@@ -34,7 +34,6 @@ const AstGen = std.zig.AstGen;
 const Sema = @import("Sema.zig");
 const target_util = @import("target.zig");
 const build_options = @import("build_options");
-const isUpDir = @import("introspect.zig").isUpDir;
 const InternPool = @import("InternPool.zig");
 const Alignment = InternPool.Alignment;
 const AnalUnit = InternPool.AnalUnit;
@@ -66,11 +65,11 @@ comp: *Compilation,
 llvm_object: ?LlvmObject.Ptr,
 
 /// Pointer to externally managed resource.
-root_mod: *Package.Module,
+root_mod: *Module,
 /// Normally, `main_mod` and `root_mod` are the same. The exception is `zig test`, in which
 /// `root_mod` is the test runner, and `main_mod` is the user's source file which has the tests.
-main_mod: *Package.Module,
-std_mod: *Package.Module,
+main_mod: *Module,
+std_mod: *Module,
 sema_prog_node: std.Progress.Node = .none,
 codegen_prog_node: std.Progress.Node = .none,
 /// The number of codegen jobs which are pending or in-progress. Whichever thread drops this value
@@ -107,11 +106,11 @@ multi_exports: std.array_hash_map.Auto(AnalUnit, extern struct {
 }) = .{},
 
 /// Key is the digest returned by `Builtin.hash`; value is the corresponding module.
-builtin_modules: std.array_hash_map.Auto(Cache.BinDigest, *Package.Module) = .empty,
+builtin_modules: std.array_hash_map.Auto(Cache.BinDigest, *Module) = .empty,
 
 /// Populated as soon as the `Compilation` is created. Guaranteed to contain all modules, even builtin ones.
 /// Modules whose root file is not a Zig or ZON file have the value `.none`.
-module_roots: std.array_hash_map.Auto(*Package.Module, File.Index.Optional) = .empty,
+module_roots: std.array_hash_map.Auto(*Module, File.Index.Optional) = .empty,
 
 /// The set of all the Zig source files in the Zig Compilation Unit. Tracked in
 /// order to iterate over it and check which source files have been modified on
@@ -150,7 +149,7 @@ alive_files: std.array_hash_map.Auto(File.Index, File.Reference) = .empty,
 /// Cleared and recomputed every update, after AstGen and before Sema.
 multi_module_err: ?struct {
     file: File.Index,
-    modules: [2]*Package.Module,
+    modules: [2]*Module,
     refs: [2]File.Reference,
 } = null,
 
@@ -294,7 +293,7 @@ retryable_failures: std.ArrayList(AnalUnit) = .empty,
 
 /// These are the modules which we initially queue for analysis in `Compilation.update`.
 /// `resolveReferences` will use these as the root of its reachability traversal.
-analysis_roots_buffer: [5]*Package.Module,
+analysis_roots_buffer: [5]*Module,
 analysis_roots_len: usize = 0,
 /// This is the cached result of `Zcu.resolveReferences`. It is computed on-demand, and
 /// reset to `null` when any semantic analysis occurs (since this invalidates the data).
@@ -989,7 +988,7 @@ pub const File = struct {
     /// tell, and invalidate dependencies as needed (see `module_changed`).
     /// During semantic analysis, this is always non-`null` for alive files (i.e. those which
     /// have imports targeting them).
-    mod: ?*Package.Module,
+    mod: ?*Module,
     /// Relative to the root directory of `mod`. If `mod == null`, this field is `undefined`.
     /// This memory is managed externally and must not be directly freed.
     /// Its lifetime is at least equal to that of this `File`.
@@ -1037,13 +1036,13 @@ pub const File = struct {
 
     /// A single reference to a file.
     pub const Reference = union(enum) {
-        analysis_root: *Package.Module,
+        analysis_root: *Module,
         import: struct {
             importer: Zcu.File.Index,
             tok: Ast.TokenIndex,
             /// If the file is imported as the root of a module, this is that module.
             /// `null` means the file was imported directly by path.
-            module: ?*Package.Module,
+            module: ?*Module,
         },
     };
 
@@ -3752,7 +3751,7 @@ pub const ImportResult = struct {
     /// If this import was a simple file path, this is `null`; the imported file should exist within
     /// the importer's module. Otherwise, it's the module which the import resolved to. This module
     /// could match the module of `cur_file`, since a module can depend on itself.
-    module: ?*Package.Module,
+    module: ?*Module,
 };
 
 /// Prepares `unit` for re-analysis by clearing all of the following state:
@@ -4449,7 +4448,7 @@ fn resolveReferencesInner(zcu: *Zcu) Allocator.Error!std.array_hash_map.Auto(Ana
     return units.move();
 }
 
-pub fn analysisRoots(zcu: *Zcu) []*Package.Module {
+pub fn analysisRoots(zcu: *Zcu) []*Module {
     return zcu.analysis_roots_buffer[0..zcu.analysis_roots_len];
 }
 
@@ -4863,7 +4862,7 @@ fn explainWhyFileIsInModule(
     eb: *std.zig.ErrorBundle.Wip,
     notes_out: *std.ArrayList(std.zig.ErrorBundle.MessageIndex),
     file: File.Index,
-    in_module: *Package.Module,
+    in_module: *Module,
     ref: File.Reference,
 ) Allocator.Error!void {
     const gpa = zcu.gpa;
@@ -4909,7 +4908,7 @@ fn explainWhyFileIsInModule(
         const import_src = try importer_file.errorBundleTokenSrc(import.tok, zcu, eb);
 
         const importer_ref = zcu.alive_files.get(import.importer).?;
-        const importer_root: ?*Package.Module = switch (importer_ref) {
+        const importer_root: ?*Module = switch (importer_ref) {
             .analysis_root => |mod| mod,
             .import => |i| i.module,
         };

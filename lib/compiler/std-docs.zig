@@ -29,9 +29,9 @@ pub fn main(init: std.process.Init) !void {
     var argv = try init.minimal.args.iterateAllocator(arena);
     defer argv.deinit();
     assert(argv.skip());
-    const zig_lib_directory = argv.next().?;
-    const zig_exe_path = argv.next().?;
-    const global_cache_path = argv.next().?;
+    const zig_lib_directory = mem.cutPrefix(u8, argv.next().?, "--zig-lib=") orelse @panic("bad --zig-lib= arg");
+    const zig_exe_path = mem.cutPrefix(u8, argv.next().?, "--zig=") orelse @panic("bad --zig= arg");
+    const global_cache_path = mem.cutPrefix(u8, argv.next().?, "--global-cache=") orelse @panic("bad --global-cache= arg");
 
     var lib_dir = try Io.Dir.cwd().openDir(io, zig_lib_directory, .{});
     defer lib_dir.close(io);

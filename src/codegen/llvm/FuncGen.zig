@@ -80,7 +80,7 @@ fn todo(fg: *FuncGen, comptime format: []const u8, args: anytype) TodoError {
     );
 }
 
-fn ownerModule(fg: *const FuncGen) *Package.Module {
+fn ownerModule(fg: *const FuncGen) *Module {
     return fg.object.zcu.navFileScope(fg.nav_index).mod.?;
 }
 
@@ -7739,7 +7739,7 @@ const mips_c_abi = @import("../mips/abi.zig");
 
 const Zcu = @import("../../Zcu.zig");
 const Air = @import("../../Air.zig");
-const Package = @import("../../Package.zig");
+const Module = @import("../../Module.zig");
 const InternPool = @import("../../InternPool.zig");
 const Value = @import("../../Value.zig");
 const Type = @import("../../Type.zig");

@@ -175,6 +175,9 @@ pub fn build(b: *std.Build) !void {
                 ".tar",
                 // exclude files from lib/std/zip/testdata
                 ".zip",
+                // exclude files from lib/compiler/Maker/Fetch/git/testdata
+                ".idx",
+                ".pack",
                 // others
                 "README.md",
             },

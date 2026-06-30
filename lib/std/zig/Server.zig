@@ -264,7 +264,7 @@ pub fn serveErrorBundle(s: *Server, error_bundle: std.zig.ErrorBundle) !void {
     try s.out.flush();
 }
 
-pub fn allocErrorBundle(gpa: std.mem.Allocator, body: []const u8) error{ OutOfMemory, EndOfStream }!std.zig.ErrorBundle {
+pub fn allocErrorBundle(gpa: Allocator, body: []const u8) error{ OutOfMemory, EndOfStream }!std.zig.ErrorBundle {
     var r: Reader = .fixed(body);
     const hdr = r.takeStruct(OutMessage.ErrorBundle, .little) catch |err| switch (err) {
         error.EndOfStream => |e| return e,

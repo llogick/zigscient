@@ -16,8 +16,6 @@ const fatal = std.process.fatal;
 const Value = @import("Value.zig");
 pub const Type = @import("Type.zig");
 const target_util = @import("target.zig");
-const Package = @import("Package.zig");
-const introspect = @import("introspect.zig");
 const link = @import("link.zig");
 const tracy = @import("tracy.zig");
 const trace = tracy.trace;
@@ -45,6 +43,7 @@ const Air = @import("Air.zig");
 const Builtin = @import("Builtin.zig");
 const LlvmObject = @import("codegen/llvm.zig").Object;
 const dev = @import("dev.zig");
+const Module = @import("Module.zig");
 
 pub const Config = @import("Compilation/Config.zig");
 
@@ -65,7 +64,7 @@ cache_use: CacheUse,
 /// All compilations have a root module because this is where some important
 /// settings are stored, such as target and optimization mode. This module
 /// might not have any .zig code associated with it, however.
-root_mod: *Package.Module,
+root_mod: *Module,
 
 /// User-specified settings that have all the defaults resolved into concrete values.
 config: Config,
@@ -191,7 +190,7 @@ parent_whole_cache: ?ParentWholeCache,
 /// Path to own executable for invoking `zig clang`.
 self_exe_path: ?[]const u8,
 /// Owned by the caller of `Compilation.create`.
-dirs: Directories,
+dirs: std.zig.Directories,
 libc_include_dir_list: []const []const u8,
 libc_framework_dir_list: []const []const u8,
 rc_includes: std.zig.RcIncludes,
@@ -434,7 +433,7 @@ pub const Path = struct {
     }
 
     /// Given a `Path`, returns the directory handle and sub path to be used to open the path.
-    pub fn openInfo(p: Path, dirs: Directories) struct { Io.Dir, []const u8 } {
+    pub fn openInfo(p: Path, dirs: std.zig.Directories) struct { Io.Dir, []const u8 } {
         const dir = switch (p.root) {
             .none => {
                 const cwd_sub_path = absToCwdRelative(p.sub_path, dirs.cwd);
@@ -494,8 +493,8 @@ pub const Path = struct {
 
     /// From an unresolved path (which can be made of multiple not-yet-joined strings), construct a
     /// canonical `Path`.
-    pub fn fromUnresolved(gpa: Allocator, dirs: Compilation.Directories, unresolved_parts: []const []const u8) Allocator.Error!Path {
-        const resolved = try introspect.resolvePath(gpa, dirs.cwd, unresolved_parts);
+    pub fn fromUnresolved(gpa: Allocator, dirs: std.zig.Directories, unresolved_parts: []const []const u8) Allocator.Error!Path {
+        const resolved = try std.zig.resolvePath(gpa, dirs.cwd, unresolved_parts);
         errdefer gpa.free(resolved);
 
         // If, for instance, `dirs.local_cache.path` is within the lib dir, it must take priority,
@@ -569,7 +568,7 @@ pub const Path = struct {
     /// `.global_cache` could still end up returning a `Path` with `Path.root == .zig_lib`.
     pub fn fromRoot(
         gpa: Allocator,
-        dirs: Compilation.Directories,
+        dirs: std.zig.Directories,
         root: Path.Root,
         sub_path: []const u8,
     ) Allocator.Error!Path {
@@ -592,7 +591,7 @@ pub const Path = struct {
     pub fn join(
         p: Path,
         gpa: Allocator,
-        dirs: Compilation.Directories,
+        dirs: std.zig.Directories,
         sub_path: []const u8,
     ) Allocator.Error!Path {
         // Currently, this just wraps `fromUnresolved` for simplicity. A more efficient impl is
@@ -613,7 +612,7 @@ pub const Path = struct {
     pub fn upJoin(
         p: Path,
         gpa: Allocator,
-        dirs: Compilation.Directories,
+        dirs: std.zig.Directories,
         sub_path: []const u8,
     ) Allocator.Error!Path {
         return .fromUnresolved(gpa, dirs, &.{
@@ -629,7 +628,7 @@ pub const Path = struct {
         });
     }
 
-    pub fn toCachePath(p: Path, dirs: Directories) Cache.Path {
+    pub fn toCachePath(p: Path, dirs: std.zig.Directories) Cache.Path {
         const root_dir: Cache.Directory = switch (p.root) {
             .zig_lib => dirs.zig_lib,
             .global_cache => dirs.global_cache,
@@ -652,7 +651,7 @@ pub const Path = struct {
     /// This should not be used for most of the compiler pipeline, but is useful when emitting
     /// paths from the compilation (e.g. in debug info), because they will not depend on the cwd.
     /// The returned path is owned by the caller and allocated into `gpa`.
-    pub fn toAbsolute(p: Path, dirs: Directories, gpa: Allocator) Allocator.Error![]u8 {
+    pub fn toAbsolute(p: Path, dirs: std.zig.Directories, gpa: Allocator) Allocator.Error![]u8 {
         const root_path: []const u8 = switch (p.root) {
             .zig_lib => dirs.zig_lib.path orelse "",
             .global_cache => dirs.global_cache.path orelse "",
@@ -683,155 +682,12 @@ pub const Path = struct {
     /// Returns whether this `Path` is illegal to have as a user-imported `Zcu.File` (including
     /// as the root of a module). Such paths exist in directories which the Zig compiler treats
     /// specially, like 'global_cache/b/', which stores 'builtin.zig' files.
-    pub fn isIllegalZigImport(p: Path, gpa: Allocator, dirs: Directories) Allocator.Error!bool {
+    pub fn isIllegalZigImport(p: Path, gpa: Allocator, dirs: std.zig.Directories) Allocator.Error!bool {
         const zig_builtin_dir: Path = try .fromRoot(gpa, dirs, .global_cache, "b");
         defer zig_builtin_dir.deinit(gpa);
         return switch (p.isNested(zig_builtin_dir)) {
             .yes => true,
             .no, .different_roots => false,
-        };
-    }
-};
-
-pub const Directories = struct {
-    /// The string returned by `introspect.getResolvedCwd`. This is typically an absolute path,
-    /// but on WASI is the empty string "" instead, because WASI does not have absolute paths.
-    cwd: []const u8,
-    /// The Zig 'lib' directory.
-    /// `zig_lib.path` is resolved (`introspect.resolvePath`) or `null` for cwd.
-    /// Guaranteed to be a different path from `global_cache` and `local_cache`.
-    zig_lib: Cache.Directory,
-    /// The global Zig cache directory.
-    /// `global_cache.path` is resolved (`introspect.resolvePath`) or `null` for cwd.
-    global_cache: Cache.Directory,
-    /// The local Zig cache directory.
-    /// `local_cache.path` is resolved (`introspect.resolvePath`) or `null` for cwd.
-    /// This may be the same as `global_cache`.
-    local_cache: Cache.Directory,
-
-    pub fn deinit(dirs: *Directories, io: Io) void {
-        // The local and global caches could be the same.
-        const close_local = dirs.local_cache.handle.handle != dirs.global_cache.handle.handle;
-
-        dirs.global_cache.handle.close(io);
-        if (close_local) dirs.local_cache.handle.close(io);
-        dirs.zig_lib.handle.close(io);
-    }
-
-    /// Returns a `Directories` where `local_cache` is replaced with `global_cache`, intended for
-    /// use by sub-compilations (e.g. compiler_rt). Do not `deinit` the returned `Directories`; it
-    /// shares handles with `dirs`.
-    pub fn withoutLocalCache(dirs: Directories) Directories {
-        return .{
-            .cwd = dirs.cwd,
-            .zig_lib = dirs.zig_lib,
-            .global_cache = dirs.global_cache,
-            .local_cache = dirs.global_cache,
-        };
-    }
-
-    /// Uses `std.process.fatal` on error conditions.
-    pub fn init(
-        arena: Allocator,
-        io: Io,
-        override_zig_lib: ?[]const u8,
-        override_global_cache: ?[]const u8,
-        local_cache_strat: union(enum) {
-            override: []const u8,
-            search,
-            global,
-        },
-        preopens: std.process.Preopens,
-        self_exe_path: switch (builtin.target.os.tag) {
-            .wasi => void,
-            else => []const u8,
-        },
-        environ_map: *const std.process.Environ.Map,
-        cwd: []const u8,
-    ) Directories {
-        const wasi = builtin.target.os.tag == .wasi;
-
-        const zig_lib: Cache.Directory = d: {
-            if (override_zig_lib) |path| break :d openUnresolved(arena, io, cwd, path, .@"zig lib");
-            if (wasi) break :d getPreopen(preopens, "/lib");
-            break :d introspect.findZigLibDirFromSelfExe(arena, io, cwd, self_exe_path) catch |err| {
-                fatal("unable to find zig installation directory '{s}': {t}", .{ self_exe_path, err });
-            };
-        };
-
-        const global_cache: Cache.Directory = d: {
-            if (override_global_cache) |path| break :d openUnresolved(arena, io, cwd, path, .@"global cache");
-            if (wasi) break :d getPreopen(preopens, "/cache");
-            const path = introspect.resolveGlobalCacheDir(arena, environ_map) catch |err| {
-                fatal("unable to resolve zig cache directory: {t}", .{err});
-            };
-            break :d openUnresolved(arena, io, cwd, path, .@"global cache");
-        };
-
-        const local_cache: Cache.Directory = switch (local_cache_strat) {
-            .override => |path| openUnresolved(arena, io, cwd, path, .@"local cache"),
-            .search => d: {
-                const maybe_path = introspect.resolveSuitableLocalCacheDir(arena, io, cwd) catch |err| {
-                    fatal("unable to resolve zig cache directory: {t}", .{err});
-                };
-                const path = maybe_path orelse break :d global_cache;
-                break :d openUnresolved(arena, io, cwd, path, .@"local cache");
-            },
-            .global => global_cache,
-        };
-
-        if (std.mem.eql(u8, zig_lib.path orelse "", global_cache.path orelse "")) {
-            fatal("zig lib directory '{f}' cannot be equal to global cache directory '{f}'", .{ zig_lib, global_cache });
-        }
-        if (std.mem.eql(u8, zig_lib.path orelse "", local_cache.path orelse "")) {
-            fatal("zig lib directory '{f}' cannot be equal to local cache directory '{f}'", .{ zig_lib, local_cache });
-        }
-
-        return .{
-            .cwd = cwd,
-            .zig_lib = zig_lib,
-            .global_cache = global_cache,
-            .local_cache = local_cache,
-        };
-    }
-    fn getPreopen(preopens: std.process.Preopens, name: []const u8) Cache.Directory {
-        return .{
-            .path = if (std.mem.eql(u8, name, ".")) null else name,
-            .handle = switch (preopens.get(name) orelse fatal("preopen not found: '{s}'", .{name})) {
-                .file => fatal("preopen {s} is not a directory", .{name}),
-                .dir => |d| d,
-            },
-        };
-    }
-    fn openUnresolved(
-        arena: Allocator,
-        io: Io,
-        cwd: []const u8,
-        unresolved_path: []const u8,
-        thing: enum { @"zig lib", @"global cache", @"local cache" },
-    ) Cache.Directory {
-        const path = introspect.resolvePath(arena, cwd, &.{unresolved_path}) catch |err| {
-            fatal("unable to resolve {s} directory: {s}", .{ @tagName(thing), @errorName(err) });
-        };
-        const nonempty_path = if (path.len == 0) "." else path;
-        const handle_or_err = switch (thing) {
-            .@"zig lib" => Io.Dir.cwd().openDir(io, nonempty_path, .{}),
-            .@"global cache", .@"local cache" => Io.Dir.cwd().createDirPathOpen(io, nonempty_path, .{}),
-        };
-        return .{
-            .path = if (path.len == 0) null else path,
-            .handle = handle_or_err catch |err| {
-                const extra_str: []const u8 = e: {
-                    if (thing == .@"global cache") switch (err) {
-                        error.AccessDenied, error.ReadOnlyFileSystem => break :e "\n" ++
-                            "If this location is not writable then consider specifying an alternative with " ++
-                            "the ZIG_GLOBAL_CACHE_DIR environment variable or the --global-cache-dir option.",
-                        else => {},
-                    };
-                    break :e "";
-                };
-                fatal("unable to open {s} directory '{s}': {s}{s}", .{ @tagName(thing), nonempty_path, @errorName(err), extra_str });
-            },
         };
     }
 };
@@ -913,7 +769,7 @@ pub const CrtFile = struct {
 /// For passing to a C compiler.
 pub const CSourceFile = struct {
     /// Many C compiler flags are determined by settings contained in the owning Module.
-    owner: *Package.Module,
+    owner: *Module,
     src_path: []const u8,
     extra_flags: []const []const u8 = &.{},
     /// Same as extra_flags except they are not added to the Cache hash.
@@ -925,7 +781,7 @@ pub const CSourceFile = struct {
 
 /// For passing to resinator.
 pub const RcSourceFile = struct {
-    owner: *Package.Module,
+    owner: *Module,
     src_path: []const u8,
     extra_flags: []const []const u8 = &.{},
 };
@@ -1363,7 +1219,7 @@ pub const MiscError = struct {
 };
 
 pub const cache_helpers = struct {
-    pub fn addModule(hh: *Cache.HashHelper, mod: *const Package.Module) void {
+    pub fn addModule(hh: *Cache.HashHelper, mod: *const Module) void {
         addResolvedTarget(hh, mod.resolved_target);
         hh.add(mod.optimize_mode);
         hh.add(mod.code_model);
@@ -1386,7 +1242,7 @@ pub const cache_helpers = struct {
 
     pub fn addResolvedTarget(
         hh: *Cache.HashHelper,
-        resolved_target: Package.Module.ResolvedTarget,
+        resolved_target: Module.ResolvedTarget,
     ) void {
         const target = &resolved_target.result;
         hh.add(target.cpu.arch);
@@ -1552,23 +1408,23 @@ const CacheUse = union(CacheMode) {
 };
 
 pub const CreateOptions = struct {
-    dirs: Directories,
+    dirs: std.zig.Directories,
     thread_limit: usize,
     self_exe_path: ?[]const u8 = null,
 
     /// Options that have been resolved by calling `resolveDefaults`.
     config: Compilation.Config,
 
-    root_mod: *Package.Module,
+    root_mod: *Module,
     /// Normally, `main_mod` and `root_mod` are the same. The exception is `zig
     /// test`, in which `root_mod` is the test runner, and `main_mod` is the
     /// user's source file which has the tests.
-    main_mod: ?*Package.Module = null,
+    main_mod: ?*Module = null,
     /// This is provided so that the API user has a chance to tweak the
     /// per-module settings of the standard library.
     /// When this is null, a default configuration of the std lib is created
     /// based on the settings of root_mod.
-    std_mod: ?*Package.Module = null,
+    std_mod: ?*Module = null,
     root_name: []const u8,
     sysroot: ?[]const u8 = null,
     cache_mode: CacheMode,
@@ -1878,7 +1734,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
         const libc_dirs = std.zig.LibCDirs.detect(
             arena,
             io,
-            options.dirs.zig_lib.path.?,
+            .{ .root_dir = options.dirs.zig_lib },
             target,
             options.root_mod.resolved_target.is_native_abi,
             link_libc,
@@ -1912,7 +1768,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
         if (compiler_rt_strat == .zcu) {
             // For objects, this mechanism relies on essentially `_ = @import("compiler-rt");`
             // injected into the object.
-            const compiler_rt_mod = Package.Module.create(arena, .{
+            const compiler_rt_mod = Module.create(arena, .{
                 .paths = .{
                     .root = .zig_lib_root,
                     .root_src_path = "compiler_rt.zig",
@@ -1974,7 +1830,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
         };
 
         if (ubsan_rt_strat == .zcu) {
-            const ubsan_rt_mod = Package.Module.create(arena, .{
+            const ubsan_rt_mod = Module.create(arena, .{
                 .paths = .{
                     .root = .zig_lib_root,
                     .root_src_path = "ubsan_rt.zig",
@@ -2015,7 +1871,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
         };
 
         if (zigc_strat == .zcu) {
-            const zigc_mod = Package.Module.create(arena, .{
+            const zigc_mod = Module.create(arena, .{
                 .paths = .{
                     .root = .zig_lib_root,
                     .root_src_path = "c.zig",
@@ -2145,7 +2001,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                 .path = try options.dirs.global_cache.join(arena, &.{zir_sub_dir}),
             };
 
-            const std_mod = options.std_mod orelse Package.Module.create(arena, .{
+            const std_mod = options.std_mod orelse Module.create(arena, .{
                 .paths = .{
                     .root = try .fromRoot(arena, options.dirs, .zig_lib, "std"),
                     .root_src_path = "std.zig",
@@ -2916,11 +2772,9 @@ pub fn update(comp: *Compilation, main_progress_node: std.Progress.Node) UpdateE
                     .file_open, .file_stat, .file_read, .file_hash => |op| {
                         const pp = man.files.keys()[op.file_index].prefixed_path;
                         const prefix = man.cache.prefixes()[pp.prefix];
-                        return comp.setMiscFailure(
-                            .check_whole_cache,
-                            "failed to check cache: '{f}{s}' {t} {t}",
-                            .{ prefix, pp.sub_path, man.diagnostic, op.err },
-                        );
+                        return comp.setMiscFailure(.check_whole_cache, "failed to check cache: {f}{s} {t} {t}", .{
+                            prefix, pp.sub_path, man.diagnostic, op.err,
+                        });
                     },
                 },
                 error.OutOfMemory, error.Canceled => |e| return e,
@@ -4793,7 +4647,7 @@ fn docsCopyFallible(comp: *Compilation) anyerror!void {
     var buffer: [1024]u8 = undefined;
     var tar_file_writer = tar_file.writer(io, &buffer);
 
-    var seen_table: std.array_hash_map.Auto(*Package.Module, []const u8) = .empty;
+    var seen_table: std.array_hash_map.Auto(*Module, []const u8) = .empty;
     defer seen_table.deinit(comp.gpa);
 
     try seen_table.put(comp.gpa, zcu.main_mod, comp.root_name);
@@ -4820,7 +4674,7 @@ fn docsCopyFallible(comp: *Compilation) anyerror!void {
 
 fn docsCopyModule(
     comp: *Compilation,
-    module: *Package.Module,
+    module: *Module,
     name: []const u8,
     tar_file_writer: *Io.File.Writer,
 ) !void {
@@ -4900,7 +4754,7 @@ fn workerDocsWasmFallible(comp: *Compilation, prog_node: std.Progress.Node) SubU
 
     const optimize_mode = std.lang.OptimizeMode.ReleaseSmall;
     const output_mode = std.lang.OutputMode.Exe;
-    const resolved_target: Package.Module.ResolvedTarget = .{
+    const resolved_target: Module.ResolvedTarget = .{
         .result = std.zig.system.resolveTargetQuery(io, .{
             .cpu_arch = .wasm32,
             .os_tag = .freestanding,
@@ -4940,7 +4794,7 @@ fn workerDocsWasmFallible(comp: *Compilation, prog_node: std.Progress.Node) SubU
 
     const dirs = comp.dirs.withoutLocalCache();
 
-    const root_mod = Package.Module.create(arena, .{
+    const root_mod = Module.create(arena, .{
         .paths = .{
             .root = try .fromRoot(arena, dirs, .zig_lib, "docs/wasm"),
             .root_src_path = src_basename,
@@ -4957,7 +4811,7 @@ fn workerDocsWasmFallible(comp: *Compilation, prog_node: std.Progress.Node) SubU
         comp.lockAndSetMiscFailure(.docs_wasm, "sub-compilation of docs_wasm failed: failed to create root module: {t}", .{err});
         return error.AlreadyReported;
     };
-    const walk_mod = Package.Module.create(arena, .{
+    const walk_mod = Module.create(arena, .{
         .paths = .{
             .root = try .fromRoot(arena, dirs, .zig_lib, "docs/wasm"),
             .root_src_path = "Walk.zig",
@@ -5042,7 +4896,7 @@ fn workerDocsWasmFallible(comp: *Compilation, prog_node: std.Progress.Node) SubU
 
 pub fn obtainCObjectCacheManifest(
     comp: *const Compilation,
-    owner_mod: *Package.Module,
+    owner_mod: *Module,
 ) Cache.Manifest {
     var man = comp.cache_parent.obtain();
 
@@ -5090,7 +4944,7 @@ pub fn translateC(
     ext: FileExt,
     source_path: []const u8,
     translated_basename: []const u8,
-    owner_mod: *Package.Module,
+    owner_mod: *Module,
     prog_node: std.Progress.Node,
     environ_map: *const std.process.Environ.Map,
 ) !TranslateCResult {
@@ -6247,7 +6101,7 @@ fn addCommonCCArgs(
     argv: *std.array_list.Managed([]const u8),
     ext: FileExt,
     out_dep_path: ?[]const u8,
-    mod: *Package.Module,
+    mod: *Module,
     c_frontend: Config.CFrontend,
 ) !void {
     const target = &mod.resolved_target.result;
@@ -6601,7 +6455,7 @@ pub fn addCCArgs(
     argv: *std.array_list.Managed([]const u8),
     ext: FileExt,
     out_dep_path: ?[]const u8,
-    mod: *Package.Module,
+    mod: *Module,
 ) !void {
     const target = &mod.resolved_target.result;
 
@@ -7392,7 +7246,7 @@ fn buildOutputFromZig(
         return error.AlreadyReported;
     };
 
-    const root_mod = Package.Module.create(arena, .{
+    const root_mod = Module.create(arena, .{
         .paths = .{
             .root = .zig_lib_root,
             .root_src_path = src_basename,
@@ -7539,7 +7393,7 @@ pub fn build_crt_file(
         comp.lockAndSetMiscFailure(misc_task_tag, "sub-compilation of {t} failed: failed to resolve compilation config: {t}", .{ misc_task_tag, err });
         return error.AlreadyReported;
     };
-    const root_mod = Package.Module.create(arena, .{
+    const root_mod = Module.create(arena, .{
         .paths = .{
             .root = .zig_lib_root,
             .root_src_path = "",

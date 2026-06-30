@@ -10,7 +10,7 @@ const log = std.log.scoped(.dwarf);
 const Writer = std.Io.Writer;
 
 const InternPool = @import("../InternPool.zig");
-const Module = @import("../Package.zig").Module;
+const Module = @import("../Module.zig");
 const Type = @import("../Type.zig");
 const Value = @import("../Value.zig");
 const Zcu = @import("../Zcu.zig");

@@ -10,8 +10,7 @@ const native_endian = builtin.target.cpu.arch.endian();
 
 string_bytes: []u8,
 steps: []Step,
-path_deps_base: []Path.Base,
-path_deps_sub: []String,
+path_deps: []PathDep,
 unlazy_deps: []String,
 system_integrations: []SystemIntegration,
 available_options: []AvailableOption,
@@ -57,7 +56,7 @@ pub const Wip = struct {
     system_integrations: std.ArrayList(SystemIntegration) = .empty,
     available_options: std.ArrayList(AvailableOption) = .empty,
     steps: std.ArrayList(Step) = .empty,
-    path_deps: std.MultiArrayList(Path) = .empty,
+    path_deps: std.ArrayList(PathDep) = .empty,
     search_prefixes: std.ArrayList(String) = .empty,
     extra: std.ArrayList(u32) = .empty,
     next_generated_file_index: u32 = 0,
@@ -154,7 +153,7 @@ pub const Wip = struct {
         const header: Header = .{
             .string_bytes_len = @intCast(wip.string_bytes.items.len),
             .steps_len = @intCast(wip.steps.items.len),
-            .path_deps_len = @intCast(wip.path_deps.len),
+            .path_deps_len = @intCast(wip.path_deps.items.len),
             .unlazy_deps_len = @intCast(wip.unlazy_deps.items.len),
             .system_integrations_len = @intCast(wip.system_integrations.items.len),
             .available_options_len = @intCast(wip.available_options.items.len),
@@ -171,8 +170,7 @@ pub const Wip = struct {
             @ptrCast(&header),
             wip.string_bytes.items,
             @ptrCast(wip.steps.items),
-            @ptrCast(wip.path_deps.items(.base)),
-            @ptrCast(wip.path_deps.items(.sub)),
+            @ptrCast(wip.path_deps.items),
             @ptrCast(wip.unlazy_deps.items),
             @ptrCast(wip.system_integrations.items),
             @ptrCast(wip.available_options.items),
@@ -1551,8 +1549,22 @@ pub const LazyPath = union(@This().Tag) {
 
         pub const Flags = packed struct(u32) {
             tag: Tag = .relative,
-            base: Path.Base,
+            base: Base,
             _: u16 = 0,
+        };
+
+        pub const Base = enum(u8) {
+            cwd,
+            local_cache,
+            global_cache,
+            /// Must not be used with Relative since package index is missing.
+            build_root,
+            zig_exe,
+            zig_lib,
+            install_prefix,
+            install_lib,
+            install_bin,
+            install_include,
         };
     };
 };
@@ -1595,6 +1607,26 @@ pub const Package = struct {
         pub fn depPrefixSlice(i: @This(), c: *const Configuration) [:0]const u8 {
             const package = get(i, c) orelse return "";
             return package.dep_prefix.slice(c);
+        }
+    };
+
+    pub const OptionalIndex = enum(u32) {
+        none = max_u32 - 1,
+        root = max_u32,
+        _,
+
+        pub fn init(i: Index) OptionalIndex {
+            const result: OptionalIndex = @enumFromInt(@intFromEnum(i));
+            assert(result != .none);
+            return result;
+        }
+
+        pub fn unwrap(this: @This()) ?Index {
+            return switch (this) {
+                .none => null,
+                .root => .root,
+                _ => @enumFromInt(@intFromEnum(this)),
+            };
         }
     };
 };
@@ -1833,29 +1865,18 @@ pub const OptionalStringList = enum(u32) {
     }
 };
 
-pub const Path = extern struct {
-    base: Base,
+pub const PathDep = extern struct {
+    flags: Flags,
     sub: String,
+    pkg: Package.OptionalIndex,
 
-    pub const Base = enum(u8) {
-        cwd,
-        local_cache,
-        global_cache,
-        build_root,
-        zig_exe,
-        zig_lib,
-        install_prefix,
-        install_lib,
-        install_bin,
-        install_include,
+    pub const Flags = packed struct(u32) {
+        mode: Mode,
+        base: LazyPath.Relative.Base,
+        _: u16 = 0,
     };
 
-    pub fn toCachePath(path: Path, c: *const Configuration, arena: Allocator) std.Build.Cache.Path {
-        _ = c;
-        _ = arena;
-        _ = path;
-        @panic("TODO");
-    }
+    pub const Mode = enum(u8) { directory, contents, metadata };
 };
 
 pub const InstallDestDir = enum(u32) {
@@ -3430,8 +3451,7 @@ pub fn load(arena: Allocator, reader: *Io.Reader) LoadError!Configuration {
     const result: Configuration = .{
         .string_bytes = try arena.alloc(u8, header.string_bytes_len),
         .steps = try arena.alloc(Step, header.steps_len),
-        .path_deps_sub = try arena.alloc(String, header.path_deps_len),
-        .path_deps_base = try arena.alloc(Path.Base, header.path_deps_len),
+        .path_deps = try arena.alloc(PathDep, header.path_deps_len),
         .unlazy_deps = try arena.alloc(String, header.unlazy_deps_len),
         .system_integrations = try arena.alloc(SystemIntegration, header.system_integrations_len),
         .available_options = try arena.alloc(AvailableOption, header.available_options_len),
@@ -3444,8 +3464,7 @@ pub fn load(arena: Allocator, reader: *Io.Reader) LoadError!Configuration {
     var vecs = [_][]u8{
         result.string_bytes,
         @ptrCast(result.steps),
-        @ptrCast(result.path_deps_base),
-        @ptrCast(result.path_deps_sub),
+        @ptrCast(result.path_deps),
         @ptrCast(result.unlazy_deps),
         @ptrCast(result.system_integrations),
         @ptrCast(result.available_options),

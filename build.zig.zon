@@ -42,9 +42,6 @@
         .standalone_test_cases = .{
             .path = "test/standalone",
         },
-        .link_test_cases = .{
-            .path = "test/link",
-        },
     },
     .paths = .{""},
     .fingerprint = 0x77c02601c0deba5e,

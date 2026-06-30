@@ -25,7 +25,6 @@ const SemaError = Zcu.SemaError;
 const LazySrcLoc = Zcu.LazySrcLoc;
 const RangeSet = @import("RangeSet.zig");
 const target_util = @import("target.zig");
-const Package = @import("Package.zig");
 const crash_report = @import("crash_report.zig");
 const build_options = @import("build_options");
 const Compilation = @import("Compilation.zig");
@@ -36,6 +35,7 @@ const ComptimeAllocIndex = InternPool.ComptimeAllocIndex;
 const Cache = std.Build.Cache;
 const LowerZon = @import("Sema/LowerZon.zig");
 const arith = @import("Sema/arith.zig");
+const Module = @import("Module.zig");
 
 pt: Zcu.PerThread,
 /// Alias to `zcu.gpa`.
@@ -839,7 +839,7 @@ pub const Block = struct {
         return result_index;
     }
 
-    pub fn ownerModule(block: Block) *Package.Module {
+    pub fn ownerModule(block: Block) *Module {
         const zcu = block.sema.pt.zcu;
         return zcu.namespacePtr(block.namespace).fileScope(zcu).mod.?;
     }

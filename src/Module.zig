@@ -1,4 +1,15 @@
 //! Corresponds to something that Zig source code can `@import`.
+const Module = @This();
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const Cache = std.Build.Cache;
+const assert = std.debug.assert;
+
+const target_util = @import("target.zig");
+const Builtin = @import("Builtin.zig");
+const Compilation = @import("Compilation.zig");
+const File = @import("Zcu.zig").File;
 
 /// The root directory of the module. Only files inside this directory can be imported.
 root: Compilation.Path,
@@ -37,11 +48,6 @@ no_builtin: bool,
 
 pub const Deps = std.array_hash_map.String(*Module);
 
-pub const Tree = struct {
-    /// Each `Package` exposes a `Module` with build.zig as its root source file.
-    build_module_table: std.array_hash_map.Auto(MultiHashHexDigest, *Module),
-};
-
 pub const CreateOptions = struct {
     paths: Paths,
     fully_qualified_name: []const u8,
@@ -50,7 +56,7 @@ pub const CreateOptions = struct {
     inherited: Inherited,
     global: Compilation.Config,
     /// If this is null then `resolved_target` must be non-null.
-    parent: ?*Package.Module,
+    parent: ?*Module,
 
     pub const Paths = struct {
         root: Compilation.Path,
@@ -107,7 +113,7 @@ pub const CreateError = error{
 };
 
 /// At least one of `parent` and `resolved_target` must be non-null.
-pub fn create(arena: Allocator, options: CreateOptions) !*Package.Module {
+pub fn create(arena: Allocator, options: CreateOptions) !*Module {
     if (options.inherited.sanitize_thread == true) assert(options.global.any_sanitize_thread);
     if (options.inherited.fuzz == true) assert(options.global.any_fuzz);
     if (options.inherited.single_threaded == false) assert(options.global.any_non_single_threaded);
@@ -420,7 +426,7 @@ pub const LimitedOptions = struct {
 
 /// This one can only be used if the Module will only be used for AstGen and earlier in
 /// the pipeline. Illegal behavior occurs if a limited module touches Sema.
-pub fn createLimited(gpa: Allocator, options: LimitedOptions) Allocator.Error!*Package.Module {
+pub fn createLimited(gpa: Allocator, options: LimitedOptions) Allocator.Error!*Module {
     const mod = try gpa.create(Module);
     mod.* = .{
         .root = options.root,
@@ -451,7 +457,7 @@ pub fn createLimited(gpa: Allocator, options: LimitedOptions) Allocator.Error!*P
 }
 
 /// Does not ensure that the module's root directory exists on-disk; see `Builtin.updateFileOnDisk` for that task.
-pub fn createBuiltin(arena: Allocator, opts: Builtin, dirs: Compilation.Directories) Allocator.Error!*Module {
+pub fn createBuiltin(arena: Allocator, opts: Builtin, dirs: std.zig.Directories) Allocator.Error!*Module {
     const sub_path = "b" ++ std.fs.path.sep_str ++ Cache.binToHex(opts.hash());
     const new = try arena.create(Module);
     new.* = .{
@@ -515,15 +521,3 @@ pub fn getBuiltinOptions(m: Module, global: Compilation.Config) Builtin {
         .wasi_exec_model = global.wasi_exec_model,
     };
 }
-
-const Module = @This();
-const Package = @import("../Package.zig");
-const std = @import("std");
-const Allocator = std.mem.Allocator;
-const MultiHashHexDigest = Package.Manifest.MultiHashHexDigest;
-const target_util = @import("../target.zig");
-const Cache = std.Build.Cache;
-const Builtin = @import("../Builtin.zig");
-const assert = std.debug.assert;
-const Compilation = @import("../Compilation.zig");
-const File = @import("../Zcu.zig").File;

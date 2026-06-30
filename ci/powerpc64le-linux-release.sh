@@ -40,6 +40,9 @@ unset CXX
 
 ninja install
 
+# Must be done after zig cc is finished.
+export ZIG_LIB_DIR="$PWD/../lib"
+
 # No -fqemu and -fwasmtime here as they're covered by the x86_64-linux scripts.
 stage3-release/bin/zig build test docs \
   --maxrss ${ZSF_MAX_RSS:-0} \
@@ -48,7 +51,6 @@ stage3-release/bin/zig build test docs \
   -Dtarget=native-native-musl \
   -Dcpu=native+longcall \
   --search-prefix "$PREFIX" \
-  --zig-lib-dir "$PWD/../lib" \
   --test-timeout 4m
 
 # Ensure that stage3 and stage4 are byte-for-byte identical.

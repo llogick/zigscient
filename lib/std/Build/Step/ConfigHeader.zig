@@ -5,7 +5,6 @@ const Io = std.Io;
 const Step = std.Build.Step;
 const Allocator = std.mem.Allocator;
 const Configuration = std.Build.Configuration;
-const allocPrint = std.fmt.allocPrint;
 
 step: Step,
 values: std.array_hash_map.String(Value) = .empty,
@@ -84,13 +83,9 @@ pub fn create(owner: *std.Build, options: Options) *ConfigHeader {
     };
 
     const name = if (options.style.getPath()) |s|
-        allocPrint(arena, "configure {t} header {f} to {s}", .{
-            options.style, s, include_path,
-        }) catch @panic("OOM")
+        arena.print("configure {t} header {f} to {s}", .{ options.style, s, include_path }) catch @panic("OOM")
     else
-        allocPrint(arena, "configure {t} header to {s}", .{
-            options.style, include_path,
-        }) catch @panic("OOM");
+        arena.print("configure {t} header to {s}", .{ options.style, include_path }) catch @panic("OOM");
 
     config_header.* = .{
         .step = .init(.{

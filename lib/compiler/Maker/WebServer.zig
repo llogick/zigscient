@@ -19,7 +19,7 @@ const Fuzz = @import("Fuzz.zig");
 const Graph = @import("Graph.zig");
 const Step = @import("Step.zig");
 
-maker: *Maker,
+graph: *const Graph,
 listen_address: net.IpAddress,
 root_prog_node: std.Progress.Node,
 
@@ -28,17 +28,8 @@ serve_task: ?Io.Future(Io.Cancelable!void),
 
 /// Uses `Io.Clock.awake`.
 base_timestamp: Io.Timestamp,
-/// The "step name" data which trails `abi.Hello`, for the steps in `all_steps`.
-step_names_trailing: []u8,
-
-/// The bit-packed "step status" data. Values are `abi.StepUpdate.Status`. LSBs are earlier steps.
-/// Accessed atomically.
-step_status_bits: []u8,
 
 fuzz: ?Fuzz,
-time_report_mutex: Io.Mutex,
-time_report_msgs: [][]u8,
-time_report_update_times: []i64,
 
 build_status: std.atomic.Value(abi.BuildStatus),
 /// When an event occurs which means WebSocket clients should be sent updates, call `notifyUpdate`
@@ -55,6 +46,21 @@ runner_request_ready_cond: Io.Condition,
 runner_request_empty_cond: Io.Condition,
 runner_request: ?RunnerRequest,
 
+configured: ?Configured,
+
+const Configured = struct {
+    maker: *Maker,
+    /// The "step name" data which trails `abi.Hello`, for the steps in `all_steps`.
+    step_names_trailing: []u8,
+    /// The bit-packed "step status" data. Values are `abi.StepUpdate.Status`. LSBs are earlier steps.
+    /// Accessed atomically.
+    step_status_bits: []u8,
+
+    time_report_mutex: Io.Mutex,
+    time_report_msgs: [][]u8,
+    time_report_update_times: []i64,
+};
+
 /// If a client is not explicitly notified of changes with `notifyUpdate`, it will be sent updates
 /// on a fixed interval of this many milliseconds.
 const default_update_interval_ms = 500;
@@ -63,34 +69,88 @@ pub const base_clock: Io.Clock = .awake;
 
 /// Thread-safe. Triggers updates to be sent to connected WebSocket clients; see `update_id`.
 pub fn notifyUpdate(ws: *WebServer) void {
-    const io = ws.maker.graph.io;
+    const io = ws.graph.io;
     _ = ws.update_id.rmw(.Add, 1, .release);
     io.futexWake(u32, &ws.update_id.raw, 16);
 }
 
 pub const Options = struct {
-    maker: *Maker,
+    graph: *const Graph,
     root_prog_node: std.Progress.Node,
     listen_address: net.IpAddress,
     base_timestamp: Io.Clock.Timestamp,
 };
+
 pub fn init(opts: Options) WebServer {
     // The upcoming `Io` interface should allow us to use `Io.async` and `Io.concurrent`
     // instead of threads, so that the web server can function in single-threaded builds.
     comptime assert(!builtin.single_threaded);
     assert(opts.base_timestamp.clock == base_clock);
+    return .{
+        .graph = opts.graph,
+        .listen_address = opts.listen_address,
+        .root_prog_node = opts.root_prog_node,
 
-    const maker = opts.maker;
+        .tcp_server = null,
+        .serve_task = null,
+
+        .base_timestamp = opts.base_timestamp.raw,
+
+        .fuzz = null,
+
+        .build_status = .init(.idle),
+        .update_id = .init(0),
+
+        .runner_request_mutex = .init,
+        .runner_request_ready_cond = .init,
+        .runner_request_empty_cond = .init,
+        .runner_request = null,
+
+        .configured = null,
+    };
+}
+
+pub fn deinit(ws: *WebServer) void {
+    const graph = ws.graph;
+    const io = graph.io;
+
+    if (ws.fuzz) |*f| f.deinit();
+
+    ws.releaseConfigured();
+
+    if (ws.serve_task) |t| {
+        if (ws.tcp_server) |*s| s.stream.close(io);
+        t.await();
+    }
+    if (ws.tcp_server) |*s| s.deinit();
+}
+
+fn releaseConfigured(ws: *WebServer) void {
+    if (ws.configured) |*configured| {
+        const gpa = configured.maker.gpa;
+        gpa.free(configured.step_names_trailing);
+        gpa.free(configured.step_status_bits);
+        for (configured.time_report_msgs) |msg| gpa.free(msg);
+        gpa.free(configured.time_report_msgs);
+        gpa.free(configured.time_report_update_times);
+        gpa.free(configured.step_names_trailing);
+        ws.configured = null;
+    }
+}
+
+pub fn updateConfiguration(ws: *WebServer, maker: *Maker) !void {
+    const graph = ws.graph;
+    const gpa = maker.gpa;
     const all_steps = maker.step_stack.keys();
     const c = &maker.scanned_config.configuration;
-    const gpa = maker.gpa;
-    const graph = maker.graph;
 
-    const step_names_trailing = gpa.alloc(u8, len: {
+    const step_names_trailing = try gpa.alloc(u8, len: {
         var name_bytes: usize = 0;
         for (all_steps) |step_index| name_bytes += step_index.ptr(c).name.slice(c).len;
         break :len name_bytes + all_steps.len * 4;
-    }) catch @panic("out of memory");
+    });
+    errdefer gpa.free(step_names_trailing);
+
     {
         const step_name_lens: []align(1) u32 = @ptrCast(step_names_trailing[0 .. all_steps.len * 4]);
         var idx: usize = all_steps.len * 4;
@@ -103,71 +163,35 @@ pub fn init(opts: Options) WebServer {
         assert(idx == step_names_trailing.len);
     }
 
-    const step_status_bits = gpa.alloc(
-        u8,
-        std.math.divCeil(usize, all_steps.len, 4) catch unreachable,
-    ) catch @panic("out of memory");
+    const step_status_bits = try gpa.alloc(u8, std.math.divCeil(usize, all_steps.len, 4) catch unreachable);
+    errdefer gpa.free(step_status_bits);
     @memset(step_status_bits, 0);
 
     const time_reports_len: usize = if (graph.time_report) all_steps.len else 0;
-    const time_report_msgs = gpa.alloc([]u8, time_reports_len) catch @panic("out of memory");
-    const time_report_update_times = gpa.alloc(i64, time_reports_len) catch @panic("out of memory");
+    const time_report_msgs = try gpa.alloc([]u8, time_reports_len);
+    errdefer gpa.free(time_report_msgs);
+    const time_report_update_times = try gpa.alloc(i64, time_reports_len);
+    errdefer gpa.free(time_report_update_times);
     @memset(time_report_msgs, &.{});
     @memset(time_report_update_times, std.math.minInt(i64));
 
-    return .{
+    ws.releaseConfigured();
+
+    ws.configured = .{
         .maker = maker,
-        .listen_address = opts.listen_address,
-        .root_prog_node = opts.root_prog_node,
-
-        .tcp_server = null,
-        .serve_task = null,
-
-        .base_timestamp = opts.base_timestamp.raw,
         .step_names_trailing = step_names_trailing,
-
         .step_status_bits = step_status_bits,
-
-        .fuzz = null,
         .time_report_mutex = .init,
         .time_report_msgs = time_report_msgs,
         .time_report_update_times = time_report_update_times,
-
-        .build_status = .init(.idle),
-        .update_id = .init(0),
-
-        .runner_request_mutex = .init,
-        .runner_request_ready_cond = .init,
-        .runner_request_empty_cond = .init,
-        .runner_request = null,
     };
 }
-pub fn deinit(ws: *WebServer) void {
-    const maker = ws.maker;
-    const gpa = maker.gpa;
-    const io = maker.graph.io;
 
-    gpa.free(ws.step_names_trailing);
-    gpa.free(ws.step_status_bits);
-
-    if (ws.fuzz) |*f| f.deinit();
-    for (ws.time_report_msgs) |msg| gpa.free(msg);
-    gpa.free(ws.time_report_msgs);
-    gpa.free(ws.time_report_update_times);
-
-    if (ws.serve_task) |t| {
-        if (ws.tcp_server) |*s| s.stream.close(io);
-        t.await();
-    }
-    if (ws.tcp_server) |*s| s.deinit();
-
-    gpa.free(ws.step_names_trailing);
-}
 pub fn start(ws: *WebServer) error{AlreadyReported}!void {
     assert(ws.tcp_server == null);
     assert(ws.serve_task == null);
-    const maker = ws.maker;
-    const io = maker.graph.io;
+    const graph = ws.graph;
+    const io = graph.io;
 
     ws.tcp_server = ws.listen_address.listen(io, .{ .reuse_address = true }) catch |err| {
         log.err("failed to listen to port {d}: {t}", .{ ws.listen_address.getPort(), err });
@@ -186,8 +210,8 @@ pub fn start(ws: *WebServer) error{AlreadyReported}!void {
     }
 }
 fn serve(ws: *WebServer) Io.Cancelable!void {
-    const maker = ws.maker;
-    const io = maker.graph.io;
+    const graph = ws.graph;
+    const io = graph.io;
 
     var group: Io.Group = .init;
     defer group.cancel(io);
@@ -213,7 +237,8 @@ pub fn startBuild(ws: *WebServer) void {
         fuzz.deinit();
         ws.fuzz = null;
     }
-    for (ws.step_status_bits) |*bits| @atomicStore(u8, bits, 0, .monotonic);
+    const configured = &ws.configured.?;
+    for (configured.step_status_bits) |*bits| @atomicStore(u8, bits, 0, .monotonic);
     ws.build_status.store(.running, .monotonic);
     ws.notifyUpdate();
 }
@@ -223,12 +248,13 @@ pub fn updateStepStatus(
     step_index: Configuration.Step.Index,
     new_status: abi.StepUpdate.Status,
 ) void {
-    const maker = ws.maker;
+    const configured = &ws.configured.?;
+    const maker = configured.maker;
     const all_steps = maker.step_stack.keys();
     const step_idx: u32 = for (all_steps, 0..) |s, i| {
         if (s == step_index) break @intCast(i);
     } else unreachable;
-    const ptr = &ws.step_status_bits[step_idx / 4];
+    const ptr = &configured.step_status_bits[step_idx / 4];
     const bit_offset: u3 = @intCast((step_idx % 4) * 2);
     const old_bits: u2 = @truncate(@atomicLoad(u8, ptr, .monotonic) >> bit_offset);
     const mask = @as(u8, @intFromEnum(new_status) ^ old_bits) << bit_offset;
@@ -239,7 +265,8 @@ pub fn updateStepStatus(
 pub fn finishBuild(ws: *WebServer, opts: struct {
     fuzz: bool,
 }) void {
-    const maker = ws.maker;
+    const configured = &ws.configured.?;
+    const maker = configured.maker;
     const all_steps = maker.step_stack.keys();
 
     if (opts.fuzz) {
@@ -274,15 +301,15 @@ pub fn finishBuild(ws: *WebServer, opts: struct {
 }
 
 pub fn now(ws: *const WebServer) i64 {
-    const maker = ws.maker;
-    const io = maker.graph.io;
+    const graph = ws.graph;
+    const io = graph.io;
     const ts = base_clock.now(io);
     return @intCast(ws.base_timestamp.durationTo(ts).toNanoseconds());
 }
 
 fn accept(ws: *WebServer, stream: net.Stream) void {
-    const maker = ws.maker;
-    const io = maker.graph.io;
+    const graph = ws.graph;
+    const io = graph.io;
 
     defer {
         // `net.Stream.close` wants to helpfully overwrite `stream` with
@@ -328,17 +355,19 @@ fn accept(ws: *WebServer, stream: net.Stream) void {
 }
 
 fn serveWebSocket(ws: *WebServer, sock: *http.Server.WebSocket) !noreturn {
-    const maker = ws.maker;
-    const gpa = maker.gpa;
-    const graph = maker.graph;
+    const graph = ws.graph;
+    const gpa = graph.cache.gpa;
     const io = graph.io;
+    log.err("TODO serve a different message when the configuration changes", .{});
+    const configured = &ws.configured.?;
+    const maker = configured.maker;
     const all_steps = maker.step_stack.keys();
 
     var prev_build_status = ws.build_status.load(.monotonic);
 
-    const prev_step_status_bits = try gpa.alloc(u8, ws.step_status_bits.len);
+    const prev_step_status_bits = try gpa.alloc(u8, configured.step_status_bits.len);
     defer gpa.free(prev_step_status_bits);
-    for (prev_step_status_bits, ws.step_status_bits) |*copy, *shared| {
+    for (prev_step_status_bits, configured.step_status_bits) |*copy, *shared| {
         copy.* = @atomicLoad(u8, shared, .monotonic);
     }
 
@@ -354,7 +383,7 @@ fn serveWebSocket(ws: *WebServer, sock: *http.Server.WebSocket) !noreturn {
             .timestamp = ws.now(),
             .steps_len = @intCast(all_steps.len),
         };
-        var bufs: [3][]const u8 = .{ @ptrCast(&hello_header), ws.step_names_trailing, prev_step_status_bits };
+        var bufs: [3][]const u8 = .{ @ptrCast(&hello_header), configured.step_names_trailing, prev_step_status_bits };
         try sock.writeMessageVec(&bufs, .binary);
     }
 
@@ -369,17 +398,17 @@ fn serveWebSocket(ws: *WebServer, sock: *http.Server.WebSocket) !noreturn {
         }
 
         {
-            try ws.time_report_mutex.lock(io);
-            defer ws.time_report_mutex.unlock(io);
-            for (ws.time_report_msgs, ws.time_report_update_times) |msg, update_time| {
+            try configured.time_report_mutex.lock(io);
+            defer configured.time_report_mutex.unlock(io);
+            for (configured.time_report_msgs, configured.time_report_update_times) |msg, update_time| {
                 if (update_time <= prev_time) continue;
-                // We want to send `msg`, but shouldn't block `ws.time_report_mutex` while we do, so
+                // We want to send `msg`, but shouldn't block `configured.time_report_mutex` while we do, so
                 // that we don't hold up the build system on the client accepting this packet.
                 const owned_msg = try gpa.dupe(u8, msg);
                 defer gpa.free(owned_msg);
                 // Temporarily unlock, then re-lock after the message is sent.
-                ws.time_report_mutex.unlock(io);
-                defer ws.time_report_mutex.lockUncancelable(io);
+                configured.time_report_mutex.unlock(io);
+                defer configured.time_report_mutex.lockUncancelable(io);
                 try sock.writeMessage(owned_msg, .binary);
             }
         }
@@ -393,7 +422,7 @@ fn serveWebSocket(ws: *WebServer, sock: *http.Server.WebSocket) !noreturn {
             }
         }
 
-        for (prev_step_status_bits, ws.step_status_bits, 0..) |*prev_byte, *shared, byte_idx| {
+        for (prev_step_status_bits, configured.step_status_bits, 0..) |*prev_byte, *shared, byte_idx| {
             const cur_byte = @atomicLoad(u8, shared, .monotonic);
             if (prev_byte.* == cur_byte) continue;
             const cur: [4]abi.StepUpdate.Status = .{
@@ -433,8 +462,8 @@ fn serveWebSocket(ws: *WebServer, sock: *http.Server.WebSocket) !noreturn {
     }
 }
 fn recvWebSocketMessages(ws: *WebServer, sock: *http.Server.WebSocket) void {
-    const maker = ws.maker;
-    const io = maker.graph.io;
+    const graph = ws.graph;
+    const io = graph.io;
 
     while (true) {
         const msg = sock.readSmallMessage() catch return;
@@ -492,8 +521,7 @@ fn serveLibFile(
     sub_path: []const u8,
     content_type: []const u8,
 ) !void {
-    const maker = ws.maker;
-    const graph = maker.graph;
+    const graph = ws.graph;
 
     return serveFile(ws, request, .{
         .root_dir = graph.zig_lib_directory,
@@ -505,7 +533,7 @@ fn serveClientWasm(
     req: *http.Server.Request,
     optimize_mode: std.builtin.OptimizeMode,
 ) !void {
-    const gpa = ws.maker.gpa;
+    const gpa = ws.graph.cache.gpa;
 
     var arena_state: std.heap.ArenaAllocator = .init(gpa);
     defer arena_state.deinit();
@@ -522,9 +550,9 @@ pub fn serveFile(
     path: Cache.Path,
     content_type: []const u8,
 ) !void {
-    const maker = ws.maker;
-    const gpa = ws.maker.gpa;
-    const io = maker.graph.io;
+    const graph = ws.graph;
+    const gpa = graph.cache.gpa;
+    const io = graph.io;
 
     // The desired API is actually sendfile, which will require enhancing http.Server.
     // We load the file with every request so that the user can make changes to the file
@@ -542,8 +570,7 @@ pub fn serveFile(
     });
 }
 pub fn serveTarFile(ws: *WebServer, request: *http.Server.Request, paths: []const Cache.Path) !void {
-    const maker = ws.maker;
-    const graph = maker.graph;
+    const graph = ws.graph;
     const io = graph.io;
 
     var send_buffer: [0x4000]u8 = undefined;
@@ -581,9 +608,8 @@ fn buildClientWasm(ws: *WebServer, arena: Allocator, optimize: std.builtin.Optim
     const arch_os_abi = "wasm32-freestanding";
     const cpu_features = "baseline+atomics+bulk_memory+multivalue+mutable_globals+nontrapping_fptoint+reference_types+sign_ext";
 
-    const maker = ws.maker;
-    const gpa = maker.gpa;
-    const graph = maker.graph;
+    const graph = ws.graph;
+    const gpa = graph.cache.gpa;
     const io = graph.io;
 
     const main_src_path: Cache.Path = .{
@@ -622,151 +648,19 @@ fn buildClientWasm(ws: *WebServer, arena: Allocator, optimize: std.builtin.Optim
         "--listen=-",
     });
 
-    var child = try std.process.spawn(io, .{
+    const compile_prog_node = ws.root_prog_node.start("Compile WebAssembly Component", 0);
+    defer compile_prog_node.end();
+
+    const result = try std.zig.buildExeSubprocess(gpa, io, .{
         .argv = argv.items,
-        .environ_map = &graph.environ_map,
-        .stdin = .pipe,
-        .stdout = .pipe,
-        .stderr = .pipe,
-    });
-    defer child.kill(io);
-
-    var stderr_task = try io.concurrent(readStreamAlloc, .{ gpa, io, child.stderr.?, .unlimited });
-    defer if (stderr_task.cancel(io)) |slice| gpa.free(slice) else |_| {};
-
-    var stdout_buffer: [512]u8 = undefined;
-    var stdout_reader: Io.File.Reader = .initStreaming(child.stdout.?, io, &stdout_buffer);
-    const stdout = &stdout_reader.interface;
-
-    {
-        var w = child.stdin.?.writer(io, &.{});
-        w.interface.writeStruct(std.zig.Client.Message.Header{ .tag = .update, .bytes_len = 0 }, .little) catch |err| switch (err) {
-            error.WriteFailed => return w.err.?,
-        };
-        w.interface.writeStruct(std.zig.Client.Message.Header{ .tag = .exit, .bytes_len = 0 }, .little) catch |err| switch (err) {
-            error.WriteFailed => return w.err.?,
-        };
-    }
-
-    const Header = std.zig.Server.Message.Header;
-
-    var result: ?Cache.Path = null;
-    var result_error_bundle = std.zig.ErrorBundle.empty;
-    var body_buffer: std.ArrayList(u8) = .empty;
-    defer body_buffer.deinit(gpa);
-
-    while (true) {
-        const header = stdout.takeStruct(Header, .little) catch |err| switch (err) {
-            error.ReadFailed => |e| return e,
-            error.EndOfStream => break,
-        };
-        body_buffer.clearRetainingCapacity();
-        try stdout.appendExact(gpa, &body_buffer, header.bytes_len);
-        const body = body_buffer.items;
-
-        switch (header.tag) {
-            .zig_version => {
-                if (!std.mem.eql(u8, builtin.zig_version_string, body)) {
-                    return error.ZigProtocolVersionMismatch;
-                }
-            },
-            .error_bundle => {
-                result_error_bundle = try std.zig.Server.allocErrorBundle(arena, body);
-            },
-            .emit_digest => {
-                const EmitDigest = std.zig.Server.Message.EmitDigest;
-                const ebp_hdr: *align(1) const EmitDigest = @ptrCast(body);
-                if (!ebp_hdr.flags.cache_hit) {
-                    log.info("source changes detected; rebuilt wasm component", .{});
-                }
-                const digest = body[@sizeOf(EmitDigest)..][0..Cache.bin_digest_len];
-                result = .{
-                    .root_dir = graph.global_cache_root,
-                    .sub_path = try arena.dupe(u8, "o" ++ std.fs.path.sep_str ++ Cache.binToHex(digest.*)),
-                };
-            },
-            else => {}, // ignore other messages
-        }
-    }
-
-    const stderr_contents = try stderr_task.await(io);
-    if (stderr_contents.len > 0) {
-        std.debug.print("{s}", .{stderr_contents});
-    }
-
-    // Send EOF to stdin.
-    child.stdin.?.close(io);
-    child.stdin = null;
-
-    switch (try child.wait(io)) {
-        .exited => |code| {
-            if (code != 0) {
-                log.err(
-                    "the following command exited with error code {d}:\n{s}",
-                    .{ code, try std.zig.allocPrintCmd(arena, argv.items, .{}) },
-                );
-                return error.WasmCompilationFailed;
-            }
-        },
-        .signal => |sig| {
-            log.err(
-                "the following command terminated with signal {t}:\n{s}",
-                .{ sig, try std.zig.allocPrintCmd(arena, argv.items, .{}) },
-            );
-            return error.WasmCompilationFailed;
-        },
-        .stopped => |sig| {
-            log.err(
-                "the following command stopped unexpectedly with signal {t}:\n{s}",
-                .{ sig, try std.zig.allocPrintCmd(arena, argv.items, .{}) },
-            );
-            return error.WasmCompilationFailed;
-        },
-        .unknown => {
-            log.err(
-                "the following command terminated unexpectedly:\n{s}",
-                .{try std.zig.allocPrintCmd(arena, argv.items, .{})},
-            );
-            return error.WasmCompilationFailed;
-        },
-    }
-
-    if (result_error_bundle.errorMessageCount() > 0) {
-        try result_error_bundle.renderToStderr(io, .{}, .auto);
-        log.err("the following command failed with {d} compilation errors:\n{s}", .{
-            result_error_bundle.errorMessageCount(),
-            try std.zig.allocPrintCmd(arena, argv.items, .{}),
-        });
-        return error.WasmCompilationFailed;
-    }
-
-    const base_path = result orelse {
-        log.err("child process failed to report result\n{s}", .{
-            try std.zig.allocPrintCmd(arena, argv.items, .{}),
-        });
-        return error.WasmCompilationFailed;
-    };
-    const target = std.zig.system.resolveTargetQuery(io, std.Build.parseTargetQuery(.{
+        .cache_root = graph.global_cache_root,
+        .root_name = root_name,
         .arch_os_abi = arch_os_abi,
         .cpu_features = cpu_features,
-    }) catch unreachable) catch unreachable;
-    const bin_name = try std.zig.binNameAlloc(arena, .{
-        .root_name = root_name,
-        .cpu_arch = target.cpu.arch,
-        .os_tag = target.os.tag,
-        .ofmt = target.ofmt,
-        .abi = target.abi,
-        .output_mode = .Exe,
+        .progress_node = compile_prog_node,
     });
-    return base_path.join(arena, bin_name);
-}
-
-fn readStreamAlloc(gpa: Allocator, io: Io, file: Io.File, limit: Io.Limit) ![]u8 {
-    var file_reader: Io.File.Reader = .initStreaming(file, io, &.{});
-    return file_reader.interface.allocRemaining(gpa, limit) catch |err| switch (err) {
-        error.ReadFailed => return file_reader.err.?,
-        else => |e| return e,
-    };
+    if (!result.cache_hit) log.info("source changes detected; rebuilt wasm component", .{});
+    return result.path;
 }
 
 pub fn updateTimeReportCompile(ws: *WebServer, opts: struct {
@@ -783,9 +677,11 @@ pub fn updateTimeReportCompile(ws: *WebServer, opts: struct {
     /// The trailing data of `abi.time_report.CompileResult`, except the step name.
     trailing: []const u8,
 }) void {
-    const maker = ws.maker;
+    const graph = ws.graph;
+    const io = graph.io;
+    const configured = &ws.configured.?;
+    const maker = configured.maker;
     const gpa = maker.gpa;
-    const io = maker.graph.io;
     const all_steps = maker.step_stack.keys();
 
     const step_idx: u32 = for (all_steps, 0..) |s, i| {
@@ -793,10 +689,10 @@ pub fn updateTimeReportCompile(ws: *WebServer, opts: struct {
     } else unreachable;
 
     const old_buf = old: {
-        ws.time_report_mutex.lock(io) catch return;
-        defer ws.time_report_mutex.unlock(io);
-        const old = ws.time_report_msgs[step_idx];
-        ws.time_report_msgs[step_idx] = &.{};
+        configured.time_report_mutex.lock(io) catch return;
+        defer configured.time_report_mutex.unlock(io);
+        const old = configured.time_report_msgs[step_idx];
+        configured.time_report_msgs[step_idx] = &.{};
         break :old old;
     };
     const buf = gpa.realloc(old_buf, @sizeOf(abi.time_report.CompileResult) + opts.trailing.len) catch @panic("out of memory");
@@ -816,19 +712,21 @@ pub fn updateTimeReportCompile(ws: *WebServer, opts: struct {
     @memcpy(buf[@sizeOf(abi.time_report.CompileResult)..], opts.trailing);
 
     {
-        ws.time_report_mutex.lock(io) catch return;
-        defer ws.time_report_mutex.unlock(io);
-        assert(ws.time_report_msgs[step_idx].len == 0);
-        ws.time_report_msgs[step_idx] = buf;
-        ws.time_report_update_times[step_idx] = ws.now();
+        configured.time_report_mutex.lock(io) catch return;
+        defer configured.time_report_mutex.unlock(io);
+        assert(configured.time_report_msgs[step_idx].len == 0);
+        configured.time_report_msgs[step_idx] = buf;
+        configured.time_report_update_times[step_idx] = ws.now();
     }
     ws.notifyUpdate();
 }
 
 pub fn updateTimeReportGeneric(ws: *WebServer, step_index: Configuration.Step.Index, duration: Io.Duration) void {
-    const maker = ws.maker;
+    const graph = ws.graph;
+    const io = graph.io;
+    const configured = &ws.configured.?;
+    const maker = configured.maker;
     const gpa = maker.gpa;
-    const io = maker.graph.io;
     const all_steps = maker.step_stack.keys();
 
     const step_idx: u32 = for (all_steps, 0..) |s, i| {
@@ -836,10 +734,10 @@ pub fn updateTimeReportGeneric(ws: *WebServer, step_index: Configuration.Step.In
     } else unreachable;
 
     const old_buf = old: {
-        ws.time_report_mutex.lock(io) catch return;
-        defer ws.time_report_mutex.unlock(io);
-        const old = ws.time_report_msgs[step_idx];
-        ws.time_report_msgs[step_idx] = &.{};
+        configured.time_report_mutex.lock(io) catch return;
+        defer configured.time_report_mutex.unlock(io);
+        const old = configured.time_report_msgs[step_idx];
+        configured.time_report_msgs[step_idx] = &.{};
         break :old old;
     };
     const buf = gpa.realloc(old_buf, @sizeOf(abi.time_report.GenericResult)) catch @panic("out of memory");
@@ -849,11 +747,11 @@ pub fn updateTimeReportGeneric(ws: *WebServer, step_index: Configuration.Step.In
         .ns_total = @intCast(duration.toNanoseconds()),
     };
     {
-        ws.time_report_mutex.lock(io) catch return;
-        defer ws.time_report_mutex.unlock(io);
-        assert(ws.time_report_msgs[step_idx].len == 0);
-        ws.time_report_msgs[step_idx] = buf;
-        ws.time_report_update_times[step_idx] = ws.now();
+        configured.time_report_mutex.lock(io) catch return;
+        defer configured.time_report_mutex.unlock(io);
+        assert(configured.time_report_msgs[step_idx].len == 0);
+        configured.time_report_msgs[step_idx] = buf;
+        configured.time_report_update_times[step_idx] = ws.now();
     }
     ws.notifyUpdate();
 }
@@ -864,9 +762,11 @@ pub fn updateTimeReportRunTest(
     tests: *const Step.Run.CachedTestMetadata,
     ns_per_test: []const u64,
 ) void {
-    const maker = ws.maker;
+    const graph = ws.graph;
+    const io = graph.io;
+    const configured = &ws.configured.?;
+    const maker = configured.maker;
     const gpa = maker.gpa;
-    const io = maker.graph.io;
     const all_steps = maker.step_stack.keys();
 
     const step_idx: u32 = for (all_steps, 0..) |s, i| {
@@ -884,10 +784,10 @@ pub fn updateTimeReportRunTest(
         break :len @sizeOf(abi.time_report.RunTestResult) + names_len + 8 * tests_len;
     };
     const old_buf = old: {
-        ws.time_report_mutex.lock(io) catch return;
-        defer ws.time_report_mutex.unlock(io);
-        const old = ws.time_report_msgs[step_idx];
-        ws.time_report_msgs[step_idx] = &.{};
+        configured.time_report_mutex.lock(io) catch return;
+        defer configured.time_report_mutex.unlock(io);
+        const old = configured.time_report_msgs[step_idx];
+        configured.time_report_msgs[step_idx] = &.{};
         break :old old;
     };
     const buf = gpa.realloc(old_buf, new_len) catch @panic("out of memory");
@@ -910,11 +810,11 @@ pub fn updateTimeReportRunTest(
     assert(offset == buf.len);
 
     {
-        ws.time_report_mutex.lock(io) catch return;
-        defer ws.time_report_mutex.unlock(io);
-        assert(ws.time_report_msgs[step_idx].len == 0);
-        ws.time_report_msgs[step_idx] = buf;
-        ws.time_report_update_times[step_idx] = ws.now();
+        configured.time_report_mutex.lock(io) catch return;
+        defer configured.time_report_mutex.unlock(io);
+        assert(configured.time_report_msgs[step_idx].len == 0);
+        configured.time_report_msgs[step_idx] = buf;
+        configured.time_report_update_times[step_idx] = ws.now();
     }
     ws.notifyUpdate();
 }
@@ -923,7 +823,7 @@ const RunnerRequest = union(enum) {
     rebuild,
 };
 pub fn getRunnerRequest(ws: *WebServer) ?RunnerRequest {
-    const io = ws.maker.graph.io;
+    const io = ws.graph.io;
     ws.runner_request_mutex.lock(io) catch return;
     defer ws.runner_request_mutex.unlock(io);
     if (ws.runner_request) |req| {
@@ -934,7 +834,7 @@ pub fn getRunnerRequest(ws: *WebServer) ?RunnerRequest {
     return null;
 }
 pub fn wait(ws: *WebServer) Io.Cancelable!RunnerRequest {
-    const io = ws.maker.graph.io;
+    const io = ws.graph.io;
     try ws.runner_request_mutex.lock(io);
     defer ws.runner_request_mutex.unlock(io);
     while (true) {

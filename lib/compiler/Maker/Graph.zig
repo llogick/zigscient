@@ -4,7 +4,6 @@ const Graph = @This();
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
-const Configuration = std.Build.Configuration;
 const Path = std.Build.Cache.Path;
 const Directory = std.Build.Cache.Directory;
 

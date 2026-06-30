@@ -133,7 +133,7 @@ pub fn main(init: process.Init.Minimal) !void {
         .off => .no_color,
     };
 
-    try builder.runBuild(root);
+    builder.runBuild(root);
 
     if (builder.validateUserInputDidItFail()) {
         fatal("  access the help menu with 'zig build -h'", .{});
@@ -631,6 +631,37 @@ fn serialize(b: *std.Build, wc: *Configuration.Wip, writer: *Io.Writer) !void {
     const gpa = wc.gpa;
 
     var s: Serialize = .{ .wc = wc, .arena = arena };
+
+    try wc.path_deps.ensureTotalCapacityPrecise(gpa, graph.configure_dependencies.items.len);
+    for (
+        graph.configure_dependencies.items,
+        wc.path_deps.addManyAsSliceAssumeCapacity(graph.configure_dependencies.items.len),
+    ) |src, *dest| {
+        dest.* = .{
+            .flags = .{
+                .base = switch (src.lazy_path) {
+                    .src_path, .dependency => .build_root,
+                    .generated => unreachable,
+                    .cwd_relative => .cwd,
+                    .relative => |r| r.base,
+                },
+                .mode = src.mode,
+            },
+            .sub = switch (src.lazy_path) {
+                .src_path => |sp| try wc.addString(sp.sub_path),
+                .generated => unreachable,
+                .cwd_relative => |sub_path| try wc.addString(sub_path),
+                .dependency => |d| try wc.addString(d.sub_path),
+                .relative => |r| try wc.addString(r.sub_path),
+            },
+            .pkg = switch (src.lazy_path) {
+                .src_path => |sp| .init(try s.builderToPackage(sp.owner)),
+                .generated => unreachable,
+                .cwd_relative, .relative => .none,
+                .dependency => |d| .init(try s.builderToPackage(d.dependency.builder)),
+            },
+        };
+    }
 
     // Starting from all top-level steps in `b`, traverse the entire step graph
     // and add all step dependencies implied by module graphs.

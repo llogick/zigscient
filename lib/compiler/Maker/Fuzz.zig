@@ -166,9 +166,9 @@ pub fn deinit(fuzz: *Fuzz) void {
 fn rebuildTestsWorkerRun(
     maker: *Maker,
     run_index: Configuration.Step.Index,
-    parent_prog_node: std.Progress.Node,
+    parent_progress_node: std.Progress.Node,
 ) void {
-    rebuildTestsWorkerRunFallible(maker, run_index, parent_prog_node) catch |err| {
+    rebuildTestsWorkerRunFallible(maker, run_index, parent_progress_node) catch |err| {
         const conf = &maker.scanned_config.configuration;
         const conf_run = run_index.ptr(conf).extended.cast(conf, Configuration.Step.Run).?;
         const comp_index = conf_run.producer.value.?;
@@ -180,7 +180,7 @@ fn rebuildTestsWorkerRun(
 fn rebuildTestsWorkerRunFallible(
     maker: *Maker,
     run_index: Configuration.Step.Index,
-    parent_prog_node: std.Progress.Node,
+    parent_progress_node: std.Progress.Node,
 ) !void {
     const graph = maker.graph;
     const io = graph.io;
@@ -196,7 +196,7 @@ fn rebuildTestsWorkerRunFallible(
     const root_module = conf_comp.root_module.get(conf);
     const target = root_module.resolved_target.get(conf).?.result.get(conf);
 
-    const prog_node = parent_prog_node.start(conf_comp_step.name.slice(conf), 0);
+    const prog_node = parent_progress_node.start(conf_comp_step.name.slice(conf), 0);
     defer prog_node.end();
 
     const result = comp.rebuildInFuzzMode(maker, comp_index, prog_node);

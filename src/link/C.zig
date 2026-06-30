@@ -13,7 +13,7 @@ const Path = std.Build.Cache.Path;
 
 const build_options = @import("build_options");
 const Zcu = @import("../Zcu.zig");
-const Module = @import("../Package/Module.zig");
+const Module = @import("../Module.zig");
 const InternPool = @import("../InternPool.zig");
 const Alignment = InternPool.Alignment;
 const Compilation = @import("../Compilation.zig");

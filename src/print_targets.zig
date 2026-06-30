@@ -9,7 +9,6 @@ const Target = std.Target;
 const assert = std.debug.assert;
 
 const glibc = @import("libs/glibc.zig");
-const introspect = @import("introspect.zig");
 const target = @import("target.zig");
 
 pub fn cmdTargets(
@@ -20,7 +19,7 @@ pub fn cmdTargets(
     native_target: *const Target,
 ) !void {
     _ = args;
-    var zig_lib_directory = introspect.findZigLibDir(allocator, io) catch |err|
+    var zig_lib_directory = std.zig.findZigLibDir(allocator, io) catch |err|
         fatal("unable to find zig installation directory: {t}", .{err});
     defer zig_lib_directory.handle.close(io);
     defer allocator.free(zig_lib_directory.path.?);

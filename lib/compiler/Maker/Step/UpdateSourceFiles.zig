@@ -3,7 +3,6 @@ const UpdateSourceFiles = @This();
 const std = @import("std");
 const Io = std.Io;
 const Path = std.Build.Cache.Path;
-const allocPrint = std.fmt.allocPrint;
 const Configuration = std.Build.Configuration;
 
 const Step = @import("../Step.zig");

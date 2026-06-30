@@ -3,7 +3,6 @@ const TranslateC = @This();
 const std = @import("std");
 const fs = std.fs;
 const mem = std.mem;
-const allocPrint = std.fmt.allocPrint;
 const Step = std.Build.Step;
 const LazyPath = std.Build.LazyPath;
 const Configuration = std.Build.Configuration;
@@ -158,7 +157,7 @@ pub fn defineCMacro(translate_c: *TranslateC, name: []const u8, value: ?[]const 
     const graph = translate_c.step.owner.graph;
     const arena = graph.arena;
     const wc = &graph.wip_configuration;
-    const macro = allocPrint(arena, "{s}={s}", .{ name, value orelse "1" }) catch @panic("OOM");
+    const macro = arena.print("{s}={s}", .{ name, value orelse "1" }) catch @panic("OOM");
     const macro_string = wc.addString(macro) catch @panic("OOM");
     translate_c.c_macros.append(arena, macro_string) catch @panic("OOM");
 }

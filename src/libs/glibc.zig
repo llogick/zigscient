@@ -12,7 +12,7 @@ const Compilation = @import("../Compilation.zig");
 const build_options = @import("build_options");
 const trace = @import("../tracy.zig").trace;
 const Cache = std.Build.Cache;
-const Module = @import("../Package/Module.zig");
+const Module = @import("../Module.zig");
 const link = @import("../link.zig");
 
 pub const Lib = struct {

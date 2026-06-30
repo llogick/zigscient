@@ -3,7 +3,6 @@ const TranslateC = @This();
 const std = @import("std");
 const Io = std.Io;
 const Configuration = std.Build.Configuration;
-const allocPrint = std.fmt.allocPrint;
 const assert = std.debug.assert;
 const OptimizeMode = std.lang.OptimizeMode;
 
@@ -54,7 +53,7 @@ pub fn make(
         .fast => .ReleaseFast,
         .small => .ReleaseSmall,
     };
-    if (opt) |o| argv.appendAssumeCapacity(try allocPrint(arena, "-O{t}", .{o}));
+    if (opt) |o| argv.appendAssumeCapacity(try arena.print("-O{t}", .{o}));
 
     try argv.ensureUnusedCapacity(arena, conf_tc.include_dirs.len * 2);
     for (0..conf_tc.include_dirs.len) |i|
@@ -133,7 +132,7 @@ pub fn make(
                     else => |e| return e,
                 }
             }
-            try argv.append(arena, try allocPrint(arena, "{s}{s}", .{
+            try argv.append(arena, try arena.print("{s}{s}", .{
                 prefix, system_lib_name,
             }));
         }
@@ -151,7 +150,7 @@ pub fn make(
     }).?;
 
     const stem = Io.Dir.path.stem(Io.Dir.path.basename(c_source_path));
-    const out_basename = try allocPrint(arena, "{s}.zig", .{stem});
+    const out_basename = try arena.print("{s}.zig", .{stem});
 
     maker.generatedPath(conf_tc.output_file).* = try output_dir_path.join(arena, out_basename);
 }

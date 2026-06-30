@@ -3258,14 +3258,12 @@ pub fn addCases(
 
     var cases = @import("src/Cases.zig").init(gpa, arena, io);
 
-    // Ensure changes to these files get picked up
-    // https://codeberg.org/ziglang/zig/issues/35473
-    b.graph.poisonCache();
+    b.dependOnDirectory(b.path("test/cases"));
 
     var dir = try b.root.openDir(io, "test/cases", .{ .iterate = true });
     defer dir.close(io);
 
-    cases.addFromDir(dir, b);
+    cases.addFromDir(dir, "test/cases", b);
     try @import("cases.zig").addCases(&cases, build_options, b);
 
     cases.lowerToBuildSteps(
@@ -3320,21 +3318,27 @@ pub fn addIncrementalTests(b: *std.Build, test_step: *Step, test_filters: []cons
         }),
     });
 
-    // Ensure changes to these files get picked up
-    // https://codeberg.org/ziglang/zig/issues/35473
-    b.graph.poisonCache();
+    b.dependOnDirectory(b.path("test/incremental"));
 
     var dir = try b.root.openDir(io, "test/incremental", .{ .iterate = true });
     defer dir.close(io);
 
     var it = try dir.walk(b.graph.arena);
     while (try it.next(io)) |entry| {
-        if (entry.kind != .file) continue;
         if (std.mem.endsWith(u8, entry.basename, ".swp")) continue;
 
         for (test_filters) |test_filter| {
             if (std.mem.indexOf(u8, entry.path, test_filter)) |_| break;
         } else if (test_filters.len > 0) continue;
+
+        switch (entry.kind) {
+            .file => {},
+            .directory => {
+                b.dependOnDirectory(b.path(b.pathJoin(&.{ "test", "incremental", entry.path })));
+            },
+            else => continue,
+        }
+        b.dependOnFileContents(b.path(b.pathJoin(&.{ "test", "incremental", entry.path })));
 
         for (incremental_targets) |target_str| {
             const run = b.addRunArtifact(incr_check);

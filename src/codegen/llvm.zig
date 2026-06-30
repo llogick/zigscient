@@ -13,7 +13,7 @@ const Compilation = @import("../Compilation.zig");
 const dev = @import("../dev.zig");
 const InternPool = @import("../InternPool.zig");
 const link = @import("../link.zig");
-const Package = @import("../Package.zig");
+const Module = @import("../Module.zig");
 const target_util = @import("../target.zig");
 const Type = @import("../Type.zig");
 const Value = @import("../Value.zig");
@@ -2772,7 +2772,7 @@ pub const Object = struct {
     fn addCommonFnAttributes(
         o: *Object,
         attributes: *Builder.FunctionAttributes.Wip,
-        owner_mod: *Package.Module,
+        owner_mod: *Module,
         omit_frame_pointer: bool,
     ) Allocator.Error!void {
         if (!owner_mod.red_zone) {
