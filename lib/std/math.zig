@@ -1879,7 +1879,7 @@ test sign {
 /// Increases the bit width of an integer by copying the most significant bit.
 /// This results in the input and output having the same arithmetic value, when
 /// interpreted as two's complement integers.
-fn signExtend(To: type, n: anytype) To {
+pub fn signExtend(To: type, n: anytype) To {
     const From = @TypeOf(n);
     if (From == u0) return 0;
     const FromSigned = @Int(.signed, @typeInfo(From).int.bits);
