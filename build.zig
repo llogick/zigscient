@@ -272,7 +272,7 @@ pub fn build(b: *std.Build) !void {
     const version = try arena.dupeSentinel(u8, version_slice, 0);
     exe_options.addOption([:0]const u8, "version", version);
 
-    const resolved_proj_version = getVersion(b, opt_version_string);
+    const resolved_proj_version = try getVersion(b, opt_version_string);
     exe_options.addOption(std.SemanticVersion, "semantic_version", resolved_proj_version);
     exe_options.addOption([]const u8, "version_string", b.fmt("{f}", .{resolved_proj_version}));
     exe_options.addOption([]const u8, "minimum_runtime_zig_version_string", minimum_runtime_zig_version);
@@ -1788,7 +1788,7 @@ fn cfgLspServer(
 
 // not ideal
 /// Returns `MAJOR.MINOR.PATCH-dev` when `git describe` failed.
-fn getVersion(b: *std.Build, opt_version_string: ?[]const u8) std.SemanticVersion {
+fn getVersion(b: *std.Build, opt_version_string: ?[]const u8) !std.SemanticVersion {
     if (opt_version_string) |semver_string| {
         return std.SemanticVersion.parse(semver_string) catch |err| {
             std.debug.panic("Expected -Dversion-string={s} to be a semantic version: {}", .{ semver_string, err });
@@ -1811,6 +1811,32 @@ fn getVersion(b: *std.Build, opt_version_string: ?[]const u8) std.SemanticVersio
         , .{ err, argv_joined });
         return proj_version;
     };
+
+    // Ensure git version changes get picked up.
+    git: {
+        const io = b.graph.io;
+        const git_file = b.root.openFile(io, ".git", .{ .allow_directory = false }) catch |err| switch (err) {
+            error.IsDir => {
+                b.dependOnFileContents(b.path(".git/logs/HEAD"));
+                break :git;
+            },
+            error.FileNotFound => break :git,
+            else => |e| return e,
+        };
+        defer git_file.close(io);
+        var line_buffer: ["gitdir: ".len + std.Io.Dir.max_path_bytes + 1]u8 = undefined;
+        var git_file_reader = git_file.reader(io, &line_buffer);
+        if (std.mem.cutPrefix(u8, std.mem.trimEnd(u8, try git_file_reader.interface.allocRemaining(
+            b.graph.arena,
+            .limited("gitdir: ".len + std.Io.Dir.max_path_bytes + "\r\n".len),
+        ), "\r\n"), "gitdir: ")) |git_dir| {
+            const head_file = b.pathJoin(&.{ git_dir, "logs", "HEAD" });
+            b.dependOnFileContents(if (std.Io.Dir.path.isAbsolute(head_file))
+                b.graph.cwdRelativePath(head_file)
+            else
+                b.path(head_file));
+        }
+    }
 
     const git_describe = std.mem.trim(u8, git_describe_untrimmed, " \n\r");
 
