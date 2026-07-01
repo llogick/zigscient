@@ -27,7 +27,6 @@ pub fn make(
     progress_node: std.Progress.Node,
 ) Step.ExtendedMakeError!void {
     _ = config_header;
-    _ = progress_node;
     const graph = maker.graph;
     const step = maker.stepByIndex(step_index);
     const io = graph.io;
@@ -111,7 +110,7 @@ pub fn make(
     const output = aw.written();
     man.hash.addBytes(output);
 
-    if (try step.cacheHit(maker, &man)) {
+    if (try step.cacheHit(maker, &man, progress_node)) {
         const digest = man.final();
         maker.generatedPath(conf_ch.generated_dir).* = .{
             .root_dir = cache_root,

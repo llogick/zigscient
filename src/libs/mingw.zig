@@ -255,7 +255,7 @@ pub fn buildImportLib(comp: *Compilation, lib_name: []const u8, prog_node: std.P
     const final_lib_basename = try std.fmt.allocPrint(gpa, "{s}.lib", .{lib_name});
     errdefer gpa.free(final_lib_basename);
 
-    if (try man.hit()) {
+    if (try man.hit(prog_node)) {
         const digest = man.final();
         const sub_path = try std.fs.path.join(gpa, &.{ "o", &digest, final_lib_basename });
         errdefer gpa.free(sub_path);

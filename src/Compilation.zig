@@ -2761,7 +2761,7 @@ pub fn update(comp: *Compilation, main_progress_node: std.Progress.Node) UpdateE
                 man.want_shared_lock = false;
             }
 
-            const is_hit = man.hit() catch |err| switch (err) {
+            const is_hit = man.hit(main_progress_node) catch |err| switch (err) {
                 error.CacheCheckFailed => switch (man.diagnostic) {
                     .none => unreachable,
                     .manifest_create, .manifest_read, .manifest_lock => |e| return comp.setMiscFailure(
@@ -5444,7 +5444,7 @@ fn updateCObject(comp: *Compilation, c_object: *CObject, c_obj_prog_node: std.Pr
     const target = comp.getTarget();
     assert(target.ofmt != .c);
     const o_ext = target.ofmt.fileExt(target.cpu.arch);
-    const digest = if (!comp.disable_c_depfile and try man.hit()) man.final() else blk: {
+    const digest = if (!comp.disable_c_depfile and try man.hit(child_progress_node)) man.final() else blk: {
         var argv: std.array_list.Managed([]const u8) = .init(gpa);
         defer argv.deinit();
 
@@ -5705,7 +5705,7 @@ fn updateCObject(comp: *Compilation, c_object: *CObject, c_obj_prog_node: std.Pr
         }
 
         // We don't actually care whether it's a cache hit or miss; we just need the digest and the lock.
-        if (comp.disable_c_depfile) _ = try man.hit();
+        if (comp.disable_c_depfile) _ = try man.hit(child_progress_node);
 
         // Rename into place.
         const digest = man.final();
@@ -5793,7 +5793,7 @@ fn updateWin32Resource(comp: *Compilation, win32_resource: *Win32Resource, win32
         const rc_basename = try std.fmt.allocPrint(arena, "{s}.rc", .{src_basename});
         const res_basename = try std.fmt.allocPrint(arena, "{s}.res", .{src_basename});
 
-        const digest = if (try man.hit()) man.final() else blk: {
+        const digest = if (try man.hit(child_progress_node)) man.final() else blk: {
             // The digest only depends on the .manifest file, so we can
             // get the digest now and write the .res directly to the cache
             const digest = man.final();
@@ -5886,7 +5886,7 @@ fn updateWin32Resource(comp: *Compilation, win32_resource: *Win32Resource, win32
 
     const rc_basename_noext = src_basename[0 .. src_basename.len - fs.path.extension(src_basename).len];
 
-    const digest = if (try man.hit()) man.final() else blk: {
+    const digest = if (try man.hit(child_progress_node)) man.final() else blk: {
         var zig_cache_tmp_dir = try comp.dirs.local_cache.handle.createDirPathOpen(io, "tmp", .{});
         defer zig_cache_tmp_dir.close(io);
 

@@ -104,7 +104,7 @@ pub fn make(
                 }
             }
 
-            if (try step.cacheHit(maker, &man)) {
+            if (try step.cacheHit(maker, &man, progress_node)) {
                 const digest = man.final();
                 maker.generatedPath(conf_wf.generated_directory).* = .{
                     .root_dir = cache_root,

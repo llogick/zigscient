@@ -46,7 +46,7 @@ pub fn make(
 
     const basename = opt_basename orelse Io.Dir.path.basename(input_path.sub_path);
 
-    if (try step.cacheHit(maker, &man)) {
+    if (try step.cacheHit(maker, &man, progress_node)) {
         // Cache hit, skip subprocess execution.
         const digest = man.final();
         maker.generatedPath(conf_oc.output_file).* = .{

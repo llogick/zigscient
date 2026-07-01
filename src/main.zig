@@ -5111,7 +5111,7 @@ fn cmdTranslateC(
     Compilation.cache_helpers.hashCSource(&man, c_source_file) catch |err|
         fatal("unable to process {q}: {t}", .{ c_source_file.src_path, err });
 
-    const result: Compilation.TranslateCResult = if (try man.hit()) .{
+    const result: Compilation.TranslateCResult = if (try man.hit(prog_node)) .{
         .digest = man.finalBin(),
         .cache_hit = true,
         .errors = std.zig.ErrorBundle.empty,

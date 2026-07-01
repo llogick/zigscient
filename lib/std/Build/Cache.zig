@@ -501,7 +501,13 @@ pub const Manifest = struct {
     /// The lock on the manifest file is released when `deinit` is called. As another
     /// option, one may call `toOwnedLock` to obtain a smaller object which can represent
     /// the lock. `deinit` is safe to call whether or not `toOwnedLock` has been called.
-    pub fn hit(self: *Manifest) HitError!bool {
+    pub fn hit(man: *Manifest, parent_progress_node: std.Progress.Node) HitError!bool {
+        const node = parent_progress_node.start("Reusing Cache Artifacts", 0);
+        defer node.end();
+        return hitInner(man);
+    }
+
+    pub fn hitInner(self: *Manifest) HitError!bool {
         assert(self.manifest_file == null);
 
         self.diagnostic = .none;
@@ -1380,7 +1386,7 @@ test "cache file and then recall it" {
             _ = try ch.addFile(temp_file, null);
 
             // There should be nothing in the cache
-            try testing.expectEqual(false, try ch.hit());
+            try testing.expectEqual(false, try ch.hit(.none));
 
             digest1 = ch.final();
             try ch.writeManifest();
@@ -1395,7 +1401,7 @@ test "cache file and then recall it" {
             _ = try ch.addFile(temp_file, null);
 
             // Cache hit! We just "built" the same file
-            try testing.expect(try ch.hit());
+            try testing.expect(try ch.hit(.none));
             digest2 = ch.final();
 
             try testing.expectEqual(false, ch.have_exclusive_lock);
@@ -1448,7 +1454,7 @@ test "check that changing a file makes cache fail" {
             const temp_file_idx = try ch.addFile(temp_file, 100);
 
             // There should be nothing in the cache
-            try testing.expectEqual(false, try ch.hit());
+            try testing.expectEqual(false, try ch.hit(.none));
 
             try testing.expect(mem.eql(u8, original_temp_file_contents, ch.files.keys()[temp_file_idx].contents.?));
 
@@ -1467,7 +1473,7 @@ test "check that changing a file makes cache fail" {
             const temp_file_idx = try ch.addFile(temp_file, 100);
 
             // A file that we depend on has been updated, so the cache should not contain an entry for it
-            try testing.expectEqual(false, try ch.hit());
+            try testing.expectEqual(false, try ch.hit(.none));
 
             // The cache system does not keep the contents of re-hashed input files.
             try testing.expect(ch.files.keys()[temp_file_idx].contents == null);
@@ -1511,7 +1517,7 @@ test "no file inputs" {
         man.hash.addBytes("1234");
 
         // There should be nothing in the cache
-        try testing.expectEqual(false, try man.hit());
+        try testing.expectEqual(false, try man.hit(.none));
 
         digest1 = man.final();
 
@@ -1523,7 +1529,7 @@ test "no file inputs" {
 
         man.hash.addBytes("1234");
 
-        try testing.expect(try man.hit());
+        try testing.expect(try man.hit(.none));
         digest2 = man.final();
         try testing.expectEqual(false, man.have_exclusive_lock);
     }
@@ -1575,7 +1581,7 @@ test "Manifest with files added after initial hash work" {
             _ = try ch.addFile(temp_file1, null);
 
             // There should be nothing in the cache
-            try testing.expectEqual(false, try ch.hit());
+            try testing.expectEqual(false, try ch.hit(.none));
 
             _ = try ch.addFilePost(temp_file2);
 
@@ -1589,7 +1595,7 @@ test "Manifest with files added after initial hash work" {
             ch.hash.addBytes("1234");
             _ = try ch.addFile(temp_file1, null);
 
-            try testing.expect(try ch.hit());
+            try testing.expect(try ch.hit(.none));
             digest2 = ch.final();
 
             try testing.expectEqual(false, ch.have_exclusive_lock);
@@ -1613,7 +1619,7 @@ test "Manifest with files added after initial hash work" {
             _ = try ch.addFile(temp_file1, null);
 
             // A file that we depend on has been updated, so the cache should not contain an entry for it
-            try testing.expectEqual(false, try ch.hit());
+            try testing.expectEqual(false, try ch.hit(.none));
 
             _ = try ch.addFilePost(temp_file2);
 

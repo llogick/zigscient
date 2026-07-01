@@ -254,7 +254,7 @@ pub fn make(
             .check, .zig_test => false,
         };
 
-    if (!has_side_effects and try step.cacheHitAndWatch(maker, &man)) {
+    if (!has_side_effects and try step.cacheHitWatched(maker, &man, progress_node)) {
         // Cache hit; skip running command.
         const digest = man.final();
         try populateGeneratedStdIo(maker, &conf_run, cache_root, &digest);

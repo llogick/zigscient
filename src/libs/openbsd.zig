@@ -332,7 +332,7 @@ pub fn buildSharedObjects(comp: *Compilation, prog_node: std.Progress.Node) anye
     const full_abilists_path = try comp.dirs.zig_lib.join(arena, &.{abilists_path});
     const abilists_index = try man.addFile(full_abilists_path, abilists_max_size);
 
-    if (try man.hit()) {
+    if (try man.hit(prog_node)) {
         const digest = man.final();
 
         return queueSharedObjects(comp, .{

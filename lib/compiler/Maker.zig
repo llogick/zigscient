@@ -1262,7 +1262,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
             defer compile_prog_node.end();
 
             switch (options.cache_poison) {
-                .pure, .disallowed, .ignored => if (try config_man.hit()) {
+                .pure, .disallowed, .ignored => if (try config_man.hit(compile_prog_node)) {
                     const digest = config_man.final();
                     break :cp .{
                         .{

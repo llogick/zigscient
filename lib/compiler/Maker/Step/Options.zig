@@ -16,9 +16,6 @@ pub fn make(
 ) Step.ExtendedMakeError!void {
     _ = options;
 
-    // This step completes so quickly that no progress reporting is necessary.
-    _ = progress_node;
-
     const graph = maker.graph;
     const step = maker.stepByIndex(step_index);
     const io = graph.io;
@@ -56,7 +53,7 @@ pub fn make(
 
     const basename = "options.zig";
 
-    if (try step.cacheHitAndWatch(maker, &man)) {
+    if (try step.cacheHitWatched(maker, &man, progress_node)) {
         const digest = man.final();
         maker.generatedPath(conf_options.generated_file).* = .{
             .root_dir = cache_root,
