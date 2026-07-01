@@ -314,7 +314,7 @@ pub fn refreshDocumentFromFileSystem(self: *DocumentStore, uri: Uri, should_dele
 pub fn invalidateBuildFile(self: *DocumentStore, build_file_uri: Uri) void {
     comptime std.debug.assert(supports_build_system);
 
-    if (self.config.bss_check != .partial and self.config.bss_check != .success) return;
+    if (self.config.bss_check != .success) return;
     if (self.config.zig_exe_path == null) return;
     if (self.config.global_cache_dir == null) return;
     if (self.config.zig_lib_dir == null) return;
@@ -620,10 +620,10 @@ fn loadBuildConfiguration(
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
+    std.debug.assert(self.config.bss_check == .success);
     std.debug.assert(self.config.zig_exe_path != null);
-    // std.debug.assert(self.config.build_runner_path != null);
-    std.debug.assert(self.config.global_cache_dir != null);
-    std.debug.assert(self.config.zig_lib_dir != null);
+    std.debug.assert(self.config.global_cache_dir != null and self.config.global_cache_dir.?.path != null);
+    std.debug.assert(self.config.zig_lib_dir != null and self.config.zig_lib_dir.?.path != null);
 
     const io = self.io;
 
@@ -635,8 +635,16 @@ fn loadBuildConfiguration(
     const cwd = std.fs.path.dirname(build_file_path).?;
     var args: std.ArrayList([]const u8) = .empty;
 
-    try args.appendSlice(arena, &.{ self.config.zig_exe_path.?, "build", "--print-configuration-path" });
-    if (self.config.zig_lib_dir) |zig_lib_dir| if (zig_lib_dir.path) |zig_lib_dir_path| try args.appendSlice(arena, &.{ "--zig-lib-dir", zig_lib_dir_path });
+    try args.appendSlice(arena, &.{
+        self.config.self_file_path.?,
+        "maker",
+        "build",
+        try arena.print("--zig-lib={s}", .{self.config.zig_lib_dir.?.path.?}),
+        try arena.print("--zig={s}", .{self.config.zig_exe_path.?}),
+        try arena.print("--global-cache={s}", .{self.config.global_cache_dir.?.path.?}),
+        try arena.print("--seed=0x{x}", .{@import("compiler").randInt(io, u32)}),
+        "--print-configuration-path",
+    });
 
     try self.appendBuildOptions(arena, build_file.flat_uri, &args);
 
@@ -722,7 +730,7 @@ fn loadBuildConfiguration(
     var roots: BldDoc.Roots = .init;
     errdefer roots.deinit(self.allocator);
     var roots_info: std.ArrayList(u8) = .empty;
-    try roots_info.appendSlice(arena, "Basic Project Overview\n    Available root IDs are listed under their corresponding Compile Step, eg `ID [N]`.\n");
+    try roots_info.appendSlice(arena, "Basic Project Configuration Overview\n    Available root IDs are listed under their corresponding Compile Step, eg `ID [N]`.\n");
 
     var stack: std.array_list.Managed(StackItem) = .init(arena);
     const c = &serialized;

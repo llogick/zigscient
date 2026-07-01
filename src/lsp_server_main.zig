@@ -104,7 +104,7 @@ pub fn main(init: std.process.Init.Minimal) anyerror!u8 {
     var environ_map = init.environ.createMap(arena) catch |err| fatal("failed to parse environment: {t}", .{err});
 
     if (args.len > 1) {
-        if (mem.eql(u8, args[1], "tailor")) {
+        if (mem.eql(u8, args[1], "maker")) {
             try lsp_server.Maker.main(init);
             return 0;
         }

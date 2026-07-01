@@ -6492,7 +6492,7 @@ fn setThreadLimit(arena: std.mem.Allocator, n: usize, io_impl_ptr: *IoImpl) Allo
     try Zcu.PerThread.Id.allocate(arena, @max(n, 2));
 }
 
-fn randInt(io: Io, comptime T: type) T {
+pub fn randInt(io: Io, comptime T: type) T {
     var x: T = undefined;
     io.random(@ptrCast(&x));
     return x;

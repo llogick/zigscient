@@ -42,13 +42,10 @@ pub const Manager = struct {
     },
 
     pub const BssCheckState = enum {
-        failure,
-        /// Check hasn't been performed yet
-        pending,
-        /// Minimum requirements to read Configuration met
-        partial,
-        /// Can read Configuration and make steps
         success,
+        failure_unsupported_zig_version,
+        failure_self_exe_path_null,
+        pending,
     };
 
     pub fn init(
@@ -270,8 +267,11 @@ pub const Manager = struct {
         brunner: {
             if (!std.process.can_spawn or builtin.is_test) break :brunner;
             const zig_exe = manager.zig_exe orelse break :brunner;
-            manager.bss_check = if (@import("build_runner/check.zig").isBuildRunnerSupported(zig_exe.version)) .partial else .failure;
-            if (manager.bss_check == .partial and manager.self_file_path != null) manager.bss_check = .success;
+            if (manager.self_file_path == null) {
+                manager.bss_check = .failure_self_exe_path_null;
+                break :brunner;
+            }
+            manager.bss_check = if (@import("build_runner/check.zig").isBuildRunnerSupported(zig_exe.version)) .success else .failure_unsupported_zig_version;
         }
 
         if (config.builtin_path == null) blk: {
@@ -869,14 +869,14 @@ pub fn resolveConfiguration(server: *Server) error{ Canceled, OutOfMemory }!void
 
         switch (server.config_manager.bss_check) {
             .pending, .success => break :check,
-            .partial => {
+            .failure_self_exe_path_null => {
                 server.showMessage(
                     .Warning,
-                    "Zigscient: Build System: Could not determine path to self; Only minimal Build System support available.",
+                    "Zigscient: Build System: Could not determine path to self; Build System support unavailable.",
                     .{},
                 );
             },
-            .failure => {
+            .failure_unsupported_zig_version => {
                 const zig_version = server.config_manager.zig_exe.?.version;
 
                 server.showMessage(

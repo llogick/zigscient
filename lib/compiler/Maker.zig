@@ -173,7 +173,7 @@ pub fn main(init: process.Init.Minimal) !void {
 
     const args = try init.args.toSlice(arena);
     var arg_i: usize = 1;
-    if (args.len > 1 and std.mem.eql(u8, args[1], "tailor")) arg_i += 1; // Handle Zigscient spawning itself with the `tailor` subcmd
+    if (args.len > 1 and std.mem.eql(u8, args[1], "maker")) arg_i += 1; // Handle Zigscient spawning itself with the `maker` subcmd
     const cmd_name = nextArgOrFatal(args, &arg_i);
     const zig_lib_arg = prefixedArgOrFatal(args, &arg_i, "--zig-lib=");
     const zig_exe_arg = prefixedArgOrFatal(args, &arg_i, "--zig=");
