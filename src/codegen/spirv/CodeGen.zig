@@ -17,6 +17,8 @@ uav_link: std.AutoHashMapUnmanaged(struct { InternPool.Index, spec.StorageClass 
 entry_points: std.array_hash_map.Auto(Id, EntryPoint) = .empty,
 error_buffer: ?Decl.Index = null,
 struct_types: std.array_hash_map.Custom(StructType, Id, StructType.HashContext, true) = .empty,
+/// SPIR-V ids of OpVariables whose pointee is a Block struct
+block_var_ids: std.AutoHashMapUnmanaged(Id, void) = .empty,
 builtins: std.AutoHashMapUnmanaged(struct { spec.BuiltIn, spec.StorageClass }, Decl.Index) = .empty,
 sections: struct {
     // Module layout, according to SPIR-V Spec section 2.4, "Logical Layout of a Module".
@@ -181,6 +183,7 @@ pub fn deinit(cg: *CodeGen) void {
     cg.sections.functions.deinit(gpa);
 
     cg.struct_types.deinit(gpa);
+    cg.block_var_ids.deinit(gpa);
     cg.builtins.deinit(gpa);
 
     cg.decls.deinit(gpa);
@@ -587,6 +590,71 @@ pub fn structType(
     return result_id;
 }
 
+/// Returns the layout-decorated variant of `ty` for use inside a Vulkan/OpenGL
+/// interface block. Vulkan forbids nested Block decorations, so recursive calls
+/// always pass `false`.
+///
+/// This is distinct from `resolveType` because SPIR-V forbids such decorations
+/// on the pointee of a Function-scope variable.
+pub fn layoutType(cg: *CodeGen, ty: Type, is_block_root: bool) Error!Id {
+    const gpa = cg.gpa;
+    const zcu = cg.zcu;
+    const ip = &zcu.intern_pool;
+
+    const result_id: Id = switch (ty.zigTypeTag(zcu)) {
+        .@"struct" => id: {
+            const struct_type = ip.loadStructType(ty.toIntern());
+            if (struct_type.layout == .@"packed") return cg.resolveType(ty, .indirect);
+
+            var member_types: std.ArrayList(Id) = .empty;
+            defer member_types.deinit(gpa);
+            const id = cg.allocId();
+            if (is_block_root) try cg.decorate(id, .block);
+            var it = struct_type.iterateRuntimeOrder(ip);
+            while (it.next()) |field_index| {
+                const field_ty: Type = .fromInterned(struct_type.field_types.get(ip)[field_index]);
+                if (!field_ty.hasRuntimeBits(zcu)) continue;
+                try cg.decorateMember(id, @intCast(member_types.items.len), .{ .offset = .{
+                    .byte_offset = @intCast(ty.structFieldOffset(field_index, zcu)),
+                } });
+                try member_types.append(gpa, try cg.layoutType(field_ty, false));
+            }
+            try cg.sections.globals.emit(gpa, .OpTypeStruct, .{
+                .id_result = id,
+                .id_ref = member_types.items,
+            });
+            break :id id;
+        },
+        .array => id: {
+            const elem_ty = ty.childType(zcu);
+            const elem_ty_id = try cg.layoutType(elem_ty, false);
+            const total_len = std.math.cast(u32, ty.arrayLenIncludingSentinel(zcu)) orelse
+                return cg.fail("array type of {} elements is too large", .{ty.arrayLenIncludingSentinel(zcu)});
+            const id = try cg.arrayType(try cg.constInt(.u32, total_len), elem_ty_id);
+            if (elem_ty.hasRuntimeBits(zcu)) try cg.decorate(id, .{
+                .array_stride = .{ .array_stride = @intCast(elem_ty.abiSize(zcu)) },
+            });
+            break :id id;
+        },
+        .spirv => if (ty.isSpirvRuntimeArray(zcu)) id: {
+            const elem_ty = ty.childType(zcu);
+            const elem_ty_id = try cg.layoutType(elem_ty, false);
+            const id = cg.allocId();
+            try cg.sections.globals.emit(gpa, .OpTypeRuntimeArray, .{
+                .id_result = id,
+                .element_type = elem_ty_id,
+            });
+            if (elem_ty.hasRuntimeBits(zcu)) try cg.decorate(id, .{
+                .array_stride = .{ .array_stride = @intCast(elem_ty.abiSize(zcu)) },
+            });
+            break :id id;
+        } else return cg.resolveType(ty, .indirect),
+        else => return cg.resolveType(ty, .indirect),
+    };
+
+    return result_id;
+}
+
 pub fn functionType(cg: *CodeGen, return_ty_id: Id, param_type_ids: []const Id) !Id {
     const result_id = cg.allocId();
     try cg.sections.globals.emit(cg.gpa, .OpTypeFunction, .{
@@ -806,7 +874,8 @@ pub fn genNav(cg: *CodeGen, do_codegen: bool) Error!void {
             const storage_class = cg.storageClass(nav.resolved.?.@"addrspace");
             assert(storage_class != .generic); // These should be instance globals
 
-            const ty_id = try cg.resolveType(ty, .indirect);
+            const as = nav.resolved.?.@"addrspace";
+            const ty_id = try cg.pointeeType(as, ty, true);
             const ptr_ty_id = try cg.ptrType(ty_id, storage_class);
 
             try cg.sections.globals.emit(gpa, .OpVariable, .{
@@ -819,15 +888,14 @@ pub fn genNav(cg: *CodeGen, do_codegen: bool) Error!void {
                 .vulkan, .opengl => {
                     switch (storage_class) {
                         .uniform, .push_constant, .storage_buffer, .physical_storage_buffer => {
-                            if (ty.zigTypeTag(zcu) == .@"struct" and storage_class != .physical_storage_buffer) {
-                                try cg.decorate(ty_id, .block);
-                            }
-
                             if (ty.hasRuntimeBits(zcu)) {
                                 try cg.decorate(ptr_ty_id, .{
                                     .array_stride = .{ .array_stride = @intCast(ty.abiSize(zcu)) },
                                 });
-                                try cg.decorateLayout(ty, ty_id);
+                                if (!cg.needsLayout(as, ty)) try cg.decorateLayout(ty, ty_id);
+                            }
+                            if (key.is_const and storage_class == .storage_buffer) {
+                                try cg.decorate(result_id, .non_writable);
                             }
                         },
                         else => {},
@@ -1815,6 +1883,9 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
 
             const nav_ty_id = try cg.resolveType(nav_ty, .indirect);
             const decl_ptr_ty_id = try cg.ptrType(nav_ty_id, storage_class);
+            if (nav_ty.zigTypeTag(zcu) == .@"struct" and cg.needsLayout(nav.resolved.?.@"addrspace", nav_ty)) {
+                try cg.block_var_ids.put(gpa, spv_decl.result_id, {});
+            }
             if (decl_ptr_ty_id == ty_id) return spv_decl.result_id;
             switch (target.os.tag) {
                 .vulkan, .opengl => return spv_decl.result_id,
@@ -1879,7 +1950,6 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
         .offset_and_cast => |oac| {
             const parent_ptr_id = try cg.derivePtr(oac.parent.*);
             const parent_ptr_ty = try oac.parent.ptrType(pt);
-            const result_ty_id = try cg.resolveType(oac.new_ptr_ty, .direct);
 
             if (oac.new_ptr_ty.ptrInfo(zcu).flags.vector_index != .none) {
                 return parent_ptr_id;
@@ -1890,19 +1960,36 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
                 var cur = parent_ptr_ty.childType(zcu);
                 const dst_child = oac.new_ptr_ty.childType(zcu);
                 while (cur.toIntern() != dst_child.toIntern()) {
-                    if (cur.zigTypeTag(zcu) == .array) {
-                        cur = cur.childType(zcu);
-                        depth += 1;
-                    } else break;
+                    switch (cur.zigTypeTag(zcu)) {
+                        .array => {
+                            cur = cur.childType(zcu);
+                            depth += 1;
+                        },
+                        .@"struct" => {
+                            if (cur.structFieldCount(zcu) == 0) break;
+                            if (cur.structFieldOffset(0, zcu) != 0) break;
+                            cur = cur.fieldType(0, zcu);
+                            depth += 1;
+                        },
+                        else => break,
+                    }
                 }
-                if (depth > 0 and cur.toIntern() == dst_child.toIntern()) {
-                    const scratch_top = cg.id_scratch.items.len;
-                    defer cg.id_scratch.shrinkRetainingCapacity(scratch_top);
-                    const zero = try cg.constInt(.u32, 0);
-                    const ids = try cg.id_scratch.addManyAsSlice(gpa, depth);
-                    @memset(ids, zero);
-                    return cg.accessChainId(result_ty_id, parent_ptr_id, ids);
+                if (cur.toIntern() == dst_child.toIntern()) {
+                    if (depth != 0) {
+                        const as = oac.new_ptr_ty.ptrAddressSpace(zcu);
+                        const child_ty_id = try cg.pointeeType(as, dst_child, false);
+                        const result_ty_id = try cg.ptrType(child_ty_id, cg.storageClass(as));
+                        const scratch_top = cg.id_scratch.items.len;
+                        defer cg.id_scratch.shrinkRetainingCapacity(scratch_top);
+                        const zero = try cg.constInt(.u32, 0);
+                        const ids = try cg.id_scratch.addManyAsSlice(gpa, depth);
+                        @memset(ids, zero);
+                        return cg.accessChainId(result_ty_id, parent_ptr_id, ids);
+                    } else {
+                        return parent_ptr_id;
+                    }
                 }
+                const result_ty_id = try cg.resolveType(oac.new_ptr_ty, .direct);
                 if (target.os.tag == .opencl) {
                     const result_ptr_id = cg.allocId();
                     try cg.body.emit(gpa, .OpBitcast, .{
@@ -4075,33 +4162,77 @@ fn extractVectorComponent(cg: *CodeGen, result_ty: Type, vector_id: Id, field: u
 
 const MemoryOptions = struct {
     is_volatile: bool = false,
+    ptr_address_space: std.lang.AddressSpace = .generic,
 };
+
+/// Returns true if a pointee at address space must use the
+/// layout-decorated variant rather than the bare type.
+fn needsLayout(cg: *CodeGen, as: std.lang.AddressSpace, pointee_ty: Type) bool {
+    const target = cg.zcu.getTarget();
+    if (target.os.tag != .vulkan and target.os.tag != .opengl) return false;
+    switch (as) {
+        .uniform, .push_constant, .storage_buffer => {},
+        else => return false,
+    }
+    return switch (pointee_ty.zigTypeTag(cg.zcu)) {
+        .@"struct", .array => true,
+        .spirv => pointee_ty.isSpirvRuntimeArray(cg.zcu),
+        else => false,
+    };
+}
+
+fn pointeeType(cg: *CodeGen, as: std.lang.AddressSpace, ty: Type, is_block_root: bool) !Id {
+    return if (cg.needsLayout(as, ty))
+        cg.layoutType(ty, is_block_root)
+    else
+        cg.resolveType(ty, .indirect);
+}
+
+fn convertLayout(cg: *CodeGen, dst_ty_id: Id, src_id: Id, src_ty_id: Id) !Id {
+    if (dst_ty_id == src_ty_id) return src_id;
+    const id = cg.allocId();
+    try cg.body.emit(cg.gpa, .OpCopyLogical, .{
+        .id_result_type = dst_ty_id,
+        .id_result = id,
+        .operand = src_id,
+    });
+    return id;
+}
 
 fn load(cg: *CodeGen, value_ty: Type, ptr_id: Id, options: MemoryOptions) !Id {
     const zcu = cg.zcu;
     const alignment: u32 = @intCast(value_ty.abiAlignment(zcu).toByteUnits().?);
-    const indirect_value_ty_id = try cg.resolveType(value_ty, .indirect);
-    const result_id = cg.allocId();
-    const access: spec.MemoryAccess.Extended = .{
-        .@"volatile" = options.is_volatile,
-        .aligned = .{ .literal_integer = alignment },
-    };
+    const bare_ty_id = try cg.resolveType(value_ty, .indirect);
+    const load_ty_id = if (cg.needsLayout(options.ptr_address_space, value_ty))
+        try cg.layoutType(value_ty, cg.block_var_ids.contains(ptr_id))
+    else
+        bare_ty_id;
+    const loaded_id = cg.allocId();
     try cg.body.emit(cg.gpa, .OpLoad, .{
-        .id_result_type = indirect_value_ty_id,
-        .id_result = result_id,
+        .id_result_type = load_ty_id,
+        .id_result = loaded_id,
         .pointer = ptr_id,
-        .memory_access = access,
+        .memory_access = .{
+            .@"volatile" = options.is_volatile,
+            .aligned = .{ .literal_integer = alignment },
+        },
     });
+    const result_id = try cg.convertLayout(bare_ty_id, loaded_id, load_ty_id);
     return try cg.convertToDirect(value_ty, result_id);
 }
 
 fn store(cg: *CodeGen, value_ty: Type, ptr_id: Id, value_id: Id, options: MemoryOptions) !void {
-    const indirect_value_id = try cg.convertToIndirect(value_ty, value_id);
-    const access: spec.MemoryAccess.Extended = .{ .@"volatile" = options.is_volatile };
+    const bare_value_id = try cg.convertToIndirect(value_ty, value_id);
+    const bare_ty_id = try cg.resolveType(value_ty, .indirect);
+    const store_ty_id = if (cg.needsLayout(options.ptr_address_space, value_ty))
+        try cg.layoutType(value_ty, cg.block_var_ids.contains(ptr_id))
+    else
+        bare_ty_id;
+    const object_id = try cg.convertLayout(store_ty_id, bare_value_id, bare_ty_id);
     try cg.body.emit(cg.gpa, .OpStore, .{
         .pointer = ptr_id,
-        .object = indirect_value_id,
-        .memory_access = access,
+        .object = object_id,
+        .memory_access = .{ .@"volatile" = options.is_volatile },
     });
 }
 
@@ -5499,6 +5630,8 @@ fn ptrAccessChain(
             });
         },
         .vulkan, .opengl => {
+            assert(target.cpu.has(.spirv, .variable_pointers) or
+                target.cpu.has(.spirv, .variable_pointers_storage_buffer));
             try cg.body.emit(gpa, .OpPtrAccessChain, .{
                 .id_result_type = result_ty_id,
                 .id_result = result_id,
@@ -5514,23 +5647,18 @@ fn ptrAccessChain(
 
 fn ptrAdd(cg: *CodeGen, result_ty: Type, ptr_ty: Type, ptr_id: Id, offset_id: Id) !Id {
     const zcu = cg.zcu;
-    const result_ty_id = try cg.resolveType(result_ty, .direct);
-
-    switch (ptr_ty.ptrSize(zcu)) {
-        .one => {
-            // Pointer to array
-            // TODO: Is this correct?
-            return try cg.accessChainId(result_ty_id, ptr_id, &.{offset_id});
-        },
-        .c, .many => {
-            return try cg.ptrAccessChain(result_ty_id, ptr_id, offset_id, &.{});
-        },
-        .slice => {
+    const as = result_ty.ptrAddressSpace(zcu);
+    const child_ty_id = try cg.pointeeType(as, result_ty.childType(zcu), false);
+    const result_ty_id = try cg.ptrType(child_ty_id, cg.storageClass(as));
+    return switch (ptr_ty.ptrSize(zcu)) {
+        .one => cg.accessChainId(result_ty_id, ptr_id, &.{offset_id}),
+        .c, .many => cg.ptrAccessChain(result_ty_id, ptr_id, offset_id, &.{}),
+        .slice => blk: {
             // TODO: This is probably incorrect. A slice should be returned here, though this is what llvm does.
             const slice_ptr_id = try cg.extractField(result_ty, ptr_id, 0);
-            return try cg.ptrAccessChain(result_ty_id, slice_ptr_id, offset_id, &.{});
+            break :blk cg.ptrAccessChain(result_ty_id, slice_ptr_id, offset_id, &.{});
         },
-    }
+    };
 }
 
 fn airPtrAdd(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
@@ -6476,16 +6604,16 @@ fn airSliceElemVal(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
 fn ptrElemPtr(cg: *CodeGen, ptr_ty: Type, ptr_id: Id, index_id: Id) !Id {
     const zcu = cg.zcu;
     // Construct new pointer type for the resulting pointer
-    const elem_ty = ptr_ty.indexableElem(zcu);
-    const elem_ty_id = try cg.resolveType(elem_ty, .indirect);
-    const elem_ptr_ty_id = try cg.ptrType(elem_ty_id, cg.storageClass(ptr_ty.ptrAddressSpace(zcu)));
+    const as = ptr_ty.ptrAddressSpace(zcu);
+    const elem_ty_id = try cg.pointeeType(as, ptr_ty.indexableElem(zcu), false);
+    const elem_ptr_ty_id = try cg.ptrType(elem_ty_id, cg.storageClass(as));
     if (ptr_ty.isSinglePointer(zcu)) {
         // Pointer-to-array. In this case, the resulting pointer is not of the same type
         // as the ptr_ty (we want a *T, not a *[N]T), and hence we need to use accessChain.
-        return try cg.accessChainId(elem_ptr_ty_id, ptr_id, &.{index_id});
+        return cg.accessChainId(elem_ptr_ty_id, ptr_id, &.{index_id});
     } else {
         // Resulting pointer type is the same as the ptr_ty, so use ptrAccessChain
-        return try cg.ptrAccessChain(elem_ptr_ty_id, ptr_id, index_id, &.{});
+        return cg.ptrAccessChain(elem_ptr_ty_id, ptr_id, index_id, &.{});
     }
 }
 
@@ -7369,7 +7497,10 @@ fn airLoad(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
             break :ptr_id try cg.accessChain(elem_ptr_ty_id, operand_ptr_id, &.{@intFromEnum(index)});
         },
     };
-    return try cg.load(elem_ty, ptr_id, .{ .is_volatile = ptr_info.flags.is_volatile });
+    return try cg.load(elem_ty, ptr_id, .{
+        .is_volatile = ptr_info.flags.is_volatile,
+        .ptr_address_space = ptr_info.flags.address_space,
+    });
 }
 
 fn airStore(cg: *CodeGen, inst: Air.Inst.Index) !void {
@@ -7441,7 +7572,10 @@ fn airStore(cg: *CodeGen, inst: Air.Inst.Index) !void {
         },
     };
 
-    try cg.store(elem_ty, ptr_id, value_id, .{ .is_volatile = ptr_info.flags.is_volatile });
+    try cg.store(elem_ty, ptr_id, value_id, .{
+        .is_volatile = ptr_info.flags.is_volatile,
+        .ptr_address_space = ptr_info.flags.address_space,
+    });
 }
 
 fn airRet(cg: *CodeGen, inst: Air.Inst.Index) !void {

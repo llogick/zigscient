@@ -619,8 +619,21 @@ pub fn print(ty: Type, writer: *std.Io.Writer, pt: Zcu.PerThread, ctx: ?*Compari
             try writer.print("{f}", .{name.fmt(ip)});
         },
         .spirv_type => {
-            const name = ip.loadSpirvType(ty.toIntern()).name;
-            try writer.print("{f}", .{name.fmt(ip)});
+            const info = ip.loadSpirvType(ty.toIntern());
+            switch (info.flags.tag) {
+                .sampler => try writer.writeAll("@SpirvType(.sampler)"),
+                .image => try writer.writeAll("@SpirvType(.image)"),
+                .sampled_image => {
+                    try writer.writeAll("@SpirvType(.sampled_image, ");
+                    try print(Type.fromInterned(info.ty), writer, pt, ctx);
+                    try writer.writeAll(")");
+                },
+                .runtime_array => {
+                    try writer.writeAll("@SpirvType(.runtime_array, ");
+                    try print(Type.fromInterned(info.ty), writer, pt, ctx);
+                    try writer.writeAll(")");
+                },
+            }
         },
         .func_type => |fn_info| {
             if (fn_info.is_noinline) {

@@ -1,3 +1,6 @@
+const std = @import("std");
+const expect = std.testing.expect;
+
 const Sampler = @SpirvType(.sampler);
 const Image = @SpirvType(.{ .image = .{
     .usage = .{ .sampled = u32 },
@@ -44,4 +47,30 @@ test "@SpirvType" {
     _ = sampled_image;
     _ = storage_image;
     _ = runtime_array;
+}
+
+test "@SpirvType equality" {
+    try expect(@SpirvType(.sampler) == Sampler);
+    try expect(@SpirvType(.{ .runtime_array = u32 }) == RuntimeArray);
+    try expect(@SpirvType(.{ .sampled_image = Image }) == SampledImage);
+    try expect(@SpirvType(.{ .image = .{
+        .usage = .{ .sampled = u32 },
+        .format = .unknown,
+        .dim = .@"2d",
+        .depth = .unknown,
+        .arrayed = false,
+        .multisampled = false,
+        .access = .unknown,
+    } }) == Image);
+    try expect(@SpirvType(.{ .image = .{
+        .usage = .{ .sampled = u32 },
+        .format = .unknown,
+        .dim = .@"3d",
+        .depth = .unknown,
+        .arrayed = false,
+        .multisampled = false,
+        .access = .unknown,
+    } }) != Image);
+    try expect(@SpirvType(.{ .runtime_array = u32 }) != @SpirvType(.{ .runtime_array = u8 }));
+    try expect(@SpirvType(.sampler) != @SpirvType(.{ .runtime_array = u32 }));
 }

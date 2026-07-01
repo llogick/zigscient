@@ -50,19 +50,29 @@ const ArchTarget = struct {
     branch_quota: ?usize = null,
 };
 
-const spirv_extra_features = blk: {
-    const caps_info = @typeInfo(spirv_spec.Capability).@"enum";
-    const exts_info = @typeInfo(spirv_spec.Extension).@"enum";
-    const caps_len = caps_info.field_names.len;
-    const exts_len = exts_info.field_names.len;
+const spirv_omitted_capabilities = [_][]const u8{
+    "shader", // implied by Vulkan/OpenGL targets
+    "kernel", // implied by OpenCL/AMDHSA targets
+    "addresses", // implied by OpenCL/AMDHSA targets
+    "physical_storage_buffer_addresses", // implied by spirv64-vulkan
+    "linkage", // automatically emitted when externs need linkage decorations
+};
+const spirv_omitted_extensions = [_][]const u8{
+    "SPV_KHR_physical_storage_buffer", // paired with physical_storage_buffer_addresses
+};
 
-    var features: [caps_len + exts_len]Feature = undefined;
-    for (
-        caps_info.field_names,
-        caps_info.field_values,
-        features[0..caps_len],
-    ) |name, value, *feature| {
-        feature.* = .{
+const spirv_extra_features: []const Feature = blk: {
+    @setEvalBranchQuota(15_000);
+    var features: []const Feature = &.{};
+
+    cap: for (
+        @typeInfo(spirv_spec.Capability).@"enum".field_names,
+        @typeInfo(spirv_spec.Capability).@"enum".field_values,
+    ) |name, value| {
+        for (spirv_omitted_capabilities) |omitted| {
+            if (std.mem.eql(u8, omitted, name)) continue :cap;
+        }
+        features = features ++ &[_]Feature{.{
             .zig_name = name,
             .desc = "Enable " ++ name ++ " capability",
             .deps = &struct {
@@ -73,11 +83,14 @@ const spirv_extra_features = blk: {
                     break :inner out;
                 };
             }.deps,
-        };
+        }};
     }
 
-    for (exts_info.field_names, features[caps_len..]) |name, *feature| {
-        feature.* = .{
+    ext: for (@typeInfo(spirv_spec.Extension).@"enum".field_names) |name| {
+        for (spirv_omitted_extensions) |omitted| {
+            if (std.mem.eql(u8, omitted, name)) continue :ext;
+        }
+        features = features ++ &[_]Feature{.{
             .zig_name = name,
             .desc = "Enable " ++ name ++ " extension",
             .deps = if (std.mem.eql(u8, name, "v1_6"))
@@ -94,7 +107,7 @@ const spirv_extra_features = blk: {
                 &.{"v1_0"}
             else
                 &.{},
-        };
+        }};
     }
 
     break :blk features;
@@ -1494,7 +1507,7 @@ const targets = [_]ArchTarget{
             .td_name = "SPIRV",
         },
         .branch_quota = 2000,
-        .extra_features = &spirv_extra_features,
+        .extra_features = spirv_extra_features,
         .extra_cpus = &.{
             .{
                 .llvm_name = null,

@@ -87,11 +87,14 @@ fn ensureLayoutResolvedInner(sema: *Sema, ty: Type, orig_ty: Type, reason: *cons
         .ptr_type,
         .anyframe_type,
         .simple_type,
-        .spirv_type,
         .opaque_type,
         .error_set_type,
         .inferred_error_set_type,
         => {},
+
+        .spirv_type => if (ty.isSpirvRuntimeArray(zcu)) {
+            return ensureLayoutResolvedInner(sema, ty.childType(zcu), orig_ty, reason);
+        },
 
         .func_type => |func_type| {
             for (func_type.param_types.get(ip)) |param_ty| {

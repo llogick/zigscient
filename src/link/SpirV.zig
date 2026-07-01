@@ -628,14 +628,18 @@ fn emitPreamble(
     if (has_linkage) caps.insert(.linkage);
 
     inline for (@typeInfo(spec.Capability).@"enum".field_names) |cap_name| {
-        if (target.cpu.has(.spirv, @field(std.Target.spirv.Feature, cap_name)))
-            caps.insert(@field(spec.Capability, cap_name));
+        if (@hasField(std.Target.spirv.Feature, cap_name)) {
+            if (target.cpu.has(.spirv, @field(std.Target.spirv.Feature, cap_name)))
+                caps.insert(@field(spec.Capability, cap_name));
+        }
     }
     inline for (@typeInfo(spec.Extension).@"enum".field_names) |ext_name| {
         switch (@field(spec.Extension, ext_name)) {
             .v1_0, .v1_1, .v1_2, .v1_3, .v1_4, .v1_5, .v1_6 => {},
-            else => if (target.cpu.has(.spirv, @field(std.Target.spirv.Feature, ext_name)))
-                try exts.put(gpa, ext_name, {}),
+            else => if (@hasField(std.Target.spirv.Feature, ext_name)) {
+                if (target.cpu.has(.spirv, @field(std.Target.spirv.Feature, ext_name)))
+                    try exts.put(gpa, ext_name, {});
+            },
         }
     }
 
