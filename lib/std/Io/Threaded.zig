@@ -13415,13 +13415,13 @@ fn addBuf(v: []posix.iovec_const, i: *iovlen_t, bytes: []const u8) void {
     i.* += 1;
 }
 
-fn netClose(userdata: ?*anyopaque, handles: []const net.Socket.Handle) void {
+fn netClose(userdata: ?*anyopaque, sockets: []const net.Socket) void {
     if (!have_networking) unreachable;
     const t: *Threaded = @ptrCast(@alignCast(userdata));
     _ = t;
-    for (handles) |handle| switch (native_os) {
-        .windows => windows.CloseHandle(handle),
-        else => closeFd(handle),
+    for (sockets) |socket| switch (native_os) {
+        .windows => windows.CloseHandle(socket.handle),
+        else => closeFd(socket.handle),
     };
 }
 

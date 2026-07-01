@@ -238,7 +238,7 @@ pub const VTable = struct {
     netSend: *const fn (?*anyopaque, net.Socket.Handle, []net.OutgoingMessage, net.SendFlags) struct { ?net.Socket.SendError, usize },
     netWrite: *const fn (?*anyopaque, dest: net.Socket.Handle, header: []const u8, data: []const []const u8, splat: usize) net.Stream.Writer.Error!usize,
     netWriteFile: *const fn (?*anyopaque, net.Socket.Handle, header: []const u8, *Io.File.Reader, Io.Limit) net.Stream.Writer.WriteFileError!usize,
-    netClose: *const fn (?*anyopaque, handle: []const net.Socket.Handle) void,
+    netClose: *const fn (?*anyopaque, sockets: []const net.Socket) void,
     netShutdown: *const fn (?*anyopaque, handle: net.Socket.Handle, how: net.ShutdownHow) net.ShutdownError!void,
     netInterfaceNameResolve: *const fn (?*anyopaque, *const net.Interface.Name) net.Interface.Name.ResolveError!net.Interface,
     netInterfaceName: *const fn (?*anyopaque, net.Interface) net.Interface.NameError!net.Interface.Name,
@@ -3482,9 +3482,9 @@ pub fn failingNetWriteFile(userdata: ?*anyopaque, handle: net.Socket.Handle, hea
     return error.NetworkDown;
 }
 
-pub fn unreachableNetClose(userdata: ?*anyopaque, handle: []const net.Socket.Handle) void {
+pub fn unreachableNetClose(userdata: ?*anyopaque, sockets: []const net.Socket) void {
     _ = userdata;
-    _ = handle;
+    _ = sockets;
     unreachable;
 }
 

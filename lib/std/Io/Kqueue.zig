@@ -1280,10 +1280,10 @@ fn netWrite(userdata: ?*anyopaque, dest: net.Socket.Handle, header: []const u8, 
     @panic("TODO");
 }
 
-fn netClose(userdata: ?*anyopaque, handles: []const net.Socket.Handle) void {
+fn netClose(userdata: ?*anyopaque, sockets: []const net.Socket) void {
     const k: *Kqueue = @ptrCast(@alignCast(userdata));
     _ = k;
-    _ = handles;
+    _ = sockets;
     @panic("TODO");
 }
 

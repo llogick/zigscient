@@ -5189,9 +5189,9 @@ fn netWriteFileUnavailable(
     return error.Unimplemented;
 }
 
-fn netClose(userdata: ?*anyopaque, handles: []const net.Socket.Handle) void {
+fn netClose(userdata: ?*anyopaque, sockets: []const net.Socket) void {
     const ev: *Evented = @ptrCast(@alignCast(userdata));
-    for (handles) |handle| ev.close(handle);
+    for (sockets) |sock| ev.close(sock.handle);
 }
 
 fn netShutdown(

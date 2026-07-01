@@ -4912,10 +4912,10 @@ fn netWriteFileUnavailable(
     return error.Unimplemented;
 }
 
-fn netClose(userdata: ?*anyopaque, handles: []const net.Socket.Handle) void {
+fn netClose(userdata: ?*anyopaque, sockets: []const net.Socket) void {
     const ev: *Evented = @ptrCast(@alignCast(userdata));
     _ = ev;
-    for (handles) |handle| closeFd(handle);
+    for (sockets) |socket| closeFd(socket.handle);
 }
 
 fn netShutdownUnavailable(
