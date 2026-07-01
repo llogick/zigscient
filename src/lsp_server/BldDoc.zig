@@ -195,21 +195,14 @@ pub fn runTailor(build_file: *BldDoc, ds: *DocumentStore) !void {
 
     try args.appendSlice(arena, &.{
         self_file_path,
-        "tailor",
-        "--zig",
-        ds.config.zig_exe_path.?,
-        "--zig-lib-dir",
-        ds.config.zig_lib_dir.?.path.?,
-        "--build-root",
-        cwd,
-        "--local-cache",
-        try std.fs.path.resolve(arena, &.{ cwd, ".zig-cache" }),
-        "--global-cache",
-        ds.config.global_cache_dir.?.path.?,
-        "--configuration",
-        build_file.configuration.cfg_file_path orelse return,
+        "maker",
+        "build",
+        try arena.print("--zig-lib={s}", .{ds.config.zig_lib_dir.?.path.?}),
+        try arena.print("--zig={s}", .{ds.config.zig_exe_path.?}),
+        try arena.print("--global-cache={s}", .{ds.config.global_cache_dir.?.path.?}),
+        try arena.print("--seed=0x{x}", .{@import("compiler").randInt(io, u32)}),
         "--zigscient",
-        try std.fmt.allocPrint(arena, "{}", .{step_index}),
+        try arena.print("{s}{}", .{ lsp_server.Maker.step_index_arg_prefix, step_index }),
     });
 
     var token = ds.notifyProgressStart(.tlr_progress, build_file.flat_uri);

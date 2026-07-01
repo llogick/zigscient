@@ -147,6 +147,7 @@ pub const CliModule = struct {
 
 const Override = enum { inactive, active, print_configuration, watch };
 var override: Override = .inactive;
+pub const step_index_arg_prefix = "#$!:";
 
 pub fn main(init: process.Init.Minimal) !void {
     // The build runner is long-lived in the following use cases:
@@ -208,9 +209,10 @@ pub fn main(init: process.Init.Minimal) !void {
     const cmd = stringToEnum(enum { libc, init, fetch, build }, cmd_name) orelse
         fatal("bad command name: {q}", .{cmd_name});
     switch (cmd) {
-        .libc => return cmdLibC(gpa, &graph, args[arg_i..]),
-        .init => return cmdInit(gpa, &graph, args[arg_i..]),
-        .fetch => return cmdFetch(gpa, &graph, args[arg_i..]),
+        else => fatal("Zigscient's Maker doesn't support: {q}", .{cmd_name}),
+        // .libc => return cmdLibC(gpa, &graph, args[arg_i..]),
+        // .init => return cmdInit(gpa, &graph, args[arg_i..]),
+        // .fetch => return cmdFetch(gpa, &graph, args[arg_i..]),
         .build => {},
     }
 
@@ -338,6 +340,8 @@ pub fn main(init: process.Init.Minimal) !void {
                 help_menu = true;
             } else if (mem.eql(u8, arg, "-l") or mem.eql(u8, arg, "--list-steps")) {
                 steps_menu = true;
+            } else if (mem.eql(u8, arg, "--zigscient")) { // custom
+                override = .active;
             } else if (mem.eql(u8, arg, "--print-configuration")) {
                 print_configuration = .zon;
             } else if (mem.eql(u8, arg, "--print-configuration-path")) {
@@ -1296,7 +1300,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
         const tmp_dir_sub_path = "tmp" ++ Dir.path.sep_str ++ std.fmt.hex(rand_int);
         const config_tmp_path: Path = .{
             .root_dir = graph.local_cache_root,
-            .sub_path = tmp_dir_sub_path,
+            .sub_path = try arena.dupe(u8, tmp_dir_sub_path),
         };
         const config_tmp_file: Io.File = try config_tmp_path.root_dir.handle.createFile(
             io,
@@ -2072,8 +2076,8 @@ fn prepare(maker: *Maker, step_names: []const []const u8) !void {
         try step_stack.ensureUnusedCapacity(gpa, step_names.len);
         for (0..step_names.len) |i| {
             const step_name = step_names[step_names.len - i - 1];
-            const s: std.Build.Configuration.Step.Index = if (override == .active) cs: {
-                const cs_idx = std.fmt.parseInt(u32, step_name, 10) catch {
+            const s: std.Build.Configuration.Step.Index = if (mem.startsWith(u8, step_name, step_index_arg_prefix)) cs: {
+                const cs_idx = std.fmt.parseInt(u32, step_name[step_index_arg_prefix.len..], 10) catch {
                     fatal("step: {s} in not a valid Index", .{step_name});
                 };
                 if (!(cs_idx < maker.scanned_config.configuration.steps.len))
