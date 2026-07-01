@@ -196,6 +196,9 @@ args: []WValue,
 /// When it returns a pointer to the stack, the `.local` tag will be active and must be populated
 /// before this function returns its execution to the caller.
 return_value: WValue,
+/// Only populated for variadic functions.
+/// Holds the hidden final parameter pointing to the varargs buffer.
+varargs: WValue,
 /// The size of the stack this function occupies. In the function prologue
 /// we will move the stack pointer by this number, forward aligned with the `stack_alignment`.
 stack_size: u32 = 0,
@@ -308,7 +311,7 @@ const WValue = union(enum) {
     fn free(value: *WValue, gen: *CodeGen) void {
         if (value.* != .local) return;
         const local_value = value.local.value;
-        const reserved = gen.args.len + @intFromBool(gen.return_value != .none);
+        const reserved = gen.args.len + @intFromBool(gen.return_value != .none) + @intFromBool(gen.varargs != .none);
         if (local_value < reserved + 2) return; // reserved locals may never be re-used. Also accounts for 2 stack locals.
 
         const index = local_value - reserved;
@@ -800,6 +803,7 @@ pub fn generate(
         .func_index = func_index,
         .args = cc_result.args,
         .return_value = cc_result.return_value,
+        .varargs = cc_result.varargs,
         .local_index = cc_result.local_index,
         .mir_instructions = .empty,
         .mir_extra = .empty,
@@ -874,6 +878,7 @@ fn generateInner(cg: *CodeGen, any_returns: bool) InnerError!Mir {
 const CallWValues = struct {
     args: []WValue,
     return_value: WValue,
+    varargs: WValue,
     local_index: u32,
 
     fn deinit(values: *CallWValues, gpa: Allocator) void {
@@ -895,6 +900,7 @@ fn resolveCallingConventionValues(
     var result: CallWValues = .{
         .args = &.{},
         .return_value = .none,
+        .varargs = .none,
         .local_index = 0,
     };
     if (cc == .naked) return result;
@@ -945,6 +951,12 @@ fn resolveCallingConventionValues(
         },
         else => unreachable, // Frontend is responsible for emitting an error earlier.
     }
+
+    if (fn_info.is_var_args) {
+        result.varargs = .{ .local = .{ .value = result.local_index, .references = 1 } };
+        result.local_index += 1;
+    }
+
     result.args = try args.toOwnedSlice();
     return result;
 }
@@ -1056,9 +1068,6 @@ fn allocStack(cg: *CodeGen, ty: Type) !WValue {
     const pt = cg.pt;
     const zcu = pt.zcu;
     assert(ty.hasRuntimeBits(zcu));
-    if (cg.initial_stack_value == .none) {
-        try cg.initializeStack();
-    }
 
     const abi_size = std.math.cast(u32, ty.abiSize(zcu)) orelse {
         return cg.fail("Type {f} with ABI size of {d} exceeds stack frame size", .{
@@ -1067,28 +1076,29 @@ fn allocStack(cg: *CodeGen, ty: Type) !WValue {
     };
     const abi_align = ty.abiAlignment(zcu);
 
-    cg.stack_alignment = cg.stack_alignment.max(abi_align);
-
-    const offset: u32 = @intCast(abi_align.forward(cg.stack_size));
-    defer cg.stack_size = offset + abi_size;
-
-    return .{ .stack_offset = .{ .value = offset, .references = 1 } };
+    return cg.allocStackBytes(abi_size, abi_align);
 }
 
 fn allocInt(cg: *CodeGen, int_ty: IntType) !WValue {
-    if (cg.initial_stack_value == .none) {
-        try cg.initializeStack();
-    }
-
     const abi_size = std.math.cast(u32, std.zig.target.intByteSize(cg.target, int_ty.bits)) orelse {
         return cg.fail("Integer ABI size exceeds max stack size", .{});
     };
     const abi_align: Alignment = .fromByteUnits(std.zig.target.intAlignment(cg.target, int_ty.bits));
 
-    cg.stack_alignment = cg.stack_alignment.max(abi_align);
+    return cg.allocStackBytes(abi_size, abi_align);
+}
 
-    const offset: u32 = @intCast(abi_align.forward(cg.stack_size));
-    defer cg.stack_size = offset + abi_size;
+fn allocStackBytes(cg: *CodeGen, size: u32, alignment: Alignment) !WValue {
+    assert(size > 0);
+
+    if (cg.initial_stack_value == .none) {
+        try cg.initializeStack();
+    }
+
+    cg.stack_alignment = cg.stack_alignment.max(alignment);
+
+    const offset: u32 = @intCast(alignment.forward(cg.stack_size));
+    defer cg.stack_size = offset + size;
 
     return .{ .stack_offset = .{ .value = offset, .references = 1 } };
 }
@@ -1841,15 +1851,16 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
 
         .assembly => cg.airAsm(inst),
 
+        .c_va_arg => try cg.airVaArg(inst),
+        .c_va_copy => try cg.airVaCopy(inst),
+        .c_va_end => try cg.airVaEnd(inst),
+        .c_va_start => try cg.airVaStart(inst),
+
         .err_return_trace,
         .set_err_return_trace,
         .save_err_return_trace_index,
         .is_named_enum_value,
         .addrspace_cast,
-        .c_va_arg,
-        .c_va_copy,
-        .c_va_end,
-        .c_va_start,
         => |tag| return cg.fail("TODO: Implement wasm inst: {s}", .{@tagName(tag)}),
 
         .atomic_load => cg.airAtomicLoad(inst),
@@ -2030,19 +2041,70 @@ fn airCall(cg: *CodeGen, inst: Air.Inst.Index, modifier: std.lang.CallModifier) 
         return cg.fail("unable to lower callee to a function index", .{});
     };
 
-    const sret: WValue = if (first_param_sret) blk: {
-        const sret_local = try cg.allocStack(ret_ty);
-        try cg.lowerToStack(sret_local);
-        break :blk sret_local;
+    const sret: WValue = if (first_param_sret)
+        try cg.allocStack(ret_ty)
+    else
+        .none;
+
+    const fixed_arg_count = fn_info.param_types.len;
+
+    const varargs_buf: WValue = if (fn_info.is_var_args) buf: {
+        var varargs_size: u32 = 0;
+        var varargs_align: Alignment = .fromByteUnits(1);
+
+        for (args[fixed_arg_count..]) |arg| {
+            const arg_ty = cg.typeOf(arg);
+            if (!arg_ty.hasRuntimeBits(zcu)) continue;
+
+            const arg_size = std.math.cast(u32, arg_ty.abiSize(zcu)) orelse {
+                return cg.fail("argument type {f} too large for wasm varargs buffer", .{arg_ty.fmt(pt)});
+            };
+            const arg_align = arg_ty.abiAlignment(zcu);
+
+            varargs_align = varargs_align.max(arg_align);
+            varargs_size = @intCast(arg_align.forward(varargs_size));
+            varargs_size += arg_size;
+        }
+
+        if (varargs_size == 0) varargs_size = 1;
+
+        const buffer = try cg.allocStackBytes(varargs_size, varargs_align);
+
+        var offset: u32 = 0;
+        for (args[fixed_arg_count..]) |arg| {
+            const arg_ty = cg.typeOf(arg);
+            if (!arg_ty.hasRuntimeBits(zcu)) continue;
+
+            const arg_val = try cg.resolveInst(arg);
+            const arg_size = std.math.cast(u32, arg_ty.abiSize(zcu)) orelse {
+                return cg.fail("argument type {f} too large for wasm varargs buffer", .{arg_ty.fmt(pt)});
+            };
+            const arg_align = arg_ty.abiAlignment(zcu);
+
+            offset = @intCast(arg_align.forward(offset));
+            try cg.store(buffer, arg_val, arg_ty, offset);
+            offset += arg_size;
+        }
+
+        break :buf buffer;
     } else .none;
 
-    for (args) |arg| {
-        const arg_val = try cg.resolveInst(arg);
+    if (first_param_sret) {
+        try cg.lowerToStack(sret);
+    }
+
+    for (args, 0..) |arg, arg_i| {
+        if (fn_info.is_var_args and arg_i >= fixed_arg_count) break;
 
         const arg_ty = cg.typeOf(arg);
         if (!arg_ty.hasRuntimeBits(zcu)) continue;
 
-        try cg.lowerArg(zcu.typeToFunc(fn_ty).?.cc, arg_ty, arg_val);
+        const arg_val = try cg.resolveInst(arg);
+        try cg.lowerArg(fn_info.cc, arg_ty, arg_val);
+    }
+
+    if (fn_info.is_var_args) {
+        try cg.lowerToStack(varargs_buf);
     }
 
     if (callee) |nav_index| {
@@ -2095,6 +2157,91 @@ fn airCall(cg: *CodeGen, inst: Air.Inst.Index, modifier: std.lang.CallModifier) 
     cg.feed(&bt, call.callee);
     for (args) |arg| cg.feed(&bt, arg);
     return cg.finishAirResult(inst, result_value);
+}
+
+fn airVaStart(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
+    try cg.emitWValue(cg.varargs);
+    return cg.finishAir(inst, .stack, &.{});
+}
+
+fn airVaEnd(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
+    const un_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].un_op;
+    return cg.finishAir(inst, .none, &.{un_op});
+}
+
+fn airVaCopy(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
+    const ty_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
+    const operand = try cg.resolveInst(ty_op.operand);
+
+    const result = try cg.load(operand, .usize, 0);
+
+    return cg.finishAir(inst, result, &.{ty_op.operand});
+}
+
+fn airVaArg(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
+    const zcu = cg.pt.zcu;
+    const ty_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
+    const operand = try cg.resolveInst(ty_op.operand);
+
+    const ty = cg.typeOfIndex(inst);
+
+    if (!ty.hasRuntimeBits(zcu)) {
+        return cg.finishAir(inst, .none, &.{ty_op.operand});
+    }
+
+    const is_f32_va_arg = ty.toIntern() == .f32_type;
+    const load_ty: Type = if (is_f32_va_arg) Type.f64 else ty;
+
+    const abi_size: u32 = @intCast(load_ty.abiSize(zcu));
+    const abi_align: u32 = @intCast(load_ty.abiAlignment(zcu).toByteUnits().?);
+
+    const arg_ptr = try cg.allocLocal(.usize);
+    _ = try cg.load(operand, .usize, 0);
+
+    if (abi_align > 1) {
+        switch (cg.ptr_size) {
+            .wasm32 => {
+                try cg.addImm32(abi_align - 1);
+                try cg.addTag(.i32_add);
+                try cg.addImm32(~(abi_align - 1));
+                try cg.addTag(.i32_and);
+            },
+            .wasm64 => {
+                try cg.addImm64(abi_align - 1);
+                try cg.addTag(.i64_add);
+                try cg.addImm64(~@as(u64, abi_align - 1));
+                try cg.addTag(.i64_and);
+            },
+        }
+    }
+
+    try cg.addLocal(.local_set, arg_ptr.local.value);
+
+    try cg.lowerToStack(operand);
+    try cg.lowerToStack(arg_ptr);
+    switch (cg.ptr_size) {
+        .wasm32 => {
+            try cg.addImm32(abi_size);
+            try cg.addTag(.i32_add);
+        },
+        .wasm64 => {
+            try cg.addImm64(abi_size);
+            try cg.addTag(.i64_add);
+        },
+    }
+    try cg.store(.stack, .stack, .usize, 0);
+
+    const result = if (is_f32_va_arg) result: {
+        const promoted = try cg.load(arg_ptr, Type.f64, 0);
+        try cg.emitWValue(promoted);
+        try cg.addTag(.f32_demote_f64);
+
+        const result_local = try cg.allocLocal(Type.f32);
+        try cg.addLocal(.local_set, result_local.local.value);
+        break :result result_local;
+    } else try cg.load(arg_ptr, ty, 0);
+
+    return cg.finishAir(inst, result, &.{ty_op.operand});
 }
 
 fn airAlloc(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {

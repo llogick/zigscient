@@ -186,6 +186,7 @@ pub fn lowerToCode(emit: *Emit) Error!void {
                 fn_info.cc,
                 fn_info.param_types.get(&comp.zcu.?.intern_pool),
                 .fromInterned(fn_info.return_type),
+                fn_info.is_var_args,
                 target,
             ).?;
             if (is_obj) {

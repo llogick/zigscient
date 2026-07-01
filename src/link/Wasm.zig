@@ -932,7 +932,7 @@ pub const ZcuFunc = union {
             switch (ip.indexToKey(i.key(wasm).*)) {
                 .func => |func| {
                     const fn_info = zcu.typeToFunc(.fromInterned(func.ty)).?;
-                    return wasm.getExistingFunctionType(fn_info.cc, fn_info.param_types.get(ip), .fromInterned(fn_info.return_type), target).?;
+                    return wasm.getExistingFunctionType(fn_info.cc, fn_info.param_types.get(ip), .fromInterned(fn_info.return_type), fn_info.is_var_args, target).?;
                 },
                 .enum_type => {
                     return i.value(wasm).tag_name.type_index;
@@ -2290,7 +2290,7 @@ pub const ZcuImportIndex = enum(u32) {
         const nav_index = index.ptr(wasm).*;
         const ext = ip.indexToKey(ip.getNav(nav_index).resolved.?.value).@"extern";
         const fn_info = zcu.typeToFunc(.fromInterned(ext.ty)).?;
-        return getExistingFunctionType(wasm, fn_info.cc, fn_info.param_types.get(ip), .fromInterned(fn_info.return_type), target).?;
+        return getExistingFunctionType(wasm, fn_info.cc, fn_info.param_types.get(ip), .fromInterned(fn_info.return_type), fn_info.is_var_args, target).?;
     }
 
     pub fn globalType(index: ZcuImportIndex, wasm: *const Wasm) ObjectGlobal.Type {
@@ -3209,7 +3209,7 @@ pub fn updateFunc(
     for (mir.indirect_function_set.keys()) |nav| wasm.zcu_indirect_function_set.putAssumeCapacity(nav, {});
     for (mir.func_tys.keys()) |func_ty| {
         const fn_info = zcu.typeToFunc(.fromInterned(func_ty)).?;
-        _ = try wasm.internFunctionType(fn_info.cc, fn_info.param_types.get(ip), .fromInterned(fn_info.return_type), target);
+        _ = try wasm.internFunctionType(fn_info.cc, fn_info.param_types.get(ip), .fromInterned(fn_info.return_type), fn_info.is_var_args, target);
     }
     wasm.error_name_table_ref_count += mir.error_name_table_ref_count;
     // We need to populate UAV data. In theory, we can lower the UAV values while we fill `mir.uavs`.
@@ -3281,7 +3281,7 @@ pub fn updateNav(wasm: *Wasm, pt: Zcu.PerThread, nav_index: InternPool.Nav.Index
                 wasm.function_imports.putAssumeCapacity(name, .fromZcuImport(zcu_import, wasm));
                 // Ensure there is a corresponding function type table entry.
                 const fn_info = zcu.typeToFunc(.fromInterned(ext.ty)).?;
-                _ = try internFunctionType(wasm, fn_info.cc, fn_info.param_types.get(ip), .fromInterned(fn_info.return_type), target);
+                _ = try internFunctionType(wasm, fn_info.cc, fn_info.param_types.get(ip), .fromInterned(fn_info.return_type), fn_info.is_var_args, target);
             } else {
                 wasm.data_imports.putAssumeCapacity(name, .fromZcuImport(zcu_import, wasm));
             }
@@ -3928,9 +3928,10 @@ pub fn internFunctionType(
     cc: std.lang.CallingConvention,
     params: []const InternPool.Index,
     return_type: Zcu.Type,
+    is_var_args: bool,
     target: *const std.Target,
 ) Allocator.Error!FunctionType.Index {
-    try convertZcuFnType(wasm.base.comp, cc, params, return_type, target, &wasm.params_scratch, &wasm.returns_scratch);
+    try convertZcuFnType(wasm.base.comp, cc, params, return_type, is_var_args, target, &wasm.params_scratch, &wasm.returns_scratch);
     return wasm.addFuncType(.{
         .params = try wasm.internValtypeList(wasm.params_scratch.items),
         .returns = try wasm.internValtypeList(wasm.returns_scratch.items),
@@ -3942,9 +3943,10 @@ pub fn getExistingFunctionType(
     cc: std.lang.CallingConvention,
     params: []const InternPool.Index,
     return_type: Zcu.Type,
+    is_var_args: bool,
     target: *const std.Target,
 ) ?FunctionType.Index {
-    convertZcuFnType(wasm.base.comp, cc, params, return_type, target, &wasm.params_scratch, &wasm.returns_scratch) catch |err| switch (err) {
+    convertZcuFnType(wasm.base.comp, cc, params, return_type, is_var_args, target, &wasm.params_scratch, &wasm.returns_scratch) catch |err| switch (err) {
         error.OutOfMemory => return null,
     };
     return wasm.getExistingFuncType(.{
@@ -4176,6 +4178,7 @@ fn convertZcuFnType(
     cc: std.lang.CallingConvention,
     params: []const InternPool.Index,
     return_type: Zcu.Type,
+    is_var_args: bool,
     target: *const std.Target,
     params_buffer: *std.ArrayList(std.wasm.Valtype),
     returns_buffer: *std.ArrayList(std.wasm.Valtype),
@@ -4225,6 +4228,10 @@ fn convertZcuFnType(
             },
             else => try params_buffer.append(gpa, CodeGen.typeToValtype(param_type, zcu, target)),
         }
+    }
+
+    if (is_var_args) {
+        try params_buffer.append(gpa, .i32);
     }
 }
 
