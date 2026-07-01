@@ -62,6 +62,8 @@ pub const LinkObject = union(enum) {
     assembly_file: LazyPath,
     c_source_file: *CSourceFile,
     c_source_files: *CSourceFiles,
+    /// Deprecated. This functionality will be moved to an external package:
+    /// https://codeberg.org/ziglang/rc
     win32_resource_file: *RcSourceFile,
 };
 
@@ -127,6 +129,8 @@ pub const CSourceFile = struct {
     }
 };
 
+/// Deprecated. This functionality will be moved to an external package:
+/// https://codeberg.org/ziglang/rc
 pub const RcSourceFile = struct {
     file: LazyPath,
     /// Any option that rc.exe accepts will work here, with the exception of:
@@ -413,6 +417,9 @@ pub fn addCSourceFile(m: *Module, source: CSourceFile) void {
     m.link_objects.append(arena, .{ .c_source_file = c_source_file }) catch @panic("OOM");
 }
 
+/// Deprecated. This functionality will be moved to an external package:
+/// https://codeberg.org/ziglang/rc
+///
 /// Resource files must have the extension `.rc`.
 /// Can be called regardless of target. The .rc file will be ignored
 /// if the target object format does not support embedded resources.

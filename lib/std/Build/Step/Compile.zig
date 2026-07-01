@@ -63,6 +63,9 @@ installed_headers: std.ArrayList(HeaderInstallation),
 /// created otherwise.
 installed_headers_include_tree: ?*Step.WriteFile = null,
 
+/// Deprecated. This functionality will be moved to an external package:
+/// https://codeberg.org/ziglang/rc
+///
 /// Behavior of automatic detection of include directories when compiling .rc files.
 ///  any: Use MSVC if available, fall back to MinGW.
 ///  msvc: Use MSVC include paths (must be present on the system).
@@ -70,6 +73,9 @@ installed_headers_include_tree: ?*Step.WriteFile = null,
 ///  none: Do not use any autodetected include paths.
 rc_includes: std.zig.RcIncludes = .any,
 
+/// Deprecated. This functionality will be moved to an external package:
+/// https://codeberg.org/ziglang/rc
+///
 /// (Windows) .manifest file to embed in the compilation
 /// Set via options; intended to be read-only after that.
 win32_manifest: ?LazyPath = null,
