@@ -16,6 +16,7 @@ const process = std.process;
 const File = std.Io.File;
 const Sha256 = std.crypto.hash.sha2.Sha256;
 const ArrayList = std.ArrayList;
+const fatal = std.process.fatal;
 
 pub const Cache = @import("Build/Cache.zig");
 pub const Step = @import("Build/Step.zig");
@@ -23,6 +24,8 @@ pub const Module = @import("Build/Module.zig");
 pub const abi = @import("Build/abi.zig");
 /// The serialized output of configure phase ingested by make phase.
 pub const Configuration = @import("Build/Configuration.zig");
+/// Logic that transforms `Build` into `Configuration`.
+pub const Serialize = @import("Build/Serialize.zig");
 
 /// Shared state among all Build instances.
 graph: *Graph,
@@ -1987,13 +1990,13 @@ pub fn run(b: *Build, argv: []const []const u8) []u8 {
         .stderr_behavior = .inherit,
     })) {
         .success => |stdout| return stdout,
-        .spawn_failed => |err| process.fatal("the following command failed with {t}:\n{s}", .{
+        .spawn_failed => |err| fatal("the following command failed with {t}:\n{s}", .{
             err, std.zig.allocPrintCmd(arena, argv, .{}) catch @panic("OOM"),
         }),
-        .bad_exit_code => |code| process.fatal("the following command exited with code {d}:\n{s}", .{
+        .bad_exit_code => |code| fatal("the following command exited with code {d}:\n{s}", .{
             code, std.zig.allocPrintCmd(arena, argv, .{}) catch @panic("OOM"),
         }),
-        .crashed => process.fatal("the following command crashed:\n{s}", .{
+        .crashed => fatal("the following command crashed:\n{s}", .{
             std.zig.allocPrintCmd(arena, argv, .{}) catch @panic("OOM"),
         }),
     }
@@ -2075,7 +2078,7 @@ fn findPkgHashOrFatal(b: *Build, name: []const u8) []const u8 {
     for (b.available_deps) |dep| {
         if (mem.eql(u8, dep[0], name)) return dep[1];
     }
-    std.log.info("all dependencies used by build.zig must be declared in corresponding build.zig.zon", .{});
+    log.info("all dependencies used by build.zig must be declared in corresponding build.zig.zon", .{});
     if (b.pkg_hash.len == 0) panic("no dependency named {s}", .{name});
     panic("no dependency named {s} in {s} ({s})", .{ name, b.dep_prefix, b.pkg_hash });
 }
@@ -2109,21 +2112,29 @@ fn markNeededLazyDep(b: *Build, pkg_hash: []const u8) void {
     b.graph.needed_lazy_dependencies.put(b.graph.arena, pkg_hash, {}) catch @panic("OOM");
 }
 
-/// When this function is called, it means that the current build does, in
-/// fact, require this dependency. If the dependency is already fetched, it
-/// proceeds in the same manner as `dependency`. However if the dependency was
-/// not fetched, then when the build script is finished running, the build will
-/// not proceed to the make phase. Instead, the parent process will
-/// additionally fetch all the lazy dependencies that were actually required by
-/// running the build script, rebuild the build script, and then run it again.
-/// In other words, if this function returns `null` it means that the only
-/// purpose of completing the configure phase is to find out all the other lazy
-/// dependencies that are also required.
-///
-/// It is allowed to use this function for non-lazy dependencies, in which case
-/// it will never return `null`. This allows toggling laziness via
-/// build.zig.zon without changing build.zig logic.
+/// Deprecated in favor of `dependencyLazy`.
 pub fn lazyDependency(b: *Build, name: []const u8, args: anytype) ?*Dependency {
+    return dependencyLazy(b, name, args) catch |err| switch (err) {
+        error.LazyDependencyNeeded => null,
+    };
+}
+
+/// Declares that the current configuration does in fact require a potentially
+/// lazy dependency.
+///
+/// If the dependency is already fetched, it is returned. However if the
+/// dependency is not yet fetched, then when the build script is finished
+/// running, the toolchain will not proceed to the make phase. Instead, the
+/// parent process will additionally fetch all the lazy dependencies that were
+/// actually required by running the build script, recompile the build script,
+/// and then run it again. In other words, if this function returns
+/// `error.LazyDependencyNeeded` it means that the only purpose of completing
+/// the configure phase is to find out all the other lazy dependencies that are
+/// also required. In this case, one must propagate the error all the way up
+/// and return it from the main build function.
+///
+/// For non-lazy dependencies, this always succeeds.
+pub fn dependencyLazy(b: *Build, name: []const u8, args: anytype) error{LazyDependencyNeeded}!*Dependency {
     const build_runner = @import("root");
     const deps = build_runner.dependencies;
     const pkg_hash = findPkgHashOrFatal(b, name);
@@ -2134,31 +2145,34 @@ pub fn lazyDependency(b: *Build, name: []const u8, args: anytype) ?*Dependency {
             const available = !@hasDecl(pkg, "available") or pkg.available;
             if (!available) {
                 markNeededLazyDep(b, pkg_hash);
-                return null;
+                return error.LazyDependencyNeeded;
             }
             return dependencyInner(b, name, pkg.build_root, if (@hasDecl(pkg, "build_zig")) pkg.build_zig else null, pkg_hash, pkg.deps, args);
         }
     }
 
-    unreachable; // Bad @dependencies source
+    unreachable; // bad @dependencies source
 }
 
+/// Declares that the current configuration does in fact require a potentially
+/// lazy dependency.
+///
+/// If the dependency is already fetched, it is returned. Otherwise, exits the
+/// configuration phase with intent to fetch the lazy dependency and rerun the
+/// configuration script.
+///
+/// If it is known to the caller at this point that additional lazy
+/// dependencies are also required, it would save time to call `dependencyLazy`
+/// instead, handling `error.LazyDependencyNeeded` in a way that marks multiple
+/// potentially lazy dependencies as required before eventually returning
+/// that error from the top level build function.
 pub fn dependency(b: *Build, name: []const u8, args: anytype) *Dependency {
-    const build_runner = @import("root");
-    const deps = build_runner.dependencies;
-    const pkg_hash = findPkgHashOrFatal(b, name);
-
-    inline for (@typeInfo(deps.packages).@"struct".decl_names) |decl_name| {
-        if (mem.eql(u8, decl_name, pkg_hash)) {
-            const pkg = @field(deps.packages, decl_name);
-            if (@hasDecl(pkg, "available")) {
-                panic("dependency '{s}{s}' is marked as lazy in build.zig.zon which means it must use the lazyDependency function instead", .{ b.dep_prefix, name });
-            }
-            return dependencyInner(b, name, pkg.build_root, if (@hasDecl(pkg, "build_zig")) pkg.build_zig else null, pkg_hash, pkg.deps, args);
-        }
-    }
-
-    unreachable; // Bad @dependencies source
+    return dependencyLazy(b, name, args) catch |err| switch (err) {
+        error.LazyDependencyNeeded => {
+            assert(b.graph.needed_lazy_dependencies.count() != 0);
+            serializeConfigurationExiting(b);
+        },
+    };
 }
 
 /// In a build.zig file, this function is to `@import` what `lazyDependency` is to `dependency`.
@@ -2329,13 +2343,13 @@ fn dependencyInner(
         .root_dir = .{
             .path = build_root_string,
             .handle = Io.Dir.cwd().openDir(io, build_root_string, .{}) catch |err|
-                process.fatal("failed to open {q}: {t}", .{ build_root_string, err }),
+                fatal("failed to open {q}: {t}", .{ build_root_string, err }),
         },
     };
 
     const sub_builder = b.createChild(name, dep_root, pkg_hash, pkg_deps, user_input_options) catch @panic("OOM");
     if (build_zig) |bz| {
-        sub_builder.runBuild(bz);
+        sub_builder.runPackageScript(bz);
 
         if (sub_builder.validateUserInputDidItFail()) {
             std.debug.dumpCurrentStackTrace(.{ .first_address = @returnAddress() });
@@ -2353,11 +2367,22 @@ fn dependencyInner(
 }
 
 /// Build system implementation detail.
-pub fn runBuild(b: *Build, build_zig: anytype) void {
-    switch (@typeInfo(@typeInfo(@TypeOf(build_zig.build)).@"fn".return_type.?)) {
-        .error_union => return build_zig.build(b) catch unreachable,
-        else => return build_zig.build(b),
-    }
+pub inline fn runPackageScript(b: *Build, comptime build_zig: anytype) void {
+    const result: anyerror!void = build_zig.build(b);
+    result catch |err| switch (err) {
+        error.LazyDependencyNeeded => assert(b.graph.needed_lazy_dependencies.count() != 0),
+        else => {
+            if (b.dep_prefix.len == 0) {
+                log.err("package {q} configuration failed: {t}", .{ b.dep_prefix, err });
+            } else {
+                log.err("configuration failed: {t}", .{err});
+            }
+            if (@errorReturnTrace()) |trace| std.debug.dumpErrorReturnTrace(trace);
+            const lazy_count = b.graph.needed_lazy_dependencies.count();
+            if (lazy_count == 0) process.exit(1);
+            log.info("{d} lazy dependencies detected; fetching and retrying configuration", .{lazy_count});
+        },
+    };
 }
 
 // dirnameAllowEmpty is a variant of fs.path.dirname
@@ -2813,6 +2838,26 @@ fn validateConfigureDependency(lazy_path: LazyPath) void {
             => @panic("configure phase cannot depend on files installed during make phase"),
         },
     }
+}
+
+/// Build system implementation detail.
+pub fn serializeConfigurationExiting(b: *Build) noreturn {
+    const graph = b.graph;
+    const io = graph.io;
+
+    var stdout_buffer: [1024]u8 = undefined;
+    var file_writer = Io.File.stdout().writerStreaming(io, &stdout_buffer);
+    Serialize.write(b, &graph.wip_configuration, &file_writer.interface) catch |err| switch (err) {
+        error.WriteFailed => fatal("failed to write configuration output: {t}", .{file_writer.err.?}),
+        error.OutOfMemory => @panic("OOM"),
+    };
+    file_writer.flush() catch |err| fatal("failed to write configuration output: {t}", .{err});
+
+    // This executable is short-lived and run in Debug mode, so we'd rather
+    // have `zig build` run faster than catch resource leaks in the user's
+    // build.zig script (or, frankly, this configure runner), therefore we call
+    // exit directly here rather than cleanExit.
+    process.exit(0);
 }
 
 test {

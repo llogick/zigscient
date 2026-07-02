@@ -927,22 +927,6 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
     const io = graph.io;
     const arena = graph.arena;
 
-    // Cache lookup for configure options. If we get a match, we can skip
-    // execution of the configure script. If not, we get the file path to pass
-    // to the configure process.
-    //
-    // In the hot path, we only check this cache, which means that also
-    // configure source files need to go in here.
-    var config_man = graph.cache.obtain();
-    defer config_man.deinit();
-
-    for (options.cached_passthru_configure) |i|
-        config_man.hash.addBytes(configure_argv[i]);
-
-    // Prevents a `zig build` from getting a false positive cache hit following
-    // a `zig build --cache-poison=ignored`.
-    config_man.hash.add(options.cache_poison == .ignored);
-
     configure_argv[options.conf_argv_index_build_root] = options.build_root.directory.path orelse options.cwd_path;
 
     var http_client: std.http.Client = .{ .allocator = gpa, .io = io };
@@ -1004,7 +988,6 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
     // some code to help when debugging edits to the build runner so that you
     // can make sure it compiles successfully on other targets.
     const target_arch_os_abi: ?[]const u8 = if (options.debug_target) |triple| t: {
-        config_man.hash.addBytes(triple);
         try build_configurer_argv.appendSlice(gpa, &.{ "-target", triple });
         break :t triple;
     } else null;
@@ -1043,7 +1026,26 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
 
     // This loop is re-evaluated when the build script exits with an indication that it
     // could not continue due to missing lazy dependencies.
-    const configuration_path: Path, const poisoned: bool = cp: while (true) {
+    const configuration_path: Path, var configuration_lock: ?Cache.Lock = cp: while (true) {
+        // Cache lookup for configure options. If we get a match, we can skip
+        // execution of the configure script. If not, we get the file path to pass
+        // to the configure process.
+        //
+        // In the hot path, we only check this cache, which means that also
+        // configure source files need to go in here.
+        var config_man = graph.cache.obtain();
+        defer config_man.deinit();
+
+        for (options.cached_passthru_configure) |i|
+            config_man.hash.addBytes(configure_argv[i]);
+
+        if (target_arch_os_abi) |triple|
+            config_man.hash.addBytes(triple);
+
+        // Prevents a `zig build` from getting a false positive cache hit following
+        // a `zig build --cache-poison=ignored`.
+        config_man.hash.add(options.cache_poison == .ignored);
+
         build_mod.deps.clearRetainingCapacity();
         deps_mod.deps.clearRetainingCapacity();
 
@@ -1269,7 +1271,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
                             .root_dir = graph.local_cache_root,
                             .sub_path = try arena.print("c/{s}", .{&digest}),
                         },
-                        false,
+                        config_man.toOwnedLock(),
                     };
                 },
                 .poisoned => {}, // Don't bother checking for cache hit.
@@ -1296,11 +1298,9 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
             }) });
         }
 
-        const rand_int = randInt(io, u64);
-        const tmp_dir_sub_path = "tmp" ++ Dir.path.sep_str ++ std.fmt.hex(rand_int);
         const config_tmp_path: Path = .{
             .root_dir = graph.local_cache_root,
-            .sub_path = try arena.dupe(u8, tmp_dir_sub_path),
+            .sub_path = try arena.print("tmp" ++ Dir.path.sep_str ++ "{x}", .{randInt(io, u64)}),
         };
         const config_tmp_file: Io.File = try config_tmp_path.root_dir.handle.createFile(
             io,
@@ -1346,6 +1346,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
                     any_errors = true;
                     continue;
                 }
+                log.info("fetching lazy dependency {s}", .{hash});
                 try unlazy_set.put(arena, .fromSlice(hash), {});
             }
             if (any_errors) return error.FailedButCacheIntact;
@@ -1374,7 +1375,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
         // If it is poisoned, there is no point in moving it to cached
         // location. Just leave it in the tmp directory.
         if (configuration.poisoned) {
-            break :cp .{ config_tmp_path, true };
+            break :cp .{ config_tmp_path, null };
         } else {
             const digest = config_man.final();
             const final_path: Path = .{
@@ -1408,12 +1409,10 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
                 });
             };
             config_man.writeManifest() catch |err| log.warn("failed to write cache manifest: {t}", .{err});
-            break :cp .{ final_path, false };
+            break :cp .{ final_path, config_man.toOwnedLock() };
         }
     };
-
     // Hang on to the configuration file lock until we finish loading the configuration file.
-    var configuration_lock = if (!poisoned) config_man.toOwnedLock() else null;
     defer if (configuration_lock) |*l| l.release(io);
 
     switch (options.print_configuration) {
