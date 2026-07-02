@@ -348,7 +348,7 @@ pub const FunctionIndex = enum(u32) {
         return fromResolution(wasm, .fromIpNav(wasm, nav_index));
     }
 
-    pub fn fromTagNameType(wasm: *const Wasm, tag_type: InternPool.Index) ?FunctionIndex {
+    pub fn fromTagIndexType(wasm: *const Wasm, tag_type: InternPool.Index) ?FunctionIndex {
         const zcu_func: ZcuFunc.Index = @enumFromInt(wasm.zcu_funcs.getIndex(tag_type) orelse return null);
         return fromResolution(wasm, .pack(wasm, .{ .zcu_func = zcu_func }));
     }
@@ -423,8 +423,8 @@ pub const OutputFunctionIndex = enum(u32) {
         return fromIpIndex(wasm, nav.resolved.?.value);
     }
 
-    pub fn fromTagNameType(wasm: *const Wasm, tag_type: InternPool.Index) OutputFunctionIndex {
-        return fromFunctionIndex(wasm, FunctionIndex.fromTagNameType(wasm, tag_type).?);
+    pub fn fromTagIndexType(wasm: *const Wasm, tag_type: InternPool.Index) OutputFunctionIndex {
+        return fromFunctionIndex(wasm, FunctionIndex.fromTagIndexType(wasm, tag_type).?);
     }
 
     pub fn fromSymbolName(wasm: *const Wasm, name: String) OutputFunctionIndex {
@@ -891,8 +891,6 @@ pub const ZcuFunc = union {
     pub const TagName = extern struct {
         symbol_name: String,
         type_index: FunctionType.Index,
-        /// Index into `Wasm.tag_name_offs`.
-        table_index: u32,
     };
 
     /// Index into `Wasm.zcu_funcs`.
@@ -4015,7 +4013,7 @@ pub fn stackPointerSymbolIndex(wasm: *Wasm) Allocator.Error!SymbolTableIndex {
     return @enumFromInt(gop.index);
 }
 
-pub fn tagNameSymbolIndex(wasm: *Wasm, ip_index: InternPool.Index) Allocator.Error!SymbolTableIndex {
+pub fn tagTableIndexSymbolIndex(wasm: *Wasm, ip_index: InternPool.Index) Allocator.Error!SymbolTableIndex {
     const comp = wasm.base.comp;
     assert(comp.config.output_mode == .Obj);
     const gpa = comp.gpa;
@@ -4171,6 +4169,16 @@ pub fn errorNameTableAddr(wasm: *Wasm) u32 {
     const comp = wasm.base.comp;
     assert(comp.config.output_mode != .Obj);
     return wasm.flush_buffer.data_segments.get(.__zig_error_name_table).?;
+}
+
+pub fn tagIndexTableAddr(wasm: *Wasm, ip_index: InternPool.Index) u32 {
+    assert(wasm.flush_buffer.memory_layout_finished);
+    const comp = wasm.base.comp;
+    assert(comp.config.output_mode != .Obj);
+    const f = &wasm.flush_buffer;
+    const table_base_addr = f.data_segments.get(.__zig_tag_name_table).?;
+    const table_index = f.enum_tag_name_table.get(ip_index).?;
+    return table_base_addr + table_index * 8;
 }
 
 fn convertZcuFnType(

@@ -220,23 +220,38 @@ pub fn lowerToCode(emit: *Emit) Error!void {
             continue :loop tags[inst];
         },
 
-        .call_tag_name => {
+        .call_tag_index => {
             try code.ensureUnusedCapacity(gpa, 6);
             code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.call));
             if (is_obj) {
                 try wasm.out_relocs.append(gpa, .{
                     .offset = @intCast(code.items.len),
-                    .pointee = .{ .symbol_index = try wasm.tagNameSymbolIndex(datas[inst].ip_index) },
+                    .pointee = .{ .symbol_index = try wasm.tagTableIndexSymbolIndex(datas[inst].ip_index) },
                     .tag = .function_index_leb,
                     .addend = 0,
                 });
                 code.appendNTimesAssumeCapacity(0, 5);
             } else {
-                appendOutputFunctionIndex(code, .fromTagNameType(wasm, datas[inst].ip_index));
+                appendOutputFunctionIndex(code, .fromTagIndexType(wasm, datas[inst].ip_index));
             }
 
             inst += 1;
             continue :loop tags[inst];
+        },
+
+        .enum_tag_name_table_ref => {
+            try code.ensureUnusedCapacity(gpa, 11);
+            const opcode: std.wasm.Opcode = if (is_wasm32) .i32_const else .i64_const;
+            code.appendAssumeCapacity(@intFromEnum(opcode));
+            if (is_obj) {
+                @panic("TODO");
+            } else {
+                const addr: u32 = wasm.tagIndexTableAddr(datas[inst].ip_index);
+                writeSleb128(code, addr);
+
+                inst += 1;
+                continue :loop tags[inst];
+            }
         },
 
         .call_intrinsic => {

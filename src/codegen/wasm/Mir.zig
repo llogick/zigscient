@@ -164,9 +164,14 @@ pub const Inst = struct {
         call_indirect,
         /// Calls a function by its index.
         ///
-        /// The function is the auto-generated tag name function for the type
+        /// The function is the auto-generated tag index function for the type
         /// provided in `ip_index`.
-        call_tag_name,
+        call_tag_index,
+        /// Lowers to an i32_const (wasm32) or i64_const (wasm64) containing
+        /// the base address of the table of enum tag names slices.
+        ///
+        /// Uses `ip_index`.
+        enum_tag_name_table_ref,
         /// Lowers to a `call` instruction, using `intrinsic`.
         call_intrinsic,
         /// Pops a value from the stack, and discards it.

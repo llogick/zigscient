@@ -937,7 +937,7 @@ pub inline fn backendSupportsFeature(backend: std.lang.CompilerBackend, comptime
             else => false,
         },
         .is_named_enum_value => switch (backend) {
-            .stage2_llvm, .stage2_x86_64 => true,
+            .stage2_llvm, .stage2_x86_64, .stage2_wasm => true,
             else => false,
         },
         .error_set_has_value => switch (backend) {

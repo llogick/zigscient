@@ -1856,10 +1856,11 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
         .c_va_end => try cg.airVaEnd(inst),
         .c_va_start => try cg.airVaStart(inst),
 
+        .is_named_enum_value => try cg.airIsNamedEnumValue(inst),
+
         .err_return_trace,
         .set_err_return_trace,
         .save_err_return_trace_index,
-        .is_named_enum_value,
         .addrspace_cast,
         => |tag| return cg.fail("TODO: Implement wasm inst: {s}", .{@tagName(tag)}),
 
@@ -7279,12 +7280,37 @@ fn airTagName(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     const operand = try cg.resolveInst(un_op);
     const enum_ty = cg.typeOf(un_op);
 
-    const result_ptr = try cg.allocStack(cg.typeOfIndex(inst));
-    try cg.lowerToStack(result_ptr);
+    try cg.addInst(.{ .tag = .enum_tag_name_table_ref, .data = .{ .ip_index = enum_ty.toIntern() } });
     try cg.lowerToStack(operand);
-    try cg.addInst(.{ .tag = .call_tag_name, .data = .{ .ip_index = enum_ty.toIntern() } });
+    try cg.addInst(.{ .tag = .call_tag_index, .data = .{ .ip_index = enum_ty.toIntern() } });
 
-    return cg.finishAir(inst, result_ptr, &.{un_op});
+    switch (cg.ptr_size) {
+        .wasm32 => {
+            try cg.addImm32(@intCast(8));
+            try cg.addTag(.i32_mul);
+            try cg.addTag(.i32_add);
+        },
+        .wasm64 => {
+            try cg.addImm64(8);
+            try cg.addTag(.i64_mul);
+            try cg.addTag(.i64_add);
+        },
+    }
+
+    return cg.finishAir(inst, .stack, &.{un_op});
+}
+
+fn airIsNamedEnumValue(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
+    const un_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].un_op;
+    const operand = try cg.resolveInst(un_op);
+    const enum_ty = cg.typeOf(un_op);
+
+    try cg.lowerToStack(operand);
+    try cg.addInst(.{ .tag = .call_tag_index, .data = .{ .ip_index = enum_ty.toIntern() } });
+    try cg.addImm32(~@as(u32, 0));
+    try cg.addTag(.i32_ne);
+
+    return cg.finishAir(inst, .stack, &.{un_op});
 }
 
 fn airErrorSetHasValue(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
@@ -7313,7 +7339,7 @@ fn airErrorSetHasValue(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
         }
         if (highest) |*h| {
             if (err_int > h.*) {
-                highest = err_int;
+                h.* = err_int;
             }
         } else {
             highest = err_int;
@@ -7336,10 +7362,10 @@ fn airErrorSetHasValue(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
 
     // Account for default branch so always add '1'
     const depth = @as(u32, @intCast(highest.? - lowest.? + 1));
-    const jump_table: Mir.JumpTable = .{ .length = depth };
+    const jump_table: Mir.JumpTable = .{ .length = depth + 1 };
     const table_extra_index = try cg.addExtra(jump_table);
     try cg.addInst(.{ .tag = .br_table, .data = .{ .payload = table_extra_index } });
-    try cg.mir_extra.ensureUnusedCapacity(cg.gpa, depth);
+    try cg.mir_extra.ensureUnusedCapacity(cg.gpa, depth + 1);
 
     var value: u32 = lowest.?;
     while (value <= highest.?) : (value += 1) {
@@ -7351,6 +7377,7 @@ fn airErrorSetHasValue(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
         };
         cg.mir_extra.appendAssumeCapacity(idx);
     }
+    cg.mir_extra.appendAssumeCapacity(0); // outside lowest...highest
     try cg.endBlock();
 
     // 'false' branch (i.e. error set does not have value
