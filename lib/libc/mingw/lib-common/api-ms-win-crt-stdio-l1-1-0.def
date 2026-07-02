@@ -25,12 +25,14 @@ __stdio_common_vswprintf_s
 __stdio_common_vswscanf
 _chsize
 chsize == _chsize
+ftruncate == _chsize
 _chsize_s
 _close
 close == _close
 _commit
 _creat
 creat == _creat
+creat64 == _creat
 _dup
 dup == _dup
 _dup2
@@ -63,10 +65,12 @@ _fread_nolock
 _fread_nolock_s
 _fseek_nolock
 _fseeki64
+fseeko64 == _fseeki64
 _fseeki64_nolock
 _fsopen
 _ftell_nolock
 _ftelli64
+ftello64 == _ftelli64
 _ftelli64_nolock
 _fwrite_nolock
 _get_fmode
@@ -91,11 +95,13 @@ _locking
 _lseek
 lseek == _lseek
 _lseeki64
+lseek64 == _lseeki64
 _mktemp
 mktemp == _mktemp
 _mktemp_s
 _open
 open == _open
+open64 == _open
 _open_osfhandle
 _pclose
 pclose == _pclose
@@ -160,6 +166,7 @@ fgets
 fgetwc
 fgetws
 fopen
+fopen64 == fopen
 fopen_s
 fputc
 fputs
@@ -168,11 +175,14 @@ fputws
 fread
 fread_s
 freopen
+freopen64 == freopen
 freopen_s
 fseek
+fseeko == fseek
 fsetpos
 fsetpos64 == fsetpos
 ftell
+ftello == ftell
 fwrite
 getc
 getchar
@@ -189,6 +199,7 @@ rewind
 setbuf
 setvbuf
 tmpfile
+tmpfile64 == tmpfile
 tmpfile_s
 tmpnam
 tmpnam_s

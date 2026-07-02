@@ -151,6 +151,13 @@ typedef __time64_t time_t;
 #endif
 #endif
 
+#ifdef _DEBUG
+_CRTIMP void __cdecl _invalid_parameter(const wchar_t *expression, const wchar_t *function_name, const wchar_t *file_name, unsigned int line_number, __UINTPTR_TYPE__ reserved);
+#endif
+_CRTIMP void __cdecl _invalid_parameter_noinfo(void);
+_CRTIMP __MINGW_ATTRIB_NORETURN void __cdecl _invalid_parameter_noinfo_noreturn(void);
+_CRTIMP __MINGW_ATTRIB_NORETURN void __cdecl _invoke_watson(const wchar_t *expression, const wchar_t *function_name, const wchar_t *file_name, unsigned int line_number, __UINTPTR_TYPE__ reserved);
+
 #if defined(__cplusplus) && _CRT_SECURE_CPP_OVERLOAD_SECURE_NAMES
 
 #define __DEFINE_CPP_OVERLOAD_SECURE_FUNC_0_0(__ret,__func,__dsttype,__dst) \
@@ -446,41 +453,6 @@ typedef struct tagLC_ID {
   unsigned short wCodePage;
 } LC_ID,*LPLC_ID;
 #endif /* _TAGLC_ID_DEFINED */
-
-#ifndef _THREADLOCALEINFO
-#define _THREADLOCALEINFO
-typedef struct threadlocaleinfostruct {
-#ifdef _UCRT
-  const unsigned short *_locale_pctype;
-  int _locale_mb_cur_max;
-  unsigned int _locale_lc_codepage;
-#else
-  int refcount;
-  unsigned int lc_codepage;
-  unsigned int lc_collate_cp;
-  unsigned long lc_handle[6];
-  LC_ID lc_id[6];
-  struct {
-    char *locale;
-    wchar_t *wlocale;
-    int *refcount;
-    int *wrefcount;
-  } lc_category[6];
-  int lc_clike;
-  int mb_cur_max;
-  int *lconv_intl_refcount;
-  int *lconv_num_refcount;
-  int *lconv_mon_refcount;
-  struct lconv *lconv;
-  int *ctype1_refcount;
-  unsigned short *ctype1;
-  const unsigned short *pctype;
-  const unsigned char *pclmap;
-  const unsigned char *pcumap;
-  struct __lc_time_data *lc_time_curr;
-#endif
-} threadlocinfo;
-#endif /* _THREADLOCALEINFO */
 
 #ifndef __crt_typefix
 #define __crt_typefix(ctype)

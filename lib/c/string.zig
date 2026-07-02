@@ -4,6 +4,8 @@ const symbol = @import("../c.zig").symbol;
 const c = std.c;
 
 comptime {
+    symbol(&strndup, "strndup");
+
     if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
         // memcpy implemented in compiler_rt
         // memmove implemented in compiler_rt
@@ -26,7 +28,6 @@ comptime {
         symbol(&strstr, "strstr");
         symbol(&strtok, "strtok");
         symbol(&strdup, "strdup");
-        symbol(&strndup, "strndup");
         // strlen is in compiler_rt
 
         symbol(&strtok_r, "strtok_r");

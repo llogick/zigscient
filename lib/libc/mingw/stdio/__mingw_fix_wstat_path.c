@@ -6,6 +6,7 @@
 
 #include <sys/stat.h>
 #include <stdlib.h>
+#include "__mingw_fix_stat.h"
 
 /**
  * Returns _path without trailing slash if any
@@ -17,10 +18,9 @@
  *   to free it.
  */
 
-wchar_t* __mingw_fix_wstat_path (const wchar_t* _path);
 wchar_t* __mingw_fix_wstat_path (const wchar_t* _path)
 {
-  int len;
+  size_t len;
   wchar_t *p;
 
   p = (wchar_t*)_path;
@@ -55,6 +55,8 @@ wchar_t* __mingw_fix_wstat_path (const wchar_t* _path)
     if (_path[len - 1] == L'/' || _path[len - 1] == L'\\')
       {
 	p = (wchar_t*)malloc (len * sizeof(wchar_t));
+	if (p == NULL)
+	  return NULL; /* malloc has set errno. */
 	memcpy (p, _path, (len - 1) * sizeof(wchar_t));
 	p[len - 1] = L'\0';
       }

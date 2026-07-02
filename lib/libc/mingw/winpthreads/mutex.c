@@ -26,7 +26,6 @@
 #endif
 
 #include <malloc.h>
-#include <stdbool.h>
 #include <stdio.h>
 
 #define WIN32_LEAN_AND_MEAN
@@ -64,7 +63,7 @@ typedef struct {
 
 /* Whether a mutex is still a static initializer (not a pointer to
    a mutex_impl_t). */
-static bool
+static BOOL
 is_static_initializer(pthread_mutex_t m)
 {
   /* Treat 0 as a static initializer as well (for normal mutexes),
@@ -101,7 +100,7 @@ mutex_impl_init(pthread_mutex_t *m, mutex_impl_t *mi)
 
 /* Return the implementation part of a mutex, creating it if necessary.
    Return NULL on out-of-memory error. */
-static inline mutex_impl_t *
+static WINPTHREADS_INLINE mutex_impl_t *
 mutex_impl(pthread_mutex_t *m)
 {
   mutex_impl_t *mi = (mutex_impl_t *)*m;
@@ -117,7 +116,7 @@ mutex_impl(pthread_mutex_t *m)
 
 /* Lock a mutex. Give up after 'timeout' ms (with ETIMEDOUT),
    or never if timeout=INFINITE. */
-static inline int
+static WINPTHREADS_INLINE int
 pthread_mutex_lock_intern (pthread_mutex_t *m, DWORD timeout)
 {
   mutex_impl_t *mi = mutex_impl(m);
@@ -148,7 +147,7 @@ pthread_mutex_lock_intern (pthread_mutex_t *m, DWORD timeout)
     /* Make sure there is an event object on which to wait. */
     if (mi->event == NULL) {
       /* Make an auto-reset event object. */
-      HANDLE ev = CreateEvent(NULL, false, false, NULL);
+      HANDLE ev = CreateEvent(NULL, FALSE, FALSE, NULL);
       if (ev == NULL) {
         switch (GetLastError()) {
         case ERROR_ACCESS_DENIED:
@@ -232,7 +231,7 @@ int pthread_mutex_unlock(pthread_mutex_t *m)
 
   if (unlikely(mi->type != Normal)) {
     if (mi->state == Unlocked)
-      return EINVAL;
+      return EPERM;
     if (mi->owner != GetCurrentThreadId())
       return EPERM;
     if (mi->rec_lock > 0) {

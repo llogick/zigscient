@@ -86,17 +86,23 @@ extern "C" {
 
 #endif
 
-  int __cdecl _configthreadlocale(int _Flag);
-  char *__cdecl setlocale(int _Category,const char *_Locale);
+  _CRTIMP int __cdecl _configthreadlocale(int _Flag);
+  _CRTIMP char *__cdecl setlocale(int _Category,const char *_Locale);
   _CRTIMP struct lconv *__cdecl localeconv(void);
   _CRTIMP _locale_t __cdecl _get_current_locale(void);
   _CRTIMP _locale_t __cdecl _create_locale(int _Category,const char *_Locale);
   _CRTIMP void __cdecl _free_locale(_locale_t _Locale);
-  _locale_t __cdecl __get_current_locale(void);
-  _locale_t __cdecl __create_locale(int _Category,const char *_Locale);
-  void __cdecl __free_locale(_locale_t _Locale);
+  _CRTIMP _locale_t __cdecl __get_current_locale(void);
+  _CRTIMP _locale_t __cdecl __create_locale(int _Category,const char *_Locale);
+  _CRTIMP void __cdecl __free_locale(_locale_t _Locale);
 
   _CRTIMP unsigned int __cdecl ___lc_codepage_func(void);
+
+  /* Get the code page that the CRT currently uses for filenames. */
+  unsigned int __cdecl __mingw_filename_cp(void);
+
+  /* Variant of _isleadbyte_l() function which takes codepage (instead of locale_t). */
+  int __cdecl __mingw_isleadbyte_cp(int c, unsigned int cp);
 
 #ifndef _WLOCALE_DEFINED
 #define _WLOCALE_DEFINED

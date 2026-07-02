@@ -4,6 +4,12 @@
  * No warranty is given; refer to the file DISCLAIMER.PD within this package.
  */
 
-#include <_mingw.h>
+#include <math.h>
 
-unsigned int __cdecl ___lc_codepage_func(void);
+#include "pi_const.h"
+
+float __cdecl sinpif(float x)
+{
+  x = remainderf(x, 2.0F);
+  return sinf(x * __pi_type(x));
+}

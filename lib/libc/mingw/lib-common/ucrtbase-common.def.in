@@ -75,8 +75,8 @@ _IsExceptionObjectToBeDestroyed
 _LCbuild
 _LCmulcc
 _LCmulcr
-F_I386(_NLG_Dispatch2@4)
-F_I386(_NLG_Return@12)
+F_I386(_NLG_Dispatch2) ; msvc symbol is without decoration but callee pop stack (like stdcall @4)
+F_I386(_NLG_Return) ; msvc symbol is without decoration but callee pop stack (like stdcall @12)
 F_I386(_NLG_Return2)
 F_X64(_SetImageBase)
 F_X64(_SetThrowImageBase)
@@ -246,7 +246,7 @@ _aligned_realloc
 F_DEBUG(_aligned_realloc_dbg)
 _aligned_recalloc
 F_DEBUG(_aligned_recalloc_dbg)
-_assert
+__msvcrt_assert DATA == _assert ; mingw-w64 provides _assert() function as wrapper around renamed __msvcrt_assert symbol
 _atodbl
 _atodbl_l
 _atof_l
@@ -1656,7 +1656,7 @@ _o_exp2f
 F_LD64(_o_exp2l) ; Can't use long double functions from the CRT on x86
 F_NON_I386(_o_expf)
 _o_fabs
-F_ARM_ANY(_o_fabsf)
+F_ARM_NATIVE(_o_fabsf)
 _o_fclose
 _o_feof
 _o_ferror
@@ -2233,7 +2233,7 @@ atol
 atoll
 bsearch
 bsearch_s
-btowc
+; btowc ; replaced for consistency with wctob
 c16rtomb
 c32rtomb
 cabs
@@ -2338,7 +2338,7 @@ expm1
 expm1f
 F_LD64(expm1l) ; Can't use long double functions from the CRT on x86
 fabs
-F_ARM_ANY(fabsf)
+F_ARM_NATIVE(fabsf)
 fclose
 fdim
 fdimf
@@ -2424,7 +2424,7 @@ iswalpha
 iswascii
 iswblank
 iswcntrl
-iswctype
+__msvcrt_iswctype DATA == iswctype ; mingw-w64 provides real iswctype as a wrapper around renamed __msvcrt_iswctype
 iswdigit
 iswgraph
 iswlower
@@ -2609,7 +2609,7 @@ tmpnam
 tmpnam_s
 tolower
 toupper
-towctrans
+__msvcrt_towctrans DATA == towctrans ; mingw-w64 provides real towctrans as a wrapper around renamed __msvcrt_towctrans
 towlower
 towupper
 trunc
@@ -2656,7 +2656,7 @@ wcstoul
 wcstoull
 wcstoumax
 wcsxfrm
-wctob
+; wctob ; replaced, CRT version may sign-extend its return value
 wctomb
 wctomb_s
 wctrans

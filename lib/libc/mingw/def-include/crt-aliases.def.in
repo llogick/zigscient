@@ -64,20 +64,13 @@ ADD_UNDERSCORE(filelength)
 ADD_UNDERSCORE(fileno)
 ; ADD_UNDERSCORE(flushall)
 ADD_UNDERSCORE(fputchar)
-#ifdef FIXED_SIZE_SYMBOLS
-#ifndef CRTDLL
-ADD_UNDERSCORE(fstat)
-#endif
-#else
+#if defined(UCRTBASE)
 F32(fstat == _fstat32)
 F64(fstat == _fstat64i32)
-#endif
-#ifdef FIXED_SIZE_SYMBOLS
-ADD_UNDERSCORE(ftime)
 #else
-F32(ftime == _ftime32)
-F64(ftime == _ftime64)
+; fstat for non-UCRT is provided by mingw to workaround S_IFDIR issue in _fstat
 #endif
+; ftime is provided in misc/ftime32.c or misc/ftime64.c as MS _ftime is not ABI compatible with POSIX ftime
 #if defined(UCRTBASE)
 ; HUGE alias and _HUGE variable are provided by math/_huge.c
 #elif defined(CRTDLL)
@@ -232,7 +225,7 @@ ADD_UNDERSCORE(wcsupr)
 #ifdef UCRTBASE
 ; hypot is natively exported from UCRT
 #else
-ADD_UNDERSCORE(hypot)
+; hypot is provided by math/hypot.c as a wrapper around _hypot
 #endif
 ADD_UNDERSCORE(j0)
 ADD_UNDERSCORE(j1)
@@ -247,9 +240,6 @@ getwc == fgetwc
 getwchar == _fgetwchar
 putwc == fputwc
 putwchar == _fputwchar
-#endif
-#ifdef USE_WCSTOK_S_FOR_WCSTOK
-wcstok == wcstok_s
 #endif
 
 ; This is list of symbol aliases for C99 functions
@@ -292,29 +282,46 @@ ADD_DOUBLE_UNDERSCORE(toascii)
 ADD_UNDERSCORE(pclose)
 ADD_UNDERSCORE(popen)
 #endif
+fseeko == fseek
+ftello == ftell
+ftruncate == _chsize
 ; ADD_UNDERSCORE(scalb)
 
 ; This is list of symbol aliases for Large File Specification (extension to Single UNIX Specification)
+; https://unix.org/version2/whatsnew/lfs20mar.html#3.1 section 3.1 Transitional Extensions
+creat64 == _creat
+open64 == _open
+fopen64 == fopen
+freopen64 == freopen
+#ifndef NO_TMPFILE_ALIAS
+tmpfile64 == tmpfile
+#endif
 #ifndef NO_FPOS64_ALIASES
 ; fgetpos and fsetpos are already 64-bit
 fgetpos64 == fgetpos
 fsetpos64 == fsetpos
+lseek64 == _lseeki64
 #endif
 #ifdef UCRTBASE
+fstat32 == _fstat32
+fstat32i64 == _fstat32i64
+fstat64 == _fstat64
+fstat64i32 == _fstat64i32
 stat32 == _stat32
 stat32i64 == _stat32i64
 stat64 == _stat64
 stat64i32 == _stat64i32
 #else
+; fstat for non-UCRT is provided by mingw to workaround S_IFDIR issue in _fstat
 ; stat for non-UCRT is provided by mingw to workaround trailing slash issue in _stat
 #endif
 #ifdef FIXED_SIZE_SYMBOLS
-// NO_FIXED_SIZE_64_ALIAS means that DLL provides the native _fstat64 symbol
-#if defined(NO_FIXED_SIZE_64_ALIAS) && !defined(NO_FSTAT64_ALIAS)
-fstat64 == _fstat64
+#ifdef WITH_FSEEKO64_ALIAS
+fseeko64 == _fseeki64
 #endif
 #else
-fstat64 == _fstat64
+fseeko64 == _fseeki64
+ftello64 == _ftelli64
 #endif
 
 ; This is list of symbol aliases for GNU functions which are not part of POSIX or ISO C
@@ -324,6 +331,25 @@ strncasecmp == _strnicmp
 ; This is list of various symbol aliases which are needed for compatibility
 ; Some symbols in some version of CRT library were added and some other symbols were removed or renamed
 ; This list provides some level of backward and forward compatibility
+
+#ifdef WITH_SETJMP3_ALIAS
+; crtdll.dll and msvcrt10.dll have only old _setjmp function which does not take
+; additional variadic arguments and uses smaller jmpbuf structure.
+; mingw-w64 calls _setjmp3 only with zero additional arguments and because number
+; of additional arguments is passed on the stack which is cleanup by the caller,
+; it means that the mingw-w64 usage of _setjmp3 is ABI compatible with the old
+; _setjmp function which is available also in crtdll.dll and msvcrt10.dll libs.
+; It heavily depends on the mingw-w64-headers/crt/setjmp.h implementation.
+; So this definition allows crtdll.dll and msvcrt10.dll applications to call
+; setjmp() macro from setjmp.h, which expands to _setjmp3() function call and
+; which is aliased to _setjmp symbol for crtdll.dll and msvcrt10.dll libraries.
+F_I386(_setjmp3 == _setjmp)
+#endif
+
+#ifdef UCRTBASE
+F_NON_ARM64(_setjmp == __intrinsic_setjmp)
+F64(_setjmpex == __intrinsic_setjmpex)
+#endif
 
 #ifndef NO_STRCMPI_ALIAS
 _strcmpi == _stricmp
@@ -551,6 +577,7 @@ __p__daylight == __daylight
 __p__dstbias == __dstbias
 __p__timezone == __timezone
 __p__tzname == __tzname
+_XcptFilter == _seh_filter_exe
 #endif
 
 ; This is list of printf/scanf symbol aliases with __ms_ prefix

@@ -3,14 +3,14 @@
  * This file is part of the mingw-w64 runtime package.
  * No warranty is given; refer to the file DISCLAIMER.PD within this package.
  */
-#include <stdio.h>
 
-_off64_t
-ftello64 (FILE * stream)
+#define __CRT__NO_INLINE
+#include <string.h>
+
+void * __cdecl
+memset_explicit (void *d, int c, size_t len)
 {
-  fpos_t pos;
-  if (fgetpos(stream, &pos))
-    return  -1LL;
-  else
-   return ((off64_t) pos);
+  memset(d, c, len);
+  __asm__ __volatile__("" ::: "memory");
+  return d;
 }

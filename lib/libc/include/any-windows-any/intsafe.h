@@ -11,8 +11,75 @@
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
 
+#include <_mingw.h>
 #include <wtypesbase.h>
 #include <specstrings.h>
+
+#define INT8_MIN (-128)
+#define INT8_MAX 127
+#define UINT8_MAX 255
+#define BYTE_MAX 255
+#define INT16_MIN (-32768)
+#define INT16_MAX 32767
+#define SHORT_MIN (-32768)
+#define SHORT_MAX 32767
+#define UINT16_MAX 65535
+#define USHORT_MAX 65535
+#define WORD_MAX 65535
+#define INT32_MIN (-0x7fffffff - 1)
+#define INT32_MAX 0x7fffffff
+#define INT_MIN (-0x7fffffff - 1)
+#define INT_MAX 0x7fffffff
+#define UINT32_MAX 0xffffffffu
+#define UINT_MAX 0xffffffffu
+#define DWORD_MAX __MSABI_LONG(0xffffffffu)
+#define INT64_MIN (-0x7fffffffffffffff - 1)
+#define INT64_MAX 0x7fffffffffffffff
+#define LONGLONG_MIN (-0x7fffffffffffffffll - 1)
+#define LONG64_MIN (-0x7fffffffffffffffll - 1)
+#define LONGLONG_MAX 0x7fffffffffffffffll
+#define LONG64_MAX 0x7fffffffffffffffll
+#define UINT64_MAX 0xffffffffffffffffu
+#define ULONGLONG_MAX 0xffffffffffffffffull
+#define ULONG64_MAX 0xffffffffffffffffull
+#define DWORDLONG_MAX 0xffffffffffffffffull
+#define DWORD64_MAX 0xffffffffffffffffull
+
+#ifdef __LP64__
+#define LONG_MIN (-0x7fffffffffffffff - 1)
+#define LONG_MAX 0x7fffffffffffffff
+#define ULONG_MAX 0xffffffffffffffffu
+#else
+#define LONG_MIN (-0x7fffffffl - 1)
+#define LONG_MAX 0x7fffffffl
+#define ULONG_MAX 0xfffffffful
+#endif
+
+#ifdef _WIN64
+#define PTRDIFF_T_MIN (-0x7fffffffffffffff - 1)
+#define PTRDIFF_T_MAX 0x7fffffffffffffff
+#define SIZE_T_MAX 0xffffffffffffffffu
+#define INT_PTR_MIN (-0x7fffffffffffffffll - 1)
+#define INT_PTR_MAX 0x7fffffffffffffffll
+#define UINT_PTR_MAX 0xffffffffffffffffull
+#define LONG_PTR_MIN (-0x7fffffffffffffffll - 1)
+#define LONG_PTR_MAX 0x7fffffffffffffffll
+#define ULONG_PTR_MAX 0xffffffffffffffffull
+#else
+#define PTRDIFF_T_MIN (-0x7fffffff - 1)
+#define PTRDIFF_T_MAX 0x7fffffff
+#define SIZE_T_MAX 0xffffffffu
+#define INT_PTR_MIN (-0x7fffffff - 1)
+#define INT_PTR_MAX 0x7fffffff
+#define UINT_PTR_MAX 0xffffffffu
+#define LONG_PTR_MIN (-0x7fffffffl - 1)
+#define LONG_PTR_MAX 0x7fffffffl
+#define ULONG_PTR_MAX 0xfffffffful
+#endif
+#define SSIZE_T_MIN LONG_PTR_MIN
+#define SSIZE_T_MAX LONG_PTR_MAX
+#define _SIZE_T_MAX ULONG_PTR_MAX
+#define DWORD_PTR_MAX ULONG_PTR_MAX
 
 #define INTSAFE_E_ARITHMETIC_OVERFLOW ((HRESULT)0x80070216)
 
@@ -424,7 +491,7 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define Int8ToULong64 Int8ToULongLong
 #define Int8ToDWord64 Int8ToULongLong
 #define Int8ToUInt64 Int8ToULongLong
-#define Int8ToSizeT Int8ToUIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(Int8ToSizeT, INT8, size_t)
 #define Int8ToSIZET Int8ToULongPtr
 #define ShortToUInt16 ShortToUShort
 #define ShortToUInt32 ShortToUInt
@@ -433,7 +500,7 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define ShortToULong64 ShortToULongLong
 #define ShortToDWord64 ShortToULongLong
 #define ShortToUInt64 ShortToULongLong
-#define ShortToSizeT ShortToUIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(ShortToSizeT, SHORT, size_t)
 #define ShortToSIZET ShortToULongPtr
 #define Int16ToChar ShortToChar
 #define Int16ToInt8 ShortToInt8
@@ -455,7 +522,7 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define Int16ToULong64 ShortToULongLong
 #define Int16ToDWord64 ShortToULongLong
 #define Int16ToUInt64 ShortToULongLong
-#define Int16ToSizeT ShortToUIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(Int16ToSizeT, INT16, size_t)
 #define Int16ToSIZET ShortToULongPtr
 #define UShortToInt16 UShortToShort
 #define UInt16ToChar UShortToChar
@@ -497,7 +564,7 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define Int32ToULong64 IntToULongLong
 #define Int32ToDWord64 IntToULongLong
 #define Int32ToUInt64 IntToULongLong
-#define Int32ToSizeT IntToUIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(Int32ToSizeT, INT32, size_t)
 #define Int32ToSIZET IntToULongPtr
 #define IntPtrToByte IntPtrToUInt8
 #define IntPtrToInt16 IntPtrToShort
@@ -535,7 +602,7 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define UIntPtrToInt32 UIntPtrToInt
 #define UIntPtrToUInt32 UIntPtrToUInt
 #define UIntPtrToLong64 UIntPtrToLongLong
-#define UIntPtrToPtrdiffT UIntPtrToIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(UIntPtrToPtrdiffT, UINT_PTR, ptrdiff_t)
 #define LongToInt16 LongToShort
 #define LongToUInt16 LongToUShort
 #define LongToInt32 LongToInt
@@ -601,8 +668,8 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define LongLongToULong64 LongLongToULongLong
 #define LongLongToDWord64 LongLongToULongLong
 #define LongLongToUInt64 LongLongToULongLong
-#define LongLongToPtrdiffT LongLongToIntPtr
-#define LongLongToSizeT LongLongToUIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(LongLongToPtrdiffT, LONGLONG, ptrdiff_t)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(LongLongToSizeT, LONGLONG, size_t)
 #define LongLongToSSIZET LongLongToLongPtr
 #define LongLongToSIZET LongLongToULongPtr
 #define Long64ToChar LongLongToChar
@@ -628,8 +695,8 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define Long64ToDWord LongLongToULong
 #define Long64ToDWordPtr LongLongToULongPtr
 #define Long64ToULongLong LongLongToULongLong
-#define Long64ToPtrdiffT LongLongToIntPtr
-#define Long64ToSizeT LongLongToUIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(Long64ToPtrdiffT, LONG64, ptrdiff_t)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(Long64ToSizeT, LONG64, size_t)
 #define Long64ToSSIZET LongLongToLongPtr
 #define Long64ToSIZET LongLongToULongPtr
 #define Int64ToChar LongLongToChar
@@ -682,8 +749,8 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define DWordLongToLongLong ULongLongToLongLong
 #define DWordLongToLong64 ULongLongToLongLong
 #define DWordLongToInt64 ULongLongToLongLong
-#define DWordLongToPtrdiffT ULongLongToIntPtr
-#define DWordLongToSizeT ULongLongToUIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(DWordLongToPtrdiffT, DWORDLONG, ptrdiff_t)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(DWordLongToSizeT, DWORDLONG, size_t)
 #define DWordLongToSSIZET ULongLongToLongPtr
 #define DWordLongToSIZET ULongLongToULongPtr
 #define ULong64ToChar ULongLongToChar
@@ -711,8 +778,8 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define ULong64ToLongLong ULongLongToLongLong
 #define ULong64ToLong64 ULongLongToLongLong
 #define ULong64ToInt64 ULongLongToLongLong
-#define ULong64ToPtrdiffT ULongLongToIntPtr
-#define ULong64ToSizeT ULongLongToUIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(ULong64ToPtrdiffT, ULONG64, ptrdiff_t)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(ULong64ToSizeT, ULONG64, size_t)
 #define ULong64ToSSIZET ULongLongToLongPtr
 #define ULong64ToSIZET ULongLongToULongPtr
 #define DWord64ToChar ULongLongToChar
@@ -740,8 +807,8 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define DWord64ToLongLong ULongLongToLongLong
 #define DWord64ToLong64 ULongLongToLongLong
 #define DWord64ToInt64 ULongLongToLongLong
-#define DWord64ToPtrdiffT ULongLongToIntPtr
-#define DWord64ToSizeT ULongLongToUIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(DWord64ToPtrdiffT, DWORD64, ptrdiff_t)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(DWord64ToSizeT, DWORD64, size_t)
 #define DWord64ToSSIZET ULongLongToLongPtr
 #define DWord64ToSIZET ULongLongToULongPtr
 #define UInt64ToChar ULongLongToChar
@@ -769,42 +836,42 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define UInt64ToLongLong ULongLongToLongLong
 #define UInt64ToLong64 ULongLongToLongLong
 #define UInt64ToInt64 ULongLongToLongLong
-#define UInt64ToPtrdiffT ULongLongToIntPtr
-#define UInt64ToSizeT ULongLongToUIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(UInt64ToPtrdiffT, UINT64, ptrdiff_t)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(UInt64ToSizeT, UINT64, size_t)
 #define UInt64ToSSIZET ULongLongToLongPtr
 #define UInt64ToSIZET ULongLongToULongPtr
-#define PtrdiffTToChar IntPtrToChar
-#define PtrdiffTToInt8 IntPtrToInt8
-#define PtrdiffTToUChar IntPtrToUChar
-#define PtrdiffTToUInt8 IntPtrToUInt8
-#define PtrdiffTToByte IntPtrToUInt8
-#define PtrdiffTToShort IntPtrToShort
-#define PtrdiffTToInt16 IntPtrToShort
-#define PtrdiffTToUShort IntPtrToUShort
-#define PtrdiffTToUInt16 IntPtrToUShort
-#define PtrdiffTToWord IntPtrToUShort
-#define PtrdiffTToInt32 IntPtrToInt
-#define PtrdiffTToUInt32 IntPtrToUInt
-#define PtrdiffTToLongPtr IntPtrToLongPtr
-#define PtrdiffTToULongLong IntPtrToULongLong
-#define PtrdiffTToDWordLong IntPtrToULongLong
-#define PtrdiffTToULong64 IntPtrToULongLong
-#define PtrdiffTToDWord64 IntPtrToULongLong
-#define PtrdiffTToUInt64 IntPtrToULongLong
-#define PtrdiffTToSIZET IntPtrToULongPtr
-#define SizeTToInt8 UIntPtrToInt8
-#define SizeTToUChar UIntPtrToUChar
-#define SizeTToChar UIntPtrToChar
-#define SizeTToUInt8 UIntPtrToUInt8
-#define SizeTToByte UIntPtrToUInt8
-#define SizeTToShort UIntPtrToShort
-#define SizeTToInt16 UIntPtrToShort
-#define SizeTToUShort UIntPtrToUShort
-#define SizeTToUInt16 UIntPtrToUShort
-#define SizeTToWord UIntPtrToUShort
-#define SizeTToInt32 UIntPtrToInt
-#define SizeTToLongLong UIntPtrToLongLong
-#define SizeTToLong64 UIntPtrToLongLong
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV_CHAR(PtrdiffTToChar, ptrdiff_t, CHAR)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV_UCHAR(PtrdiffTToUChar, ptrdiff_t, UCHAR)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToInt8, ptrdiff_t, INT8)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToUInt8, ptrdiff_t, UINT8)
+#define PtrdiffTToByte PtrdiffTToUInt8
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToInt16, ptrdiff_t, INT16)
+#define PtrdiffTToShort PtrdiffTToInt16
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToUInt16, ptrdiff_t, UINT16)
+#define PtrdiffTToUShort PtrdiffTToUInt16
+#define PtrdiffTToWord PtrdiffTToUInt16
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToInt32, ptrdiff_t, INT32)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToUInt32, ptrdiff_t, UINT32)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToLongPtr, ptrdiff_t, LONG_PTR)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToULongLong, ptrdiff_t, ULONGLONG)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToDWordLong, ptrdiff_t, DWORDLONG)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToULong64, ptrdiff_t, ULONG64)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToDWord64, ptrdiff_t, DWORD64)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToUInt64, ptrdiff_t, UINT64)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(PtrdiffTToSIZET, ptrdiff_t, SIZE_T)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV_CHAR(SizeTToChar, size_t, CHAR)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV_UCHAR(SizeTToUChar, size_t, UCHAR)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(SizeTToInt8, size_t, INT8)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(SizeTToUInt8, size_t, UINT8)
+#define SizeTToByte SizeTToUInt8
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(SizeTToInt16, size_t, INT16)
+#define SizeTToShort SizeTToInt16
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(SizeTToUInt16, size_t, UINT16)
+#define SizeTToUShort SizeTToUInt16
+#define SizeTToWord SizeTToUInt16
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(SizeTToInt32, size_t, INT32)
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(SizeTToLongLong, size_t, LONGLONG)
+#define SizeTToLong64 SizeTToLongLong
 #define SSIZETToInt8 LongPtrToInt8
 #define SSIZETToUChar LongPtrToUChar
 #define SSIZETToChar LongPtrToChar
@@ -846,7 +913,7 @@ __MINGW_INTSAFE_API __MINGW_INTSAFE_MATH(LongLongMult, LONGLONG, mul)
 #define SIZETToLongLong ULongPtrToLongLong
 #define SIZETToLong64 ULongPtrToLongLong
 #define SIZETToInt64 ULongPtrToLongLong
-#define SIZETToPtrdiffT ULongPtrToIntPtr
+__MINGW_INTSAFE_API __MINGW_INTSAFE_CONV(SIZETToPtrdiffT, SIZE_T, ptrdiff_t)
 #define SIZETToSSIZET ULongPtrToLongPtr
 
 #define UInt16Add UShortAdd

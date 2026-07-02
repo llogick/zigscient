@@ -66,6 +66,7 @@
 #include <limits.h>
 #include <locale.h>
 #include <wchar.h>
+#include <winternl.h>
 
 #ifdef __ENABLE_DFP
 #ifndef __STDC_WANT_DEC_FP__
@@ -162,6 +163,12 @@ typedef union ATTRIB_GCC_STRUCT __uI128 {
  */
 #define PFORMAT_XMASK       0x0000000F
 #define PFORMAT_XSHIFT      0x00000004
+
+/* `%b' and `%B' format digit extraction mask, and shift count...
+ * (These are constant, and do not propagate through the flags).
+ */
+#define PFORMAT_BMASK       0x00000001
+#define PFORMAT_BSHIFT      0x00000001
 
 /* The radix point character, used in floating point formats, is
  * localised on the basis of the active LC_NUMERIC locale category.
@@ -361,6 +368,23 @@ void __bigint_to_stringx(const uint32_t *digits, const uint32_t digitlen, char *
   buff[bufflen - 1] = '\0';
 }
 
+/* LSB first, binary version */
+static
+void __bigint_to_stringb(const uint32_t *digits, const uint32_t digitlen, char *buff, const uint32_t bufflen){
+  const uint32_t digitsize = sizeof(*digits) * 8;
+  const uint64_t bits = digitsize * digitlen;
+  uint32_t pos = bufflen - 2;
+
+  for(uint32_t i = 0; i < bits; i++){
+    buff[pos] = (digits[i / digitsize] & (1 << (i % digitsize))) ? '1' : '0';
+    if(!pos) break; /* sanity check */
+    pos--;
+  }
+  /* Fill any remaining leading positions with zeros  */
+  memset(buff, '0', pos + 1);
+  buff[bufflen - 1] = '\0';
+}
+
 /* LSB first, octet version */
 static
 void __bigint_to_stringo(const uint32_t *digits, const uint32_t digitlen, char *buff, const uint32_t bufflen){
@@ -377,8 +401,8 @@ void __bigint_to_stringo(const uint32_t *digits, const uint32_t digitlen, char *
       pos--;
     }
   }
-  if(pos < bufflen - 1)
-    memset(buff,'0', pos + 1);
+  /* Fill any remaining leading positions with zeros */
+  memset(buff, '0', pos + 1);
   buff[bufflen - 1] = '\0';
 }
 #endif /* defined(__ENABLE_PRINTF128) */
@@ -569,8 +593,8 @@ void __pformat_wputchars( const wchar_t *s, int count, __pformat_t *stream )
    * output quota is honoured.
    */
   char buf[16];
-  mbstate_t state;
-  int len = wcrtomb(buf, L'\0', &state);
+  mbstate_t state = {0};
+  int len;
 
   if( (stream->precision >= 0) && (count > stream->precision) )
     /*
@@ -657,7 +681,7 @@ void __pformat_wputchars( const wchar_t *s, int count, __pformat_t *stream )
       __pformat_putc( '\x20', stream );
 
   len = count;
-  while(len-- > 0 && *s != 0)
+  while(len-- > 0)
   {
       __pformat_putc(*s++, stream);
   }
@@ -752,12 +776,12 @@ void __pformat_int( __pformat_intarg_t value, __pformat_t *stream )
    */
   __bigint_to_string(value.__pformat_u128_t.t128_2.digits32,
     4, tmp_buff, bufflen);
-  __bigint_trim_leading_zeroes(tmp_buff,1);
+  __bigint_trim_leading_zeroes(tmp_buff, 0);
 
   memset(p,0,bufflen);
   for(int32_t i = strlen(tmp_buff) - 1; i >= 0; i--){
-  if ( i && (stream->flags & PFORMAT_GROUPED) != 0 && stream->thousands_chr != 0
-        && (i % 4) == 3)
+    if (p != buf && (stream->flags & PFORMAT_GROUPED) != 0 && stream->thousands_chr != 0
+        && ((p - buf) % 4) == 3)
       {
         *p++ = ',';
       }
@@ -883,7 +907,7 @@ while( value.__pformat_ullong_t )
 static
 void __pformat_xint( int fmt, __pformat_intarg_t value, __pformat_t *stream )
 {
-  /* Handler for `%o', `%p', `%x' and `%X' conversions.
+  /* Handler for `%o', `%p', `%x', `%X', `%b' and `%B' conversions.
    *
    * These can be implemented using a simple `mask and shift' strategy;
    * set up the mask and shift values appropriate to the conversion format,
@@ -891,7 +915,8 @@ void __pformat_xint( int fmt, __pformat_intarg_t value, __pformat_t *stream )
    * digits of the formatted value, in preparation for output.
    */
   int width;
-  int shift = (fmt == 'o') ? PFORMAT_OSHIFT : PFORMAT_XSHIFT;
+  int shift = (fmt == 'o') ? PFORMAT_OSHIFT :
+              (fmt == 'b' || fmt == 'B') ? PFORMAT_BSHIFT : PFORMAT_XSHIFT;
   int bufflen = __pformat_int_bufsiz(2, shift, stream);
   char *buf = NULL;
 #ifdef __ENABLE_PRINTF128
@@ -904,16 +929,19 @@ void __pformat_xint( int fmt, __pformat_intarg_t value, __pformat_t *stream )
   tmp_buf = alloca(bufflen);
   if(fmt == 'o'){
     __bigint_to_stringo(value.__pformat_u128_t.t128_2.digits32,4,tmp_buf,bufflen);
+  } else if(fmt == 'b' || fmt == 'B'){
+    __bigint_to_stringb(value.__pformat_u128_t.t128_2.digits32,4,tmp_buf,bufflen);
   } else {
     __bigint_to_stringx(value.__pformat_u128_t.t128_2.digits32,4,tmp_buf,bufflen, !(fmt & PFORMAT_XCASE));
   }
   __bigint_trim_leading_zeroes(tmp_buf,0);
 
   memset(buf,0,bufflen);
-  for(int32_t i = strlen(tmp_buf); i >= 0; i--)
+  for(int32_t i = strlen(tmp_buf)-1; i >= 0; i--)
     *p++ = tmp_buf[i];
 #else
-  int mask = (fmt == 'o') ? PFORMAT_OMASK : PFORMAT_XMASK;
+  int mask = (fmt == 'o') ? PFORMAT_OMASK :
+             (fmt == 'b' || fmt == 'B') ? PFORMAT_BMASK : PFORMAT_XMASK;
   while( value.__pformat_ullong_t )
   {
     /* Encode the specified non-zero input value as a sequence of digits,
@@ -975,7 +1003,7 @@ void __pformat_xint( int fmt, __pformat_intarg_t value, __pformat_t *stream )
   if( ((width = stream->width) > 0)
   &&  (fmt != 'o') && (stream->flags & PFORMAT_HASHED)  )
     /*
-     * For `%#x' or `%#X' formats, (which have the `#' flag set),
+     * For `%#x', `%#X', `%#b' or `%#B' formats, (which have the `#' flag set),
      * further reduce the padding width to accommodate the radix
      * indicating prefix.
      */
@@ -1468,7 +1496,10 @@ void __pformat_emit_efloat( int sign, char *value, int e, __pformat_t *stream )
    * include the following exponent).
    */
   int exp_width = 1;
-  __pformat_intarg_t exponent; exponent.__pformat_llong_t = e -= 1;
+  __pformat_intarg_t exponent;
+  e -= 1;
+  exponent.__pformat_u128_t.t128.digits[1] = e < 0 ? -1 : 0;
+  exponent.__pformat_u128_t.t128.digits[0] = e;
 
   /* Determine how many digit positions are required for the exponent.
    */
@@ -1881,14 +1912,15 @@ void __pformat_gfloat( long double x, __pformat_t *stream )
        * precede the radix point, but we truncate any balance following
        * it, to suppress output of non-significant trailing zeros...
        */
-      if( ((stream->precision = strlen( value ) - intlen) < 0)
-        /*
-         * This may require a compensating adjustment to the field
-         * width, to accommodate significant trailing zeros, which
-         * precede the radix point...
-         */
-      && (stream->width > 0)  )
-        stream->width += stream->precision;
+      stream->precision = strlen( value ) - intlen;
+
+    /* When the mantissa is shorter than the number of integer digits
+     * (e.g., 100000 has mantissa "1" but requires 6 digit positions),
+     * precision becomes negative. Clamp to zero to represent no
+     * fractional digits.
+     */
+    if( stream->precision < 0 )
+      stream->precision = 0;
 
     /* Now, we format the result as any other fixed point value.
      */
@@ -1945,7 +1977,7 @@ void __pformat_emit_xfloat( __pformat_fpreg_t value, __pformat_t *stream )
    * representation of the argument value.
    */
   char buf[18 + 6], *p = buf;
-  __pformat_intarg_t exponent; short exp_width = 2;
+  short exp_width = 2;
 
   if (value.__pformat_fpreg_mantissa != 0 ||
      value.__pformat_fpreg_exponent != 0)
@@ -2197,6 +2229,7 @@ void __pformat_emit_xfloat( __pformat_fpreg_t value, __pformat_t *stream )
   stream->width += exp_width;
   stream->flags |= PFORMAT_SIGNED;
   /* sign extend */
+  __pformat_intarg_t exponent;
   exponent.__pformat_u128_t.t128.digits[1] = (value.__pformat_fpreg_exponent < 0) ? -1 : 0;
   exponent.__pformat_u128_t.t128.digits[0] = value.__pformat_fpreg_exponent;
   __pformat_int( exponent, stream );
@@ -2506,6 +2539,64 @@ __pformat (int flags, void *dest, int max, const APICHAR *fmt, va_list argv)
                */
               __pformat_puts( va_arg( argv, char * ), &stream );
             goto format_scan;
+
+          case 'Z':
+            /*
+             * The logic for `%Z` length modifier is quite complicated.
+             *
+             * for printf:
+             * `%Z`  - UNICODE_STRING for UCRT; ANSI_STRING for crtdll,msvcrt10,msvcrt,msvcr80-msvcr120
+             * `%hZ` - ANSI_STRING
+             * `%lZ` - UNICODE_STRING for UCRT; ANSI_STRING for crtdll,msvcrt10,msvcrt,msvcr80-msvcr120
+             * `%wZ` - UNICODE_STRING
+             *
+             * for wprintf:
+             * `%Z`  - ANSI_STRING
+             * `%hZ` - ANSI_STRING
+             * `%lZ` - UNICODE_STRING for UCRT; ANSI_STRING for crtdll,msvcrt10,msvcrt,msvcr80-msvcr120
+             * `%wZ` - UNICODE_STRING
+             *
+             * There are some other changes between versions regarding nul chars.
+             * - msvcrt since Vista, msvcr80+ and UCRT do not accept nul chars in ANSI_STRING for wprintf.
+             *   If encountering a nul char, it stops processing the format string and returns -1.
+             * - msvcrt before Vista, crtdll and msvcrt10 accept nul char in ANSI_STRING for wprintf,
+             *   but the first nul char and everything after it in ANSI_STRING content is discarded.
+             * - msvcrt20 does not support %Z format at all.
+             * - msvcrt40 from Visual C++ 4.0 and in Win9x systems does not support %Z format at all.
+             * - msvcrt40 in WinNT systems forwards calls to msvcrt, so it behaves as msvcrt described above.
+             * - ANSI_STRING for printf, and UNICODE_STRING for both printf and wprintf work fine
+             *   in all versions, every nul byte and all following chars in the ANSI_STRING/UNICODE_STRING
+             *   are processed and printed.
+             *
+             * This mingw-w64 implementation uses UCRT behavior of length modifiers.
+             */
+            if( length == PFORMAT_LENGTH_INT )
+            {
+    #ifndef __BUILD_WIDEAPI
+              length = PFORMAT_LENGTH_LONG;
+    #else
+              length = PFORMAT_LENGTH_SHORT;
+    #endif
+            }
+
+            if( (length == PFORMAT_LENGTH_LONG)
+                 || (length == PFORMAT_LENGTH_LLONG)
+              )
+            {
+              const UNICODE_STRING *s = va_arg( argv, UNICODE_STRING * );
+              const wchar_t *buf = (s && s->Buffer) ? (const wchar_t *)s->Buffer : L"(null)";
+              const int len = (s && s->Buffer) ? s->Length / sizeof(wchar_t) : ( sizeof( "(null)" ) - 1 );
+              __pformat_wputchars( buf, len, &stream );
+            }
+            else
+            {
+              const ANSI_STRING *s = va_arg( argv, ANSI_STRING * );
+              const char *buf = (s && s->Buffer) ? (const char *)s->Buffer : "(null)";
+              const int len = (s && s->Buffer) ? s->Length : ( sizeof( "(null)" ) - 1 );
+              __pformat_putchars( buf, len, &stream );
+            }
+            goto format_scan;
+
           case 'm': /* strerror (errno)  */
             __pformat_puts (strerror (saved_errno), &stream);
             goto format_scan;
@@ -2514,8 +2605,10 @@ __pformat (int flags, void *dest, int max, const APICHAR *fmt, va_list argv)
           case 'u':
           case 'x':
           case 'X':
+          case 'b':
+          case 'B':
             /*
-             * Unsigned integer values; octal, decimal or hexadecimal format...
+             * Unsigned integer values; octal, decimal, hexadecimal or binary format...
              */
             stream.flags &= ~PFORMAT_POSITIVE;
 #if __ENABLE_PRINTF128
@@ -2974,6 +3067,16 @@ __pformat (int flags, void *dest, int max, const APICHAR *fmt, va_list argv)
                */
               length = PFORMAT_LENGTH_LONG;
 
+            state = PFORMAT_END;
+            break;
+
+          case 'w':
+            /*
+             * Identify the appropriate argument as a wide
+             * character or wide string when associated with
+             * `%c`, `%C`, `%s' or `%S`.
+             */
+            length = PFORMAT_LENGTH_LONG;
             state = PFORMAT_END;
             break;
 

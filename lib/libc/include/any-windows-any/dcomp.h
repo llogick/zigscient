@@ -667,6 +667,68 @@ DECLARE_INTERFACE_IID_(IDCompositionDevice3, IDCompositionDevice2, "0987CB06-F91
 __CRT_UUID_DECL(IDCompositionDevice3,0x0987cb06,0xf916,0x48bf,0x8d,0x35,0xce,0x76,0x41,0x78,0x1b,0xd9);
 #endif
 
+#if (NTDDI_VERSION >= NTDDI_WIN10_NI)
+
+#undef INTERFACE
+#define INTERFACE IDCompositionTexture
+DECLARE_INTERFACE_IID_(IDCompositionTexture, IUnknown, "929BB1AA-725F-433B-ABD7-273075A835F2")
+{
+    STDMETHOD(SetSourceRect)(THIS_ const D2D_RECT_U &sourceRect) PURE;
+    STDMETHOD(SetColorSpace)(THIS_ DXGI_COLOR_SPACE_TYPE colorSpace) PURE;
+    STDMETHOD(SetAlphaMode)(THIS_ DXGI_ALPHA_MODE alphaMode) PURE;
+    STDMETHOD(GetAvailableFence)(THIS_ UINT64 *fenceValue, REFIID iid, void **availableFence) PURE;
+};
+
+#ifdef __CRT_UUID_DECL
+__CRT_UUID_DECL(IDCompositionTexture, 0x929bb1aa, 0x725f, 0x433b, 0xab, 0xd7, 0x27, 0x30, 0x75, 0xa8, 0x35, 0xf2);
+#endif
+
+#undef INTERFACE
+#define INTERFACE IDCompositionDevice4
+DECLARE_INTERFACE_IID_(IDCompositionDevice4, IDCompositionDevice3, "85FC5CCA-2DA6-494C-86B6-4A775C049B8A")
+{
+    STDMETHOD(CheckCompositionTextureSupport)(THIS_ IUnknown *renderingDevice, WINBOOL *supportsCompositionTextures) PURE;
+    STDMETHOD(CreateCompositionTexture)(THIS_ IUnknown *d3dTexture, IDCompositionTexture **compositionTexture) PURE;
+};
+
+#ifdef __CRT_UUID_DECL
+__CRT_UUID_DECL(IDCompositionDevice4, 0x85fc5cca, 0x2da6, 0x494c, 0x86, 0xb6, 0x4a, 0x77, 0x5c, 0x04, 0x9b, 0x8a);
+#endif
+
+#endif /* (NTDDI_VERSION >= NTDDI_WIN10_NI) */
+
+#if (NTDDI_VERSION >= NTDDI_WIN11_GE)
+
+#undef INTERFACE
+#define INTERFACE IDCompositionDynamicTexture
+DECLARE_INTERFACE_IID_(IDCompositionDynamicTexture, IUnknown, "A1DE1D3F-6405-447F-8E95-1383A34B0277")
+{
+#if defined(_MSC_VER) && defined(__cplusplus)
+    STDMETHOD(SetTexture)(THIS_ IDCompositionTexture *pTexture) PURE;
+    STDMETHOD(SetTexture)(THIS_ IDCompositionTexture *pTexture, const D2D_RECT_L *pRects, size_t rectCount) PURE;
+#else
+    STDMETHOD(SetTexture)(THIS_ IDCompositionTexture *pTexture, const D2D_RECT_L *pRects, size_t rectCount) PURE;
+    STDMETHOD(SetTexture)(THIS_ IDCompositionTexture *pTexture) PURE;
+#endif
+};
+
+#ifdef __CRT_UUID_DECL
+__CRT_UUID_DECL(IDCompositionDynamicTexture, 0xa1de1d3f, 0x6405, 0x447f, 0x8e, 0x95, 0x13, 0x83, 0xa3, 0x4b, 0x02, 0x77);
+#endif
+
+#undef INTERFACE
+#define INTERFACE IDCompositionDevice5
+DECLARE_INTERFACE_IID_(IDCompositionDevice5, IDCompositionDevice4, "2C6BEBFE-A603-472F-AF34-D2443356E61B")
+{
+    STDMETHOD(CreateDynamicTexture)(THIS_ IDCompositionDynamicTexture **compositionDynamicTexture) PURE;
+};
+
+#ifdef __CRT_UUID_DECL
+__CRT_UUID_DECL(IDCompositionDevice5, 0x2c6bebfe, 0xa603, 0x472f, 0xaf, 0x34, 0xd2, 0x44, 0x33, 0x56, 0xe6, 0x1b);
+#endif
+
+#endif /* (NTDDI_VERSION >= NTDDI_WIN11_GE) */
+
 #endif /* WINAPI_PARTITION_DESKTOP */
 
 #if (_WIN32_WINNT >= 0x0A00)

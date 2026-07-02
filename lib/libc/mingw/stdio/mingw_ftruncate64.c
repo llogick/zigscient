@@ -12,6 +12,7 @@
 #include <windows.h>
 #include <psapi.h>
 
+#if 0
 /* Mutually exclusive methods
   We check disk space as truncating more than the allowed space results
   in file getting mysteriously deleted
@@ -82,7 +83,7 @@ static LPWSTR xp_normalize_fn(const LPWSTR fn) {
     free(target);
     return NULL;
   }
-  _snwprintf(ret,MAX_PATH,L"%ws%ws",tmplt,fn+wcslen(target));
+  _snwprintf(ret,MAX_PATH,L"%ls%ls",tmplt,fn+wcslen(target));
 
   return ret;
 }
@@ -206,10 +207,10 @@ checkfreespace (const HANDLE f, const ULONGLONG requiredspace)
   dirpath = NULL;
 
   vol = FindFirstVolumeW(volumeid,50);
-  /* wprintf(L"%d - %ws\n",wcslen(volumeid),volumeid); */
+  /* wprintf(L"%d - %ls\n",wcslen(volumeid),volumeid); */
   do {
     check = GetVolumeInformationW(volumeid,volumepath,MAX_PATH+1,&volumeserial,NULL,NULL,NULL,0);
-    /* wprintf(L"GetVolumeInformationW %d id %ws path %ws error %d\n",check,volumeid,volumepath,GetLastError()); */
+    /* wprintf(L"GetVolumeInformationW %d id %ls path %ls error %d\n",check,volumeid,volumepath,GetLastError()); */
     if(volumeserial == fileinfo.dwVolumeSerialNumber) {
       dirpath = volumeid; 
       break;
@@ -238,8 +239,10 @@ checkfreespace (const HANDLE f, const ULONGLONG requiredspace)
   } /* We have enough space to truncate/expand */
   return 0;
 }
+#endif
 
-int ftruncate64(int __fd, _off64_t __length) {
+int __cdecl __mingw_ftruncate64(int __fd, _off64_t __length);
+int __cdecl __mingw_ftruncate64(int __fd, _off64_t __length) {
   HANDLE f;
   LARGE_INTEGER quad;
   DWORD check;
@@ -268,11 +271,13 @@ int ftruncate64(int __fd, _off64_t __length) {
     goto errorout;
   }
 
+#if 0
   /* Check available space */
   check = checkfreespace(f,__length);
   if (check != 0) {
     return -1; /* Error, errno already set */
   }
+#endif
 
   quad.QuadPart = __length;
   check = SetFilePointer(f, (LONG)quad.LowPart, &(quad.HighPart), FILE_BEGIN);
@@ -306,6 +311,10 @@ int ftruncate64(int __fd, _off64_t __length) {
   return -1;
 }
 
+#ifdef TEST_FTRUNCATE64
+#define ftruncate64 __mingw_ftruncate64
+#endif
+
 #if (TEST_FTRUNCATE64 == 1)
 int main(){
   LARGE_INTEGER sz;
@@ -320,8 +329,8 @@ int main(){
 /*  path = xp_getfilepath((HANDLE)_get_osfhandle(f),sz);
   dir = getdirpath(path);
   GetDiskFreeSpaceExW(dir,&freespace,NULL,NULL);
-  wprintf(L"fs - %ws\n",path);
-  wprintf(L"dirfs - %ws\n",dir);
+  wprintf(L"fs - %ls\n",path);
+  wprintf(L"dirfs - %ls\n",dir);
   wprintf(L"free - %I64u\n",freespace.QuadPart);
   free(dir);
   free(path);*/

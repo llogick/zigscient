@@ -203,6 +203,8 @@ CreateActCtxWWorker
 CreateBoundaryDescriptorA
 CreateBoundaryDescriptorW
 CreateConsoleScreenBuffer
+CreateDirectory2A
+CreateDirectory2W
 CreateDirectoryA
 CreateDirectoryExA
 CreateDirectoryExW
@@ -217,6 +219,7 @@ CreateEventW
 CreateFiber
 CreateFiberEx
 CreateFile2
+CreateFile3
 CreateFileA
 CreateFileMappingA
 CreateFileMappingFromApp
@@ -302,6 +305,8 @@ DeleteAtom
 DeleteBoundaryDescriptor
 DeleteCriticalSection
 DeleteFiber
+DeleteFile2A
+DeleteFile2W
 DeleteFileA
 DeleteFileTransactedA
 DeleteFileTransactedW
@@ -1290,6 +1295,8 @@ ReleaseSRWLockExclusive
 ReleaseSRWLockShared
 ReleaseSemaphore
 ReleaseSemaphoreWhenCallbackReturns
+RemoveDirectory2A
+RemoveDirectory2W
 RemoveDirectoryA
 RemoveDirectoryTransactedA
 RemoveDirectoryTransactedW

@@ -35,17 +35,31 @@ typedef long long LONGBAG;
 typedef long LONGBAG;
 #endif
 
-#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-#undef GetHandleInformation
-#define GetHandleInformation(h,f)  (1)
+extern BOOL (WINAPI *_pthread_get_handle_information) (HANDLE, LPDWORD);
+
+/* For gcc and clang define DUMMY_WRITABLE_DWORD as C99 compound literal.
+ * For other pre-C99 compilers declare DUMMY_WRITABLE_DWORD as static variable.
+ */
+#if defined(__GNUC__) || defined(__clang__)
+#define DUMMY_WRITABLE_DWORD (DWORD){0}
+#else
+static DWORD DUMMY_WRITABLE_DWORD;
 #endif
 
-#define CHECK_HANDLE(h)                                                 \
+#define TEST_HANDLE(h)                                                  \
+  (((h) != NULL && (h) != INVALID_HANDLE_VALUE) && (                    \
+     _pthread_get_handle_information == NULL ||                         \
+     _pthread_get_handle_information((h), &DUMMY_WRITABLE_DWORD) ||     \
+     GetLastError() == ERROR_CALL_NOT_IMPLEMENTED                       \
+  ))
+
+#define CHECK_HANDLE2(h, e)                                             \
   do {                                                                  \
-    DWORD dwFlags;                                                      \
-    if (!(h) || ((h) == INVALID_HANDLE_VALUE) || !GetHandleInformation((h), &dwFlags)) \
-      return EINVAL;                                                    \
+    if (!TEST_HANDLE(h))                                                \
+      return e;                                                         \
   } while (0)
+
+#define CHECK_HANDLE(h) CHECK_HANDLE2(h, EINVAL)
 
 #define CHECK_PTR(p) do { if (!(p)) return EINVAL; } while (0)
 
@@ -59,10 +73,8 @@ typedef long LONGBAG;
 
 #define CHECK_OBJECT(o, e)                                              \
   do {                                                                  \
-    DWORD dwFlags;                                                      \
     if (!(o)) return e;                                                 \
-    if (!((o)->h) || (((o)->h) == INVALID_HANDLE_VALUE) || !GetHandleInformation(((o)->h), &dwFlags)) \
-      return e;                                                         \
+    CHECK_HANDLE2((o)->h, e);                                           \
   } while (0)
 
 #define VALID(x)    if (!(p)) return EINVAL;

@@ -60,24 +60,31 @@
 #ifndef WIN_PTHREADS_PTHREAD_COMPAT_H
 #define WIN_PTHREADS_PTHREAD_COMPAT_H
 
-#if defined(_USE_32BIT_TIME_T) || (defined(_TIME_BITS) && _TIME_BITS == 32)
+#if defined(__cplusplus) && __cplusplus >= 201103L
+#define WINPTHREADS_STATIC_ASSERT(expr, msg) static_assert ((expr), msg)
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+#define WINPTHREADS_STATIC_ASSERT(expr, msg) static_assert ((expr), msg)
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#define WINPTHREADS_STATIC_ASSERT(expr, msg) _Static_assert ((expr), msg)
+#else
+#define WINPTHREADS_STATIC_ASSERT(expr, msg) extern int winpthreads_static_assert[((expr) ? 1 : -1)]
+#endif
+
+#if defined(_USE_32BIT_TIME_T)
 #define WINPTHREADS_TIME_BITS 32
 #else
 #define WINPTHREADS_TIME_BITS 64
 #endif
 
-#if defined(IN_WINPTHREAD)
-#  if defined(DLL_EXPORT)
-#    define WINPTHREAD_API  __declspec(dllexport)  /* building the DLL  */
-#  else
-#    define WINPTHREAD_API  /* building the static library  */
-#  endif
-#else
-#  if defined(WINPTHREADS_USE_DLLIMPORT)
-#    define WINPTHREAD_API  __declspec(dllimport)  /* user wants explicit `dllimport`  */
-#  else
-#    define WINPTHREAD_API  /* the default; auto imported in case of DLL  */
-#  endif
+#ifndef WINPTHREAD_API
+  /**
+   * Allow `WINPTHREAD_STATIC` to override `WINPTHREADS_USE_DLLIMPORT`.
+   */
+# if defined(WINPTHREADS_USE_DLLIMPORT) && !defined(WINPTHREAD_STATIC)
+#  define WINPTHREAD_API  __declspec(dllimport)
+# else
+#  define WINPTHREAD_API
+# endif
 #endif
 
 #ifndef __clockid_t_defined
@@ -110,9 +117,24 @@ typedef unsigned short mode_t;
 
 #elif _MSC_VER
 
+/**
+ * If package which includes this header file is using autoconf and calls
+ * AC_TYPE_PID_T macro, the check for pid_t will fail and it will define pid_t
+ * as a macro in config.h - this eventually results in compilation error.
+ *
+ * Luckily, it defines it to the same base type, so we can simply undefine it.
+ */
 #ifdef _WIN64
+#ifdef pid_t
+WINPTHREADS_STATIC_ASSERT (sizeof (pid_t) == sizeof(__int64), "pid_t is defined as a macro with mismatching base type");
+#undef pid_t
+#endif
 typedef __int64 pid_t;
 #else
+#ifdef pid_t
+WINPTHREADS_STATIC_ASSERT (sizeof (pid_t) == sizeof(int), "pid_t is defined as a macro with mismatching base type");
+#undef pid_t
+#endif
 typedef int     pid_t;
 #endif
 
@@ -124,25 +146,59 @@ typedef int     pid_t;
 #endif
 
 #ifndef WINPTHREAD_CLOCK_DECL
-#define WINPTHREAD_CLOCK_DECL static WINPTHREADS_ALWAYS_INLINE
+# ifdef __cplusplus
+#  define WINPTHREAD_CLOCK_DECL WINPTHREADS_ALWAYS_INLINE
+# else
+#  define WINPTHREAD_CLOCK_DECL static WINPTHREADS_ALWAYS_INLINE
+# endif
 #endif
+
 #ifndef WINPTHREAD_COND_DECL
-#define WINPTHREAD_COND_DECL static WINPTHREADS_ALWAYS_INLINE
+# ifdef __cplusplus
+#  define WINPTHREAD_COND_DECL WINPTHREADS_ALWAYS_INLINE
+# else
+#  define WINPTHREAD_COND_DECL static WINPTHREADS_ALWAYS_INLINE
+# endif
 #endif
+
 #ifndef WINPTHREAD_MUTEX_DECL
-#define WINPTHREAD_MUTEX_DECL static WINPTHREADS_ALWAYS_INLINE
+# ifdef __cplusplus
+#  define WINPTHREAD_MUTEX_DECL WINPTHREADS_ALWAYS_INLINE
+# else
+#  define WINPTHREAD_MUTEX_DECL static WINPTHREADS_ALWAYS_INLINE
+# endif
 #endif
+
 #ifndef WINPTHREAD_NANOSLEEP_DECL
-#define WINPTHREAD_NANOSLEEP_DECL static WINPTHREADS_ALWAYS_INLINE
+# ifdef __cplusplus
+#  define WINPTHREAD_NANOSLEEP_DECL WINPTHREADS_ALWAYS_INLINE
+# else
+#  define WINPTHREAD_NANOSLEEP_DECL static WINPTHREADS_ALWAYS_INLINE
+# endif
 #endif
+
 #ifndef WINPTHREAD_RWLOCK_DECL
-#define WINPTHREAD_RWLOCK_DECL static WINPTHREADS_ALWAYS_INLINE
+# ifdef __cplusplus
+#  define WINPTHREAD_RWLOCK_DECL WINPTHREADS_ALWAYS_INLINE
+# else
+#  define WINPTHREAD_RWLOCK_DECL static WINPTHREADS_ALWAYS_INLINE
+# endif
 #endif
+
 #ifndef WINPTHREAD_SEM_DECL
-#define WINPTHREAD_SEM_DECL static WINPTHREADS_ALWAYS_INLINE
+# ifdef __cplusplus
+#  define WINPTHREAD_SEM_DECL WINPTHREADS_ALWAYS_INLINE
+# else
+#  define WINPTHREAD_SEM_DECL static WINPTHREADS_ALWAYS_INLINE
+# endif
 #endif
+
 #ifndef WINPTHREAD_THREAD_DECL
-#define WINPTHREAD_THREAD_DECL static WINPTHREADS_ALWAYS_INLINE
+# ifdef __cplusplus
+#  define WINPTHREAD_THREAD_DECL WINPTHREADS_ALWAYS_INLINE
+# else
+#  define WINPTHREAD_THREAD_DECL static WINPTHREADS_ALWAYS_INLINE
+# endif
 #endif
 
 #endif

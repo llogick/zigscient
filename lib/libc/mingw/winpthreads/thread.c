@@ -20,6 +20,16 @@
    DEALINGS IN THE SOFTWARE.
 */
 
+#if defined(__arm__) || defined(__aarch64__)
+/* We use setjmp/longjmp through asynchronous function calls via
+ * SetThreadContext below. This makes unwinding from longjmp not
+ * work reliably; therefore use a version of setjmp/longjmp that doesn't
+ * rely on SEH. */
+#define __USE_MINGW_SETJMP_NON_SEH
+#endif
+
+#define __LARGE_MBSTATE_T
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -32,7 +42,6 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <strsafe.h>
 
 #define WINPTHREAD_THREAD_DECL WINPTHREAD_API
 
@@ -65,38 +74,29 @@ static size_t idListCnt = 0;
 static size_t idListMax = 0;
 static pthread_t idListNextId = 0;
 
-#if !defined(_MSC_VER)
-#define USE_VEH_FOR_MSC_SETTHREADNAME
+#if defined(__SEH__) && (!defined(__clang__) || __clang_major__ >= 7)
+#define SEH_INLINE_ASM
+#ifdef __arm__
+#define ASM_EXCEPT "%%except"
+#else
+#define ASM_EXCEPT "@except"
 #endif
-#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-/* forbidden RemoveVectoredExceptionHandler/AddVectoredExceptionHandler APIs */
-#undef USE_VEH_FOR_MSC_SETTHREADNAME
 #endif
 
-#if defined(USE_VEH_FOR_MSC_SETTHREADNAME)
-static void *SetThreadName_VEH_handle = NULL;
-
-static LONG __stdcall
-SetThreadName_VEH (PEXCEPTION_POINTERS ExceptionInfo)
+#if !defined(_MSC_VER) && (defined(__i386__) || defined(SEH_INLINE_ASM))
+static EXCEPTION_DISPOSITION __cdecl
+SetThreadName_SEH (EXCEPTION_RECORD *ExceptionRecord, PVOID EstablisherFrame, CONTEXT *ContextRecord, PVOID DispatcherContext)
 {
-  if (ExceptionInfo->ExceptionRecord != NULL &&
-      ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SET_THREAD_NAME)
-    return EXCEPTION_CONTINUE_EXECUTION;
+  /* Do not be confused with VEH handlers and CRT except filters which returns LONG value with UPPER_CASE constants.
+   * SEH handlers like this one return value from EXCEPTION_DISPOSITION enum which has CamelCase constants.
+   * UPPER_CASE EXCEPTION_CONTINUE_SEARCH and CamelCase ExceptionContinueSearch are different constants.
+   */
+  if (!(ExceptionRecord->ExceptionFlags & EXCEPTION_UNWINDING) &&
+      !(ExceptionRecord->ExceptionFlags & EXCEPTION_NONCONTINUABLE) &&
+      ExceptionRecord->ExceptionCode == EXCEPTION_SET_THREAD_NAME)
+    return ExceptionContinueExecution;
 
-  return EXCEPTION_CONTINUE_SEARCH;
-}
-
-static PVOID (WINAPI *AddVectoredExceptionHandlerFuncPtr) (ULONG, PVECTORED_EXCEPTION_HANDLER);
-static ULONG (WINAPI *RemoveVectoredExceptionHandlerFuncPtr) (PVOID);
-
-static void __attribute__((constructor))
-ctor (void)
-{
-  HMODULE module = GetModuleHandleA("kernel32.dll");
-  if (module) {
-    AddVectoredExceptionHandlerFuncPtr = (__typeof__(AddVectoredExceptionHandlerFuncPtr)) GetProcAddress(module, "AddVectoredExceptionHandler");
-    RemoveVectoredExceptionHandlerFuncPtr = (__typeof__(RemoveVectoredExceptionHandlerFuncPtr)) GetProcAddress(module, "RemoveVectoredExceptionHandler");
-  }
+  return ExceptionContinueSearch;
 }
 #endif
 
@@ -108,6 +108,9 @@ typedef struct _THREADNAME_INFO
   DWORD  dwFlags;	/* reserved for future use, must be zero */
 } THREADNAME_INFO;
 
+#if !defined(_MSC_VER) && !defined(__i386__) && defined(SEH_INLINE_ASM)
+WINPTHREADS_ATTRIBUTE((noinline)) /* required for asm .seh_handler directive */
+#endif
 static void
 SetThreadName (DWORD dwThreadID, LPCSTR szThreadName)
 {
@@ -121,7 +124,10 @@ SetThreadName (DWORD dwThreadID, LPCSTR szThreadName)
 
    infosize = sizeof (info) / sizeof (ULONG_PTR);
 
-#if defined(_MSC_VER) && !defined (USE_VEH_FOR_MSC_SETTHREADNAME)
+   /* Exception has to be processed otherwise it will crash the process. */
+
+#if defined(_MSC_VER)
+   /* msvc supports __try / __except syntax, so use it */
    __try
      {
        RaiseException (EXCEPTION_SET_THREAD_NAME, 0, infosize, (ULONG_PTR *)&info);
@@ -130,17 +136,31 @@ SetThreadName (DWORD dwThreadID, LPCSTR szThreadName)
      {
      }
 #else
-   /* Without a debugger we *must* have an exception handler,
-    * otherwise raising an exception will crash the process.
-    */
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-   if ((!IsDebuggerPresent ()) && (SetThreadName_VEH_handle == NULL))
-#else
-   if (!IsDebuggerPresent ())
-#endif
-     return;
-
+   /* gcc does not support __try / __except syntax, so manually register SEH handler */
+#if defined(__i386__)
+   /* On 32-bit x86 is SEH handler registered and unregistered at runtime */
+   EXCEPTION_REGISTRATION_RECORD exception_record = {
+     .Next = (EXCEPTION_REGISTRATION_RECORD *) __readfsdword (0), /* current SEH handler */
+     .Handler = (PEXCEPTION_ROUTINE)(void*) SetThreadName_SEH,
+   };
+   __writefsdword (0, (DWORD) &exception_record); /* register our SEH handler */
    RaiseException (EXCEPTION_SET_THREAD_NAME, 0, infosize, (ULONG_PTR *) &info);
+   __writefsdword (0, (DWORD) exception_record.Next); /* unregister our SEH handler */
+#elif defined(SEH_INLINE_ASM)
+   /* On other platforms SEH handlers are registered at compile time.
+      Assembler directive .seh_handler statically register SEH handler for
+      the whole current function. It does not matter at which line is this
+      directive called. It always applies for the whole function, so also
+      for code before the directive itself. As this function does not do
+      anything else, we can register our SEH handler for the whole function.
+      This function has to be marked as noinline to ensure that the SEH
+      handler would not be registered for a caller.
+    */
+   asm volatile (".seh_handler %c0, " ASM_EXCEPT :: "i" (SetThreadName_SEH));
+   RaiseException (EXCEPTION_SET_THREAD_NAME, 0, infosize, (ULONG_PTR *) &info);
+#else
+   /* Other compilers / platforms do not provide SEH support */
+#endif
 #endif
 }
 
@@ -443,25 +463,10 @@ __dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
 
   if (dwReason == DLL_PROCESS_DETACH)
     {
-#if defined(USE_VEH_FOR_MSC_SETTHREADNAME)
-      if (lpreserved == NULL && SetThreadName_VEH_handle != NULL)
-        {
-          if (RemoveVectoredExceptionHandlerFuncPtr != NULL)
-            RemoveVectoredExceptionHandlerFuncPtr (SetThreadName_VEH_handle);
-          SetThreadName_VEH_handle = NULL;
-        }
-#endif
       free_pthread_mem ();
     }
   else if (dwReason == DLL_PROCESS_ATTACH)
     {
-#if defined(USE_VEH_FOR_MSC_SETTHREADNAME)
-      if (AddVectoredExceptionHandlerFuncPtr != NULL)
-        SetThreadName_VEH_handle = AddVectoredExceptionHandlerFuncPtr (1, &SetThreadName_VEH);
-      else
-        SetThreadName_VEH_handle = NULL;
-      /* Can't do anything on error anyway, check for NULL later */
-#endif
     }
   else if (dwReason == DLL_THREAD_DETACH)
     {
@@ -520,13 +525,15 @@ __dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
 
 /* TLS-runtime section variable.  */
 
-#if defined(_MSC_VER)
 /* Force a reference to _tls_used to make the linker create the TLS
  * directory if it's not already there.  (e.g. if __declspec(thread)
  * is not used).
  * Force a reference to __xl_f to prevent whole program optimization
  * from discarding the variable. */
-
+#if defined(__GNUC__)
+extern const IMAGE_TLS_DIRECTORY _tls_used;
+static __attribute__((used)) const IMAGE_TLS_DIRECTORY *const _include_tls_used = &_tls_used;
+#elif defined(_MSC_VER)
 /* On x86, symbols are prefixed with an underscore. */
 # if defined(_M_IX86)
 #   pragma comment(linker, "/include:__tls_used")
@@ -544,8 +551,10 @@ __dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
 # pragma section(".CRT$XLF", long, read)
 #endif
 
+#if defined(__GNUC__)
+static __attribute__((used))
+#endif
 WINPTHREADS_ATTRIBUTE((WINPTHREADS_SECTION(".CRT$XLF")))
-extern const PIMAGE_TLS_CALLBACK __xl_f;
 const PIMAGE_TLS_CALLBACK __xl_f = __dyn_tls_pthread;
 
 /* Internal collect-once structure.  */
@@ -1277,9 +1286,7 @@ pthread_cancel (pthread_t t)
 #else
 #error Unsupported architecture
 #endif
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 	  SetThreadContext (tv->h, &ctxt);
-#endif
 
 	  /* Also try deferred Cancelling */
 	  tv->cancelled = 1;
@@ -1516,9 +1523,7 @@ void _fpreset (void);
 
 #if defined(__i386__)
 /* Align ESP on 16-byte boundaries. */
-#  if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 2))
 __attribute__((force_align_arg_pointer))
-#  endif
 #endif
 unsigned __stdcall
 pthread_create_wrapper (void *args)
@@ -1539,16 +1544,10 @@ pthread_create_wrapper (void *args)
   if (!setjmp(tv->jb))
     {
       intptr_t trslt = (intptr_t) 128;
-      /* Provide to this thread a default exception handler.  */
-      #ifdef __SEH__
-	asm ("\t.tl_start:\n");
-      #endif      /* Call function and save return value */
       pthread_mutex_unlock (&mtx_pthr_locked);
+      /* Call function and save return value */
       if (tv->func)
         trslt = (intptr_t) tv->func(tv->ret_arg);
-      #ifdef __SEH__
-        asm ("\tnop\n\t.tl_end: nop\n");
-      #endif
       pthread_mutex_lock (&mtx_pthr_locked);
       tv->ret_arg = (void*) trslt;
       /* Clean up destructors */
@@ -1585,19 +1584,6 @@ pthread_create_wrapper (void *args)
    Sleep (0);
   _endthreadex (rslt);
   return rslt;
-
-#if defined(__SEH__)
-  asm(
-#ifdef __arm__
-    "\t.seh_handler __C_specific_handler, %except\n"
-#else
-    "\t.seh_handler __C_specific_handler, @except\n"
-#endif
-    "\t.seh_handlerdata\n"
-    "\t.long 1\n"
-    "\t.rva .tl_start, .tl_end, _gnu_exception_handler ,.tl_end\n"
-    "\t.text\n");
-#endif
 }
 
 int
@@ -1608,6 +1594,7 @@ pthread_create (pthread_t *th, const pthread_attr_t *attr, void *(* func)(void *
   struct _pthread_v *tv;
   unsigned int ssize = 0;
   pthread_spinlock_t new_spin_keys = PTHREAD_SPINLOCK_INITIALIZER;
+  unsigned thrAddr; /* Dummy variable to pass a valid location to _beginthreadex (Win98). */
 
   if (attr && attr->s_size > UINT_MAX)
     return EINVAL;
@@ -1664,7 +1651,7 @@ pthread_create (pthread_t *th, const pthread_attr_t *attr, void *(* func)(void *
   /* Make sure tv->h has value of INVALID_HANDLE_VALUE */
   _ReadWriteBarrier();
 
-  thrd = (HANDLE) _beginthreadex(NULL, ssize, pthread_create_wrapper, tv, 0x4/*CREATE_SUSPEND*/, NULL);
+  thrd = (HANDLE) _beginthreadex(NULL, ssize, pthread_create_wrapper, tv, 0x4/*CREATE_SUSPEND*/, &thrAddr);
   if (thrd == INVALID_HANDLE_VALUE)
     thrd = 0;
   /* Failed */
@@ -1713,12 +1700,11 @@ pthread_create (pthread_t *th, const pthread_attr_t *attr, void *(* func)(void *
 int
 pthread_join (pthread_t t, void **res)
 {
-  DWORD dwFlags;
   struct _pthread_v *tv = __pth_gpointer_locked (t);
   pthread_spinlock_t new_spin_keys = PTHREAD_SPINLOCK_INITIALIZER;
 
-  if (!tv || tv->h == NULL || !GetHandleInformation(tv->h, &dwFlags))
-    return ESRCH;
+  CHECK_OBJECT(tv, ESRCH);
+
   if ((tv->p_state & PTHREAD_CREATE_DETACHED) != 0)
     return EINVAL;
   if (pthread_equal(pthread_self(), t))
@@ -1744,14 +1730,13 @@ pthread_join (pthread_t t, void **res)
 int
 _pthread_tryjoin (pthread_t t, void **res)
 {
-  DWORD dwFlags;
   struct _pthread_v *tv;
   pthread_spinlock_t new_spin_keys = PTHREAD_SPINLOCK_INITIALIZER;
 
   pthread_mutex_lock (&mtx_pthr_locked);
   tv = __pthread_get_pointer (t);
 
-  if (!tv || tv->h == NULL || !GetHandleInformation(tv->h, &dwFlags))
+  if (!tv || !TEST_HANDLE(tv->h))
     {
       pthread_mutex_unlock (&mtx_pthr_locked);
       return ESRCH;
@@ -1798,13 +1783,12 @@ int
 pthread_detach (pthread_t t)
 {
   int r = 0;
-  DWORD dwFlags;
   struct _pthread_v *tv = __pth_gpointer_locked (t);
   HANDLE dw;
   pthread_spinlock_t new_spin_keys = PTHREAD_SPINLOCK_INITIALIZER;
 
   pthread_mutex_lock (&mtx_pthr_locked);
-  if (!tv || tv->h == NULL || !GetHandleInformation(tv->h, &dwFlags))
+  if (!tv || !TEST_HANDLE(tv->h))
     {
       pthread_mutex_unlock (&mtx_pthr_locked);
       return ESRCH;
@@ -1897,8 +1881,8 @@ pthread_setname_np (pthread_t thread, const char *name)
 int
 pthread_getname_np (pthread_t thread, char *name, size_t len)
 {
-  HRESULT result;
   struct _pthread_v *tv;
+  size_t thread_name_len;
 
   if (name == NULL)
     return EINVAL;
@@ -1917,12 +1901,10 @@ pthread_getname_np (pthread_t thread, char *name, size_t len)
       return 0;
     }
 
-  if (strlen (tv->thread_name) >= len)
+  thread_name_len = strlen (tv->thread_name);
+  if (thread_name_len >= len)
     return ERANGE;
 
-  result = StringCchCopyNA (name, len, tv->thread_name, len - 1);
-  if (SUCCEEDED (result))
-    return 0;
-
-  return ERANGE;
+  memcpy (name, tv->thread_name, thread_name_len + 1);
+  return 0;
 }

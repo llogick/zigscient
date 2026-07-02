@@ -228,7 +228,7 @@ LdrSetMUICacheType
 LdrShutdownProcess
 LdrShutdownThread
 LdrStandardizeSystemPath
-LdrSystemDllInitBlock F_ARM_ANY(DATA)
+LdrSystemDllInitBlock DATA
 LdrUnloadAlternateResourceModule
 LdrUnloadAlternateResourceModuleEx
 LdrUnloadDll
@@ -455,7 +455,7 @@ NtLoadDriver
 NtLoadEnclaveData
 NtLoadKey
 NtLoadKey2
-F_ARM_ANY(NtLoadKey3)
+NtLoadKey3
 NtLoadKeyEx
 NtLockFile
 NtLockProductActivationKeys
@@ -1643,8 +1643,8 @@ F_X86_ANY(RtlUTF8StringToUnicodeString)
 RtlUTF8ToUnicodeN
 RtlUdiv128
 F_X64(RtlUmsThreadYield)
-F_ARM_ANY(RtlUlongByteSwap)
-F_ARM_ANY(RtlUlonglongByteSwap)
+F_ARM_NATIVE(RtlUlongByteSwap)
+F_ARM_NATIVE(RtlUlonglongByteSwap)
 RtlUnhandledExceptionFilter
 RtlUnhandledExceptionFilter2
 RtlUnicodeStringToAnsiSize
@@ -1690,7 +1690,7 @@ RtlUpperString
 F_X86_ANY(RtlUsageHeap)
 RtlUserFiberStart
 RtlUserThreadStart
-F_ARM_ANY(RtlUshortByteSwap)
+F_ARM_NATIVE(RtlUshortByteSwap)
 RtlValidAcl
 RtlValidProcessProtection
 RtlValidRelativeSecurityDescriptor
@@ -1758,7 +1758,7 @@ RtlpConvertRelativeToAbsoluteSecurityAttribute
 RtlpCreateProcessRegistryInfo
 RtlpEnsureBufferSize
 F_X64(RtlpExecuteUmsThread)
-RtlpFreezeTimeBias F_ARM_ANY(DATA)
+RtlpFreezeTimeBias DATA
 RtlpGetDeviceFamilyInfoEnum
 RtlpGetLCIDFromLangInfoNode
 RtlpGetNameFromLangInfoNode
@@ -2114,7 +2114,7 @@ ZwLoadDriver
 ZwLoadEnclaveData
 ZwLoadKey
 ZwLoadKey2
-F_ARM_ANY(ZwLoadKey3)
+ZwLoadKey3
 ZwLoadKeyEx
 ZwLockFile
 ZwLockProductActivationKeys

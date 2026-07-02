@@ -3,10 +3,13 @@
  * This file is part of the mingw-w64 runtime package.
  * No warranty is given; refer to the file DISCLAIMER.PD within this package.
  */
-#include <io.h>
 
-_off64_t lseek64(int fd,_off64_t offset, int whence) 
+#include <math.h>
+
+#include "pi_const.h"
+
+long double __cdecl tanpil(long double x)
 {
-  return _lseeki64(fd, (_off64_t) offset, whence);
+  x = remainderl(x, 2.0L);
+  return tanl(x * __pi_type(x));
 }
-

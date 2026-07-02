@@ -12,8 +12,8 @@ _FindAndUnlinkFrame
 F_X64(_GetImageBase)
 F_X64(_GetThrowImageBase)
 _IsExceptionObjectToBeDestroyed
-F_I386(_NLG_Dispatch2@4)
-F_I386(_NLG_Return@12)
+F_I386(_NLG_Dispatch2) ; msvc symbol is without decoration but callee pop stack (like stdcall @4)
+F_I386(_NLG_Return) ; msvc symbol is without decoration but callee pop stack (like stdcall @12)
 F_I386(_NLG_Return2)
 F_X64(_SetImageBase)
 F_X64(_SetThrowImageBase)
@@ -46,7 +46,9 @@ __dcrt_get_wide_environment_from_os
 __dcrt_initial_narrow_environment DATA
 F_I386(__intrinsic_abnormal_termination)
 F_NON_ARM64(__intrinsic_setjmp)
+F_NON_ARM64(_setjmp == __intrinsic_setjmp)
 F64(__intrinsic_setjmpex)
+F64(_setjmpex == __intrinsic_setjmpex)
 __processing_throw
 __report_gsfailure
 __std_exception_copy

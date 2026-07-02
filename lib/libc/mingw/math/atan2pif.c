@@ -3,9 +3,12 @@
  * This file is part of the mingw-w64 runtime package.
  * No warranty is given; refer to the file DISCLAIMER.PD within this package.
  */
-#include <stdio.h>
 
-FILE* fopen64 (const char* filename, const char* mode)
+#include <math.h>
+
+#include "pi_const.h"
+
+float __cdecl atan2pif(float y, float x)
 {
-  return fopen (filename, mode);
+  return atan2f(y, x) / __pi_type(y);
 }
