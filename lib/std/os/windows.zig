@@ -4983,8 +4983,8 @@ pub const KAFFINITY = usize;
 pub const KPRIORITY = i32;
 
 pub const CLIENT_ID = extern struct {
-    UniqueProcess: HANDLE,
-    UniqueThread: HANDLE,
+    UniqueProcess: ?HANDLE,
+    UniqueThread: ?HANDLE,
 };
 
 pub const TEB = extern struct {
