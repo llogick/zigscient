@@ -1351,7 +1351,7 @@ pub const Directories = struct {
             if (override_zig_lib) |path| break :d openUnresolved(arena, io, cwd, path, .@"zig lib");
             if (wasi) break :d getPreopen(preopens, "/lib");
             break :d findZigLibDirFromSelfExe(arena, io, cwd, self_exe_path) catch |err| {
-                fatal("unable to find zig installation directory {q}: {t}", .{ self_exe_path, err });
+                fatal("unable to find zig installation directory from executable path {q}: {t}", .{ self_exe_path, err });
             };
         };
 

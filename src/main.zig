@@ -5253,8 +5253,17 @@ fn jitCmdInner(
     else
         options.release_mode;
     const strip = optimize_mode != .Debug;
-    const override_lib_dir: ?[]const u8 = EnvVar.ZIG_LIB_DIR.get(environ_map);
+    var override_lib_dir: ?[]const u8 = EnvVar.ZIG_LIB_DIR.get(environ_map);
     const override_global_cache_dir: ?[]const u8 = EnvVar.ZIG_GLOBAL_CACHE_DIR.get(environ_map);
+
+    // Special case: if first arg starts with --zig-lib= then it is handled here.
+    var args_i: usize = 0;
+    if (args.len - args_i != 0) {
+        if (mem.cutPrefix(u8, args[args_i], "--zig-lib=")) |rest| {
+            override_lib_dir = rest;
+            args_i += 1;
+        }
+    }
 
     const cwd_path = try std.zig.getResolvedCwd(io, arena);
 
@@ -5273,7 +5282,7 @@ fn jitCmdInner(
     defer dirs.deinit(io);
 
     var child_argv: std.ArrayList([]const u8) = .empty;
-    try child_argv.ensureUnusedCapacity(arena, args.len + 6);
+    try child_argv.ensureUnusedCapacity(arena, (args.len - args_i) + 6);
 
     // We want to release all the locks before executing the child process, so we make a nice
     // big block here to ensure the cleanup gets run when we extract out our argv.
@@ -5405,7 +5414,7 @@ fn jitCmdInner(
     if (options.prepend_seed)
         child_argv.appendAssumeCapacity(try arena.print("--seed=0x{x}", .{randInt(io, u32)}));
 
-    child_argv.appendSliceAssumeCapacity(args);
+    child_argv.appendSliceAssumeCapacity(args[args_i..]);
 
     if (EnvVar.ZIG_VERBOSE_CMD.isSet(environ_map)) {
         const cmd: std.zig.SubprocessCommand = .{

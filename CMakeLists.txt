@@ -729,6 +729,8 @@ endif()
 
 
 set(ZIG_BUILD_ARGS
+  "--zig-lib=${PROJECT_SOURCE_DIR}/lib"
+
   "-Dversion-string=${RESOLVED_ZIG_VERSION}"
   "-Dtarget=${ZIG_TARGET_TRIPLE}"
   "-Dcpu=${ZIG_TARGET_MCPU}"
@@ -791,7 +793,7 @@ set(ZIG2_WORKING_DIR "${PROJECT_SOURCE_DIR}")
 
 add_custom_command(
   OUTPUT "${PROJECT_BINARY_DIR}/stage3/bin/zig"
-  COMMAND zig2 build --prefix "${PROJECT_BINARY_DIR}/stage3" ${ZIG_BUILD_ARGS}
+  COMMAND zig2 build ${ZIG_BUILD_ARGS} --prefix "${PROJECT_BINARY_DIR}/stage3"
   COMMENT "Building stage3"
   WORKING_DIRECTORY "${ZIG2_WORKING_DIR}"
 )

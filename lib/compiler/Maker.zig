@@ -303,11 +303,11 @@ pub fn main(init: process.Init.Minimal) !void {
                 cache_poison = .poisoned;
                 configure_argv.appendAssumeCapacity("--cache-poison=poisoned");
             } else if (mem.cutPrefix(u8, arg, "--cache-poison=")) |rest| {
-                // Allow the configurer process to report parse failure.
-                if (stringToEnum(std.Build.Graph.CachePoison, rest)) |poison| {
-                    cache_poison = poison;
-                }
-                configure_argv.appendAssumeCapacity(arg);
+                // We have to report parse failure here otherwise we would
+                // potentially get false positive cache hits for misspellings.
+                cache_poison = stringToEnum(std.Build.Graph.CachePoison, rest) orelse
+                    fatalWithHint("expected --cache-poison=[pure|poisoned|disallowed|ignored]; found: {s}", .{arg});
+                if (cache_poison != .pure) configure_argv.appendAssumeCapacity(arg);
             } else if (mem.eql(u8, arg, "--verbose")) {
                 // Intentionally is added both to make and configure but
                 // does not go into the cache hash.
@@ -336,6 +336,8 @@ pub fn main(init: process.Init.Minimal) !void {
                 try forks.append(arena, .init(rest));
             } else if (mem.eql(u8, arg, "--fork")) {
                 try forks.append(arena, .init(nextArgOrFatal(args, &arg_i)));
+            } else if (mem.startsWith(u8, arg, "--zig-lib=")) {
+                fatal("--zig-lib= argument is special and must be first", .{});
             } else if (mem.eql(u8, arg, "-h") or mem.eql(u8, arg, "--help")) {
                 help_menu = true;
             } else if (mem.eql(u8, arg, "-l") or mem.eql(u8, arg, "--list-steps")) {
@@ -1027,27 +1029,35 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
     // This loop is re-evaluated when the build script exits with an indication that it
     // could not continue due to missing lazy dependencies.
     const configuration_path: Path, var configuration_lock: ?Cache.Lock = cp: while (true) {
+        build_mod.deps.clearRetainingCapacity();
+        deps_mod.deps.clearRetainingCapacity();
+
         // Cache lookup for configure options. If we get a match, we can skip
         // execution of the configure script. If not, we get the file path to pass
         // to the configure process.
         //
         // In the hot path, we only check this cache, which means that also
         // configure source files need to go in here.
-        var config_man = graph.cache.obtain();
-        defer config_man.deinit();
+        var config_man_allocation: Cache.Manifest = undefined;
+        const config_man: ?*Cache.Manifest = switch (options.cache_poison) {
+            .pure, .disallowed, .ignored => m: {
+                config_man_allocation = graph.cache.obtain();
 
-        for (options.cached_passthru_configure) |i|
-            config_man.hash.addBytes(configure_argv[i]);
+                for (options.cached_passthru_configure) |i|
+                    config_man_allocation.hash.addBytes(configure_argv[i]);
 
-        if (target_arch_os_abi) |triple|
-            config_man.hash.addBytes(triple);
+                if (target_arch_os_abi) |triple|
+                    config_man_allocation.hash.addBytes(triple);
 
-        // Prevents a `zig build` from getting a false positive cache hit following
-        // a `zig build --cache-poison=ignored`.
-        config_man.hash.add(options.cache_poison == .ignored);
+                // Prevents a `zig build` from getting a false positive cache hit following
+                // a `zig build --cache-poison=ignored`.
+                config_man_allocation.hash.add(options.cache_poison == .ignored);
 
-        build_mod.deps.clearRetainingCapacity();
-        deps_mod.deps.clearRetainingCapacity();
+                break :m &config_man_allocation;
+            },
+            .poisoned => null,
+        };
+        defer if (config_man) |man| man.deinit();
 
         // We want to release all the locks before executing the child process, so we make a nice
         // big block here to ensure the cleanup gets run when we extract out our argv.
@@ -1263,26 +1273,24 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
             const compile_prog_node = options.parent_progress_node.start("Compile Configure Script", 0);
             defer compile_prog_node.end();
 
-            switch (options.cache_poison) {
-                .pure, .disallowed, .ignored => if (try config_man.hit(compile_prog_node)) {
-                    const digest = config_man.final();
+            if (config_man) |man| {
+                if (try man.hit(compile_prog_node)) {
+                    const digest = man.final();
                     break :cp .{
                         .{
                             .root_dir = graph.local_cache_root,
                             .sub_path = try arena.print("c/{s}", .{&digest}),
                         },
-                        config_man.toOwnedLock(),
+                        man.toOwnedLock(),
                     };
-                },
-                .poisoned => {}, // Don't bother checking for cache hit.
+                }
             }
-
             const configure_exe_path: Path = if (std.zig.buildExeSubprocess(gpa, io, .{
                 .argv = build_configurer_argv.items,
                 .cache_root = graph.local_cache_root,
                 .root_name = configurer_exe_name,
                 .environ_map = &graph.environ_map,
-                .cache_manifest = &config_man,
+                .cache_manifest = config_man,
                 .arch_os_abi = target_arch_os_abi,
                 .progress_node = compile_prog_node,
                 .skip_log_cmdline_on_compile_errors = !graph.verbose,
@@ -1364,20 +1372,21 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
             continue :cp;
         }
 
-        for (configuration.path_deps) |path_dep| {
+        if (config_man) |man| for (configuration.path_deps) |path_dep| {
             switch (path_dep.flags.mode) {
                 .directory => {}, // TODO
-                .contents => try config_man.addPathPost(confPathDepToCachePath(graph, &configuration, path_dep)),
+                .contents => try man.addPathPost(confPathDepToCachePath(graph, &configuration, path_dep)),
                 .metadata => {}, // TODO
             }
-        }
+        };
 
         // If it is poisoned, there is no point in moving it to cached
         // location. Just leave it in the tmp directory.
         if (configuration.poisoned) {
             break :cp .{ config_tmp_path, null };
         } else {
-            const digest = config_man.final();
+            const man = config_man.?;
+            const digest = man.final();
             const final_path: Path = .{
                 .root_dir = graph.local_cache_root,
                 .sub_path = try arena.print("c/{s}", .{&digest}),
@@ -1408,8 +1417,8 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
                     config_tmp_path, final_path, e,
                 });
             };
-            config_man.writeManifest() catch |err| log.warn("failed to write cache manifest: {t}", .{err});
-            break :cp .{ final_path, config_man.toOwnedLock() };
+            man.writeManifest() catch |err| log.warn("failed to write cache manifest: {t}", .{err});
+            break :cp .{ final_path, man.toOwnedLock() };
         }
     };
     // Hang on to the configuration file lock until we finish loading the configuration file.

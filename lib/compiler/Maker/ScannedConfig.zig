@@ -342,6 +342,7 @@ pub fn printUsage(sc: *const ScannedConfig, graph: *Graph, w: *Writer) !void {
         \\  --build-file [file]          Override path to build.zig
         \\  --cache-dir [path]           Override path to local Zig cache directory
         \\  --global-cache-dir [path]    Override path to global Zig cache directory
+        \\  --zig-lib=[arg]              Override path to Zig lib directory
         \\  --seed [integer]             For shuffling dependency traversal order (default: random)
         \\  --cache-poison[=mode]        Override configuration caching behavior
         \\      pure                     (default) Avoid false positive cache hits

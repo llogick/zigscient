@@ -113,8 +113,8 @@ pub fn main(init: process.Init.Minimal) !void {
         } else if (mem.eql(u8, arg, "--verbose")) {
             graph.verbose = true;
         } else if (mem.cutPrefix(u8, arg, "--cache-poison=")) |rest| {
-            graph.cache_poison = std.meta.stringToEnum(std.Build.Graph.CachePoison, rest) orelse
-                fatalWithHint("expected --cache-poison=[pure|poisoned|disallowed|ignored]; found: {s}", .{arg});
+            // Already parsed and validated by Maker.
+            graph.cache_poison = std.meta.stringToEnum(std.Build.Graph.CachePoison, rest).?;
         } else if (mem.eql(u8, arg, "--search-prefix")) {
             try graph.search_prefixes.append(arena, nextArgOrFatal(args, &arg_i));
         } else {
