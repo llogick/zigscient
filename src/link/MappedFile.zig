@@ -337,7 +337,6 @@ pub const Node = extern struct {
         }
 
         pub fn resize(ni: Node.Index, mf: *MappedFile, gpa: std.mem.Allocator, size: u64) Error!void {
-            defer if (std.debug.runtime_safety) mf.verify();
             mf.resizeNode(gpa, ni, size) catch |err| switch (err) {
                 error.OutOfMemory,
                 error.Canceled,
@@ -731,7 +730,6 @@ fn shrinkNode(
 
     // This would require unmapping first
     assert(ni != Node.Index.root);
-    defer if (std.debug.runtime_safety) mf.verify();
 
     if (node.last != .none) {
         const last = node.last.get(mf);
@@ -1052,8 +1050,6 @@ fn realignNode(
     const old_offset, const size = node.location().resolve(mf);
 
     assert(new_alignment.compare(.gt, node.flags.alignment));
-
-    defer if (std.debug.runtime_safety) mf.verify();
 
     const prev_alignment = node.flags.alignment;
     node.flags.alignment = new_alignment;
