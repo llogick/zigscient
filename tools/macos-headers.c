@@ -114,6 +114,9 @@
 #include <tgmath.h>
 #include <time.h>
 /* #include <trace.h> - not found on macos catalina */
+#define _XOPEN_SOURCE
+#include <ucontext.h>
+#undef _XOPEN_SOURCE
 #include <ulimit.h>
 #include <unistd.h>
 #include <utime.h>
@@ -138,20 +141,31 @@
 #include <sys/clonefile.h>
 #include <libproc.h>
 
+// Mach-O headers
+#include <mach-o/arch.h>
+#include <mach-o/compact_unwind_encoding.h>
+#include <mach-o/dyld.h>
+#include <mach-o/dyld_images.h>
+#include <mach-o/fat.h>
+#include <mach-o/fixup-chains.h>
+#include <mach-o/getsect.h>
+#include <mach-o/ldsyms.h>
+#include <mach-o/loader.h>
+#include <mach-o/nlist.h>
+#include <mach-o/ranlib.h>
+#include <mach-o/reloc.h>
+#include <mach-o/stab.h>
+#include <mach-o/swap.h>
+#include <mach-o/utils.h>
+
+#include <mach-o/arm/reloc.h>
+#include <mach-o/arm64/reloc.h>
+#include <mach-o/x86_64/reloc.h>
+
 // Depended on by libcxx
 #include <Block.h>
 #include <xlocale.h>
 #include <copyfile.h>
-#include <mach-o/dyld.h>
-#include <mach-o/fat.h>
-#include <mach-o/nlist.h>
-#include <mach-o/reloc.h>
-#include <mach-o/arch.h>
-#include <mach-o/stab.h>
-#include <mach-o/ranlib.h>
-#include <mach-o/compact_unwind_encoding.h>
-#include <mach-o/arm64/reloc.h>
-#include <mach-o/x86_64/reloc.h>
 #include <ar.h>
 
 // Depended on by LLVM
@@ -197,15 +211,9 @@
 #include <sys/file.h>
 #include <malloc/malloc.h>
 
-// Depended on by bdwgc
-#include <mach-o/getsect.h>
-
 // Provided by macOS LibC
 #include <memory.h>
 #include <zlib.h>
-
-#define _XOPEN_SOURCE
-#include <ucontext.h>
 
 int main(int argc, char **argv) {
     return 0;
