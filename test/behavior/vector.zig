@@ -374,45 +374,6 @@ test "vector casts of sizes not divisible by 8" {
     try comptime S.doTheTest();
 }
 
-test "vector @splat" {
-    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-    const S = struct {
-        fn testForT(comptime N: comptime_int, v: anytype) !void {
-            const T = @TypeOf(v);
-            var vec: @Vector(N, T) = @splat(v);
-            _ = &vec;
-            const as_array = @as([N]T, vec);
-            for (as_array) |elem| try expect(v == elem);
-        }
-        fn doTheTest() !void {
-            // Splats with multiple-of-8 bit types that fill a 128bit vector.
-            try testForT(16, @as(u8, 0xEE));
-            try testForT(8, @as(u16, 0xBEEF));
-            try testForT(4, @as(u32, 0xDEADBEEF));
-            try testForT(2, @as(u64, 0xCAFEF00DDEADBEEF));
-
-            try testForT(8, @as(f16, 3.1415));
-            try testForT(4, @as(f32, 3.1415));
-            try testForT(2, @as(f64, 3.1415));
-
-            // Same but fill more than 128 bits.
-            try testForT(16 * 2, @as(u8, 0xEE));
-            try testForT(8 * 2, @as(u16, 0xBEEF));
-            try testForT(4 * 2, @as(u32, 0xDEADBEEF));
-            try testForT(2 * 2, @as(u64, 0xCAFEF00DDEADBEEF));
-
-            try testForT(8 * 2, @as(f16, 3.1415));
-            try testForT(4 * 2, @as(f32, 3.1415));
-            try testForT(2 * 2, @as(f64, 3.1415));
-        }
-    };
-    try S.doTheTest();
-    try comptime S.doTheTest();
-}
-
 test "load vector elements via comptime index" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO

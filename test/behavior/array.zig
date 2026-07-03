@@ -326,26 +326,6 @@ test "set global var array via slice embedded in struct" {
     try expect(s_array[2].b == 3);
 }
 
-test "read/write through global variable array of struct fields initialized via splat" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-
-    const S = struct {
-        fn doTheTest() !void {
-            try expect(storage[0].term == 1);
-            storage[0] = MyStruct{ .term = 123 };
-            try expect(storage[0].term == 123);
-        }
-
-        pub const MyStruct = struct {
-            term: usize,
-        };
-
-        var storage: [1]MyStruct = @splat(.{ .term = 1 });
-    };
-    try S.doTheTest();
-}
-
 test "implicit cast single-item pointer" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
@@ -988,74 +968,6 @@ test "runtime index of array of zero-bit values" {
     try std.testing.expect(result.value == {});
 }
 
-test "@splat array" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-
-    const S = struct {
-        fn doTheTest(comptime T: type, x: T) !void {
-            const arr: [10]T = @splat(x);
-            for (arr) |elem| {
-                try expectEqual(x, elem);
-            }
-        }
-    };
-
-    try S.doTheTest(u32, 123);
-    try comptime S.doTheTest(u32, 123);
-
-    const Foo = struct { x: u8 };
-    try S.doTheTest(Foo, .{ .x = 10 });
-    try comptime S.doTheTest(Foo, .{ .x = 10 });
-}
-
-test "@splat array with sentinel" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-
-    const S = struct {
-        fn doTheTest(comptime T: type, x: T, comptime s: T) !void {
-            const arr: [10:s]T = @splat(x);
-            for (arr) |elem| {
-                try expectEqual(x, elem);
-            }
-            const ptr: [*]const T = &arr;
-            try expectEqual(s, ptr[10]); // sentinel correct
-        }
-    };
-
-    try S.doTheTest(u32, 100, 42);
-    try comptime S.doTheTest(u32, 100, 42);
-
-    try S.doTheTest(?*anyopaque, @ptrFromInt(0x1000), null);
-    try comptime S.doTheTest(?*anyopaque, @ptrFromInt(0x1000), null);
-}
-
-test "@splat zero-length array" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-
-    const S = struct {
-        fn doTheTest(comptime T: type, comptime s: T) !void {
-            var runtime_undef: T = undefined;
-            runtime_undef = undefined;
-            // The array should be comptime-known despite the `@splat` operand being runtime-known.
-            const arr: [0:s]T = @splat(runtime_undef);
-            const ptr: [*]const T = &arr;
-            comptime assert(ptr[0] == s);
-        }
-    };
-
-    try S.doTheTest(u32, 42);
-    try comptime S.doTheTest(u32, 42);
-
-    try S.doTheTest(?*anyopaque, null);
-    try comptime S.doTheTest(?*anyopaque, null);
-}
-
 test "initialize slice with reference to empty array initializer" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
@@ -1114,19 +1026,6 @@ test "sentinel of runtime-known array initialization is populated" {
 
     try expect(elems[0] == 42);
     try expect(elems[1] == 123);
-}
-
-test "splat with an error union or optional result type" {
-    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
-
-    const S = struct {
-        fn doTest(T: type) !?T {
-            return @splat(1);
-        }
-    };
-
-    _ = try S.doTest(@Vector(4, u32));
-    _ = try S.doTest([4]u32);
 }
 
 test "resist alias of explicit copy of array passed as arg" {

@@ -5474,19 +5474,14 @@ fn cmpxchgWeakButNotAtomic(comptime T: type, ptr: *T, expected_value: T, new_val
       {#header_close#}
 
       {#header_open|@splat#}
-      <pre>{#syntax#}@splat(scalar: anytype) anytype{#endsyntax#}</pre>
+      <pre>{#syntax#}@splat(element: anytype) anytype{#endsyntax#}</pre>
       <p>
       Produces an array or vector where each element is the value
-      {#syntax#}scalar{#endsyntax#}. The return type and thus the length of the
-      vector is inferred.
+      {#syntax#}element{#endsyntax#}. The return type, including the number of
+      elements, is inferred.
       </p>
       {#code|test_splat_builtin.zig#}
-
-      <p>
-      {#syntax#}scalar{#endsyntax#} must be an {#link|integer|Integers#}, {#link|bool|Primitive Types#},
-      {#link|float|Floats#}, or {#link|pointer|Pointers#}.
-      </p>
-      {#see_also|Vectors|@shuffle#}
+      {#see_also|Vectors|Arrays|@shuffle#}
       {#header_close#}
 
       {#header_open|@reduce#}
