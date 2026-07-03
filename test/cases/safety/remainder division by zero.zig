@@ -17,4 +17,4 @@ fn rem0(a: i32, b: i32) i32 {
 }
 // run
 // backend=selfhosted,llvm
-// target=x86_64-linux,aarch64-linux
+// target=x86_64-linux,aarch64-linux,wasm32-wasi

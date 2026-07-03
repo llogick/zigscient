@@ -18,4 +18,4 @@ fn shr(a: i16, b: u4) i16 {
 }
 // run
 // backend=selfhosted,llvm
-// target=x86_64-linux,aarch64-linux
+// target=x86_64-linux,aarch64-linux,wasm32-wasi

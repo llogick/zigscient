@@ -17,4 +17,4 @@ fn div0(a: u32, b: u32) u32 {
 }
 // run
 // backend=selfhosted,llvm
-// target=x86_64-linux,aarch64-linux
+// target=x86_64-linux,aarch64-linux,wasm32-wasi

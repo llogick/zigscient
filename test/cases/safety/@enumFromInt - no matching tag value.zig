@@ -23,4 +23,4 @@ fn baz(_: Foo) void {}
 
 // run
 // backend=selfhosted,llvm
-// target=x86_64-linux
+// target=x86_64-linux,wasm32-wasi

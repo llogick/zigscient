@@ -18,4 +18,4 @@ fn widenSlice(slice: []align(1) const u8) []align(1) const i32 {
 }
 // run
 // backend=selfhosted,llvm
-// target=x86_64-linux,aarch64-linux
+// target=x86_64-linux,aarch64-linux,wasm32-wasi

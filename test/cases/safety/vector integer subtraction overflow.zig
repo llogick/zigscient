@@ -19,4 +19,4 @@ fn sub(a: @Vector(4, u32), b: @Vector(4, u32)) @Vector(4, u32) {
 }
 // run
 // backend=selfhosted,llvm
-// target=x86_64-linux
+// target=x86_64-linux,wasm32-wasi

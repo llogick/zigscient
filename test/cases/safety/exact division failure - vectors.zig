@@ -20,4 +20,4 @@ fn divExact(a: @Vector(4, i32), b: @Vector(4, i32)) @Vector(4, i32) {
 }
 // run
 // backend=selfhosted,llvm
-// target=x86_64-linux
+// target=x86_64-linux,wasm32-wasi

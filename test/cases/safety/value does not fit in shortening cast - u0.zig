@@ -18,4 +18,4 @@ fn shorten_cast(x: u8) u0 {
 }
 // run
 // backend=selfhosted,llvm
-// target=x86_64-linux,aarch64-linux
+// target=x86_64-linux,aarch64-linux,wasm32-wasi
