@@ -558,6 +558,13 @@ pub extern "c" fn mach_vm_read(
     data: *vm_offset_t,
     data_cnt: *mach_msg_type_number_t,
 ) kern_return_t;
+pub extern "c" fn mach_vm_read_overwrite(
+    target_task: vm_map_read_t,
+    address: mach_vm_address_t,
+    size: mach_vm_size_t,
+    data: mach_vm_address_t,
+    outsize: *mach_vm_size_t,
+) kern_return_t;
 pub extern "c" fn mach_vm_write(
     target_task: vm_map_t,
     address: mach_vm_address_t,
