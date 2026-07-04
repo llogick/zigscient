@@ -3805,7 +3805,10 @@ fn initHeaders(
         _ = elf.addGlobalSymbolAssumeCapacity(.{
             .node = elf.shndx.got.get(elf).ni,
             .name = try .string(elf, "_GLOBAL_OFFSET_TABLE_"),
-            .value = elf.shndx.got.vaddr(elf),
+            .value = switch (machine) {
+                .QDSP6, .@"386", .X86_64 => elf.shndx.got_plt.vaddr(elf),
+                else => elf.shndx.got.vaddr(elf),
+            },
             .size = 0,
             .type = .NOTYPE,
             .bind = .strong,
