@@ -23,4 +23,4 @@ jobs:
           version: master
 
       - name: Run zig build test-fmt
-        run: zig build test-fmt --zig-lib-dir ./lib/
+        run: ZIG_DEBUG_MAKER=TRUE ZIG_LIB_DIR=./lib zig build test-fmt
