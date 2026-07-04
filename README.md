@@ -40,7 +40,7 @@
 
 ## Building
 ```
-zig build -Doptimize=ReleaseFast --zig-lib-dir ./lib/
+ZIG_DEBUG_MAKER=TRUE ZIG_LIB_DIR=./lib zig build -Doptimize=ReleaseFast
 ```
 
 > [!NOTE]  
