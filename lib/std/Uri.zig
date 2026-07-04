@@ -191,7 +191,11 @@ pub fn parseAfterScheme(scheme: []const u8, text: []const u8) ParseError!Uri {
         }
 
         var start_of_host: usize = 0;
-        if (std.mem.find(u8, authority, "@")) |index| {
+        // Use findLast to handle unencoded @ in userinfo gracefully,
+        // e.g. scheme://user:p@ssword@hostname. This deviates from RFC3986
+        // (which requires @ to be percent-encoded as %40 in userinfo) but
+        // is more robust against URIs in the wild.
+        if (std.mem.findLast(u8, authority, "@")) |index| {
             start_of_host = index + 1;
             const user_info = authority[0..index];
 
@@ -621,6 +625,23 @@ test "authority" {
     try std.testing.expectEqual(@as(u16, 1234), (try parse("scheme://user:password@hostname:1234")).port.?);
     try std.testing.expectEqualStrings("user", (try parse("scheme://user:password@hostname:1234")).user.?.percent_encoded);
     try std.testing.expectEqualStrings("password", (try parse("scheme://user:password@hostname:1234")).password.?.percent_encoded);
+
+    try std.testing.expectEqualStrings("user", (try parse("scheme://user:p@ssword@hostname:1234")).user.?.percent_encoded);
+    try std.testing.expectEqualStrings("p@ssword", (try parse("scheme://user:p@ssword@hostname:1234")).password.?.percent_encoded);
+    try std.testing.expectEqualStrings("hostname", (try parse("scheme://user:p@ssword@hostname:1234")).host.?.percent_encoded);
+
+    try std.testing.expectEqualStrings("user", (try parse("scheme://user:p@@@word@hostname:1234")).user.?.percent_encoded);
+    try std.testing.expectEqualStrings("p@@@word", (try parse("scheme://user:p@@@word@hostname:1234")).password.?.percent_encoded);
+    try std.testing.expectEqualStrings("hostname", (try parse("scheme://user:p@@@word@hostname:1234")).host.?.percent_encoded);
+
+    try std.testing.expectEqualStrings("user@name", (try parse("scheme://user@name@hostname")).user.?.percent_encoded);
+    try std.testing.expectEqual(@as(?Component, null), (try parse("scheme://user@name@hostname")).password);
+    try std.testing.expectEqualStrings("hostname", (try parse("scheme://user@name@hostname")).host.?.percent_encoded);
+
+    try std.testing.expectEqualStrings("user@name", (try parse("scheme://user@name@hostname:1234")).user.?.percent_encoded);
+    try std.testing.expectEqual(@as(?Component, null), (try parse("scheme://user@name@hostname:1234")).password);
+    try std.testing.expectEqualStrings("hostname", (try parse("scheme://user@name@hostname:1234")).host.?.percent_encoded);
+    try std.testing.expectEqual(@as(u16, 1234), (try parse("scheme://user@name@hostname:1234")).port.?);
 }
 
 test "authority.password" {
