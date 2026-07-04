@@ -183,12 +183,12 @@ pub fn main(init: process.Init.Minimal) !void {
 
     const cwd: Dir = .cwd();
 
-    const zig_lib_directory: Cache.Directory = .{
+    const zig_lib_directory: Cache.Directory = if (std.mem.eql(u8, zig_lib_arg, ".")) .cwd() else .{
         .path = zig_lib_arg,
         .handle = try cwd.openDir(io, zig_lib_arg, .{}),
     };
 
-    const global_cache_directory: Cache.Directory = .{
+    const global_cache_directory: Cache.Directory = if (std.mem.eql(u8, global_cache_arg, ".")) .cwd() else .{
         .path = global_cache_arg,
         .handle = try cwd.createDirPathOpen(io, global_cache_arg, .{}),
     };
@@ -583,10 +583,11 @@ pub fn main(init: process.Init.Minimal) !void {
     const cwd_path = std.zig.getResolvedCwd(io, arena) catch |err|
         fatal("resolving current directory path failed: {t}", .{err});
 
-    const build_root = try findBuildRoot(arena, io, .{
+    var build_root = try findBuildRoot(arena, io, .{
         .cwd_path = cwd_path,
         .build_file = build_file,
     });
+    defer build_root.deinit(io);
 
     graph.build_root_directory = build_root.directory;
     graph.local_cache_root = if (override_local_cache_dir) |unresolved_path| std.zig.Directories.openUnresolved(
@@ -596,7 +597,7 @@ pub fn main(init: process.Init.Minimal) !void {
         unresolved_path,
         .@"local cache",
     ) else .{
-        .path = try Dir.path.join(arena, &.{ build_root.directory.path orelse ".", default_local_zig_cache_basename }),
+        .path = try build_root.directory.join(arena, &.{default_local_zig_cache_basename}),
         .handle = try build_root.directory.handle.createDirPathOpen(io, default_local_zig_cache_basename, .{}),
     };
     graph.cache = .{
@@ -3391,22 +3392,21 @@ inline fn debugMakerLeaks() bool {
 
 const BuildRoot = struct {
     directory: Cache.Directory,
+    close_directory: bool,
     build_zig_basename: []const u8,
-    cleanup_build_dir: ?Io.Dir,
 
     fn deinit(br: *BuildRoot, io: Io) void {
-        if (br.cleanup_build_dir) |*dir| dir.close(io);
+        if (br.close_directory) br.directory.handle.close(io);
         br.* = undefined;
     }
 };
 
 const FindBuildRootOptions = struct {
     build_file: ?[]const u8 = null,
-    cwd_path: ?[]const u8 = null,
+    cwd_path: []const u8,
 };
 
 fn findBuildRoot(arena: Allocator, io: Io, options: FindBuildRootOptions) !BuildRoot {
-    const cwd_path = options.cwd_path orelse try std.zig.getResolvedCwd(io, arena);
     const build_zig_basename = if (options.build_file) |bf|
         Dir.path.basename(bf)
     else
@@ -3420,35 +3420,41 @@ fn findBuildRoot(arena: Allocator, io: Io, options: FindBuildRootOptions) !Build
             return .{
                 .build_zig_basename = build_zig_basename,
                 .directory = .{ .path = dirname, .handle = dir },
-                .cleanup_build_dir = dir,
+                .close_directory = true,
             };
         }
 
         return .{
             .build_zig_basename = build_zig_basename,
-            .directory = .{ .path = null, .handle = Io.Dir.cwd() },
-            .cleanup_build_dir = null,
+            .directory = .cwd(),
+            .close_directory = false,
         };
     }
     // Search up parent directories until we find build.zig.
-    var dirname: []const u8 = cwd_path;
+    var dirname: ?[]const u8 = null;
     while (true) {
-        const joined_path = try Dir.path.join(arena, &[_][]const u8{ dirname, build_zig_basename });
+        const joined_path = if (dirname) |d|
+            try Dir.path.join(arena, &.{ d, build_zig_basename })
+        else
+            build_zig_basename;
         if (Io.Dir.cwd().access(io, joined_path, .{})) |_| {
-            const dir = Io.Dir.cwd().openDir(io, dirname, .{}) catch |err| {
-                fatal("unable to open directory while searching for build.zig file, {q}: {t}", .{ dirname, err });
-            };
+            const dir = if (dirname) |d|
+                Io.Dir.cwd().openDir(io, d, .{}) catch |err| {
+                    fatal("unable to open directory while searching for build.zig file, {q}: {t}", .{ d, err });
+                }
+            else
+                Io.Dir.cwd();
             return .{
                 .build_zig_basename = build_zig_basename,
                 .directory = .{
                     .path = dirname,
                     .handle = dir,
                 },
-                .cleanup_build_dir = dir,
+                .close_directory = dirname != null,
             };
         } else |err| switch (err) {
             error.FileNotFound => {
-                dirname = Dir.path.dirname(dirname) orelse {
+                dirname = Dir.path.dirname(dirname orelse options.cwd_path) orelse {
                     log.info("initialize {s} template file with \"zig init\"", .{std.zig.build_zig_basename});
                     log.info("see \"zig --help\" for more options", .{});
                     fatal("no build.zig file found, in the current directory or any parent directories", .{});

@@ -90,10 +90,8 @@ fn findPrefix(cache: *const Cache, file_path: []const u8) !PrefixedPath {
 fn findPrefixResolved(cache: *const Cache, resolved_path: []u8) !PrefixedPath {
     const gpa = cache.gpa;
     const cwd = cache.cwd;
-    const prefixes_slice = cache.prefixes();
-    var i: u8 = 1; // Start at 1 to skip over checking the null prefix.
-    while (i < prefixes_slice.len) : (i += 1) {
-        const p = prefixes_slice[i].path.?;
+    for (cache.prefixes(), 0..) |prefix, i| {
+        const p = prefix.path orelse continue;
         const sub_path = getPrefixSubpath(gpa, cwd, p, resolved_path) catch |err| switch (err) {
             error.NotASubPath => continue,
             else => |e| return e,
@@ -101,7 +99,7 @@ fn findPrefixResolved(cache: *const Cache, resolved_path: []u8) !PrefixedPath {
         // Free the resolved path since we're not going to return it
         gpa.free(resolved_path);
         return .{
-            .prefix = i,
+            .prefix = @intCast(i),
             .sub_path = sub_path,
         };
     }

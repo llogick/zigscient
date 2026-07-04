@@ -5406,11 +5406,11 @@ fn jitCmdInner(
     if (options.prepend_cmd) |cmd|
         child_argv.appendAssumeCapacity(cmd);
     if (options.prepend_zig_lib_dir_path)
-        child_argv.appendAssumeCapacity(try arena.print("--zig-lib={s}", .{dirs.zig_lib.path.?}));
+        child_argv.appendAssumeCapacity(try arena.print("--zig-lib={s}", .{dirs.zig_lib.path orelse "."}));
     if (options.prepend_zig_exe_path)
         child_argv.appendAssumeCapacity(try arena.print("--zig={s}", .{self_exe_path}));
     if (options.prepend_global_cache_path)
-        child_argv.appendAssumeCapacity(try arena.print("--global-cache={s}", .{dirs.global_cache.path.?}));
+        child_argv.appendAssumeCapacity(try arena.print("--global-cache={s}", .{dirs.global_cache.path orelse "."}));
     if (options.prepend_seed)
         child_argv.appendAssumeCapacity(try arena.print("--seed=0x{x}", .{randInt(io, u32)}));
 

@@ -68,7 +68,7 @@ pub fn main(init: process.Init.Minimal) !void {
 
     const cwd: Io.Dir = .cwd();
 
-    const build_root: std.Build.Cache.Path = .{
+    const build_root: std.Build.Cache.Path = if (std.mem.eql(u8, build_root_sub_path, ".")) .cwd() else .{
         .root_dir = .{
             .handle = try cwd.openDir(io, build_root_sub_path, .{}),
             .path = build_root_sub_path,
