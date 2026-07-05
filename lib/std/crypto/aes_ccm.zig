@@ -122,6 +122,9 @@ fn AesCcm(comptime BlockCipher: type, comptime tag_len: usize, comptime nonce_le
         ) AuthenticationError!void {
             assert(m.len == c.len);
 
+            const max_msg_len: u64 = if (L >= 8) std.math.maxInt(u64) else (@as(u64, 1) << @as(u6, @intCast(L * 8))) - 1;
+            if (c.len > max_msg_len) return error.AuthenticationFailed;
+
             const cipher_ctx = BlockCipher.initEnc(key);
 
             // Decrypt the ciphertext using CTR mode (starting from counter = 1)
@@ -873,4 +876,12 @@ test "Aes256Ccm0 - Basic encryption-only round-trip" {
     try Aes256Ccm0.decrypt(&m2, &c, tag, "", nonce, key);
 
     try testing.expectEqualSlices(u8, m[0..], m2[0..]);
+}
+
+test "Aes256Ccm decryption of oversized ciphertext" {
+    const key: [32]u8 = @splat(0);
+    const nonce: [13]u8 = @splat(0);
+    const tag: [Aes256Ccm16.tag_length]u8 = @splat(0);
+    var buf: [65536]u8 = @splat(0);
+    try testing.expectError(error.AuthenticationFailed, Aes256Ccm16.decrypt(&buf, &buf, tag, "", nonce, key));
 }
