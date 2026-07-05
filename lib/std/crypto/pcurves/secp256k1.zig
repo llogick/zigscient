@@ -102,14 +102,10 @@ pub const Secp256k1 = struct {
         const y = p.y;
         const x3B = x.sq().mul(x).add(B);
         const yy = y.sq();
-        const on_curve = @intFromBool(x3B.equivalent(yy));
-        const is_identity = @intFromBool(x.equivalent(AffineCoordinates.identityElement.x)) & @intFromBool(y.equivalent(AffineCoordinates.identityElement.y));
-        if ((on_curve | is_identity) == 0) {
+        if (!x3B.equivalent(yy)) {
             return error.InvalidEncoding;
         }
-        var ret = Secp256k1{ .x = x, .y = y, .z = Fe.one };
-        ret.z.cMov(Secp256k1.identityElement.z, is_identity);
-        return ret;
+        return .{ .x = x, .y = y, .z = Fe.one };
     }
 
     /// Create a point from serialized affine coordinates.

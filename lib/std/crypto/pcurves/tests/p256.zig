@@ -103,8 +103,8 @@ test "p256 field element non-canonical encoding" {
 
 test "p256 neutral element decoding" {
     try testing.expectError(error.InvalidEncoding, P256.fromAffineCoordinates(.{ .x = P256.Fe.zero, .y = P256.Fe.zero }));
-    const p = try P256.fromAffineCoordinates(.{ .x = P256.Fe.zero, .y = P256.Fe.one });
-    try testing.expectError(error.IdentityElement, p.rejectIdentity());
+    try testing.expectError(error.InvalidEncoding, P256.fromAffineCoordinates(.{ .x = P256.Fe.zero, .y = P256.Fe.one }));
+    try testing.expectError(error.IdentityElement, P256.identityElement.rejectIdentity());
 }
 
 test "p256 double base multiplication" {

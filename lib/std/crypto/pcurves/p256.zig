@@ -49,14 +49,10 @@ pub const P256 = struct {
         const y = p.y;
         const x3AxB = x.sq().mul(x).sub(x).sub(x).sub(x).add(B);
         const yy = y.sq();
-        const on_curve = @intFromBool(x3AxB.equivalent(yy));
-        const is_identity = @intFromBool(x.equivalent(AffineCoordinates.identityElement.x)) & @intFromBool(y.equivalent(AffineCoordinates.identityElement.y));
-        if ((on_curve | is_identity) == 0) {
+        if (!x3AxB.equivalent(yy)) {
             return error.InvalidEncoding;
         }
-        var ret = P256{ .x = x, .y = y, .z = Fe.one };
-        ret.z.cMov(P256.identityElement.z, is_identity);
-        return ret;
+        return .{ .x = x, .y = y, .z = Fe.one };
     }
 
     /// Create a point from serialized affine coordinates.

@@ -106,8 +106,8 @@ test "p384 field element non-canonical encoding" {
 
 test "p384 neutral element decoding" {
     try testing.expectError(error.InvalidEncoding, P384.fromAffineCoordinates(.{ .x = P384.Fe.zero, .y = P384.Fe.zero }));
-    const p = try P384.fromAffineCoordinates(.{ .x = P384.Fe.zero, .y = P384.Fe.one });
-    try testing.expectError(error.IdentityElement, p.rejectIdentity());
+    try testing.expectError(error.InvalidEncoding, P384.fromAffineCoordinates(.{ .x = P384.Fe.zero, .y = P384.Fe.one }));
+    try testing.expectError(error.IdentityElement, P384.identityElement.rejectIdentity());
 }
 
 test "p384 double base multiplication" {

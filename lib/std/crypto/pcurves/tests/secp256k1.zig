@@ -115,8 +115,17 @@ test "secp256k1 field element non-canonical encoding" {
 
 test "secp256k1 neutral element decoding" {
     try testing.expectError(error.InvalidEncoding, Secp256k1.fromAffineCoordinates(.{ .x = Secp256k1.Fe.zero, .y = Secp256k1.Fe.zero }));
-    const p = try Secp256k1.fromAffineCoordinates(.{ .x = Secp256k1.Fe.zero, .y = Secp256k1.Fe.one });
-    try testing.expectError(error.IdentityElement, p.rejectIdentity());
+    try testing.expectError(error.InvalidEncoding, Secp256k1.fromAffineCoordinates(.{ .x = Secp256k1.Fe.zero, .y = Secp256k1.Fe.one }));
+    try testing.expectError(error.IdentityElement, Secp256k1.identityElement.rejectIdentity());
+}
+
+test "secp256k1 uncompressed SEC1 must not accept infinity" {
+    var buf: [65]u8 = @splat(0);
+    buf[0] = 0x04;
+    buf[64] = 0x01;
+    try testing.expectError(error.InvalidEncoding, Secp256k1.fromSec1(&buf));
+    buf[64] = 0x00;
+    try testing.expectError(error.InvalidEncoding, Secp256k1.fromSec1(&buf));
 }
 
 test "secp256k1 double base multiplication" {
