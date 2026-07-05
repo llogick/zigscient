@@ -1638,6 +1638,8 @@ pub const BuildExeSubprocessOptions = struct {
     cpu_features: ?[]const u8 = null,
     progress_node: std.Progress.Node = .none,
     skip_log_cmdline_on_compile_errors: bool = false,
+
+    skip_zig_protocol_version_check: bool = false,
 };
 
 pub const BuildExeSubprocessError = error{
@@ -1738,10 +1740,10 @@ pub fn buildExeSubprocess(
 
         switch (header.tag) {
             .zig_version => {
-                if (!mem.eql(u8, builtin.zig_version_string, body)) {
+                if (!options.skip_zig_protocol_version_check) if (!mem.eql(u8, builtin.zig_version_string, body)) {
                     log.err("zig protocol version mismatch from command: {f}", .{cmd});
                     return error.AlreadyReported;
-                }
+                };
             },
             .error_bundle => {
                 result_error_bundle.deinit(gpa);

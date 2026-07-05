@@ -1295,6 +1295,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
                 .arch_os_abi = target_arch_os_abi,
                 .progress_node = compile_prog_node,
                 .skip_log_cmdline_on_compile_errors = !graph.verbose,
+                .skip_zig_protocol_version_check = true,
             })) |r| r.path else |err| return err;
             defer gpa.free(configure_exe_path.sub_path);
 
