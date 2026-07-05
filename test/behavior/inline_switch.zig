@@ -46,7 +46,6 @@ const U = union(E) { a: void, b: u2, c: u3, d: u4 };
 test "inline switch unions" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     var x: U = .a;
     _ = &x;
     switch (x) {
@@ -93,7 +92,6 @@ test "inline else error" {
 
 test "inline else enum" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const E2 = enum(u8) { a = 2, b = 3, c = 4, d = 5 };
     var a: E2 = .a;
@@ -106,7 +104,6 @@ test "inline else enum" {
 
 test "inline else int with gaps" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     var a: u8 = 0;
     _ = &a;
@@ -124,7 +121,6 @@ test "inline else int with gaps" {
 
 test "inline else int all values" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     var a: u2 = 0;
     _ = &a;
@@ -140,8 +136,6 @@ test "inline else int all values" {
 }
 
 test "inline switch capture is set when switch operand is comptime known" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const U2 = union(enum) {
         a: u32,
     };

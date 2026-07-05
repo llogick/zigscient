@@ -1,7 +1,10 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const expect = std.testing.expect;
 
 test "assignment to overlapping memory" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     try theTest();
     try comptime theTest();
 }

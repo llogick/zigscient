@@ -25379,11 +25379,15 @@ pub fn explainWhyTypeIsNotExtern(
         .noreturn => try sema.errNote(src_loc, msg, "'noreturn' is only allowed as a return type", .{}),
 
         .@"opaque",
-        .spirv,
         .bool,
         .float,
         .@"anyframe",
         => unreachable, // these *are* allowed
+
+        .spirv => {
+            assert(ty.isSpirvRuntimeArray(zcu));
+            try sema.errNote(src_loc, msg, "SPIR-V runtime arrays must be the last field of an extern struct", .{});
+        },
 
         .pointer => if (ty.isSlice(zcu)) {
             try sema.errNote(src_loc, msg, "slices have no guaranteed in-memory representation", .{});
@@ -30542,6 +30546,10 @@ fn analyzeLoad(
     };
 
     try sema.ensureLayoutResolved(elem_ty, src, .ptr_access);
+
+    if (elem_ty.isSpirvRuntimeArray(zcu)) {
+        return sema.fail(block, src, "cannot load SPIR-V runtime array value", .{});
+    }
 
     const comptime_only = switch (elem_ty.classify(zcu)) {
         .no_possible_value => switch (elem_ty.zigTypeTag(zcu)) {

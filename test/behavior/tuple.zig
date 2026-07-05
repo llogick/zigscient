@@ -255,7 +255,6 @@ test "coerce tuple to tuple" {
 test "tuple type with void field" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const T = @Tuple(&.{void});
     const x = T{{}};
@@ -280,7 +279,6 @@ test "zero sized struct in tuple handled correctly" {
 
 test "tuple type with void field and a runtime field" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const T = @Tuple(&.{ usize, void });
     var t: T = .{ 5, {} };
@@ -291,7 +289,6 @@ test "tuple type with void field and a runtime field" {
 test "branching inside tuple literal" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
         fn foo(a: anytype) !void {
@@ -371,7 +368,6 @@ test "sentinel slice in tuple" {
 test "tuple pointer is indexable" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct { u32, bool };
 
@@ -552,8 +548,6 @@ test "OPV tuple fields aren't comptime" {
 }
 
 test "array of tuples that end with a zero-bit field followed by padding" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         var foo: [2]struct { u32, u8, void } = .{ .{ 1, 2, {} }, .{ 3, 4, {} } };
     };

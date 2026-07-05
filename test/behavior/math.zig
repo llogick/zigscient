@@ -1744,7 +1744,6 @@ fn testAbs(comptime T: type, a: T, expected: anytype) !void {
 test "@abs > 128 bits" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try testAbs(u140, 0, 0);
     try testAbs(u140, 1 << 139, 1 << 139);
@@ -1877,8 +1876,6 @@ test "@divTrunc > 128 bits" {
 }
 
 test "overflow arithmetic with u0 values" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     {
         var a: u0 = 0;
         _ = &a;

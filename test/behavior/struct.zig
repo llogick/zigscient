@@ -689,7 +689,6 @@ test "pointer to packed struct member in a stack variable" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest; // TODO
 
     const S = packed struct {
@@ -819,7 +818,6 @@ test "packed struct field passed to generic function" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
         const P = packed struct {
@@ -1204,7 +1202,6 @@ test "packed struct field access via pointer" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
         fn doTheTest() !void {
@@ -1502,8 +1499,6 @@ test "struct fields get automatically reordered" {
 }
 
 test "directly initiating tuple like struct" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const a = struct { u8 }{8};
     try expect(a[0] == 8);
 }
@@ -2306,7 +2301,6 @@ test "struct queries typeinfo of struct containing pointer back to first struct"
 }
 
 test "pointer to runtime field of struct containing struct containing comptime-only optional" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const Foo = struct {
         padding: struct { a: u8, b: ?comptime_int },
         number: u8,

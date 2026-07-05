@@ -354,7 +354,6 @@ fn testSwitchHandleAllCasesRange(x: u8) u8 {
 test "switch on union with some prongs capturing" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const X = union(enum) {
         a,
@@ -391,7 +390,6 @@ test "switch on const enum with var" {
 
 test "anon enum literal used in switch on union enum" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const Foo = union(enum) {
         a: i32,
@@ -534,7 +532,6 @@ test "switch prongs with error set cases make a new error set type for capture v
 
 test "return result loc and then switch with range implicit casted to error union" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     const S = struct {
         fn doTheTest() !void {
@@ -615,8 +612,6 @@ test "switch prongs with cases with identical payload types" {
 }
 
 test "switch prong pointer capture alignment" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const U = union(enum) {
         a: u8 align(8),
         b: u8 align(4),
@@ -755,7 +750,6 @@ test "switch capture copies its payload" {
 
 test "capture of integer forwards the switch condition directly" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     const S = struct {
         fn foo(x: u8) !void {
@@ -971,8 +965,6 @@ test "switch prong captures range" {
 }
 
 test "prong with inline call to unreachable" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const U = union(enum) {
         void: void,
         bool: bool,
@@ -1018,8 +1010,6 @@ test "block error return trace index is reset between prongs" {
 }
 
 test "labeled switch with break" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
-
     var six: u32 = undefined;
     six = 6;
 
@@ -1047,7 +1037,6 @@ test "unlabeled break ignores switch" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     const result = while (true) {
         _ = s: switch (@as(u32, 1)) {
@@ -1079,8 +1068,6 @@ test "switch on 8-bit mod result" {
 }
 
 test "switch on non-exhaustive enum" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
-
     const E = enum(u4) {
         a,
         b,
@@ -1314,8 +1301,6 @@ test "single-item prong in switch on enum has comptime-known capture" {
 }
 
 test "single range switch prong capture" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         fn doTheTest(x: u8) !void {
             switch (x) {
@@ -1575,8 +1560,6 @@ test "repeated switch analysis overrides previous analysis results" {
 }
 
 test "union field pointer capture preserves alignment in inline prong" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const U = union(enum) {
         a: u32,
         b: u32,

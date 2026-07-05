@@ -3119,11 +3119,15 @@ pub fn validateExtern(ty: Type, position: ExternPosition, zcu: *const Zcu) bool 
         .noreturn => position == .ret_ty,
 
         .@"opaque",
-        .spirv,
         .bool,
         .float,
         .@"anyframe",
         => true,
+
+        .spirv => switch (position) {
+            .struct_field, .union_field => true,
+            .ret_ty, .param_ty, .element, .other => !ty.isSpirvRuntimeArray(zcu),
+        },
 
         .pointer => {
             if (ty.isSlice(zcu)) return false;

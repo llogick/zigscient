@@ -559,7 +559,6 @@ fn StructCapture(comptime T: type) type {
 
 test "call generic function that uses capture from function declaration's scope" {
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = StructCapture(f64);
     const s = S.foo(123);

@@ -1221,7 +1221,6 @@ test "bit field access with enum fields" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest; // TODO
 
     var data = bit_field_1;
@@ -1406,7 +1405,6 @@ test "matching captures causes enum equivalence" {
 
 test "large enum field values" {
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     {
         const E = enum(u64) { min = std.math.minInt(u64), max = std.math.maxInt(u64) };

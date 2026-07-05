@@ -89,8 +89,6 @@ test "implicitly-aligned pointer is coercible to equivalent explicitly-aligned p
 }
 
 test "implicitly decreasing pointer alignment" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const a: u32 align(4) = 3;
     const b: u32 align(8) = 4;
     try expect(addUnaligned(&a, &b) == 7);
@@ -450,7 +448,6 @@ test "read 128-bit field from default aligned struct in global memory" {
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try expect(12 == default_aligned_global.badguy);
 }
@@ -505,7 +502,6 @@ test "comptime alloc alignment" {
     if (true) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // flaky
 
     comptime var bytes1 = [_]u8{0};
     _ = &bytes1;

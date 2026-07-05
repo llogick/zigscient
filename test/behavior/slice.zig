@@ -852,8 +852,6 @@ test "slice len modification at comptime" {
 }
 
 test "slice field ptr const" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const const_slice: []const u8 = "string";
 
     const const_ptr_const_slice = &const_slice;
@@ -867,7 +865,6 @@ test "slice field ptr const" {
 
 test "slice field ptr var" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     var var_slice: []const u8 = "string";
 
