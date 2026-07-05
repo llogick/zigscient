@@ -30,7 +30,7 @@ pub const Tag = struct {
         // 15 is reserved to mean that the tag is >= 32
         sequence = 16,
         /// Elements may appear in any order.
-        sequence_of = 17,
+        set = 17,
         string_numeric = 18,
         string_printable = 19,
         string_teletex = 20,

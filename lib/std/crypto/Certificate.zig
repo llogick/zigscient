@@ -893,7 +893,7 @@ pub const der = struct {
         null = 5,
         object_identifier = 6,
         sequence = 16,
-        sequence_of = 17,
+        set = 17,
         utc_time = 23,
         generalized_time = 24,
         _,
