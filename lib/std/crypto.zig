@@ -282,6 +282,8 @@ test {
     _ = aead.aes_ocb.Aes128Ocb;
     _ = aead.aes_ocb.Aes256Ocb;
 
+    _ = aead.aes_ccm;
+
     _ = aead.chacha_poly.ChaCha20Poly1305;
     _ = aead.chacha_poly.ChaCha12Poly1305;
     _ = aead.chacha_poly.ChaCha8Poly1305;
@@ -294,6 +296,7 @@ test {
 
     _ = auth.hmac;
     _ = auth.cmac;
+    _ = auth.cbc_mac;
     _ = auth.siphash;
 
     _ = core.aes;

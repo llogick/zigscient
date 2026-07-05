@@ -823,7 +823,7 @@ test "Aes128Ccm0 - IEEE 802.15.4 Data Frame (Encryption-only)" {
     var plaintext: [4]u8 = undefined;
     _ = try hexToBytes(&plaintext, "61626364");
     var ad: [26]u8 = undefined;
-    _ = try hexToBytes(&ad, "69DC84214302000000004DEAC010000000048DEAC04050000");
+    _ = try hexToBytes(&ad, "69DC842143020000000048DEAC010000000048DEAC0405000000");
 
     // Expected ciphertext from IEEE spec
     var expected_ciphertext: [4]u8 = undefined;
