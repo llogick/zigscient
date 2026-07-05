@@ -37,7 +37,7 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Cursory check test (native)"
-          zig build check test --zig-lib-dir ./lib/ -Dcpu=baseline
+          ZIG_DEBUG_MAKER=TRUE ZIG_LIB_DIR=./lib zig build check test -Dcpu=baseline
           echo "::endgroup::"
 
           echo "::group::Creating artifacts"
