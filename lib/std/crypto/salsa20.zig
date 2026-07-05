@@ -378,9 +378,17 @@ pub const XSalsa20Poly1305 = struct {
     /// c: ciphertext: output buffer should be of size m.len
     /// tag: authentication tag: output MAC
     /// m: message
-    /// ad: Associated Data
+    /// ad: Associated Data (see below)
     /// npub: public nonce
     /// k: private key
+    ///
+    /// With this construction, if the associated data is not empty,
+    /// it must only contain fixed-length information, such as
+    /// session identifiers and sequence numbers.
+    ///
+    /// Since there is no separation between the associated data and
+    /// the ciphertext, its length must not be under an adversary's
+    /// control.
     pub fn encrypt(c: []u8, tag: *[tag_length]u8, m: []const u8, ad: []const u8, npub: [nonce_length]u8, k: [key_length]u8) void {
         debug.assert(c.len == m.len);
         const extended = extend(rounds, k, npub);
@@ -399,10 +407,18 @@ pub const XSalsa20Poly1305 = struct {
     /// `m`: Message
     /// `c`: Ciphertext
     /// `tag`: Authentication tag
-    /// `ad`: Associated data
+    /// `ad`: Associated data (see below)
     /// `npub`: Public nonce
     /// `k`: Private key
     /// Asserts `c.len == m.len`.
+    ///
+    /// With this construction, if the associated data is not empty,
+    /// it must only contain fixed-length information, such as
+    /// sessions identifiers and sequence numbers.
+    ///
+    /// Since there is no separation between the associated data and
+    /// the ciphertext, its length must not be under an adversary's
+    /// control.
     ///
     /// Contents of `m` are undefined if an error is returned.
     pub fn decrypt(m: []u8, c: []const u8, tag: [tag_length]u8, ad: []const u8, npub: [nonce_length]u8, k: [key_length]u8) AuthenticationError!void {
