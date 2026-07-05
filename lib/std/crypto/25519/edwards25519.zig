@@ -115,7 +115,7 @@ pub const Edwards25519 = struct {
             .add(_1010011)).shift(9).add(_11110101))).shift(7).add(_1100111)).shift(9).add(_11110101).shift(11)
             .add(_10111101)).shift(8).add(_11100111)).shift(9))).shift(6).add(_1011)).shift(14).add(_10010011).shift(10)
             .add(_1100011)).shift(9).add(_10010111)).shift(10))).shift(8).add(_11010011)).shift(8).add(_11101101);
-        q.rejectIdentity() catch return;
+        if (q.x.isZero() and q.y.equivalent(q.z)) return;
         return error.UnexpectedSubgroup;
     }
 
@@ -634,4 +634,9 @@ test "subgroup check" {
     _ = try std.fmt.hexToBytes(&bogus, "4dc95e3c28d78c48a60531525e6327e259b7ba0d2f5c81b694052c766a14b625");
     const p = try Edwards25519.fromBytes(bogus);
     try std.testing.expectError(error.UnexpectedSubgroup, p.rejectUnexpectedSubgroup());
+
+    var torsion2L: [Edwards25519.encoded_length]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&torsion2L, "9599999999999999999999999999999999999999999999999999999999999999");
+    const p2L = try Edwards25519.fromBytes(torsion2L);
+    try std.testing.expectError(error.UnexpectedSubgroup, p2L.rejectUnexpectedSubgroup());
 }
