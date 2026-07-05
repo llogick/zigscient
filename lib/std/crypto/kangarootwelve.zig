@@ -885,7 +885,7 @@ fn ktMultiThreaded(
 
         var select_outstanding: usize = 0;
         var select: Select = .init(io, select_buf);
-        defer select.cancel();
+        defer select.cancelDiscard();
         var batches_spawned: usize = 0;
         var next_to_process: usize = 0;
 
