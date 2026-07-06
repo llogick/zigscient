@@ -7336,8 +7336,6 @@ fn buildOutputFromZig(
 pub const CrtFileOptions = struct {
     function_sections: bool = true,
     data_sections: bool = true,
-    omit_frame_pointer: ?bool = null,
-    unwind_tables: ?std.lang.UnwindTables = null,
     pic: ?bool = null,
     no_builtin: ?bool = null,
 
@@ -7384,7 +7382,7 @@ pub fn build_crt_file(
         .root_optimize_mode = comp.compilerRtOptMode(),
         .root_strip = comp.compilerRtStrip(),
         .link_libc = false,
-        .any_unwind_tables = options.unwind_tables != .none,
+        .any_unwind_tables = comp.root_mod.unwind_tables != .none,
         .lto = switch (output_mode) {
             .Lib => if (options.allow_lto) comp.config.lto else .none,
             .Obj, .Exe => .none,
@@ -7407,11 +7405,9 @@ pub fn build_crt_file(
             .sanitize_c = .off,
             .sanitize_thread = false,
             .red_zone = comp.root_mod.red_zone,
-            // Some libcs (e.g. musl) are opinionated about -fomit-frame-pointer.
-            .omit_frame_pointer = options.omit_frame_pointer orelse comp.root_mod.omit_frame_pointer,
+            .omit_frame_pointer = comp.root_mod.omit_frame_pointer,
             .valgrind = false,
-            // Some libcs (e.g. MinGW) are opinionated about -funwind-tables.
-            .unwind_tables = options.unwind_tables orelse .none,
+            .unwind_tables = comp.root_mod.unwind_tables,
             // Some CRT objects (e.g. musl's rcrt1.o and Scrt1.o) are opinionated about PIC.
             .pic = options.pic orelse comp.root_mod.pic,
             .optimize_mode = comp.compilerRtOptMode(),

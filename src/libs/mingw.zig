@@ -39,9 +39,6 @@ pub fn buildCrtFile(comp: *Compilation, crt_file: CrtFile, prog_node: std.Progre
     const arena = arena_allocator.allocator();
     const target = comp.getTarget();
 
-    // The old 32-bit x86 variant of SEH doesn't use tables.
-    const unwind_tables: std.lang.UnwindTables = if (target.cpu.arch != .x86) .async else .none;
-
     switch (crt_file) {
         .crt2_o => {
             var args = std.array_list.Managed([]const u8).init(arena);
@@ -60,7 +57,6 @@ pub fn buildCrtFile(comp: *Compilation, crt_file: CrtFile, prog_node: std.Progre
             };
             return comp.build_crt_file("crt2", .Obj, .@"mingw-w64 crt2.o", prog_node, &files, .{
                 .function_sections = false, // https://codeberg.org/ziglang/zig/issues/30702
-                .unwind_tables = unwind_tables,
             });
         },
 
@@ -76,9 +72,7 @@ pub fn buildCrtFile(comp: *Compilation, crt_file: CrtFile, prog_node: std.Progre
                     .owner = undefined,
                 },
             };
-            return comp.build_crt_file("dllcrt2", .Obj, .@"mingw-w64 dllcrt2.o", prog_node, &files, .{
-                .unwind_tables = unwind_tables,
-            });
+            return comp.build_crt_file("dllcrt2", .Obj, .@"mingw-w64 dllcrt2.o", prog_node, &files, .{});
         },
 
         .libmingw32_lib => {
@@ -157,7 +151,6 @@ pub fn buildCrtFile(comp: *Compilation, crt_file: CrtFile, prog_node: std.Progre
             }
 
             return comp.build_crt_file("libmingw32", .Lib, .@"mingw-w64 libmingw32.lib", prog_node, c_source_files.items, .{
-                .unwind_tables = unwind_tables,
                 // https://github.com/llvm/llvm-project/issues/43698#issuecomment-2542660611
                 .allow_lto = false,
             });

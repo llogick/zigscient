@@ -125,8 +125,6 @@ pub fn buildCrtFile(comp: *Compilation, crt_file: CrtFile, prog_node: std.Progre
             const files = files_buf[0..files_index];
 
             return comp.build_crt_file("crt0", .Obj, .@"openbsd libc Scrt0.o", prog_node, files, .{
-                // Unclear why OpenBSD does this, but we'll do the same.
-                .omit_frame_pointer = if (target.cpu.arch.isX86()) false else null,
                 .pic = true,
             });
         },

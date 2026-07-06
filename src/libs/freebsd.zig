@@ -242,7 +242,6 @@ pub fn buildCrtFile(comp: *Compilation, crt_file: CrtFile, prog_node: std.Progre
                 prog_node,
                 files,
                 .{
-                    .omit_frame_pointer = false,
                     .pic = true,
                 },
             );

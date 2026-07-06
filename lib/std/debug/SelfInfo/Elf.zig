@@ -92,12 +92,10 @@ pub fn getModuleSlide(si: *SelfInfo, io: Io, address: usize) Error!usize {
 }
 
 pub const can_unwind: bool = s: {
-    // Notably, we are yet to support unwinding on ARM. There, unwinding is not done through
-    // `.eh_frame`, but instead with the `.ARM.exidx` section, which has a different format.
     const archs: []const std.Target.Cpu.Arch = switch (builtin.target.os.tag) {
-        // Not supported yet: arm
         .haiku => &.{
             .aarch64,
+            .arm,
             .riscv64,
             .x86,
             .x86_64,
@@ -106,12 +104,14 @@ pub const can_unwind: bool = s: {
             .x86,
             .x86_64,
         },
-        // Not supported yet: arm/armeb/thumb/thumbeb, hppa, hppa64, microblaze/microblazeel
+        // Not supported yet: hppa, hppa64, microblaze/microblazeel, sh/sheb
         .linux => &.{
             .aarch64,
             .aarch64_be,
             .alpha,
             .arc,
+            .arm,
+            .armeb,
             .csky,
             .loongarch32,
             .loongarch64,
@@ -124,6 +124,8 @@ pub const can_unwind: bool = s: {
             .riscv32,
             .riscv64,
             .s390x,
+            .thumb,
+            .thumbeb,
             .x86,
             .x86_64,
         },
@@ -136,18 +138,20 @@ pub const can_unwind: bool = s: {
         .dragonfly => &.{
             .x86_64,
         },
-        // Not supported yet: arm
         .freebsd => &.{
             .aarch64,
+            .arm,
             .riscv64,
             .x86,
             .x86_64,
         },
-        // Not supported yet: arm/armeb, hppa, mips64/mips64el, sh/sheb
+        // Not supported yet: hppa, mips64/mips64el, sh/sheb
         .netbsd => &.{
             .aarch64,
             .aarch64_be,
             .alpha,
+            .arm,
+            .armeb,
             .m68k,
             .mips,
             .mipsel,
@@ -156,9 +160,10 @@ pub const can_unwind: bool = s: {
             .x86,
             .x86_64,
         },
-        // Not supported yet: arm, hppa, sh
+        // Not supported yet: hppa, sh
         .openbsd => &.{
             .aarch64,
+            .arm,
             .m88k,
             .mips64,
             .mips64el,

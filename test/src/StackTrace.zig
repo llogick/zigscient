@@ -72,6 +72,8 @@ fn addCaseTarget(
         .mips64el,
         .sh,
         .sheb,
+        .xtensa,
+        .xtensaeb,
         => .useless,
         .hexagon,
         .powerpc,
@@ -87,8 +89,7 @@ fn addCaseTarget(
     const supports_unwind_tables = switch (target.result.os.tag) {
         // x86-windows just has no way to do stack unwinding other then using frame pointers.
         .windows => target.result.cpu.arch != .x86,
-        // We do not yet implement support for the AArch32 exception table section `.ARM.exidx`.
-        else => !target.result.cpu.arch.isArm(),
+        else => true,
     };
 
     const use_llvm_vals: []const bool = if (both_backends) &.{ true, false } else &.{true};
