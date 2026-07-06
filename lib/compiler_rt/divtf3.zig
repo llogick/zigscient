@@ -9,8 +9,10 @@ const wideMultiply = compiler_rt.wideMultiply;
 comptime {
     if (compiler_rt.want_ppc_abi) {
         symbol(&__divtf3, "__divkf3");
-    } else if (compiler_rt.want_sparc_abi) {
+    } else if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_div, "_Qp_div");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__divtf3, "_Q_div");
     }
     symbol(&__divtf3, "__divtf3");
 }

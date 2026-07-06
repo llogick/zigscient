@@ -32,9 +32,6 @@ comptime {
 
     if (compiler_rt.want_ppc_abi) {
         symbol(&__unordtf2, "__unordkf2");
-    } else if (compiler_rt.want_sparc_abi) {
-        // These exports are handled in cmptf2.zig because unordered comparisons
-        // are based on calling _Qp_cmp.
     }
     symbol(&__unordtf2, "__unordtf2");
     symbol(&__unordhf2, "__unordhf2");

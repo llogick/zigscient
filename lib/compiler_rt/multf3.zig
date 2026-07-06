@@ -5,8 +5,10 @@ const mulf3 = @import("./mulf3.zig").mulf3;
 comptime {
     if (compiler_rt.want_ppc_abi) {
         symbol(&__multf3, "__mulkf3");
-    } else if (compiler_rt.want_sparc_abi) {
+    } else if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_mul, "_Qp_mul");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__multf3, "_Q_mul");
     }
     symbol(&__multf3, "__multf3");
 }

@@ -5,8 +5,10 @@ const floatFromInt = @import("./float_from_int.zig").floatFromInt;
 comptime {
     if (compiler_rt.want_ppc_abi) {
         symbol(&__floatsitf, "__floatsikf");
-    } else if (compiler_rt.want_sparc_abi) {
+    } else if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_itoq, "_Qp_itoq");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__floatsitf, "_Q_itoq");
     }
     symbol(&__floatsitf, "__floatsitf");
 }

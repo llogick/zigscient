@@ -5,8 +5,10 @@ const symbol = @import("../compiler_rt.zig").symbol;
 comptime {
     if (compiler_rt.want_ppc_abi) {
         symbol(&__fixtfdi, "__fixkfdi");
-    } else if (compiler_rt.want_sparc_abi) {
+    } else if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_qtox, "_Qp_qtox");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__fixtfdi, "_Q_qtoll");
     }
     symbol(&__fixtfdi, "__fixtfdi");
 }

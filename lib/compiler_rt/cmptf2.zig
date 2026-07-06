@@ -10,7 +10,7 @@ comptime {
         symbol(&__netf2, "__nekf2");
         symbol(&__lttf2, "__ltkf2");
         symbol(&__letf2, "__lekf2");
-    } else if (compiler_rt.want_sparc_abi) {
+    } else if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_cmp, "_Qp_cmp");
         symbol(&_Qp_feq, "_Qp_feq");
         symbol(&_Qp_fne, "_Qp_fne");
@@ -18,6 +18,14 @@ comptime {
         symbol(&_Qp_fle, "_Qp_fle");
         symbol(&_Qp_fgt, "_Qp_fgt");
         symbol(&_Qp_fge, "_Qp_fge");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&_Q_cmp, "_Q_cmp");
+        symbol(&_Q_feq, "_Q_feq");
+        symbol(&_Q_fne, "_Q_fne");
+        symbol(&_Q_flt, "_Q_flt");
+        symbol(&_Q_fle, "_Q_fle");
+        symbol(&_Q_fgt, "_Q_fgt");
+        symbol(&_Q_fge, "_Q_fge");
     }
     symbol(&__eqtf2, "__eqtf2");
     symbol(&__netf2, "__netf2");
@@ -98,6 +106,40 @@ fn _Qp_fge(a: *const f128, b: *const f128) callconv(.c) bool {
 
 fn _Qp_fle(a: *const f128, b: *const f128) callconv(.c) bool {
     return switch (@as(SparcFCMP, @enumFromInt(_Qp_cmp(a, b)))) {
+        .Equal, .Less => true,
+        .Greater, .Unordered => false,
+    };
+}
+
+fn _Q_cmp(a: f128, b: f128) callconv(.c) i32 {
+    return @intFromEnum(comparef.cmpf2(f128, SparcFCMP, a, b));
+}
+
+fn _Q_feq(a: f128, b: f128) callconv(.c) bool {
+    return @as(SparcFCMP, @enumFromInt(_Q_cmp(a, b))) == .Equal;
+}
+
+fn _Q_fne(a: f128, b: f128) callconv(.c) bool {
+    return @as(SparcFCMP, @enumFromInt(_Q_cmp(a, b))) != .Equal;
+}
+
+fn _Q_flt(a: f128, b: f128) callconv(.c) bool {
+    return @as(SparcFCMP, @enumFromInt(_Q_cmp(a, b))) == .Less;
+}
+
+fn _Q_fgt(a: f128, b: f128) callconv(.c) bool {
+    return @as(SparcFCMP, @enumFromInt(_Q_cmp(a, b))) == .Greater;
+}
+
+fn _Q_fge(a: f128, b: f128) callconv(.c) bool {
+    return switch (@as(SparcFCMP, @enumFromInt(_Q_cmp(a, b)))) {
+        .Equal, .Greater => true,
+        .Less, .Unordered => false,
+    };
+}
+
+fn _Q_fle(a: f128, b: f128) callconv(.c) bool {
+    return switch (@as(SparcFCMP, @enumFromInt(_Q_cmp(a, b)))) {
         .Equal, .Less => true,
         .Greater, .Unordered => false,
     };

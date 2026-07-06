@@ -441,7 +441,8 @@ pub const gnu_f16_abi = switch (builtin.cpu.arch) {
     else => !builtin.os.tag.isDarwin(),
 };
 
-pub const want_sparc_abi = builtin.cpu.arch.isSPARC();
+pub const want_sparc64_abi = builtin.cpu.arch == .sparc64;
+pub const want_sparc32_abi = builtin.cpu.arch == .sparc;
 
 pub fn F16T(comptime OtherType: type) type {
     return switch (builtin.cpu.arch) {

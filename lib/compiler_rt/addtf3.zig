@@ -5,8 +5,10 @@ const addf3 = @import("./addf3.zig").addf3;
 comptime {
     if (compiler_rt.want_ppc_abi) {
         symbol(&__addtf3, "__addkf3");
-    } else if (compiler_rt.want_sparc_abi) {
+    } else if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_add, "_Qp_add");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__addtf3, "_Q_add");
     }
     symbol(&__addtf3, "__addtf3");
 }

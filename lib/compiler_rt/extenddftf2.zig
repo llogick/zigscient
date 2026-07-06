@@ -5,8 +5,10 @@ const symbol = @import("../compiler_rt.zig").symbol;
 comptime {
     if (compiler_rt.want_ppc_abi) {
         symbol(&__extenddftf2, "__extenddfkf2");
-    } else if (compiler_rt.want_sparc_abi) {
+    } else if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_dtoq, "_Qp_dtoq");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__extenddftf2, "_Q_dtoq");
     }
     symbol(&__extenddftf2, "__extenddftf2");
 }

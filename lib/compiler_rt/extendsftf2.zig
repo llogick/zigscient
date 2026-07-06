@@ -5,8 +5,10 @@ const extendf = @import("./extendf.zig").extendf;
 comptime {
     if (compiler_rt.want_ppc_abi) {
         symbol(&__extendsftf2, "__extendsfkf2");
-    } else if (compiler_rt.want_sparc_abi) {
+    } else if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_stoq, "_Qp_stoq");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__extendsftf2, "_Q_stoq");
     }
     symbol(&__extendsftf2, "__extendsftf2");
 }

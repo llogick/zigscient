@@ -19,8 +19,10 @@ comptime {
     symbol(&__sqrtx, "__sqrtx");
     if (compiler_rt.want_ppc_abi) {
         symbol(&sqrtq, "sqrtf128");
-    } else if (compiler_rt.want_sparc_abi) {
+    } else if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_sqrt, "_Qp_sqrt");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&sqrtq, "_Q_sqrt");
     }
     symbol(&sqrtq, "sqrtq");
     symbol(&sqrtl, "sqrtl");

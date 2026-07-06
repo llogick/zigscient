@@ -5,8 +5,10 @@ const symbol = @import("../compiler_rt.zig").symbol;
 comptime {
     if (compiler_rt.want_ppc_abi) {
         symbol(&__floatunsitf, "__floatunsikf");
-    } else if (compiler_rt.want_sparc_abi) {
+    } else if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_uitoq, "_Qp_uitoq");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__floatunsitf, "_Q_utoq");
     }
     symbol(&__floatunsitf, "__floatunsitf");
 }

@@ -5,8 +5,10 @@ const truncf = @import("./truncf.zig").truncf;
 comptime {
     if (compiler_rt.want_ppc_abi) {
         symbol(&__trunctfdf2, "__trunckfdf2");
-    } else if (compiler_rt.want_sparc_abi) {
+    } else if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_qtod, "_Qp_qtod");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__trunctfdf2, "_Q_qtod");
     }
     symbol(&__trunctfdf2, "__trunctfdf2");
 }

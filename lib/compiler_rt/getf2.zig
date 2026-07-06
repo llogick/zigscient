@@ -8,9 +8,6 @@ comptime {
     if (compiler_rt.want_ppc_abi) {
         symbol(&__getf2, "__gekf2");
         symbol(&__gttf2, "__gtkf2");
-    } else if (compiler_rt.want_sparc_abi) {
-        // These exports are handled in cmptf2.zig because gt and ge on sparc
-        // are based on calling _Qp_cmp.
     }
     symbol(&__getf2, "__getf2");
     symbol(&__gttf2, "__gttf2");
