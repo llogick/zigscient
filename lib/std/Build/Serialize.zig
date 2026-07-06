@@ -454,6 +454,13 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                             },
                             else => {},
                         }
+                        const preopens = try arena.alloc(
+                            Configuration.Step.Run.Preopen,
+                            run.preopens.count(),
+                        );
+                        for (preopens, run.preopens.keys(), run.preopens.values()) |*dest, name, path| {
+                            dest.* = .{ .name = name, .path = try s.addLazyPath(path) };
+                        }
 
                         break :e try wc.addExtraErased(Configuration.Step.Run, .{
                             .flags = .{
@@ -482,6 +489,7 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                                 .captured_stdout = run.captured_stdout != null,
                                 .captured_stderr = run.captured_stderr != null,
                                 .environ_map = run.environ_map != null,
+                                .preopens = run.preopens.count() > 0,
                             },
                             .flags2 = .{
                                 .expect_stderr_exact = expect_stderr_exact != null,
@@ -496,8 +504,7 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                             .file_inputs = .{ .slice = try s.initLazyPathList(run.file_inputs.items) },
                             .args = .{ .slice = try s.initArgsList(run.argv.items) },
                             .cwd = .{ .value = try s.addOptionalLazyPath(run.cwd) },
-                            .preopen_names = .{ .slice = try s.initStringList(run.preopens.keys()) },
-                            .preopen_paths = .{ .slice = try s.initLazyPathList(run.preopens.values()) },
+                            .preopens = .{ .slice = preopens },
                             .captured_stdout = .{ .value = if (run.captured_stdout) |cs| .{
                                 .basename = try wc.addString(cs.basename),
                                 .generated_file = cs.generated_file,

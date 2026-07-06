@@ -28,7 +28,7 @@ environ_map: ?*EnvMap,
 
 /// Named files that will be provided to the parent process.
 /// See `std.process.Preopens`.
-preopens: std.array_hash_map.String(Build.LazyPath),
+preopens: std.array_hash_map.Auto(Configuration.String, Build.LazyPath),
 
 /// Controls the `NO_COLOR` and `CLICOLOR_FORCE` environment variables.
 color: Color = .auto,
@@ -624,11 +624,12 @@ pub fn removeEnvironmentVariable(run: *Run, key: []const u8) void {
 
 pub fn setPreopen(run: *Run, name: []const u8, resource: Build.LazyPath) void {
     const graph = run.step.owner.graph;
+    const wc = &graph.wip_configuration;
     const arena = graph.arena;
     resource.addStepDependencies(&run.step);
     run.preopens.put(
         arena,
-        graph.dupeString(name),
+        wc.addString(name) catch @panic("OOM"),
         resource.dupe(graph),
     ) catch @panic("OOM");
 }

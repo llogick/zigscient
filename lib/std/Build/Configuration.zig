@@ -569,8 +569,7 @@ pub const Step = extern struct {
         flags2: Flags2,
         args: Storage.LengthPrefixedList(Arg.Index),
         cwd: Storage.FlagOptional(.flags, .cwd, LazyPath.Index),
-        preopen_names: Storage.LengthPrefixedList(String),
-        preopen_paths: Storage.LengthPrefixedList(LazyPath.Index),
+        preopens: Storage.FlagLengthPrefixedList(.flags, .preopens, Preopen),
         captured_stdout: Storage.FlagOptional(.flags, .captured_stdout, CapturedStream),
         captured_stderr: Storage.FlagOptional(.flags, .captured_stderr, CapturedStream),
         file_inputs: Storage.LengthPrefixedList(LazyPath.Index),
@@ -646,6 +645,11 @@ pub const Step = extern struct {
             manual,
         };
 
+        pub const Preopen = extern struct {
+            name: String,
+            path: LazyPath.Index,
+        };
+
         pub const StdIn = union(@This().Tag) {
             none: void,
             bytes: Bytes,
@@ -676,7 +680,8 @@ pub const Step = extern struct {
             captured_stdout: bool,
             captured_stderr: bool,
             environ_map: bool,
-            _: u4 = 0,
+            preopens: bool,
+            _: u3 = 0,
         };
 
         pub const Flags2 = packed struct(u32) {
