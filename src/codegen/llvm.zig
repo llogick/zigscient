@@ -251,6 +251,7 @@ pub fn targetTriple(allocator: Allocator, target: *const std.Target) ![]const u8
         .vita,
         .tios,
         .wiiu,
+        .ashetos,
         => "unknown",
     };
     try llvm_triple.appendSlice(llvm_os);

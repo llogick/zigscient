@@ -72,6 +72,8 @@ pub const Os = struct {
 
         tios,
 
+        ashetos,
+
         // LLVM tags deliberately omitted:
         // - bridgeos
         // - cheriotrtos
@@ -175,6 +177,8 @@ pub const Os = struct {
                 .emscripten,
 
                 .mesa3d,
+
+                .ashetos,
                 => .none,
 
                 .contiki,
@@ -412,6 +416,8 @@ pub const Os = struct {
                 .emscripten,
 
                 .mesa3d,
+
+                .ashetos,
                 => .{ .none = {} },
 
                 .contiki => .{
@@ -956,6 +962,8 @@ pub const Abi = enum {
             .psp => .eabihf,
             .vita => .eabihf,
             .wasi, .emscripten => .musl,
+
+            .ashetos => .eabi,
 
             .contiki,
             .hermit,
@@ -2321,6 +2329,7 @@ pub fn requiresLibC(target: *const Target) bool {
         .@"3ds",
         .tios,
         .wiiu,
+        .ashetos,
         => false,
     };
 }
@@ -2489,6 +2498,7 @@ pub const DynamicLinker = struct {
             .vita,
 
             .tios,
+            .ashetos,
             => .none,
         };
     }
@@ -2910,6 +2920,7 @@ pub const DynamicLinker = struct {
             .vulkan,
 
             .tios,
+            .ashetos,
             => none,
 
             // TODO go over each item in this list and either move it to the above list, or
@@ -3174,7 +3185,10 @@ pub fn cTypeByteSize(t: *const Target, c_type: CType) u16 {
 
 pub fn cTypeBitSize(target: *const Target, c_type: CType) u16 {
     switch (target.os.tag) {
-        .freestanding, .other => switch (target.cpu.arch) {
+        .freestanding,
+        .other,
+        .ashetos,
+        => switch (target.cpu.arch) {
             .msp430,
             .x86_16,
             => switch (c_type) {

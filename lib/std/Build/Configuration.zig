@@ -2635,6 +2635,7 @@ pub const TargetQuery = struct {
         opengl,
         vulkan,
         tios,
+        ashetos,
 
         default,
 
@@ -2685,6 +2686,7 @@ pub const TargetQuery = struct {
                 .opengl => .opengl,
                 .vulkan => .vulkan,
                 .tios => .tios,
+                .ashetos => .ashetos,
             };
         }
 
@@ -2735,6 +2737,7 @@ pub const TargetQuery = struct {
                 .opengl => .opengl,
                 .vulkan => .vulkan,
                 .tios => .tios,
+                .ashetos => .ashetos,
 
                 .default => null,
             };

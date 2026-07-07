@@ -61,6 +61,12 @@ pub fn libCxxNeedsLibUnwind(target: *const std.Target) bool {
     };
 }
 
+pub fn requiresPie(target: *const std.Target, link_mode: std.lang.LinkMode) bool {
+    return target.os.tag == .fuchsia or
+        (target.abi.isAndroid() and link_mode == .dynamic) or
+        target.os.tag == .ashetos;
+}
+
 /// This function returns whether non-pic code is completely invalid on the given target.
 pub fn requiresPic(target: *const std.Target, linking_libc: bool) bool {
     return ((target.os.tag == .windows or target.os.tag == .uefi) and (target.cpu.arch == .aarch64 or target.cpu.arch == .x86_64)) or
