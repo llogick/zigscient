@@ -1347,6 +1347,13 @@ const targets = [_]ArchTarget{
         .extra_cpus = &.{
             .{
                 .llvm_name = null,
+                .zig_name = "generic_la64",
+                .features = &.{
+                    "64bit",
+                },
+            },
+            .{
+                .llvm_name = null,
                 .zig_name = "la32v1_0",
                 .features = &.{
                     "32bit",
@@ -1390,6 +1397,7 @@ const targets = [_]ArchTarget{
         },
         .omit_cpus = &.{
             "generic",
+            "generic-la64",
             "loongarch32",
             "loongarch64",
         },

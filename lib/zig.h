@@ -4636,7 +4636,7 @@ static inline void zig_e_zig_loongarch_cpucfg(uint32_t word, uint32_t* result) z
 
 static inline void zig_e_zig_loongarch_cpucfg(uint32_t word, uint32_t* result) {
 #if defined(zig_gnuc_asm)
-    __asm__("cpucfg %[result], %[word]" : [result] "=r" (result) : [word] "r" (word));
+    __asm__("cpucfg %[result], %[word]" : [result] "=r" (*result) : [word] "r" (word));
 #else
     *result = 0;
 #endif

@@ -168,11 +168,9 @@ pub const cpu = struct {
     };
     pub const generic_la64: CpuModel = .{
         .name = "generic_la64",
-        .llvm_name = "generic-la64",
+        .llvm_name = null,
         .features = featureSet(&[_]Feature{
             .@"64bit",
-            .lsx,
-            .ual,
         }),
     };
     pub const la32rv1_0: CpuModel = .{

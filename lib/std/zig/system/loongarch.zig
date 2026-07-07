@@ -1,6 +1,13 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
+const Variant = enum(u2) {
+    la32r = 0b00,
+    la32 = 0b01,
+    la64 = 0b10,
+    reserved = 0b11,
+};
+
 inline fn bit(input: u32, offset: u5) bool {
     return (input >> offset) & 1 != 0;
 }
@@ -19,10 +26,16 @@ pub fn detectNativeCpuAndFeatures(
     _ = os;
     _ = query;
 
+    const variant: Variant = @enumFromInt(cpucfg(1) & 0b11);
+
     var cpu: std.Target.Cpu = .{
         .arch = arch,
-        .model = switch (cpucfg(0) & 0xf000) {
-            else => return null,
+        .model = switch (cpucfg(0) & 0b1111000000000000) {
+            else => switch (variant) {
+                .la32r, .la32 => &std.Target.loongarch.cpu.generic_la32,
+                .la64 => &std.Target.loongarch.cpu.generic_la64,
+                .reserved => unreachable,
+            },
             0xc000 => &std.Target.loongarch.cpu.la464,
             0xd000 => &std.Target.loongarch.cpu.la664,
         },
@@ -30,6 +43,8 @@ pub fn detectNativeCpuAndFeatures(
     };
 
     cpu.features.addFeatureSet(cpu.model.features);
+
+    setFeature(&cpu, .@"32s", variant != .la32r);
 
     const cfg2 = cpucfg(2);
     const cfg3 = cpucfg(3);
