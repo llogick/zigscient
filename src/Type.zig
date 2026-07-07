@@ -1019,8 +1019,8 @@ pub fn abiAlignment(ty: Type, zcu: *const Zcu) Alignment {
             .c_longdouble => cTypeAlign(target, .longdouble),
 
             .f16 => .@"2",
-            .f32 => cTypeAlign(target, .float),
-            .f64 => switch (target.cTypeBitSize(.double)) {
+            .f32 => if (target.os.tag == .opengl) .@"4" else cTypeAlign(target, .float),
+            .f64 => if (target.os.tag == .opengl) .@"8" else switch (target.cTypeBitSize(.double)) {
                 64 => cTypeAlign(target, .double),
                 else => .@"8",
             },
