@@ -100,13 +100,15 @@ dynstr: StringTable,
 ///
 /// Value is the output relocation in `.rela.dyn` for the GOT entry.
 got: std.array_hash_map.Auto(GotKey, Section.RelaIndex.Optional),
+/// Key is the name of a global.
+///
 /// Indices map 1--1 to indices into the actual `.got.plt` section. These also equal indices into
 /// the relocations in `.rela.plt`, because every PLT entry has one output relocation (if a runtime
 /// relocation is no longer necessary, then neither is the corresponding PLT entry!).
 ///
 /// PLT entries in this map may be "dead", meaning the PLT entry has been deemed unnecessary so is
 /// available for reuse---see `Elf.pltEntryIsDead`. Such entries must not be targeted by relocs.
-plt: std.array_hash_map.Auto(Symbol.Id, void),
+plt: std.array_hash_map.Auto(String(.strtab), void),
 /// The `.plt` section contains zero or more symbol relocations starting at this index.
 plt_first_symbol_reloc: SymbolReloc.Index,
 /// The `.dynamic` section contains zero or more symbol relocations starting at this index.
@@ -152,6 +154,9 @@ tls_size_symbol_relocs: std.array_hash_map.Auto(SymbolReloc.Index, void),
 section_by_name: std.array_hash_map.Auto(String(.shstrtab), void),
 /// Key is the name of a global symbol which has been moved to a new symtab index. Any relocation
 /// entries which target that symbol must be updated to reference the correct symbol index.
+///
+/// When emitting a relocatable (`ET_REL`), this refers to the index in `.symtab`. Otherwise, it
+/// refers to the index in `.dynsym`.
 changed_symtab_index: std.array_hash_map.Auto(String(.strtab), void),
 /// Counts how many relocations are currently in `.rela.dyn` which would require a `DT_TEXTREL`
 /// entry in the `.dynamic` section. This allows adding `DT_TEXTREL` to the output `.dynamic`
@@ -474,9 +479,14 @@ const Section = struct {
         }
 
         fn vaddr(s: Index, elf: *Elf) u64 {
-            return switch (s.get(elf).lsi) {
-                .null => 0,
-                else => |lsi| Symbol.Id.local(lsi).value(elf),
+            return switch (elf.shdrPtr(s)) {
+                inline else => |shdr| elf.targetLoad(&shdr.addr),
+            };
+        }
+
+        fn flags(s: Index, elf: *Elf) std.elf.SHF {
+            return switch (elf.shdrPtr(s)) {
+                inline else => |shdr| elf.targetLoad(&shdr.flags).shf,
             };
         }
 
@@ -487,8 +497,8 @@ const Section = struct {
             }
         }
 
-        /// Asserts that `shndx` is a `SHT_RELA` section and ensures that its node has enough unused
-        /// space to hold `n` additional `ElfN.Rela` entries.
+        /// Asserts that `rela_shndx` is a `SHT_RELA` section and ensures that its node has enough
+        /// unused space to hold `n` additional `ElfN.Rela` entries.
         fn relaEnsureAdditionalCapacity(rela_shndx: Index, elf: *Elf, n: usize) Error!void {
             const node = rela_shndx.get(elf).ni;
             const need_size: u64 = switch (elf.shdrPtr(rela_shndx)) {
@@ -514,9 +524,9 @@ const Section = struct {
             try elf.ensureNodeSize(node, need_size);
         }
 
-        /// Asserts that `shndx` is a `SHT_RELA` section and deletes the `ElfN.Rela` entry at the
-        /// given `index` in it. The entry is added to the free-list for reuse later. Asserts that
-        /// the relocation entry at `index` is not already free.
+        /// Asserts that `rela_shndx` is a `SHT_RELA` section and deletes the `ElfN.Rela` entry at
+        /// the given `index` in it. The entry is added to the free-list for reuse later. Asserts
+        /// that the relocation entry at `index` is not already free.
         fn relaDeleteOne(rela_shndx: Index, elf: *Elf, index: RelaIndex) void {
             switch (elf.shdrPtr(rela_shndx)) {
                 inline else => |shdr, class| {
@@ -553,9 +563,9 @@ const Section = struct {
             rela_shndx.get(elf).rela.free_head = index.toOptional();
         }
 
-        /// Asserts that `shndx` is a `SHT_RELA` section and adds a new `ElfN.Rela` entry to it with
-        /// the given field values. Returns the index of the populated entry. Asserts that capacity
-        /// for this operation was already guaranteed using `relaEnsureAdditionalCapacity`.
+        /// Asserts that `rela_shndx` is a `SHT_RELA` section and adds a new `ElfN.Rela` entry to it
+        /// with the given field values. Returns the index of the populated entry. Asserts that
+        /// capacity for this operation was already guaranteed using `relaEnsureAdditionalCapacity`.
         fn relaAddOneAssumeCapacity(rela_shndx: Index, elf: *Elf, opts: struct {
             type: MachineRelocType,
             offset: u64,
@@ -617,8 +627,8 @@ const Section = struct {
             }
         }
 
-        /// Asserts that `shndx` is a `SHT_RELA` section and updates the `info.sym` field of the
-        /// `ElfN.Rela` entry at the given index. As with `relaAddOneAssumeCapacity`, the symbol
+        /// Asserts that `rela_shndx` is a `SHT_RELA` section and updates the `info.sym` field of
+        /// the `ElfN.Rela` entry at the given index. As with `relaAddOneAssumeCapacity`, the symbol
         /// index is a raw `u32`, because it may be an index into `.symtab` or an index into
         /// `.dynsym`. Asserts that `index` is not in the free-list (i.e. is not deleted).
         fn relaUpdateSym(rela_shndx: Index, elf: *Elf, index: RelaIndex, raw_sym_index: u32) void {
@@ -642,7 +652,7 @@ const Section = struct {
             }
         }
 
-        /// Asserts that `shndx` is a `SHT_RELA` section and updates the `offset` field of the
+        /// Asserts that `rela_shndx` is a `SHT_RELA` section and updates the `offset` field of the
         /// `ElfN.Rela` entry at the given index. Asserts that `index` is not in the free-list (i.e.
         /// it is not deleted).
         fn relaSetOffset(rela_shndx: Index, elf: *Elf, index: RelaIndex, new_offset: u64) void {
@@ -663,7 +673,7 @@ const Section = struct {
             }
         }
 
-        /// Asserts that `shndx` is a `SHT_RELA` section and updates the `offset` field of the
+        /// Asserts that `rela_shndx` is a `SHT_RELA` section and updates the `offset` field of the
         /// `ElfN.Rela` entry at the given index, by subtracting `old_base` and adding `new_base`.
         /// Asserts that `index` is not in the free-list (i.e. it is not deleted).
         fn relaAdjustOffset(rela_shndx: Index, elf: *Elf, index: RelaIndex, old_base: u64, new_base: u64) void {
@@ -683,6 +693,28 @@ const Section = struct {
                     elf.targetStore(&relas[@intFromEnum(index)].offset, @intCast(
                         old_offset - old_base + new_base,
                     ));
+                },
+            }
+        }
+
+        /// Asserts that `rela_shndx` is a `SHT_RELA` section, and asserts that `index` refers to an
+        /// `R_*_RELATIVE` relocation inside of it; then, updates that relocation's addend (which is
+        /// an address in this DSO without the runtime load offset applied) to the given value.
+        fn relaSetRelativeOffset(rela_shndx: Index, elf: *Elf, index: RelaIndex, new_addend: u64) void {
+            switch (elf.shdrPtr(rela_shndx)) {
+                inline else => |shdr, class| {
+                    assert(elf.targetLoad(&shdr.type) == .RELA);
+                    assert(elf.targetLoad(&shdr.entsize) == @sizeOf(class.ElfN().Rela));
+                    const relas: []class.ElfN().Rela = @ptrCast(@alignCast(
+                        rela_shndx.get(elf).ni.slice(&elf.mf)[0..@intCast(elf.targetLoad(&shdr.size))],
+                    ));
+                    {
+                        const rela_info = elf.targetLoad(&relas[@intFromEnum(index)].info);
+                        const none_reloc_type = MachineRelocType.none(elf).unwrap(elf);
+                        assert(rela_info.type != none_reloc_type); // bug: `index` is in the free-list
+                    }
+                    const unsigned: class.ElfN().Addr = @intCast(new_addend);
+                    elf.targetStore(&relas[@intFromEnum(index)].addend, @bitCast(unsigned));
                 },
             }
         }
@@ -891,6 +923,16 @@ pub const MachineRelocType = union {
             .X86_64 => .{ .X86_64 = .COPY },
         };
     }
+    pub fn relative(elf: *Elf) MachineRelocType {
+        return switch (elf.ehdrField(.machine)) {
+            else => unreachable,
+            .AARCH64 => .{ .AARCH64 = .RELATIVE },
+            .LOONGARCH => .{ .LOONGARCH = .RELATIVE },
+            .PPC64 => .{ .PPC64 = .RELATIVE },
+            .RISCV => .{ .RISCV = .RELATIVE },
+            .X86_64 => .{ .X86_64 = .RELATIVE },
+        };
+    }
     pub fn jumpSlot(elf: *Elf) MachineRelocType {
         return switch (elf.ehdrField(.machine)) {
             else => unreachable,
@@ -1022,6 +1064,15 @@ const SymbolReloc = struct {
         /// do not apply any relocations ourselves). Otherwise, no symbol relocs use this type.
         write_rela,
 
+        /// Address relative to the DSO base. Like `.abs64` but does not emit `R_*_RELATIVE` relocs.
+        ///
+        /// This is only used targeting local symbols so can always be statically resolved.
+        dsorel64,
+        /// Address relative to the DSO base. Like `.abs32` but does not emit `R_*_RELATIVE` relocs.
+        ///
+        /// This is only used targeting local symbols so can always be statically resolved.
+        dsorel32,
+
         abs64,
         abs32,
         abs32s,
@@ -1056,21 +1107,39 @@ const SymbolReloc = struct {
                 else => false,
             };
         }
+
+        fn isAbsAddr(t: SymbolReloc.Type, elf: *const Elf) bool {
+            return switch (elf.identClass()) {
+                .NONE, _ => unreachable,
+                .@"32" => t == .abs32,
+                .@"64" => t == .abs64,
+            };
+        }
     };
 
     fn apply(reloc: *const SymbolReloc, elf: *Elf) void {
         assert(elf.ehdrField(.type) != .REL);
         assert(reloc.node != .none);
+
         if (reloc.node.hasMoved(&elf.mf) or reloc.target.hasMoved(elf)) {
             // There's no point applying the relocation now, because it will be re-applied by
             // `flushMoved` at some point anyway.
             return;
         }
-        if (reloc.rela_index != .none) {
-            // This relocation has been lowered to a runtime relocation. Until that changes, it is
-            // not our job to apply it.
-            return;
-        }
+
+        if (reloc.rela_index.unwrap()) |rela_index| switch (elf.classifySymbolValue(reloc.target)) {
+            .static => unreachable,
+            .dynamic => return, // the relocation happens at runtime
+            .static_relative => {
+                assert(reloc.type.isAbsAddr(elf));
+                // We have emitted an R_*_RELATIVE relocation to help lower an abs32/abs64 reloc.
+                // This is a simplified version of the general relocation handling logic, where we
+                // know we're using '.abs64' or '.abs32' (matching the ELF ident class).
+                const value = reloc.target.value(elf) +% @as(u64, @bitCast(reloc.addend));
+                elf.shndx.rela_dyn.relaSetRelativeOffset(elf, rela_index, value);
+                return;
+            },
+        };
         const node_vaddr: u64 = switch (elf.getNode(reloc.node)) {
             .file => unreachable,
             .ehdr => unreachable,
@@ -1095,13 +1164,13 @@ const SymbolReloc = struct {
         const target_value = sym_value +% @as(u64, @bitCast(reloc.addend));
         type: switch (reloc.type) {
             .write_rela => unreachable,
-            .abs64 => std.mem.writeInt(
+            .abs64, .dsorel64 => std.mem.writeInt(
                 u64,
                 dest_slice[0..8],
                 target_value,
                 target_endian,
             ),
-            .abs32 => std.mem.writeInt(
+            .abs32, .dsorel32 => std.mem.writeInt(
                 u32,
                 dest_slice[0..4],
                 @intCast(target_value),
@@ -1126,7 +1195,10 @@ const SymbolReloc = struct {
                 target_endian,
             ),
             .pltrel64 => {
-                const plt_index = elf.plt.getIndex(reloc.target) orelse continue :type .rel64;
+                const plt_index = switch (reloc.target.unwrap()) {
+                    .local => continue :type .rel64,
+                    .global => |name| elf.plt.getIndex(name) orelse continue :type .rel64,
+                };
                 if (elf.pltEntryIsDead(plt_index)) continue :type .rel64;
                 const plt_shndx: Section.Index, const plt_entry_size: u64 = switch (elf.ehdrField(.machine)) {
                     else => |machine| @panic(@tagName(machine)),
@@ -1141,7 +1213,10 @@ const SymbolReloc = struct {
                 );
             },
             .pltrel32 => {
-                const plt_index = elf.plt.getIndex(reloc.target) orelse continue :type .rel32;
+                const plt_index = switch (reloc.target.unwrap()) {
+                    .local => continue :type .rel32,
+                    .global => |name| elf.plt.getIndex(name) orelse continue :type .rel32,
+                };
                 if (elf.pltEntryIsDead(plt_index)) continue :type .rel32;
                 const plt_shndx: Section.Index, const plt_entry_size: u64 = switch (elf.ehdrField(.machine)) {
                     else => |machine| @panic(@tagName(machine)),
@@ -1323,12 +1398,9 @@ fn ensureUnusedSymbolCapacity(elf: *Elf, len: u32, kind: enum { all_local, maybe
     try elf.symtab.ensureUnusedCapacity(gpa, len);
 
     // If adding locals, we may need to move one global out of the way for each local. If adding
-    // globals, they could all get demoted to STB_LOCAL, which would mean we move those N globals
-    // *and* we move up to N other globals out of their way.
-    try elf.changed_symtab_index.ensureUnusedCapacity(gpa, switch (kind) {
-        .all_local => len,
-        .maybe_global => len * 2,
-    });
+    // globals, they could all get demoted to STB_LOCAL, meaning we have to move N other globals
+    // around to keep `.dynsym` compact. Either way, the maximum is N.
+    try elf.changed_symtab_index.ensureUnusedCapacity(gpa, len);
 
     {
         // Ensure the symtab section's node is big enough
@@ -1460,7 +1532,7 @@ fn addLocalSymbolAssumeCapacity(elf: *Elf, opts: AddLocalSymbolOptions) Symbol.L
                 const global_name: String(.strtab) = @enumFromInt(elf.targetLoad(&new_sym.name));
                 elf.globalByName(global_name).?.symtab_index = new_index;
 
-                if (target_index.ptr(elf).first_target_reloc != .none) {
+                if (elf.ehdrField(.type) == .REL and target_index.ptr(elf).first_target_reloc != .none) {
                     // This symbol's index is changing, so queue an update of relocs targeting it.
                     elf.changed_symtab_index.putAssumeCapacity(global_name, {});
                 }
@@ -1722,16 +1794,14 @@ fn addGlobalSymbolAssumeCapacity(elf: *Elf, opts: AddGlobalSymbolOptions) error{
         elf.moveDemotedGlobal(new_global_ptr);
     }
 
-    if (new_global_ptr.dynsym_index != 0 and
-        opts.visibility == .DEFAULT and
-        opts.shndx == .UNDEF and
-        (@"type" == .FUNC or @"type" == std.elf.STT.GNU_IFUNC))
-    {
-        // We're adding an undefined global STT_FUNC symbol which could be resolved by another DSO.
-        // We therefore might need a PLT entry, so let's add one now.
-        elf.addPltEntry(opts.name.strtab, new_global_ptr.dynsym_index);
-        // TODO: we also need to emit a PLT entry if the symbol could be preempted/interposed! By
-        // not doing that we're basically implementing the behavior of `-Bsymbolic-functions`.
+    switch (@"type") {
+        .FUNC, .GNU_IFUNC => if (elf.ehdrField(.type) != .REL and
+            elf.classifySymbolValue(.global(opts.name.strtab)) == .dynamic)
+        {
+            // This STT_FUNC symbol might be defined externally, so it needs a PLT entry.
+            elf.addPltEntry(opts.name.strtab, new_global_ptr.dynsym_index);
+        },
+        else => {},
     }
 
     return .global(opts.name.strtab);
@@ -1843,10 +1913,10 @@ fn setGlobalSymbolValue(
     // If this symbol was previously undefined, it may have had a PLT entry. If so, we now need to
     // delete its newly-unnecessary runtime relocation to avoid a runtime dynamic linker error.
     // This also allows the PLT entry to be reused---see `pltEntryIsDead`.
-    if (elf.plt.getIndex(.global(global_name))) |plt_index| {
-        // TODO: we might still need the PLT entry if the symbol could be preempted/interposed! See
-        // matching comment at the end of `addGlobalSymbolAssumeCapacity`.
-        if (!elf.pltEntryIsDead(plt_index)) {
+    if (elf.plt.getIndex(global_name)) |plt_index| {
+        if (!elf.pltEntryIsDead(plt_index) and
+            elf.classifySymbolValue(.global(global_name)) != .dynamic)
+        {
             elf.shndx.rela_plt.relaDeleteOne(elf, @enumFromInt(plt_index));
             assert(elf.pltEntryIsDead(plt_index));
         }
@@ -1942,61 +2012,68 @@ fn moveDemotedGlobal(elf: *Elf, global_ptr: *Symbol.Global) void {
 
             elf.targetStore(&shdr.info, @intFromEnum(dest_index) + 1);
 
-            if (src_index == dest_index) {
-                // The demoted global was already the first global, so we don't need to do any swap.
-                return;
+            if (src_index != dest_index) {
+                // The demoted global was not the first global in the symtab, so we need to swap it
+                // to its new location.
+
+                const src_sym_ptr = @field(elf.symPtr(src_index), @tagName(class));
+                const dest_sym_ptr = @field(elf.symPtr(dest_index), @tagName(class));
+
+                const this_name: String(.strtab) = @enumFromInt(elf.targetLoad(&src_sym_ptr.name));
+                assert(elf.globalByName(this_name).? == global_ptr);
+
+                const other_name: String(.strtab) = @enumFromInt(elf.targetLoad(&dest_sym_ptr.name));
+                const other_global_ptr = elf.globalByName(other_name).?;
+                assert(other_global_ptr.symtab_index == dest_index);
+
+                // First swap the symtab entries...
+                std.mem.swap(class.ElfN().Sym, src_sym_ptr, dest_sym_ptr);
+                // ...then the `elf.symtab` metadata...
+                std.mem.swap(Symbol, src_index.ptr(elf), dest_index.ptr(elf));
+                // ...then update the `elf.globals` tracking.
+                global_ptr.symtab_index = dest_index;
+                other_global_ptr.symtab_index = src_index;
             }
 
-            const src_sym_ptr = @field(elf.symPtr(src_index), @tagName(class));
-            const dest_sym_ptr = @field(elf.symPtr(dest_index), @tagName(class));
-
-            const this_name: String(.strtab) = @enumFromInt(elf.targetLoad(&src_sym_ptr.name));
-            assert(elf.globalByName(this_name).? == global_ptr);
-            if (global_ptr.symtab_index.ptr(elf).first_target_reloc != .none) {
-                // This symbol's index is changing, so queue an update of relocs targeting it.
-                elf.changed_symtab_index.putAssumeCapacity(this_name, {});
-            }
-
-            const other_name: String(.strtab) = @enumFromInt(elf.targetLoad(&dest_sym_ptr.name));
-            const other_global_ptr = elf.globalByName(other_name).?;
-            assert(other_global_ptr.symtab_index == dest_index);
-            if (other_global_ptr.symtab_index.ptr(elf).first_target_reloc != .none) {
-                // This other symbol's index is changing, so queue an update of relocs targeting it.
-                elf.changed_symtab_index.putAssumeCapacity(other_name, {});
-            }
-
-            // First swap the symtab entries...
-            std.mem.swap(class.ElfN().Sym, src_sym_ptr, dest_sym_ptr);
-            // ...then the `elf.symtab` metadata...
-            std.mem.swap(Symbol, src_index.ptr(elf), dest_index.ptr(elf));
-            // ...then update the `elf.globals` tracking.
-            global_ptr.symtab_index = dest_index;
-            other_global_ptr.symtab_index = src_index;
-
-            // We also need to get rid of the dynsym entry if there is one. For simplicity, just
-            // replace it with a dummy entry which will never be used and will not cause problems.
-            // TODO: we should have a free-list of dynsym slots so that other symbols can go here.
-            // TODO: it would also be best to just avoid having gaps in the dynsym altogether.
+            // We also need to get rid of the dynsym entry if there is one. To keep dynsym compact,
+            // we'll move another symbol into its place just like we did above.
             if (global_ptr.dynsym_index != 0) {
-                const dynsym = @field(elf.dynsymPtr(global_ptr.dynsym_index), @tagName(class));
-                dynsym.* = .{
-                    .name = @intFromEnum(String(.dynstr).empty),
-                    .value = 0,
-                    .size = 0,
-                    .info = .{
-                        .type = .NOTYPE,
-                        // STB_WEAK is important: we mustn't cause a dynamic linker error if the
-                        // symbol can't be resolved.
-                        .bind = .WEAK,
-                    },
-                    // SHN_UNDEF is important: we mustn't define this symbol for other DSOs.
-                    .shndx = std.elf.SHN_UNDEF,
-                    .other = .{ .visibility = .DEFAULT },
-                };
-                if (elf.targetEndian() != native_endian) {
-                    std.mem.byteSwapAllFields(class.ElfN().Sym, dynsym);
-                }
+                const dynsym_shdr = @field(elf.shdrPtr(elf.shndx.dynsym), @tagName(class));
+
+                const ent_size = @sizeOf(class.ElfN().Sym);
+                assert(elf.targetLoad(&dynsym_shdr.entsize) == ent_size);
+
+                // We're going to decrease the size of `.dynsym`, thereby removing its last index.
+                const old_size = elf.targetLoad(&dynsym_shdr.size);
+                const new_size = old_size - ent_size;
+                const remove_dynsym_index: u32 = @intCast(@divExact(new_size, ent_size));
+
+                const free_dynsym_index = global_ptr.dynsym_index;
                 global_ptr.dynsym_index = 0;
+
+                if (free_dynsym_index != remove_dynsym_index) {
+                    // The demoted global wasn't the last entry, so move whatever entry we just
+                    // truncated out of dynsym into its place.
+
+                    const src_dynsym_ptr = @field(elf.dynsymPtr(remove_dynsym_index), @tagName(class));
+                    const dest_dynsym_ptr = @field(elf.dynsymPtr(free_dynsym_index), @tagName(class));
+
+                    const moved_name_dynstr: String(.dynstr) = @enumFromInt(elf.targetLoad(&src_dynsym_ptr.name));
+                    const moved_name = elf.stringExisting(.strtab, moved_name_dynstr.slice(elf));
+                    const moved_global_ptr = elf.globalByName(moved_name).?;
+
+                    dest_dynsym_ptr.* = src_dynsym_ptr.*;
+
+                    assert(moved_global_ptr.dynsym_index == remove_dynsym_index);
+                    moved_global_ptr.dynsym_index = free_dynsym_index;
+
+                    // Since that symbol's dynsym index has changed, we'll have to update any
+                    // relocation entries targeting it.
+                    elf.changed_symtab_index.putAssumeCapacity(moved_name, {});
+                }
+
+                // Now that we've given that symbol a new home, actually decrease the section size.
+                elf.targetStore(&dynsym_shdr.size, new_size);
             }
         },
     }
@@ -2033,13 +2110,13 @@ fn addPltEntry(elf: *Elf, global_name: String(.strtab), dynsym_index: u32) void 
 
     if (plt_index < elf.plt.count()) {
         // We reused a free entry, so we're already done!
-        elf.plt.setKey(plt_index, .global(global_name));
+        elf.plt.setKey(plt_index, global_name);
         return;
     }
 
     // We added a new entry, so we now need to extend the PLT sections.
     assert(plt_index == elf.plt.count());
-    elf.plt.putAssumeCapacityNoClobber(.global(global_name), {});
+    elf.plt.putAssumeCapacityNoClobber(global_name, {});
 
     switch (elf.ehdrField(.machine)) {
         else => |machine| @panic(@tagName(machine)),
@@ -2315,8 +2392,8 @@ const Symbol = struct {
             }
         }
 
-        /// Scans through all relocations targeting `sym_id` and deletes each one's dynamic
-        /// relocation entry, if it has one.
+        /// Scans through all relocations targeting `sym_id` and, for each one with a dynamic
+        /// relocation entry, either deletes it or converts it to R_*_RELATIVE as required.
         ///
         /// Asserts we are creating a DSO.
         fn deleteDynamicTargetRelocs(sym_id: Symbol.Id, elf: *Elf) void {
@@ -2328,6 +2405,45 @@ const Symbol = struct {
                 assert(reloc.target == sym_id);
                 reloc.deleteOutputRel(elf);
                 ri = reloc.next;
+            }
+            switch (elf.classifySymbolValue(sym_id)) {
+                .static => return,
+                .static_relative => {},
+                .dynamic => unreachable,
+            }
+            // We removed the symbol relocations, now add R_*_RELATIVE relocations where needed.
+            ri = sym_id.index(elf).ptr(elf).first_target_reloc;
+            while (ri != .none) {
+                const reloc = ri.get(elf);
+                ri = reloc.next;
+                assert(reloc.target == sym_id);
+                if (!reloc.type.isAbsAddr(elf)) continue;
+                switch (elf.nodeWantsDsoRelocation(reloc.node)) {
+                    .no => continue,
+                    .yes_textrel => elf.textrel_count += 1,
+                    .yes => {},
+                }
+                const node_vaddr: u64 = switch (elf.getNode(reloc.node)) {
+                    .file => unreachable,
+                    .ehdr => unreachable,
+                    .shdr => unreachable,
+                    .segment => unreachable,
+                    .copied_global => unreachable,
+                    .section => |shndx| shndx.vaddr(elf),
+                    .input_section => |isi| isi.ptrConst(elf).vaddr,
+                    inline .nav,
+                    .uav,
+                    .lazy_code,
+                    .lazy_const_data,
+                    => |i| Symbol.Id.local(i.symbol(elf)).value(elf),
+                };
+                // There is capacity for a relocation because we just deleted one earlier.
+                reloc.rela_index = elf.shndx.rela_dyn.relaAddOneAssumeCapacity(elf, .{
+                    .type = .relative(elf),
+                    .offset = node_vaddr + reloc.offset,
+                    .raw_sym_index = 0,
+                    .addend = 0,
+                }).toOptional();
             }
         }
 
@@ -2355,6 +2471,78 @@ fn globalByName(elf: *const Elf, name: String(.strtab)) ?*Symbol.Global {
     if (elf.globals.strong_undef.getPtr(name)) |ptr| return ptr;
     if (elf.globals.weak_undef.getPtr(name)) |ptr| return ptr;
     return null;
+}
+
+fn classifySymbolValue(elf: *Elf, sym: Symbol.Id) enum {
+    /// This symbol's value is guaranteed to equal `sym.value(elf)`.
+    static,
+    /// This symbol's value is an offset of `sym.value(elf)` from the runtime-known load address of
+    /// this DSO (which is position-independent).
+    static_relative,
+    /// This symbol's definition does not necessarily come from this DSO, so is not known until RTLD
+    /// runs. Therefore, a dynamic (runtime) relocation is necessary.
+    dynamic,
+} {
+    const comp = elf.base.comp;
+
+    const runtime_load_addr = switch (elf.ehdrField(.type)) {
+        .NONE, .CORE, _ => unreachable,
+        .REL => unreachable,
+        .DYN => true,
+        .EXEC => false,
+    };
+
+    if (elf.shndx.dynamic == .UNDEF) {
+        // This is a static non-PIE executable---every symbol has a statically known value.
+        return .static;
+    }
+
+    const shndx: Section.Index, const visibility: std.elf.STV = switch (elf.symPtr(sym.index(elf))) {
+        inline else => |sym_ptr| .{
+            .fromSection(elf.targetLoad(&sym_ptr.shndx)),
+            elf.targetLoad(&sym_ptr.other).visibility,
+        },
+    };
+
+    switch (sym.unwrap()) {
+        .local => {
+            assert(shndx != .UNDEF);
+            assert(visibility == .DEFAULT);
+        },
+        .global => |name| if (visibility == .DEFAULT and comp.config.output_mode != .Exe) {
+            // An unprotected symbol in a DSO which is not an executable is subject to runtime
+            // preemption, so a dynamic relocation is required for it even if we have a definition.
+            return .dynamic;
+        } else if (elf.copied_globals.contains(name)) {
+            // This becomes a locally-defined symbol in `.data`.
+            return if (runtime_load_addr) .static_relative else .static;
+        },
+    }
+
+    return switch (shndx) {
+        .UNDEF => switch (visibility) {
+            .DEFAULT => if (comp.config.link_mode == .static and comp.config.output_mode == .Exe) {
+                assert(comp.config.pie); // non-PIE static exe should not have a `.dynamic` section
+                // This is a static PIE---the only dynamic relocations are `R_*_RELATIVE`.
+                return .static;
+            } else .dynamic, // external symbol
+
+            // If the symbol *cannot* be external, then there's no point making a dynamic relocation
+            // now---if linking succeeds we won't need anything more than perhaps an `R_*_RELATIVE`.
+            .INTERNAL, .HIDDEN, .PROTECTED => .static,
+        },
+
+        .ABS => .static,
+
+        else => if (runtime_load_addr and
+            shndx.flags(elf).ALLOC and
+            !shndx.flags(elf).TLS)
+        {
+            return .static_relative;
+        } else {
+            return .static;
+        },
+    };
 }
 
 pub fn symbolForAtom(elf: *Elf, atom: link.File.AtomId) link.File.SymbolId {
@@ -2588,6 +2776,11 @@ fn string(elf: *Elf, comptime section: StringSection, key: []const u8) Error!Str
     const st: *StringTable = &@field(elf, @tagName(section));
     return @enumFromInt(try st.get(elf, section.shndx(elf), key));
 }
+/// Like `string`, but asserts that the string is already in `section`.
+fn stringExisting(elf: *Elf, comptime section: StringSection, key: []const u8) String(section) {
+    const st: *StringTable = &@field(elf, @tagName(section));
+    return @enumFromInt(st.getExisting(elf, section.shndx(elf), key));
+}
 
 const StringTable = struct {
     map: std.HashMapUnmanaged(u32, void, StringTable.Context, std.hash_map.default_max_load_percentage),
@@ -2618,7 +2811,14 @@ const StringTable = struct {
         }
     };
 
-    pub fn get(st: *StringTable, elf: *Elf, shndx: Section.Index, key: []const u8) Error!u32 {
+    fn getExisting(st: *StringTable, elf: *Elf, shndx: Section.Index, key: []const u8) u32 {
+        if (key.len == 0) return 0;
+        const slice_const = shndx.get(elf).ni.sliceConst(&elf.mf);
+        const adapter: StringTable.Adapter = .{ .slice = slice_const };
+        return st.map.getKeyAdapted(key, adapter).?;
+    }
+
+    fn get(st: *StringTable, elf: *Elf, shndx: Section.Index, key: []const u8) Error!u32 {
         // If we are in `initHeaders` the strtab might not be initalized yet, so we need to special
         // case the empty string.
         if (key.len == 0) return 0;
@@ -2884,51 +3084,104 @@ fn initHeaders(
         .@"64" => .@"8",
     };
 
-    const shnum: u32 = 1;
-    var phnum: u32 = 0;
-    const phdr_phndx = phnum;
-    phnum += 1;
-    const interp_phndx = if (maybe_interp) |_| phndx: {
-        defer phnum += 1;
-        break :phndx phnum;
-    } else undefined;
-    const rodata_phndx = phnum;
-    phnum += 1;
-    const text_phndx = phnum;
-    phnum += 1;
-    const data_phndx = phnum;
-    phnum += 1;
-    const tls_phndx = if (comp.config.any_non_single_threaded) phndx: {
-        defer phnum += 1;
-        break :phndx phnum;
-    } else undefined;
-    const dynamic_phndx = if (have_dynamic_section) phndx: {
-        defer phnum += 1;
-        break :phndx phnum;
-    } else undefined;
-    const relro_phndx = phnum;
-    phnum += 1;
-
     const init_plt_size: std.elf.Xword, const plt_align: std.mem.Alignment, const plt_sec =
         switch (machine) {
             else => @panic(@tagName(machine)),
             .X86_64 => .{ 16, .@"16", true },
             .LOONGARCH => .{ 32, .@"4", false },
         };
-    const expected_nodes_len = expected_nodes_len: switch (@"type") {
-        .NONE, .CORE, _ => unreachable,
-        .REL => {
-            // Each phdr is actually going to be an shdr.
-            defer phnum = 0;
-            break :expected_nodes_len 5 + phnum;
-        },
-        .EXEC, .DYN => break :expected_nodes_len 9 +
-            phnum * 2 - 1 + // each phdr also has a matching shdr, except for the PT_PHDR phdr
-            @as(usize, 4) * @intFromBool(have_dynamic_section) + // .dynstr, .dynsym, .rela.dyn, .rela.plt
-            @intFromBool(plt_sec),
+
+    const shnum: u32 = shnum: {
+        var shnum: u32 = 1; // reserved ("null") shdr
+        shnum += 1; // .symtab
+        shnum += 1; // .shstrtab
+        shnum += 1; // .strtab
+        shnum += @intFromBool(maybe_interp != null); // .interp
+        shnum += 1; // .rodata
+        shnum += 1; // .text
+        shnum += 1; // .data
+        shnum += @intFromBool(comp.config.any_non_single_threaded); // .tdata
+        shnum += 1; // .data.rel.ro
+        if (have_dynamic_section) {
+            shnum += 1; // .dynamic
+            shnum += 1; // .dynstr
+            shnum += 1; // .dynsym
+            shnum += 1; // .rela.dyn
+            shnum += 1; // .rela.plt
+        }
+        if (@"type" != .REL) {
+            shnum += 1; // .got
+            shnum += 1; // .got.plt
+            shnum += 1; // .plt
+            shnum += @intFromBool(plt_sec); // .plt_sec
+        }
+        break :shnum shnum;
     };
+
+    const phndx: struct {
+        phdr: u32,
+        interp: u32,
+        rodata: u32,
+        text: u32,
+        data: u32,
+        tls: u32,
+        dynamic: u32,
+        relro: u32,
+        gnu_stack: u32,
+    }, const phnum: u32 = ph: {
+        switch (@"type") {
+            .NONE, .CORE, _ => unreachable,
+            .REL => break :ph .{ undefined, 0 },
+            .EXEC, .DYN => {},
+        }
+        var phnum: u32 = 0;
+        break :ph .{ .{
+            .phdr = phndx: {
+                defer phnum += 1;
+                break :phndx phnum;
+            },
+            .interp = if (maybe_interp) |_| phndx: {
+                defer phnum += 1;
+                break :phndx phnum;
+            } else undefined,
+            .rodata = phndx: {
+                defer phnum += 1;
+                break :phndx phnum;
+            },
+            .text = phndx: {
+                defer phnum += 1;
+                break :phndx phnum;
+            },
+            .data = phndx: {
+                defer phnum += 1;
+                break :phndx phnum;
+            },
+            .tls = if (comp.config.any_non_single_threaded) phndx: {
+                defer phnum += 1;
+                break :phndx phnum;
+            } else undefined,
+            .dynamic = if (have_dynamic_section) phndx: {
+                defer phnum += 1;
+                break :phndx phnum;
+            } else undefined,
+            .relro = phndx: {
+                defer phnum += 1;
+                break :phndx phnum;
+            },
+            .gnu_stack = phndx: {
+                defer phnum += 1;
+                break :phndx phnum;
+            },
+        }, phnum };
+    };
+
+    const expected_nodes_len = 3 + // `.file`, `.ehdr`, and `.shdr` nodes
+        (shnum - 1) + // -1 because the null shdr does not have a `.section` node
+        (phnum -| 1); // -1 because the GNU_STACK phdr does not have a `.segment` node
+
     try elf.nodes.ensureTotalCapacity(gpa, expected_nodes_len);
     try elf.shdrs.ensureTotalCapacity(gpa, shnum);
+    try elf.section_by_name.ensureUnusedCapacity(gpa, shnum);
     try elf.phdrs.resize(gpa, phnum);
     try elf.symtab.ensureTotalCapacity(gpa, 1);
     elf.nodes.appendAssumeCapacity(.file);
@@ -2980,7 +3233,7 @@ fn initHeaders(
             ehdr.phentsize = @sizeOf(ElfN.Phdr);
             ehdr.phnum = @min(phnum, std.elf.PN_XNUM);
             ehdr.shentsize = @sizeOf(ElfN.Shdr);
-            ehdr.shnum = if (shnum < std.elf.SHN_LORESERVE) shnum else 0;
+            ehdr.shnum = 1; // Only the null shdr initially---will be incremented by `addSection`
             ehdr.shstrndx = std.elf.SHN_UNDEF;
             if (elf.targetEndian() != native_endian) std.mem.byteSwapAllFields(ElfN.Ehdr, ehdr);
         },
@@ -3000,8 +3253,8 @@ fn initHeaders(
             .moved = true,
             .bubbles_moved = false,
         }));
-        elf.nodes.appendAssumeCapacity(.{ .segment = rodata_phndx });
-        elf.phdrs.items[rodata_phndx] = elf.ni.rodata;
+        elf.nodes.appendAssumeCapacity(.{ .segment = phndx.rodata });
+        elf.phdrs.items[phndx.rodata] = elf.ni.rodata;
 
         assert(elf.ni.phdr == try elf.mf.addOnlyChildNode(gpa, elf.ni.rodata, .{
             .size = elf.ehdrField(.phentsize) * elf.ehdrField(.phnum),
@@ -3010,32 +3263,34 @@ fn initHeaders(
             .resized = true,
             .bubbles_moved = false,
         }));
-        elf.nodes.appendAssumeCapacity(.{ .segment = phdr_phndx });
-        elf.phdrs.items[phdr_phndx] = elf.ni.phdr;
+        elf.nodes.appendAssumeCapacity(.{ .segment = phndx.phdr });
+        elf.phdrs.items[phndx.phdr] = elf.ni.phdr;
 
         assert(elf.ni.text == try elf.mf.addLastChildNode(gpa, elf.ni.file, .{
             .alignment = elf.mf.flags.block_size,
             .moved = true,
             .bubbles_moved = false,
         }));
-        elf.nodes.appendAssumeCapacity(.{ .segment = text_phndx });
-        elf.phdrs.items[text_phndx] = elf.ni.text;
+        elf.nodes.appendAssumeCapacity(.{ .segment = phndx.text });
+        elf.phdrs.items[phndx.text] = elf.ni.text;
 
         assert(elf.ni.data == try elf.mf.addLastChildNode(gpa, elf.ni.file, .{
             .alignment = elf.mf.flags.block_size,
             .moved = true,
             .bubbles_moved = false,
         }));
-        elf.nodes.appendAssumeCapacity(.{ .segment = data_phndx });
-        elf.phdrs.items[data_phndx] = elf.ni.data;
+        elf.nodes.appendAssumeCapacity(.{ .segment = phndx.data });
+        elf.phdrs.items[phndx.data] = elf.ni.data;
 
         assert(elf.ni.data_rel_ro == try elf.mf.addOnlyChildNode(gpa, elf.ni.data, .{
             .alignment = elf.mf.flags.block_size,
             .moved = true,
             .bubbles_moved = false,
         }));
-        elf.nodes.appendAssumeCapacity(.{ .segment = relro_phndx });
-        elf.phdrs.items[relro_phndx] = elf.ni.data_rel_ro;
+        elf.nodes.appendAssumeCapacity(.{ .segment = phndx.relro });
+        elf.phdrs.items[phndx.relro] = elf.ni.data_rel_ro;
+
+        elf.phdrs.items[phndx.gnu_stack] = .none;
 
         break :ph_vaddr switch (elf.ehdrField(.type)) {
             .NONE, .CORE, _ => unreachable,
@@ -3058,7 +3313,7 @@ fn initHeaders(
 
             if (@"type" != .REL) {
                 const phdr: []ElfN.Phdr = @ptrCast(@alignCast(elf.ni.phdr.slice(&elf.mf)));
-                const ph_phdr = &phdr[phdr_phndx];
+                const ph_phdr = &phdr[phndx.phdr];
                 ph_phdr.* = .{
                     .type = .PHDR,
                     .offset = 0,
@@ -3072,7 +3327,7 @@ fn initHeaders(
                 if (target_endian != native_endian) std.mem.byteSwapAllFields(ElfN.Phdr, ph_phdr);
 
                 if (maybe_interp) |_| {
-                    const ph_interp = &phdr[interp_phndx];
+                    const ph_interp = &phdr[phndx.interp];
                     ph_interp.* = .{
                         .type = .INTERP,
                         .offset = 0,
@@ -3087,7 +3342,7 @@ fn initHeaders(
                 }
 
                 _, const rodata_size = elf.ni.rodata.location(&elf.mf).resolve(&elf.mf);
-                const ph_rodata = &phdr[rodata_phndx];
+                const ph_rodata = &phdr[phndx.rodata];
                 ph_rodata.* = .{
                     .type = if (rodata_size == 0) .NULL else .LOAD,
                     .offset = 0,
@@ -3102,7 +3357,7 @@ fn initHeaders(
                 ph_vaddr += @intCast(rodata_size);
 
                 _, const text_size = elf.ni.text.location(&elf.mf).resolve(&elf.mf);
-                const ph_text = &phdr[text_phndx];
+                const ph_text = &phdr[phndx.text];
                 ph_text.* = .{
                     .type = if (text_size == 0) .NULL else .LOAD,
                     .offset = 0,
@@ -3117,7 +3372,7 @@ fn initHeaders(
                 ph_vaddr += @intCast(text_size);
 
                 _, const data_size = elf.ni.data.location(&elf.mf).resolve(&elf.mf);
-                const ph_data = &phdr[data_phndx];
+                const ph_data = &phdr[phndx.data];
                 ph_data.* = .{
                     .type = if (data_size == 0) .NULL else .LOAD,
                     .offset = 0,
@@ -3132,7 +3387,7 @@ fn initHeaders(
                 ph_vaddr += @intCast(data_size);
 
                 if (comp.config.any_non_single_threaded) {
-                    const ph_tls = &phdr[tls_phndx];
+                    const ph_tls = &phdr[phndx.tls];
                     ph_tls.* = .{
                         .type = .TLS,
                         .offset = 0,
@@ -3147,7 +3402,7 @@ fn initHeaders(
                 }
 
                 if (have_dynamic_section) {
-                    const ph_dynamic = &phdr[dynamic_phndx];
+                    const ph_dynamic = &phdr[phndx.dynamic];
                     ph_dynamic.* = .{
                         .type = .DYNAMIC,
                         .offset = 0,
@@ -3161,7 +3416,7 @@ fn initHeaders(
                     if (target_endian != native_endian) std.mem.byteSwapAllFields(ElfN.Phdr, ph_dynamic);
                 }
 
-                const ph_relro = &phdr[relro_phndx];
+                const ph_relro = &phdr[phndx.relro];
                 ph_relro.* = .{
                     .type = .GNU_RELRO,
                     .offset = 0,
@@ -3173,6 +3428,19 @@ fn initHeaders(
                     .@"align" = @intCast(elf.mf.flags.block_size.toByteUnits()),
                 };
                 if (target_endian != native_endian) std.mem.byteSwapAllFields(ElfN.Phdr, ph_relro);
+
+                const ph_gnu_stack = &phdr[phndx.gnu_stack];
+                ph_gnu_stack.* = .{
+                    .type = .GNU_STACK,
+                    .offset = 0,
+                    .vaddr = 0,
+                    .paddr = 0,
+                    .filesz = 0,
+                    .memsz = @intCast(elf.options.stack_size orelse 0),
+                    .flags = .{ .R = true, .W = true },
+                    .@"align" = 1,
+                };
+                if (target_endian != native_endian) std.mem.byteSwapAllFields(ElfN.Phdr, ph_gnu_stack);
             }
 
             const sh_undef: *ElfN.Shdr = @ptrCast(@alignCast(elf.ni.shdr.slice(&elf.mf)));
@@ -3312,8 +3580,8 @@ fn initHeaders(
                 .resized = true,
                 .bubbles_moved = false,
             });
-            elf.nodes.appendAssumeCapacity(.{ .segment = interp_phndx });
-            elf.phdrs.items[interp_phndx] = interp_ni;
+            elf.nodes.appendAssumeCapacity(.{ .segment = phndx.interp });
+            elf.phdrs.items[phndx.interp] = interp_ni;
 
             const sec_interp_shndx = try elf.addSection(interp_ni, .{
                 .name = ".interp",
@@ -3331,8 +3599,8 @@ fn initHeaders(
                 .moved = true,
                 .bubbles_moved = false,
             });
-            elf.nodes.appendAssumeCapacity(.{ .segment = dynamic_phndx });
-            elf.phdrs.items[dynamic_phndx] = dynamic_ni;
+            elf.nodes.appendAssumeCapacity(.{ .segment = phndx.dynamic });
+            elf.phdrs.items[phndx.dynamic] = dynamic_ni;
 
             const dynstr_shndx = try elf.addSection(elf.ni.rodata, .{
                 .name = ".dynstr",
@@ -3418,19 +3686,19 @@ fn initHeaders(
                     });
                     elf.plt_first_symbol_reloc = @enumFromInt(elf.symbol_relocs.items.len);
                     try elf.ensureUnusedRelocCapacity(plt_ni, 2);
-                    try elf.addRelocAssumeCapacity(
+                    try elf.addSymbolRelocAssumeCapacity(
                         plt_ni,
                         2,
                         got_plt_sym,
                         8 * 1 - 4,
-                        .{ .X86_64 = .PC32 },
+                        .rel32,
                     );
-                    try elf.addRelocAssumeCapacity(
+                    try elf.addSymbolRelocAssumeCapacity(
                         plt_ni,
                         8,
                         got_plt_sym,
                         8 * 2 - 4,
-                        .{ .X86_64 = .PC32 },
+                        .rel32,
                     );
                 },
                 .LOONGARCH => {
@@ -3461,9 +3729,9 @@ fn initHeaders(
                     });
                     elf.plt_first_symbol_reloc = @enumFromInt(elf.symbol_relocs.items.len);
                     try elf.ensureUnusedRelocCapacity(plt_ni, 3);
-                    try elf.addRelocAssumeCapacity(plt_ni, 0, got_plt_sym, 0, .{ .LOONGARCH = .PCALA_HI20 });
-                    try elf.addRelocAssumeCapacity(plt_ni, 8, got_plt_sym, 0, .{ .LOONGARCH = .PCALA_LO12 });
-                    try elf.addRelocAssumeCapacity(plt_ni, 16, got_plt_sym, 0, .{ .LOONGARCH = .PCALA_LO12 });
+                    try elf.addSymbolRelocAssumeCapacity(plt_ni, 0, got_plt_sym, 0, .rel32_hi20);
+                    try elf.addSymbolRelocAssumeCapacity(plt_ni, 8, got_plt_sym, 0, .abs32_lo12);
+                    try elf.addSymbolRelocAssumeCapacity(plt_ni, 16, got_plt_sym, 0, .abs32_lo12);
                 },
             }
         }
@@ -3473,8 +3741,8 @@ fn initHeaders(
                 .moved = true,
                 .bubbles_moved = false,
             });
-            elf.nodes.appendAssumeCapacity(.{ .segment = tls_phndx });
-            elf.phdrs.items[tls_phndx] = elf.ni.tls;
+            elf.nodes.appendAssumeCapacity(.{ .segment = phndx.tls });
+            elf.phdrs.items[phndx.tls] = elf.ni.tls;
         }
 
         // Populate reserved GOT words.
@@ -3641,10 +3909,11 @@ fn initHeaders(
         .flags = .{ .WRITE = true, .ALLOC = true, .TLS = true },
         .addralign = elf.mf.flags.block_size,
     });
-    assert(elf.nodes.len == expected_nodes_len);
 
-    try elf.section_by_name.ensureUnusedCapacity(gpa, elf.shdrs.items.len);
-    for (0..elf.shdrs.items.len) |shndx_raw| {
+    assert(elf.nodes.len == expected_nodes_len);
+    assert(elf.shdrs.items.len == shnum);
+
+    for (0..shnum) |shndx_raw| {
         const shndx: Section.Index = @enumFromInt(shndx_raw);
         elf.section_by_name.putAssumeCapacityNoClobber(shndx.name(elf), {});
     }
@@ -3780,13 +4049,11 @@ fn flushMovedNodeRelocs(
         for (elf.symbol_relocs.items[@intFromEnum(first_symbol_reloc)..]) |*reloc| {
             if (reloc.node != node) break;
             if (reloc.rela_index.unwrap()) |rela_index| {
-                // Update the offsets of any `ElfN.Rela` entry we've emitted, since the node they're
-                // in has moved, so their offset within the section might also have moved.
+                // The node has moved, so the offset of the relocation within the section might have
+                // changed, so update the `offset` field of the `ElfN.Rela` entry.
                 reloc.relaSection(elf).relaSetOffset(elf, rela_index, node_vaddr + reloc.offset);
-            } else {
-                // We've applied this relocation ourselves! Just re-apply it now.
-                reloc.apply(elf);
             }
+            reloc.apply(elf);
         }
     }
 
@@ -4108,7 +4375,7 @@ fn navMapIndex(elf: *Elf, zcu: *Zcu, nav_index: InternPool.Nav.Index) Error!Node
             } else if (ip.isFunctionType(nav.resolved.?.type)) {
                 break :section .text;
             } else {
-                break :section .rodata;
+                break :section .data_rel_ro; // TODO: it would be better to use `.rodata` if the NAV value doesn't have relocs
             }
         };
         const alignment: InternPool.Alignment = switch (Type.fromInterned(nav.resolved.?.type).zigTypeTag(zcu)) {
@@ -4174,7 +4441,7 @@ fn uavMapIndex(
     const uav_gop = elf.uavs.getOrPutAssumeCapacity(uav_val);
     const umi: Node.UavMapIndex = @enumFromInt(uav_gop.index);
     if (!uav_gop.found_existing) {
-        const shndx: Section.Index = .data;
+        const shndx: Section.Index = .data_rel_ro; // TODO: it would be better to use `.rodata` if the UAV value doesn't have relocs
         const node = try elf.mf.addLastChildNode(gpa, shndx.get(elf).ni, .{
             .moved = true, // see assert at end of `flushUav`
             .alignment = resolved_align.toStdMem(),
@@ -5124,7 +5391,7 @@ fn updateInitFiniArraySectionSize(
     const end_vaddr: u64 = switch (elf.shdrPtr(shndx)) {
         inline else => |shdr| shndx.vaddr(elf) + elf.targetLoad(&shdr.size),
     };
-    const end_sym_name = elf.string(.strtab, "__" ++ name ++ "_end") catch unreachable; // string definitely already exists
+    const end_sym_name = elf.stringExisting(.strtab, "__" ++ name ++ "_end");
     Symbol.Id.global(end_sym_name).flushMoved(elf, end_vaddr);
 }
 
@@ -5178,6 +5445,10 @@ fn prelinkInner(elf: *Elf) Error!void {
                 }
                 break :rpath try elf.string(.dynstr, buf.items);
             };
+            // Static PIEs don't need a PLT, so we shouldn't emit the associated dynamic entries.
+            const use_plt = !(comp.config.output_mode == .Exe and
+                comp.config.link_mode == .static and
+                comp.config.pie);
             const soname: ?String(.dynstr) = if (elf.options.soname) |soname_slice| str: {
                 break :str try elf.string(.dynstr, soname_slice);
             } else null;
@@ -5188,7 +5459,8 @@ fn prelinkInner(elf: *Elf) Error!void {
                 @as(usize, @intFromBool(elf.shndx.init_array != .UNDEF)) * 2 +
                 @as(usize, @intFromBool(elf.shndx.fini_array != .UNDEF)) * 2 +
                 @as(usize, @intFromBool(elf.shndx.preinit_array != .UNDEF)) * 2 +
-                @intFromBool(comp.config.output_mode == .Exe) + 12;
+                @as(usize, @intFromBool(use_plt)) * 4 +
+                @intFromBool(comp.config.output_mode == .Exe) + 8;
             const dynamic_size: u32 = @intCast(@sizeOf(ElfN.Addr) * 2 * dynamic_len);
             const dynamic_ni = elf.shndx.dynamic.get(elf).ni;
             try dynamic_ni.resize(&elf.mf, gpa, dynamic_size);
@@ -5200,6 +5472,8 @@ fn prelinkInner(elf: *Elf) Error!void {
                 init_array: ?usize,
                 fini_array: ?usize,
                 preinit_array: ?usize,
+                jmprel: ?usize,
+                pltgot: ?usize,
             } = indices: {
                 const sec_dynamic = dynamic_ni.slice(&elf.mf);
                 const dynamic_entries: [][2]ElfN.Addr = @ptrCast(@alignCast(sec_dynamic));
@@ -5232,7 +5506,7 @@ fn prelinkInner(elf: *Elf) Error!void {
                 }
                 const init_array_index: ?usize = if (elf.shndx.init_array != .UNDEF) i: {
                     dynamic_entries[dynamic_index..][0..2].* = .{
-                        .{ std.elf.DT_INIT_ARRAY, @intCast(elf.shndx.init_array.vaddr(elf)) },
+                        .{ std.elf.DT_INIT_ARRAY, 0 }, // reloc added below
                         .{ std.elf.DT_INIT_ARRAYSZ, elf.targetLoad(
                             &@field(elf.shdrPtr(elf.shndx.init_array), @tagName(ct_class)).size,
                         ) },
@@ -5242,7 +5516,7 @@ fn prelinkInner(elf: *Elf) Error!void {
                 } else null;
                 const fini_array_index: ?usize = if (elf.shndx.fini_array != .UNDEF) i: {
                     dynamic_entries[dynamic_index..][0..2].* = .{
-                        .{ std.elf.DT_FINI_ARRAY, @intCast(elf.shndx.fini_array.vaddr(elf)) },
+                        .{ std.elf.DT_FINI_ARRAY, 0 }, // reloc added below
                         .{ std.elf.DT_FINI_ARRAYSZ, elf.targetLoad(
                             &@field(elf.shdrPtr(elf.shndx.fini_array), @tagName(ct_class)).size,
                         ) },
@@ -5252,7 +5526,7 @@ fn prelinkInner(elf: *Elf) Error!void {
                 } else null;
                 const preinit_array_index: ?usize = if (elf.shndx.preinit_array != .UNDEF) i: {
                     dynamic_entries[dynamic_index..][0..2].* = .{
-                        .{ std.elf.DT_PREINIT_ARRAY, @intCast(elf.shndx.preinit_array.vaddr(elf)) },
+                        .{ std.elf.DT_PREINIT_ARRAY, 0 }, // reloc added below
                         .{ std.elf.DT_PREINIT_ARRAYSZ, elf.targetLoad(
                             &@field(elf.shdrPtr(elf.shndx.preinit_array), @tagName(ct_class)).size,
                         ) },
@@ -5260,27 +5534,33 @@ fn prelinkInner(elf: *Elf) Error!void {
                     defer dynamic_index += 2;
                     break :i dynamic_index;
                 } else null;
-                dynamic_entries[dynamic_index..][0..12].* = .{
-                    .{ std.elf.DT_RELA, @intCast(elf.shndx.rela_dyn.vaddr(elf)) },
+                const jmprel_index: ?usize, const pltgot_index: ?usize = if (use_plt) i: {
+                    dynamic_entries[dynamic_index..][0..4].* = .{
+                        .{ std.elf.DT_JMPREL, 0 }, // reloc added below
+                        .{ std.elf.DT_PLTGOT, 0 }, // reloc added below
+                        .{ std.elf.DT_PLTRELSZ, elf.targetLoad(
+                            &@field(elf.shdrPtr(elf.shndx.rela_plt), @tagName(ct_class)).size,
+                        ) },
+                        .{ std.elf.DT_PLTREL, std.elf.DT_RELA },
+                    };
+                    defer dynamic_index += 4;
+                    break :i .{ dynamic_index, dynamic_index + 1 };
+                } else .{ null, null };
+                dynamic_entries[dynamic_index..][0..8].* = .{
+                    .{ std.elf.DT_RELA, 0 }, // reloc added below
                     .{ std.elf.DT_RELASZ, elf.targetLoad(
                         &@field(elf.shdrPtr(elf.shndx.rela_dyn), @tagName(ct_class)).size,
                     ) },
                     .{ std.elf.DT_RELAENT, @sizeOf(ElfN.Rela) },
-                    .{ std.elf.DT_JMPREL, @intCast(elf.shndx.rela_plt.vaddr(elf)) },
-                    .{ std.elf.DT_PLTRELSZ, elf.targetLoad(
-                        &@field(elf.shdrPtr(elf.shndx.rela_plt), @tagName(ct_class)).size,
-                    ) },
-                    .{ std.elf.DT_PLTGOT, @intCast(elf.shndx.got_plt.vaddr(elf)) },
-                    .{ std.elf.DT_PLTREL, std.elf.DT_RELA },
-                    .{ std.elf.DT_SYMTAB, @intCast(elf.shndx.dynsym.vaddr(elf)) },
+                    .{ std.elf.DT_SYMTAB, 0 }, // reloc added below
                     .{ std.elf.DT_SYMENT, @sizeOf(ElfN.Sym) },
-                    .{ std.elf.DT_STRTAB, @intCast(elf.shndx.dynstr.vaddr(elf)) },
+                    .{ std.elf.DT_STRTAB, 0 }, // reloc added below
                     .{ std.elf.DT_STRSZ, elf.targetLoad(
                         &@field(elf.shdrPtr(elf.shndx.dynstr), @tagName(ct_class)).size,
                     ) },
                     .{ std.elf.DT_NULL, 0 },
                 };
-                dynamic_index += 12;
+                dynamic_index += 8;
                 assert(dynamic_index == dynamic_len);
                 if (elf.targetEndian() != native_endian) for (dynamic_entries) |*dynamic_entry|
                     std.mem.byteSwapAllFields(@TypeOf(dynamic_entry.*), dynamic_entry);
@@ -5289,66 +5569,74 @@ fn prelinkInner(elf: *Elf) Error!void {
                     .init_array = init_array_index,
                     .fini_array = fini_array_index,
                     .preinit_array = preinit_array_index,
+                    .jmprel = jmprel_index,
+                    .pltgot = pltgot_index,
                 };
+            };
+
+            const dsorel: SymbolReloc.Type = switch (ct_class) {
+                .NONE, _ => comptime unreachable,
+                .@"32" => .dsorel32,
+                .@"64" => .dsorel64,
             };
 
             elf.dynamic_first_symbol_reloc = @enumFromInt(elf.symbol_relocs.items.len);
             try elf.ensureUnusedRelocCapacity(dynamic_ni, 8);
-            if (dynamic_indices.init_array) |index| try elf.addRelocAssumeCapacity(
+            if (dynamic_indices.init_array) |index| try elf.addSymbolRelocAssumeCapacity(
                 dynamic_ni,
                 @sizeOf(ElfN.Addr) * (2 * index + 1),
                 .local(elf.shndx.init_array.get(elf).lsi),
                 0,
-                .absAddr(elf),
+                dsorel,
             );
-            if (dynamic_indices.fini_array) |index| try elf.addRelocAssumeCapacity(
+            if (dynamic_indices.fini_array) |index| try elf.addSymbolRelocAssumeCapacity(
                 dynamic_ni,
                 @sizeOf(ElfN.Addr) * (2 * index + 1),
                 .local(elf.shndx.fini_array.get(elf).lsi),
                 0,
-                .absAddr(elf),
+                dsorel,
             );
-            if (dynamic_indices.preinit_array) |index| try elf.addRelocAssumeCapacity(
+            if (dynamic_indices.preinit_array) |index| try elf.addSymbolRelocAssumeCapacity(
                 dynamic_ni,
                 @sizeOf(ElfN.Addr) * (2 * index + 1),
                 .local(elf.shndx.preinit_array.get(elf).lsi),
                 0,
-                .absAddr(elf),
+                dsorel,
             );
-            try elf.addRelocAssumeCapacity(
+            if (dynamic_indices.jmprel) |index| try elf.addSymbolRelocAssumeCapacity(
                 dynamic_ni,
-                @sizeOf(ElfN.Addr) * (2 * (dynamic_len - 12) + 1),
-                .local(elf.shndx.rela_dyn.get(elf).lsi),
-                0,
-                .absAddr(elf),
-            );
-            try elf.addRelocAssumeCapacity(
-                dynamic_ni,
-                @sizeOf(ElfN.Addr) * (2 * (dynamic_len - 9) + 1),
+                @sizeOf(ElfN.Addr) * (2 * index + 1),
                 .local(elf.shndx.rela_plt.get(elf).lsi),
                 0,
-                .absAddr(elf),
+                dsorel,
             );
-            try elf.addRelocAssumeCapacity(
+            if (dynamic_indices.pltgot) |index| try elf.addSymbolRelocAssumeCapacity(
                 dynamic_ni,
-                @sizeOf(ElfN.Addr) * (2 * (dynamic_len - 7) + 1),
+                @sizeOf(ElfN.Addr) * (2 * index + 1),
                 .local(elf.shndx.got_plt.get(elf).lsi),
                 0,
-                .absAddr(elf),
+                dsorel,
             );
-            try elf.addRelocAssumeCapacity(
+            try elf.addSymbolRelocAssumeCapacity(
+                dynamic_ni,
+                @sizeOf(ElfN.Addr) * (2 * (dynamic_len - 8) + 1),
+                .local(elf.shndx.rela_dyn.get(elf).lsi),
+                0,
+                dsorel,
+            );
+            try elf.addSymbolRelocAssumeCapacity(
                 dynamic_ni,
                 @sizeOf(ElfN.Addr) * (2 * (dynamic_len - 5) + 1),
                 .local(elf.shndx.dynsym.get(elf).lsi),
                 0,
-                .absAddr(elf),
+                dsorel,
             );
-            try elf.addRelocAssumeCapacity(
+            try elf.addSymbolRelocAssumeCapacity(
                 dynamic_ni,
                 @sizeOf(ElfN.Addr) * (2 * (dynamic_len - 3) + 1),
                 .local(elf.shndx.dynstr.get(elf).lsi),
                 0,
-                .absAddr(elf),
+                dsorel,
             );
         },
     };
@@ -5687,18 +5975,34 @@ fn addSymbolRelocAssumeCapacity(
     @"type": SymbolReloc.Type,
 ) Error!void {
     assert(elf.ehdrField(.type) != .REL);
+    assert(node != .none);
 
     const rela_index: Section.RelaIndex.Optional = r: {
-        if (elf.shndx.dynamic == .UNDEF) break :r .none;
-        const global_name = switch (target.unwrap()) {
-            .local => break :r .none,
-            .global => |name| name,
+        // If we emit a runtime relocation entry, its `offset` is a virtual address, so we need to
+        // determine the vaddr of `node`.
+        const node_vaddr: u64 = switch (elf.getNode(node)) {
+            .file => unreachable,
+            .ehdr => unreachable,
+            .shdr => unreachable,
+            .segment => unreachable,
+            .copied_global => unreachable,
+            .section => |shndx| shndx.vaddr(elf),
+            .input_section => |isi| isi.ptrConst(elf).vaddr,
+            inline .nav,
+            .uav,
+            .lazy_code,
+            .lazy_const_data,
+            => |i| Symbol.Id.local(i.symbol(elf)).value(elf),
         };
 
         const rela_type: MachineRelocType = switch (elf.ehdrField(.machine)) {
             else => |machine| @panic(@tagName(machine)),
             .X86_64 => .{ .X86_64 = switch (@"type") {
                 .write_rela => unreachable,
+                .dsorel64, .dsorel32 => {
+                    assert(target.unwrap() == .local);
+                    break :r .none;
+                },
                 .abs64 => .@"64",
                 .abs32 => .@"32",
                 .abs32s => .@"32S",
@@ -5726,72 +6030,79 @@ fn addSymbolRelocAssumeCapacity(
                 .tpoff64_hi12,
                 => unreachable,
             } },
-            .LOONGARCH => .{
-                .LOONGARCH = switch (@"type") {
-                    .write_rela => unreachable,
-                    .abs64 => .@"64",
-                    .abs32 => .@"32",
-                    .abs32s, .size64, .size32 => unreachable,
-                    .rel64 => .@"64_PCREL",
-                    .rel32 => .@"32_PCREL",
-                    .pltrel64, .pltrel32 => break :r .none,
-                    .dtpoff64 => .TLS_DTPREL64,
-                    .dtpoff32 => .TLS_DTPREL32,
-                    .tpoff64 => .TLS_TPREL64,
-                    .tpoff32 => .TLS_TPREL32,
-                    .abs32_lo12 => .PCALA_LO12,
-                    .rel32_hi20 => .PCALA_HI20,
-                    .rel64_lo20 => .PCALA64_LO20,
-                    .rel64_hi12 => .PCALA64_HI12,
-                    .branch_rel18 => .B16,
-                    .branch_rel23 => .B21,
-                    .branch_rel28 => .B26,
-                    .call_rel38 => .CALL36,
-                    .tpoff32_lo12 => .TLS_LE_LO12,
-                    .tpoff32_hi20 => .TLS_LE_HI20,
-                    .tpoff64_lo20 => .TLS_LE64_LO20,
-                    .tpoff64_hi12 => .TLS_LE64_HI12,
+            .LOONGARCH => .{ .LOONGARCH = switch (@"type") {
+                .write_rela => unreachable,
+                .dsorel64, .dsorel32 => {
+                    assert(target.unwrap() == .local);
+                    break :r .none;
                 },
-            },
+                .abs64 => .@"64",
+                .abs32 => .@"32",
+                .abs32s, .size64, .size32 => unreachable,
+                .rel64 => .@"64_PCREL",
+                .rel32 => .@"32_PCREL",
+                .pltrel64, .pltrel32 => break :r .none,
+                .dtpoff64 => .TLS_DTPREL64,
+                .dtpoff32 => .TLS_DTPREL32,
+                .tpoff64 => .TLS_TPREL64,
+                .tpoff32 => .TLS_TPREL32,
+                .abs32_lo12 => .PCALA_LO12,
+                .rel32_hi20 => .PCALA_HI20,
+                .rel64_lo20 => .PCALA64_LO20,
+                .rel64_hi12 => .PCALA64_HI12,
+                .branch_rel18 => .B16,
+                .branch_rel23 => .B21,
+                .branch_rel28 => .B26,
+                .call_rel38 => .CALL36,
+                .tpoff32_lo12 => .TLS_LE_LO12,
+                .tpoff32_hi20 => .TLS_LE_HI20,
+                .tpoff64_lo20 => .TLS_LE64_LO20,
+                .tpoff64_hi12 => .TLS_LE64_HI12,
+            } },
         };
-        // TODO: even if the symbol is locally defined, preemption/interposition is a
-        // possibility, which this condition does not currently consider!
-        if (elf.globals.strong_def.contains(global_name) or
-            elf.globals.weak_def.contains(global_name))
-        {
-            break :r .none;
-        }
 
-        const dynsym_index = elf.globalByName(global_name).?.dynsym_index;
-        if (dynsym_index == 0) break :r .none;
-
-        switch (elf.nodeWantsDsoRelocation(node)) {
-            .no => break :r .none,
-            .yes => {},
-            .yes_textrel => if (try elf.maybeAddCopyRelocation(global_name)) {
-                // We were able to use a copy relocation on this symbol to avoid a text relocation,
-                // which is apparently considered a good thing despite copy relocations being an
-                // abomination. (This is necessary for correctness in some cases, because e.g. a
-                // 32-bit runtime relocation on a 64-bit target will often cause rtld errors due to
-                // the DSOs being loaded too far apart.)
-                break :r .none;
-            } else {
-                // At least for now, our only choice is a text relocation.
-                elf.textrel_count += 1;
+        class: switch (elf.classifySymbolValue(target)) {
+            .static => break :r .none,
+            .static_relative => {
+                if (!@"type".isAbsAddr(elf)) break :r .none;
+                switch (elf.nodeWantsDsoRelocation(node)) {
+                    .no => break :r .none,
+                    .yes => {},
+                    .yes_textrel => elf.textrel_count += 1,
+                }
+                break :r elf.shndx.rela_dyn.relaAddOneAssumeCapacity(elf, .{
+                    .type = .relative(elf),
+                    .offset = node_vaddr + offset,
+                    .raw_sym_index = 0,
+                    .addend = 0,
+                }).toOptional();
+            },
+            .dynamic => dso_reloc: switch (elf.nodeWantsDsoRelocation(node)) {
+                .no => break :r .none,
+                .yes_textrel => if (try elf.maybeAddCopyRelocation(target.unwrap().global)) {
+                    // We were able to use a copy relocation on this symbol to avoid a text relocation,
+                    // which is apparently considered a good thing despite copy relocations being an
+                    // abomination. (This is necessary for correctness in some cases, because e.g. a
+                    // 32-bit runtime relocation on a 64-bit target will often cause rtld errors due to
+                    // the DSOs being loaded too far apart.)
+                    switch (elf.classifySymbolValue(target)) {
+                        .dynamic => unreachable, // we just added a copy relocation
+                        .static => continue :class .static,
+                        .static_relative => continue :class .static_relative,
+                    }
+                } else {
+                    // At least for now, our only choice is a text relocation.
+                    elf.textrel_count += 1;
+                    continue :dso_reloc .yes;
+                },
+                .yes => break :r elf.shndx.rela_dyn.relaAddOneAssumeCapacity(elf, .{
+                    .type = rela_type,
+                    .offset = node_vaddr + offset,
+                    .raw_sym_index = elf.globalByName(target.unwrap().global).?.dynsym_index,
+                    .addend = addend,
+                }).toOptional(),
             },
         }
-
-        // It currently looks like we need a runtime relocation for this.
-        break :r elf.shndx.rela_dyn.relaAddOneAssumeCapacity(elf, .{
-            .type = rela_type,
-            // This field needs to equal the offset into the section, which is *not* necessarily
-            // the same thing as our `offset`, which is the offset into `node`. We could compute
-            // the section offset now, but there's no point, because `flushMovedNodeRelocs` will
-            // eventually do it for us anyway, so just init to 0.
-            .offset = 0,
-            .raw_sym_index = dynsym_index,
-            .addend = addend,
-        }).toOptional();
     };
 
     const ri: SymbolReloc.Index = @enumFromInt(elf.symbol_relocs.items.len);
@@ -5814,6 +6125,9 @@ fn addSymbolRelocAssumeCapacity(
     if (@"type".dependsOnTlsSize()) {
         elf.tls_size_symbol_relocs.putAssumeCapacityNoClobber(ri, {});
     }
+
+    // Actually apply the new relocation!
+    ri.get(elf).apply(elf);
 }
 fn addGotRelocAssumeCapacity(
     elf: *Elf,
@@ -5885,29 +6199,13 @@ fn updateGotEntry(elf: *Elf, got_index: usize) void {
         reloc: struct {
             type: MachineRelocType,
             dynsym_index: u32,
+            addend: i64,
         },
     } = switch (elf.got.keys()[got_index]) {
         .reserved => .{ .unsigned = 0 },
         .tpoff => |sym_id| val: {
-            // We will break from this block if we require a relocation.
-            known: {
-                if (elf.base.comp.config.output_mode != .Exe) {
-                    // Only the executable's per-module TLS block is at a known offset from the
-                    // general TLS pointer.
-                    break :known;
-                }
-                switch (sym_id.unwrap()) {
-                    .local => {},
-                    .global => |name| if (elf.globals.strong_undef.contains(name) or
-                        elf.globals.weak_undef.contains(name))
-                    {
-                        // This is an external TLS symbol, so we don't know its offset.
-                        break :known;
-                    },
-                }
-                // It's a symbol which we define, the symbol is not interposable because we're the
-                // executable, and we know our per-module TLS block's offset because we're the
-                // executable. We therefore know this value!
+            // Only the executable's per-module TLS block is at a known offset from the TLS pointer.
+            if (elf.base.comp.config.output_mode == .Exe and elf.classifySymbolValue(sym_id) != .dynamic) {
                 const tls_phndx = elf.getNode(elf.ni.tls).segment;
                 const tls_size: u64 = switch (elf.phdrSlice()) {
                     inline else => |phdr| tls_size: {
@@ -5918,110 +6216,80 @@ fn updateGotEntry(elf: *Elf, got_index: usize) void {
                 const sym_value = sym_id.value(elf);
                 break :val .{ .signed = @bitCast(sym_value -% tls_size) };
             }
-            break :val .{
-                .reloc = .{
-                    .type = switch (elf.ehdrField(.machine)) {
-                        else => |machine| @panic(@tagName(machine)),
-                        .X86_64 => .{ .X86_64 = .TPOFF64 },
-                        .LOONGARCH => .{ .LOONGARCH = if (elf.identClass() == .@"64") .TLS_TPREL64 else .TLS_TPREL32 },
-                    },
-                    .dynsym_index = switch (sym_id.unwrap()) {
-                        .global => |name| elf.globalByName(name).?.dynsym_index,
-                        // TODO: I have no idea if compilers are even allowed to emit this, but if they
-                        // are then I guess we need to add this local symbol to `.dynsym`?
-                        .local => @panic("TODO(Elf2): GOT tpoff entry referencing local symbol"),
-                    },
-                },
+            const reloc_type: MachineRelocType = switch (elf.ehdrField(.machine)) {
+                else => |machine| @panic(@tagName(machine)),
+                .X86_64 => .{ .X86_64 = .TPOFF64 },
+                .LOONGARCH => .{ .LOONGARCH = if (elf.identClass() == .@"64") .TLS_TPREL64 else .TLS_TPREL32 },
+            };
+            break :val switch (sym_id.unwrap()) {
+                // For global symbols, just target the right dynsym with no addend.
+                .global => |name| .{ .reloc = .{
+                    .type = reloc_type,
+                    .dynsym_index = elf.globalByName(name).?.dynsym_index,
+                    .addend = 0,
+                } },
+                // For local symbols, target the null symbol (index 0) so we get the offset to the
+                // base of our TLS block, and then use `addend` to offset to the right symbol.
+                .local => .{ .reloc = .{
+                    .type = reloc_type,
+                    .dynsym_index = 0,
+                    .addend = @intCast(sym_id.value(elf)),
+                } },
             };
         },
-        .symbol, .tlsgd1 => |sym_id, tag| val: {
-            const name = switch (sym_id.unwrap()) {
-                .local => break :val .{ .unsigned = sym_id.value(elf) },
-                .global => |name| name,
-            };
-            // If the symbol is *defined* in this module, we might be able to avoid the relocation.
-            const need_reloc: bool = need_reloc: {
-                const global = g: {
-                    if (elf.globals.strong_def.getPtr(name)) |g| break :g g;
-                    if (elf.globals.weak_def.getPtr(name)) |g| break :g g;
-                    // The global is undefined, which probably means we need a relocation---unless
-                    // we have created a copy relocation for it, in which case we own the canonical
-                    // address of this symbol in this DSO!
-                    break :need_reloc !elf.copied_globals.contains(name);
-                };
-
-                // We have a definition, but it might be interposable (aka preemptible). There
-                // are two cases where it is not and so we can (and, in fact, must) elide the
-                // runtime relocation:
-                // * We are the executable. Symbols from executables cannot be interposed.
-                // * The symbol's visibility disallows interposition.
-                if (elf.base.comp.config.output_mode == .Exe) {
-                    break :need_reloc false;
-                }
-                const visibility: std.elf.STV = switch (elf.symPtr(global.symtab_index)) {
-                    inline else => |sym| elf.targetLoad(&sym.other).visibility,
-                };
-                break :need_reloc switch (visibility) {
-                    .DEFAULT => true,
-                    .INTERNAL, .HIDDEN, .PROTECTED => false,
-                };
-            };
-
-            if (!need_reloc) {
-                break :val .{ .unsigned = sym_id.value(elf) };
-            }
-
-            break :val .{ .reloc = .{
-                .type = if (tag == .symbol) .globDat(elf) else .dtpOffAddr(elf),
-                .dynsym_index = elf.globalByName(name).?.dynsym_index,
-            } };
+        .symbol => |sym| switch (elf.classifySymbolValue(sym)) {
+            .static => .{ .unsigned = sym.value(elf) },
+            .static_relative => .{ .reloc = .{
+                .type = .relative(elf),
+                .dynsym_index = 0,
+                .addend = @bitCast(sym.value(elf)),
+            } },
+            .dynamic => .{ .reloc = .{
+                .type = .globDat(elf),
+                .dynsym_index = elf.globalByName(sym.unwrap().global).?.dynsym_index,
+                .addend = 0,
+            } },
         },
-        .tlsgd0 => |sym| switch (elf.shndx.dynamic) {
-            .UNDEF => .{ .unsigned = 1 }, // TLS module ID for exexcutable
-            else => .{
-                .reloc = .{
-                    .type = switch (elf.ehdrField(.machine)) {
-                        else => |machine| @panic(@tagName(machine)),
-                        .X86_64 => .{ .X86_64 = .DTPMOD64 },
-                        .LOONGARCH => .{ .LOONGARCH = if (elf.identClass() == .@"64") .TLS_DTPMOD64 else .TLS_DTPMOD32 },
-                    },
-                    .dynsym_index = switch (sym.unwrap()) {
-                        .local => 0,
-                        .global => |name| dsi: {
-                            // Like in the `.tlsgd1` case, we need to check for a non-interposable definition.
-                            if (elf.globals.strong_def.getPtr(name) orelse
-                                elf.globals.weak_def.getPtr(name)) |global|
-                            {
-                                if (elf.base.comp.config.output_mode == .Exe) {
-                                    break :dsi 0; // non-interposable definition
-                                }
-                                const visibility: std.elf.STV = switch (elf.symPtr(global.symtab_index)) {
-                                    inline else => |sym_ptr| elf.targetLoad(&sym_ptr.other).visibility,
-                                };
-                                switch (visibility) {
-                                    .DEFAULT => {},
-                                    .INTERNAL, .HIDDEN, .PROTECTED => {
-                                        break :dsi 0; // non-interposable definition
-                                    },
-                                }
-                            }
-                            // `sym` is either undefined or an interposable definition, so use its
-                            // actual dynsym index.
-                            break :dsi elf.globalByName(name).?.dynsym_index;
-                        },
-                    },
-                },
+        .tlsgd1 => |sym| switch (elf.classifySymbolValue(sym)) {
+            .static => .{ .unsigned = sym.value(elf) },
+            .static_relative => unreachable, // TLS variables should be in TLS sections, which do not return `.static_relative`
+            .dynamic => .{ .reloc = .{
+                .type = .dtpOffAddr(elf),
+                .dynsym_index = elf.globalByName(sym.unwrap().global).?.dynsym_index,
+                .addend = 0,
+            } },
+        },
+        .tlsgd0 => |sym| switch (elf.base.comp.config.link_mode) {
+            .static => val: {
+                assert(elf.base.comp.config.output_mode == .Exe); // static libraries don't have GOTs
+                break :val .{ .unsigned = 1 }; // TLS module ID for executable
             },
+            .dynamic => .{ .reloc = .{
+                .type = switch (elf.ehdrField(.machine)) {
+                    else => |machine| @panic(@tagName(machine)),
+                    .X86_64 => .{ .X86_64 = .DTPMOD64 },
+                    .LOONGARCH => .{ .LOONGARCH = if (elf.identClass() == .@"64") .TLS_DTPMOD64 else .TLS_DTPMOD32 },
+                },
+                .dynsym_index = switch (elf.classifySymbolValue(sym)) {
+                    .static, .static_relative => 0,
+                    .dynamic => elf.globalByName(sym.unwrap().global).?.dynsym_index,
+                },
+                .addend = 0,
+            } },
         },
-        .tlsld0 => switch (elf.shndx.dynamic) {
-            .UNDEF => .{ .unsigned = 1 }, // TLS module ID for exexcutable
-            else => .{ .reloc = .{
+        .tlsld0 => switch (elf.base.comp.config.link_mode) {
+            .static => val: {
+                assert(elf.base.comp.config.output_mode == .Exe); // static libraries don't have GOTs
+                break :val .{ .unsigned = 1 }; // TLS module ID for executable
+            },
+            .dynamic => .{ .reloc = .{
                 .type = switch (elf.ehdrField(.machine)) {
                     else => |machine| @panic(@tagName(machine)),
                     .X86_64 => .{ .X86_64 = .DTPMOD64 },
                     .LOONGARCH => .{ .LOONGARCH = if (elf.identClass() == .@"64") .TLS_DTPMOD64 else .TLS_DTPMOD32 },
                 },
                 .dynsym_index = 0,
+                .addend = 0,
             } },
         },
         .tlsld1 => .{ .unsigned = 0 },
@@ -6065,7 +6333,7 @@ fn updateGotEntry(elf: *Elf, got_index: usize) void {
             .type = reloc.type,
             .offset = got_entry_addr,
             .raw_sym_index = reloc.dynsym_index,
-            .addend = 0,
+            .addend = reloc.addend,
         }).toOptional(),
     };
 }
@@ -6405,26 +6673,80 @@ pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
             };
             break :task;
         }
-        while (elf.changed_symtab_index.pop()) |kv| {
-            // We only need to do work in relocatables, because in ELF modules (non-relocatables)
-            // our `ElfN.Rela` entries use `.dynsym` indices rather than `.symtab` indices, and
-            // `.dynsym` indices are (at the time of writing) always immutable.
-            if (elf.ehdrField(.type) == .REL) {
-                const sub_prog_node = elf.mf.update_prog_node.start(kv.key.slice(elf), 0);
-                defer sub_prog_node.end();
-                const sym = elf.globalByName(kv.key).?.symtab_index.ptr(elf);
-                var ri = sym.first_target_reloc;
-                while (ri != .none) {
-                    const reloc = ri.get(elf);
-                    reloc.relaSection(elf).relaUpdateSym(
-                        elf,
-                        reloc.rela_index.unwrap().?,
-                        @intFromEnum(reloc.target.index(elf)),
-                    );
-                    ri = reloc.next;
-                }
-                break :task;
+        if (elf.changed_symtab_index.pop()) |kv| {
+            const sub_prog_node = elf.mf.update_prog_node.start(kv.key.slice(elf), 0);
+            defer sub_prog_node.end();
+
+            const global_name = kv.key;
+            const global = elf.globalByName(global_name).?;
+            const sym_id: Symbol.Id = .global(global_name);
+            const sym = global.symtab_index.ptr(elf);
+
+            switch (elf.ehdrField(.type)) {
+                .REL => {
+                    // Index in `.symtab` has changed. Relocatables are easy, we just need to update
+                    // all of the output relocations.
+                    const symtab_index = @intFromEnum(global.symtab_index);
+                    var ri = sym.first_target_reloc;
+                    while (ri != .none) {
+                        const reloc = ri.get(elf);
+                        assert(reloc.target == sym_id);
+                        // In relocatables, every symbol relocation has an output relocation.
+                        const rela_index = reloc.rela_index.unwrap().?;
+                        reloc.relaSection(elf).relaUpdateSym(elf, rela_index, symtab_index);
+                        ri = reloc.next;
+                    }
+                },
+                // For other `ET_*` values, the index in `.dynsym` has changed. There are a few
+                // places we might have emitted output relocations, depending on whether or not the
+                // symbol's value is statically known.
+                else => switch (elf.classifySymbolValue(sym_id)) {
+                    .static, .static_relative => {
+                        // Since the symbol value is statically known, we definitely aren't emitting
+                        // any relocation targeting it (we might have `R_*_RELATIVE` relocs but they
+                        // don't care about the dynsym index). The only exception is a copy reloc
+                        // could exist (and be the *reason* the symbol value is statically known).
+                        if (elf.copied_globals.get(global_name)) |copied| {
+                            elf.shndx.rela_dyn.relaUpdateSym(elf, copied.rela_index, global.dynsym_index);
+                        }
+                    },
+                    .dynamic => {
+                        assert(!elf.copied_globals.contains(global_name)); // value would be statically known
+
+                        // Update symbol relocs:
+                        var ri = sym.first_target_reloc;
+                        while (ri != .none) {
+                            const reloc = ri.get(elf);
+                            assert(reloc.target == sym_id);
+                            // There may or may not be a runtime relocation for this symbol reloc.
+                            if (reloc.rela_index.unwrap()) |rela_index| {
+                                elf.shndx.rela_dyn.relaUpdateSym(elf, rela_index, global.dynsym_index);
+                            }
+                            ri = reloc.next;
+                        }
+
+                        // Update the PLT entry's reloc if there is one:
+                        if (elf.plt.getIndex(global_name)) |plt_index| {
+                            // PLT indices exactly match `.rela.plt` relocation indices.
+                            elf.shndx.rela_plt.relaUpdateSym(elf, @enumFromInt(plt_index), global.dynsym_index);
+                        }
+
+                        // Update relocs for any relevant GOT entries:
+                        if (elf.got.getIndex(.{ .symbol = sym_id })) |got_index| {
+                            elf.updateGotEntry(got_index);
+                        }
+                        if (elf.got.getIndex(.{ .tpoff = sym_id })) |got_index| {
+                            elf.updateGotEntry(got_index);
+                        }
+                        if (elf.got.getIndex(.{ .tlsgd0 = sym_id })) |got_index| {
+                            elf.updateGotEntry(got_index);
+                            elf.updateGotEntry(got_index + 1); // tlsgd1
+                        }
+                    },
+                },
             }
+
+            break :task;
         }
         while (elf.mf.updates.pop()) |ni| {
             const clean_moved = ni.cleanMoved(&elf.mf);
@@ -6838,7 +7160,7 @@ fn flushResized(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!vo
                         switch (elf.targetLoad(&next_ph.type)) {
                             else => unreachable,
                             .NULL, .LOAD => {},
-                            .DYNAMIC, .INTERP, .PHDR, .TLS, std.elf.PT.GNU_RELRO => break,
+                            .DYNAMIC, .INTERP, .PHDR, .TLS, .GNU_RELRO, .GNU_STACK => break,
                         }
                         const next_vaddr = elf.targetLoad(&next_ph.vaddr);
                         if (vaddr + memsz <= next_vaddr) break;
@@ -6917,8 +7239,8 @@ fn flushMovedPltSection(elf: *Elf, which: enum { plt, plt_sec, got_plt }, old_ad
                     // its relocations are probably going through the PLT, so we don't bother with
                     // specific tracking for PLT relocations---instead just re-apply all relocations
                     // targeting symbols with PLT entries.
-                    for (elf.plt.keys()) |sym| {
-                        sym.applyTargetRelocs(elf);
+                    for (elf.plt.keys()) |name| {
+                        Symbol.Id.global(name).applyTargetRelocs(elf);
                     }
                     // We also need to update all of the references from `.plt.sec` to `.got.plt`.
                     // However, if there's also a flush pending for `.got.plt`, don't bother doing
