@@ -239,7 +239,6 @@ pub fn targetTriple(allocator: Allocator, target: *const std.Target) ![]const u8
         .vulkan => "vulkan",
         .managarm => "managarm",
 
-        .@"3ds",
         .contiki,
         .freestanding,
         .opencl, // https://llvm.org/docs/SPIRVUsage.html#target-triples
@@ -250,7 +249,9 @@ pub fn targetTriple(allocator: Allocator, target: *const std.Target) ![]const u8
         .psp,
         .vita,
         .tios,
+        .@"3ds",
         .wiiu,
+        .@"switch",
         .ashetos,
         => "unknown",
     };

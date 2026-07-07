@@ -62,9 +62,13 @@ pub fn libCxxNeedsLibUnwind(target: *const std.Target) bool {
 }
 
 pub fn requiresPie(target: *const std.Target, link_mode: std.lang.LinkMode) bool {
-    return target.os.tag == .fuchsia or
-        (target.abi.isAndroid() and link_mode == .dynamic) or
-        target.os.tag == .ashetos;
+    return switch (target.os.tag) {
+        .ashetos,
+        .fuchsia,
+        .@"switch",
+        => true,
+        else => target.abi.isAndroid() and link_mode == .dynamic,
+    };
 }
 
 /// This function returns whether non-pic code is completely invalid on the given target.

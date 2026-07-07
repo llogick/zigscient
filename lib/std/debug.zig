@@ -511,6 +511,7 @@ pub fn defaultPanic(msg: []const u8, first_trace_addr: ?usize) noreturn {
 
         .@"3ds",
         .wiiu,
+        .@"switch",
 
         .psx,
         .psp,

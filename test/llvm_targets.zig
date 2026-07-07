@@ -22,6 +22,7 @@ const targets = [_]std.Target.Query{
     .{ .cpu_arch = .aarch64, .os_tag = .openbsd, .abi = .none },
     .{ .cpu_arch = .aarch64, .os_tag = .rtems, .abi = .none },
     .{ .cpu_arch = .aarch64, .os_tag = .serenity, .abi = .none },
+    .{ .cpu_arch = .aarch64, .os_tag = .@"switch", .abi = .none },
     .{ .cpu_arch = .aarch64, .os_tag = .tvos, .abi = .none },
     .{ .cpu_arch = .aarch64, .os_tag = .tvos, .abi = .simulator },
     .{ .cpu_arch = .aarch64, .os_tag = .uefi, .abi = .none },
