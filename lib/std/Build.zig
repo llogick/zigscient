@@ -2135,24 +2135,45 @@ pub fn lazyDependency(b: *Build, name: []const u8, args: anytype) ?*Dependency {
 ///
 /// For non-lazy dependencies, this always succeeds.
 pub fn dependencyLazy(b: *Build, name: []const u8, args: anytype) error{LazyDependencyNeeded}!*Dependency {
-    const build_runner = @import("root");
-    const deps = build_runner.dependencies;
     const pkg_hash = findPkgHashOrFatal(b, name);
-
-    inline for (@typeInfo(deps.packages).@"struct".decl_names) |decl_name| {
-        if (mem.eql(u8, decl_name, pkg_hash)) {
-            const pkg = @field(deps.packages, decl_name);
-            const available = !@hasDecl(pkg, "available") or pkg.available;
-            if (!available) {
-                markNeededLazyDep(b, pkg_hash);
-                return error.LazyDependencyNeeded;
-            }
-            return dependencyInner(b, name, pkg.build_root, if (@hasDecl(pkg, "build_zig")) pkg.build_zig else null, pkg_hash, pkg.deps, args);
-        }
+    const entry = package_map.get(pkg_hash) orelse unreachable;
+    if (!entry.available) {
+        markNeededLazyDep(b, pkg_hash);
+        return error.LazyDependencyNeeded;
     }
-
-    unreachable; // bad @dependencies source
+    return dependencyResolved(b, name, entry, userInputOptionsFromArgs(b.graph.arena, args));
 }
+
+const PackageEntry = struct {
+    hash: []const u8,
+    available: bool,
+    build_root: []const u8,
+    deps: AvailableDeps,
+    run_build: ?*const fn (*Build) void,
+};
+
+const package_map: std.StaticStringMap(PackageEntry) = blk: {
+    const deps = @import("root").dependencies;
+    const decl_names = @typeInfo(deps.packages).@"struct".decl_names;
+    var kvs: [decl_names.len]struct { []const u8, PackageEntry } = undefined;
+    for (decl_names, 0..) |decl_name, i| {
+        const pkg = @field(deps.packages, decl_name);
+        const available = !@hasDecl(pkg, "available") or pkg.available;
+        kvs[i] = .{ decl_name, .{
+            .hash = decl_name,
+            .available = available,
+            .build_root = if (available) pkg.build_root else "",
+            .deps = if (available) pkg.deps else &.{},
+            .run_build = if (available and @hasDecl(pkg, "build_zig")) &struct {
+                fn run(sb: *Build) void {
+                    sb.runPackageScript(pkg.build_zig);
+                }
+            }.run else null,
+        } };
+    }
+    const frozen = kvs;
+    break :blk .initComptime(&frozen);
+};
 
 /// Declares that the current configuration does in fact require a potentially
 /// lazy dependency.
@@ -2210,6 +2231,14 @@ pub inline fn lazyImport(
     comptime unreachable; // Bad @dependencies source
 }
 
+fn pkgHashFromBuildZig(comptime build_zig: type) ?[]const u8 {
+    const deps = @import("root").dependencies;
+    return comptime for (@typeInfo(deps.packages).@"struct".decl_names) |pkg_hash| {
+        const pkg = @field(deps.packages, pkg_hash);
+        if (@hasDecl(pkg, "build_zig") and pkg.build_zig == build_zig) break pkg_hash;
+    } else null;
+}
+
 /// Build system implementation detail.
 pub fn dependencyFromBuildZig(
     b: *Build,
@@ -2218,20 +2247,15 @@ pub fn dependencyFromBuildZig(
     comptime build_zig: type,
     args: anytype,
 ) *Dependency {
-    const build_runner = @import("root");
-    const deps = build_runner.dependencies;
-    const graph = b.graph;
-    const arena = graph.arena;
+    const arena = b.graph.arena;
 
     find_dep: {
-        const pkg, const pkg_hash = inline for (@typeInfo(deps.packages).@"struct".decl_names) |pkg_hash| {
-            const pkg = @field(deps.packages, pkg_hash);
-            if (@hasDecl(pkg, "build_zig") and pkg.build_zig == build_zig) break .{ pkg, pkg_hash };
-        } else break :find_dep;
+        const pkg_hash = comptime pkgHashFromBuildZig(build_zig) orelse break :find_dep;
         const dep_name = for (b.available_deps) |dep| {
             if (mem.eql(u8, dep[1], pkg_hash)) break dep[1];
         } else break :find_dep;
-        return dependencyInner(b, dep_name, pkg.build_root, pkg.build_zig, pkg_hash, pkg.deps, args);
+        const entry = package_map.get(pkg_hash) orelse break :find_dep;
+        return dependencyResolved(b, dep_name, entry, userInputOptionsFromArgs(arena, args));
     }
 
     const full_path = b.root.join(arena, "build.zig.zon") catch @panic("OOM");
@@ -2321,35 +2345,31 @@ fn userLazyPathsAreTheSame(lhs_lp: LazyPath, rhs_lp: LazyPath) bool {
     return true;
 }
 
-fn dependencyInner(
+fn dependencyResolved(
     b: *Build,
     name: []const u8,
-    build_root_string: []const u8,
-    comptime build_zig: ?type,
-    pkg_hash: []const u8,
-    pkg_deps: AvailableDeps,
-    args: anytype,
+    entry: PackageEntry,
+    user_input_options: UserInputOptionsMap,
 ) *Dependency {
     const graph = b.graph;
     const io = graph.io;
     const arena = graph.arena;
-    const user_input_options = userInputOptionsFromArgs(arena, args);
     if (graph.dependency_cache.getContext(.{
-        .build_root_string = build_root_string,
+        .build_root_string = entry.build_root,
         .user_input_options = user_input_options,
     }, .{ .allocator = arena })) |dep| return dep;
 
     const dep_root: Cache.Path = .{
         .root_dir = .{
-            .path = build_root_string,
-            .handle = Io.Dir.cwd().openDir(io, build_root_string, .{}) catch |err|
-                fatal("failed to open {q}: {t}", .{ build_root_string, err }),
+            .path = entry.build_root,
+            .handle = Io.Dir.cwd().openDir(io, entry.build_root, .{}) catch |err|
+                fatal("failed to open {q}: {t}", .{ entry.build_root, err }),
         },
     };
 
-    const sub_builder = b.createChild(name, dep_root, pkg_hash, pkg_deps, user_input_options) catch @panic("OOM");
-    if (build_zig) |bz| {
-        sub_builder.runPackageScript(bz);
+    const sub_builder = b.createChild(name, dep_root, entry.hash, entry.deps, user_input_options) catch @panic("OOM");
+    if (entry.run_build) |run_build| {
+        run_build(sub_builder);
 
         if (sub_builder.validateUserInputDidItFail()) {
             std.debug.dumpCurrentStackTrace(.{ .first_address = @returnAddress() });
@@ -2360,7 +2380,7 @@ fn dependencyInner(
     dep.* = .{ .builder = sub_builder };
 
     graph.dependency_cache.putContext(arena, .{
-        .build_root_string = build_root_string,
+        .build_root_string = entry.build_root,
         .user_input_options = user_input_options,
     }, dep, .{ .allocator = arena }) catch @panic("OOM");
     return dep;
