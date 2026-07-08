@@ -25,6 +25,7 @@ const usage =
     \\
     \\Options:
     \\   --code-dir dir         Path to directory containing code example outputs
+    \\   --grammar file         Path to the PEG grammar definition
     \\   -h, --help             Print this help and exit
     \\
 ;
@@ -37,6 +38,7 @@ pub fn main(init: std.process.Init) !void {
     if (!args_it.skip()) @panic("expected self arg");
 
     var opt_code_dir: ?[]const u8 = null;
+    var opt_grammar: ?[]const u8 = null;
     var opt_input: ?[]const u8 = null;
     var opt_output: ?[]const u8 = null;
 
@@ -50,6 +52,12 @@ pub fn main(init: std.process.Init) !void {
                     opt_code_dir = param;
                 } else {
                     fatal("expected parameter after --code-dir", .{});
+                }
+            } else if (mem.eql(u8, arg, "--grammar")) {
+                if (args_it.next()) |param| {
+                    opt_grammar = param;
+                } else {
+                    fatal("expected parameter after --grammar", .{});
                 }
             } else {
                 fatal("unrecognized option: '{s}'", .{arg});
@@ -65,6 +73,7 @@ pub fn main(init: std.process.Init) !void {
     const input_path = opt_input orelse fatal("missing input file", .{});
     const output_path = opt_output orelse fatal("missing output file", .{});
     const code_dir_path = opt_code_dir orelse fatal("missing --code-dir argument", .{});
+    const grammar_path = opt_grammar orelse fatal("missing --grammar argument", .{});
 
     var in_file = try Dir.cwd().openFile(io, input_path, .{});
     defer in_file.close(io);
@@ -82,13 +91,16 @@ pub fn main(init: std.process.Init) !void {
     };
     defer code_dir.root_dir.handle.close(io);
 
+    const grammar = try Dir.cwd().readFileAlloc(io, grammar_path, init.gpa, .limited(max_doc_file_size));
+    defer init.gpa.free(grammar);
+
     var in_file_reader = in_file.reader(io, &.{});
     const input_file_bytes = try in_file_reader.interface.allocRemaining(arena, .limited(max_doc_file_size));
 
     var tokenizer = Tokenizer.init(input_path, input_file_bytes);
     var toc = try genToc(arena, &tokenizer);
 
-    try genHtml(arena, io, &tokenizer, &toc, code_dir, &out_file_writer.interface);
+    try genHtml(arena, io, &tokenizer, &toc, code_dir, grammar, &out_file_writer.interface);
     try out_file_writer.end();
 }
 
@@ -326,6 +338,7 @@ const Node = union(enum) {
     HeaderOpen: HeaderOpen,
     SeeAlso: []const SeeAlsoItem,
     Code: Code,
+    Grammar,
     Link: Link,
     InlineSyntax: Token,
     Shell: Token,
@@ -513,6 +526,9 @@ fn genToc(gpa: Allocator, tokenizer: *Tokenizer) !Toc {
                             .token = name_tok,
                         },
                     });
+                } else if (mem.eql(u8, tag_name, "grammar")) {
+                    _ = try eatToken(tokenizer, .bracket_close);
+                    try nodes.append(.Grammar);
                 } else if (mem.eql(u8, tag_name, "syntax")) {
                     _ = try eatToken(tokenizer, .bracket_close);
                     const content_tok = try eatToken(tokenizer, .content);
@@ -924,14 +940,14 @@ fn tokenizeAndPrint(
     return tokenizeAndPrintRaw(allocator, docgen_tokenizer, out, source_token, raw_src);
 }
 
-fn printSourceBlock(allocator: Allocator, docgen_tokenizer: *Tokenizer, out: *Writer, syntax_block: SyntaxBlock) !void {
+fn printSourceBlock(allocator: Allocator, docgen_tokenizer: *Tokenizer, out: *Writer, syntax_block: SyntaxBlock, content: ?[]const u8) !void {
     const source_type = @tagName(syntax_block.source_type);
 
     try out.print("<figure><figcaption class=\"{s}-cap\"><cite class=\"file\">{s}</cite></figcaption><pre>", .{ source_type, syntax_block.name });
     switch (syntax_block.source_type) {
         .zig => try tokenizeAndPrint(allocator, docgen_tokenizer, out, syntax_block.source_token),
         else => {
-            const raw_source = docgen_tokenizer.buffer[syntax_block.source_token.start..syntax_block.source_token.end];
+            const raw_source = content orelse docgen_tokenizer.buffer[syntax_block.source_token.start..syntax_block.source_token.end];
             const trimmed_raw_source = mem.trim(u8, raw_source, " \r\n");
 
             try out.writeAll("<code>");
@@ -995,6 +1011,7 @@ fn genHtml(
     tokenizer: *Tokenizer,
     toc: *Toc,
     code_dir: Path,
+    grammar: []const u8,
     out: *Writer,
 ) !void {
     for (toc.nodes) |node| {
@@ -1042,7 +1059,7 @@ fn genHtml(
                 try printShell(out, raw_shell_content, true);
             },
             .SyntaxBlock => |syntax_block| {
-                try printSourceBlock(allocator, tokenizer, out, syntax_block);
+                try printSourceBlock(allocator, tokenizer, out, syntax_block, null);
             },
             .Code => |code| {
                 const out_basename = try std.fmt.allocPrint(allocator, "{s}.out", .{
@@ -1061,6 +1078,13 @@ fn genHtml(
                 defer allocator.free(contents);
 
                 try out.writeAll(contents);
+            },
+            .Grammar => {
+                try printSourceBlock(allocator, tokenizer, out, .{
+                    .source_type = .peg,
+                    .name = "grammar.peg",
+                    .source_token = undefined,
+                }, grammar);
             },
         }
     }

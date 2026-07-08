@@ -428,7 +428,7 @@ fn parse(file_name: []const u8, source: []u8) Oom!Ast {
         break :s source[0 .. source.len - 1 :0];
     };
 
-    var ast = try Ast.parse(gpa, adjusted_source, .zig);
+    var ast = try Ast.parse(gpa, adjusted_source, .zig, .{});
     if (ast.errors.len > 0) {
         defer ast.deinit(gpa);
 
@@ -446,7 +446,7 @@ fn parse(file_name: []const u8, source: []u8) Oom!Ast {
                 file_name, err_loc.line + 1, err_loc.column + 1, rendered_err.written(),
             });
         }
-        return Ast.parse(gpa, "", .zig);
+        return Ast.parse(gpa, "", .zig, .{});
     }
     return ast;
 }
@@ -1085,7 +1085,7 @@ pub fn isPrimitiveNonType(name: []const u8) bool {
 //
 //    // example test command:
 //    // zig test --dep input.zig -Mroot=src/Walk.zig -Minput.zig=/home/andy/dev/zig/lib/std/fs/File/zig
-//    var ast = try Ast.parse(gpa, @embedFile("input.zig"), .zig);
+//    var ast = try Ast.parse(gpa, @embedFile("input.zig"), .zig, .{});
 //    defer ast.deinit(gpa);
 //
 //    var w: Walk = .{

@@ -116,7 +116,7 @@ pub fn main(init: std.process.Init) !void {
     try allocating.writer.writeByte(0);
     const output = allocating.written()[0 .. allocating.written().len - 1 :0];
 
-    var tree = try std.zig.Ast.parse(arena, output, .zig);
+    var tree = try std.zig.Ast.parse(arena, output, .zig, .{});
 
     if (tree.errors.len != 0) {
         try std.zig.printAstErrorsToStderr(arena, io, tree, "", .auto);

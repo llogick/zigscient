@@ -597,7 +597,7 @@ pub fn load(
         0,
     );
 
-    ast.* = try std.zig.Ast.parse(arena, manifest_bytes, .zon);
+    ast.* = try std.zig.Ast.parse(arena, manifest_bytes, .zon, .{});
 
     if (ast.errors.len > 0) {
         const file_path = try manifest_path.joinString(arena, "");
@@ -636,7 +636,7 @@ test "basic" {
         \\}
     ;
 
-    var ast = try Ast.parse(gpa, example, .zon);
+    var ast = try Ast.parse(gpa, example, .zon, .{});
     defer ast.deinit(gpa);
 
     try testing.expect(ast.errors.len == 0);
@@ -682,7 +682,7 @@ test "minimum_zig_version" {
         \\}
     ;
 
-    var ast = try Ast.parse(gpa, example, .zon);
+    var ast = try Ast.parse(gpa, example, .zon, .{});
     defer ast.deinit(gpa);
 
     try testing.expect(ast.errors.len == 0);
@@ -717,7 +717,7 @@ test "minimum_zig_version - invalid version" {
         \\}
     ;
 
-    var ast = try Ast.parse(gpa, example, .zon);
+    var ast = try Ast.parse(gpa, example, .zon, .{});
     defer ast.deinit(gpa);
 
     try testing.expect(ast.errors.len == 0);

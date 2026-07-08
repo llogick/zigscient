@@ -188,7 +188,7 @@ pub fn main(init: std.process.Init) !void {
                 try astgen_input.writer.writeAll(rendered.written());
                 try astgen_input.writer.writeByte(0);
                 const source_with_null = astgen_input.written()[0..(astgen_input.written().len - 1) :0];
-                var astgen_tree = try Ast.parse(gpa, source_with_null, .zig);
+                var astgen_tree = try Ast.parse(gpa, source_with_null, .zig, .{});
                 defer astgen_tree.deinit(gpa);
                 if (astgen_tree.errors.len != 0) {
                     @panic("syntax errors occurred");
@@ -407,7 +407,7 @@ fn parse(gpa: Allocator, io: Io, file_path: []const u8) !Ast {
     };
     errdefer gpa.free(source_code);
 
-    var tree = try Ast.parse(gpa, source_code, .zig);
+    var tree = try Ast.parse(gpa, source_code, .zig, .{});
     errdefer tree.deinit(gpa);
 
     if (tree.errors.len != 0) {

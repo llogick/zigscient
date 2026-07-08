@@ -36,6 +36,7 @@ pub fn build(b: *std.Build) void {
         "../../tools/fetch_them_macos_headers.zig",
         "../../tools/gen_macos_headers_c.zig",
         "../../tools/gen_outline_atomics.zig",
+        "../../tools/gen_parser_oracle.zig",
         "../../tools/gen_spirv_spec.zig",
         "../../tools/gen_stubs.zig",
         "../../tools/generate_c_size_and_align_checks.zig",

@@ -296,7 +296,7 @@ pub fn populateFile(opts: @This(), gpa: Allocator, file: *File) Allocator.Error!
 
     log.debug("parsing and generating 'builtin.zig'", .{});
 
-    file.tree = try std.zig.Ast.parse(gpa, file.source.?, .zig);
+    file.tree = try std.zig.Ast.parse(gpa, file.source.?, .zig, .{});
     assert(file.tree.?.errors.len == 0); // builtin.zig must parse
 
     file.zir = try AstGen.generate(gpa, file.tree.?);

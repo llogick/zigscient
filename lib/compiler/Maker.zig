@@ -3593,7 +3593,7 @@ fn loadManifest(
             else => |e| fatal("unable to load {s}: {t}", .{ Package.Manifest.basename, e }),
         };
     };
-    var ast = try std.zig.Ast.parse(gpa, manifest_bytes, .zon);
+    var ast = try std.zig.Ast.parse(gpa, manifest_bytes, .zon, .{});
     errdefer ast.deinit(gpa);
 
     if (ast.errors.len > 0) {

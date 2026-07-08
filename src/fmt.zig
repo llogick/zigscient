@@ -117,7 +117,7 @@ pub fn run(gpa: Allocator, arena: Allocator, io: Io, args: []const []const u8) !
         };
         defer gpa.free(source_code);
 
-        var tree = std.zig.Ast.parse(gpa, source_code, if (force_zon) .zon else .zig) catch |err| {
+        var tree = std.zig.Ast.parse(gpa, source_code, if (force_zon) .zon else .zig, .{}) catch |err| {
             fatal("error parsing stdin: {}", .{err});
         };
         defer tree.deinit(gpa);
@@ -312,7 +312,7 @@ fn fmtPathFile(
         break :mode .zig;
     };
 
-    var tree = try std.zig.Ast.parse(gpa, source_code, mode);
+    var tree = try std.zig.Ast.parse(gpa, source_code, mode, .{});
     defer tree.deinit(gpa);
 
     if (tree.errors.len != 0) {

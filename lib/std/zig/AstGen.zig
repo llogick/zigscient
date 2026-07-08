@@ -3746,6 +3746,9 @@ fn ptrType(
     if (ptr_info.size == .c and ptr_info.allowzero_token != null) {
         return gz.astgen.failTok(ptr_info.allowzero_token.?, "C pointers always allow address zero", .{});
     }
+    if (ptr_info.duplicate_token) |duplicate| {
+        return gz.astgen.failTok(duplicate, "Extra pointer qualifier", .{});
+    }
 
     const source_offset = gz.astgen.source_offset;
     const source_line = gz.astgen.source_line;
@@ -6709,6 +6712,9 @@ fn forExpr(
         for (for_full.ast.inputs, indexables, lens) |input, *indexable_ref, *len_refs| {
             const capture_is_ref = tree.tokenTag(capture_token) == .asterisk;
             const ident_tok = capture_token + @intFromBool(capture_is_ref);
+            if (tree.tokenTag(ident_tok) != .identifier) {
+                return astgen.failNode(input, "for input is not captured", .{});
+            }
             const is_discard = mem.eql(u8, tree.tokenSlice(ident_tok), "_");
 
             if (is_discard and capture_is_ref) {
@@ -6750,6 +6756,10 @@ fn forExpr(
                 indexable_ref.* = indexable;
                 len_refs.* = .{ indexable, .none };
             }
+        }
+        // There may or may not be a trailing comma after the final capture
+        if (tree.tokenTag(capture_token) != .pipe and tree.tokenTag(capture_token - 1) != .pipe) {
+            return astgen.failTok(capture_token, "extra capture in for loop", .{});
         }
     }
 

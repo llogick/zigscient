@@ -663,6 +663,30 @@ pub fn build(b: *std.Build) !void {
     check_mingw_run.addDirectoryArg(b.path("lib/libc/mingw"));
     check_mingw_step.dependOn(&check_mingw_run.step);
 
+    {
+        const gen_oracle_exe = b.addExecutable(.{
+            .name = "gen_parser_oracle",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tools/gen_parser_oracle.zig"),
+                .target = b.graph.host,
+            }),
+        });
+
+        const gen_oracle_step = b.step("gen-parser-oracle", "Regenerate lib/std/zig/parser_generated_oracle.zig from doc/langref/grammar.peg");
+        const gen_oracle_run = b.addRunArtifact(gen_oracle_exe);
+        gen_oracle_run.addFileArg(b.path("doc/langref/grammar.peg"));
+        gen_oracle_run.addFileArg(b.path("lib/std/zig/parser_generated_oracle.zig"));
+        gen_oracle_step.dependOn(&gen_oracle_run.step);
+
+        const check_oracle_step = b.step("check-parser-oracle", "Check if doc/langref/grammar.peg was modified without regenerating the oracle");
+        const check_oracle_run = b.addRunArtifact(gen_oracle_exe);
+        check_oracle_run.addFileArg(b.path("doc/langref/grammar.peg"));
+        check_oracle_run.addFileArg(b.path("lib/std/zig/parser_generated_oracle.zig"));
+        check_oracle_run.addArg("--check");
+        check_oracle_step.dependOn(&check_oracle_run.step);
+        test_step.dependOn(check_oracle_step);
+    }
+
     const test_incremental_step = b.step("test-incremental", "Run the incremental compilation test cases");
     try tests.addIncrementalTests(b, test_incremental_step, test_filters);
     if (!skip_test_incremental) test_step.dependOn(test_incremental_step);
@@ -1558,8 +1582,9 @@ fn generateLangRef(b: *std.Build) !std.Build.LazyPath {
 
     var it = dir.iterateAssumeFirstIteration();
     while (it.next(io) catch @panic("failed to read dir")) |entry| {
-        if (std.mem.startsWith(u8, entry.name, ".") or entry.kind != .file)
-            continue;
+        if (entry.kind != .file) continue;
+        if (std.mem.startsWith(u8, entry.name, ".")) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
 
         const out_basename = b.fmt("{s}.out", .{std.fs.path.stem(entry.name)});
         const cmd = b.addRunArtifact(doctest_exe);
@@ -1592,6 +1617,8 @@ fn generateLangRef(b: *std.Build) !std.Build.LazyPath {
     const docgen_cmd = b.addRunArtifact(docgen_exe);
     docgen_cmd.addArgs(&.{"--code-dir"});
     docgen_cmd.addDirectoryArg(wf.getDirectory());
+    docgen_cmd.addArgs(&.{"--grammar"});
+    docgen_cmd.addFileArg(b.path("doc/langref/grammar.peg"));
 
     docgen_cmd.addFileArg(b.path("doc/langref.html.in"));
     return docgen_cmd.addOutputFileArg("langref.html");

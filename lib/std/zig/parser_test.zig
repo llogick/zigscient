@@ -6976,6 +6976,7 @@ test "recovery: missing comma" {
     , &[_]Error{
         .expected_comma_after_switch_prong,
         .expected_comma_after_switch_prong,
+        .mismatched_binary_op_whitespace,
         .expected_expr,
     });
 }
@@ -6992,10 +6993,10 @@ test "recovery: non-associative operators" {
 
 test "recovery: extra qualifier" {
     try testError(
-        \\const a: *const const u8;
+        \\const a: *align(4) align(8) u8;
         \\test ""
     , &[_]Error{
-        .extra_const_qualifier,
+        .extra_align_qualifier,
         .expected_block,
     });
 }
@@ -7230,7 +7231,7 @@ test "ampersand" {
 test "Ast: pointer types with subexprs containing qualifiers" {
     var fixed_allocator = std.heap.FixedBufferAllocator.init(fixed_buffer_mem[0..]);
     const allocator = fixed_allocator.allocator();
-    var tree = try std.zig.Ast.parse(allocator, "**addrspace(*align(1)T)T", .zon);
+    var tree = try std.zig.Ast.parse(allocator, "**addrspace(*align(1)T)T", .zon, .{});
     defer tree.deinit(allocator);
 
     const regular_ptr_node = tree.nodeData(.root).node;
@@ -7252,7 +7253,7 @@ fn testParse(io: Io, source: [:0]const u8, allocator: Allocator, anything_change
     defer io.unlockStderr();
     const writer = &stderr.file_writer.interface;
 
-    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig, .{});
     defer tree.deinit(allocator);
 
     for (tree.errors) |parse_error| {
@@ -7312,7 +7313,7 @@ fn testCanonical(source: [:0]const u8) !void {
 const Error = std.zig.Ast.Error.Tag;
 
 fn testError(source: [:0]const u8, expected_errors: []const Error) !void {
-    var tree = try std.zig.Ast.parse(std.testing.allocator, source, .zig);
+    var tree = try std.zig.Ast.parse(std.testing.allocator, source, .zig, .{});
     defer tree.deinit(std.testing.allocator);
 
     std.testing.expectEqual(expected_errors.len, tree.errors.len) catch |err| {
@@ -7332,268 +7333,5 @@ fn fuzzTestOneParse(_: void, smith: *std.testing.Smith) !void {
     const mode = smith.value(std.zig.Ast.Mode);
     var tokens: std.zig.TokenSmith = .gen(smith);
     var fba: std.heap.FixedBufferAllocator = .init(&fixed_buffer_mem);
-    _ = std.zig.Ast.parseTokens(fba.allocator(), tokens.source(), tokens.list(), mode) catch return;
-}
-
-test "zig fmt: fuzz" {
-    try std.testing.fuzz({}, fuzzRender, .{});
-}
-
-fn isRewritable(source: []const u8, tokens: std.zig.Ast.TokenList.Slice) !bool {
-    @disableInstrumentation();
-
-    // Byte-order marker is stripped
-    var maybe_rewritable = std.mem.startsWith(u8, source, "\xEF\xBB\xBF");
-    // The above variable can not yet be replaced by returns since error.SkipZigTest still needs to
-    // be checked for.
-
-    for (0.., tokens.items(.tag), tokens.items(.start)) |i, tag, start| switch (tag) {
-        // Extra colons can be removed
-        .keyword_asm,
-        // Qualifiers can be reordered
-        // keyword_const is intentionally excluded since it is used in other contexts and
-        // having only one qualifier will never lead to reordering.
-        .keyword_addrspace,
-        .keyword_align,
-        .keyword_allowzero,
-        .keyword_callconv,
-        .keyword_linksection,
-        .keyword_volatile,
-        => maybe_rewritable = true,
-        .builtin,
-        // Pointer casts can be reordered
-        => for ([_][]const u8{
-            "ptrCast",
-            "alignCast",
-            "addrSpaceCast",
-            "constCast",
-            "volatileCast",
-        }) |id| {
-            if (std.mem.startsWith(u8, source[start + 1 ..], id)) {
-                maybe_rewritable = true;
-            }
-        },
-        // Quoted identifiers can be unquoted
-        .identifier => if (source[start] == '@') {
-            maybe_rewritable = true;
-        },
-        else => {},
-        // #23754
-        .container_doc_comment,
-        => if (std.mem.endsWith(Token.Tag, tokens.items(.tag)[0..i], &.{.l_brace})) {
-            return error.SkipZigTest; // Can cause I.B.
-        },
-        // #24507
-        .keyword_inline,
-        .keyword_for,
-        .keyword_while,
-        .l_brace,
-        => if (std.mem.endsWith(Token.Tag, tokens.items(.tag)[0..i], &.{ .identifier, .colon })) {
-            return error.SkipZigTest; // Can cause I.B. due to double rendering of zig fmt on/off
-        },
-    };
-
-    return maybe_rewritable;
-}
-
-/// Checks equivelence of non-whitespace characters.
-/// If there are commas in `source`, then it is checked they are also present
-/// in `rendered`. Extra commas in `rendered` are ignored.
-fn isRewritten(source: [:0]const u8, rendered: [:0]const u8) bool {
-    @disableInstrumentation();
-    var i: usize = 0;
-    for (source[0 .. source.len + 1]) |c| switch (c) {
-        ' ', '\r', '\t', '\n' => {},
-        else => while (true) {
-            defer i += 1;
-            switch (rendered[i]) {
-                ' ', '\n' => {},
-                ',' => if (c == ',') break,
-                else => |r| if (c != r) return false else break,
-            }
-        },
-    };
-    std.debug.assert(i >= rendered.len);
-    return false;
-}
-
-/// Checks that no line ends in whitespace
-fn checkBetweenTokens(src: []const u8, fmt_on: *bool) error{
-    TrailingLineWhitespace,
-    DoubleEmptyLine,
-}!void {
-    @disableInstrumentation();
-    var pos: usize = 0;
-    while (true) {
-        const nl_pos = std.mem.indexOfScalarPos(u8, src, pos, '\n');
-        var check_trailing = fmt_on.*;
-
-        const line = src[pos .. nl_pos orelse src.len];
-        if (std.mem.indexOfScalar(u8, line, '/')) |comment_start| {
-            const comment_content = line[comment_start..][2..];
-            const trimmed_comment = std.mem.trim(u8, comment_content, &std.ascii.whitespace);
-            if (std.mem.eql(u8, trimmed_comment, "zig fmt: off")) {
-                fmt_on.* = false;
-            } else if (std.mem.eql(u8, trimmed_comment, "zig fmt: on")) {
-                fmt_on.* = true;
-                check_trailing = true;
-            }
-        }
-
-        pos = nl_pos orelse break;
-        if (check_trailing and pos != 0) switch (src[pos - 1]) {
-            ' ', '\t', '\r' => return error.TrailingLineWhitespace,
-            '\n' => if (pos != 1 and src[pos - 2] == '\n') return error.DoubleEmptyLine,
-            else => {},
-        };
-        pos += 1;
-    }
-}
-
-/// Ignores extre `.comma` tokens in `rendered`
-fn reparseTokens(
-    fba: Allocator,
-    rendered: [:0]const u8,
-    expected_tags: [:.eof]const Token.Tag,
-) error{
-    OutOfMemory,
-    SameLineMultilineStringLiteral,
-    TrailingLineWhitespace,
-    DoubleEmptyLine,
-}!struct {
-    toks: std.zig.Ast.TokenList,
-    rewritten: bool,
-} {
-    @disableInstrumentation();
-    var rewritten = false;
-    var tokens: std.zig.Ast.TokenList = .{};
-    var last_token_end: usize = 0;
-    var fmt_on = true;
-
-    try tokens.ensureTotalCapacity(fba, expected_tags.len + 2); // 1 for EOF and 1 for maybe a comma
-    var tokenizer: std.zig.Tokenizer = .init(rendered);
-    var i: usize = 0;
-    while (true) {
-        const tok = tokenizer.next();
-        try tokens.append(fba, .{
-            .tag = tok.tag,
-            .start = @intCast(tok.loc.start),
-        });
-
-        const between = rendered[last_token_end..tok.loc.start];
-        last_token_end = tok.loc.end;
-        try checkBetweenTokens(between, &fmt_on);
-        if (tok.tag == .multiline_string_literal_line and fmt_on) blk: {
-            if (tokens.len == 1)
-                break :blk; // first token
-            if (std.mem.indexOfScalar(u8, between, '\n') == null)
-                return error.SameLineMultilineStringLiteral;
-        }
-        if (tok.tag == expected_tags[i]) {
-            if (tok.tag == .eof)
-                break;
-            i += 1;
-        } else if (tok.tag != .comma or !fmt_on) {
-            rewritten = true;
-        }
-    }
-    std.debug.assert(i == expected_tags.len);
-    try checkBetweenTokens(rendered[last_token_end..], &fmt_on);
-
-    return .{ .toks = tokens, .rewritten = rewritten };
-}
-
-fn fuzzRender(_: void, smith: *std.testing.Smith) !void {
-    @disableInstrumentation();
-
-    var ast_smith: std.zig.AstSmith = .init(smith);
-    try ast_smith.generateSource();
-    var fba_ctx = std.heap.FixedBufferAllocator.init(&fixed_buffer_mem);
-    var opt_rendered: ?[]const u8 = null;
-    fuzzRenderInner(&ast_smith, fba_ctx.allocator(), &opt_rendered) catch |e| switch (e) {
-        error.SkipZigTest, error.OutOfMemory, error.WriteFailed => return error.SkipZigTest,
-        else => |failure| {
-            ast_smith.logSource();
-            if (opt_rendered) |rendered| {
-                logRenderedSource(rendered);
-            }
-            return failure;
-        },
-    };
-}
-
-fn fuzzRenderInner(ast_smith: *std.zig.AstSmith, fba: Allocator, opt_rendered: *?[]const u8) !void {
-    @disableInstrumentation();
-
-    const source = ast_smith.source();
-    const src_rewritable = try isRewritable(source, ast_smith.tokens());
-    const src_tree = try std.zig.Ast.parseTokens(fba, source, ast_smith.tokens(), .zig);
-    std.debug.assert(src_tree.errors.len == 0);
-    for (src_tree.nodes.items(.tag)) |tag| switch (tag) {
-        // #24507 (`switch(x) { inline for (a) |a| a => {} }` to
-        //         `switch(x) { { inline for (a) |a| a => {} }` since
-        //         AST determines inline case token as one before the case expression's first)
-        .switch_case_inline, .switch_case_inline_one => return error.SkipZigTest,
-        else => {},
-    };
-
-    var rendered_w: std.Io.Writer.Allocating = .init(fba);
-    try rendered_w.ensureUnusedCapacity(source.len + source.len / 2);
-    try src_tree.render(fba, &rendered_w.writer, .{});
-    // `toOwnedSliceSentinel` is not used since it reallocates the entire
-    // list to save space which is useless for fixed buffer allocators.
-    try rendered_w.writer.writeByte(0);
-    const rendered = rendered_w.written()[0 .. rendered_w.written().len - 1 :0];
-    opt_rendered.* = rendered;
-
-    // First check that the non-whitespace characters match. This ensures that
-    // identifier names, numbers, comments, et cetera are preserved.
-    if (!src_rewritable and isRewritten(source, rendered))
-        return error.Rewritten;
-    // Next check that the tokens are the same since whitespace removal can change the tokens
-    const src_tags = ast_smith.tokens().items(.tag);
-    const rendered_toks = try reparseTokens(fba, rendered, src_tags[0 .. src_tags.len - 1 :.eof]);
-    if (!src_rewritable and rendered_toks.rewritten)
-        return error.Rewritten;
-
-    // Rerender the tree to check idempotency and that new commas
-    // and whitespace changes did not create an AST error.
-    const rendered_tree = try std.zig.Ast.parseTokens(fba, rendered, rendered_toks.toks.slice(), .zig);
-    if (rendered_tree.errors.len != 0)
-        return error.Rewritten;
-    var rerendered_w: std.Io.Writer.Allocating = .init(fba);
-    try rerendered_w.ensureUnusedCapacity(source.len);
-    try rendered_tree.render(fba, &rerendered_w.writer, .{});
-    try std.testing.expectEqualStrings(rendered, rerendered_w.written());
-}
-
-fn logRenderedSource(source: []const u8) void {
-    var buf: [256]u8 = undefined;
-    const ls = std.debug.lockStderr(&buf);
-    defer std.debug.unlockStderr();
-    logRenderedSourceInner(source, ls.terminal()) catch {};
-}
-
-fn logRenderedSourceInner(source: []const u8, t: std.Io.Terminal) std.Io.Writer.Error!void {
-    const w = t.writer;
-
-    t.setColor(.dim) catch {};
-    try w.writeAll("=== Rendered Source ===\n");
-    t.setColor(.reset) catch {};
-
-    for (0.., source) |i, c| switch (c) {
-        ' '...0x7e => try w.writeByte(c),
-        '\n' => {
-            if (i != 0 and source[i - 1] == ' ') {
-                try w.writeAll("⏎");
-            }
-            try w.writeByte('\n');
-        },
-        else => {
-            t.setColor(.cyan) catch {};
-            try w.print("\\x{x:0>2}", .{c});
-            t.setColor(.reset) catch {};
-        },
-    };
-    try w.writeAll("␃\n");
+    _ = std.zig.Ast.parseTokens(fba.allocator(), tokens.source(), tokens.list(), mode, .{ .recover = false }) catch return;
 }

@@ -139,10 +139,13 @@ pub fn deinit(tree: *Ast, gpa: Allocator) void {
 }
 
 pub const Mode = enum { zig, zon };
+pub const ParseOptions = struct {
+    recover: bool = true,
+};
 
 /// Result should be freed with tree.deinit() when there are
 /// no more references to any of the tokens or nodes.
-pub fn parse(gpa: Allocator, source: [:0]const u8, mode: Mode) Allocator.Error!Ast {
+pub fn parse(gpa: Allocator, source: [:0]const u8, mode: Mode, options: ParseOptions) Allocator.Error!Ast {
     var tokens = Ast.TokenList{};
     defer tokens.deinit(gpa);
 
@@ -162,7 +165,7 @@ pub fn parse(gpa: Allocator, source: [:0]const u8, mode: Mode) Allocator.Error!A
 
     var tokens_slice = tokens.toOwnedSlice();
     errdefer tokens_slice.deinit(gpa);
-    return parseTokens(gpa, source, tokens_slice, mode);
+    return parseTokens(gpa, source, tokens_slice, mode, options);
 }
 
 pub fn parseTokens(
@@ -170,6 +173,7 @@ pub fn parseTokens(
     source: [:0]const u8,
     tokens: Ast.TokenList.Slice,
     mode: Mode,
+    options: ParseOptions,
 ) Allocator.Error!Ast {
     var parser: Parse = .{
         .source = source,
@@ -180,6 +184,7 @@ pub fn parseTokens(
         .extra_data = .empty,
         .scratch = .empty,
         .tok_i = 0,
+        .recover = options.recover,
     };
     defer parser.errors.deinit(gpa);
     defer parser.nodes.deinit(gpa);
@@ -465,15 +470,6 @@ pub fn renderError(tree: Ast, parse_error: Error, w: *Writer) Writer.Error!void 
         .extra_align_qualifier => {
             return w.writeAll("extra align qualifier");
         },
-        .extra_allowzero_qualifier => {
-            return w.writeAll("extra allowzero qualifier");
-        },
-        .extra_const_qualifier => {
-            return w.writeAll("extra const qualifier");
-        },
-        .extra_volatile_qualifier => {
-            return w.writeAll("extra volatile qualifier");
-        },
         .ptr_mod_on_array_child_type => {
             return w.print("pointer modifier '{s}' not allowed on array child type", .{
                 tree.tokenTag(parse_error.token).symbol(),
@@ -558,12 +554,6 @@ pub fn renderError(tree: Ast, parse_error: Error, w: *Writer) Writer.Error!void 
         },
         .var_const_decl => {
             return w.writeAll("use 'var' or 'const' to declare variable");
-        },
-        .extra_for_capture => {
-            return w.writeAll("extra capture in for loop");
-        },
-        .for_input_not_captured => {
-            return w.writeAll("for input is not captured");
         },
 
         .invalid_byte => {
@@ -2116,6 +2106,7 @@ fn fullPtrTypeComponents(tree: Ast, info: full.PtrType.Components) full.PtrType 
         .allowzero_token = null,
         .const_token = null,
         .volatile_token = null,
+        .duplicate_token = null,
         .ast = info,
     };
     // We need to be careful that we don't iterate over any sub-expressions
@@ -2131,9 +2122,24 @@ fn fullPtrTypeComponents(tree: Ast, info: full.PtrType.Components) full.PtrType 
     const end = tree.firstToken(info.child_type);
     while (i < end) : (i += 1) {
         switch (tree.tokenTag(i)) {
-            .keyword_allowzero => result.allowzero_token = i,
-            .keyword_const => result.const_token = i,
-            .keyword_volatile => result.volatile_token = i,
+            .keyword_allowzero => {
+                if (result.allowzero_token != null) {
+                    result.duplicate_token = i;
+                }
+                result.allowzero_token = i;
+            },
+            .keyword_const => {
+                if (result.const_token != null) {
+                    result.duplicate_token = i;
+                }
+                result.const_token = i;
+            },
+            .keyword_volatile => {
+                if (result.volatile_token != null) {
+                    result.duplicate_token = i;
+                }
+                result.volatile_token = i;
+            },
             .keyword_align => {
                 if (info.bit_range_end.unwrap()) |bit_range_end| {
                     assert(info.bit_range_start != .none);
@@ -2730,6 +2736,7 @@ pub const full = struct {
         allowzero_token: ?TokenIndex,
         const_token: ?TokenIndex,
         volatile_token: ?TokenIndex,
+        duplicate_token: ?TokenIndex,
         ast: Components,
 
         pub const Components = struct {
@@ -2863,9 +2870,6 @@ pub const Error = struct {
         extern_fn_body,
         extra_addrspace_qualifier,
         extra_align_qualifier,
-        extra_allowzero_qualifier,
-        extra_const_qualifier,
-        extra_volatile_qualifier,
         ptr_mod_on_array_child_type,
         invalid_bit_range,
         same_line_doc_comment,
@@ -2889,8 +2893,6 @@ pub const Error = struct {
         expected_var_const,
         wrong_equal_var_decl,
         var_const_decl,
-        extra_for_capture,
-        for_input_not_captured,
 
         zig_style_container,
         previous_field,
