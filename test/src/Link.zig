@@ -13,7 +13,7 @@ max_rss: usize,
 
 pub fn includeTest(self: *Link, prefix: []const u8) ?Case {
     if (for (self.test_filters) |filter| {
-        if (std.mem.containsAtLeast(u8, prefix, 1, filter)) break false;
+        if (std.mem.find(u8, prefix, filter)) |_| break false;
     } else self.test_filters.len > 0) return null;
 
     return .{
