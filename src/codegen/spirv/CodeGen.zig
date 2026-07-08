@@ -4459,6 +4459,7 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) Error!void {
 
             .optional_payload     => try cg.airUnwrapOptional(inst),
             .optional_payload_ptr => try cg.airUnwrapOptionalPtr(inst),
+            .optional_payload_ptr_set => try cg.airSetOptionalPtr(inst),
             .wrap_optional        => try cg.airWrapOptional(inst),
 
             .assembly => try cg.airAssembly(inst),
@@ -8015,6 +8016,39 @@ fn airUnwrapOptionalPtr(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     }
 
     return try cg.accessChain(result_ty_id, operand_id, &.{0});
+}
+
+fn airSetOptionalPtr(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
+    const zcu = cg.zcu;
+    const ty_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
+
+    const ptr_ty = cg.typeOf(ty_op.operand);
+    const ptr_id = try cg.resolve(ty_op.operand);
+
+    const optional_ty = ptr_ty.childType(zcu);
+    const payload_ty = optional_ty.optionalChild(zcu);
+    const result_ty = cg.typeOfIndex(inst);
+
+    if (optional_ty.optionalReprIsPayload(zcu)) {
+        return try cg.bitCast(result_ty, ptr_ty, ptr_id);
+    }
+
+    const storage_class = cg.storageClass(ptr_ty.ptrAddressSpace(zcu));
+    const bool_indirect_ty_id = try cg.resolveType(.bool, .indirect);
+    const bool_ptr_ty_id = try cg.ptrType(bool_indirect_ty_id, storage_class);
+    const result_ty_id = try cg.resolveType(result_ty, .direct);
+
+    const bool_ptr_id, const ret = switch (payload_ty.hasRuntimeBits(zcu)) {
+        true => .{
+            try cg.accessChain(bool_ptr_ty_id, ptr_id, &.{1}),
+            try cg.accessChain(result_ty_id, ptr_id, &.{0}),
+        },
+        false => .{ ptr_id, try cg.bitCast(result_ty, ptr_ty, ptr_id) },
+    };
+
+    try cg.store(.bool, bool_ptr_id, try cg.constBool(true, .direct), .{});
+
+    return ret;
 }
 
 fn airWrapOptional(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
