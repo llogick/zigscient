@@ -1937,7 +1937,7 @@ fn readPackedIntLittle(comptime T: type, bytes: []const u8, bit_offset: usize) T
     const bit_count = @as(usize, @bitSizeOf(T));
     const bit_shift = @as(u3, @intCast(bit_offset % 8));
 
-    const load_size = (bit_count + 7) / 8;
+    const load_size = @divCeil(bit_count, 8);
     const load_tail_bits = @as(u3, @intCast((load_size * 8) - bit_count));
     const LoadInt = @Int(.unsigned, load_size * 8);
 
@@ -1964,9 +1964,9 @@ fn readPackedIntBig(comptime T: type, bytes: []const u8, bit_offset: usize) T {
 
     const bit_count = @as(usize, @bitSizeOf(T));
     const bit_shift = @as(u3, @intCast(bit_offset % 8));
-    const byte_count = (@as(usize, bit_shift) + bit_count + 7) / 8;
+    const byte_count = @divCeil(@as(usize, bit_shift) + bit_count, 8);
 
-    const load_size = (bit_count + 7) / 8;
+    const load_size = @divCeil(bit_count, 8);
     const load_tail_bits = @as(u3, @intCast((load_size * 8) - bit_count));
     const LoadInt = @Int(.unsigned, load_size * 8);
 

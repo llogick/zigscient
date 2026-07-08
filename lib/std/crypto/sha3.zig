@@ -58,7 +58,7 @@ pub fn Keccak(comptime f: u11, comptime output_bits: u11, comptime default_delim
         st: State,
 
         /// The output length, in bytes.
-        pub const digest_length = std.math.divCeil(comptime_int, output_bits, 8) catch unreachable;
+        pub const digest_length: comptime_int = @divCeil(output_bits, 8);
         /// The block length, or rate, in bytes.
         pub const block_length = State.rate;
         /// The delimiter can be overwritten in the options.
@@ -464,7 +464,7 @@ pub const NistLengthEncoding = enum {
     /// Encode a length according to NIST SP 800-185.
     pub fn encode(comptime encoding: NistLengthEncoding, len: usize) Length {
         const len_bits = @bitSizeOf(@TypeOf(len)) - @clz(len) + 3;
-        const len_bytes = std.math.divCeil(usize, len_bits, 8) catch unreachable;
+        const len_bytes = @divCeil(len_bits, 8);
 
         var res = Length{ .len = len_bytes + 1 };
         if (encoding == .right) {

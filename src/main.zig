@@ -159,8 +159,7 @@ const use_safe_allocator = build_options.debug_gpa or
         .ReleaseFast, .ReleaseSmall => false,
     });
 
-// TODO: The `align(@alignOf(std.heap.SafeAllocator))` can be removed the next time zig1.wasm is updated
-var safe_allocator: std.heap.SafeAllocator align(@alignOf(std.heap.SafeAllocator)) = .init(std.heap.page_allocator, .{
+var safe_allocator: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{
     .stack_trace_frames = build_options.mem_leak_frames,
 });
 

@@ -2137,7 +2137,7 @@ pub const WipNav = struct {
                 .signed => DW.FORM.sdata,
                 .unsigned => DW.FORM.udata,
             }));
-            try wip_nav.debug_info.ensureUnusedCapacity(std.math.divCeil(usize, bits, 7) catch unreachable);
+            try wip_nav.debug_info.ensureUnusedCapacity(@divCeil(bits, 7));
             var bit: usize = 0;
             var carry: u1 = 1;
             while (bit < bits) {
@@ -2158,7 +2158,7 @@ pub const WipNav = struct {
             }
         } else {
             try diw.writeUleb128(DW.FORM.block);
-            const bytes = @max(ty.abiSize(zcu), std.math.divCeil(usize, bits, 8) catch unreachable);
+            const bytes = @max(ty.abiSize(zcu), @divCeil(bits, 8));
             try diw.writeUleb128(bytes);
             try wip_nav.debug_info.ensureUnusedCapacity(@intCast(bytes));
             big_int.writeTwosComplement(
@@ -4275,7 +4275,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
             try wip_nav.abbrevCode(.aggregate_undefined_comptime_value);
             try wip_nav.refType(.fromInterned(error_union.ty));
             var err_buf: [4]u8 = undefined;
-            const err_bytes = err_buf[0 .. std.math.divCeil(u17, zcu.errorSetBits(), 8) catch unreachable];
+            const err_bytes = err_buf[0..@divCeil(zcu.errorSetBits(), 8)];
             dwarf.writeInt(err_bytes, switch (error_union.val) {
                 .err_name => |err_name| try pt.getErrorValue(err_name),
                 .payload => 0,

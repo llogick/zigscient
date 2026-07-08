@@ -392,6 +392,7 @@ const Writer = struct {
             .truncate,
             .div_exact,
             .div_floor,
+            .div_ceil,
             .div_trunc,
             .mod,
             .rem,

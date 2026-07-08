@@ -2127,6 +2127,44 @@ test "div floor positive close to zero" {
     try testing.expectEqual(10, try r.toInt(i32));
 }
 
+fn testDivCeil(comptime T: type, u: T, v: T, eq: T, er: T) !void {
+    var a = try Managed.initSet(testing.allocator, u);
+    defer a.deinit();
+    var b = try Managed.initSet(testing.allocator, v);
+    defer b.deinit();
+
+    var q = try Managed.init(testing.allocator);
+    defer q.deinit();
+    var r = try Managed.init(testing.allocator);
+    defer r.deinit();
+
+    try Managed.divCeil(&q, &r, &a, &b);
+
+    try testing.expectEqual(eq, try q.toInt(T));
+    try testing.expectEqual(er, try r.toInt(T));
+}
+
+test "div ceil small" {
+    try testDivCeil(i32, 5, 3, 2, -1);
+    try testDivCeil(i32, -5, 3, -1, -2);
+    try testDivCeil(i32, 5, -3, -1, 2);
+    try testDivCeil(i32, -5, -3, 2, 1);
+    try testDivCeil(i32, -0x80000000, 1, -0x80000000, 0);
+}
+
+test "div ceil multi-limb" {
+    {
+        const a = (@as(i128, 1) << 100) + 3;
+        const b: i128 = 4;
+        try testDivCeil(i128, a, b, (1 << 98) + 1, -1);
+    }
+    {
+        const a = -((@as(i128, 1) << 100) + 3);
+        const b: i128 = 4;
+        try testDivCeil(i128, a, b, -(1 << 98), -3);
+    }
+}
+
 test "div multi-multi with rem" {
     if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
 

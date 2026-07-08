@@ -936,6 +936,7 @@ fn builtinCall(astrl: *AstRlAnnotate, block: ?*Block, ri: ResultInfo, node: Ast.
         },
         .div_exact,
         .div_floor,
+        .div_ceil,
         .div_trunc,
         .mod,
         .rem,

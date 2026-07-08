@@ -768,7 +768,7 @@ fn mulSatScalar(
     }
 }
 
-pub const DivOp = enum { div, div_trunc, div_floor, div_exact };
+pub const DivOp = enum { div, div_trunc, div_floor, div_ceil, div_exact };
 
 /// Applies the `/` operator to comptime-known values.
 /// `lhs_val` and `rhs_val` are fully-resolved values of type `ty`.
@@ -843,6 +843,11 @@ fn divScalar(
                 if (res.overflow) return sema.failWithIntegerOverflow(block, src, ty, res.val, vec_idx);
                 return res.val;
             },
+            .div_ceil => {
+                const res = try intDivCeil(sema, lhs_val, rhs_val, ty);
+                if (res.overflow) return sema.failWithIntegerOverflow(block, src, ty, res.val, vec_idx);
+                return res.val;
+            },
             .div_exact => switch (try intDivExact(sema, lhs_val, rhs_val, ty)) {
                 .remainder => return sema.fail(block, src, "exact division produced remainder", .{}),
                 .overflow => |val| return sema.failWithIntegerOverflow(block, src, ty, val, vec_idx),
@@ -851,7 +856,7 @@ fn divScalar(
         }
     } else {
         const allow_div_zero = switch (op) {
-            .div, .div_trunc, .div_floor => ty.toIntern() != .comptime_float_type and block.float_mode == .strict,
+            .div, .div_trunc, .div_floor, .div_ceil => ty.toIntern() != .comptime_float_type and block.float_mode == .strict,
             .div_exact => false,
         };
         if (!allow_div_zero) {
@@ -871,6 +876,7 @@ fn divScalar(
             .div => return floatDiv(sema, lhs_val, rhs_val, ty),
             .div_trunc => return floatDivTrunc(sema, lhs_val, rhs_val, ty),
             .div_floor => return floatDivFloor(sema, lhs_val, rhs_val, ty),
+            .div_ceil => return floatDivCeil(sema, lhs_val, rhs_val, ty),
             .div_exact => {
                 if (!floatDivIsExact(sema, lhs_val, rhs_val, ty)) {
                     return sema.fail(block, src, "exact division produced remainder", .{});
@@ -1755,6 +1761,49 @@ fn intDivFloorInner(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value {
     }
     return pt.intValue_big(ty, result_q.toConst());
 }
+fn intDivCeil(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !struct { overflow: bool, val: Value } {
+    const result = intDivCeilInner(sema, lhs, rhs, ty) catch |err| switch (err) {
+        error.Overflow => {
+            const result = intDivCeilInner(sema, lhs, rhs, .comptime_int) catch |err1| switch (err1) {
+                error.Overflow => unreachable,
+                else => |e| return e,
+            };
+            return .{ .overflow = true, .val = result };
+        },
+        else => |e| return e,
+    };
+    return .{ .overflow = false, .val = result };
+}
+fn intDivCeilInner(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value {
+    const pt = sema.pt;
+    const zcu = pt.zcu;
+    var lhs_space: Value.BigIntSpace = undefined;
+    var rhs_space: Value.BigIntSpace = undefined;
+    const lhs_bigint = lhs.toBigInt(&lhs_space, zcu);
+    const rhs_bigint = rhs.toBigInt(&rhs_space, zcu);
+    const limbs_q = try sema.arena.alloc(
+        std.math.big.Limb,
+        lhs_bigint.limbs.len,
+    );
+    const limbs_r = try sema.arena.alloc(
+        std.math.big.Limb,
+        rhs_bigint.limbs.len,
+    );
+    const limbs_buf = try sema.arena.alloc(
+        std.math.big.Limb,
+        std.math.big.int.calcDivLimbsBufferLen(lhs_bigint.limbs.len, rhs_bigint.limbs.len),
+    );
+    var result_q: BigIntMutable = .{ .limbs = limbs_q, .positive = undefined, .len = undefined };
+    var result_r: BigIntMutable = .{ .limbs = limbs_r, .positive = undefined, .len = undefined };
+    result_q.divCeil(&result_r, lhs_bigint, rhs_bigint, limbs_buf);
+    if (ty.toIntern() != .comptime_int_type) {
+        const info = ty.intInfo(zcu);
+        if (!result_q.toConst().fitsInTwosComp(info.signedness, info.bits)) {
+            return error.Overflow;
+        }
+    }
+    return pt.intValue_big(ty, result_q.toConst());
+}
 fn intMod(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value {
     const pt = sema.pt;
     const zcu = pt.zcu;
@@ -2140,6 +2189,23 @@ fn floatDivFloor(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value {
         .storage = storage,
     } }));
 }
+fn floatDivCeil(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value {
+    const pt = sema.pt;
+    const zcu = pt.zcu;
+    const target = zcu.getTarget();
+    const storage: InternPool.Key.Float.Storage = switch (ty.floatBits(target)) {
+        16 => .{ .f16 = @divCeil(lhs.toFloat(f16, zcu), rhs.toFloat(f16, zcu)) },
+        32 => .{ .f32 = @divCeil(lhs.toFloat(f32, zcu), rhs.toFloat(f32, zcu)) },
+        64 => .{ .f64 = @divCeil(lhs.toFloat(f64, zcu), rhs.toFloat(f64, zcu)) },
+        80 => .{ .f80 = @divCeil(lhs.toFloat(f80, zcu), rhs.toFloat(f80, zcu)) },
+        128 => .{ .f128 = @divCeil(lhs.toFloat(f128, zcu), rhs.toFloat(f128, zcu)) },
+        else => unreachable,
+    };
+    return .fromInterned(try pt.intern(.{ .float = .{
+        .ty = ty.toIntern(),
+        .storage = storage,
+    } }));
+}
 fn floatDivIsExact(sema: *Sema, lhs: Value, rhs: Value, ty: Type) bool {
     const zcu = sema.pt.zcu;
     const target = zcu.getTarget();
@@ -2238,7 +2304,7 @@ fn intValueAa(sema: *Sema, ty: Type) !Value {
     if (ty.toIntern() == .u0_type) return pt.intValue(ty, 0);
     const info = ty.intInfo(zcu);
 
-    const buf = try sema.arena.alloc(u8, (info.bits + 7) / 8);
+    const buf = try sema.arena.alloc(u8, @divCeil(info.bits, 8));
     @memset(buf, 0xAA);
 
     const limbs = try sema.arena.alloc(

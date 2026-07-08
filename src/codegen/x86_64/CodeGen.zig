@@ -70,6 +70,9 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
         .expand_sub_safe,
         .expand_mul_safe,
 
+        .expand_div_ceil,
+        .expand_div_ceil_optimized,
+
         .expand_packed_load,
         .expand_packed_store,
         .expand_packed_agg_field_val,
@@ -173873,6 +173876,8 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 for (ops) |op| try op.die(cg);
             },
 
+            .div_ceil, .div_ceil_optimized => unreachable,
+
             // No soft-float `Legalize` features are enabled, so this instruction never appears.
             .legalize_compiler_rt_call => unreachable,
 
@@ -174781,7 +174786,7 @@ fn genShiftBinOpMir(
     try self.spillEflagsIfOccupied();
 
     if (abi_size > 16) {
-        const limbs_len = std.math.divCeil(u32, abi_size, 8) catch unreachable;
+        const limbs_len = @divCeil(abi_size, 8);
         assert(shift_abi_size >= 1 and shift_abi_size <= 2);
 
         const rcx_lock: ?RegisterLock = switch (rhs_mcv) {
@@ -179593,7 +179598,7 @@ fn genSetReg(
                         if (pack_alias != sign_alias) try cg.asmRegisterRegister(.{ ._dqa, .mov }, pack_alias, sign_alias);
                         try cg.asmRegisterRegister(.{ .p_b, .ackssw }, pack_alias, pack_alias);
                     }
-                    mask_size = std.math.divCeil(u32, mask_size, 2) catch unreachable;
+                    mask_size = @divCeil(mask_size, 2);
                     break :pack_reg pack_reg;
                 },
             };
@@ -180157,7 +180162,7 @@ fn airBitCast(self: *CodeGen, inst: Air.Inst.Index) !void {
         const bit_size = dst_ty.bitSize(zcu);
         if (abi_size * 8 <= bit_size) break :result dst_mcv;
 
-        const dst_limbs_len = std.math.divCeil(u31, @intCast(bit_size), 64) catch unreachable;
+        const dst_limbs_len: u31 = @intCast(@divCeil(bit_size, 64));
         const high_mcv: MCValue = switch (dst_mcv) {
             .register => |dst_reg| .{ .register = dst_reg },
             .register_pair => |dst_regs| .{ .register = dst_regs[1] },
@@ -183550,7 +183555,7 @@ const Temp = struct {
             const part_ty: Type = if (src_regs.len == 1)
                 src_ty
             else if (cg.intInfo(src_ty)) |int_info| part_ty: {
-                assert(src_regs.len == std.math.divCeil(u16, int_info.bits, 64) catch unreachable);
+                assert(src_regs.len == @divCeil(int_info.bits, 64));
                 break :part_ty .u64;
             } else part_ty: switch (ip.indexToKey(src_ty.toIntern())) {
                 else => std.debug.panic("{s}: {f}\n", .{ @src().fn_name, src_ty.fmt(cg.pt) }),
@@ -183560,7 +183565,7 @@ const Temp = struct {
                     break :part_ty .usize;
                 },
                 .array_type => {
-                    assert(src_regs.len - part_index == std.math.divCeil(u32, src_size, 8) catch unreachable);
+                    assert(src_regs.len - part_index == @divCeil(src_size, 8));
                     break :part_ty try cg.pt.intType(.unsigned, @as(u16, 8) * @min(src_size, 8));
                 },
                 .vector_type => |vector_type| switch (@divExact(vector_type.len, src_regs.len)) {
@@ -183580,7 +183585,7 @@ const Temp = struct {
                     },
                 },
                 .struct_type, .union_type => {
-                    assert(src_regs.len - part_index == std.math.divCeil(u32, src_size, 8) catch unreachable);
+                    assert(src_regs.len - part_index == @divCeil(src_size, 8));
                     break :part_ty switch (src_size) {
                         0, 3, 5...7 => unreachable,
                         1 => .u8,

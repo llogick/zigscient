@@ -5279,6 +5279,27 @@ test divFloorOptimized {
     try test_div_floor_optimized.testFloatVectors();
 }
 
+inline fn divCeilUnoptimized(comptime Type: type, lhs: Type, rhs: Type) Type {
+    return @divCeil(lhs, rhs);
+}
+test divCeilUnoptimized {
+    const test_div_ceil_unoptimized = binary(divCeilUnoptimized, .{ .compare = .approx_int });
+    try test_div_ceil_unoptimized.testInts();
+    try test_div_ceil_unoptimized.testIntVectors();
+    try test_div_ceil_unoptimized.testFloats();
+    try test_div_ceil_unoptimized.testFloatVectors();
+}
+
+inline fn divCeilOptimized(comptime Type: type, lhs: Type, rhs: Type) Type {
+    @setFloatMode(.optimized);
+    return @divCeil(lhs, select(@abs(rhs) > splat(Type, 0.0), rhs, splat(Type, 1.0)));
+}
+test divCeilOptimized {
+    const test_div_ceil_optimized = binary(divCeilOptimized, .{ .compare = .approx_int });
+    try test_div_ceil_optimized.testFloats();
+    try test_div_ceil_optimized.testFloatVectors();
+}
+
 inline fn rem(comptime Type: type, lhs: Type, rhs: Type) Type {
     return @rem(lhs, rhs);
 }

@@ -175,6 +175,8 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
         .div_trunc_optimized,
         .div_floor,
         .div_floor_optimized,
+        .div_ceil,
+        .div_ceil_optimized,
         .div_exact,
         .div_exact_optimized,
         .rem,
@@ -403,11 +405,11 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
                 .live_registers = undefined,
                 .repeat_list = undefined,
             });
-            try isel.dom.appendNTimes(gpa, 0, std.math.divCeil(usize, isel.dom_len, @bitSizeOf(DomInt)) catch unreachable);
+            try isel.dom.appendNTimes(gpa, 0, @divCeil(isel.dom_len, @bitSizeOf(DomInt)));
             try isel.analyze(air_body_block.body);
             for (
                 isel.dom.items[initial_dom_start..].ptr,
-                isel.dom.items[isel.dom_start..][0 .. std.math.divCeil(usize, initial_dom_len, @bitSizeOf(DomInt)) catch unreachable],
+                isel.dom.items[isel.dom_start..][0..@divCeil(initial_dom_len, @bitSizeOf(DomInt))],
             ) |*initial_dom, loop_dom| initial_dom.* |= loop_dom;
             isel.dom_start = initial_dom_start;
             isel.dom_len = initial_dom_len;
@@ -589,7 +591,7 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
                 .live_registers = undefined,
                 .repeat_list = undefined,
             });
-            try isel.dom.appendNTimes(gpa, 0, std.math.divCeil(usize, isel.dom_len, @bitSizeOf(DomInt)) catch unreachable);
+            try isel.dom.appendNTimes(gpa, 0, @divCeil(isel.dom_len, @bitSizeOf(DomInt)));
 
             var cases_it = switch_br.iterateCases();
             while (cases_it.next()) |case| try isel.analyze(case.body);
@@ -597,7 +599,7 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
 
             for (
                 isel.dom.items[initial_dom_start..].ptr,
-                isel.dom.items[isel.dom_start..][0 .. std.math.divCeil(usize, initial_dom_len, @bitSizeOf(DomInt)) catch unreachable],
+                isel.dom.items[isel.dom_start..][0..@divCeil(initial_dom_len, @bitSizeOf(DomInt))],
             ) |*initial_dom, loop_dom| initial_dom.* |= loop_dom;
             isel.dom_start = initial_dom_start;
             isel.dom_len = initial_dom_len;
@@ -10194,7 +10196,7 @@ pub const Value = struct {
                         0 => unreachable,
                         1...64 => unreachable,
                         65...256 => |bits| if (offset == 0 and size == ty_size) {
-                            const parts_len = std.math.divCeil(u16, bits, 64) catch unreachable;
+                            const parts_len = @divCeil(bits, 64);
                             vi.setParts(isel, @intCast(parts_len));
                             for (0..parts_len) |part_index| _ = vi.addPart(isel, 8 * part_index, 8);
                         },
@@ -10238,7 +10240,7 @@ pub const Value = struct {
                         const min_part_log2_stride: u5 = if (size > 16) 4 else if (size > 8) 3 else 0;
                         const array_len = array_type.lenIncludingSentinel();
                         if (array_len > Value.max_parts and
-                            (std.math.divCeil(u64, size, @as(u64, 1) << min_part_log2_stride) catch unreachable) > Value.max_parts)
+                            (@divCeil(size, @as(u64, 1) << min_part_log2_stride)) > Value.max_parts)
                             return isel.fail("Value.FieldPartIterator.next({f})", .{isel.fmtType(ty)});
                         const alignment = vi.alignment(isel);
                         const Part = struct { offset: u64, size: u64 };
@@ -10288,7 +10290,7 @@ pub const Value = struct {
                     .anyframe_type => unreachable,
                     .error_union_type => |error_union_type| {
                         const min_part_log2_stride: u5 = if (size > 16) 4 else if (size > 8) 3 else 0;
-                        if ((std.math.divCeil(u64, size, @as(u64, 1) << min_part_log2_stride) catch unreachable) > Value.max_parts)
+                        if ((@divCeil(size, @as(u64, 1) << min_part_log2_stride)) > Value.max_parts)
                             return isel.fail("Value.FieldPartIterator.next({f})", .{isel.fmtType(ty)});
                         const alignment = vi.alignment(isel);
                         const payload_ty: ZigType = .fromInterned(error_union_type.payload_type);
@@ -10395,7 +10397,7 @@ pub const Value = struct {
                         }
                         const min_part_log2_stride: u5 = if (size > 16) 4 else if (size > 8) 3 else 0;
                         if (loaded_struct.field_types.len > Value.max_parts and
-                            (std.math.divCeil(u64, size, @as(u64, 1) << min_part_log2_stride) catch unreachable) > Value.max_parts)
+                            (@divCeil(size, @as(u64, 1) << min_part_log2_stride)) > Value.max_parts)
                             return isel.fail("Value.FieldPartIterator.next({f})", .{isel.fmtType(ty)});
                         const alignment = vi.alignment(isel);
                         const Part = struct { offset: u64, size: u64, signedness: ?std.lang.Signedness, is_vector: bool };
@@ -10456,7 +10458,7 @@ pub const Value = struct {
                     .tuple_type => |tuple_type| {
                         const min_part_log2_stride: u5 = if (size > 16) 4 else if (size > 8) 3 else 0;
                         if (tuple_type.types.len > Value.max_parts and
-                            (std.math.divCeil(u64, size, @as(u64, 1) << min_part_log2_stride) catch unreachable) > Value.max_parts)
+                            (@divCeil(size, @as(u64, 1) << min_part_log2_stride)) > Value.max_parts)
                             return isel.fail("Value.FieldPartIterator.next({f})", .{isel.fmtType(ty)});
                         const alignment = vi.alignment(isel);
                         const Part = struct { offset: u64, size: u64, is_vector: bool };
@@ -10511,7 +10513,7 @@ pub const Value = struct {
                             } },
                         }
                         const min_part_log2_stride: u5 = if (size > 16) 4 else if (size > 8) 3 else 0;
-                        if ((std.math.divCeil(u64, size, @as(u64, 1) << min_part_log2_stride) catch unreachable) > Value.max_parts)
+                        if ((@divCeil(size, @as(u64, 1) << min_part_log2_stride)) > Value.max_parts)
                             return isel.fail("Value.FieldPartIterator.next({f})", .{isel.fmtType(ty)});
                         const union_layout = ZigType.getUnionLayout(loaded_union, zcu);
                         const alignment = vi.alignment(isel);

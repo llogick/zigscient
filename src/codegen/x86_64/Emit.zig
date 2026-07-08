@@ -772,7 +772,7 @@ fn encodeInst(emit: *Emit, lowered_inst: Instruction, reloc_info: []const RelocI
                     const enc_length: u4 = if (is_mem) switch (lowered_inst.ops[op_index].mem.sib.base) {
                         .rip_inst => 4,
                         else => unreachable,
-                    } else @intCast(std.math.divCeil(u7, @intCast(op.immBitSize()), 8) catch unreachable);
+                    } else @intCast(@divCeil(op.immBitSize(), 8));
                     reloc_offset -= enc_length;
                     if (op_index == reloc.op_index) break :reloc_offset_length .{ reloc_offset, enc_length };
                     assert(!is_mem);

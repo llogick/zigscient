@@ -1391,7 +1391,7 @@ test "EnumIndexer non-exhaustive" {
         const max_index: comptime_int = std.math.maxInt(RangedType);
         const number_zero_tag_index: usize = switch (@typeInfo(BackingInt).int.signedness) {
             .unsigned => 0,
-            .signed => std.math.divCeil(comptime_int, max_index, 2) catch unreachable,
+            .signed => @divCeil(max_index, 2),
         };
 
         try testing.expectEqual(E, Indexer.Key);

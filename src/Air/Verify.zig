@@ -253,6 +253,8 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             .div_trunc_optimized,
             .div_floor,
             .div_floor_optimized,
+            .div_ceil,
+            .div_ceil_optimized,
             .div_exact,
             .div_exact_optimized,
             .rem,

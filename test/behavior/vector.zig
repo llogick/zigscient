@@ -510,8 +510,37 @@ test "vector division operators" {
             inline for (@as([4]T, d2), 0..) |v, i| {
                 try expect(@divFloor(x[i], y[i]) == v);
             }
-            const d3 = @divTrunc(x, y);
+            const d3 = @divCeil(x, y);
             inline for (@as([4]T, d3), 0..) |v, i| {
+                try expect(@divCeil(x[i], y[i]) == v);
+            }
+            const d4 = @divTrunc(x, y);
+            inline for (@as([4]T, d4), 0..) |v, i| {
+                try expect(@divTrunc(x[i], y[i]) == v);
+            }
+        }
+
+        fn doTheTestDivNoExact(comptime T: type, x: @Vector(4, T), y: @Vector(4, T)) !void {
+            const is_signed_int = switch (@typeInfo(T)) {
+                .int => |info| info.signedness == .signed,
+                else => false,
+            };
+            if (!is_signed_int) {
+                const d0 = x / y;
+                inline for (@as([4]T, d0), 0..) |v, i| {
+                    try expect(x[i] / y[i] == v);
+                }
+            }
+            const d2 = @divFloor(x, y);
+            inline for (@as([4]T, d2), 0..) |v, i| {
+                try expect(@divFloor(x[i], y[i]) == v);
+            }
+            const d3 = @divCeil(x, y);
+            inline for (@as([4]T, d3), 0..) |v, i| {
+                try expect(@divCeil(x[i], y[i]) == v);
+            }
+            const d4 = @divTrunc(x, y);
+            inline for (@as([4]T, d4), 0..) |v, i| {
                 try expect(@divTrunc(x[i], y[i]) == v);
             }
         }
@@ -566,6 +595,9 @@ test "vector division operators" {
             try doTheTestMod(u16, [4]u16{ 1, 2, 4, 8 }, [4]u16{ 1, 1, 2, 4 });
             try doTheTestMod(u32, [4]u32{ 1, 2, 4, 8 }, [4]u32{ 1, 1, 2, 4 });
             try doTheTestMod(u64, [4]u64{ 1, 2, 4, 8 }, [4]u64{ 1, 1, 2, 4 });
+
+            try doTheTestDivNoExact(u64, [4]u64{ 4, 5, 6, 7 }, [4]u64{ 4, 4, 4, 4 });
+            try doTheTestDivNoExact(i64, [4]i64{ 4, -4, 4, -4 }, [4]i64{ 3, 3, -3, -3 });
         }
     };
 
@@ -1318,11 +1350,13 @@ test "zero divisor" {
     const v2 = @divExact(zeros, ones);
     const v3 = @divTrunc(zeros, ones);
     const v4 = @divFloor(zeros, ones);
+    const v5 = @divCeil(zeros, ones);
 
     _ = v1[0];
     _ = v2[0];
     _ = v3[0];
     _ = v4[0];
+    _ = v5[0];
 }
 
 test "zero multiplicand" {

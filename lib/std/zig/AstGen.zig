@@ -2845,6 +2845,7 @@ fn addEnsureResult(gz: *GenZir, maybe_unused_result: Zir.Inst.Ref, statement: As
             .bit_reverse,
             .div_exact,
             .div_floor,
+            .div_ceil,
             .div_trunc,
             .mod,
             .rem,
@@ -4895,7 +4896,7 @@ fn structDeclInner(
     const field_default_body_lens = try scratch.addOptionalSlice(scan_result.any_field_values, scan_result.fields_len);
     const field_comptime_bits = try scratch.addOptionalSlice(
         scan_result.any_comptime_fields,
-        std.math.divCeil(u32, scan_result.fields_len, 32) catch unreachable,
+        @divCeil(scan_result.fields_len, 32),
     );
     if (field_comptime_bits) |bits| @memset(bits.get(astgen), 0);
 
@@ -9392,6 +9393,7 @@ fn builtinCall(
 
         .div_exact => return divBuiltin(gz, scope, ri, node, params[0], params[1], .div_exact),
         .div_floor => return divBuiltin(gz, scope, ri, node, params[0], params[1], .div_floor),
+        .div_ceil  => return divBuiltin(gz, scope, ri, node, params[0], params[1], .div_ceil),
         .div_trunc => return divBuiltin(gz, scope, ri, node, params[0], params[1], .div_trunc),
         .mod       => return divBuiltin(gz, scope, ri, node, params[0], params[1], .mod),
         .rem       => return divBuiltin(gz, scope, ri, node, params[0], params[1], .rem),

@@ -3,7 +3,6 @@ const testing = std.testing;
 const assert = std.debug.assert;
 const maxInt = std.math.maxInt;
 const minInt = std.math.minInt;
-const divCeil = std.math.divCeil;
 
 const builtin = @import("builtin");
 const compiler_rt = @import("../compiler_rt.zig");
@@ -26,7 +25,7 @@ inline fn limbSet(limbs: []u64, i: usize, value: u64) void {
 }
 
 fn usedLimbCount(bits: u16) u16 {
-    return divCeil(u16, bits, 64) catch unreachable;
+    return @divCeil(bits, 64);
 }
 
 fn limbCount(bits: u16) u16 {

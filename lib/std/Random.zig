@@ -126,7 +126,7 @@ pub fn enumValueWithIndex(r: Random, comptime EnumType: type, comptime Index: ty
 pub fn int(r: Random, comptime T: type) T {
     const bits = @typeInfo(T).int.bits;
     const UnsignedT = @Int(.unsigned, bits);
-    const ceil_bytes = comptime std.math.divCeil(u16, bits, 8) catch unreachable;
+    const ceil_bytes = @divCeil(bits, 8);
     const ByteAlignedT = @Int(.unsigned, ceil_bytes * 8);
 
     var rand_bytes: [ceil_bytes]u8 = undefined;

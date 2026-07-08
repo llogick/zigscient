@@ -54,6 +54,8 @@ pub const Feature = enum {
     scalarize_div_trunc_optimized,
     scalarize_div_floor,
     scalarize_div_floor_optimized,
+    scalarize_div_ceil,
+    scalarize_div_ceil_optimized,
     scalarize_div_exact,
     scalarize_div_exact_optimized,
     scalarize_rem,
@@ -173,6 +175,15 @@ pub const Feature = enum {
     /// Not compatible with `scalarize_mul_safe`.
     expand_mul_safe,
 
+    /// Replace `div_ceil` with truncating division followed by a remainder based adjustment for integers,
+    /// or division followed by ceil for floats.
+    /// Not compatible with `scalarize_div_ceil`.
+    expand_div_ceil,
+    /// Replace `div_ceil_optimized` with truncating division followed by a remainder based adjustment for integers,
+    /// or division followed by ceil for floats.
+    /// Not compatible with `scalarize_div_ceil_optimized`.
+    expand_div_ceil_optimized,
+
     /// Replace `load` from a packed pointer with a non-packed `load`, `shr`, `truncate`.
     /// Currently assumes little endian and a specific integer layout where the lsb of every integer is the lsb of the
     /// first byte of memory until bit pointers know their backing type.
@@ -231,6 +242,8 @@ pub const Feature = enum {
             .div_trunc_optimized => .scalarize_div_trunc_optimized,
             .div_floor => .scalarize_div_floor,
             .div_floor_optimized => .scalarize_div_floor_optimized,
+            .div_ceil => .scalarize_div_ceil,
+            .div_ceil_optimized => .scalarize_div_ceil_optimized,
             .div_exact => .scalarize_div_exact,
             .div_exact_optimized => .scalarize_div_exact_optimized,
             .rem => .scalarize_rem,
@@ -382,7 +395,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 switch (l.wantScalarizeOrSoftFloat(air_tag, l.typeOf(bin_op.lhs))) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .bin_op)),
-                    .soft_float => continue :inst l.replaceInst(inst, .block, try l.softFloatDivTruncFloorBlockPayload(
+                    .soft_float => continue :inst l.replaceInst(inst, .block, try l.softFloatDivTruncFloorCeilBlockPayload(
                         inst,
                         bin_op.lhs,
                         bin_op.rhs,
@@ -596,6 +609,30 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                     continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .ty_op));
                 }
             },
+            inline .div_ceil, .div_ceil_optimized => |air_tag| {
+                const expand_feature: Feature = switch (air_tag) {
+                    .div_ceil => .expand_div_ceil,
+                    .div_ceil_optimized => .expand_div_ceil_optimized,
+                    else => unreachable,
+                };
+
+                if (l.features.has(expand_feature)) {
+                    assert(!l.features.has(.scalarize(air_tag))); // it doesn't make sense to do both
+                    continue :inst l.replaceInst(inst, .block, try l.divCeilBlockPayload(inst, air_tag));
+                } else {
+                    const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                    switch (l.wantScalarizeOrSoftFloat(air_tag, l.typeOf(bin_op.lhs))) {
+                        .none => {},
+                        .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .bin_op)),
+                        .soft_float => continue :inst l.replaceInst(inst, .block, try l.softFloatDivTruncFloorCeilBlockPayload(
+                            inst,
+                            bin_op.lhs,
+                            bin_op.rhs,
+                            air_tag,
+                        )),
+                    }
+                }
+            },
             inline .int_from_float_safe,
             .int_from_float_optimized_safe,
             => |air_tag| {
@@ -709,7 +746,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .switch_br, .loop_switch_br => {
                 const pl_op = l.air_instructions.items(.data)[@intFromEnum(inst)].pl_op;
                 const extra = l.extraData(Air.SwitchBr, pl_op.payload);
-                const hint_bag_count = std.math.divCeil(usize, extra.data.cases_len + 1, 10) catch unreachable;
+                const hint_bag_count = @divCeil(extra.data.cases_len + 1, 10);
                 var extra_index = extra.end + hint_bag_count;
                 for (0..extra.data.cases_len) |_| {
                     const case_extra = l.extraData(Air.SwitchBr.Case, extra_index);
@@ -2419,6 +2456,159 @@ fn safeArithmeticBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, overflow_
     } };
 }
 
+fn divCeilBlockPayload(
+    l: *Legalize,
+    orig_inst: Air.Inst.Index,
+    air_tag: Air.Inst.Tag,
+) Error!Air.Inst.Data {
+    const pt = l.pt;
+    const zcu = pt.zcu;
+    const gpa = zcu.gpa;
+
+    const bin_op = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].bin_op;
+    const operand_ty = l.typeOf(bin_op.lhs);
+    assert(l.typeOf(bin_op.rhs).toIntern() == operand_ty.toIntern());
+
+    const scalar_ty = operand_ty.scalarType(zcu);
+    const is_vector = operand_ty.zigTypeTag(zcu) == .vector;
+
+    switch (scalar_ty.zigTypeTag(zcu)) {
+        .float => {
+            // %result = ceil(lhs / rhs)
+
+            var inst_buf: [3]Air.Inst.Index = undefined;
+            try l.air_instructions.ensureUnusedCapacity(gpa, inst_buf.len);
+
+            var main_block: Block = .init(&inst_buf);
+
+            const div_tag: Air.Inst.Tag = switch (air_tag) {
+                .div_ceil => .div_float,
+                .div_ceil_optimized => .div_float_optimized,
+                else => unreachable,
+            };
+
+            const div_inst = main_block.add(l, .{
+                .tag = div_tag,
+                .data = .{ .bin_op = bin_op },
+            });
+
+            const ceil_inst = main_block.add(l, .{
+                .tag = .ceil,
+                .data = .{ .un_op = div_inst.toRef() },
+            });
+
+            main_block.addBr(l, orig_inst, ceil_inst.toRef());
+
+            _ = main_block.stealRemainingCapacity();
+            return .{ .ty_pl = .{
+                .ty = .fromType(operand_ty),
+                .payload = try l.addBlockBody(main_block.body()),
+            } };
+        },
+
+        .int => {
+            // Integer div_ceil:
+            //
+            // q = div_trunc(lhs, rhs)
+            // r = rem(lhs, rhs)
+            //
+            // unsigned:
+            //   q + int(r != 0)
+            //
+            // signed:
+            //   q + int(r != 0 and same_sign(lhs, rhs))
+            //
+            // same_sign is `(lhs ^ rhs) >= 0`.
+
+            var inst_buf: [10]Air.Inst.Index = undefined;
+            try l.air_instructions.ensureUnusedCapacity(gpa, inst_buf.len);
+
+            var main_block: Block = .init(&inst_buf);
+
+            const q_inst = main_block.add(l, .{
+                .tag = .div_trunc,
+                .data = .{ .bin_op = bin_op },
+            });
+
+            const r_inst = main_block.add(l, .{
+                .tag = .rem,
+                .data = .{ .bin_op = bin_op },
+            });
+
+            const zero_ref: Air.Inst.Ref = if (is_vector) zero: {
+                const zero_scalar = try pt.intValue(scalar_ty, 0);
+                const zero_vec = try pt.aggregateSplatValue(operand_ty, zero_scalar);
+                break :zero Air.internedToRef(zero_vec.toIntern());
+            } else Air.internedToRef((try pt.intValue(operand_ty, 0)).toIntern());
+
+            const r_nonzero_inst = try main_block.addCmp(
+                l,
+                .neq,
+                r_inst.toRef(),
+                zero_ref,
+                .{ .vector = is_vector },
+            );
+
+            const int_info = scalar_ty.intInfo(zcu);
+
+            const need_adjust_inst: Air.Inst.Index = if (int_info.signedness == .unsigned) r_nonzero_inst else inst: {
+                const sign_xor_inst = main_block.add(l, .{
+                    .tag = .xor,
+                    .data = .{ .bin_op = .{
+                        .lhs = bin_op.lhs,
+                        .rhs = bin_op.rhs,
+                    } },
+                });
+
+                const signs_same_inst = try main_block.addCmp(
+                    l,
+                    .gte,
+                    sign_xor_inst.toRef(),
+                    zero_ref,
+                    .{ .vector = is_vector },
+                );
+
+                break :inst main_block.add(l, .{
+                    .tag = .bit_and,
+                    .data = .{ .bin_op = .{
+                        .lhs = r_nonzero_inst.toRef(),
+                        .rhs = signs_same_inst.toRef(),
+                    } },
+                });
+            };
+
+            const adjust_u1_ty = if (is_vector)
+                try pt.vectorType(.{
+                    .len = operand_ty.vectorLen(zcu),
+                    .child = Type.u1.toIntern(),
+                })
+            else
+                Type.u1;
+
+            const adjust_u1_ref = main_block.addBitCast(l, adjust_u1_ty, need_adjust_inst.toRef());
+            const adjust_inst = main_block.addTyOp(l, .int_cast, operand_ty, adjust_u1_ref);
+
+            const result_inst = main_block.add(l, .{
+                .tag = .add,
+                .data = .{ .bin_op = .{
+                    .lhs = q_inst.toRef(),
+                    .rhs = adjust_inst.toRef(),
+                } },
+            });
+
+            main_block.addBr(l, orig_inst, result_inst.toRef());
+
+            _ = main_block.stealRemainingCapacity();
+            return .{ .ty_pl = .{
+                .ty = .fromType(operand_ty),
+                .payload = try l.addBlockBody(main_block.body()),
+            } };
+        },
+
+        else => unreachable,
+    }
+}
+
 fn packedLoadBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.Inst.Data {
     const pt = l.pt;
     const zcu = pt.zcu;
@@ -3426,7 +3616,7 @@ fn softFloatNegBlockPayload(
     } };
 }
 
-fn softFloatDivTruncFloorBlockPayload(
+fn softFloatDivTruncFloorCeilBlockPayload(
     l: *Legalize,
     orig_inst: Air.Inst.Index,
     lhs: Air.Inst.Ref,
@@ -3441,6 +3631,7 @@ fn softFloatDivTruncFloorBlockPayload(
     const floor_tag: Air.Inst.Tag = switch (air_tag) {
         .div_trunc, .div_trunc_optimized => .trunc_float,
         .div_floor, .div_floor_optimized => .floor,
+        .div_ceil, .div_ceil_optimized => .ceil,
         else => unreachable,
     };
 

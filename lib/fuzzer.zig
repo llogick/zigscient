@@ -52,7 +52,7 @@ var fuzzer: Fuzzer = undefined;
 var current_test_name: ?[]const u8 = null;
 
 fn bitsetUsizes(elems: usize) usize {
-    return math.divCeil(usize, elems, @bitSizeOf(usize)) catch unreachable;
+    return @divCeil(elems, @bitSizeOf(usize));
 }
 
 const Executable = struct {

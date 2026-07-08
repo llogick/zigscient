@@ -143,6 +143,13 @@ pub const Inst = struct {
         div_floor,
         /// Same as `div_floor` with optimized float mode.
         div_floor_optimized,
+        /// Ceiling integer or float division. For integers, wrapping is illegal behavior.
+        /// Both operands are guaranteed to be the same type, and the result type
+        /// is the same as both operands.
+        /// Uses the `bin_op` field.
+        div_ceil,
+        /// Same as `div_ceil` with optimized float mode.
+        div_ceil_optimized,
         /// Integer or float division.
         /// If a remainder would be produced, illegal behavior occurs.
         /// For integers, overflow is illegal behavior.
@@ -1510,7 +1517,7 @@ pub const ShuffleTwoMask = enum(u32) {
 /// Trailing:
 /// 0. `Inst.Ref` for every outputs_len
 /// 1. `Inst.Ref` for every inputs_len
-/// 2. A number of u32 elements follow according to the equation `(source_len + 3) / 4`.
+/// 2. A number of u32 elements follow according to the equation `@divCeil(source_len, 4)`.
 ///    Memory starting at this position is reinterpreted as the source bytes.
 /// 3. for every outputs_len
 ///    - constraint: memory at this position is reinterpreted as a null
@@ -1605,6 +1612,7 @@ pub fn typeOfIndex(air: *const Air, inst: Air.Inst.Index, ip: *const InternPool)
         .div_float,
         .div_trunc,
         .div_floor,
+        .div_ceil,
         .div_exact,
         .rem,
         .mod,
@@ -1624,6 +1632,7 @@ pub fn typeOfIndex(air: *const Air, inst: Air.Inst.Index, ip: *const InternPool)
         .div_float_optimized,
         .div_trunc_optimized,
         .div_floor_optimized,
+        .div_ceil_optimized,
         .div_exact_optimized,
         .rem_optimized,
         .mod_optimized,
@@ -1985,6 +1994,8 @@ pub fn mustLower(air: Air, inst: Air.Inst.Index, ip: *const InternPool) bool {
         .div_trunc_optimized,
         .div_floor,
         .div_floor_optimized,
+        .div_ceil,
+        .div_ceil_optimized,
         .div_exact,
         .div_exact_optimized,
         .rem,
@@ -2214,7 +2225,7 @@ pub fn unwrapSwitch(air: *const Air, switch_inst: Inst.Index) UnwrappedSwitch {
     }
     const pl_op = inst.data.pl_op;
     const extra = air.extraData(SwitchBr, pl_op.payload);
-    const hint_bag_count = std.math.divCeil(usize, extra.data.cases_len + 1, 10) catch unreachable;
+    const hint_bag_count = @divCeil(extra.data.cases_len + 1, 10);
     return .{
         .air = air,
         .operand = pl_op.operand,
@@ -2383,7 +2394,7 @@ pub const UnwrappedAsm = struct {
             const name = std.mem.sliceTo(constraint_name[constraint.len + 1 ..], 0);
             // This equation accounts for the fact that even if we have exactly 4 bytes
             // for the string, we still use the next u32 for the null terminator.
-            const next_offset = std.math.divCeil(usize, constraint.len + 1 + name.len + 1, @sizeOf(u32)) catch unreachable;
+            const next_offset = @divCeil(constraint.len + 1 + name.len + 1, @sizeOf(u32));
             self.constraint_names = self.constraint_names[next_offset..];
 
             return .{

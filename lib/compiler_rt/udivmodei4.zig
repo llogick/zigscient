@@ -8,7 +8,7 @@ const shl = std.math.shl;
 const compiler_rt = @import("../compiler_rt.zig");
 const symbol = @import("../compiler_rt.zig").symbol;
 
-const max_limbs = std.math.divCeil(usize, 65535, 32) catch unreachable; // max supported type is u65535
+const max_limbs = @divCeil(65535, 32); // max supported type is u65535
 
 comptime {
     symbol(&__udivei4, "__udivei4");

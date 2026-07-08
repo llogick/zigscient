@@ -232,7 +232,7 @@ fn operandSize(comptime Operand: type, operand: Operand) usize {
     return switch (Operand) {
         spec.LiteralSpecConstantOpInteger => unreachable,
         spec.Id, spec.LiteralInteger, spec.LiteralExtInstInteger => 1,
-        spec.LiteralString => std.math.divCeil(usize, operand.len + 1, @sizeOf(Word)) catch unreachable,
+        spec.LiteralString => @divCeil(operand.len + 1, @sizeOf(Word)),
         spec.LiteralContextDependentNumber => switch (operand) {
             .int32, .uint32, .float32 => 1,
             .int64, .uint64, .float64 => 2,

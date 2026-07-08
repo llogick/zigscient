@@ -198,7 +198,7 @@ pub fn State(comptime endian: std.builtin.Endian) type {
         ///
         /// Note: Clears complete words that contain the specified byte range
         pub fn clear(self: *Self, from: usize, to: usize) void {
-            @memset(self.st[from / 8 .. (to + 7) / 8], 0);
+            @memset(self.st[from / 8 .. @divCeil(to, 8)], 0);
         }
 
         /// Clear the entire state, disabling compiler optimizations.

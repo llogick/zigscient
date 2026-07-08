@@ -163,7 +163,7 @@ pub fn updateConfiguration(ws: *WebServer, maker: *Maker) !void {
         assert(idx == step_names_trailing.len);
     }
 
-    const step_status_bits = try gpa.alloc(u8, std.math.divCeil(usize, all_steps.len, 4) catch unreachable);
+    const step_status_bits = try gpa.alloc(u8, @divCeil(all_steps.len, 4));
     errdefer gpa.free(step_status_bits);
     @memset(step_status_bits, 0);
 

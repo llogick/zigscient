@@ -488,6 +488,36 @@ fn testIntDivision() !void {
     try expect(divFloor(i64, -0x80000000, -2) == 0x40000000);
     try expect(divFloor(i64, -0x40000001, 0x40000000) == -2);
 
+    try expect(divCeil(i32, 5, 3) == 2);
+    try expect(divCeil(i32, -5, 3) == -1);
+    try expect(divCeil(i32, -0x80000000, -2) == 0x40000000);
+    try expect(divCeil(i32, 0, -0x80000000) == 0);
+    try expect(divCeil(i32, -0x40000001, 0x40000000) == -1);
+    try expect(divCeil(i32, -0x80000000, 1) == -0x80000000);
+    try expect(divCeil(i32, 10, 12) == 1);
+    try expect(divCeil(i32, -14, 12) == -1);
+    try expect(divCeil(i32, -2, 12) == 0);
+
+    try expect(divCeil(u32, 5, 3) == 2);
+    try expect(divCeil(u32, 16, 4) == 4);
+    try expect(divCeil(u32, 0, 100) == 0);
+    try expect(divCeil(u32, maxInt(u32) - 1, 100) == 42949673);
+
+    try expect(divCeil(i64, 5, 3) == 2);
+    try expect(divCeil(i64, -5, 3) == -1);
+    try expect(divCeil(i64, -0x80000000, -2) == 0x40000000);
+    try expect(divCeil(i64, 0, -0x80000000) == 0);
+    try expect(divCeil(i64, -0x40000001, 0x40000000) == -1);
+    try expect(divCeil(i64, -0x80000000, 1) == -0x80000000);
+    try expect(divCeil(i64, 10, 12) == 1);
+    try expect(divCeil(i64, -14, 12) == -1);
+    try expect(divCeil(i64, -2, 12) == 0);
+
+    try expect(divCeil(u64, 5, 3) == 2);
+    try expect(divCeil(u64, 16, 4) == 4);
+    try expect(divCeil(u64, 0, 100) == 0);
+    try expect(divCeil(u64, maxInt(u64) - 1, 10000) == 1844674407370956);
+
     try expect(divTrunc(i32, 5, 3) == 1);
     try expect(divTrunc(i32, -5, 3) == -1);
     try expect(divTrunc(i32, 9, -10) == 0);
@@ -532,6 +562,24 @@ fn testIntDivision() !void {
             1194735857077236777412821811143690633098347576 / 508740759824825164163191790951174292733114988 == 2,
         );
         try expect(
+            @divFloor(-1194735857077236777412821811143690633098347576, 508740759824825164163191790951174292733114988) == -3,
+        );
+        try expect(
+            @divFloor(1194735857077236777412821811143690633098347576, -508740759824825164163191790951174292733114988) == -3,
+        );
+        try expect(
+            @divFloor(-1194735857077236777412821811143690633098347576, -508740759824825164163191790951174292733114988) == 2,
+        );
+        try expect(
+            @divCeil(-1194735857077236777412821811143690633098347576, 508740759824825164163191790951174292733114988) == -2,
+        );
+        try expect(
+            @divCeil(1194735857077236777412821811143690633098347576, -508740759824825164163191790951174292733114988) == -2,
+        );
+        try expect(
+            @divCeil(-1194735857077236777412821811143690633098347576, -508740759824825164163191790951174292733114988) == 3,
+        );
+        try expect(
             @divTrunc(-1194735857077236777412821811143690633098347576, 508740759824825164163191790951174292733114988) == -2,
         );
         try expect(
@@ -558,6 +606,13 @@ fn testFloatDivision() !void {
     try expect(divFloor(f32, 1053.0, -41.0) == -26.0);
     try expect(divFloor(f16, -43.0, 12.0) == -4.0);
     try expect(divFloor(f64, -90.0, -9.0) == 10.0);
+
+    try expect(divCeil(f32, 5.0, 3.0) == 2.0);
+    try expect(divCeil(f32, -5.0, 3.0) == -1.0);
+    try expect(divCeil(f32, 56.0, 9.0) == 7.0);
+    try expect(divCeil(f32, 1053.0, -41.0) == -25.0);
+    try expect(divCeil(f16, -43.0, 12.0) == -3.0);
+    try expect(divCeil(f64, -90.0, -9.0) == 10.0);
 
     try expect(divTrunc(f32, 5.0, 3.0) == 1.0);
     try expect(divTrunc(f32, -5.0, 3.0) == -1.0);
@@ -607,6 +662,8 @@ fn testDivisionFP16() !void {
 
     try expect(divFloor(f16, 5.0, 3.0) == 1.0);
     try expect(divFloor(f16, -5.0, 3.0) == -2.0);
+    try expect(divCeil(f16, 5.0, 3.0) == 2.0);
+    try expect(divCeil(f16, -5.0, 3.0) == -1.0);
     try expect(divTrunc(f16, 5.0, 3.0) == 1.0);
     try expect(divTrunc(f16, -5.0, 3.0) == -1.0);
     try expect(divTrunc(f16, 9.0, -10.0) == 0.0);
@@ -621,6 +678,9 @@ fn divExact(comptime T: type, a: T, b: T) T {
 }
 fn divFloor(comptime T: type, a: T, b: T) T {
     return @divFloor(a, b);
+}
+fn divCeil(comptime T: type, a: T, b: T) T {
+    return @divCeil(a, b);
 }
 fn divTrunc(comptime T: type, a: T, b: T) T {
     return @divTrunc(a, b);
@@ -1844,6 +1904,35 @@ test "@divFloor > 128 bits" {
     try testDivFloor(i200, minInt(i200), 1, minInt(i200));
     try testDivFloor(i200, minInt(i200), -2, 1 << 198);
     try testDivFloor(i200, maxInt(i200), 2, (1 << 198) - 1);
+}
+
+fn testDivCeil(comptime T: type, numerator: T, denominator: T, expected: T) !void {
+    try expect(@divCeil(numerator, denominator) == expected);
+}
+
+test "@divCeil > 128 bits" {
+    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
+    try testDivCeil(u140, 0, maxInt(u140), 0);
+    try testDivCeil(u140, maxInt(u140), maxInt(u140), 1);
+    try testDivCeil(u140, maxInt(u140), 2, maxInt(u140) / 2 + 1);
+    try testDivCeil(u140, (1 << 139) + 5, 1 << 70, (1 << 69) + 1);
+    try testDivCeil(u140, (1 << 100) + (1 << 50) + 7, 1 << 50, (1 << 50) + 2);
+    try testDivCeil(u200, 123, 1 << 100, 1);
+    try testDivCeil(u200, 1 << 120, 1 << 60, 1 << 60);
+    try testDivCeil(u200, maxInt(u200), 1 << 100, 1 << 100);
+
+    try testDivCeil(i140, 0, maxInt(i140), 0);
+    try testDivCeil(i140, maxInt(i140), maxInt(i140), 1);
+    try testDivCeil(i140, -((1 << 100) + 1), 1 << 50, -(1 << 50));
+    try testDivCeil(i140, (1 << 100) + 1, -(1 << 50), -(1 << 50));
+    try testDivCeil(i140, -((1 << 100) + 1), -(1 << 50), (1 << 50) + 1);
+    try testDivCeil(i200, -3, 2, -1);
+    try testDivCeil(i200, minInt(i200), 1, minInt(i200));
+    try testDivCeil(i200, minInt(i200), -2, 1 << 198);
+    try testDivCeil(i200, maxInt(i200), 2, 1 << 198);
 }
 
 fn testDivTrunc(comptime T: type, numerator: T, denominator: T, expected: T) !void {

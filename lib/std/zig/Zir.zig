@@ -200,6 +200,9 @@ pub const Inst = struct {
         /// Implements the `@divFloor` builtin.
         /// Uses the `pl_node` union field with payload `Bin`.
         div_floor,
+        /// Implements the `@divCeil` builtin.
+        /// Uses the `pl_node` union field with payload `Bin`.
+        div_ceil,
         /// Implements the `@divTrunc` builtin.
         /// Uses the `pl_node` union field with payload `Bin`.
         div_trunc,
@@ -1267,6 +1270,7 @@ pub const Inst = struct {
                 .bit_reverse,
                 .div_exact,
                 .div_floor,
+                .div_ceil,
                 .div_trunc,
                 .mod,
                 .rem,
@@ -1547,6 +1551,7 @@ pub const Inst = struct {
                 .bit_reverse,
                 .div_exact,
                 .div_floor,
+                .div_ceil,
                 .div_trunc,
                 .mod,
                 .rem,
@@ -1815,6 +1820,7 @@ pub const Inst = struct {
 
                 .div_exact = .pl_node,
                 .div_floor = .pl_node,
+                .div_ceil = .pl_node,
                 .div_trunc = .pl_node,
                 .mod = .pl_node,
                 .rem = .pl_node,
@@ -4115,6 +4121,7 @@ fn findTrackableInner(
         .mul_sat,
         .div_exact,
         .div_floor,
+        .div_ceil,
         .div_trunc,
         .mod,
         .rem,
@@ -5272,7 +5279,7 @@ pub fn getStructDecl(zir: *const Zir, struct_decl: Inst.Index) UnwrappedStructDe
         break :lens @ptrCast(lens);
     } else null;
     const field_comptime_bits: ?[]const u32 = if (small.any_comptime_fields) bits: {
-        const bits_len = std.math.divCeil(u32, fields_len, 32) catch unreachable;
+        const bits_len = @divCeil(fields_len, 32);
         const bits = zir.extra[extra_index..][0..bits_len];
         extra_index += bits_len;
         break :bits bits;

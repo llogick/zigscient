@@ -2675,6 +2675,7 @@ fn genBodyInner(f: *Function, body: []const Air.Inst.Index) Error!void {
                     try airBinBuiltinCall(f, inst, "fmod", .none);
             },
             .div_floor => try airBinBuiltinCall(f, inst, "div_floor", .none),
+            .div_ceil  => try airBinBuiltinCall(f, inst, "div_ceil", .none),
             .mod       => try airBinBuiltinCall(f, inst, "mod", .none),
             .abs       => try airUnBuiltinCall(f, inst, air_datas[@intFromEnum(inst)].ty_op.operand, "abs", .none),
 
@@ -2856,6 +2857,7 @@ fn genBodyInner(f: *Function, body: []const Air.Inst.Index) Error!void {
             .div_float_optimized,
             .div_trunc_optimized,
             .div_floor_optimized,
+            .div_ceil_optimized,
             .div_exact_optimized,
             .rem_optimized,
             .mod_optimized,

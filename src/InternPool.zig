@@ -3583,11 +3583,11 @@ pub fn loadStructType(ip: *const InternPool, index: Index) LoadedStructType {
                 .start = extra_index,
                 .len = extra.data.fields_len,
             } else .empty;
-            extra_index += std.math.divCeil(u32, field_aligns.len, 4) catch unreachable;
+            extra_index += @divCeil(field_aligns.len, 4);
             const field_is_comptime_bits: LoadedStructType.ComptimeBits = if (extra.data.flags.any_comptime_fields) .{
                 .tid = unwrapped_index.tid,
                 .start = extra_index,
-                .len = std.math.divCeil(u32, extra.data.fields_len, 32) catch unreachable,
+                .len = @divCeil(extra.data.fields_len, 32),
             } else .empty;
             extra_index += field_is_comptime_bits.len;
             const field_runtime_order: LoadedStructType.RuntimeOrder.Slice = if (extra.data.flags.layout == .auto) .{
@@ -3739,7 +3739,7 @@ pub fn loadUnionType(ip: *const InternPool, index: Index) LoadedUnionType {
                 .start = extra_index,
                 .len = extra.data.fields_len,
             } else .empty;
-            extra_index += std.math.divCeil(u32, field_aligns.len, 4) catch unreachable;
+            extra_index += @divCeil(field_aligns.len, 4);
 
             return .{
                 .zir_index = extra.data.zir_index,

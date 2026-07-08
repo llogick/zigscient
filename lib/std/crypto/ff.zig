@@ -61,14 +61,14 @@ pub fn Uint(comptime max_bits: comptime_int) type {
 
     return struct {
         const Self = @This();
-        const max_limbs_count = math.divCeil(usize, max_bits, t_bits) catch unreachable;
+        const max_limbs_count = @divCeil(max_bits, t_bits);
 
         limbs_buffer: [max_limbs_count]Limb,
         /// The number of active limbs.
         limbs_len: usize,
 
         /// Number of bytes required to serialize an integer.
-        pub const encoded_bytes = math.divCeil(usize, max_bits, 8) catch unreachable;
+        pub const encoded_bytes = @divCeil(max_bits, 8);
 
         /// Constant slice of active limbs.
         fn limbsConst(self: *const Self) []const Limb {
@@ -847,7 +847,7 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
             }
             var e_normalized = Fe{ .v = e.v.normalize() };
             var buf_: [Fe.encoded_bytes]u8 = undefined;
-            var buf = buf_[0 .. math.divCeil(usize, e_normalized.v.limbs_len * t_bits, 8) catch unreachable];
+            var buf = buf_[0..@divCeil(e_normalized.v.limbs_len * t_bits, 8)];
             e_normalized.toBytes(buf, .little) catch unreachable;
             const leading = @clz(e_normalized.v.limbsConst()[e_normalized.v.limbs_len - carry_bits]);
             buf = buf[0 .. buf.len - leading / 8];

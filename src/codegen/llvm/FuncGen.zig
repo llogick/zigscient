@@ -383,6 +383,7 @@ fn genBody(self: *FuncGen, body: []const Air.Inst.Index, coverage_point: Air.Cov
             .div_float => try self.airDivFloat(inst, .normal),
             .div_trunc => try self.airDivTrunc(inst, .normal),
             .div_floor => try self.airDivFloor(inst, .normal),
+            .div_ceil  => try self.airDivCeil(inst, .normal),
             .div_exact => try self.airDivExact(inst, .normal),
             .rem       => try self.airRem(inst, .normal),
             .mod       => try self.airMod(inst, .normal),
@@ -400,6 +401,7 @@ fn genBody(self: *FuncGen, body: []const Air.Inst.Index, coverage_point: Air.Cov
             .div_float_optimized => try self.airDivFloat(inst, .fast),
             .div_trunc_optimized => try self.airDivTrunc(inst, .fast),
             .div_floor_optimized => try self.airDivFloor(inst, .fast),
+            .div_ceil_optimized  => try self.airDivCeil(inst, .fast),
             .div_exact_optimized => try self.airDivExact(inst, .fast),
             .rem_optimized       => try self.airRem(inst, .fast),
             .mod_optimized       => try self.airMod(inst, .fast),
@@ -3576,6 +3578,78 @@ fn airDivFloor(self: *FuncGen, inst: Air.Inst.Index, fast: Builder.FastMathKind)
         return self.wip.bin(.@"add nsw", div, correction, "divFloor");
     }
     return self.wip.bin(.udiv, lhs, rhs, "");
+}
+
+fn airDivCeil(self: *FuncGen, inst: Air.Inst.Index, fast: Builder.FastMathKind) Allocator.Error!Builder.Value {
+    const o = self.object;
+    const zcu = o.zcu;
+    const bin_op = self.air.instructions.items(.data)[@intFromEnum(inst)].bin_op;
+    const lhs = try self.resolveInst(bin_op.lhs);
+    const rhs = try self.resolveInst(bin_op.rhs);
+    const inst_ty = self.typeOfIndex(inst);
+    const scalar_ty = inst_ty.scalarType(zcu);
+
+    if (scalar_ty.isRuntimeFloat()) {
+        const result = try self.buildFloatOp(.div, fast, inst_ty, 2, .{ lhs, rhs });
+        return self.buildFloatOp(.ceil, fast, inst_ty, 1, .{result});
+    }
+    if (scalar_ty.isSignedInt(zcu)) {
+        const scalar_llvm_ty = try o.lowerType(scalar_ty, .by_value);
+        const inst_llvm_ty = try o.lowerType(inst_ty, .by_value);
+
+        const ExpectedContents = [std.math.big.int.calcTwosCompLimbCount(256)]std.math.big.Limb;
+        var bfa_buf: ExpectedContents = undefined;
+        var bfa: std.heap.BufferFirstAllocator = .init(@ptrCast(&bfa_buf), self.gpa);
+        const allocator = bfa.allocator();
+
+        const scalar_bits = scalar_ty.intInfo(zcu).bits;
+        var smin_big_int: std.math.big.int.Mutable = .{
+            .limbs = try allocator.alloc(
+                std.math.big.Limb,
+                std.math.big.int.calcTwosCompLimbCount(scalar_bits),
+            ),
+            .len = undefined,
+            .positive = undefined,
+        };
+        defer allocator.free(smin_big_int.limbs);
+        smin_big_int.setTwosCompIntLimit(.min, .signed, scalar_bits);
+        const smin = try o.builder.splatValue(inst_llvm_ty, try o.builder.bigIntConst(
+            scalar_llvm_ty,
+            smin_big_int.toConst(),
+        ));
+
+        const zero = try o.builder.splatValue(
+            inst_llvm_ty,
+            try o.builder.intConst(scalar_llvm_ty, 0),
+        );
+
+        const div = try self.wip.bin(.sdiv, lhs, rhs, "divCeil.div");
+        const rem = try self.wip.bin(.srem, lhs, rhs, "divCeil.rem");
+
+        const rhs_sign = try self.wip.bin(.@"and", rhs, smin, "divCeil.rhs_sign");
+        const rem_xor_rhs_sign = try self.wip.bin(.xor, rem, rhs_sign, "divCeil.rem_xor_rhs_sign");
+
+        const need_correction = try self.wip.icmp(.sgt, rem_xor_rhs_sign, zero, "divCeil.need_correction");
+
+        const correction = try self.wip.cast(.zext, need_correction, inst_llvm_ty, "divCeil.correction");
+        return self.wip.bin(.@"add nsw", div, correction, "divCeil");
+    } else {
+        const scalar_llvm_ty = try o.lowerType(scalar_ty, .by_value);
+        const inst_llvm_ty = try o.lowerType(inst_ty, .by_value);
+
+        const zero = try o.builder.splatValue(
+            inst_llvm_ty,
+            try o.builder.intConst(scalar_llvm_ty, 0),
+        );
+
+        const div = try self.wip.bin(.udiv, lhs, rhs, "divCeil.div");
+        const rem = try self.wip.bin(.urem, lhs, rhs, "divCeil.rem");
+
+        const rem_nonzero = try self.wip.icmp(.ne, rem, zero, "divCeil.rem_nonzero");
+        const correction = try self.wip.cast(.zext, rem_nonzero, inst_llvm_ty, "divCeil.correction");
+
+        return self.wip.bin(.@"add nuw", div, correction, "divCeil");
+    }
 }
 
 fn airDivExact(self: *FuncGen, inst: Air.Inst.Index, fast: Builder.FastMathKind) Allocator.Error!Builder.Value {
@@ -6874,7 +6948,7 @@ const ParamTypeIterator = struct {
             switch (ip.indexToKey(ty.toIntern())) {
                 .struct_type => {
                     const size = ty.abiSize(zcu);
-                    assert((std.math.divCeil(u64, size, 8) catch unreachable) == types_index);
+                    assert(@divCeil(size, 8) == types_index);
                     if (size % 8 > 0) {
                         it.types_buffer[types_index - 1] =
                             try it.object.builder.intType(@intCast(size % 8 * 8));
@@ -7119,7 +7193,7 @@ fn lowerSystemVFnRetTy(o: *Object, fn_info: InternPool.Key.FuncType) Allocator.E
         switch (ip.indexToKey(ret_ty.toIntern())) {
             .struct_type => {
                 const size = ret_ty.abiSize(zcu);
-                assert((std.math.divCeil(u64, size, 8) catch unreachable) == types_index);
+                assert(@divCeil(size, 8) == types_index);
                 if (size % 8 > 0) {
                     types_buffer[types_index - 1] = try o.builder.intType(@intCast(size % 8 * 8));
                 }
