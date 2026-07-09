@@ -1644,6 +1644,14 @@ pub const CLASS = enum(u8) {
 
     pub const NUM = @typeInfo(CLASS).@"enum".field_names.len;
 
+    pub inline fn size(class: CLASS) u32 {
+        return switch (class) {
+            .NONE, _ => unreachable,
+            .@"32" => 4,
+            .@"64" => 8,
+        };
+    }
+
     pub fn ElfN(comptime class: CLASS) type {
         return switch (class) {
             .NONE, _ => comptime unreachable,
@@ -1668,6 +1676,14 @@ pub const DATA = enum(u8) {
     _,
 
     pub const NUM = @typeInfo(DATA).@"enum".field_names.len;
+
+    pub inline fn endian(data: DATA) std.lang.Endian {
+        return switch (data) {
+            .NONE, _ => unreachable,
+            .@"2LSB" => .little,
+            .@"2MSB" => .big,
+        };
+    }
 };
 
 pub const OSABI = enum(u8) {
@@ -3136,6 +3152,99 @@ pub const R_LARCH = enum(u32) {
     _,
 };
 
+pub const R_SPARC = enum(u32) {
+    NONE = 0,
+    @"8" = 1,
+    @"16" = 2,
+    @"32" = 3,
+    DISP8 = 4,
+    DISP16 = 5,
+    DISP32 = 6,
+    WDISP30 = 7,
+    WDISP22 = 8,
+    HI22 = 9,
+    @"22" = 10,
+    @"13" = 11,
+    LO10 = 12,
+    GOT10 = 13,
+    GOT13 = 14,
+    GOT22 = 15,
+    PC10 = 16,
+    PC22 = 17,
+    WPLT30 = 18,
+    COPY = 19,
+    GLOB_DAT = 20,
+    JMP_SLOT = 21,
+    RELATIVE = 22,
+    UA32 = 23,
+    PLT32 = 24,
+    HIPLT22 = 25,
+    LOPLT10 = 26,
+    PCPLT32 = 27,
+    PCPLT22 = 28,
+    PCPLT10 = 29,
+    @"10" = 30,
+    @"11" = 31,
+    @"64" = 32,
+    OLO10 = 33,
+    HH22 = 34,
+    HM10 = 35,
+    LM22 = 36,
+    PC_HH22 = 37,
+    PC_HM10 = 38,
+    PC_LM22 = 39,
+    WDISP16 = 40,
+    WDISP19 = 41,
+    @"7" = 43,
+    @"5" = 44,
+    @"6" = 45,
+    DISP64 = 46,
+    PLT64 = 47,
+    HIX22 = 48,
+    LOX10 = 49,
+    H44 = 50,
+    M44 = 51,
+    L44 = 52,
+    REGISTER = 53,
+    UA64 = 54,
+    UA16 = 55,
+    TLS_GD_HI22 = 56,
+    TLS_GD_LO10 = 57,
+    TLS_GD_ADD = 58,
+    TLS_GD_CALL = 59,
+    TLS_LDM_HI22 = 60,
+    TLS_LDM_LO10 = 61,
+    TLS_LDM_ADD = 62,
+    TLS_LDM_CALL = 63,
+    TLS_LDO_HIX22 = 64,
+    TLS_LDO_LOX10 = 65,
+    TLS_LDO_ADD = 66,
+    TLS_IE_HI22 = 67,
+    TLS_IE_LO10 = 68,
+    TLS_IE_LD = 69,
+    TLS_IE_LDX = 70,
+    TLS_IE_ADD = 71,
+    TLS_LE_HIX22 = 72,
+    TLS_LE_LOX10 = 73,
+    TLS_DTPMOD32 = 74,
+    TLS_DTPMOD64 = 75,
+    TLS_DTPOFF32 = 76,
+    TLS_DTPOFF64 = 77,
+    TLS_TPOFF32 = 78,
+    TLS_TPOFF64 = 79,
+    GOTDATA_HIX22 = 80,
+    GOTDATA_LOX10 = 81,
+    GOTDATA_OP_HIX22 = 82,
+    GOTDATA_OP_LOX10 = 83,
+    GOTDATA_OP = 84,
+    H34 = 85,
+    SIZE32 = 86,
+    SIZE64 = 87,
+    WDISP10 = 88,
+    IRELATIVE = 249,
+    _,
+};
+
 pub const ar_hdr = extern struct {
     /// Member file name, sometimes / terminated.
     ar_name: [16]u8,
@@ -3279,5 +3388,37 @@ pub const loongarch = struct {
             _,
         };
         pub const AbiExtension = enum(u3) { base = 0, _ };
+    };
+};
+
+pub const sparc = struct {
+    pub const EFlags = packed struct(Word) {
+        mm: MemoryModel,
+        _reserved1: u6 = 0,
+        ext: Extensions,
+        _reserved2: u8 = 0,
+
+        pub const MemoryModel = enum(u2) {
+            /// Total Store Ordering
+            tso = 0,
+            /// Partial Store Ordering
+            pso = 1,
+            /// Relaxed Memory Ordering
+            rmo = 2,
+        };
+
+        pub const Extensions = packed struct(u16) {
+            /// Uses SPARC v8 ABI (w/ 32-bit pointers) on SPARC v9. Also known as v8+.
+            @"32plus": bool,
+            /// Uses Sun UltraSPARC extensions.
+            sun_us1: bool,
+            /// Uses HaL R1 extensions.
+            hal_r1: bool,
+            /// Uses Sun UltraSPARC III extensions.
+            sun_us3: bool,
+            _reserved: u11 = 0,
+            /// Uses little endian data (SPARC v9+).
+            le_data: bool,
+        };
     };
 };
