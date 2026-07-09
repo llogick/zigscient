@@ -1163,7 +1163,7 @@ pub const File = struct {
         }
         if (file.tree) |*tree| return tree;
         const source = try file.getSource(zcu);
-        file.tree = try .parse(zcu.gpa, source, file.getMode(), .{});
+        file.tree = try .parse(zcu.gpa, source, .{ .mode = file.getMode() });
         return &file.tree.?;
     }
 

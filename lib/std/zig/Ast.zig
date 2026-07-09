@@ -141,11 +141,12 @@ pub fn deinit(tree: *Ast, gpa: Allocator) void {
 pub const Mode = enum { zig, zon };
 pub const ParseOptions = struct {
     recover: bool = true,
+    mode: Mode = .zig,
 };
 
 /// Result should be freed with tree.deinit() when there are
 /// no more references to any of the tokens or nodes.
-pub fn parse(gpa: Allocator, source: [:0]const u8, mode: Mode, options: ParseOptions) Allocator.Error!Ast {
+pub fn parse(gpa: Allocator, source: [:0]const u8, options: ParseOptions) Allocator.Error!Ast {
     var tokens = Ast.TokenList{};
     defer tokens.deinit(gpa);
 
@@ -165,14 +166,13 @@ pub fn parse(gpa: Allocator, source: [:0]const u8, mode: Mode, options: ParseOpt
 
     var tokens_slice = tokens.toOwnedSlice();
     errdefer tokens_slice.deinit(gpa);
-    return parseTokens(gpa, source, tokens_slice, mode, options);
+    return parseTokens(gpa, source, tokens_slice, options);
 }
 
 pub fn parseTokens(
     gpa: Allocator,
     source: [:0]const u8,
     tokens: Ast.TokenList.Slice,
-    mode: Mode,
     options: ParseOptions,
 ) Allocator.Error!Ast {
     var parser: Parse = .{
@@ -196,7 +196,7 @@ pub fn parseTokens(
     const estimated_node_count = (tokens.len + 2) / 2;
     try parser.nodes.ensureTotalCapacity(gpa, estimated_node_count);
 
-    switch (mode) {
+    switch (options.mode) {
         .zig => try parser.parseRoot(),
         .zon => try parser.parseZon(),
     }
@@ -207,7 +207,7 @@ pub fn parseTokens(
     // TODO experiment with compacting the MultiArrayList slices here
     return .{
         .source = source,
-        .mode = mode,
+        .mode = options.mode,
         .tokens = tokens,
         .nodes = parser.nodes.toOwnedSlice(),
         .extra_data = parser.extra_data.toOwnedSliceAssert(),

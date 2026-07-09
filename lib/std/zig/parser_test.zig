@@ -7231,7 +7231,7 @@ test "ampersand" {
 test "Ast: pointer types with subexprs containing qualifiers" {
     var fixed_allocator = std.heap.FixedBufferAllocator.init(fixed_buffer_mem[0..]);
     const allocator = fixed_allocator.allocator();
-    var tree = try std.zig.Ast.parse(allocator, "**addrspace(*align(1)T)T", .zon, .{});
+    var tree = try std.zig.Ast.parse(allocator, "**addrspace(*align(1)T)T", .{ .mode = .zon });
     defer tree.deinit(allocator);
 
     const regular_ptr_node = tree.nodeData(.root).node;
@@ -7253,7 +7253,7 @@ fn testParse(io: Io, source: [:0]const u8, allocator: Allocator, anything_change
     defer io.unlockStderr();
     const writer = &stderr.file_writer.interface;
 
-    var tree = try std.zig.Ast.parse(allocator, source, .zig, .{});
+    var tree = try std.zig.Ast.parse(allocator, source, .{});
     defer tree.deinit(allocator);
 
     for (tree.errors) |parse_error| {
@@ -7313,7 +7313,7 @@ fn testCanonical(source: [:0]const u8) !void {
 const Error = std.zig.Ast.Error.Tag;
 
 fn testError(source: [:0]const u8, expected_errors: []const Error) !void {
-    var tree = try std.zig.Ast.parse(std.testing.allocator, source, .zig, .{});
+    var tree = try std.zig.Ast.parse(std.testing.allocator, source, .{});
     defer tree.deinit(std.testing.allocator);
 
     std.testing.expectEqual(expected_errors.len, tree.errors.len) catch |err| {
@@ -7333,5 +7333,8 @@ fn fuzzTestOneParse(_: void, smith: *std.testing.Smith) !void {
     const mode = smith.value(std.zig.Ast.Mode);
     var tokens: std.zig.TokenSmith = .gen(smith);
     var fba: std.heap.FixedBufferAllocator = .init(&fixed_buffer_mem);
-    _ = std.zig.Ast.parseTokens(fba.allocator(), tokens.source(), tokens.list(), mode, .{ .recover = false }) catch return;
+    _ = std.zig.Ast.parseTokens(fba.allocator(), tokens.source(), tokens.list(), .{
+        .recover = false,
+        .mode = mode,
+    }) catch return;
 }

@@ -171,7 +171,7 @@ fn checkAgainstOracle(source: [:0]const u8) !void {
     // error right away and does no recovery. However, std.zig.Ast.parse() does recovery
     // by default and will hit a stack overflow rather than returning after the parser error.
     // Stack overflows are not interesting and we do not want the fuzzer to be able to find them.
-    const ast = try std.zig.Ast.parse(fba.allocator(), source, .zig, .{ .recover = false });
+    const ast = try std.zig.Ast.parse(fba.allocator(), source, .{ .recover = false });
 
     errdefer logBadSource(source, ast);
     try std.testing.expectEqual(expected, ast.errors.len == 0);

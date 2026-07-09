@@ -294,7 +294,7 @@ pub fn fromSliceAlloc(
 ) error{ OutOfMemory, ParseZon }!T {
     if (diag) |s| s.assertEmpty();
 
-    var ast = try std.zig.Ast.parse(gpa, source, .zon, .{});
+    var ast = try std.zig.Ast.parse(gpa, source, .{ .mode = .zon });
     defer if (diag == null) ast.deinit(gpa);
     if (diag) |s| s.ast = ast;
 
@@ -2140,7 +2140,7 @@ test "std.zon string literal" {
     // Passing string literal to a array
     {
         {
-            var ast = try std.zig.Ast.parse(gpa, "\"abcd\"", .zon, .{});
+            var ast = try std.zig.Ast.parse(gpa, "\"abcd\"", .{ .mode = .zon });
             defer ast.deinit(gpa);
             var zoir = try ZonGen.generate(gpa, ast, .{ .parse_str_lits = false });
             defer zoir.deinit(gpa);
@@ -3534,7 +3534,7 @@ test "std.zon no alloc" {
 
     const Nested = struct { u8, u8, struct { u8, u8 } };
 
-    var ast = try std.zig.Ast.parse(gpa, ".{ 1, 2, .{ 3, 4 } }", .zon, .{});
+    var ast = try std.zig.Ast.parse(gpa, ".{ 1, 2, .{ 3, 4 } }", .{ .mode = .zon });
     defer ast.deinit(gpa);
 
     var zoir = try ZonGen.generate(gpa, ast, .{ .parse_str_lits = false });

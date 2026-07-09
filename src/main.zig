@@ -5869,7 +5869,7 @@ fn cmdAstCheck(arena: Allocator, io: Io, args: []const []const u8, environ_map: 
         break :mode .zig;
     };
 
-    const tree = try Ast.parse(arena, source, mode, .{});
+    const tree = try Ast.parse(arena, source, .{ .mode = mode });
 
     var stdout_writer = Io.File.stdout().writerStreaming(io, &stdout_buffer);
     const stdout_bw = &stdout_writer.interface;
@@ -6039,7 +6039,7 @@ fn cmdChangelist(arena: Allocator, io: Io, args: []const []const u8, environ_map
             fatal("unable to read new source file {q}: {t}", .{ new_source_path, err });
     };
 
-    const old_tree = try Ast.parse(arena, old_source, .zig, .{});
+    const old_tree = try Ast.parse(arena, old_source, .{});
     const old_zir = try AstGen.generate(arena, old_tree);
 
     if (old_zir.loweringFailed()) {
@@ -6051,7 +6051,7 @@ fn cmdChangelist(arena: Allocator, io: Io, args: []const []const u8, environ_map
         process.exit(1);
     }
 
-    const new_tree = try Ast.parse(arena, new_source, .zig, .{});
+    const new_tree = try Ast.parse(arena, new_source, .{});
     const new_zir = try AstGen.generate(arena, new_tree);
 
     if (new_zir.loweringFailed()) {
