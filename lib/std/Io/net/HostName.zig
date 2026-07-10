@@ -19,6 +19,18 @@ bytes: []const u8,
 
 pub const max_len = 255;
 
+pub const FromUriError = error{UriMissingHost} || ValidateError;
+
+/// Returned `HostName.bytes` may point into `buffer` or `uri.host`.
+pub fn fromUri(uri: std.Uri, buffer: *[HostName.max_len]u8) FromUriError!HostName {
+    const component = uri.host orelse return error.UriMissingHost;
+    const bytes = component.toRaw(buffer) catch |err| switch (err) {
+        error.NoSpaceLeft => return error.NameTooLong,
+    };
+    try validate(bytes);
+    return .{ .bytes = bytes };
+}
+
 pub const ValidateError = error{
     NameTooLong,
     InvalidHostName,
@@ -28,11 +40,11 @@ pub const ValidateError = error{
 pub fn validate(bytes: []const u8) ValidateError!void {
     if (bytes.len == 0) return error.InvalidHostName;
 
-    // Ignore trailing dot (FQDN). It doesn't count toward our length.
-    const end = if (bytes[bytes.len - 1] == '.') bytes.len - 1 else bytes.len;
-
     // The accepted maximum length of a hostname, including labels and dots.
-    if (end > max_len) return error.NameTooLong;
+    if (bytes.len > max_len) return error.NameTooLong;
+
+    // Ignore trailing dot (FQDN).
+    const end = if (bytes[bytes.len - 1] == '.') bytes.len - 1 else bytes.len;
 
     // Hostnames are divided into dot-separated "labels", which:
     //
@@ -83,7 +95,6 @@ test validate {
     const many_a_dot_buf: [127][2]u8 = @splat(.{ 'a', '.' });
     const many_a_dot: []const u8 = @ptrCast(&many_a_dot_buf);
     try validate(many_a_dot ++ "a"); // Total length 255 (valid)
-    try validate(many_a_dot ++ "a."); // Total length 255 + trailing dot (valid)
 
     // Invalid hostnames
     try std.testing.expectError(error.InvalidHostName, validate(""));
@@ -98,8 +109,8 @@ test validate {
     try std.testing.expectError(error.InvalidHostName, validate("."));
     try std.testing.expectError(error.InvalidHostName, validate(".."));
     try std.testing.expectError(error.InvalidHostName, validate(&many_a ++ "a.com")); // Label length 64 (too long)
+    try std.testing.expectError(error.NameTooLong, validate(many_a_dot ++ "a.")); // Total length 255 + trailing dot (too long)
     try std.testing.expectError(error.NameTooLong, validate(many_a_dot ++ "ab")); // Total length 256 (too long)
-    try std.testing.expectError(error.NameTooLong, validate(many_a_dot ++ "ab.")); // Total length 256 + trailing dot (too long)
 }
 
 pub fn init(bytes: []const u8) ValidateError!HostName {
