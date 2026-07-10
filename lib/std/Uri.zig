@@ -239,7 +239,7 @@ pub fn parseAfterScheme(scheme: []const u8, text: []const u8) ParseError!Uri {
 
         if (start_of_host >= end_of_host) return error.InvalidFormat;
         const host = authority[start_of_host..end_of_host];
-        if (host.len > HostName.max_len) return error.InvalidHostName;
+        if (host.len > std.Io.net.HostName.max_len) return error.InvalidHostName;
         uri.host = .{ .percent_encoded = host };
     }
 
@@ -559,7 +559,7 @@ test "should fail gracefully" {
 }
 
 test "parse name too long" {
-    const uri = "http://" ++ @as([HostName.max_len + 1]u8, @splat('Z'));
+    const uri = "http://" ++ @as([std.Io.net.HostName.max_len + 1]u8, @splat('Z'));
     try std.testing.expectError(error.InvalidHostName, parse(uri));
 }
 
