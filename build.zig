@@ -710,6 +710,8 @@ pub fn build(b: *std.Build) !void {
         "docs",
         "update-cpu-features",
         "check-mingw",
+        "gen-parser-oracle",
+        "check-parser-oracle",
         "test-cases",
         "test-modules",
         "test-behavior",

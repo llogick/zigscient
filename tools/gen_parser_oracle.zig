@@ -33,7 +33,7 @@ pub fn main(init: std.process.Init) !void {
 
     const root = try parser.parseGrammar() orelse {
         log.err("Invalid grammar", .{});
-        return;
+        std.process.exit(1);
     };
 
     var buffer: Io.Writer.Allocating = .init(gpa);
@@ -722,7 +722,7 @@ const Parser = struct {
 
     // EndOfLine       <- '\r\n' / '\n' / '\r'
     fn eatEndOfLine(p: *Parser) bool {
-        return p.eat('\n');
+        return p.eat('\r') | p.eat('\n');
     }
 
     fn peek(p: *Parser) ?u8 {
