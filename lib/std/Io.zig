@@ -778,10 +778,10 @@ pub const Clock = enum {
     /// * On Linux, corresponds `CLOCK_BOOTTIME`.
     /// * On macOS, corresponds to `CLOCK_MONOTONIC_RAW`.
     boot,
-    /// Tracks the amount of CPU in user or kernel mode used by the calling
+    /// Tracks the amount of CPU time in user or kernel mode used by the calling
     /// process.
     cpu_process,
-    /// Tracks the amount of CPU in user or kernel mode used by the calling
+    /// Tracks the amount of CPU time in user or kernel mode used by the calling
     /// thread.
     cpu_thread,
 
