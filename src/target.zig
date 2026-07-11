@@ -625,7 +625,7 @@ pub fn addrSpaceCastIsValid(
 /// (c) some logical pointers (.storage_buffer, .shared) do support operations when
 ///     the VariablePointers capability is enabled (which enables OpPtrAccessChain).
 pub fn shouldBlockPointerOps(target: *const std.Target, as: AddressSpace) bool {
-    if (target.os.tag != .vulkan) return false;
+    if (target.os.tag != .vulkan and target.os.tag != .opengl) return false;
 
     return switch (as) {
         // TODO: Vulkan doesn't support pointers in the generic address space, we

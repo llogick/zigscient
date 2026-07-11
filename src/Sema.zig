@@ -29754,6 +29754,39 @@ pub fn bitCastVal(
     }
 }
 
+fn checkSpirvSliceAllowed(
+    sema: *Sema,
+    block: *Block,
+    src: LazySrcLoc,
+    address_space: std.lang.AddressSpace,
+) CompileError!void {
+    const zcu = sema.pt.zcu;
+    const target = zcu.getTarget();
+
+    if (!target.cpu.arch.isSpirV()) return;
+    if (block.isComptime()) return;
+
+    // This probably lets some invalid OpPtrAccessChains slip through, but it's better than nothing
+    if (!target.cpu.has(.spirv, .variable_pointers) and !target.cpu.has(.spirv, .variable_pointers_storage_buffer)) {
+        return sema.failWithOwnedErrorMsg(
+            block,
+            try sema.errMsg(src, "cannot construct slices without the 'variable_pointers' or 'variable_pointers_storage_buffer' features", .{}),
+        );
+    }
+
+    switch (address_space) {
+        .shared, .storage_buffer => {},
+        else => {
+            return sema.failWithOwnedErrorMsg(block, msg: {
+                const msg = try sema.errMsg(src, "cannot construct slice from address space '{t}'", .{address_space});
+                errdefer msg.destroy(sema.gpa);
+                try sema.errNote(src, msg, "only 'shared' and 'storage_buffer' address spaces support slicing on SPIR-V", .{});
+                break :msg msg;
+            });
+        },
+    }
+}
+
 fn coerceArrayPtrToSlice(
     sema: *Sema,
     block: *Block,
@@ -29775,6 +29808,7 @@ fn coerceArrayPtrToSlice(
         } });
         return Air.internedToRef(slice_val);
     }
+    try sema.checkSpirvSliceAllowed(block, inst_src, dest_ty.ptrInfo(zcu).flags.address_space);
     try sema.requireRuntimeBlock(block, inst_src, null);
     return block.addTyOp(.array_to_slice, dest_ty, inst);
 }
@@ -31068,6 +31102,7 @@ fn analyzeSlice(
     }
 
     try sema.ensureLayoutResolved(elem_ty, src, .ptr_access);
+    try sema.checkSpirvSliceAllowed(block, src, slice_ty.ptrInfo(zcu).flags.address_space);
 
     const ptr = if (slice_ty.isSlice(zcu))
         try sema.analyzeSlicePtr(block, ptr_src, ptr_or_slice, slice_ty)
