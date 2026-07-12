@@ -902,34 +902,27 @@ fn triggerGetOrLoadBuildFile(self: *DocumentStore, uri: Uri) std.Io.Cancelable!v
 }
 
 pub fn findBuildZig(io: std.Io, allocator: std.mem.Allocator, uri: []const u8) !?[]const u8 {
-    const fss = "file://";
-    const low_idx = if (std.mem.startsWith(u8, uri, fss)) fss.len else 0;
-    const min_i = @max(low_idx, std.fs.path.diskDesignator(uri).len);
-    var i: usize = uri.len -| std.fs.path.basename(uri).len;
-    if (i <= min_i) return null;
+    const path = try URI.toFsPath(allocator, uri);
+    defer allocator.free(path);
+
+    var it = std.Io.Dir.path.componentIterator(path);
+    _ = it.last();
+    var did_check_root = false;
     while (true) {
-        if (i <= min_i)
-            return null;
+        const dir_path = if (it.previous()) |comp| comp.path else blk: {
+            if (did_check_root) break :blk null;
+            did_check_root = true;
+            break :blk it.root();
+        } orelse break;
+        if (!try buildDotZigExists(io, dir_path)) continue;
 
-        const potential_root_path = uri[low_idx..i];
+        const joined = try std.Io.Dir.path.join(allocator, &.{ dir_path, "build.zig" });
+        defer allocator.free(joined);
 
-        i -= 1;
-        while (i > min_i and !std.fs.path.isSep(uri[i])) : (i -= 1) {}
-
-        if (!std.fs.path.isAbsolute(potential_root_path)) continue;
-
-        var dir = try std.Io.Dir.openDirAbsolute(io, potential_root_path, .{});
-        defer dir.close(io);
-        if (dir.access(io, "build.zig", .{})) {
-            // found a build.zig file
-            const path = try std.fs.path.join(allocator, &.{ potential_root_path, "build.zig" });
-            defer allocator.free(path);
-            return try URI.fromPath(
-                allocator,
-                path,
-            );
-        } else |_| continue;
+        return try URI.fromPath(allocator, joined);
     }
+
+    return null;
 }
 
 /// Walk down the tree towards the uri. When we hit `build.zig` files
