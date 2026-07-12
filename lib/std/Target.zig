@@ -2334,7 +2334,8 @@ pub fn supportsAddressSpace(
         .constant => (is_gpu and (context == null or context == .constant)) or
             (is_spirv and (context == null or context == .constant or context == .pointer)),
         .param => is_nvptx,
-        .input, .output, .uniform, .push_constant, .storage_buffer, .physical_storage_buffer => is_spirv,
+        .input, .output, .uniform, .push_constant, .storage_buffer => is_spirv,
+        .physical_storage_buffer => arch == .spirv64,
         .externref, .funcref => target.cpu.has(.wasm, .reference_types),
     };
 }

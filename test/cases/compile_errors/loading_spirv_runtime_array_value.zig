@@ -6,11 +6,11 @@ const buf = @extern(*addrspace(.storage_buffer) Buffer, .{
     .name = "buf",
     .decoration = .{ .descriptor = .{ .set = 0, .binding = 0 } },
 });
-export fn main() callconv(.{ .spirv_kernel = .{ .x = 1, .y = 1, .z = 1 } }) void {
+export fn main() callconv(.kernel) void {
     const a = buf.data;
     _ = a;
 }
-export fn main2() callconv(.{ .spirv_kernel = .{ .x = 1, .y = 1, .z = 1 } }) void {
+export fn main2() callconv(.kernel) void {
     const p: *addrspace(.storage_buffer) const RuntimeArray = &buf.data;
     _ = p.*;
 }

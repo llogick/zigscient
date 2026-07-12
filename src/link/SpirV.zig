@@ -621,9 +621,12 @@ fn emitPreamble(
         },
         else => unreachable,
     }
-    if (target.os.tag == .vulkan and target.cpu.arch == .spirv64) {
-        caps.insert(.physical_storage_buffer_addresses);
-        try exts.put(gpa, "SPV_KHR_physical_storage_buffer", {});
+    if (target.cpu.arch == .spirv64) {
+        caps.insert(.int64);
+        if (target.os.tag == .vulkan) {
+            caps.insert(.physical_storage_buffer_addresses);
+            try exts.put(gpa, "SPV_KHR_physical_storage_buffer", {});
+        }
     }
     if (has_linkage) caps.insert(.linkage);
 

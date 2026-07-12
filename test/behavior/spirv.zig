@@ -49,6 +49,15 @@ test "@SpirvType" {
     _ = runtime_array;
 }
 
+const InnerStruct = extern struct { x: u32 };
+const OuterStruct = extern struct { inner: InnerStruct, y: u32 };
+const outer_pc = @extern(*addrspace(.push_constant) const OuterStruct, .{ .name = "outer_pc" });
+
+test "@ptrCast to first field type" {
+    const pc_inner: *addrspace(.push_constant) const InnerStruct = @ptrCast(outer_pc);
+    _ = pc_inner;
+}
+
 test "@SpirvType equality" {
     try expect(@SpirvType(.sampler) == Sampler);
     try expect(@SpirvType(.{ .runtime_array = u32 }) == RuntimeArray);

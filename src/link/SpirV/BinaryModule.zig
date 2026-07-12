@@ -303,7 +303,7 @@ pub const Parser = struct {
                     }
                 },
                 .literal_context_dependent_number => {
-                    assert(inst.opcode == .OpConstant or inst.opcode == .OpSpecConstantOp);
+                    assert(inst.opcode == .OpConstant or inst.opcode == .OpSpecConstant);
                     const bit_width = binary.arith_type_width.get(@enumFromInt(inst.operands[0])) orelse {
                         log.err("invalid LiteralContextDependentNumber type {}", .{inst.operands[0]});
                         return error.InvalidId;

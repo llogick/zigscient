@@ -82,3 +82,33 @@ pub fn workgroupBarrier() void {
         .{ .acquire_release = true, .workgroup_memory = true },
     );
 }
+
+pub fn specConst(T: type, comptime default_value: T, comptime spec_id: u32) T {
+    switch (@typeInfo(T)) {
+        .bool => {
+            const op = if (default_value) "OpSpecConstantTrue" else "OpSpecConstantFalse";
+            return asm ("%ret = " ++ op ++ " %ty\n" ++
+                    "OpDecorate %ret SpecId $spec_id"
+                : [ret] "" (-> T),
+                : [ty] "t" (T),
+                  [spec_id] "c" (spec_id),
+            );
+        },
+        .int, .float => return asm (
+            \\%ret = OpSpecConstant %ty $default_value
+            \\OpDecorate %ret SpecId $spec_id"
+            : [ret] "" (-> T),
+            : [ty] "t" (T),
+              [default_value] "c" (default_value),
+              [spec_id] "c" (spec_id),
+        ),
+        .vector => return asm (
+            \\%ret = OpSpecConstantComposite %ty %default_value %spec_id
+            : [ret] "" (-> T),
+            : [ty] "t" (T),
+              [default_value] "c" (default_value),
+              [spec_id] "c" (spec_id),
+        ),
+        else => @compileError("unsupported spec constant type"),
+    }
+}
