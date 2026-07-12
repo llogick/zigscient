@@ -5247,6 +5247,7 @@ fn buildMingwCrtFile(comp: *Compilation, crt_file: mingw.CrtFile, prog_node: std
 }
 
 fn buildMingwImportLib(comp: *Compilation, lib_name: []const u8, is_prelink: bool, prog_node: std.Progress.Node) void {
+    if (comp.zcu != null and comp.zcu.?.lsp_document_store != null) return;
     const crt_file_path = mingw.buildImportLib(comp, lib_name, prog_node) catch |err| switch (err) {
         // TODO: This isn't actually true for self-hosted
         // In the non-prelink case we will end up putting foo.lib onto the linker line and letting the linker
