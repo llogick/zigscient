@@ -191,9 +191,6 @@ void zig_struct_i128(struct i128);
 #endif
 void zig_five_integers(int32_t, int32_t, int32_t, int32_t, int32_t);
 
-void zig_f32(float);
-void zig_f64(double);
-void zig_longdouble(long double);
 void zig_five_floats(float, float, float, float, float);
 
 bool zig_ret_bool();
@@ -218,6 +215,198 @@ double complex zig_cmultd_comp(double a_r, double a_i, double b_r, double b_i);
 float complex zig_cmultf(float complex a, float complex b);
 double complex zig_cmultd(double complex a, double complex b);
 #endif
+
+float zig_ret_f32(void);
+void zig_f32(float, size_t);
+void zig_1_f32(size_t, float, size_t);
+void zig_2_f32(size_t, size_t, float, size_t);
+void zig_3_f32(size_t, size_t, size_t, float, size_t);
+void zig_4_f32(size_t, size_t, size_t, size_t, float, size_t);
+void zig_5_f32(size_t, size_t, size_t, size_t, size_t, float, size_t);
+void zig_6_f32(size_t, size_t, size_t, size_t, size_t, size_t, float, size_t);
+void zig_7_f32(size_t, size_t, size_t, size_t, size_t, size_t, size_t, float, size_t);
+void zig_8_f32(size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t, float, size_t);
+
+float c_ret_f32(void) {
+    return 11;
+}
+void c_f32(float f, size_t i) {
+    assert_or_panic(f == 12);
+    assert_or_panic(i == 1);
+}
+void c_1_f32(size_t a0, float f, size_t i) {
+    assert_or_panic(f == 13);
+    assert_or_panic(i == 2);
+}
+void c_2_f32(size_t a0, size_t a1, float f, size_t i) {
+    assert_or_panic(f == 14);
+    assert_or_panic(i == 3);
+}
+void c_3_f32(size_t a0, size_t a1, size_t a2, float f, size_t i) {
+    assert_or_panic(f == 15);
+    assert_or_panic(i == 4);
+}
+void c_4_f32(size_t a0, size_t a1, size_t a2, size_t a3, float f, size_t i) {
+    assert_or_panic(f == 16);
+    assert_or_panic(i == 5);
+}
+void c_5_f32(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, float f, size_t i) {
+    assert_or_panic(f == 17);
+    assert_or_panic(i == 6);
+}
+void c_6_f32(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5, float f, size_t i) {
+    assert_or_panic(f == 18);
+    assert_or_panic(i == 7);
+}
+void c_7_f32(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5, size_t a6, float f, size_t i) {
+    assert_or_panic(f == 19);
+    assert_or_panic(i == 8);
+}
+void c_8_f32(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5, size_t a6, size_t a7, float f, size_t i) {
+    assert_or_panic(f == 20);
+    assert_or_panic(i == 9);
+}
+void c_test_f32(void) {
+    float f = zig_ret_f32();
+    assert_or_panic(f == 1);
+    zig_f32(2, 1);
+    zig_1_f32(0, 3, 2);
+    zig_2_f32(0, 1, 4, 3);
+    zig_3_f32(0, 1, 2, 5, 4);
+    zig_4_f32(0, 1, 2, 3, 6, 5);
+    zig_5_f32(0, 1, 2, 3, 4, 7, 6);
+    zig_6_f32(0, 1, 2, 3, 4, 5, 8, 7);
+    zig_7_f32(0, 1, 2, 3, 4, 5, 6, 9, 8);
+    zig_8_f32(0, 1, 2, 3, 4, 5, 6, 7, 10, 9);
+}
+
+double zig_ret_f64(void);
+void zig_f64(double, size_t);
+void zig_1_f64(size_t, double, size_t);
+void zig_2_f64(size_t, size_t, double, size_t);
+void zig_3_f64(size_t, size_t, size_t, double, size_t);
+void zig_4_f64(size_t, size_t, size_t, size_t, double, size_t);
+void zig_5_f64(size_t, size_t, size_t, size_t, size_t, double, size_t);
+void zig_6_f64(size_t, size_t, size_t, size_t, size_t, size_t, double, size_t);
+void zig_7_f64(size_t, size_t, size_t, size_t, size_t, size_t, size_t, double, size_t);
+void zig_8_f64(size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t, double, size_t);
+
+double c_ret_f64(void) {
+    return 11;
+}
+void c_f64(double f, size_t i) {
+    assert_or_panic(f == 12);
+    assert_or_panic(i == 1);
+}
+void c_1_f64(size_t a0, double f, size_t i) {
+    assert_or_panic(f == 13);
+    assert_or_panic(i == 2);
+}
+void c_2_f64(size_t a0, size_t a1, double f, size_t i) {
+    assert_or_panic(f == 14);
+    assert_or_panic(i == 3);
+}
+void c_3_f64(size_t a0, size_t a1, size_t a2, double f, size_t i) {
+    assert_or_panic(f == 15);
+    assert_or_panic(i == 4);
+}
+void c_4_f64(size_t a0, size_t a1, size_t a2, size_t a3, double f, size_t i) {
+    assert_or_panic(f == 16);
+    assert_or_panic(i == 5);
+}
+void c_5_f64(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, double f, size_t i) {
+    assert_or_panic(f == 17);
+    assert_or_panic(i == 6);
+}
+void c_6_f64(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5, double f, size_t i) {
+    assert_or_panic(f == 18);
+    assert_or_panic(i == 7);
+}
+void c_7_f64(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5, size_t a6, double f, size_t i) {
+    assert_or_panic(f == 19);
+    assert_or_panic(i == 8);
+}
+void c_8_f64(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5, size_t a6, size_t a7, double f, size_t i) {
+    assert_or_panic(f == 20);
+    assert_or_panic(i == 9);
+}
+void c_test_f64(void) {
+    double f = zig_ret_f64();
+    assert_or_panic(f == 1);
+    zig_f64(2, 1);
+    zig_1_f64(0, 3, 2);
+    zig_2_f64(0, 1, 4, 3);
+    zig_3_f64(0, 1, 2, 5, 4);
+    zig_4_f64(0, 1, 2, 3, 6, 5);
+    zig_5_f64(0, 1, 2, 3, 4, 7, 6);
+    zig_6_f64(0, 1, 2, 3, 4, 5, 8, 7);
+    zig_7_f64(0, 1, 2, 3, 4, 5, 6, 9, 8);
+    zig_8_f64(0, 1, 2, 3, 4, 5, 6, 7, 10, 9);
+}
+
+long double zig_ret_longdouble(void);
+void zig_longdouble(long double, size_t);
+void zig_1_longdouble(size_t, long double, size_t);
+void zig_2_longdouble(size_t, size_t, long double, size_t);
+void zig_3_longdouble(size_t, size_t, size_t, long double, size_t);
+void zig_4_longdouble(size_t, size_t, size_t, size_t, long double, size_t);
+void zig_5_longdouble(size_t, size_t, size_t, size_t, size_t, long double, size_t);
+void zig_6_longdouble(size_t, size_t, size_t, size_t, size_t, size_t, long double, size_t);
+void zig_7_longdouble(size_t, size_t, size_t, size_t, size_t, size_t, size_t, long double, size_t);
+void zig_8_longdouble(size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t, long double, size_t);
+
+long double c_ret_longdouble(void) {
+    return 11;
+}
+void c_longdouble(long double f, size_t i) {
+    assert_or_panic(f == 12);
+    assert_or_panic(i == 1);
+}
+void c_1_longdouble(size_t a0, long double f, size_t i) {
+    assert_or_panic(f == 13);
+    assert_or_panic(i == 2);
+}
+void c_2_longdouble(size_t a0, size_t a1, long double f, size_t i) {
+    assert_or_panic(f == 14);
+    assert_or_panic(i == 3);
+}
+void c_3_longdouble(size_t a0, size_t a1, size_t a2, long double f, size_t i) {
+    assert_or_panic(f == 15);
+    assert_or_panic(i == 4);
+}
+void c_4_longdouble(size_t a0, size_t a1, size_t a2, size_t a3, long double f, size_t i) {
+    assert_or_panic(f == 16);
+    assert_or_panic(i == 5);
+}
+void c_5_longdouble(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, long double f, size_t i) {
+    assert_or_panic(f == 17);
+    assert_or_panic(i == 6);
+}
+void c_6_longdouble(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5, long double f, size_t i) {
+    assert_or_panic(f == 18);
+    assert_or_panic(i == 7);
+}
+void c_7_longdouble(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5, size_t a6, long double f, size_t i) {
+    assert_or_panic(f == 19);
+    assert_or_panic(i == 8);
+}
+void c_8_longdouble(size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5, size_t a6, size_t a7, long double f, size_t i) {
+    assert_or_panic(f == 20);
+    assert_or_panic(i == 9);
+}
+void c_test_longdouble(void) {
+    long double f = zig_ret_longdouble();
+    assert_or_panic(f == 1);
+    zig_longdouble(2, 1);
+    zig_1_longdouble(0, 3, 2);
+    zig_2_longdouble(0, 1, 4, 3);
+    zig_3_longdouble(0, 1, 2, 5, 4);
+    zig_4_longdouble(0, 1, 2, 3, 6, 5);
+    zig_5_longdouble(0, 1, 2, 3, 4, 7, 6);
+    zig_6_longdouble(0, 1, 2, 3, 4, 5, 8, 7);
+    zig_7_longdouble(0, 1, 2, 3, 4, 5, 6, 9, 8);
+    zig_8_longdouble(0, 1, 2, 3, 4, 5, 6, 7, 10, 9);
+}
 
 #if defined(ZIG_BACKEND_STAGE2_X86_64) || defined(ZIG_PPC32) || defined(__wasm__)
 
@@ -15326,9 +15515,6 @@ void run_c_tests(void) {
 
     zig_five_integers(12, 34, 56, 78, 90);
 
-    zig_f32(12.34f);
-    zig_f64(56.78);
-    zig_longdouble(12.34l);
     zig_five_floats(1.0f, 2.0f, 3.0f, 4.0f, 5.0f);
 
     zig_ptr((void *)0xdeadbeefL);
@@ -15549,18 +15735,6 @@ void c_struct_i128(struct i128 x) {
     assert_or_panic(x.value == -6);
 }
 #endif
-
-void c_f32(float x) {
-    assert_or_panic(x == 12.34f);
-}
-
-void c_f64(double x) {
-    assert_or_panic(x == 56.78);
-}
-
-void c_long_double(long double x) {
-    assert_or_panic(x == 12.34l);
-}
 
 void c_ptr(void *x) {
     assert_or_panic(x == (void *)0xdeadbeefL);

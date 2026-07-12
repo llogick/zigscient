@@ -181994,7 +181994,7 @@ fn resolveCallingConventionValues(
                 }
 
                 const save_param_gpr_index = param_gpr_index;
-                const save_param_sse_index = param_gpr_index;
+                const save_param_sse_index = param_sse_index;
 
                 var arg_mcv: [4]MCValue = undefined;
                 var arg_mcv_len: u32 = 0;

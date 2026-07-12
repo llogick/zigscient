@@ -104,10 +104,6 @@ export fn zig_struct_u128(a: U128) void {
     expect(a.value == 0xfffffffffffffffc) catch @panic("test failure: zig_struct_u128");
 }
 
-extern fn c_f32(f32) void;
-extern fn c_f64(f64) void;
-extern fn c_long_double(c_longdouble) void;
-
 // On windows x64, the first 4 are passed via registers, others on the stack.
 extern fn c_five_floats(f32, f32, f32, f32, f32) void;
 
@@ -120,26 +116,7 @@ export fn zig_five_floats(a: f32, b: f32, c: f32, d: f32, e: f32) void {
 }
 
 test "floats" {
-    c_f32(12.34);
-    c_f64(56.78);
     c_five_floats(1.0, 2.0, 3.0, 4.0, 5.0);
-}
-
-test "long double" {
-    if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
-
-    c_long_double(12.34);
-}
-
-export fn zig_f32(x: f32) void {
-    expect(x == 12.34) catch @panic("test failure: zig_f32");
-}
-export fn zig_f64(x: f64) void {
-    expect(x == 56.78) catch @panic("test failure: zig_f64");
-}
-export fn zig_longdouble(x: c_longdouble) void {
-    if (!builtin.target.cpu.arch.isWasm()) return; // waiting for #1481
-    expect(x == 12.34) catch @panic("test failure: zig_longdouble");
 }
 
 extern fn c_ptr(*anyopaque) void;
@@ -267,6 +244,209 @@ export fn zig_cmultd_comp(a_r: f64, a_i: f64, b_r: f64, b_i: f64) ComplexDouble 
     expect(b_i == -1.5) catch @panic("test failure: zig_cmultd_comp 4");
 
     return .{ .real = 1.5, .imag = 13.5 };
+}
+
+export fn zig_ret_f32() f32 {
+    return 1;
+}
+export fn zig_f32(f: f32, i: usize) void {
+    expect(f == 2) catch @panic("test failure");
+    expect(i == 1) catch @panic("test failure");
+}
+export fn zig_1_f32(_: usize, f: f32, i: usize) void {
+    expect(f == 3) catch @panic("test failure");
+    expect(i == 2) catch @panic("test failure");
+}
+export fn zig_2_f32(_: usize, _: usize, f: f32, i: usize) void {
+    expect(f == 4) catch @panic("test failure");
+    expect(i == 3) catch @panic("test failure");
+}
+export fn zig_3_f32(_: usize, _: usize, _: usize, f: f32, i: usize) void {
+    expect(f == 5) catch @panic("test failure");
+    expect(i == 4) catch @panic("test failure");
+}
+export fn zig_4_f32(_: usize, _: usize, _: usize, _: usize, f: f32, i: usize) void {
+    expect(f == 6) catch @panic("test failure");
+    expect(i == 5) catch @panic("test failure");
+}
+export fn zig_5_f32(_: usize, _: usize, _: usize, _: usize, _: usize, f: f32, i: usize) void {
+    expect(f == 7) catch @panic("test failure");
+    expect(i == 6) catch @panic("test failure");
+}
+export fn zig_6_f32(_: usize, _: usize, _: usize, _: usize, _: usize, _: usize, f: f32, i: usize) void {
+    expect(f == 8) catch @panic("test failure");
+    expect(i == 7) catch @panic("test failure");
+}
+export fn zig_7_f32(_: usize, _: usize, _: usize, _: usize, _: usize, _: usize, _: usize, f: f32, i: usize) void {
+    expect(f == 9) catch @panic("test failure");
+    expect(i == 8) catch @panic("test failure");
+}
+export fn zig_8_f32(_: usize, _: usize, _: usize, _: usize, _: usize, _: usize, _: usize, _: usize, f: f32, i: usize) void {
+    expect(f == 10) catch @panic("test failure");
+    expect(i == 9) catch @panic("test failure");
+}
+
+extern fn c_ret_f32() f32;
+extern fn c_f32(f32, usize) void;
+extern fn c_1_f32(usize, f32, usize) void;
+extern fn c_2_f32(usize, usize, f32, usize) void;
+extern fn c_3_f32(usize, usize, usize, f32, usize) void;
+extern fn c_4_f32(usize, usize, usize, usize, f32, usize) void;
+extern fn c_5_f32(usize, usize, usize, usize, usize, f32, usize) void;
+extern fn c_6_f32(usize, usize, usize, usize, usize, usize, f32, usize) void;
+extern fn c_7_f32(usize, usize, usize, usize, usize, usize, usize, f32, usize) void;
+extern fn c_8_f32(usize, usize, usize, usize, usize, usize, usize, usize, f32, usize) void;
+extern fn c_test_f32() void;
+
+test "f32" {
+    const f = c_ret_f32();
+    try expect(f == 11);
+    c_f32(12, 1);
+    c_1_f32(0, 13, 2);
+    c_2_f32(0, 1, 14, 3);
+    c_3_f32(0, 1, 2, 15, 4);
+    c_4_f32(0, 1, 2, 3, 16, 5);
+    c_5_f32(0, 1, 2, 3, 4, 17, 6);
+    c_6_f32(0, 1, 2, 3, 4, 5, 18, 7);
+    c_7_f32(0, 1, 2, 3, 4, 5, 6, 19, 8);
+    c_8_f32(0, 1, 2, 3, 4, 5, 6, 7, 20, 9);
+    c_test_f32();
+}
+
+export fn zig_ret_f64() f64 {
+    return 1;
+}
+export fn zig_f64(f: f64, i: usize) void {
+    expect(f == 2) catch @panic("test failure");
+    expect(i == 1) catch @panic("test failure");
+}
+export fn zig_1_f64(_: usize, f: f64, i: usize) void {
+    expect(f == 3) catch @panic("test failure");
+    expect(i == 2) catch @panic("test failure");
+}
+export fn zig_2_f64(_: usize, _: usize, f: f64, i: usize) void {
+    expect(f == 4) catch @panic("test failure");
+    expect(i == 3) catch @panic("test failure");
+}
+export fn zig_3_f64(_: usize, _: usize, _: usize, f: f64, i: usize) void {
+    expect(f == 5) catch @panic("test failure");
+    expect(i == 4) catch @panic("test failure");
+}
+export fn zig_4_f64(_: usize, _: usize, _: usize, _: usize, f: f64, i: usize) void {
+    expect(f == 6) catch @panic("test failure");
+    expect(i == 5) catch @panic("test failure");
+}
+export fn zig_5_f64(_: usize, _: usize, _: usize, _: usize, _: usize, f: f64, i: usize) void {
+    expect(f == 7) catch @panic("test failure");
+    expect(i == 6) catch @panic("test failure");
+}
+export fn zig_6_f64(_: usize, _: usize, _: usize, _: usize, _: usize, _: usize, f: f64, i: usize) void {
+    expect(f == 8) catch @panic("test failure");
+    expect(i == 7) catch @panic("test failure");
+}
+export fn zig_7_f64(_: usize, _: usize, _: usize, _: usize, _: usize, _: usize, _: usize, f: f64, i: usize) void {
+    expect(f == 9) catch @panic("test failure");
+    expect(i == 8) catch @panic("test failure");
+}
+export fn zig_8_f64(_: usize, _: usize, _: usize, _: usize, _: usize, _: usize, _: usize, _: usize, f: f64, i: usize) void {
+    expect(f == 10) catch @panic("test failure");
+    expect(i == 9) catch @panic("test failure");
+}
+
+extern fn c_ret_f64() f64;
+extern fn c_f64(f64, usize) void;
+extern fn c_1_f64(usize, f64, usize) void;
+extern fn c_2_f64(usize, usize, f64, usize) void;
+extern fn c_3_f64(usize, usize, usize, f64, usize) void;
+extern fn c_4_f64(usize, usize, usize, usize, f64, usize) void;
+extern fn c_5_f64(usize, usize, usize, usize, usize, f64, usize) void;
+extern fn c_6_f64(usize, usize, usize, usize, usize, usize, f64, usize) void;
+extern fn c_7_f64(usize, usize, usize, usize, usize, usize, usize, f64, usize) void;
+extern fn c_8_f64(usize, usize, usize, usize, usize, usize, usize, usize, f64, usize) void;
+extern fn c_test_f64() void;
+
+test "f64" {
+    const f = c_ret_f64();
+    try expect(f == 11);
+    c_f64(12, 1);
+    c_1_f64(0, 13, 2);
+    c_2_f64(0, 1, 14, 3);
+    c_3_f64(0, 1, 2, 15, 4);
+    c_4_f64(0, 1, 2, 3, 16, 5);
+    c_5_f64(0, 1, 2, 3, 4, 17, 6);
+    c_6_f64(0, 1, 2, 3, 4, 5, 18, 7);
+    c_7_f64(0, 1, 2, 3, 4, 5, 6, 19, 8);
+    c_8_f64(0, 1, 2, 3, 4, 5, 6, 7, 20, 9);
+    c_test_f64();
+}
+
+export fn zig_ret_longdouble() c_longdouble {
+    return 1;
+}
+export fn zig_longdouble(f: c_longdouble, i: usize) void {
+    expect(f == 2) catch @panic("test failure");
+    expect(i == 1) catch @panic("test failure");
+}
+export fn zig_1_longdouble(_: usize, f: c_longdouble, i: usize) void {
+    expect(f == 3) catch @panic("test failure");
+    expect(i == 2) catch @panic("test failure");
+}
+export fn zig_2_longdouble(_: usize, _: usize, f: c_longdouble, i: usize) void {
+    expect(f == 4) catch @panic("test failure");
+    expect(i == 3) catch @panic("test failure");
+}
+export fn zig_3_longdouble(_: usize, _: usize, _: usize, f: c_longdouble, i: usize) void {
+    expect(f == 5) catch @panic("test failure");
+    expect(i == 4) catch @panic("test failure");
+}
+export fn zig_4_longdouble(_: usize, _: usize, _: usize, _: usize, f: c_longdouble, i: usize) void {
+    expect(f == 6) catch @panic("test failure");
+    expect(i == 5) catch @panic("test failure");
+}
+export fn zig_5_longdouble(_: usize, _: usize, _: usize, _: usize, _: usize, f: c_longdouble, i: usize) void {
+    expect(f == 7) catch @panic("test failure");
+    expect(i == 6) catch @panic("test failure");
+}
+export fn zig_6_longdouble(_: usize, _: usize, _: usize, _: usize, _: usize, _: usize, f: c_longdouble, i: usize) void {
+    expect(f == 8) catch @panic("test failure");
+    expect(i == 7) catch @panic("test failure");
+}
+export fn zig_7_longdouble(_: usize, _: usize, _: usize, _: usize, _: usize, _: usize, _: usize, f: c_longdouble, i: usize) void {
+    expect(f == 9) catch @panic("test failure");
+    expect(i == 8) catch @panic("test failure");
+}
+export fn zig_8_longdouble(_: usize, _: usize, _: usize, _: usize, _: usize, _: usize, _: usize, _: usize, f: c_longdouble, i: usize) void {
+    expect(f == 10) catch @panic("test failure");
+    expect(i == 9) catch @panic("test failure");
+}
+
+extern fn c_ret_longdouble() c_longdouble;
+extern fn @"c_longdouble"(c_longdouble, usize) void;
+extern fn c_1_longdouble(usize, c_longdouble, usize) void;
+extern fn c_2_longdouble(usize, usize, c_longdouble, usize) void;
+extern fn c_3_longdouble(usize, usize, usize, c_longdouble, usize) void;
+extern fn c_4_longdouble(usize, usize, usize, usize, c_longdouble, usize) void;
+extern fn c_5_longdouble(usize, usize, usize, usize, usize, c_longdouble, usize) void;
+extern fn c_6_longdouble(usize, usize, usize, usize, usize, usize, c_longdouble, usize) void;
+extern fn c_7_longdouble(usize, usize, usize, usize, usize, usize, usize, c_longdouble, usize) void;
+extern fn c_8_longdouble(usize, usize, usize, usize, usize, usize, usize, usize, c_longdouble, usize) void;
+extern fn c_test_longdouble() void;
+
+test "long double" {
+    if (builtin.cpu.arch.isMIPS64()) return error.SkipZigTest;
+
+    const f = c_ret_longdouble();
+    try expect(f == 11);
+    @"c_longdouble"(12, 1);
+    c_1_longdouble(0, 13, 2);
+    c_2_longdouble(0, 1, 14, 3);
+    c_3_longdouble(0, 1, 2, 15, 4);
+    c_4_longdouble(0, 1, 2, 3, 16, 5);
+    c_5_longdouble(0, 1, 2, 3, 4, 17, 6);
+    c_6_longdouble(0, 1, 2, 3, 4, 5, 18, 7);
+    c_7_longdouble(0, 1, 2, 3, 4, 5, 6, 19, 8);
+    c_8_longdouble(0, 1, 2, 3, 4, 5, 6, 7, 20, 9);
+    c_test_longdouble();
 }
 
 comptime {
