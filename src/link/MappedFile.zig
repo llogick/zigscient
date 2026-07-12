@@ -95,14 +95,11 @@ pub fn init(file: Io.File, gpa: std.mem.Allocator, io: Io) (Allocator.Error || I
         .fallocate_punch_hole_unsupported = false,
     };
     try mf.nodes.ensureUnusedCapacity(gpa, 1);
-    const root_ni = mf.addNode(gpa, .{ .add_node = .{
+    const root_ni = try mf.addNode(gpa, .{ .add_node = .{
         .size = size,
         .alignment = mf.flags.block_size,
         .fixed = true,
-    } }) catch |err| switch (err) {
-        error.MappedFileIo => return mf.io_err.?,
-        else => |e| return e,
-    };
+    } });
     assert(root_ni == Node.Index.root);
     try mf.ensureTotalCapacityInner(@intCast(size));
     return mf;
@@ -355,9 +352,7 @@ pub const Node = extern struct {
 
         pub const RealignNodeOptions = struct {
             /// Shift the node backwards if possible
-            try_backwards: bool = true,
-            /// If `set, persists `new_alignment` as the node's alignment for future operations.
-            set_alignment: bool = true,
+            try_backwards: bool = false,
         };
 
         /// Moves and expands a node such that its offset and size are aligned to `new_alignment`.
@@ -378,11 +373,7 @@ pub const Node = extern struct {
                     return error.MappedFileIo;
                 },
             };
-            var writers_it = mf.writers.first;
-            while (writers_it) |writer_node| : (writers_it = writer_node.next) {
-                const w: *Node.Writer = @fieldParentPtr("writer_node", writer_node);
-                w.interface.buffer = w.ni.slice(mf);
-            }
+            mf.updateWriters();
         }
 
         /// Shrink a node to `size`, exactly.
@@ -398,11 +389,7 @@ pub const Node = extern struct {
             shift_next: bool,
         ) Error!void {
             try mf.shrinkNode(gpa, ni, size, shift_next);
-            var writers_it = mf.writers.first;
-            while (writers_it) |writer_node| : (writers_it = writer_node.next) {
-                const w: *Node.Writer = @fieldParentPtr("writer_node", writer_node);
-                w.interface.buffer = w.ni.slice(mf);
-            }
+            mf.updateWriters();
         }
 
         pub fn writer(ni: Node.Index, mf: *MappedFile, gpa: std.mem.Allocator, w: *Writer) void {
@@ -562,34 +549,15 @@ fn addNode(mf: *MappedFile, gpa: std.mem.Allocator, opts: struct {
     next: Node.Index = .none,
     offset: u64 = 0,
     add_node: AddNodeOptions,
-}) Error!Node.Index {
+}) (Allocator.Error || Io.Cancelable || IoError)!Node.Index {
     if (opts.add_node.moved or opts.add_node.resized) try mf.updates.ensureUnusedCapacity(gpa, 1);
     mf.nodes_lock.assertUnlocked();
-    const offset = opts.add_node.alignment.forward(@intCast(opts.offset));
-    if (opts.parent != .none) {
-        const new_end = offset + opts.add_node.size;
-        switch (opts.next) {
-            .none => {
-                _, const parent_size = opts.parent.location(mf).resolve(mf);
-                if (new_end > parent_size)
-                    try opts.parent.resize(mf, gpa, new_end);
-            },
-            else => |next_ni| {
-                const next_offset, _ = next_ni.location(mf).resolve(mf);
-                if (new_end > next_offset)
-                    try next_ni.realign(mf, gpa, opts.add_node.alignment, .{
-                        .try_backwards = false,
-                        .set_alignment = false,
-                    });
-            },
-        }
-    }
     const location_tag: Node.Location.Tag, const location_payload: Node.Location.Payload = location: {
-        if (std.math.cast(u32, offset)) |small_offset| break :location .{ .small, .{
+        if (std.math.cast(u32, opts.offset)) |small_offset| break :location .{ .small, .{
             .small = .{ .offset = small_offset, .size = 0 },
         } };
         try mf.large.ensureUnusedCapacity(gpa, 2);
-        defer mf.large.appendSliceAssumeCapacity(&.{ offset, 0 });
+        defer mf.large.appendSliceAssumeCapacity(&.{ opts.offset, 0 });
         break :location .{ .large, .{ .large = .{ .index = mf.large.items.len } } };
     };
     const free_ni: Node.Index, const free_node = free: switch (mf.free_ni) {
@@ -616,7 +584,7 @@ fn addNode(mf: *MappedFile, gpa: std.mem.Allocator, opts: struct {
         .last = .none,
         .flags = .{
             .location_tag = location_tag,
-            .alignment = opts.add_node.alignment,
+            .alignment = .@"1",
             .fixed = opts.add_node.fixed,
             .moved = true,
             .resized = true,
@@ -627,13 +595,15 @@ fn addNode(mf: *MappedFile, gpa: std.mem.Allocator, opts: struct {
     };
 
     {
-        try free_ni.resize(mf, gpa, opts.add_node.size);
+        try mf.realignNode(gpa, free_ni, opts.add_node.alignment, .{});
+        try mf.resizeNode(gpa, free_ni, opts.add_node.size);
         if (opts.add_node.moved or opts.add_node.resized) try mf.updates.ensureUnusedCapacity(gpa, 1);
         free_node.flags.moved = false;
         free_node.flags.resized = false;
     }
     if (opts.add_node.moved) free_ni.movedAssumeCapacity(mf);
     if (opts.add_node.resized) free_ni.resizedAssumeCapacity(mf);
+    mf.updateWriters();
     return free_ni;
 }
 
@@ -658,7 +628,15 @@ pub fn addOnlyChildNode(
     return mf.addNode(gpa, .{
         .parent = parent_ni,
         .add_node = opts,
-    });
+    }) catch |err| switch (err) {
+        error.OutOfMemory,
+        error.Canceled,
+        => |e| return e,
+        else => |e| {
+            mf.io_err = e;
+            return error.MappedFileIo;
+        },
+    };
 }
 
 pub fn addFirstChildNode(
@@ -673,7 +651,15 @@ pub fn addFirstChildNode(
         .parent = parent_ni,
         .next = parent.first,
         .add_node = opts,
-    });
+    }) catch |err| switch (err) {
+        error.OutOfMemory,
+        error.Canceled,
+        => |e| return e,
+        else => |e| {
+            mf.io_err = e;
+            return error.MappedFileIo;
+        },
+    };
 }
 
 pub fn addLastChildNode(
@@ -695,7 +681,15 @@ pub fn addLastChildNode(
             },
         },
         .add_node = opts,
-    });
+    }) catch |err| switch (err) {
+        error.OutOfMemory,
+        error.Canceled,
+        => |e| return e,
+        else => |e| {
+            mf.io_err = e;
+            return error.MappedFileIo;
+        },
+    };
 }
 
 pub fn addNodeAfter(
@@ -714,7 +708,15 @@ pub fn addNodeAfter(
         .next = prev.next,
         .offset = prev_offset + prev_size,
         .add_node = opts,
-    });
+    }) catch |err| switch (err) {
+        error.OutOfMemory,
+        error.Canceled,
+        => |e| return e,
+        else => |e| {
+            mf.io_err = e;
+            return error.MappedFileIo;
+        },
+    };
 }
 
 fn shrinkNode(
@@ -1043,26 +1045,20 @@ fn realignNode(
     new_alignment: std.mem.Alignment,
     opts: Node.Index.RealignNodeOptions,
 ) (Allocator.Error || Io.Cancelable || IoError)!void {
-    assert(ni != Node.Index.root); // currently unsupported
     mf.nodes_lock.assertUnlocked();
 
     const node = ni.get(mf);
+    {
+        const prev_alignment = node.flags.alignment;
+        node.flags.alignment = new_alignment;
+        if (new_alignment.compare(.lte, prev_alignment)) return;
+    }
+
     const old_offset, const size = node.location().resolve(mf);
+    if (ni == Node.Index.root) return mf.resizeNode(gpa, ni, size);
 
-    assert(new_alignment.compare(.gt, node.flags.alignment));
-
-    const prev_alignment = node.flags.alignment;
-    node.flags.alignment = new_alignment;
-    defer {
-        // alignment needs to be temporarily set for the resizes below
-        if (!opts.set_alignment) node.flags.alignment = prev_alignment;
-    }
-
-    const new_size = node.flags.alignment.forward(@intCast(size));
-    if (new_alignment.check(@intCast(old_offset))) {
-        if (new_size > size) try mf.resizeNode(gpa, ni, new_size);
-        return;
-    }
+    const new_size = new_alignment.forward(@intCast(size));
+    if (new_alignment.check(@intCast(old_offset))) return mf.resizeNode(gpa, ni, new_size);
 
     _, const parent_size = node.parent.location(mf).resolve(mf);
     const trailing_end = trailing_end: switch (node.next) {
@@ -1122,7 +1118,7 @@ fn realignNode(
 
         ni.setLocationAssumeCapacity(mf, forward_offset, new_size);
     } else {
-        const temp_size = node.flags.alignment.forward(@intCast(new_size + 1));
+        const temp_size = new_alignment.forward(@intCast(new_size + 1));
         try mf.resizeNode(gpa, ni, temp_size);
         const new_offset, _ = ni.location(mf).resolve(mf);
 
@@ -1145,6 +1141,14 @@ fn realignNode(
         } else new_offset;
 
         ni.setLocationAssumeCapacity(mf, final_offset, new_size);
+    }
+}
+
+fn updateWriters(mf: *MappedFile) void {
+    var writers_it = mf.writers.first;
+    while (writers_it) |writer_node| : (writers_it = writer_node.next) {
+        const w: *Node.Writer = @fieldParentPtr("writer_node", writer_node);
+        w.interface.buffer = w.ni.slice(mf);
     }
 }
 

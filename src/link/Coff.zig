@@ -3602,13 +3602,13 @@ fn objectSectionMapIndex(
     const parent_alignment = parent_ni.alignment(&coff.mf);
     if (alignment.compare(.gt, parent_alignment)) {
         log.debug("realignParent({s}, {d}) {d}->{d}", .{ name.toSlice(coff), parent_ni, parent_alignment, alignment });
-        try parent_ni.realign(&coff.mf, gpa, alignment, .{ .set_alignment = true });
+        try parent_ni.realign(&coff.mf, gpa, alignment, .{ .try_backwards = true });
     }
 
     const old_alignment = sym.ni.alignment(&coff.mf);
     if (alignment.compare(.gt, old_alignment)) {
         log.debug("realignObject({s}) {d}->{d}", .{ name.toSlice(coff), old_alignment, alignment });
-        try sym.ni.realign(&coff.mf, gpa, alignment, .{ .set_alignment = true });
+        try sym.ni.realign(&coff.mf, gpa, alignment, .{ .try_backwards = true });
     }
 
     try coff.verifyParentSectionAttributes(

@@ -4659,7 +4659,7 @@ fn mapInputSection(elf: *Elf, opts: struct {
         const new_alignment: std.mem.Alignment = .fromByteUnits(
             std.math.ceilPowerOfTwoAssert(usize, @intCast(opts.addralign)),
         );
-        try existing_shndx.get(elf).ni.realign(&elf.mf, gpa, new_alignment, .{ .set_alignment = true });
+        try existing_shndx.get(elf).ni.realign(&elf.mf, gpa, new_alignment, .{});
     }
     // ...and update the shdr as needed.
     switch (elf.shdrPtr(existing_shndx)) {
@@ -4796,7 +4796,7 @@ fn uavMapIndex(
     if (!uav_gop.found_existing) {
         const shndx: Section.Index = .data_rel_ro; // TODO: it would be better to use `.rodata` if the UAV value doesn't have relocs
         const node = try elf.mf.addLastChildNode(gpa, shndx.get(elf).ni, .{
-            .moved = true, // see assert at end of `flushUav`
+            .moved = true, // see assert at end of `genUav`
             .alignment = resolved_align.toStdMem(),
         });
         var name_buf: [32]u8 = undefined;
@@ -4822,7 +4822,7 @@ fn uavMapIndex(
     } else {
         const node = uav_gop.value_ptr.lsi.index().ptr(elf).node;
         if (resolved_align.toStdMem().order(node.alignment(&elf.mf)).compare(.gt)) {
-            try node.realign(&elf.mf, gpa, resolved_align.toStdMem(), .{ .set_alignment = true });
+            try node.realign(&elf.mf, gpa, resolved_align.toStdMem(), .{});
         }
     }
     return umi;
@@ -5551,7 +5551,7 @@ fn loadDso(elf: *Elf, path: std.Build.Cache.Path, fr: *Io.File.Reader) (LoadPars
                             // We have a copy relocation for this global, but the amount of space we
                             // reserved for it could be too small or underaligned!
                             try copied_global.node.resize(&elf.mf, gpa, gop.value_ptr.size);
-                            try copied_global.node.realign(&elf.mf, gpa, gop.value_ptr.alignment, .{ .set_alignment = true });
+                            try copied_global.node.realign(&elf.mf, gpa, gop.value_ptr.alignment, .{});
                             const global_ptr = elf.globalByName(name).?;
                             switch (elf.symPtr(global_ptr.symtab_index)) {
                                 inline else => |sym_ptr| elf.targetStore(&sym_ptr.size, @intCast(gop.value_ptr.size)),
@@ -7005,22 +7005,27 @@ fn updateNavInner(elf: *Elf, pt: Zcu.PerThread, nav_index: InternPool.Nav.Index)
     // called to apply the NAV's new relocations.
     try ni.moved(gpa, &elf.mf);
 
-    var nw: MappedFile.Node.Writer = undefined;
-    ni.writer(&elf.mf, gpa, &nw);
-    defer nw.deinit();
-    codegen.generateSymbol(
-        &elf.base,
-        pt,
-        .fromInterned(nav.resolved.?.value),
-        &nw.interface,
-        .{ .atom_index = Node.toAtom(ni) },
-    ) catch |err| switch (err) {
-        error.WriteFailed => return nw.err.?,
-        else => |e| return e,
-    };
-    switch (elf.symPtr(nmi.symbol(elf).index())) {
-        inline else => |sym| elf.targetStore(&sym.size, @intCast(nw.interface.end)),
+    {
+        var nw: MappedFile.Node.Writer = undefined;
+        ni.writer(&elf.mf, gpa, &nw);
+        defer nw.deinit();
+        codegen.generateSymbol(
+            &elf.base,
+            pt,
+            .fromInterned(nav.resolved.?.value),
+            &nw.interface,
+            .{ .atom_index = Node.toAtom(ni) },
+        ) catch |err| switch (err) {
+            error.WriteFailed => return nw.err.?,
+            else => |e| return e,
+        };
+        switch (elf.symPtr(nmi.symbol(elf).index())) {
+            inline else => |sym| elf.targetStore(&sym.size, @intCast(nw.interface.end)),
+        }
     }
+
+    // The NAV's node is done---now generate any UAVs or lazy code/data which the NAV needs.
+    try elf.genPending(pt);
 }
 
 pub fn updateFunc(
@@ -7056,29 +7061,34 @@ fn updateFuncInner(
     // called to apply the NAV's new relocations.
     try ni.moved(gpa, &elf.mf);
 
-    var nw: MappedFile.Node.Writer = undefined;
-    ni.writer(&elf.mf, gpa, &nw);
-    defer nw.deinit();
-    codegen.emitFunction(
-        &elf.base,
-        pt,
-        func_index,
-        Node.toAtom(ni),
-        mir,
-        &nw.interface,
-        .none,
-    ) catch |err| switch (err) {
-        error.WriteFailed => return nw.err.?,
-        else => |e| return e,
-    };
-    switch (elf.symPtr(nmi.symbol(elf).index())) {
-        inline else => |sym| elf.targetStore(&sym.size, @intCast(nw.interface.end)),
+    {
+        var nw: MappedFile.Node.Writer = undefined;
+        ni.writer(&elf.mf, gpa, &nw);
+        defer nw.deinit();
+        codegen.emitFunction(
+            &elf.base,
+            pt,
+            func_index,
+            Node.toAtom(ni),
+            mir,
+            &nw.interface,
+            .none,
+        ) catch |err| switch (err) {
+            error.WriteFailed => return nw.err.?,
+            else => |e| return e,
+        };
+        switch (elf.symPtr(nmi.symbol(elf).index())) {
+            inline else => |sym| elf.targetStore(&sym.size, @intCast(nw.interface.end)),
+        }
     }
+
+    // The NAV's node is done---now generate any UAVs or lazy code/data which the NAV needs.
+    try elf.genPending(pt);
 }
 
 pub fn updateErrorData(elf: *Elf, pt: Zcu.PerThread) link.Error!void {
     const diags = &elf.base.comp.link_diags;
-    elf.flushLazy(pt, .{
+    elf.genLazy(pt, .{
         .kind = .const_data,
         .index = @intCast(elf.lazy.getPtr(.const_data).map.getIndex(.anyerror_type) orelse return),
     }) catch |err| switch (err) {
@@ -7183,40 +7193,13 @@ fn updateDynamicTextrel(elf: *Elf) Error!void {
 pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
     const comp = elf.base.comp;
     const diags = &comp.link_diags;
+
+    assert(elf.pending_uavs.items.len == 0);
+    for (&elf.lazy.values) |*lazy| {
+        assert(lazy.pending_index == lazy.map.count());
+    }
+
     task: {
-        while (elf.pending_uavs.pop()) |umi| {
-            const sub_prog_node = elf.idleProgNode(tid, elf.const_prog_node, .{ .uav = umi });
-            defer sub_prog_node.end();
-            elf.flushUav(.{ .zcu = comp.zcu.?, .tid = tid }, umi) catch |err| switch (err) {
-                error.MappedFileIo => return diags.fail("failed to write output file: {t}", .{elf.mf.io_err.?}),
-                else => |e| return e,
-            };
-            break :task;
-        }
-        var lazy_it = elf.lazy.iterator();
-        while (lazy_it.next()) |lazy| if (lazy.value.pending_index < lazy.value.map.count()) {
-            const pt: Zcu.PerThread = .{ .zcu = comp.zcu.?, .tid = tid };
-            const lmr: Node.LazyMapRef = .{ .kind = lazy.key, .index = lazy.value.pending_index };
-            lazy.value.pending_index += 1;
-            const kind = switch (lmr.kind) {
-                .code => "code",
-                .const_data => "data",
-            };
-            var name: [std.Progress.Node.max_name_len]u8 = undefined;
-            const sub_prog_node = elf.synth_prog_node.start(
-                std.fmt.bufPrint(&name, "lazy {s} for {f}", .{
-                    kind,
-                    Type.fromInterned(lmr.lazySymbol(elf).ty).fmt(pt),
-                }) catch &name,
-                0,
-            );
-            defer sub_prog_node.end();
-            elf.flushLazy(pt, lmr) catch |err| switch (err) {
-                error.MappedFileIo => return diags.fail("failed to write output file: {t}", .{elf.mf.io_err.?}),
-                else => |e| return e,
-            };
-            break :task;
-        };
         if (elf.input_section_pending_index < elf.input_sections.items.len) {
             const isi: InputSection.Index = @enumFromInt(elf.input_section_pending_index);
             elf.input_section_pending_index += 1;
@@ -7315,8 +7298,6 @@ pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
             } else elf.mf.update_prog_node.completeOne();
         }
     }
-    if (elf.pending_uavs.items.len > 0) return true;
-    for (&elf.lazy.values) |lazy| if (lazy.map.count() > lazy.pending_index) return true;
     if (elf.input_sections.items.len > elf.input_section_pending_index) return true;
     if (elf.changed_symtab_index.count() > 0) return true;
     if (elf.mf.updates.items.len > 0) return true;
@@ -7351,7 +7332,43 @@ fn idleProgNode(
     }, 0);
 }
 
-fn flushUav(
+fn genPending(elf: *Elf, pt: Zcu.PerThread) Error!void {
+    const zcu = elf.base.comp.zcu.?;
+    pending: while (true) {
+        if (elf.pending_uavs.pop()) |umi| {
+            var prog_name_buf: [std.Progress.Node.max_name_len]u8 = undefined;
+            const prog_name = std.mem.print(&prog_name_buf, "{f}", .{
+                Value.fromInterned(umi.uavValue(elf)).fmtValue(pt),
+            }) catch &prog_name_buf;
+            const prog_node = elf.const_prog_node.start(prog_name, 0);
+            defer prog_node.end();
+            try elf.genUav(pt, umi);
+            continue :pending;
+        }
+        var lazy_it = elf.lazy.iterator();
+        while (lazy_it.next()) |lazy| if (lazy.value.pending_index < lazy.value.map.count()) {
+            const lmr: Node.LazyMapRef = .{ .kind = lazy.key, .index = lazy.value.pending_index };
+            lazy.value.pending_index += 1;
+            const lazy_ty: Type = .fromInterned(lmr.lazySymbol(elf).ty);
+            var prog_name_buf: [std.Progress.Node.max_name_len]u8 = undefined;
+            const prog_name: []const u8 = switch (lazy_ty.zigTypeTag(zcu)) {
+                .@"enum" => std.mem.print(&prog_name_buf, "@tagName({f})", .{lazy_ty.fmt(pt)}) catch &prog_name_buf,
+                .error_set => switch (lmr.kind) {
+                    .code => std.mem.print(&prog_name_buf, "@errorCast({f})", .{lazy_ty.fmt(pt)}) catch &prog_name_buf,
+                    .const_data => "@errorName",
+                },
+                else => unreachable,
+            };
+            const prog_node = elf.synth_prog_node.start(prog_name, 0);
+            defer prog_node.end();
+            try elf.genLazy(pt, lmr);
+            continue :pending;
+        };
+        break;
+    }
+}
+
+fn genUav(
     elf: *Elf,
     pt: Zcu.PerThread,
     umi: Node.UavMapIndex,
@@ -7380,11 +7397,11 @@ fn flushUav(
         inline else => |sym| elf.targetStore(&sym.size, @intCast(nw.interface.end)),
     }
     // The UAV should already be considered to have moved, because it is created as moved and
-    // pending calls to `flushUav` always happen before pending calls to `flushMoved`.
+    // pending calls to `genUav` always happen before pending calls to `flushMoved`.
     assert(ni.hasMoved(&elf.mf));
 }
 
-fn flushLazy(elf: *Elf, pt: Zcu.PerThread, lmr: Node.LazyMapRef) Error!void {
+fn genLazy(elf: *Elf, pt: Zcu.PerThread, lmr: Node.LazyMapRef) Error!void {
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
 
@@ -7497,6 +7514,10 @@ fn flushFileOffset(elf: *Elf, ni: MappedFile.Node.Index) void {
 fn flushMoved(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!void {
     const trace = tracy.trace(@src());
     defer trace.end();
+
+    elf.mf.nodes_lock.lock();
+    defer elf.mf.nodes_lock.unlock();
+
     switch (elf.getNode(ni)) {
         .file => unreachable,
         .ehdr, .shdr => elf.flushFileOffset(ni),
@@ -7662,6 +7683,10 @@ fn flushMoved(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!void
 fn flushResized(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!void {
     const trace = tracy.trace(@src());
     defer trace.end();
+
+    elf.mf.nodes_lock.lock();
+    defer elf.mf.nodes_lock.unlock();
+
     _, const size = ni.location(&elf.mf).resolve(&elf.mf);
     switch (elf.getNode(ni)) {
         .file => {},
