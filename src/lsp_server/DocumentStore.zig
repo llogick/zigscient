@@ -453,7 +453,7 @@ fn invalidateBuildFileWorker(self: *DocumentStore, build_file: *BldDoc) std.Io.C
         build_file.configuration.version += 1;
         const new_version = build_file.configuration.version;
 
-        var roots = loadBuildConfiguration(self, build_file, new_version) catch |err| switch (err) {
+        const roots = loadBuildConfiguration(self, build_file, new_version) catch |err| switch (err) {
             error.Canceled => return error.Canceled,
             error.NewConfigurationSameAsOldConfiguration => {
                 build_file.configuration.mutex.lockUncancelable(self.io);
@@ -490,10 +490,12 @@ fn invalidateBuildFileWorker(self: *DocumentStore, build_file: *BldDoc) std.Io.C
                 break;
             },
             .running_but_result_already_outdated => {
+                var old_roots = build_file.configuration.roots;
+                build_file.configuration.roots = roots;
                 build_file.configuration.loader_state = .running;
                 build_file.configuration.mutex.unlock(self.io);
 
-                roots.deinit(self.allocator);
+                old_roots.deinit(self.allocator);
                 continue;
             },
         }
