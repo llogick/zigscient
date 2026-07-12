@@ -55,7 +55,7 @@ pub fn ctrSlice(
             inline while (j < parallel_count) : (j += 1) {
                 mem.writeInt(CounterInt, counters[j * block_length + counter_offset ..][0..counter_size], cnt_val +% j, endian);
             }
-            cnt_val += parallel_count;
+            cnt_val +%= parallel_count;
             block_cipher.xorWide(parallel_count, dst[i .. i + wide_block_length][0..wide_block_length], src[i .. i + wide_block_length][0..wide_block_length], counters);
         }
         mem.writeInt(CounterInt, counterBlock[counter_offset..][0..counter_size], cnt_val, endian);
@@ -223,5 +223,12 @@ test "ctr mode" {
         // The actual output for this test with little-endian counter=1
         const expected = [_]u8{ 0x7e, 0x48, 0x15, 0xa8, 0x16, 0x66, 0xf0, 0xea, 0xad, 0x3c, 0x07, 0x97, 0x2f, 0xe8, 0x25, 0xc1 };
         try testing.expectEqualSlices(u8, expected[0..], out[0..]);
+    }
+
+    // Make the counter wrap
+    {
+        const iv_top: [16]u8 = @splat(0xff);
+        var buf: [256]u8 = @splat(0);
+        ctr(aes.AesEncryptCtx(aes.Aes128), ctx, buf[0..], buf[0..], iv_top, .little);
     }
 }
