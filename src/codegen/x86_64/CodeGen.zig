@@ -176621,10 +176621,20 @@ fn genCall(cg: *CodeGen, info: union(enum) {
 
     for (call_info.args, arg_types, args, frame_indices) |dst_arg, arg_ty, src_arg, frame_index| switch (dst_arg) {
         .none, .load_frame, .indirect_load_frame => {},
-        .register => |dst_reg| try cg.genSetReg(registerAlias(
-            dst_reg,
-            @intCast(cg.unalignedSize(arg_ty)),
-        ), arg_ty, src_arg, opts),
+        .register => |dst_reg| switch (fn_info.cc) {
+            else => try cg.genSetReg(registerAlias(
+                dst_reg,
+                @intCast(cg.unalignedSize(arg_ty)),
+            ), arg_ty, src_arg, opts),
+            .x86_64_sysv, .x86_64_win => {
+                const promoted_ty = cg.promoteInt(arg_ty);
+                const promoted_unaligned_size: u32 = @intCast(cg.unalignedSize(promoted_ty));
+                const dst_alias = registerAlias(dst_reg, promoted_unaligned_size);
+                try cg.genSetReg(dst_alias, promoted_ty, src_arg, opts);
+                if (promoted_ty.toIntern() != arg_ty.toIntern())
+                    try cg.truncateRegister(arg_ty, dst_alias);
+            },
+        },
         .register_pair,
         .register_triple,
         .register_quadruple,

@@ -16386,7 +16386,13 @@ void __attribute__((vectorcall)) c_vectorcall_check(int a, float b, double c, vo
 }
 #endif
 
-#if defined(__x86_64__) && defined(_WIN64)
+void c_x86_64_sysv_uint_int_uint_int(unsigned a, int b, unsigned c, int d) {
+    assert_or_panic(a == 1);
+    assert_or_panic(b == -2);
+    assert_or_panic(c == 3);
+    assert_or_panic(d == -4);
+}
+
 void c_win64_varargs_u64_f64_u64_f64(uint64_t a, double b, uint64_t c, double d) {
     assert_or_panic(a == UINT64_C(0x3ff0000000000000));
     assert_or_panic(b == 2.0);
@@ -16399,4 +16405,3 @@ void c_win64_varargs_f64_u64_f64_u64(double a, uint64_t b, double c, uint64_t d)
     assert_or_panic(c == 7.0);
     assert_or_panic(d == UINT64_C(0x4020000000000000));
 }
-#endif

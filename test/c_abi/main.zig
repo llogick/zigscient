@@ -17448,11 +17448,19 @@ test "x86 vectorcall calling convention" {
     static.c_vectorcall_check(1, 2.0, 3.0, @ptrFromInt(4), 5.0, 6.0, 7.0, 8.0, 9.0, 10);
 }
 
+extern fn c_x86_64_sysv_uint_int_uint_int(a: u8, b: i8, c: u16, d: i16) void;
+
+test "x86_64 sysv args" {
+    if (std.lang.CallingConvention.c != .x86_64_sysv) return error.SkipZigTest;
+
+    c_x86_64_sysv_uint_int_uint_int(1, -2, 3, -4);
+}
+
 extern fn c_win64_varargs_u64_f64_u64_f64(...) void;
 extern fn c_win64_varargs_f64_u64_f64_u64(...) void;
 
 test "win64 varargs" {
-    if (builtin.cpu.arch != .x86_64 or builtin.os.tag != .windows) return error.SkipZigTest;
+    if (std.lang.CallingConvention.c != .x86_64_win) return error.SkipZigTest;
 
     const Opv = extern struct {};
     c_win64_varargs_u64_f64_u64_f64(
