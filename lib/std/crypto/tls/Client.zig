@@ -1267,6 +1267,7 @@ fn readIndirect(c: *Client) Reader.Error!usize {
                         // This client implementation ignores new session tickets.
                     },
                     .key_update => {
+                        if (handshake.len != 1) return failRead(c, error.TlsDecodeError);
                         switch (c.application_cipher) {
                             inline else => |*p| {
                                 const pv = &p.tls_1_3;
@@ -1757,5 +1758,27 @@ test "TLS 1.2 record shorter than IV plus tag" {
         &(header ++ @as([record_len]u8, @splat(0))),
         .tls_1_2,
         .{ .AES_128_GCM_SHA256 = .{ .tls_1_2 = mem.zeroes(P.Tls_1_2) } },
+    ));
+}
+
+test "zero-length key_update body" {
+    const Chacha = crypto.aead.chacha_poly.ChaCha20Poly1305;
+    const plaintext = [_]u8{ 0x18, 0x00, 0x00, 0x00, 0x16 };
+    const header = [_]u8{ 0x17, 0x03, 0x03 } ++ mem.toBytes(big(@as(u16, plaintext.len + Chacha.tag_length)));
+    var ct: [plaintext.len]u8 = undefined;
+    var tag: [Chacha.tag_length]u8 = undefined;
+    Chacha.encrypt(&ct, &tag, &plaintext, &header, @splat(0), @splat(0));
+    const wire = header ++ ct ++ tag;
+    try std.testing.expectEqual(error.TlsDecodeError, testReadError(
+        &wire,
+        .tls_1_3,
+        .{ .CHACHA20_POLY1305_SHA256 = .{ .tls_1_3 = .{
+            .server_key = @splat(0),
+            .server_iv = @splat(0),
+            .client_secret = undefined,
+            .server_secret = undefined,
+            .client_key = undefined,
+            .client_iv = undefined,
+        } } },
     ));
 }
