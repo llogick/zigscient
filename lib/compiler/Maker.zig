@@ -2290,6 +2290,7 @@ fn prepare(maker: *Maker, step_indices: []const Configuration.Step.Index) !void 
             }
         }
         if (any_problems) {
+            log.info("use --skip-oom-steps to proceed, skipping memory limited steps", .{});
             if (maker.max_rss_is_default) {
                 log.info("use --maxrss {d} to proceed, risking system memory exhaustion", .{max_needed});
             }
