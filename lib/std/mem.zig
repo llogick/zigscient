@@ -4810,21 +4810,32 @@ pub fn doNotOptimizeAway(val: anytype) void {
         return;
     }
 
-    const max_gp_register_bits = @bitSizeOf(c_long);
     switch (@typeInfo(@TypeOf(val))) {
         .void, .null, .comptime_int, .comptime_float => return,
         .@"enum" => doNotOptimizeAway(@backingInt(val)),
         .bool => doNotOptimizeAway(@intFromBool(val)),
-        .int => |int| if (int.bits <= max_gp_register_bits) {
-            const val2 = @as(
-                @Int(int.signedness, @max(8, std.math.ceilPowerOfTwoAssert(u16, int.bits))),
-                val,
-            );
-            asm volatile (""
-                :
-                : [_] "r" (val2),
-            );
-        } else doNotOptimizeAway(&val),
+        .int => |int| {
+            // SPIR-V targets do not have registers per se, they have values
+            // tied to IDs that can be passed to valid instructions. Some
+            // SPIR-V targets do not define c_long, so we just allow any sized
+            // integer on these targets
+            const val_fits_in_gp_register = builtin.target.cpu.arch.isSpirV() or fits: {
+                const max_gp_register_bits = @bitSizeOf(c_long);
+                break :fits int.bits <= max_gp_register_bits;
+            };
+            if (val_fits_in_gp_register) {
+                const val2 = @as(
+                    @Int(int.signedness, @max(8, std.math.ceilPowerOfTwoAssert(u16, int.bits))),
+                    val,
+                );
+                asm volatile (""
+                    :
+                    : [_] "r" (val2),
+                );
+            } else {
+                doNotOptimizeAway(&val);
+            }
+        },
         .float => |float| switch (float.bits) {
             else => comptime unreachable,
             16, 80, 128 => doNotOptimizeAway(&val),
