@@ -1768,7 +1768,7 @@ fn cmdFetch(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
         .name_tok = 0,
         .lazy_status = .eager,
         .remote_package_root = undefined,
-        .parent_package_root = undefined,
+        .parent_package_root = if (build_root_initialized) .{ .root_dir = build_root.directory } else .cwd(),
         .parent_manifest_ast = null,
         .prog_node = root_prog_node,
         .job_queue = &job_queue,
