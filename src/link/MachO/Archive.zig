@@ -89,12 +89,13 @@ pub fn unpack(self: *Archive, macho_file: *MachO, path: Path, handle_index: File
 pub fn writeHeader(
     object_name: []const u8,
     object_size: usize,
-    format: Format,
     writer: *Writer,
 ) !void {
     var hdr: ar_hdr = .{};
 
-    const object_name_len = mem.alignForward(usize, object_name.len + 1, ptrWidth(format));
+    const object_name_start = writer.end + @sizeOf(ar_hdr);
+    const object_start = mem.alignForward(usize, object_name_start + object_name.len + 1, 8);
+    const object_name_len = object_start - object_name_start;
     const total_object_size = object_size + object_name_len;
 
     {
@@ -193,7 +194,7 @@ pub const ArSymtab = struct {
     pub fn write(ar: ArSymtab, format: Format, macho_file: *MachO, writer: *Writer) !void {
         const ptr_width = ptrWidth(format);
         // Header
-        try writeHeader(SYMDEF, ar.size(format), format, writer);
+        try writeHeader(SYMDEF, ar.size(format), writer);
         // Symtab size
         try writeInt(format, ar.entries.items.len * 2 * ptr_width, writer);
         // Symtab entries

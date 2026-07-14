@@ -1805,11 +1805,11 @@ pub fn updateArSize(self: *Object, macho_file: *MachO) !void {
     };
 }
 
-pub fn writeAr(self: Object, ar_format: Archive.Format, macho_file: *MachO, writer: *Writer) !void {
+pub fn writeAr(self: Object, macho_file: *MachO, writer: *Writer) !void {
     // Header
     const size = try macho_file.cast(usize, self.output_ar_state.size);
     const basename = std.fs.path.basename(self.path);
-    try Archive.writeHeader(basename, size, ar_format, writer);
+    try Archive.writeHeader(basename, size, writer);
     // Data
     const file = macho_file.getFileHandle(self.file_handle);
     // TODO try using copyRangeAll

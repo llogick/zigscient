@@ -149,7 +149,6 @@ pub fn flushStaticLib(macho_file: *MachO, comp: *Compilation, module_obj_path: ?
     for (macho_file.objects.items) |index| files.appendAssumeCapacity(index);
 
     const format: Archive.Format = .p32;
-    const ptr_width = Archive.ptrWidth(format);
 
     // Update ar symtab from parsed objects
     var ar_symtab: Archive.ArSymtab = .{};
@@ -171,7 +170,8 @@ pub fn flushStaticLib(macho_file: *MachO, comp: *Compilation, module_obj_path: ?
     const total_size: usize = blk: {
         var pos: usize = Archive.SARMAG;
         pos += @sizeOf(Archive.ar_hdr);
-        pos += mem.alignForward(usize, Archive.SYMDEF.len + 1, ptr_width);
+        pos += Archive.SYMDEF.len + 1;
+        pos = mem.alignForward(usize, pos, 8);
         pos += ar_symtab.size(format);
 
         for (files.items) |index| {
@@ -182,7 +182,8 @@ pub fn flushStaticLib(macho_file: *MachO, comp: *Compilation, module_obj_path: ?
                     pos = mem.alignForward(usize, pos, 2);
                     state.file_off = pos;
                     pos += @sizeOf(Archive.ar_hdr);
-                    pos += mem.alignForward(usize, zo.basename.len + 1, ptr_width);
+                    pos += zo.basename.len + 1;
+                    pos = mem.alignForward(usize, pos, 8);
                     pos += try macho_file.cast(usize, state.size);
                 },
                 .object => |o| {
@@ -190,7 +191,8 @@ pub fn flushStaticLib(macho_file: *MachO, comp: *Compilation, module_obj_path: ?
                     pos = mem.alignForward(usize, pos, 2);
                     state.file_off = pos;
                     pos += @sizeOf(Archive.ar_hdr);
-                    pos += mem.alignForward(usize, std.fs.path.basename(o.path).len + 1, ptr_width);
+                    pos += std.fs.path.basename(o.path).len + 1;
+                    pos = mem.alignForward(usize, pos, 8);
                     pos += try macho_file.cast(usize, state.size);
                 },
                 else => unreachable,
@@ -222,7 +224,7 @@ pub fn flushStaticLib(macho_file: *MachO, comp: *Compilation, module_obj_path: ?
         if (padding > 0) {
             writer.splatByteAll(0, padding) catch unreachable;
         }
-        macho_file.getFile(index).?.writeAr(format, macho_file, &writer) catch |err|
+        macho_file.getFile(index).?.writeAr(macho_file, &writer) catch |err|
             return diags.fail("failed to write archive: {t}", .{err});
     }
 

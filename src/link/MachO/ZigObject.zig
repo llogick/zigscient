@@ -322,10 +322,10 @@ pub fn updateArSize(self: *ZigObject) void {
     self.output_ar_state.size = self.data.items.len;
 }
 
-pub fn writeAr(self: ZigObject, ar_format: Archive.Format, writer: anytype) !void {
+pub fn writeAr(self: ZigObject, writer: anytype) !void {
     // Header
     const size = std.math.cast(usize, self.output_ar_state.size) orelse return error.Overflow;
-    try Archive.writeHeader(self.basename, size, ar_format, writer);
+    try Archive.writeHeader(self.basename, size, writer);
     // Data
     try writer.writeAll(self.data.items);
 }
