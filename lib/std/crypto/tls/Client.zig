@@ -1588,7 +1588,7 @@ const CertificatePublicKey = struct {
                     inline 128, 256, 384, 512 => |modulus_len| {
                         const key: PublicKey = try .fromBytes(exponent, modulus);
                         const sig = RsaSignature.fromBytes(modulus_len, encoded_sig);
-                        try RsaSignature.concatVerify(modulus_len, sig, msg, key, Hash);
+                        try RsaSignature.concatVerify(modulus_len, &sig, msg, key, Hash);
                     },
                     else => return error.TlsBadRsaSignatureBitCount,
                 }

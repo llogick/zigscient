@@ -849,7 +849,7 @@ fn verifyRsa(
         inline 128, 256, 384, 512 => |modulus_len| {
             const public_key = rsa.PublicKey.fromBytes(exponent, modulus) catch
                 return error.CertificateSignatureInvalid;
-            rsa.PKCS1v1_5Signature.verify(modulus_len, sig[0..modulus_len].*, msg, public_key, Hash) catch
+            rsa.PKCS1v1_5Signature.verify(modulus_len, sig[0..modulus_len], msg, public_key, Hash) catch
                 return error.CertificateSignatureInvalid;
         },
         else => return error.CertificateSignatureUnsupportedBitCount,
@@ -1039,7 +1039,7 @@ pub const rsa = struct {
 
         pub fn concatVerify(
             comptime modulus_len: usize,
-            sig: [modulus_len]u8,
+            sig: *const [modulus_len]u8,
             msg: []const []const u8,
             public_key: PublicKey,
             comptime Hash: type,
@@ -1192,7 +1192,7 @@ pub const rsa = struct {
 
         pub fn verify(
             comptime modulus_len: usize,
-            sig: [modulus_len]u8,
+            sig: *const [modulus_len]u8,
             msg: []const u8,
             public_key: PublicKey,
             comptime Hash: type,
@@ -1202,7 +1202,7 @@ pub const rsa = struct {
 
         pub fn concatVerify(
             comptime modulus_len: usize,
-            sig: [modulus_len]u8,
+            sig: *const [modulus_len]u8,
             msg: []const []const u8,
             public_key: PublicKey,
             comptime Hash: type,
@@ -1348,8 +1348,8 @@ pub const rsa = struct {
 
     const EncryptError = error{MessageTooLong};
 
-    fn encrypt(comptime modulus_len: usize, msg: [modulus_len]u8, public_key: PublicKey) EncryptError![modulus_len]u8 {
-        const m = Fe.fromBytes(public_key.n, &msg, .big) catch return error.MessageTooLong;
+    fn encrypt(comptime modulus_len: usize, msg: *const [modulus_len]u8, public_key: PublicKey) EncryptError![modulus_len]u8 {
+        const m = Fe.fromBytes(public_key.n, msg, .big) catch return error.MessageTooLong;
         const e = public_key.n.powPublic(m, public_key.e) catch unreachable;
         var res: [modulus_len]u8 = undefined;
         e.toBytes(&res, .big) catch unreachable;
