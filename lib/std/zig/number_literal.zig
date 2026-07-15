@@ -1,7 +1,5 @@
 const std = @import("../std.zig");
 const assert = std.debug.assert;
-const utf8Decode = std.unicode.utf8Decode;
-const utf8Encode = std.unicode.utf8Encode;
 
 pub const ParseError = error{
     OutOfMemory,
@@ -46,7 +44,7 @@ pub const Error = union(enum) {
     duplicate_exponent: usize,
     /// Exponent comes directly after '_' digit separator.
     exponent_after_underscore: usize,
-    /// Special character (+-.) comes directly after exponent.
+    /// Special character (+-.) comes directly after underscore.
     special_after_underscore: usize,
     /// Number ends in special character (+-.)
     trailing_special: usize,
@@ -56,13 +54,15 @@ pub const Error = union(enum) {
     invalid_character: usize,
     /// [+-] not immediately after [pPeE]
     invalid_exponent_sign: usize,
-    /// Period comes directly after exponent.
+    /// Period comes after exponent.
     period_after_exponent: usize,
 };
 
 /// Parse Zig number literal accepted by fmt.parseInt, fmt.parseFloat and big_int.setString.
-/// Valid for any input.
+/// Valid for any number_literal token bytes.
 pub fn parseNumberLiteral(bytes: []const u8) Result {
+    // This is enforced by the tokenizer.
+    assert(bytes.len > 0 and std.ascii.isDigit(bytes[0]));
     var i: usize = 0;
     var base: u8 = 10;
     if (bytes.len >= 2 and bytes[0] == '0') switch (bytes[1]) {
@@ -121,17 +121,9 @@ pub fn parseNumberLiteral(bytes: []const u8) Result {
                 continue;
             },
             '.' => {
-                if (exponent) {
-                    const digit_index = i - ".e".len;
-                    if (digit_index < bytes.len) {
-                        switch (bytes[digit_index]) {
-                            '0'...'9' => return .{ .failure = .{ .period_after_exponent = i } },
-                            else => {},
-                        }
-                    }
-                }
+                if (exponent) return .{ .failure = .{ .period_after_exponent = i } };
                 float = true;
-                if (base != 10 and base != 16) return .{ .failure = .{ .invalid_float_base = 2 } };
+                if (base != 10 and base != 16) return .{ .failure = .{ .invalid_float_base = 1 } };
                 if (period) return .{ .failure = .duplicate_period };
                 period = true;
                 if (underscore) return .{ .failure = .{ .special_after_underscore = i } };
@@ -176,4 +168,40 @@ pub fn parseNumberLiteral(bytes: []const u8) Result {
     if (float) return .{ .float = @as(FloatBase, @enumFromInt(base)) };
     if (overflow) return .{ .big_int = @as(Base, @enumFromInt(base)) };
     return .{ .int = x };
+}
+
+test parseNumberLiteral {
+    try std.testing.expectEqual(Result{ .float = .decimal }, parseNumberLiteral("3E2"));
+    try std.testing.expectEqual(Result{ .int = 0x3E2 }, parseNumberLiteral("0x3E2"));
+    try std.testing.expectEqual(Result{ .float = .hex }, parseNumberLiteral("0x3p2"));
+    try std.testing.expectEqual(Result{ .failure = .{ .period_after_exponent = 3 } }, parseNumberLiteral("3E2.5"));
+    try std.testing.expectEqual(Result{ .failure = .{ .period_after_exponent = 2 } }, parseNumberLiteral("3E.5"));
+    try std.testing.expectEqual(Result{ .failure = .{ .period_after_exponent = 3 } }, parseNumberLiteral("3E1."));
+    try std.testing.expectEqual(Result{ .failure = .{ .invalid_float_base = 1 } }, parseNumberLiteral("0o3.1"));
+    try std.testing.expectEqual(Result{ .failure = .{ .invalid_digit = .{ .i = 3, .base = .octal } } }, parseNumberLiteral("0o3e1"));
+}
+
+/// Returns an error if `parseNumberLiteral` returns `.float` but `parseFloat` fails.
+/// AstGen relies on `parseFloat` being unable to fail after calling `parseNumberLiteral`.
+fn checkFloat(bytes: []const u8) !void {
+    // Number literals must start with a digit
+    if (bytes.len == 0 or !std.ascii.isDigit(bytes[0])) return;
+
+    switch (parseNumberLiteral(bytes)) {
+        .float => {
+            _ = try std.fmt.parseFloat(f128, bytes);
+        },
+        else => {},
+    }
+}
+
+test "parseNumberLiteral float validation" {
+    const Context = struct {
+        fn testOne(_: @This(), smith: *std.testing.Smith) anyerror!void {
+            var buf: [256]u8 = undefined;
+            const bytes = buf[0..smith.slice(&buf)];
+            try checkFloat(bytes);
+        }
+    };
+    return std.testing.fuzz(Context{}, Context.testOne, .{});
 }

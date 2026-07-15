@@ -8493,7 +8493,7 @@ fn numberLiteral(gz: *GenZir, ri: ResultInfo, node: Ast.Node.Index, source_node:
         },
         .float => {
             const unsigned_float_number = std.fmt.parseFloat(f128, bytes) catch |err| switch (err) {
-                error.InvalidCharacter => unreachable, // validated by tokenizer
+                error.InvalidCharacter => unreachable, // validated by `parseNumberLiteral`
             };
             const float_number = switch (sign) {
                 .negative => -unsigned_float_number,
