@@ -24,14 +24,17 @@ pub const EcdsaSecp256k1Sha256 = Ecdsa(crypto.ecc.Secp256k1, crypto.hash.sha2.Sh
 pub const EcdsaSecp256k1Sha256oSha256 = Ecdsa(crypto.ecc.Secp256k1, crypto.hash.composition.Sha256oSha256);
 
 /// Elliptic Curve Digital Signature Algorithm (ECDSA).
-pub fn Ecdsa(comptime Curve: type, comptime Hash: type) type {
-    const Prf = switch (Hash) {
+pub fn Ecdsa(comptime C: type, comptime H: type) type {
+    const Prf = switch (H) {
         sha3.Shake128 => sha3.KMac128,
         sha3.Shake256 => sha3.KMac256,
-        else => crypto.auth.hmac.Hmac(Hash),
+        else => crypto.auth.hmac.Hmac(H),
     };
 
     return struct {
+        pub const Curve = C;
+        pub const Hash = H;
+
         /// Length (in bytes) of optional random bytes, for non-deterministic signatures.
         pub const noise_length = Curve.scalar.encoded_length;
 
