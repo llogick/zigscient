@@ -32,7 +32,6 @@ pub const ConstPool = @import("link/ConstPool.zig");
 
 pub const aarch64 = @import("link/aarch64.zig");
 pub const loongarch = @import("link/loongarch.zig");
-pub const sparc = @import("link/sparc.zig");
 
 pub const Error = Allocator.Error || Io.Cancelable || error{
     /// An error message has already been stored in persistent state on `Compilation` or `Zcu`, for

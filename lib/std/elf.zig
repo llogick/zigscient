@@ -1053,7 +1053,7 @@ pub const Elf32 = struct {
         entry: Elf32.Addr,
         phoff: Elf32.Off,
         shoff: Elf32.Off,
-        flags: Word,
+        flags: EhdrFlags,
         ehsize: Half,
         phentsize: Half,
         phnum: Half,
@@ -1143,7 +1143,7 @@ pub const Elf64 = struct {
         entry: Elf64.Addr,
         phoff: Elf64.Off,
         shoff: Elf64.Off,
-        flags: Word,
+        flags: EhdrFlags,
         ehsize: Half,
         phentsize: Half,
         phnum: Half,
@@ -1644,7 +1644,7 @@ pub const CLASS = enum(u8) {
 
     pub const NUM = @typeInfo(CLASS).@"enum".field_names.len;
 
-    pub inline fn size(class: CLASS) u32 {
+    pub inline fn size(class: CLASS) u8 {
         return switch (class) {
             .NONE, _ => unreachable,
             .@"32" => 4,
@@ -3377,9 +3377,12 @@ pub const gnu_hash = struct {
     }
 };
 
-pub const loongarch = struct {
-    /// Ehdr.e_flags bits of LoongArch
-    pub const EFlags = packed struct(Word) {
+pub const EhdrFlags = packed union(Word) {
+    int: u32,
+    loongarch: Loongarch,
+    sparc: Sparc,
+
+    pub const Loongarch = packed struct(u32) {
         base_abi_modifier: BaseAbiModifier,
         abi_extension: AbiExtension,
         abi_version: u2,
@@ -3393,10 +3396,8 @@ pub const loongarch = struct {
         };
         pub const AbiExtension = enum(u3) { base = 0, _ };
     };
-};
 
-pub const sparc = struct {
-    pub const EFlags = packed struct(Word) {
+    pub const Sparc = packed struct(u32) {
         mm: MemoryModel,
         _reserved1: u6 = 0,
         ext: Extensions,
