@@ -7119,9 +7119,10 @@ fn dirDeleteFileWasi(userdata: ?*anyopaque, dir: Dir, sub_path: []const u8) Dir.
     if (builtin.link_libc) return dirDeleteFilePosix(userdata, dir, sub_path);
     const t: *Threaded = @ptrCast(@alignCast(userdata));
     _ = t;
+    const wasi = std.os.wasi;
     const syscall: Syscall = try .start();
     while (true) {
-        const res = std.os.wasi.path_unlink_file(dir.handle, sub_path.ptr, sub_path.len);
+        const res = wasi.path_unlink_file(dir.handle, sub_path.ptr, sub_path.len);
         switch (res) {
             .SUCCESS => {
                 syscall.finish();
@@ -7131,11 +7132,35 @@ fn dirDeleteFileWasi(userdata: ?*anyopaque, dir: Dir, sub_path: []const u8) Dir.
                 try syscall.checkCancel();
                 continue;
             },
+            .ACCES, .PERM => |e| {
+                const original_error: Dir.DeleteFileError = switch (e) {
+                    .ACCES => error.AccessDenied,
+                    .PERM => error.PermissionDenied,
+                    else => unreachable,
+                };
+                var stat: wasi.filestat_t = undefined;
+                while (true) {
+                    try syscall.checkCancel();
+                    switch (wasi.path_filestat_get(dir.handle, .{}, sub_path.ptr, sub_path.len, &stat)) {
+                        .SUCCESS => {
+                            syscall.finish();
+                            break;
+                        },
+                        .INTR => continue,
+                        else => {
+                            syscall.finish();
+                            return original_error;
+                        },
+                    }
+                }
+                if (stat.filetype == .DIRECTORY)
+                    return error.IsDir
+                else
+                    return original_error;
+            },
             else => |e| {
                 syscall.finish();
                 switch (e) {
-                    .ACCES => return error.AccessDenied,
-                    .PERM => return error.PermissionDenied,
                     .BUSY => return error.FileBusy,
                     .FAULT => |err| return errnoBug(err),
                     .IO => return error.FileSystem,
