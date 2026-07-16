@@ -341,7 +341,7 @@ const InnerError = error{
     AlreadyReported,
     /// Compiler implementation could not handle a large integer.
     Overflow,
-} || link.File.UpdateDebugInfoError;
+};
 
 pub fn deinit(cg: *CodeGen) void {
     const gpa = cg.gpa;
@@ -1577,7 +1577,7 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
         .int_from_ptr => cg.airIntFromPtr(inst),
 
         .bit_cast => cg.airBitcast(inst),
-        .union_from_enum => cg.airBitcast(inst),
+        .union_from_enum => cg.airUnionFromEnum(inst),
 
         .int_cast => {
             const ty_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
@@ -5570,6 +5570,21 @@ fn airIntFromPtr(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     return cg.finishAir(inst, result, &.{ty_op.operand});
 }
 
+fn airUnionFromEnum(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
+    const zcu = cg.pt.zcu;
+    const ty_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
+
+    const union_ty = cg.typeOfIndex(inst);
+    const enum_ty = cg.typeOf(ty_op.operand);
+    const layout = union_ty.unionGetLayout(zcu);
+
+    const enum_value = try cg.resolveInst(ty_op.operand);
+    const result = try cg.allocStack(union_ty);
+    try cg.store(result, enum_value, enum_ty, @intCast(layout.tagOffset()));
+
+    return cg.finishAir(inst, result, &.{ty_op.operand});
+}
+
 fn airBitcast(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     const ty_op = cg.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
     const operand = try cg.resolveInst(ty_op.operand);
@@ -5581,25 +5596,62 @@ fn airBitcast(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     return cg.finishAir(inst, result, &.{ty_op.operand});
 }
 
+const BitcastClass = union(enum) {
+    int: IntType,
+    float: FloatType,
+    aggregate, // arrays and vectors.
+};
+
+fn bitcastClass(cg: *CodeGen, ty: Type) BitcastClass {
+    const zcu = cg.pt.zcu;
+    return switch (ty.zigTypeTag(zcu)) {
+        .bool,
+        .int,
+        .@"enum",
+        .error_set,
+        .@"struct",
+        .@"union",
+        => .{ .int = .fromType(cg, ty) },
+        .float => .{ .float = .fromType(cg, ty) },
+        .array, .vector => .aggregate,
+        else => unreachable,
+    };
+}
+
 fn bitcast(cg: *CodeGen, dest_ty: Type, src_ty: Type, operand: WValue) InnerError!?WValue {
     const zcu = cg.pt.zcu;
-    const bit_size = src_ty.bitSize(zcu);
-    const dest_signed = if (dest_ty.isAbiInt(zcu)) IntType.fromType(cg, dest_ty).is_signed else false;
-    const src_signed = if (src_ty.isAbiInt(zcu)) IntType.fromType(cg, src_ty).is_signed else false;
-    const needs_wrapping = (src_signed != dest_signed) and
-        bit_size != 32 and bit_size != 64 and bit_size != 128;
+    const src_class = cg.bitcastClass(src_ty);
+    const dest_class = cg.bitcastClass(dest_ty);
+    const src_by_ref = isByRef(src_ty, zcu, cg.target);
+    const dest_by_ref = isByRef(dest_ty, zcu, cg.target);
 
-    if (src_ty.isAnyFloat()) {
-        const float_ty: FloatType = .fromType(cg, src_ty);
-        switch (float_ty) {
-            .f16, .f80, .f128 => {
-                if (dest_signed) {
-                    const int_ty: IntType = .fromType(cg, dest_ty);
-                    return try cg.intWrap(int_ty, operand);
-                } else {
-                    return null;
-                }
+    const needs_wrapping = switch (dest_class) {
+        .int => |dest_int| dest_int.bits != cg.intBackingBits(dest_int.bits) and
+            switch (src_class) {
+                .int => |src_int| src_int.is_signed != dest_int.is_signed,
+                .float, .aggregate => true,
             },
+        .float, .aggregate => false,
+    };
+
+    if (src_by_ref and dest_by_ref) {
+        if (needs_wrapping) return try cg.intWrap(dest_class.int, operand);
+        return null;
+    }
+
+    if (dest_by_ref) {
+        const result = try cg.allocStack(src_ty);
+        try cg.store(result, operand, src_ty, 0);
+        return result;
+    }
+
+    if (src_by_ref) {
+        return try cg.load(operand, dest_ty, 0);
+    }
+
+    switch (src_class) {
+        .float => |float_ty| switch (float_ty) {
+            .f16 => return try cg.intWrap(dest_class.int, operand),
             .f32 => {
                 try cg.emitWValue(operand);
                 try cg.addTag(.i32_reinterpret_f32);
@@ -5610,19 +5662,15 @@ fn bitcast(cg: *CodeGen, dest_ty: Type, src_ty: Type, operand: WValue) InnerErro
                 try cg.addTag(.i64_reinterpret_f64);
                 return .stack;
             },
-        }
+            .f80, .f128 => unreachable,
+        },
+        .int => {},
+        .aggregate => unreachable,
     }
 
-    if (dest_ty.isAnyFloat()) {
-        const float_ty: FloatType = .fromType(cg, dest_ty);
-        switch (float_ty) {
-            .f16, .f80, .f128 => {
-                if (src_signed) {
-                    return try cg.intWrap(.{ .bits = @intCast(bit_size), .is_signed = false }, operand);
-                } else {
-                    return null;
-                }
-            },
+    switch (dest_class) {
+        .float => |float_ty| switch (float_ty) {
+            .f16 => return null,
             .f32 => {
                 try cg.emitWValue(operand);
                 try cg.addTag(.f32_reinterpret_i32);
@@ -5633,40 +5681,17 @@ fn bitcast(cg: *CodeGen, dest_ty: Type, src_ty: Type, operand: WValue) InnerErro
                 try cg.addTag(.f64_reinterpret_i64);
                 return .stack;
             },
-        }
-    }
-
-    if (isByRef(src_ty, zcu, cg.target) and !isByRef(dest_ty, zcu, cg.target)) {
-        const loaded_memory = try cg.load(operand, dest_ty, 0);
-        if (needs_wrapping) {
-            const int_ty: IntType = .fromType(cg, dest_ty);
-            return try cg.intWrap(int_ty, loaded_memory);
-        } else {
-            return loaded_memory;
-        }
-    }
-
-    if (!isByRef(src_ty, zcu, cg.target) and isByRef(dest_ty, zcu, cg.target)) {
-        const stack_memory = try cg.allocStack(dest_ty);
-        try cg.store(stack_memory, operand, src_ty, 0);
-        if (needs_wrapping) {
-            const int_ty: IntType = .fromType(cg, dest_ty);
-            return try cg.intWrap(int_ty, stack_memory);
-        } else {
-            return stack_memory;
-        }
+            .f80, .f128 => unreachable,
+        },
+        .int => {},
+        .aggregate => unreachable,
     }
 
     if (needs_wrapping) {
-        const int_ty: IntType = .fromType(cg, dest_ty);
-        return try cg.intWrap(int_ty, operand);
+        return try cg.intWrap(dest_class.int, operand);
     }
 
-    return switch (operand) {
-        // for stack offset, return a pointer to this offset.
-        .stack_offset => try cg.buildPointerOffset(operand, 0, .new),
-        else => null, // caller should use cg.reuseOperand, if returnes for AIR
-    };
+    return null;
 }
 
 fn airStructFieldPtr(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
@@ -6992,8 +7017,7 @@ fn airUnionInit(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
             }
             break :result result_ptr;
         } else {
-            const operand = try cg.resolveInst(extra.init);
-            break :result (try cg.bitcast(union_ty, field_ty, operand)) orelse cg.reuseOperand(extra.init, operand);
+            unreachable;
         }
     };
 
