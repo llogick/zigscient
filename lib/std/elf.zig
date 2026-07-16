@@ -2150,6 +2150,10 @@ pub const EM = enum(u16) {
     LOONGGPU = 267,
     /// Wuxi Institute of Advanced Technology SW64
     SW64 = 268,
+    /// AMD/Xilinx AIEngine ctrlcode
+    AIECTRLCODE = 269,
+    /// T-Head PPU
+    PPU = 270,
     /// AVR
     AVR_OLD = 0x1057,
     /// MSP430
