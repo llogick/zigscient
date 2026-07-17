@@ -1090,6 +1090,14 @@ test "sentinel expression in slice operation has result type" {
     comptime assert(slice.len == 2);
     comptime assert(slice[0] == 1);
     comptime assert(slice[1] == 2);
+
+    const by_len = arr[0..][0..2 :@intCast(sentinel)];
+
+    comptime assert(@TypeOf(by_len) == *const [2:sentinel]u16);
+    comptime assert(by_len[2] == sentinel);
+    comptime assert(by_len.len == 2);
+    comptime assert(by_len[0] == 1);
+    comptime assert(by_len[1] == 2);
 }
 
 test "conditionally return second argument slice" {
