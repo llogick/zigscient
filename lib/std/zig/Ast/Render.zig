@@ -1652,7 +1652,17 @@ fn renderBuiltinCall(
     const tree = r.tree;
     const ais = r.ais;
 
-    try renderToken(r, builtin_token, .none); // @name
+    // remove before 0.18.0 is released
+    const builtin_token_slice = tree.tokenSlice(builtin_token); // @name
+    const lexeme: []const u8, const have_int_cast: bool = lexeme: {
+        if (mem.eql(u8, builtin_token_slice, "@intFromEnum"))
+            break :lexeme .{ "@backingInt", false };
+        if (mem.eql(u8, builtin_token_slice, "@enumFromInt"))
+            break :lexeme .{ "@fromBackingInt(@intCast", true };
+        break :lexeme .{ builtin_token_slice, false };
+    };
+    try ais.writeAll(lexeme);
+    try renderSpace(r, builtin_token, builtin_token_slice.len, .none);
 
     if (r.fixups.rebase_imported_paths) |prefix| {
         const slice = tree.tokenSlice(builtin_token);
@@ -1675,7 +1685,14 @@ fn renderBuiltinCall(
         }
     }
 
-    return renderParamList(r, builtin_token + 1, params, space);
+    try renderParamList(r, builtin_token + 1, params, .skip); // space is rendered below
+    if (have_int_cast) try ais.writeAll(")");
+    const rparen: Ast.TokenIndex = rparen: {
+        if (params.len == 0) break :rparen builtin_token + 1 + 1;
+        const after_last_param_tok = tree.lastToken(params[params.len - 1]) + 1;
+        break :rparen after_last_param_tok + @intFromBool(tree.tokenTag(after_last_param_tok) == .comma);
+    };
+    return renderSpace(r, rparen, tokenSliceForRender(tree, rparen).len, space);
 }
 
 fn fnProtoRparen(tree: Ast, fn_proto: Ast.full.FnProto, maybe_bang: Ast.TokenIndex) Ast.TokenIndex {

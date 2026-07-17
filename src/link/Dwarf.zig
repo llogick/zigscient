@@ -5098,6 +5098,7 @@ fn DeclValEnum(comptime T: type) type {
         if (min_value == null or min_value.? > value) min_value = value;
         if (max_value == null or max_value.? < value) max_value = value;
     }
+    if (fields_len == 0) return enum {};
     const TagInt = std.math.IntFittingRange(min_value orelse 0, max_value orelse 0);
     var field_vals: [fields_len]TagInt = undefined;
     for (field_names[0..fields_len], &field_vals) |name, *val| val.* = @field(T, name);

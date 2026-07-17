@@ -212,7 +212,7 @@ pub fn defineComplete(
         },
         .@"enum" => {
             const name_cty: CType = .{ .@"enum" = ty };
-            const cty: CType = try .lower(ty.intTagType(zcu), deps, arena, zcu);
+            const cty: CType = try .lower(ty.backingIntType(zcu), deps, arena, zcu);
             try w.print("typedef {f}{f}{f}; /* {f} */\n", .{
                 cty.fmtDeclaratorPrefix(zcu),
                 name_cty.fmtTypeName(zcu),
@@ -343,7 +343,7 @@ fn defineBitpack(
 ) (Allocator.Error || Writer.Error)!void {
     const zcu = pt.zcu;
     const name_cty: CType = .{ .bitpack = ty };
-    const cty: CType = try .lower(ty.bitpackBackingInt(zcu), deps, arena, zcu);
+    const cty: CType = try .lower(ty.backingIntType(zcu), deps, arena, zcu);
     try w.print("typedef {f}{f}{f}; /* {f} */\n", .{
         cty.fmtDeclaratorPrefix(zcu),
         name_cty.fmtTypeName(zcu),

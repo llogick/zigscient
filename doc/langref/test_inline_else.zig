@@ -9,7 +9,7 @@ const SliceTypeB = extern struct {
     ptr: [*]SliceTypeA,
     len: usize,
 };
-const AnySlice = union(enum) {
+const AnySlice = union(enum(u8)) {
     a: SliceTypeA,
     b: SliceTypeB,
     c: []const u8,
@@ -23,7 +23,7 @@ fn withFor(any: AnySlice) usize {
         // With `inline for` the function gets generated as
         // a series of `if` statements relying on the optimizer
         // to convert it to a switch.
-        if (field_value == @intFromEnum(any)) {
+        if (field_value == @backingInt(any)) {
             return @field(any, field_name).len;
         }
     }

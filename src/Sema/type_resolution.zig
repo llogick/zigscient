@@ -63,7 +63,7 @@ pub const LayoutResolveReason = enum {
             .@"export"     => "for export here",
             .@"extern"     => "for extern declaration here",
             .asm_out_type  => "for inline assembly output type declared here",
-            .std_lang_type  => "from 'std.lang'",
+            .std_lang_type => "from 'std.lang'",
             // zig fmt: on
         };
     }
@@ -1325,15 +1325,31 @@ pub fn resolveEnumLayout(sema: *Sema, enum_ty: Type) CompileError!void {
         const type_ref = try sema.resolveInlineBody(&block, tag_type_body, zir_index);
         break :ty try sema.analyzeAsType(&block, tag_type_src, .enum_int_tag_type, type_ref);
     };
+    const empty_exhaustive = enum_obj.field_names.len == 0 and !enum_obj.nonexhaustive;
     const int_tag_ty: Type = if (explicit_int_tag_ty) |int_tag_ty| ty: {
-        if (int_tag_ty.zigTypeTag(zcu) != .int) return sema.fail(
-            &block,
-            block.src(.container_arg),
-            "expected integer tag type, found '{f}'",
-            .{int_tag_ty.fmt(pt)},
-        );
+        switch (int_tag_ty.zigTypeTag(zcu)) {
+            .int => if (empty_exhaustive) return sema.fail(
+                &block,
+                block.src(.container_arg),
+                "empty exhaustive enums must be backed by 'noreturn'",
+                .{},
+            ),
+            .noreturn => if (!empty_exhaustive) return sema.fail(
+                &block,
+                block.src(.container_arg),
+                "non-empty enums cannot be backed by 'noreturn'",
+                .{},
+            ),
+            else => return sema.fail(
+                &block,
+                block.src(.container_arg),
+                "expected integer tag type, found '{f}'",
+                .{int_tag_ty.fmt(pt)},
+            ),
+        }
         break :ty int_tag_ty;
     } else ty: {
+        if (empty_exhaustive) break :ty .noreturn;
         // Infer the int tag type from the field count
         const bits = Type.smallestUnsignedBits(enum_obj.field_names.len -| 1);
         break :ty try pt.intType(.unsigned, bits);

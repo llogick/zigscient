@@ -1,11 +1,11 @@
-const Foo = enum {
+const Foo = enum(u2) {
     a,
     b,
     c,
 };
 comptime {
     const a: u2 = 3;
-    const b: Foo = @enumFromInt(a);
+    const b: Foo = @fromBackingInt(a);
     _ = b;
 }
 

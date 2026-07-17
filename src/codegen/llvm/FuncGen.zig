@@ -465,7 +465,8 @@ fn genBody(self: *FuncGen, body: []const Air.Inst.Index, coverage_point: Air.Cov
             .alloc           => try self.airAlloc(inst),
             .ret_ptr         => try self.airRetPtr(inst),
             .arg             => try self.airArg(inst),
-            .bit_cast        => try self.airBitCast(inst),
+            .bit_cast        => try self.airBitCast(inst, false),
+            .bit_cast_safe   => try self.airBitCast(inst, true),
             .ptr_cast        => try self.airNopCast(inst),
             .ptr_from_int    => try self.airPtrFromInt(inst),
             .int_from_ptr    => try self.airIntFromPtr(inst),
@@ -1254,7 +1255,6 @@ fn cmp(
     const zcu = o.zcu;
     const scalar_ty = operand_ty.scalarType(zcu);
     const int_ty = switch (scalar_ty.zigTypeTag(zcu)) {
-        .@"enum" => scalar_ty.intTagType(zcu),
         .int, .bool, .pointer, .error_set => scalar_ty,
         .optional => blk: {
             const payload_ty = operand_ty.optionalChild(zcu);
@@ -1328,7 +1328,7 @@ fn cmp(
             return phi.toValue();
         },
         .float => return self.buildFloatCmp(fast, op, operand_ty, .{ lhs, rhs }),
-        .@"struct", .@"union" => scalar_ty.bitpackBackingInt(zcu),
+        .@"enum", .@"struct", .@"union" => scalar_ty.backingIntType(zcu),
         else => unreachable,
     };
     const is_signed = int_ty.isSignedInt(zcu);
@@ -4539,7 +4539,7 @@ fn airFpext(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value 
     }
 }
 
-fn airBitCast(fg: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value {
+fn airBitCast(fg: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error!Builder.Value {
     const o = fg.object;
     const zcu = o.zcu;
 
@@ -4564,7 +4564,26 @@ fn airBitCast(fg: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value 
     assert(!isByRef(dest_ty, zcu));
 
     const llvm_dest_ty = try o.lowerType(dest_ty, .by_value);
-    return fg.wip.cast(.bitcast, operand, llvm_dest_ty, "");
+    const result = try fg.wip.cast(.bitcast, operand, llvm_dest_ty, "");
+    if (safety and dest_ty.zigTypeTag(zcu) == .@"enum" and !dest_ty.isNonexhaustiveEnum(zcu)) {
+        const llvm_fn = try o.getIsNamedEnumValueFunction(dest_ty);
+        const is_valid_enum_val = try fg.wip.call(
+            .normal,
+            .fastcc,
+            .none,
+            llvm_fn.typeOf(&o.builder),
+            llvm_fn.toValue(&o.builder),
+            &.{result},
+            "",
+        );
+        const fail_block = try fg.wip.block(1, "ValidEnumFail");
+        const ok_block = try fg.wip.block(1, "ValidEnumOk");
+        _ = try fg.wip.brCond(is_valid_enum_val, ok_block, fail_block, .none);
+        fg.wip.cursor = .{ .block = fail_block };
+        try fg.buildSimplePanic(.invalid_enum_value);
+        fg.wip.cursor = .{ .block = ok_block };
+    }
+    return result;
 }
 
 fn airNopCast(fg: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value {

@@ -122,7 +122,7 @@ test "correct sizeOf and offsets in packed structs" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 
-    const PStruct = packed struct {
+    const PStruct = packed struct(u32) {
         bool_a: bool,
         bool_b: bool,
         bool_c: bool,
@@ -162,7 +162,7 @@ test "correct sizeOf and offsets in packed structs" {
     try expectEqual(22, @bitOffsetOf(PStruct, "u10_b"));
     try expectEqual(4, @sizeOf(PStruct));
 
-    const s1 = @as(PStruct, @bitCast(@as(u32, 0x12345678)));
+    const s1: PStruct = @fromBackingInt(0x12345678);
     try expectEqual(false, s1.bool_a);
     try expectEqual(false, s1.bool_b);
     try expectEqual(false, s1.bool_c);
@@ -176,7 +176,7 @@ test "correct sizeOf and offsets in packed structs" {
     try expectEqual(0b1101000101, s1.u10_a);
     try expectEqual(0b0001001000, s1.u10_b);
 
-    const s2 = @as(packed struct { x: u1, y: u7, z: u24 }, @bitCast(@as(u32, 0xd5c71ff4)));
+    const s2: packed struct(u32) { x: u1, y: u7, z: u24 } = @fromBackingInt(0xd5c71ff4);
     try expectEqual(0, s2.x);
     try expectEqual(0b1111010, s2.y);
     try expectEqual(0xd5c71f, s2.z);
@@ -191,7 +191,7 @@ test "nested packed structs" {
     const S2 = packed struct { d: u8, e: u8, f: u8 };
 
     const S3 = packed struct { x: S1, y: S2 };
-    const S3Padded = packed struct { s3: S3, pad: u16 };
+    const S3Padded = packed struct(u64) { s3: S3, pad: u16 };
 
     try expectEqual(48, @bitSizeOf(S3));
     try expectEqual(@sizeOf(u48), @sizeOf(S3));
@@ -199,7 +199,7 @@ test "nested packed structs" {
     try expectEqual(3, @offsetOf(S3, "y"));
     try expectEqual(24, @bitOffsetOf(S3, "y"));
 
-    const s3 = @as(S3Padded, @bitCast(@as(u64, 0xe952d5c71ff4))).s3;
+    const s3 = @as(S3Padded, @fromBackingInt(0xe952d5c71ff4)).s3;
     try expectEqual(0xf4, s3.x.a);
     try expectEqual(0x1f, s3.x.b);
     try expectEqual(0xc7, s3.x.c);
@@ -558,7 +558,7 @@ test "packed struct fields modification" {
     // Originally reported at https://github.com/ziglang/zig/issues/16615
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
-    const Small = packed struct {
+    const Small = packed struct(u16) {
         val: u8 = 0,
         lo: u4 = 0,
         hi: u4 = 0,
@@ -570,12 +570,12 @@ test "packed struct fields modification" {
         .lo = 3,
         .hi = 4,
     };
-    try expect(@as(u16, @bitCast(Small.p)) == 0x4312);
+    try expect(@backingInt(Small.p) == 0x4312);
 
     Small.p.val -= Small.p.lo;
     Small.p.val += Small.p.hi;
     Small.p.hi -= Small.p.lo;
-    try expect(@as(u16, @bitCast(Small.p)) == 0x1313);
+    try expect(@backingInt(Small.p) == 0x1313);
 }
 
 test "nested packed struct field access test" {
@@ -1245,4 +1245,32 @@ test "initialize packed struct field to undefined at comptime" {
     const S = packed struct(u8) { x: u8 };
     const val: S = .{ .x = undefined };
     _ = val;
+}
+
+test "convert from/to backing int" {
+    const S = packed struct(u33) {
+        a: u7,
+        b: enum(u10) { x, y, z },
+        c: f16,
+        fn doTheTest(s: @This()) !void {
+            const backing_int = @backingInt(s);
+            const reconstructed: @This() = @fromBackingInt(backing_int);
+            try expect(reconstructed == s);
+        }
+    };
+    try S.doTheTest(.{ .a = 123, .b = .y, .c = 0.23 });
+    try comptime S.doTheTest(.{ .a = 123, .b = .y, .c = 0.23 });
+}
+
+test "equality with wide backing integer" {
+    if (builtin.zig_backend == .stage2_x86_64) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/35982
+
+    const S = packed struct(i200) {
+        x: u200,
+        fn doTheTest(s: @This(), int: i200) !void {
+            try expect(s == @as(@This(), @bitCast(int)));
+        }
+    };
+    try S.doTheTest(.{ .x = (1 << 200) - 1 }, -1);
+    try comptime S.doTheTest(.{ .x = (1 << 200) - 1 }, -1);
 }

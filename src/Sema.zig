@@ -1191,11 +1191,14 @@ fn analyzeBodyInner(
             .elem_type                    => try sema.zirElemType(block, inst),
             .indexable_ptr_elem_type      => try sema.zirIndexablePtrElemType(block, inst),
             .splat_op_result_ty           => try sema.zirSplatOpResultType(block, inst),
+            .from_backing_int_arg_ty      => try sema.zirFromBackingIntArgTy(block, inst),
             .enum_literal                 => try sema.zirEnumLiteral(block, inst),
             .decl_literal                 => try sema.zirDeclLiteral(block, inst, true),
             .decl_literal_no_coerce       => try sema.zirDeclLiteral(block, inst, false),
             .int_from_enum                => try sema.zirIntFromEnum(block, inst),
             .enum_from_int                => try sema.zirEnumFromInt(block, inst),
+            .backing_int                  => try sema.zirBackingInt(block, inst),
+            .from_backing_int             => try sema.zirFromBackingInt(block, inst),
             .err_union_code               => try sema.zirErrUnionCode(block, inst),
             .err_union_code_ptr           => try sema.zirErrUnionCodePtr(block, inst),
             .err_union_payload_unsafe     => try sema.zirErrUnionPayload(block, inst),
@@ -2424,6 +2427,28 @@ fn failWithInvalidSwitchTagCapture(sema: *Sema, block: *Block, tag_capture_src: 
         });
         errdefer msg.destroy(sema.gpa);
         try sema.addDeclaredHereNote(msg, operand_ty);
+        break :msg msg;
+    });
+}
+
+fn failWithAmbiguousBackingIntType(
+    sema: *Sema,
+    block: *Block,
+    src: LazySrcLoc,
+    int_backed_ty: Type,
+    builtin_name: []const u8,
+) CompileError {
+    const pt = sema.pt;
+    const zcu = pt.zcu;
+    return sema.failWithOwnedErrorMsg(block, msg: {
+        const msg = try sema.errMsg(src, "{s} is ambiguous for type '{f}'", .{
+            builtin_name, int_backed_ty.fmt(pt),
+        });
+        errdefer msg.destroy(sema.gpa);
+        try sema.errNote(int_backed_ty.srcLoc(zcu), msg, "backing integer type of {t} is inferred", .{
+            int_backed_ty.zigTypeTag(zcu),
+        });
+        try sema.errNote(int_backed_ty.srcLoc(zcu), msg, "consider explicitly specifying the backing integer type", .{});
         break :msg msg;
     });
 }
@@ -4782,7 +4807,7 @@ fn failWithBadUnionFieldAccess(
     return sema.failWithOwnedErrorMsg(block, msg);
 }
 
-pub fn addDeclaredHereNote(sema: *Sema, parent: *Zcu.ErrorMsg, decl_ty: Type) !void {
+pub fn addDeclaredHereNote(sema: *Sema, parent: *Zcu.ErrorMsg, decl_ty: Type) Allocator.Error!void {
     const zcu = sema.pt.zcu;
     const src_loc = decl_ty.srcLocOrNull(zcu) orelse return;
     const category = switch (decl_ty.zigTypeTag(zcu)) {
@@ -7853,19 +7878,12 @@ fn zirIntFromEnum(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError
         },
     };
     const enum_tag_ty = sema.typeOf(enum_tag);
-    const int_tag_ty = enum_tag_ty.intTagType(zcu);
-
-    // TODO: use correct solution
-    // https://github.com/ziglang/zig/issues/15909
-    if (enum_tag_ty.enumFieldCount(zcu) == 0 and !enum_tag_ty.isNonexhaustiveEnum(zcu)) {
-        return sema.fail(block, operand_src, "cannot use @intFromEnum on empty enum '{f}'", .{
-            enum_tag_ty.fmt(pt),
-        });
-    }
+    const int_tag_ty = enum_tag_ty.backingIntType(zcu);
+    assert(int_tag_ty.classify(zcu) != .no_possible_value);
 
     if (sema.resolveValue(enum_tag)) |enum_tag_val| {
         if (enum_tag_val.isUndef(zcu)) return pt.undefRef(int_tag_ty);
-        return .fromValue(enum_tag_val.intFromEnum(zcu));
+        return .fromValue(enum_tag_val.backingInt(zcu));
     }
 
     try sema.requireRuntimeBlock(block, src, operand_src);
@@ -7891,7 +7909,7 @@ fn zirEnumFromInt(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError
 
     if (sema.resolveValue(operand)) |int_val| {
         if (dest_ty.isNonexhaustiveEnum(zcu)) {
-            const int_tag_ty = dest_ty.intTagType(zcu);
+            const int_tag_ty = dest_ty.backingIntType(zcu);
             if (int_val.intFitsInType(int_tag_ty, null, zcu)) {
                 return Air.internedToRef((try pt.getCoerced(int_val, dest_ty)).toIntern());
             }
@@ -7910,15 +7928,11 @@ fn zirEnumFromInt(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError
         return Air.internedToRef((try pt.getCoerced(int_val, dest_ty)).toIntern());
     }
 
-    if (dest_ty.intTagType(zcu).zigTypeTag(zcu) == .comptime_int) {
-        return sema.failWithNeededComptime(block, operand_src, .{ .simple = .casted_to_comptime_enum });
-    }
-
     if (try dest_ty.onePossibleValue(pt)) |opv| {
         if (block.wantSafety()) {
             // The operand is runtime-known but the result is comptime-known. In
             // this case we still need a safety check.
-            const expect_int = try pt.getCoerced(opv.intFromEnum(zcu), operand_ty);
+            const expect_int = try pt.getCoerced(opv.backingInt(zcu), operand_ty);
             const ok = try block.addBinOp(.cmp_eq, operand, .fromValue(expect_int));
             try sema.addSafetyCheck(block, src, ok, .invalid_enum_value);
         }
@@ -9374,7 +9388,6 @@ fn zirBitcast(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air
                 .pointer => try sema.errNote(src, msg, "use @ptrCast to cast from '{f}'", .{operand_ty.fmt(pt)}),
                 else => {},
             }
-
             break :msg msg;
         }),
         .array => switch (dest_ty.arrayBase(zcu)[0].zigTypeTag(zcu)) {
@@ -9409,7 +9422,183 @@ fn zirBitcast(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air
         return sema.fail(block, operand_src, "cannot @bitCast from '{f}'", .{operand_ty.fmt(pt)});
     }
 
-    return sema.bitCast(block, dest_ty, operand, block.nodeOffset(inst_data.src_node));
+    operand_ty.assertHasLayout(zcu);
+    try sema.ensureLayoutResolved(dest_ty, src, .init);
+
+    const operand_bits = operand_ty.bitSize(zcu);
+    const dest_bits = dest_ty.bitSize(zcu);
+    if (operand_bits != dest_bits) {
+        return sema.fail(block, src, "@bitCast size mismatch: destination type '{f}' has {d} bits but source type '{f}' has {d} bits", .{
+            dest_ty.fmt(pt),
+            dest_bits,
+            operand_ty.fmt(pt),
+            operand_bits,
+        });
+    }
+
+    if (sema.resolveValue(operand)) |operand_val| {
+        const dest_is_exhaustive_enum = dest_ty.zigTypeTag(zcu) == .@"enum" and
+            !dest_ty.isNonexhaustiveEnum(zcu);
+        if (dest_is_exhaustive_enum and operand_val.isUndef(zcu)) {
+            return sema.failWithUseOfUndef(block, operand_src, null);
+        }
+
+        const result_val = try sema.bitCastVal(operand_val, dest_ty);
+
+        if (dest_is_exhaustive_enum and
+            dest_ty.enumTagFieldIndex(result_val, zcu) == null)
+        {
+            return sema.fail(block, src, "enum '{f}' has no tag with value '{f}'", .{
+                dest_ty.fmt(pt), result_val.backingInt(zcu).fmtValueSema(pt, sema),
+            });
+        }
+
+        return .fromValue(result_val);
+    }
+
+    try sema.validateRuntimeValue(block, src, operand);
+
+    if (block.wantSafety()) {
+        try sema.preparePanicId(src, .invalid_enum_value);
+        return block.addTyOp(.bit_cast_safe, dest_ty, operand);
+    }
+    return block.addTyOp(.bit_cast, dest_ty, operand);
+}
+
+fn zirBackingInt(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
+    const pt = sema.pt;
+    const zcu = pt.zcu;
+    const gpa = zcu.comp.gpa;
+    const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].un_node;
+    const operand_src = block.builtinCallArgSrc(inst_data.src_node, 0);
+
+    const operand = sema.resolveInst(inst_data.operand);
+    const operand_ty = sema.typeOf(operand);
+    operand_ty.assertHasLayout(zcu);
+    const int_backed_ref: Air.Inst.Ref = ref: switch (operand_ty.zigTypeTag(zcu)) {
+        .@"enum" => operand,
+        .@"union" => {
+            const union_obj = zcu.intern_pool.loadUnionType(operand_ty.toIntern());
+            if (union_obj.tag_usage == .tagged) break :ref try sema.unionToTag(block, operand);
+            if (union_obj.layout == .@"packed") break :ref operand;
+            return sema.failWithOwnedErrorMsg(block, msg: {
+                const msg = try sema.errMsg(operand_src, "non-packed union '{f}' does not have a backing integer", .{operand_ty.fmt(pt)});
+                errdefer msg.deinit(gpa);
+                try sema.errNote(operand_src, msg, "untagged union '{f}' does not have an enum tag with a backing integer", .{operand_ty.fmt(pt)});
+                try sema.addDeclaredHereNote(msg, operand_ty);
+                break :msg msg;
+            });
+        },
+        .@"struct" => {
+            if (operand_ty.containerLayout(zcu) != .@"packed") {
+                return sema.fail(block, operand_src, "non-packed struct '{f}' does not have a backing integer", .{
+                    operand_ty.fmt(pt),
+                });
+            }
+            break :ref operand;
+        },
+        else => {
+            return sema.fail(block, operand_src, "expected enum, tagged union, packed union or packed struct, found '{f}'", .{
+                operand_ty.fmt(pt),
+            });
+        },
+    };
+    const int_backed_ty = sema.typeOf(int_backed_ref);
+    if (int_backed_ty.backingIntMode(zcu) != .explicit and int_backed_ty.zigTypeTag(zcu) != .@"enum")
+        return sema.failWithAmbiguousBackingIntType(block, operand_src, int_backed_ty, "@backingInt");
+    const backing_int_ty = int_backed_ty.backingIntType(zcu);
+
+    if (sema.resolveValue(int_backed_ref)) |int_backed_val| {
+        if (int_backed_val.isUndef(zcu)) return pt.undefRef(backing_int_ty);
+        return .fromValue(int_backed_val.backingInt(zcu));
+    }
+
+    switch (backing_int_ty.classify(zcu)) {
+        .partially_comptime, .fully_comptime => unreachable, // does not apply to integers
+        .no_possible_value => unreachable, // enum also NPV, cannot instantiate NPV types
+        .one_possible_value => unreachable, // enum or bitpack also OPV, should have been resolve above
+        .runtime => {},
+    }
+
+    return block.addTyOp(.bit_cast, backing_int_ty, int_backed_ref);
+}
+
+fn zirFromBackingIntArgTy(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
+    const pt = sema.pt;
+    const zcu = pt.zcu;
+    const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].un_node;
+    const src = block.nodeOffset(inst_data.src_node);
+
+    const dest_ty = try sema.resolveDestType(block, src, inst_data.operand, .remove_eu_opt, "@fromBackingInt");
+    try sema.ensureLayoutResolved(dest_ty, src, .init);
+    switch (dest_ty.zigTypeTag(zcu)) {
+        .@"enum" => {},
+        .@"struct", .@"union" => |type_tag| if (dest_ty.containerLayout(zcu) != .@"packed") {
+            return sema.fail(block, src, "non-packed {t} '{f}' does not have a backing integer", .{
+                type_tag, dest_ty.fmt(pt),
+            });
+        },
+        else => {
+            return sema.fail(block, src, "expected enum, packed union or packed struct, found '{f}'", .{
+                dest_ty.fmt(pt),
+            });
+        },
+    }
+    if (dest_ty.backingIntMode(zcu) != .explicit and dest_ty.zigTypeTag(zcu) != .@"enum")
+        return sema.failWithAmbiguousBackingIntType(block, src, dest_ty, "@fromBackingInt");
+    return .fromType(dest_ty.backingIntType(zcu));
+}
+
+fn zirFromBackingInt(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
+    const pt = sema.pt;
+    const zcu = pt.zcu;
+    const ip = &zcu.intern_pool;
+
+    const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].pl_node;
+    const extra = sema.code.extraData(Zir.Inst.Bin, inst_data.payload_index).data;
+    const src = block.nodeOffset(inst_data.src_node);
+    const operand_src = block.builtinCallArgSrc(inst_data.src_node, 0);
+
+    // Type has already been validated and layout-resolved by `zirFromBackingIntArgTy`.
+    const dest_ty = try sema.resolveDestType(block, .unneeded, extra.lhs, .remove_eu_opt, undefined);
+    dest_ty.assertHasLayout(zcu);
+
+    const operand = sema.resolveInst(extra.rhs);
+    const backing_int_ref = try sema.coerce(block, dest_ty.backingIntType(zcu), operand, operand_src);
+
+    if (sema.resolveValue(backing_int_ref)) |backing_int_val| {
+        if (dest_ty.zigTypeTag(zcu) != .@"enum") {
+            // we don't do any safety checks for bitpacks
+            if (backing_int_val.isUndef(zcu)) return pt.undefRef(dest_ty);
+            return .fromValue(try pt.bitpackValue(dest_ty, backing_int_val));
+        }
+        const enum_obj = ip.loadEnumType(dest_ty.toIntern());
+        if (backing_int_val.isUndef(zcu)) {
+            if (enum_obj.nonexhaustive) return pt.undefRef(dest_ty);
+            return sema.failWithUseOfUndef(block, operand_src, null);
+        }
+        if (!enum_obj.nonexhaustive and
+            enum_obj.tagValueIndex(ip, backing_int_val.toIntern()) == null)
+        {
+            return sema.fail(block, src, "enum '{f}' has no tag with value '{f}'", .{
+                dest_ty.fmt(pt), backing_int_val.fmtValueSema(pt, sema),
+            });
+        }
+        return .fromValue(try pt.enumValue(dest_ty, backing_int_val));
+    }
+
+    switch (dest_ty.classify(zcu)) {
+        .partially_comptime, .fully_comptime => unreachable, // does not apply to enums or bitpacks
+        .no_possible_value => unreachable, // backing int also NPV, cannot coerce to NPV type
+        .one_possible_value => unreachable, // backing int also OPV, should have been resolve above
+        .runtime => {},
+    }
+
+    if (block.wantSafety()) {
+        try sema.preparePanicId(src, .invalid_enum_value);
+        return block.addTyOp(.bit_cast_safe, dest_ty, backing_int_ref);
+    }
+    return block.addTyOp(.bit_cast, dest_ty, backing_int_ref);
 }
 
 fn zirFloatCast(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
@@ -9942,12 +10131,8 @@ fn analyzeSwitchBlock(
         operand_ty.containerLayout(zcu) != .@"packed";
     const err_set = operand_ty.zigTypeTag(zcu) == .error_set;
 
-    if (item_ty.zigTypeTag(zcu) == .@"enum" and
-        validated_switch.seen_enum_fields.len == 0 and
-        !operand_ty.isNonexhaustiveEnum(zcu))
-    {
-        return .void_value; // switch on empty enum/union
-    }
+    // TODO audit the `err_set` special case (https://github.com/ziglang/zig/issues/15909)
+    if (!err_set) assert(validated_switch.case_vals.len != 0 or has_else or zir_switch.has_under); // NPV types cannot be instantiated
 
     const cond_ref = switch (operand) {
         .simple => |s| s.cond,
@@ -10453,26 +10638,11 @@ fn finishSwitchBr(
                 }
 
                 var prev_result_overflowed = false;
-                while (item.compareScalar(.lte, item_last, operand_ty, zcu)) : ({
-                    const int_val: Value, const int_ty: Type = switch (operand_ty.zigTypeTag(zcu)) {
-                        .int => .{ item, operand_ty },
-                        .@"enum" => b: {
-                            const int_val: Value = .fromInterned(ip.indexToKey(item.toIntern()).enum_tag.int);
-                            break :b .{ int_val, int_val.typeOf(zcu) };
-                        },
-                        else => unreachable,
-                    };
+                while (item.compareScalar(.lte, item_last, item_ty, zcu)) : ({
                     assert(!prev_result_overflowed);
-                    const result = try arith.incrementDefinedInt(sema, int_ty, int_val);
+                    const result = try arith.incrementDefinedInt(sema, item_ty, item);
                     prev_result_overflowed = result.overflow;
-                    item = switch (operand_ty.zigTypeTag(zcu)) {
-                        .int => result.val,
-                        .@"enum" => .fromInterned(try pt.intern(.{ .enum_tag = .{
-                            .ty = operand_ty.toIntern(),
-                            .int = result.val.toIntern(),
-                        } })),
-                        else => unreachable,
-                    };
+                    item = result.val;
                 }) {
                     cases_len += 1;
                     case_block.instructions.clearRetainingCapacity();
@@ -10605,7 +10775,7 @@ fn finishSwitchBr(
                         break :check_enumerable .{ undefined, min_int };
                     },
                     .@"union", .@"struct" => {
-                        const backing_int_ty = item_ty.bitpackBackingInt(zcu);
+                        const backing_int_ty = item_ty.backingIntType(zcu);
                         const min_backing_int = try backing_int_ty.minInt(pt, backing_int_ty);
                         break :check_enumerable .{ undefined, min_backing_int };
                     },
@@ -10906,7 +11076,7 @@ const ValidatedSwitchBlock = struct {
                     var cur_val = it.next_val orelse return null;
                     const int_ty = switch (type_tag) {
                         .int => item_ty,
-                        .@"union", .@"struct" => item_ty.bitpackBackingInt(zcu),
+                        .@"union", .@"struct" => item_ty.backingIntType(zcu),
                         else => unreachable,
                     };
                     while (it.next_idx < it.seen_ranges.len and
@@ -11336,7 +11506,7 @@ fn validateSwitchBlock(
             check_range: {
                 const int_ty = switch (type_tag) {
                     .int => item_ty,
-                    .@"union", .@"struct" => item_ty.bitpackBackingInt(zcu),
+                    .@"union", .@"struct" => item_ty.backingIntType(zcu),
                     else => unreachable,
                 };
                 const min_int = try int_ty.minInt(pt, int_ty);
@@ -11958,14 +12128,7 @@ fn analyzeSwitchCaptures(
                         try sema.analyzeUnreachable(case_block, operand_src, false);
                         break :payload_ref .unreachable_value;
                     };
-                    if (sema.resolveValue(loaded_operand)) |err_val| {
-                        break :payload_ref .fromIntern(try pt.intern(.{ .err = .{
-                            .ty = capture_err_ty.toIntern(),
-                            .name = zcu.intern_pool.indexToKey(err_val.toIntern()).err.name,
-                        } }));
-                    } else {
-                        break :payload_ref try case_block.addTyOp(.error_cast, capture_err_ty, loaded_operand);
-                    }
+                    break :payload_ref try sema.errorCastUnchecked(case_block, capture_err_ty, loaded_operand);
                 },
                 .item_refs => |item_refs| {
                     var names: InferredErrorSet.NameMap = .{};
@@ -11975,14 +12138,7 @@ fn analyzeSwitchCaptures(
                         names.putAssumeCapacityNoClobber(item_val.getErrorName(zcu).unwrap().?, {});
                     }
                     const capture_err_ty = try pt.errorSetFromUnsortedNames(names.keys());
-                    if (sema.resolveValue(loaded_operand)) |err_val| {
-                        break :payload_ref .fromIntern(try pt.intern(.{ .err = .{
-                            .ty = capture_err_ty.toIntern(),
-                            .name = zcu.intern_pool.indexToKey(err_val.toIntern()).err.name,
-                        } }));
-                    } else {
-                        break :payload_ref try case_block.addTyOp(.error_cast, capture_err_ty, loaded_operand);
-                    }
+                    break :payload_ref try sema.errorCastUnchecked(case_block, capture_err_ty, loaded_operand);
                 },
             }
         }
@@ -12463,7 +12619,7 @@ fn validateSwitchItemOrRange(
                 .first = .fromInterned(backing_int_val),
                 .last = .fromInterned(backing_int_val),
                 .src = item_src,
-            }, item_ty.bitpackBackingInt(zcu), zcu);
+            }, item_ty.backingIntType(zcu), zcu);
         },
         .enum_literal, .@"fn", .pointer, .type => {
             break :maybe_prev_src if (seen_sparse_values.fetchPutAssumeCapacity(item_val.toIntern(), item_src)) |prev|
@@ -18420,7 +18576,7 @@ fn zirUnionInit(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!A
     const payload = try sema.coerce(block, field_ty, sema.resolveInst(extra.init), payload_src);
 
     if (union_ty.containerLayout(zcu) == .@"packed") {
-        return sema.bitCast(block, union_ty, payload, block.nodeOffset(inst_data.src_node));
+        return sema.bitCastUnchecked(block, union_ty, payload);
     }
 
     if (sema.resolveValue(payload)) |payload_val| {
@@ -18557,7 +18713,7 @@ fn zirStructInit(
         const init_inst = try sema.coerce(block, field_ty, uncoerced_init_inst, field_src);
 
         if (resolved_ty.containerLayout(zcu) == .@"packed") {
-            const union_val = try sema.bitCast(block, resolved_ty, init_inst, src);
+            const union_val = try sema.bitCastUnchecked(block, resolved_ty, init_inst);
             const result_val = try sema.coerce(block, result_ty, union_val, src);
             if (is_ref) {
                 return sema.analyzeRef(block, src, result_val, .none);
@@ -19569,14 +19725,6 @@ fn zirTagName(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air
             operand_ty.fmt(pt),
         }),
     };
-    if (enum_ty.enumFieldCount(zcu) == 0) {
-        // TODO I don't think this is the correct way to handle this but
-        // it prevents a crash.
-        // https://github.com/ziglang/zig/issues/15909
-        return sema.fail(block, operand_src, "cannot get @tagName of empty enum '{f}'", .{
-            enum_ty.fmt(pt),
-        });
-    }
     const casted_operand = try sema.coerce(block, enum_ty, operand, operand_src);
     if (try sema.resolveDefinedValue(block, operand_src, casted_operand)) |val| {
         const field_index = enum_ty.enumTagFieldIndex(val, zcu) orelse {
@@ -29744,41 +29892,29 @@ fn storePtrVal(
     }
 }
 
-fn bitCast(
+/// Asserts that the layout of `dest_ty` is already resolved.
+fn bitCastUnchecked(
     sema: *Sema,
     block: *Block,
     dest_ty: Type,
     inst: Air.Inst.Ref,
-    inst_src: LazySrcLoc,
 ) CompileError!Air.Inst.Ref {
-    const pt = sema.pt;
-    const zcu = pt.zcu;
+    const zcu = sema.pt.zcu;
     const old_ty = sema.typeOf(inst);
 
     old_ty.assertHasLayout(zcu);
-    try sema.ensureLayoutResolved(dest_ty, inst_src, .init);
+    dest_ty.assertHasLayout(zcu);
 
     assert(old_ty.hasBitRepresentation(zcu));
     assert(dest_ty.hasBitRepresentation(zcu));
     assert(old_ty.scalarType(zcu).zigTypeTag(zcu) != .pointer);
     assert(dest_ty.scalarType(zcu).zigTypeTag(zcu) != .pointer);
-
-    const dest_bits = dest_ty.bitSize(zcu);
-    const old_bits = old_ty.bitSize(zcu);
-
-    if (old_bits != dest_bits) {
-        return sema.fail(block, inst_src, "@bitCast size mismatch: destination type '{f}' has {d} bits but source type '{f}' has {d} bits", .{
-            dest_ty.fmt(pt),
-            dest_bits,
-            old_ty.fmt(pt),
-            old_bits,
-        });
-    }
+    assert(old_ty.bitSize(zcu) == dest_ty.bitSize(zcu));
 
     if (sema.resolveValue(inst)) |val| {
         return .fromValue(try sema.bitCastVal(val, dest_ty));
     }
-    try sema.validateRuntimeValue(block, inst_src, inst);
+
     return block.addTyOp(.bit_cast, dest_ty, inst);
 }
 
@@ -29800,6 +29936,26 @@ pub fn bitCastVal(
         val.writeToPackedMemory(zcu, buf, 0);
         return .readFromPackedMemory(dest_ty, pt, buf, 0);
     }
+}
+
+fn errorCastUnchecked(
+    sema: *Sema,
+    block: *Block,
+    dest_ty: Type,
+    inst: Air.Inst.Ref,
+) CompileError!Air.Inst.Ref {
+    const pt = sema.pt;
+    const zcu = pt.zcu;
+    assert(dest_ty.zigTypeTag(zcu) == .error_set);
+    assert(sema.typeOf(inst).zigTypeTag(zcu) == .error_set);
+    if (sema.resolveValue(inst)) |val| {
+        if (val.isUndef(zcu)) return pt.undefRef(dest_ty);
+        return .fromIntern(try pt.intern(.{ .err = .{
+            .ty = dest_ty.toIntern(),
+            .name = zcu.intern_pool.indexToKey(val.toIntern()).err.name,
+        } }));
+    }
+    return block.addTyOp(.error_cast, dest_ty, inst);
 }
 
 fn checkSpirvSliceAllowed(
@@ -33970,14 +34126,6 @@ fn intFromFloatScalar(
     return pt.getCoerced(cti_result, int_ty);
 }
 
-fn intInRange(sema: *Sema, tag_ty: Type, int_val: Value, end: usize) !bool {
-    const pt = sema.pt;
-    if (!int_val.compareAllWithZero(.gte, pt.zcu)) return false;
-    const end_val = try pt.intValue(tag_ty, end);
-    if (!(try sema.compareAll(int_val, .lt, end_val, tag_ty))) return false;
-    return true;
-}
-
 /// Asserts the type is an exhaustive enum.
 fn enumHasInt(sema: *Sema, ty: Type, int: Value) CompileError!bool {
     const pt = sema.pt;
@@ -33987,6 +34135,7 @@ fn enumHasInt(sema: *Sema, ty: Type, int: Value) CompileError!bool {
     // The `tagValueIndex` function call below relies on the type being the integer tag type.
     // `getCoerced` assumes the value will fit the new type.
     const int_tag_ty: Type = .fromInterned(enum_type.int_tag_type);
+    if (int_tag_ty.classify(zcu) == .no_possible_value) return false;
     if (!int.intFitsInType(int_tag_ty, null, zcu)) return false;
     const int_coerced = try pt.getCoerced(int, int_tag_ty);
     return enum_type.tagValueIndex(&zcu.intern_pool, int_coerced.toIntern()) != null;

@@ -121,6 +121,7 @@ const StructType = struct {
 
 pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
     return comptime &.initMany(&.{
+        .expand_bit_cast_safe,
         .expand_int_cast_safe,
         .expand_int_from_float_safe,
         .expand_int_from_float_optimized_safe,
@@ -1353,7 +1354,7 @@ fn arithmeticTypeInfo(cg: *CodeGen, ty: Type) ArithmeticTypeInfo {
     const target = cg.zcu.getTarget();
     var scalar_ty = ty.scalarType(zcu);
     if (scalar_ty.zigTypeTag(zcu) == .@"enum") {
-        scalar_ty = scalar_ty.intTagType(zcu);
+        scalar_ty = scalar_ty.backingIntType(zcu);
     }
     const vector_len = if (ty.isVector(zcu)) ty.vectorLen(zcu) else null;
     return switch (scalar_ty.zigTypeTag(zcu)) {
@@ -1732,8 +1733,8 @@ fn constant(cg: *CodeGen, ty: Type, val: Value, repr: Repr) Error!Id {
                 return try cg.constructComposite(comp_ty_id, &constituents);
             },
             .enum_tag => {
-                const int_val = val.intFromEnum(zcu);
-                const int_ty = ty.intTagType(zcu);
+                const int_val = val.backingInt(zcu);
+                const int_ty = ty.backingIntType(zcu);
                 break :cache try cg.constant(int_ty, int_val, repr);
             },
             .ptr => return cg.constantPtr(val),
@@ -2213,7 +2214,7 @@ fn resolveType(cg: *CodeGen, ty: Type, repr: Repr) Error!Id {
             const int_info = ty.intInfo(zcu);
             return try cg.intType(int_info.signedness, int_info.bits);
         },
-        .@"enum" => return try cg.resolveType(ty.intTagType(zcu), repr),
+        .@"enum" => return try cg.resolveType(ty.backingIntType(zcu), repr),
         .float => {
             const bits = ty.floatBits(target);
             const supported = switch (bits) {
@@ -5807,7 +5808,7 @@ fn cmp(
         .int, .bool, .float => {},
         .@"enum" => {
             assert(!is_vector);
-            const ty = lhs.ty.intTagType(zcu);
+            const ty = lhs.ty.backingIntType(zcu);
             return try cg.cmp(op, lhs.pun(ty), rhs.pun(ty));
         },
         .@"struct" => {
@@ -6887,7 +6888,7 @@ fn unionInit(
 
     const tag_int = if (layout.tag_size != 0) blk: {
         const tag_val = try pt.enumValueFieldIndex(tag_ty, active_field);
-        const tag_int_val = tag_val.intFromEnum(zcu);
+        const tag_int_val = tag_val.backingInt(zcu);
         break :blk tag_int_val.toUnsignedInt(zcu);
     } else 0;
 
@@ -8164,7 +8165,7 @@ fn airSwitchBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
             break :blk if (backing_bits <= 32) 1 else 2;
         },
         .@"enum" => blk: {
-            const int_ty = cond_ty.intTagType(zcu);
+            const int_ty = cond_ty.backingIntType(zcu);
             const int_info = int_ty.intInfo(zcu);
             const backing_bits, const big_int = cg.backingIntBits(int_info.bits);
             if (big_int) return cg.todo("implement composite int switch", .{});
@@ -8224,7 +8225,7 @@ fn airSwitchBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
                 const value: Value = .fromInterned(item.toInterned().?);
                 const int_val: u64 = switch (cond_ty.zigTypeTag(zcu)) {
                     .bool, .int => if (cond_ty.isSignedInt(zcu)) @bitCast(value.toSignedInt(zcu)) else value.toUnsignedInt(zcu),
-                    .@"enum" => value.intFromEnum(zcu).toUnsignedInt(zcu),
+                    .@"enum" => value.backingInt(zcu).toUnsignedInt(zcu),
                     .error_set => value.getErrorInt(zcu),
                     .pointer => value.toUnsignedInt(zcu),
                     else => unreachable,
@@ -8378,7 +8379,7 @@ fn airLoopSwitchBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
             break :blk if (backing_bits <= 32) 1 else 2;
         },
         .@"enum" => blk: {
-            const int_ty = cond_ty.intTagType(zcu);
+            const int_ty = cond_ty.backingIntType(zcu);
             const int_info = int_ty.intInfo(zcu);
             const backing_bits, const big_int = cg.backingIntBits(int_info.bits);
             if (big_int) return cg.todo("implement composite int loop switch", .{});
@@ -8464,7 +8465,7 @@ fn airLoopSwitchBr(cg: *CodeGen, inst: Air.Inst.Index) !void {
                 const value: Value = .fromInterned(item.toInterned().?);
                 const int_val: u64 = switch (cond_ty.zigTypeTag(zcu)) {
                     .bool, .int => if (cond_ty.isSignedInt(zcu)) @bitCast(value.toSignedInt(zcu)) else value.toUnsignedInt(zcu),
-                    .@"enum" => value.intFromEnum(zcu).toUnsignedInt(zcu),
+                    .@"enum" => value.backingInt(zcu).toUnsignedInt(zcu),
                     .error_set => value.getErrorInt(zcu),
                     .pointer => value.toUnsignedInt(zcu),
                     else => unreachable,

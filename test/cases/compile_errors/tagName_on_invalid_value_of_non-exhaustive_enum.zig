@@ -6,5 +6,5 @@ test "enum" {
 // error
 // is_test=true
 //
-// :3:9: error: no field with value '@enumFromInt(5)' in enum 'tmp.test.enum.E'
+// :3:9: error: no field with value '@fromBackingInt(5)' in enum 'tmp.test.enum.E'
 // :2:15: note: declared here

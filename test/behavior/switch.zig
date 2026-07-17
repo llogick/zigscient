@@ -1132,13 +1132,13 @@ test "decl literals as switch cases" {
     try comptime E.doTheTest(.foo);
 }
 
-// TODO audit after #15909 and/or #19855 are decided/implemented.
+// TODO audit after https://github.com/ziglang/zig/issues/15909 is fully decided.
 // When we do that, consider adding an 'error{}' case if possible.
 test "switch with uninstantiable union fields" {
     const U = union(enum) {
         ok: void,
         a: noreturn,
-        b: noreturn,
+        b: enum {},
 
         fn doTheTest(u: @This()) void {
             switch (u) {

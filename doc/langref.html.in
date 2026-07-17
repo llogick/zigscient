@@ -2271,6 +2271,7 @@ or
       This even works at {#link|comptime#}:
       </p>
       {#code|test_packed_structs.zig#}
+
       <p>
       The backing integer can be inferred or explicitly provided. When
       inferred, it will be unsigned. When explicitly provided, its bit width
@@ -2278,6 +2279,12 @@ or
       the fields:
       </p>
       {#code|test_missized_packed_struct.zig#}
+
+      <p>
+      A {#syntax#}packed struct{#endsyntax#} can be converted to and from its backing
+      integer using {#link|@backingInt#} and {#link|@fromBackingInt#}:
+      </p>
+      {#code|test_packed_struct_backing_int.zig#}
 
       <p>
       Zig allows the address to be taken of a non-byte-aligned field:
@@ -2401,7 +2408,7 @@ or
       {#header_open|enum#}
       {#code|test_enums.zig#}
 
-      {#see_also|@typeInfo|@tagName|@sizeOf#}
+      {#see_also|@backingInt|@fromBackingInt|@typeInfo|@tagName|@sizeOf|noreturn#}
 
       {#header_open|extern enum#}
       <p>
@@ -2431,9 +2438,7 @@ or
       The enum must specify a tag type and cannot consume every enumeration value.
       </p>
       <p>
-      {#link|@enumFromInt#} on a non-exhaustive enum involves the safety semantics
-      of {#link|@intCast#} to the integer tag type, but beyond that always results in
-      a well-defined enum value.
+      {#link|@fromBackingInt#} on a non-exhaustive enum always results in a valid enum value.
       </p>
       <p>
       A switch on a non-exhaustive enum can include a {#syntax#}_{#endsyntax#} prong as an alternative to an {#syntax#}else{#endsyntax#} prong.
@@ -2461,7 +2466,8 @@ or
       {#code|test_simple_union.zig#}
 
       <p>
-      In order to use {#link|switch#} with a union, it must be a {#link|Tagged union#}.
+      In order to use {#link|switch#} with a union, it must be a {#link|tagged union|Tagged union#}
+      or a {#link|packed union#}.
       </p>
       <p>
       To initialize a union when the tag is a {#link|comptime#}-known name, see {#link|@unionInit#}.
@@ -2490,7 +2496,7 @@ or
       <p>
       Unions with inferred enum tag types can also assign ordinal values to their inferred tag.
       This requires the tag to specify an explicit integer type.
-      {#link|@intFromEnum#} can be used to access the ordinal value corresponding to the active field.
+      {#link|@backingInt#} can be used to access the ordinal value corresponding to the active field.
       </p>
       {#code|test_tagged_union_with_tag_values.zig#}
 
@@ -2521,6 +2527,7 @@ or
       </p>
       {#code|test_packed_union_equality.zig#}
 
+      {#see_also|@backingInt|@fromBackingInt#}
       {#header_close#}
 
       {#header_open|Anonymous Union Literals#}
@@ -3586,14 +3593,14 @@ void do_a_thing(struct Foo *foo) {
       <ul>
           <li>{#link|@bitCast#} - change type but maintain bit representation</li>
           <li>{#link|@alignCast#} - make a pointer have more alignment</li>
-          <li>{#link|@enumFromInt#} - obtain an enum value based on its integer tag value</li>
+          <li>{#link|@fromBackingInt#} - obtain an enum or a packed struct/union value based on its backing integer</li>
           <li>{#link|@errorFromInt#} - obtain an error code based on its integer value</li>
           <li>{#link|@errorCast#} - convert to a smaller error set</li>
           <li>{#link|@floatCast#} - convert a larger float to a smaller float</li>
           <li>{#link|@floatFromInt#} - convert an integer to a float value</li>
           <li>{#link|@intCast#} - convert between integer types</li>
           <li>{#link|@intFromBool#} - convert true to 1 and false to 0</li>
-          <li>{#link|@intFromEnum#} - obtain the integer tag value of an enum or tagged union</li>
+          <li>{#link|@backingInt#} - obtain the backing integer value of an enum or a packed struct/union</li>
           <li>{#link|@intFromError#} - obtain the integer value of an error code</li>
           <li>{#link|@round#}, {#link|@floor#}, {#link|@ceil#}, {#link|@trunc#} - float to integer conversion</li>
           <li>{#link|@intFromPtr#} - obtain the address of a pointer</li>
@@ -4432,6 +4439,18 @@ comptime {
       {#see_also|@atomicLoad|@atomicRmw|@cmpxchgWeak|@cmpxchgStrong#}
       {#header_close#}
 
+      {#header_open|@backingInt#}
+      <pre>{#syntax#}@backingInt(enum_or_bitpack: T) BackingInt(T){#endsyntax#}</pre>
+      <p>
+      Converts an {#link|enum#}, a {#link|packed struct#} or a {#link|packed union#} value
+      to its backing integer.
+      </p>
+      <p>
+      Also works with {#link|tagged unions|Tagged union#}, acting on the active enum tag value.
+      </p>
+      {#see_also|@fromBackingInt|@bitCast#}
+      {#header_close#}
+
       {#header_open|@bitCast#}
       <pre>{#syntax#}@bitCast(value: anytype) anytype{#endsyntax#}</pre>
       <p>
@@ -4452,8 +4471,18 @@ comptime {
           <li>Convert {#syntax#}i32{#endsyntax#} to {#syntax#}u32{#endsyntax#} preserving twos complement</li>
       </ul>
       <p>
-      Works at compile-time if {#syntax#}value{#endsyntax#} is known at compile time. It's a compile error to bitcast a value of undefined layout; this means that, besides the restriction from types which possess dedicated casting builtins (enums, pointers, error sets), bare structs, error unions, slices, optionals, and any other type without a well-defined memory layout, also cannot be used in this operation.
+      Works at compile-time if {#syntax#}value{#endsyntax#} is known at compile time.
+      It's a compile error to bitcast a value of undefined layout; this means that,
+      besides the restriction from types which possess dedicated casting builtins
+      (pointers, error sets), bare structs, error unions, slices, optionals, and any
+      other type without a well-defined memory layout, also cannot be used in this
+      operation.
       </p>
+      <p>
+      Attempting to convert an integer with no corresponding tag value to an
+      {#syntax#}enum{#endsyntax#} invokes safety-checked {#link|Illegal Behavior#}.
+      </p>
+      {#see_also|@ptrCast|@intFromPtr|@ptrFromInt|@errorCast|@intFromError|@errorFromInt|@backingInt|@fromBackingInt#}
       {#header_close#}
 
       {#header_open|@bitOffsetOf#}
@@ -4798,6 +4827,9 @@ fn cmpxchgWeakButNotAtomic(comptime T: type, ptr: *T, expected_value: T, new_val
       {#header_open|@enumFromInt#}
       <pre>{#syntax#}@enumFromInt(integer: anytype) anytype{#endsyntax#}</pre>
       <p>
+      Deprecated. Use {#link|@fromBackingInt#} or {#link|@bitCast#} instead.
+      </p>
+      <p>
       Converts an integer into an {#link|enum#} value. The return type is the inferred result type.
       </p>
       <p>
@@ -4953,6 +4985,22 @@ fn cmpxchgWeakButNotAtomic(comptime T: type, ptr: *T, expected_value: T, new_val
       </p>
       {#header_close#}
 
+      {#header_open|@fromBackingInt#}
+      <pre>{#syntax#}@fromBackingInt(backing_int: BackingInt(T)) T{#endsyntax#}</pre>
+      <p>
+      Converts an integer into a {#link|enum#}, a {#link|packed struct#} or a
+      {#link|packed union#} value. The return type is the inferred result type.
+      </p>
+      <p>
+      Attempting to convert an integer with no corresponding tag value to an
+      {#syntax#}enum{#endsyntax#} invokes safety-checked {#link|Illegal Behavior#}.
+      Note that a {#link|non-exhaustive enum|Non-exhaustive enum#} has corresponding values for
+      all integers in the enum's integer tag type: the {#syntax#}_{#endsyntax#} value represents
+      all the remaining unnamed integers in the enum's tag type.
+      </p>
+      {#see_also|@backingInt|@bitCast#}
+      {#header_close#}
+
       {#header_open|@hasDecl#}
       <pre>{#syntax#}@hasDecl(comptime Namespace: type, comptime name: []const u8) bool{#endsyntax#}</pre>
       <p>Returns whether or not a {#link|Namespace#} has a declaration matching {#syntax#}name{#endsyntax#}.</p>
@@ -5035,12 +5083,11 @@ fn cmpxchgWeakButNotAtomic(comptime T: type, ptr: *T, expected_value: T, new_val
       {#header_open|@intFromEnum#}
       <pre>{#syntax#}@intFromEnum(enum_or_tagged_union: anytype) anytype{#endsyntax#}</pre>
       <p>
-      Converts an enumeration value into its integer tag type. When a tagged union is passed,
-      the tag value is used as the enumeration value.
+      Deprecated. Use {#link|@backingInt#} or {#link|@bitCast#} instead.
       </p>
       <p>
-      If there is only one possible enum value, the result is a {#syntax#}comptime_int{#endsyntax#}
-      known at {#link|comptime#}.
+      Converts an enumeration value into its integer tag type. When a tagged union is passed,
+      the tag value is used as the enumeration value.
       </p>
       {#see_also|@enumFromInt#}
       {#header_close#}
@@ -5077,7 +5124,7 @@ fn cmpxchgWeakButNotAtomic(comptime T: type, ptr: *T, expected_value: T, new_val
       Converts {#syntax#}value{#endsyntax#} to a {#syntax#}usize{#endsyntax#} which is the address of the pointer.
       {#syntax#}value{#endsyntax#} can be {#syntax#}*T{#endsyntax#} or {#syntax#}?*T{#endsyntax#}.
       </p>
-      <p>To convert the other way, use {#link|@ptrFromInt#}</p>
+      {#see_also|@ptrFromInt#}
       {#header_close#}
 
       {#header_open|@max#}
@@ -5281,6 +5328,7 @@ fn cmpxchgWeakButNotAtomic(comptime T: type, ptr: *T, expected_value: T, new_val
       If the destination pointer type does not allow address zero and {#syntax#}address{#endsyntax#}
       is zero, this invokes safety-checked {#link|Illegal Behavior#}.
       </p>
+      {#see_also|@intFromPtr#}
       {#header_close#}
 
       {#header_open|@rem#}

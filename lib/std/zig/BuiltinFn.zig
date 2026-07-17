@@ -56,6 +56,8 @@ pub const Tag = enum {
     import,
     in_comptime,
     int_cast,
+    backing_int,
+    from_backing_int,
     enum_from_int,
     error_from_int,
     float_from_int,
@@ -561,6 +563,20 @@ pub const list = list: {
             "@intCast",
             .{
                 .tag = .int_cast,
+                .param_count = 1,
+            },
+        },
+        .{
+            "@backingInt",
+            .{
+                .tag = .backing_int,
+                .param_count = 1,
+            },
+        },
+        .{
+            "@fromBackingInt",
+            .{
+                .tag = .from_backing_int,
                 .param_count = 1,
             },
         },

@@ -6,6 +6,7 @@ test {
     _ = @import("behavior/alignof.zig");
     _ = @import("behavior/array.zig");
     _ = @import("behavior/atomics.zig");
+    _ = @import("behavior/backing_int.zig");
     _ = @import("behavior/basic.zig");
     _ = @import("behavior/bit_shifting.zig");
     _ = @import("behavior/bitcast.zig");

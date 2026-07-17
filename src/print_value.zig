@@ -94,15 +94,14 @@ pub fn print(
             enum_literal.fmt(ip),
         }),
         .enum_tag => |enum_tag| {
-            const enum_type = ip.loadEnumType(val.typeOf(zcu).toIntern());
-            if (enum_type.tagValueIndex(ip, enum_tag.int)) |tag_index| {
-                return writer.print(".{f}", .{enum_type.field_names.get(ip)[tag_index].fmt(ip)});
+            const ty: Type = .fromInterned(enum_tag.ty);
+            const enum_obj = ip.loadEnumType(ty.toIntern());
+            if (enum_obj.tagValueIndex(ip, enum_tag.int)) |tag_index| {
+                return writer.print(".{f}", .{enum_obj.field_names.get(ip)[tag_index].fmt(ip)});
             }
-            if (level == 0) {
-                return writer.writeAll("@enumFromInt(...)");
-            }
-            try writer.writeAll("@enumFromInt(");
-            try print(Value.fromInterned(enum_tag.int), writer, level - 1, pt, opt_sema);
+            try writer.writeAll("@fromBackingInt(");
+            if (level == 0) return writer.writeAll("...)");
+            try print(.fromInterned(enum_tag.int), writer, level - 1, pt, opt_sema);
             try writer.writeAll(")");
         },
         .float => |float| switch (float.storage) {
@@ -190,10 +189,17 @@ pub fn print(
                     try writer.writeAll(" }");
                     return;
                 },
-                .@"union" => {
-                    try writer.print("@bitCast(@as({f}, ", .{ty.bitpackBackingInt(zcu).fmt(pt)});
-                    try print(.fromInterned(bitpack.backing_int_val), writer, level - 1, pt, opt_sema);
-                    try writer.writeAll("))");
+                .@"union" => switch (ty.backingIntMode(zcu)) {
+                    .auto => {
+                        try writer.print("@bitCast(@as({f}, ", .{ty.backingIntType(zcu).fmt(pt)});
+                        try print(.fromInterned(bitpack.backing_int_val), writer, level - 1, pt, opt_sema);
+                        try writer.writeAll("))");
+                    },
+                    .explicit => {
+                        try writer.writeAll("@fromBackingInt(");
+                        try print(.fromInterned(bitpack.backing_int_val), writer, level - 1, pt, opt_sema);
+                        try writer.writeAll(")");
+                    },
                 },
                 else => unreachable,
             }

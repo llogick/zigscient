@@ -1,4 +1,4 @@
-const Tag = @Enum(u0, .exhaustive, &.{}, &.{});
+const Tag = @Enum(noreturn, .exhaustive, &.{}, &.{});
 const Tagged = @Union(.auto, Tag, &.{ "signed", "unsigned" }, &.{ i32, u32 }, &@splat(.{}));
 export fn entry() void {
     const tagged: Tagged = undefined;

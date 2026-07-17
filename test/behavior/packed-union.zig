@@ -227,3 +227,30 @@ test "initialize packed union field to undefined at comptime" {
     const val: U = .{ .x = undefined };
     _ = val;
 }
+
+test "convert from/to backing int" {
+    const U = packed union(u10) {
+        a: i10,
+        b: enum(u10) { x, y, z },
+        fn doTheTest(u: @This()) !void {
+            const backing_int = @backingInt(u);
+            const reconstructed: @This() = @fromBackingInt(backing_int);
+            try expect(reconstructed == u);
+        }
+    };
+    try U.doTheTest(.{ .a = 123 });
+    try comptime U.doTheTest(.{ .a = 123 });
+}
+
+test "equality with wide backing integer" {
+    if (builtin.zig_backend == .stage2_x86_64) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/35982
+
+    const U = packed union(i200) {
+        x: u200,
+        fn doTheTest(s: @This(), int: i200) !void {
+            try expect(s == @as(@This(), @bitCast(int)));
+        }
+    };
+    try U.doTheTest(.{ .x = (1 << 200) - 1 }, -1);
+    try comptime U.doTheTest(.{ .x = (1 << 200) - 1 }, -1);
+}

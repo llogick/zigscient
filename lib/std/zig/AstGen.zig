@@ -2703,6 +2703,7 @@ fn addEnsureResult(gz: *GenZir, maybe_unused_result: Zir.Inst.Ref, statement: As
             .elem_type,
             .indexable_ptr_elem_type,
             .splat_op_result_ty,
+            .from_backing_int_arg_ty,
             .reify_int,
             .vector_type,
             .indexable_ptr_len,
@@ -2803,6 +2804,8 @@ fn addEnsureResult(gz: *GenZir, maybe_unused_result: Zir.Inst.Ref, statement: As
             .error_set_decl,
             .enum_from_int,
             .int_from_enum,
+            .backing_int,
+            .from_backing_int,
             .type_info,
             .size_of,
             .bit_size_of,
@@ -9168,6 +9171,7 @@ fn builtinCall(
         .set_eval_branch_quota => return simpleUnOp(gz, scope, ri, node, .{ .rl = .{ .coerced_ty = .u32_type } },              params[0], .set_eval_branch_quota),
         .int_from_enum         => return simpleUnOp(gz, scope, ri, node, .{ .rl = .none },                                     params[0], .int_from_enum),
         .int_from_bool         => return simpleUnOp(gz, scope, ri, node, .{ .rl = .none },                                     params[0], .int_from_bool),
+        .backing_int           => return simpleUnOp(gz, scope, ri, node, .{ .rl = .none },                                     params[0], .backing_int),
         .embed_file            => return simpleUnOp(gz, scope, ri, node, .{ .rl = .{ .coerced_ty = .slice_const_u8_type } },   params[0], .embed_file),
         .error_name            => return simpleUnOp(gz, scope, ri, node, .{ .rl = .{ .coerced_ty = .anyerror_type } },         params[0], .error_name),
         .set_runtime_safety    => return simpleUnOp(gz, scope, ri, node, coerced_bool_ri,                                      params[0], .set_runtime_safety),
@@ -9198,6 +9202,20 @@ fn builtinCall(
         .int_cast       => return typeCast(gz, scope, ri, node, params[0], .int_cast, builtin_name),
         .truncate       => return typeCast(gz, scope, ri, node, params[0], .truncate, builtin_name),
         // zig fmt: on
+
+        .from_backing_int => {
+            const cursor = maybeAdvanceSourceCursorToMainToken(gz, node);
+            const result_ty = try ri.rl.resultTypeForCast(gz, node, builtin_name);
+            const backing_int_ty = try gz.addUnNode(.from_backing_int_arg_ty, result_ty, node);
+            const operand = try expr(gz, scope, .{ .rl = .{ .coerced_ty = backing_int_ty } }, params[0]);
+
+            try emitDbgStmt(gz, cursor);
+            const result = try gz.addPlNode(.from_backing_int, node, Zir.Inst.Bin{
+                .lhs = result_ty,
+                .rhs = operand,
+            });
+            return rvalue(gz, ri, result, node);
+        },
 
         .in_comptime => if (gz.is_comptime) {
             return astgen.failNode(node, "redundant '@inComptime' in comptime scope", .{});

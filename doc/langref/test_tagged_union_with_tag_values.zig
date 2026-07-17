@@ -8,10 +8,10 @@ const Tagged = union(enum(u32)) {
 
 test "tag values" {
     const int: Tagged = .{ .int = -40 };
-    try expectEqual(123, @intFromEnum(int));
+    try expectEqual(123, @backingInt(int));
 
     const boolean: Tagged = .{ .boolean = false };
-    try expectEqual(67, @intFromEnum(boolean));
+    try expectEqual(67, @backingInt(boolean));
 }
 
 // test

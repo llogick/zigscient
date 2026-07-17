@@ -362,6 +362,7 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
             air_inst_index = air_body[air_body_index];
             continue :air_tag air_tags[@intFromEnum(air_inst_index)];
         },
+        .bit_cast_safe => unreachable, // legalized
         inline .block, .dbg_inline_block => |air_tag| {
             const air_body_block = switch (air_tag) {
                 else => comptime unreachable,
@@ -3201,6 +3202,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
             if (air.next()) |next_air_tag| continue :air_tag next_air_tag;
         },
         .bit_cast,
+        .bit_cast_safe, // TODO safety check
         .ptr_cast,
         .ptr_from_int,
         .int_from_ptr,

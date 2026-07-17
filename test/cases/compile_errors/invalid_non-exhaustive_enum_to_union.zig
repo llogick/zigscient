@@ -22,5 +22,5 @@ export fn bar() void {
 //
 // :12:16: error: runtime coercion to union 'tmp.U' from non-exhaustive enum
 // :1:11: note: enum declared here
-// :17:16: error: union 'tmp.U' has no tag with value '@enumFromInt(15)'
+// :17:16: error: union 'tmp.U' has no tag with value '@fromBackingInt(15)'
 // :6:11: note: union declared here

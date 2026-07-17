@@ -484,8 +484,7 @@ pub const CType = union(enum) {
     pub fn classifyInt(ty: Type, zcu: *const Zcu) IntClass {
         const int_ty: Type = switch (ty.zigTypeTag(zcu)) {
             .error_set => return classifyBitInt(.unsigned, zcu.errorSetBits(), zcu),
-            .@"enum" => ty.intTagType(zcu),
-            .@"struct", .@"union" => ty.bitpackBackingInt(zcu),
+            .@"enum", .@"struct", .@"union" => ty.backingIntType(zcu),
             .int => ty,
             else => unreachable,
         };

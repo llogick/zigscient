@@ -146,8 +146,13 @@ pub fn toType(self: Value) Type {
     return Type.fromInterned(self.toIntern());
 }
 
-pub fn intFromEnum(val: Value, zcu: *const Zcu) Value {
-    return .fromInterned(zcu.intern_pool.indexToKey(val.toIntern()).enum_tag.int);
+/// Asserts that value is defined and of enum or bitpack type.
+pub fn backingInt(val: Value, zcu: *const Zcu) Value {
+    return switch (zcu.intern_pool.indexToKey(val.toIntern())) {
+        .enum_tag => |enum_tag| .fromInterned(enum_tag.int),
+        .bitpack => |bitpack| .fromInterned(bitpack.backing_int_val),
+        else => unreachable,
+    };
 }
 
 /// Asserts that `val` is an integer.
@@ -415,7 +420,7 @@ pub fn writeToPackedMemory(
             }
         },
         .@"enum" => {
-            const int_val = val.intFromEnum(zcu);
+            const int_val = val.backingInt(zcu);
             int_val.writeToPackedMemory(zcu, buffer, bit_offset);
         },
         .int => {
@@ -564,7 +569,7 @@ pub fn readFromPackedMemory(
             return pt.intValue_big(ty, bigint.toConst());
         },
         .@"enum" => {
-            const int_ty = ty.intTagType(zcu);
+            const int_ty = ty.backingIntType(zcu);
             const int_val: Value = try .readFromPackedMemory(int_ty, pt, buffer, bit_offset);
             return pt.getCoerced(int_val, ty);
         },
@@ -581,7 +586,7 @@ pub fn readFromPackedMemory(
         } })),
         .@"struct", .@"union" => {
             assert(ty.containerLayout(zcu) == .@"packed");
-            const int_val: Value = try .readFromPackedMemory(ty.bitpackBackingInt(zcu), pt, buffer, bit_offset);
+            const int_val: Value = try .readFromPackedMemory(ty.backingIntType(zcu), pt, buffer, bit_offset);
             return pt.bitpackValue(ty, int_val);
         },
         .array, .vector => {
@@ -2368,7 +2373,7 @@ pub fn uninterpret(val: anytype, ty: Type, pt: Zcu.PerThread) error{ OutOfMemory
             try pt.nullValue(ty),
 
         .@"enum" => switch (interpret_mode) {
-            .direct => try pt.enumValue(ty, (try uninterpret(@intFromEnum(val), ty.intTagType(zcu), pt)).toIntern()),
+            .direct => try pt.enumValue(ty, try uninterpret(@intFromEnum(val), ty.backingIntType(zcu), pt)),
             .by_name => {
                 const field_name_ip = try ip.getOrPutString(zcu.gpa, io, pt.tid, @tagName(val), .no_embedded_nulls);
                 const field_idx = ty.enumFieldIndex(field_name_ip, zcu) orelse return error.TypeMismatch;

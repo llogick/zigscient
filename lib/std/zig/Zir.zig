@@ -283,6 +283,14 @@ pub const Inst = struct {
         ///
         /// Uses the `un_node` field.
         splat_op_result_ty,
+        /// Given a type, strips away any error unions or optionals stacked
+        /// on top, validates it for usage with `@fromBackingInt` and returns
+        /// its backing integer type.
+        ///
+        /// `E!?enum(T) { _ }` -> `T`
+        ///
+        /// Uses the `un_node` field.
+        from_backing_int_arg_ty,
         /// Given a pointer to an indexable object, returns the len property. This is
         /// used by for loops. This instruction also emits a for-loop specific compile
         /// error if the indexable object is not indexable.
@@ -872,6 +880,9 @@ pub const Inst = struct {
         /// Converts an enum value into an integer. Resulting type will be the tag type
         /// of the enum. Uses `un_node`.
         int_from_enum,
+        /// Implements the `@backingInt` builtin.
+        /// Uses `un_node`.
+        backing_int,
         /// Implement builtin `@alignOf`. Uses `un_node`.
         align_of,
         /// Implement builtin `@intFromBool`. Uses `un_node`.
@@ -934,6 +945,9 @@ pub const Inst = struct {
         /// Converts an integer into an enum value.
         /// Uses `pl_node` with payload `Bin`. `lhs` is dest type, `rhs` is operand.
         enum_from_int,
+        /// Implements the `@fromBackingInt` builtin.
+        /// Uses `pl_node` with payload `Bin`. `lhs` is dest type, `rhs` is operand.
+        from_backing_int,
         /// Convert a larger float type to any other float type, possibly causing
         /// a loss of precision.
         /// Uses the `pl_node` field. AST is the `@floatCast` syntax.
@@ -1115,6 +1129,7 @@ pub const Inst = struct {
                 .elem_type,
                 .indexable_ptr_elem_type,
                 .splat_op_result_ty,
+                .from_backing_int_arg_ty,
                 .indexable_ptr_len,
                 .anyframe_type,
                 .as_node,
@@ -1229,6 +1244,8 @@ pub const Inst = struct {
                 .field_type_ref,
                 .enum_from_int,
                 .int_from_enum,
+                .backing_int,
+                .from_backing_int,
                 .type_info,
                 .size_of,
                 .bit_size_of,
@@ -1409,6 +1426,7 @@ pub const Inst = struct {
                 .elem_type,
                 .indexable_ptr_elem_type,
                 .splat_op_result_ty,
+                .from_backing_int_arg_ty,
                 .indexable_ptr_len,
                 .anyframe_type,
                 .as_node,
@@ -1511,6 +1529,8 @@ pub const Inst = struct {
                 .field_type_ref,
                 .enum_from_int,
                 .int_from_enum,
+                .backing_int,
+                .from_backing_int,
                 .type_info,
                 .size_of,
                 .bit_size_of,
@@ -1645,6 +1665,7 @@ pub const Inst = struct {
                 .elem_type = .un_node,
                 .indexable_ptr_elem_type = .un_node,
                 .splat_op_result_ty = .un_node,
+                .from_backing_int_arg_ty = .un_node,
                 .indexable_ptr_len = .un_node,
                 .anyframe_type = .un_node,
                 .as_node = .pl_node,
@@ -1774,6 +1795,7 @@ pub const Inst = struct {
                 .compile_error = .un_node,
                 .set_eval_branch_quota = .un_node,
                 .int_from_enum = .un_node,
+                .backing_int = .un_node,
                 .align_of = .un_node,
                 .int_from_bool = .un_node,
                 .embed_file = .un_node,
@@ -1803,6 +1825,7 @@ pub const Inst = struct {
                 .float_from_int = .pl_node,
                 .ptr_from_int = .pl_node,
                 .enum_from_int = .pl_node,
+                .from_backing_int = .pl_node,
                 .float_cast = .pl_node,
                 .int_cast = .pl_node,
                 .ptr_cast = .pl_node,
@@ -2160,8 +2183,8 @@ pub const Inst = struct {
         astgen_error,
         /// Given a type, strips away any error unions or optionals stacked
         /// on top and returns the base type. That base type must be a float.
-        /// For example: Provided with error{Foo}!?f64, returns f64.
-        /// `operand` is `operand: Air.Inst.Ref`.
+        /// For example: Provided with `error{Foo}!?f64`, returns `f64`.
+        /// `operand` is payload index to `UnNode`.
         float_op_result_ty,
 
         pub const InstData = struct {
@@ -4141,6 +4164,7 @@ fn findTrackableInner(
         .elem_type,
         .indexable_ptr_elem_type,
         .splat_op_result_ty,
+        .from_backing_int_arg_ty,
         .indexable_ptr_len,
         .anyframe_type,
         .as_node,
@@ -4296,6 +4320,8 @@ fn findTrackableInner(
         .float_from_int,
         .ptr_from_int,
         .enum_from_int,
+        .backing_int,
+        .from_backing_int,
         .float_cast,
         .int_cast,
         .ptr_cast,

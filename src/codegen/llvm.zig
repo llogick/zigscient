@@ -3252,7 +3252,7 @@ pub const Object = struct {
                     return ty;
                 },
                 .opaque_type, .spirv_type => unreachable, // no runtime bits
-                .enum_type => try o.lowerType(t.intTagType(zcu), repr),
+                .enum_type => try o.lowerType(t.backingIntType(zcu), repr),
                 .func_type => |func_type| try o.lowerFnType(t, func_type),
                 .error_set_type, .inferred_error_set_type => try o.errorIntType(repr),
                 // values, not types

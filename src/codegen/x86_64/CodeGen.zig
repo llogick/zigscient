@@ -63,6 +63,7 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
         .reduce_one_elem_to_bit_cast,
         .splat_one_elem_to_bit_cast,
 
+        .expand_bit_cast_safe,
         .expand_int_cast_safe,
         .expand_int_from_float_safe,
         .expand_int_from_float_optimized_safe,
@@ -67446,6 +67447,7 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
             .int_from_error,
             .union_from_enum,
             => try cg.airBitCast(inst),
+            .bit_cast_safe => unreachable,
             .block => {
                 const block = cg.air.unwrapBlock(inst);
                 if (!cg.mod.strip) try cg.asmPseudo(.pseudo_dbg_enter_block_none);

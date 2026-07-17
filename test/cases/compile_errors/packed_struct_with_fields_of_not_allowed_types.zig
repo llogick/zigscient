@@ -81,6 +81,12 @@ export fn entry15() void {
         x: *const u32,
     });
 }
+export fn entry16() void {
+    const E = enum(noreturn) {};
+    _ = @sizeOf(packed struct {
+        x: E,
+    });
+}
 
 // error
 //
@@ -114,3 +120,5 @@ export fn entry15() void {
 // :81:12: error: packed structs cannot contain fields of type '*const u32'
 // :81:12: note: pointers cannot be directly bitpacked
 // :81:12: note: consider using 'usize' and '@intFromPtr'
+// :87:12: error: packed structs cannot contain fields of type 'tmp.entry16.E'
+// :87:12: note: type does not have a bit-packed representation

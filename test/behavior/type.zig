@@ -266,13 +266,21 @@ test "Type.Union from regular enum" {
 test "Type.Union from empty regular enum" {
     const E = enum {};
     const U = @Union(.auto, E, &.{}, &.{}, &.{});
-    try testing.expectEqual(@typeInfo(U).@"union".field_names.len, 0);
+
+    const info = @typeInfo(U).@"union";
+    try testing.expect(info.field_names.len == 0);
+    try testing.expect(info.tag_type != null);
+    try testing.expect(@typeInfo(info.tag_type.?).@"enum".tag_type == noreturn);
 }
 
 test "Type.Union from empty Type.Enum" {
-    const E = @Enum(u0, .exhaustive, &.{}, &.{});
+    const E = @Enum(noreturn, .exhaustive, &.{}, &.{});
     const U = @Union(.auto, E, &.{}, &.{}, &.{});
-    try testing.expectEqual(@typeInfo(U).@"union".field_names.len, 0);
+
+    const info = @typeInfo(U).@"union";
+    try testing.expect(info.field_names.len == 0);
+    try testing.expect(info.tag_type != null);
+    try testing.expect(@typeInfo(info.tag_type.?).@"enum".tag_type == noreturn);
 }
 
 test "Type.Fn" {

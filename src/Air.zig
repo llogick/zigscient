@@ -288,6 +288,10 @@ pub const Inst = struct {
         ///
         /// Uses the `ty_op` field.
         bit_cast,
+        /// Like `bit_cast`, but triggers a safety panic if the destination type is an exhaustive
+        /// enum and the operand is not a valid value of this type;
+        /// i.e. equivalent to a safety check based on `.is_named_enum_value`
+        bit_cast_safe,
         /// Cast a pointer to a different pointer type. The result type is a slice iff the operand
         /// type is a slice (the length of the slice does not change). All other pointer attributes
         /// except for the address space may change.
@@ -1717,6 +1721,7 @@ pub fn typeOfIndex(air: *const Air, inst: Air.Inst.Index, ip: *const InternPool)
 
         .not,
         .bit_cast,
+        .bit_cast_safe,
         .ptr_cast,
         .ptr_from_int,
         .int_from_ptr,
@@ -1969,6 +1974,7 @@ pub fn mustLower(air: Air, inst: Air.Inst.Index, ip: *const InternPool) bool {
         .add_safe,
         .sub_safe,
         .mul_safe,
+        .bit_cast_safe,
         .int_cast_safe,
         .int_from_float_safe,
         .int_from_float_optimized_safe,

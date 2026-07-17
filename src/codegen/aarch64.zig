@@ -5,8 +5,10 @@ pub const encoding = @import("aarch64/encoding.zig");
 pub const Mir = @import("aarch64/Mir.zig");
 pub const Select = @import("aarch64/Select.zig");
 
-pub fn legalizeFeatures(_: *const std.Target) ?*Air.Legalize.Features {
-    return null;
+pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
+    return comptime &.initMany(&.{
+        .expand_bit_cast_safe,
+    });
 }
 
 pub fn generate(

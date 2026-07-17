@@ -27,6 +27,7 @@ pub fn legalizeFeatures(_: *const std.Target) ?*const Air.Legalize.Features {
     return comptime switch (dev.env.supports(.legalize)) {
         inline false, true => |supports_legalize| &.init(.{
             // we don't currently ask zig1 to use safe optimization modes
+            .expand_bit_cast_safe = supports_legalize,
             .expand_int_cast_safe = supports_legalize,
             .expand_int_from_float_safe = supports_legalize,
             .expand_int_from_float_optimized_safe = supports_legalize,
@@ -1460,7 +1461,7 @@ pub const DeclGen = struct {
                             }
                             return w.writeByte('}');
                         },
-                        .@"packed" => return dg.renderUndefValue(w, ty.bitpackBackingInt(zcu), location),
+                        .@"packed" => return dg.renderUndefValue(w, ty.backingIntType(zcu), location),
                     }
                 },
                 .tuple_type => |tuple_info| {
@@ -1520,7 +1521,7 @@ pub const DeclGen = struct {
                             if (loaded_union.has_runtime_tag) try w.writeByte(' ');
                             if (loaded_union.layout == .auto) try w.writeByte('}');
                         },
-                        .@"packed" => return dg.renderUndefValue(w, ty.bitpackBackingInt(zcu), location),
+                        .@"packed" => return dg.renderUndefValue(w, ty.backingIntType(zcu), location),
                     }
                 },
                 .error_union_type => |error_union| {
@@ -2876,6 +2877,7 @@ fn genBodyInner(f: *Function, body: []const Air.Inst.Index) Error!void {
             .add_safe,
             .sub_safe,
             .mul_safe,
+            .bit_cast_safe,
             .int_cast_safe,
             .int_from_float_safe,
             .int_from_float_optimized_safe,

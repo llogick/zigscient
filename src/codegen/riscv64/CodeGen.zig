@@ -51,6 +51,7 @@ const InnerError = codegen.Error || error{OutOfRegisters};
 
 pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
     return comptime &.initMany(&.{
+        .expand_bit_cast_safe,
         .expand_int_cast_safe,
         .expand_int_from_float_safe,
         .expand_int_from_float_optimized_safe,
@@ -1454,6 +1455,7 @@ fn genBody(func: *Func, body: []const Air.Inst.Index) InnerError!void {
             .add_safe,
             .sub_safe,
             .mul_safe,
+            .bit_cast_safe,
             .int_cast_safe,
             .int_from_float_safe,
             .int_from_float_optimized_safe,
@@ -5128,7 +5130,6 @@ fn airCmp(func: *Func, inst: Air.Inst.Index, tag: Air.Inst.Tag) !void {
             .@"struct",
             => {
                 const int_ty: Type = switch (lhs_ty.zigTypeTag(zcu)) {
-                    .@"enum" => lhs_ty.intTagType(zcu),
                     .int => lhs_ty,
                     .bool => .u1,
                     .pointer => .u64,
@@ -5143,7 +5144,7 @@ fn airCmp(func: *Func, inst: Air.Inst.Index, tag: Air.Inst.Tag) !void {
                             return func.fail("TODO riscv cmp non-pointer optionals", .{});
                         }
                     },
-                    .@"struct", .@"union" => lhs_ty.bitpackBackingInt(zcu),
+                    .@"enum", .@"struct", .@"union" => lhs_ty.backingIntType(zcu),
                     else => unreachable,
                 };
 

@@ -697,6 +697,7 @@ fn genBody(self: *Self, body: []const Air.Inst.Index) InnerError!void {
             .add_safe,
             .sub_safe,
             .mul_safe,
+            .bit_cast_safe,
             .int_cast_safe,
             .int_from_float_safe,
             .int_from_float_optimized_safe,
@@ -1374,7 +1375,7 @@ fn airCmp(self: *Self, inst: Air.Inst.Index, op: math.CompareOperator) !void {
 
         const int_ty: Type = switch (lhs_ty.zigTypeTag(zcu)) {
             .vector => unreachable, // Handled by cmp_vector.
-            .@"enum" => lhs_ty.intTagType(zcu),
+            .@"enum" => lhs_ty.backingIntType(zcu),
             .int => lhs_ty,
             .bool => .u1,
             .pointer => .usize,

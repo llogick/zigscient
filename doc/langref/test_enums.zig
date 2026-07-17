@@ -22,9 +22,9 @@ const Value = enum(u2) {
 // Now you can cast between u2 and Value.
 // The ordinal value starts from 0, counting up by 1 from the previous member.
 test "enum ordinal value" {
-    try expectEqual(0, @intFromEnum(Value.zero));
-    try expectEqual(1, @intFromEnum(Value.one));
-    try expectEqual(2, @intFromEnum(Value.two));
+    try expectEqual(0, @backingInt(Value.zero));
+    try expectEqual(1, @backingInt(Value.one));
+    try expectEqual(2, @backingInt(Value.two));
 }
 
 // You can override the ordinal value for an enum.
@@ -34,9 +34,9 @@ const Value2 = enum(u32) {
     million = 1000000,
 };
 test "set enum ordinal value" {
-    try expectEqual(100, @intFromEnum(Value2.hundred));
-    try expectEqual(1000, @intFromEnum(Value2.thousand));
-    try expectEqual(1000000, @intFromEnum(Value2.million));
+    try expectEqual(100, @backingInt(Value2.hundred));
+    try expectEqual(1000, @backingInt(Value2.thousand));
+    try expectEqual(1000000, @backingInt(Value2.million));
 }
 
 // You can also override only some values.
@@ -48,11 +48,11 @@ const Value3 = enum(u4) {
     e,
 };
 test "enum implicit ordinal values and overridden values" {
-    try expectEqual(0, @intFromEnum(Value3.a));
-    try expectEqual(8, @intFromEnum(Value3.b));
-    try expectEqual(9, @intFromEnum(Value3.c));
-    try expectEqual(4, @intFromEnum(Value3.d));
-    try expectEqual(5, @intFromEnum(Value3.e));
+    try expectEqual(0, @backingInt(Value3.a));
+    try expectEqual(8, @backingInt(Value3.b));
+    try expectEqual(9, @backingInt(Value3.c));
+    try expectEqual(4, @backingInt(Value3.d));
+    try expectEqual(5, @backingInt(Value3.e));
 }
 
 // Enums can have methods, the same as structs and unions.
@@ -109,6 +109,12 @@ test "@typeInfo" {
 // @tagName gives a [:0]const u8 representation of an enum value:
 test "@tagName" {
     try expectEqualStrings(@tagName(Small.three), "three");
+}
+
+// Empty enums are uninstantiable, their tag type is always noreturn.
+const Empty = enum {};
+test "empty enum" {
+    try expectEqual(noreturn, @typeInfo(Empty).@"enum".tag_type);
 }
 
 // test

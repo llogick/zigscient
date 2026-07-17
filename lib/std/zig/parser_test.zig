@@ -1120,7 +1120,7 @@ test "zig fmt: empty enum decls" {
         \\const A = enum {};
         \\const B = enum(u32) {};
         \\const C = extern enum(c_int) {};
-        \\const D = packed enum(u8) {};
+        \\const D = packed enum(noreturn) {};
         \\
     );
 }
@@ -6934,6 +6934,66 @@ test "zig fmt: inner over-indented if expressions becoming multiline" {
         \\    if (d) {}, e,
         \\    f,         g,
         \\};
+        \\
+    );
+}
+
+test "zig fmt: canonicalize @intFromEnum(x) to @backingInt(x)" {
+    try testTransform(
+        \\const a = @intFromEnum(x);
+        \\
+        \\const b = @intFromEnum(
+        \\    x,
+        \\);
+        \\
+        \\const c = @intFromEnum(x); // comment preserved
+        \\
+        \\const d = @intFromEnum( // comment 1 preserved
+        \\    x, // comment 2 preserved
+        \\); // comment 3 preserved
+        \\
+    ,
+        \\const a = @backingInt(x);
+        \\
+        \\const b = @backingInt(
+        \\    x,
+        \\);
+        \\
+        \\const c = @backingInt(x); // comment preserved
+        \\
+        \\const d = @backingInt( // comment 1 preserved
+        \\    x, // comment 2 preserved
+        \\); // comment 3 preserved
+        \\
+    );
+}
+
+test "zig fmt: canonicalize @enumFromInt(x) to @fromBackingInt(@intCast(x))" {
+    try testTransform(
+        \\const a: E = @enumFromInt(x);
+        \\
+        \\const b: E = @enumFromInt(
+        \\    x,
+        \\);
+        \\
+        \\const c: E = @enumFromInt(x); // comment preserved
+        \\
+        \\const d: E = @enumFromInt( // comment 1 preserved
+        \\    x, // comment 2 preserved
+        \\); // comment 3 preserved
+        \\
+    ,
+        \\const a: E = @fromBackingInt(@intCast(x));
+        \\
+        \\const b: E = @fromBackingInt(@intCast(
+        \\    x,
+        \\));
+        \\
+        \\const c: E = @fromBackingInt(@intCast(x)); // comment preserved
+        \\
+        \\const d: E = @fromBackingInt(@intCast( // comment 1 preserved
+        \\    x, // comment 2 preserved
+        \\)); // comment 3 preserved
         \\
     );
 }

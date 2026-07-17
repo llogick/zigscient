@@ -151,7 +151,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
                 assert(ip.indexToKey(data.ip_index) == .enum_type);
                 const gop = try wasm.zcu_funcs.getOrPut(gpa, data.ip_index);
                 if (!gop.found_existing) {
-                    const int_tag_ty = Zcu.Type.fromInterned(data.ip_index).intTagType(zcu);
+                    const int_tag_ty = Zcu.Type.fromInterned(data.ip_index).backingIntType(zcu);
                     gop.value_ptr.* = .{ .tag_name = .{
                         .symbol_name = try wasm.internStringFmt("__zig_tag_index_{d}", .{data.ip_index}),
                         .type_index = try wasm.internFunctionType(.auto, &.{int_tag_ty.ip_index}, .u32, false, target),

@@ -10,6 +10,12 @@ export fn entry1() void {
         x: *const u32,
     });
 }
+export fn entry2() void {
+    const E = enum(noreturn) {};
+    _ = @sizeOf(packed union {
+        x: E,
+    });
+}
 
 // error
 //
@@ -19,3 +25,5 @@ export fn entry1() void {
 // :10:12: error: packed unions cannot contain fields of type '*const u32'
 // :10:12: note: pointers cannot be directly bitpacked
 // :10:12: note: consider using 'usize' and '@intFromPtr'
+// :16:12: error: packed unions cannot contain fields of type 'tmp.entry2.E'
+// :16:12: note: type does not have a bit-packed representation

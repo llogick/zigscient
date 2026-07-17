@@ -1,16 +1,18 @@
 const std = @import("std");
 
-const Foo = enum {
+const Foo = enum(u2) {
     a,
     b,
     c,
 };
 
-pub fn main() void {
-    var a: u2 = 3;
-    _ = &a;
-    const b: Foo = @enumFromInt(a);
+fn foo(a: u2) void {
+    const b: Foo = @fromBackingInt(a);
     std.debug.print("value: {s}\n", .{@tagName(b)});
+}
+
+pub fn main() void {
+    foo(3);
 }
 
 // exe=fail

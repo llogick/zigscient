@@ -4014,7 +4014,7 @@ pub fn getCoerced(pt: Zcu.PerThread, val: Value, new_ty: Type) Allocator.Error!V
 }
 
 pub fn intType(pt: Zcu.PerThread, signedness: std.lang.Signedness, bits: u16) Allocator.Error!Type {
-    return Type.fromInterned(try pt.intern(.{ .int_type = .{
+    return .fromInterned(try pt.intern(.{ .int_type = .{
         .signedness = signedness,
         .bits = bits,
     } }));
@@ -4025,15 +4025,15 @@ pub fn errorIntType(pt: Zcu.PerThread) std.mem.Allocator.Error!Type {
 }
 
 pub fn arrayType(pt: Zcu.PerThread, info: InternPool.Key.ArrayType) Allocator.Error!Type {
-    return Type.fromInterned(try pt.intern(.{ .array_type = info }));
+    return .fromInterned(try pt.intern(.{ .array_type = info }));
 }
 
 pub fn vectorType(pt: Zcu.PerThread, info: InternPool.Key.VectorType) Allocator.Error!Type {
-    return Type.fromInterned(try pt.intern(.{ .vector_type = info }));
+    return .fromInterned(try pt.intern(.{ .vector_type = info }));
 }
 
 pub fn optionalType(pt: Zcu.PerThread, child_type: InternPool.Index) Allocator.Error!Type {
-    return Type.fromInterned(try pt.intern(.{ .opt_type = child_type }));
+    return .fromInterned(try pt.intern(.{ .opt_type = child_type }));
 }
 
 pub fn ptrType(pt: Zcu.PerThread, info: InternPool.Key.PtrType) Allocator.Error!Type {
@@ -4055,7 +4055,7 @@ pub fn ptrType(pt: Zcu.PerThread, info: InternPool.Key.PtrType) Allocator.Error!
         _ => assert(@intFromEnum(info.flags.vector_index) < info.packed_offset.host_size),
     }
 
-    return Type.fromInterned(try pt.intern(.{ .ptr_type = canon_info }));
+    return .fromInterned(try pt.intern(.{ .ptr_type = canon_info }));
 }
 
 pub fn singleMutPtrType(pt: Zcu.PerThread, child_type: Type) Allocator.Error!Type {
@@ -4095,11 +4095,11 @@ pub fn funcType(pt: Zcu.PerThread, key: InternPool.GetFuncTypeKey) Allocator.Err
 /// Use this for `anyframe->T` only.
 /// For `anyframe`, use the `InternPool.Index.anyframe` tag directly.
 pub fn anyframeType(pt: Zcu.PerThread, payload_ty: Type) Allocator.Error!Type {
-    return Type.fromInterned(try pt.intern(.{ .anyframe_type = payload_ty.toIntern() }));
+    return .fromInterned(try pt.intern(.{ .anyframe_type = payload_ty.toIntern() }));
 }
 
 pub fn errorUnionType(pt: Zcu.PerThread, error_set_ty: Type, payload_ty: Type) Allocator.Error!Type {
-    return Type.fromInterned(try pt.intern(.{ .error_union_type = .{
+    return .fromInterned(try pt.intern(.{ .error_union_type = .{
         .error_set_type = error_set_ty.toIntern(),
         .payload_type = payload_ty.toIntern(),
     } }));
@@ -4108,7 +4108,7 @@ pub fn errorUnionType(pt: Zcu.PerThread, error_set_ty: Type, payload_ty: Type) A
 pub fn singleErrorSetType(pt: Zcu.PerThread, name: InternPool.NullTerminatedString) Allocator.Error!Type {
     const names: *const [1]InternPool.NullTerminatedString = &name;
     const comp = pt.zcu.comp;
-    return Type.fromInterned(try pt.zcu.intern_pool.getErrorSetType(comp.gpa, comp.io, pt.tid, names));
+    return .fromInterned(try pt.zcu.intern_pool.getErrorSetType(comp.gpa, comp.io, pt.tid, names));
 }
 
 /// Sorts `names` in place.
@@ -4124,7 +4124,7 @@ pub fn errorSetFromUnsortedNames(
     );
     const comp = pt.zcu.comp;
     const new_ty = try pt.zcu.intern_pool.getErrorSetType(comp.gpa, comp.io, pt.tid, names);
-    return Type.fromInterned(new_ty);
+    return .fromInterned(new_ty);
 }
 
 /// Supports only pointers, not pointer-like optionals.
@@ -4132,7 +4132,7 @@ pub fn ptrIntValue(pt: Zcu.PerThread, ty: Type, x: u64) Allocator.Error!Value {
     const zcu = pt.zcu;
     assert(ty.zigTypeTag(zcu) == .pointer and !ty.isSlice(zcu));
     assert(x != 0 or ty.isAllowzeroPtr(zcu));
-    return Value.fromInterned(try pt.intern(.{ .ptr = .{
+    return .fromInterned(try pt.intern(.{ .ptr = .{
         .ty = ty.toIntern(),
         .base_addr = .int,
         .byte_offset = x,
@@ -4140,14 +4140,11 @@ pub fn ptrIntValue(pt: Zcu.PerThread, ty: Type, x: u64) Allocator.Error!Value {
 }
 
 /// Creates an enum tag value based on the integer tag value.
-pub fn enumValue(pt: Zcu.PerThread, ty: Type, tag_int: InternPool.Index) Allocator.Error!Value {
-    if (std.debug.runtime_safety) {
-        const tag = ty.zigTypeTag(pt.zcu);
-        assert(tag == .@"enum");
-    }
-    return Value.fromInterned(try pt.intern(.{ .enum_tag = .{
+pub fn enumValue(pt: Zcu.PerThread, ty: Type, tag_int: Value) Allocator.Error!Value {
+    if (std.debug.runtime_safety) assert(ty.zigTypeTag(pt.zcu) == .@"enum");
+    return .fromInterned(try pt.intern(.{ .enum_tag = .{
         .ty = ty.toIntern(),
-        .int = tag_int,
+        .int = tag_int.toIntern(),
     } }));
 }
 
@@ -4161,7 +4158,7 @@ pub fn enumValueFieldIndex(pt: Zcu.PerThread, ty: Type, field_index: u32) Alloca
 
     if (enum_type.field_values.len == 0) {
         // Auto-numbered fields.
-        return Value.fromInterned(try pt.intern(.{ .enum_tag = .{
+        return .fromInterned(try pt.intern(.{ .enum_tag = .{
             .ty = ty.toIntern(),
             .int = try pt.intern(.{ .int = .{
                 .ty = enum_type.int_tag_type,
@@ -4320,7 +4317,7 @@ pub fn floatValue(pt: Zcu.PerThread, ty: Type, x: anytype) Allocator.Error!Value
 
 /// Create a value whose type is a `packed struct` or `packed union`, from the backing integer value.
 pub fn bitpackValue(pt: Zcu.PerThread, ty: Type, backing_int_val: Value) Allocator.Error!Value {
-    assert(backing_int_val.typeOf(pt.zcu).toIntern() == ty.bitpackBackingInt(pt.zcu).toIntern());
+    assert(backing_int_val.typeOf(pt.zcu).toIntern() == ty.backingIntType(pt.zcu).toIntern());
     return .fromInterned(try pt.intern(.{ .bitpack = .{
         .ty = ty.toIntern(),
         .backing_int_val = backing_int_val.toIntern(),

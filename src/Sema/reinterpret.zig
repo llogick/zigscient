@@ -353,7 +353,7 @@ const PackValueBytes = struct {
                     return pt.aggregateValue(ty, elems);
                 },
                 .@"packed" => {
-                    const backing_int_val = try pack.primitive(ty.bitpackBackingInt(zcu));
+                    const backing_int_val = try pack.primitive(ty.backingIntType(zcu));
                     if (backing_int_val.isUndef(zcu)) return pt.undefValue(ty);
                     return pt.bitpackValue(ty, backing_int_val);
                 },
@@ -424,15 +424,15 @@ const PackValueBytes = struct {
                     }
                 },
                 .@"packed" => {
-                    const backing_int_val = try pack.primitive(ty.bitpackBackingInt(zcu));
+                    const backing_int_val = try pack.primitive(ty.backingIntType(zcu));
                     if (backing_int_val.isUndef(zcu)) return pt.undefValue(ty);
                     return pt.bitpackValue(ty, backing_int_val);
                 },
             },
             .@"enum" => {
-                const tag_int_val = try pack.primitive(ty.intTagType(zcu));
+                const tag_int_val = try pack.primitive(ty.backingIntType(zcu));
                 if (tag_int_val.isUndef(zcu)) return pt.undefValue(ty);
-                return pt.enumValue(ty, tag_int_val.toIntern());
+                return pt.enumValue(ty, tag_int_val);
             },
             else => return pack.primitive(ty),
         }

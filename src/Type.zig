@@ -1580,11 +1580,24 @@ pub fn containerLayout(ty: Type, zcu: *const Zcu) std.lang.Type.ContainerLayout 
     };
 }
 
-pub fn bitpackBackingInt(ty: Type, zcu: *const Zcu) Type {
+/// Asserts that the type is either an enum or a bitpack.
+pub fn backingIntType(ty: Type, zcu: *const Zcu) Type {
     const ip = &zcu.intern_pool;
     return switch (ip.indexToKey(ty.toIntern())) {
+        .enum_type => .fromInterned(ip.loadEnumType(ty.toIntern()).int_tag_type),
         .struct_type => .fromInterned(ip.loadStructType(ty.toIntern()).packed_backing_int_type),
         .union_type => .fromInterned(ip.loadUnionType(ty.toIntern()).packed_backing_int_type),
+        else => unreachable,
+    };
+}
+
+/// For unions, returns the *backing int* mode, not the *enum tag* mode.
+pub fn backingIntMode(ty: Type, zcu: *const Zcu) InternPool.BackingTypeMode {
+    const ip = &zcu.intern_pool;
+    return switch (ip.indexToKey(ty.toIntern())) {
+        .enum_type => ip.loadEnumType(ty.toIntern()).int_tag_mode,
+        .struct_type => ip.loadStructType(ty.toIntern()).packed_backing_mode,
+        .union_type => ip.loadUnionType(ty.toIntern()).packed_backing_mode,
         else => unreachable,
     };
 }
@@ -2093,11 +2106,8 @@ pub fn onePossibleValue(ty: Type, pt: Zcu.PerThread) !?Value {
                 return try pt.unionValue(ty, tag_val, payload_val);
             } else unreachable;
         },
-        .enum_type => if (try ty.intTagType(zcu).onePossibleValue(pt)) |int_tag_opv| {
-            return .fromInterned(try pt.intern(.{ .enum_tag = .{
-                .ty = ty.toIntern(),
-                .int = int_tag_opv.toIntern(),
-            } }));
+        .enum_type => if (try ty.backingIntType(zcu).onePossibleValue(pt)) |int_tag_opv| {
+            return try pt.enumValue(ty, int_tag_opv);
         } else null,
 
         // values, not types
@@ -2272,17 +2282,6 @@ pub fn maxIntScalar(ty: Type, pt: Zcu.PerThread, dest_ty: Type) !Value {
     try res.setTwosCompIntLimit(.max, info.signedness, info.bits);
 
     return pt.intValue_big(dest_ty, res.toConst());
-}
-
-/// Asserts the type is an enum or a union.
-pub fn intTagType(ty: Type, zcu: *const Zcu) Type {
-    const ip = &zcu.intern_pool;
-    const enum_ty: Type = switch (ip.indexToKey(ty.toIntern())) {
-        .union_type => .fromInterned(ip.loadUnionType(ty.toIntern()).enum_tag_type),
-        .enum_type => ty,
-        else => unreachable,
-    };
-    return .fromInterned(ip.loadEnumType(enum_ty.toIntern()).int_tag_type);
 }
 
 pub fn isNonexhaustiveEnum(ty: Type, zcu: *const Zcu) bool {
@@ -3058,8 +3057,11 @@ pub fn unpackable(ty: Type, zcu: *const Zcu) ?UnpackableReason {
             .one, .many, .c => .pointer,
         },
 
-        .@"enum" => switch (zcu.intern_pool.loadEnumType(ty.toIntern()).int_tag_mode) {
-            .explicit => null,
+        .@"enum" => switch (ty.backingIntMode(zcu)) {
+            .explicit => switch (ty.backingIntType(zcu).toIntern()) {
+                else => null,
+                .noreturn_type => .other,
+            },
             .auto => .{ .enum_inferred_int_tag = ty },
         },
 
@@ -3225,7 +3227,11 @@ pub fn hasBitRepresentation(ty: Type, zcu: *const Zcu) bool {
         .float,
         => true,
 
-        .@"enum" => zcu.intern_pool.loadEnumType(ty.toIntern()).int_tag_mode == .explicit,
+        .@"enum" => {
+            const enum_obj = zcu.intern_pool.loadEnumType(ty.toIntern());
+            return enum_obj.int_tag_mode == .explicit and
+                enum_obj.int_tag_type != .noreturn_type;
+        },
         .pointer, .optional => ty.isPtrAtRuntime(zcu),
         .@"struct", .@"union" => ty.containerLayout(zcu) == .@"packed",
 

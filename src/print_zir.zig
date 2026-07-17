@@ -193,6 +193,7 @@ const Writer = struct {
             .elem_type,
             .indexable_ptr_elem_type,
             .splat_op_result_ty,
+            .from_backing_int_arg_ty,
             .indexable_ptr_len,
             .anyframe_type,
             .bit_not,
@@ -232,6 +233,7 @@ const Writer = struct {
             .compile_error,
             .set_eval_branch_quota,
             .int_from_enum,
+            .backing_int,
             .align_of,
             .int_from_bool,
             .embed_file,
@@ -417,6 +419,8 @@ const Writer = struct {
             => try self.writePlNodeBin(stream, inst),
 
             .for_len => try self.writePlNodeMultiOp(stream, inst),
+
+            .from_backing_int => try self.writePlNodeBin(stream, inst),
 
             .elem_val_imm => try self.writeElemValImm(stream, inst),
 
@@ -981,6 +985,16 @@ const Writer = struct {
         try self.writeInstRef(stream, extra.mulend2);
         try stream.writeAll(", ");
         try self.writeInstRef(stream, extra.addend);
+        try stream.writeAll(") ");
+        try self.writeSrcNode(stream, inst_data.src_node);
+    }
+
+    fn writeFromBackingInt(self: *Writer, stream: *std.Io.Writer, inst: Zir.Inst.Index) !void {
+        const inst_data = self.code.instructions.items(.data)[@intFromEnum(inst)].pl_node;
+        const extra = self.code.extraData(Zir.Inst.FromBackingInt, inst_data.payload_index);
+        try self.writeInstRef(stream, extra.data.result_type);
+        try stream.writeAll(", ");
+        try self.writeBracedBody(stream, self.code.bodySlice(extra.end, extra.data.body_len));
         try stream.writeAll(") ");
         try self.writeSrcNode(stream, inst_data.src_node);
     }

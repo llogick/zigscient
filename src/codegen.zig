@@ -415,7 +415,7 @@ pub fn generateSymbol(
             }
         },
         .enum_tag => |enum_tag| {
-            const int_tag_ty = ty.intTagType(zcu);
+            const int_tag_ty = ty.backingIntType(zcu);
             try generateSymbol(bin_file, pt, try pt.getCoerced(Value.fromInterned(enum_tag.int), int_tag_ty), w, reloc_parent);
         },
         .float => |float| storage: switch (float.storage) {

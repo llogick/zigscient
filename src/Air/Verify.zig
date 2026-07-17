@@ -118,7 +118,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
                 if (ptr_ty.childType(zcu).toIntern() != verify.ret_ty.toIntern()) return verify.fail("bad return type");
             },
 
-            .bit_cast => {
+            .bit_cast, .bit_cast_safe => {
                 const ty_op = data[@intFromEnum(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
                 const result_ty = ty_op.ty.toType();

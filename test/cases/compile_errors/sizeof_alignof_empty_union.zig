@@ -1,10 +1,10 @@
 const EnumInferred = enum {};
-const EnumExplicit = enum(u8) {};
+const EnumExplicit = enum(noreturn) {};
 const EnumNonexhaustive = enum(u8) { _ };
 
 const U0 = union {};
 const U1 = union(enum) {};
-const U2 = union(enum(u8)) {};
+const U2 = union(enum(noreturn)) {};
 const U3 = union(EnumInferred) {};
 const U4 = union(EnumExplicit) {};
 const U5 = union(EnumNonexhaustive) {};
