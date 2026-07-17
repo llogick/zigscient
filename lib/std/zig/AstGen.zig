@@ -8724,8 +8724,11 @@ fn bitCast(
     node: Ast.Node.Index,
     operand_node: Ast.Node.Index,
 ) InnerError!Zir.Inst.Ref {
+    const cursor = maybeAdvanceSourceCursorToMainToken(gz, node);
     const dest_type = try ri.rl.resultTypeForCast(gz, node, "@bitCast");
     const operand = try reachableExpr(gz, scope, .{ .rl = .none }, operand_node, node);
+
+    try emitDbgStmt(gz, cursor);
     const result = try gz.addPlNode(.bitcast, node, Zir.Inst.Bin{
         .lhs = dest_type,
         .rhs = operand,
