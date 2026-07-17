@@ -49,27 +49,25 @@ pub fn make(
     defer arena_allocator.deinit();
     const arena = arena_allocator.allocator();
 
-    var argv: std.ArrayList([]const u8) = .empty;
-    defer argv.deinit(gpa);
-
-    if (maker.dump_compile_step_info) {
+    if (maker.dump_compile_step_info) extract_cs_args: {
         try maker.compile_steps_info_mutex.lock(maker.graph.io);
         defer maker.compile_steps_info_mutex.unlock(maker.graph.io);
         const gop = try maker.compile_steps_info.getOrPut(maker.graph.arena, compile_index);
-        if (!gop.found_existing) {
-            gop.key_ptr.* = compile_index;
-            gop.value_ptr.* = .{};
+        if (gop.found_existing) break :extract_cs_args;
+        gop.key_ptr.* = compile_index;
+        gop.value_ptr.* = .{};
+        var curated_argv: std.ArrayList([]const u8) = .empty;
+        defer curated_argv.deinit(gpa);
+        try lowerZigArgs(arena, compile, compile_index, maker, progress_node, &curated_argv, false, true);
+        for (curated_argv.items) |arg| {
+            try gop.value_ptr.args.append(maker.graph.arena, try maker.graph.arena.dupe(u8, arg));
         }
     }
 
-    try lowerZigArgs(arena, compile, compile_index, maker, progress_node, &argv, false);
+    var argv: std.ArrayList([]const u8) = .empty;
+    defer argv.deinit(gpa);
 
-    if (maker.dump_compile_step_info) {
-        var cs_info = maker.compile_steps_info.getPtr(compile_index).?;
-        if (cs_info.args.items.len == 0) for (argv.items) |arg| {
-            try cs_info.args.append(maker.graph.arena, try maker.graph.arena.dupe(u8, arg));
-        };
-    }
+    try lowerZigArgs(arena, compile, compile_index, maker, progress_node, &argv, false, false);
 
     const incremental = conf_comp.flags4.incremental.toBool() orelse graph.incremental == true;
 
@@ -184,6 +182,7 @@ fn lowerZigArgs(
     progress_node: std.Progress.Node,
     zig_args: *std.ArrayList([]const u8),
     fuzz: bool,
+    curate: bool,
 ) Step.ExtendedMakeError!void {
     const step = maker.stepByIndex(compile_index);
     const graph = maker.graph;
@@ -434,7 +433,7 @@ fn lowerZigArgs(
                         }
                     },
                     .assembly_file => |asm_file| l: {
-                        if (!my_responsibility) break :l;
+                        if (!my_responsibility or curate) break :l;
 
                         if (prev_has_cflags) {
                             try zig_args.appendSlice(gpa, &.{ "-cflags", "--" });
@@ -445,7 +444,7 @@ fn lowerZigArgs(
                     },
 
                     .c_source_file => |c_source_file_index| l: {
-                        if (!my_responsibility) break :l;
+                        if (!my_responsibility or curate) break :l;
 
                         const c_source_file = c_source_file_index.get(conf);
 
@@ -471,7 +470,7 @@ fn lowerZigArgs(
                     },
 
                     .c_source_files => |c_source_files_index| l: {
-                        if (!my_responsibility) break :l;
+                        if (!my_responsibility or curate) break :l;
 
                         const c_source_files = c_source_files_index.get(conf);
 
@@ -503,7 +502,7 @@ fn lowerZigArgs(
                     },
 
                     .win32_resource_file => |rc_source_file_index| l: {
-                        if (!my_responsibility) break :l;
+                        if (!my_responsibility or curate) break :l;
 
                         const rc_source_file = rc_source_file_index.get(conf);
 
@@ -569,7 +568,7 @@ fn lowerZigArgs(
                     if (mod.root_source_file.unwrap()) |lp| {
                         const src = try maker.resolveLazyPathIndexAbs(arena, lp, compile_index);
                         zig_args.appendAssumeCapacity(try arena.print("-M{s}={s}", .{ module_cli_name, src }));
-                        if (maker.dump_compile_step_info) blk: {
+                        if (curate) blk: {
                             var info = maker.compile_steps_info.getPtr(compile_index) orelse break :blk;
                             if (info.args.items.len == 0) {
                                 const cwd = maker.graph.build_root_directory.path orelse std.process.currentPathAlloc(maker.graph.io, arena) catch |err| switch (err) {
@@ -837,7 +836,7 @@ fn lowerZigArgs(
         }
     }
 
-    if (conf_comp.flags3.rc_includes != .any) (try zig_args.addManyAsArray(gpa, 2)).* = .{
+    if (!curate and conf_comp.flags3.rc_includes != .any) (try zig_args.addManyAsArray(gpa, 2)).* = .{
         "-rcincludes", @tagName(conf_comp.flags3.rc_includes),
     };
 
@@ -993,7 +992,7 @@ pub fn rebuildInFuzzMode(
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(gpa);
 
-    try lowerZigArgs(arena, compile, compile_index, maker, progress_node, &argv, true);
+    try lowerZigArgs(arena, compile, compile_index, maker, progress_node, &argv, true, false);
     const maybe_output_bin_path = try Step.evalZigProcess(compile_index, maker, argv.items, progress_node, false);
     return maybe_output_bin_path.?;
 }
