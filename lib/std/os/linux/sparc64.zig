@@ -14,7 +14,7 @@ pub fn syscall0(
         \\ neg %%o0
         \\1:
         : [ret] "={o0}" (-> u64),
-        : [number] "{g1}" (@intFromEnum(number)),
+        : [number] "{g1}" (@backingInt(number)),
         : .{ .memory = true, .xcc = true, .o1 = true, .o2 = true, .o3 = true, .o4 = true, .o5 = true, .o7 = true });
 }
 
@@ -29,7 +29,7 @@ pub fn syscall1(
         \\ neg %%o0
         \\1:
         : [ret] "={o0}" (-> u64),
-        : [number] "{g1}" (@intFromEnum(number)),
+        : [number] "{g1}" (@backingInt(number)),
           [arg1] "{o0}" (arg1),
         : .{ .memory = true, .xcc = true, .o1 = true, .o2 = true, .o3 = true, .o4 = true, .o5 = true, .o7 = true });
 }
@@ -46,7 +46,7 @@ pub fn syscall2(
         \\ neg %%o0
         \\1:
         : [ret] "={o0}" (-> u64),
-        : [number] "{g1}" (@intFromEnum(number)),
+        : [number] "{g1}" (@backingInt(number)),
           [arg1] "{o0}" (arg1),
           [arg2] "{o1}" (arg2),
         : .{ .memory = true, .xcc = true, .o1 = true, .o2 = true, .o3 = true, .o4 = true, .o5 = true, .o7 = true });
@@ -65,7 +65,7 @@ pub fn syscall3(
         \\ neg %%o0
         \\1:
         : [ret] "={o0}" (-> u64),
-        : [number] "{g1}" (@intFromEnum(number)),
+        : [number] "{g1}" (@backingInt(number)),
           [arg1] "{o0}" (arg1),
           [arg2] "{o1}" (arg2),
           [arg3] "{o2}" (arg3),
@@ -86,7 +86,7 @@ pub fn syscall4(
         \\ neg %%o0
         \\1:
         : [ret] "={o0}" (-> u64),
-        : [number] "{g1}" (@intFromEnum(number)),
+        : [number] "{g1}" (@backingInt(number)),
           [arg1] "{o0}" (arg1),
           [arg2] "{o1}" (arg2),
           [arg3] "{o2}" (arg3),
@@ -109,7 +109,7 @@ pub fn syscall5(
         \\ neg %%o0
         \\1:
         : [ret] "={o0}" (-> u64),
-        : [number] "{g1}" (@intFromEnum(number)),
+        : [number] "{g1}" (@backingInt(number)),
           [arg1] "{o0}" (arg1),
           [arg2] "{o1}" (arg2),
           [arg3] "{o2}" (arg3),
@@ -134,7 +134,7 @@ pub fn syscall6(
         \\ neg %%o0
         \\1:
         : [ret] "={o0}" (-> u64),
-        : [number] "{g1}" (@intFromEnum(number)),
+        : [number] "{g1}" (@backingInt(number)),
           [arg1] "{o0}" (arg1),
           [arg2] "{o1}" (arg2),
           [arg3] "{o2}" (arg3),
@@ -161,7 +161,7 @@ pub fn syscall_pipe(
         \\ clr %%o0
         \\2:
         : [ret] "={o0}" (-> u64),
-        : [number] "{g1}" (@intFromEnum(SYS.pipe)),
+        : [number] "{g1}" (@backingInt(SYS.pipe)),
           [arg] "r" (fd),
         : .{ .memory = true, .g3 = true });
 }
@@ -184,7 +184,7 @@ pub fn syscall_fork() u64 {
         \\ and %%o1, %%o0, %%o0
         \\2:
         : [ret] "={o0}" (-> u64),
-        : [number] "{g1}" (@intFromEnum(SYS.fork)),
+        : [number] "{g1}" (@backingInt(SYS.fork)),
         : .{ .memory = true, .xcc = true, .o1 = true, .o2 = true, .o3 = true, .o4 = true, .o5 = true, .o7 = true });
 }
 
@@ -264,7 +264,7 @@ pub const restore = restore_rt;
 pub fn restore_rt() callconv(.c) void {
     return asm volatile ("t 0x6d"
         :
-        : [number] "{g1}" (@intFromEnum(SYS.rt_sigreturn)),
+        : [number] "{g1}" (@backingInt(SYS.rt_sigreturn)),
         : .{ .memory = true, .xcc = true, .o0 = true, .o1 = true, .o2 = true, .o3 = true, .o4 = true, .o5 = true, .o7 = true });
 }
 

@@ -68,13 +68,13 @@ pub const File = struct {
                 .file = i,
                 .parent = parent_decl,
             });
-            const decl_index: Decl.Index = @enumFromInt(decls.items.len - 1);
+            const decl_index: Decl.Index = @fromBackingInt(@intCast(decls.items.len - 1));
             try i.get().node_decls.put(gpa, node, decl_index);
             return decl_index;
         }
 
         pub fn get(i: File.Index) *File {
-            return &files.values()[@intFromEnum(i)];
+            return &files.values()[@backingInt(i)];
         }
 
         pub fn get_ast(i: File.Index) *Ast {
@@ -82,7 +82,7 @@ pub const File = struct {
         }
 
         pub fn path(i: File.Index) []const u8 {
-            return files.keys()[@intFromEnum(i)];
+            return files.keys()[@backingInt(i)];
         }
 
         pub fn findRootDecl(file_index: File.Index) Decl.Index {
@@ -329,7 +329,7 @@ pub const File = struct {
                     base_path, file_path, resolved_path,
                 });
                 if (files.getIndex(resolved_path)) |imported_file_index| {
-                    return .{ .alias = File.Index.findRootDecl(@enumFromInt(imported_file_index)) };
+                    return .{ .alias = File.Index.findRootDecl(@fromBackingInt(@intCast(imported_file_index))) };
                 } else {
                     log.warn("import target '{s}' did not resolve to any file", .{resolved_path});
                 }
@@ -388,7 +388,7 @@ pub const ModuleIndex = enum(u32) {
 pub fn add_file(file_name: []const u8, bytes: []u8) !File.Index {
     const ast = try parse(file_name, bytes);
     assert(ast.errors.len == 0);
-    const file_index: File.Index = @enumFromInt(files.entries.len);
+    const file_index: File.Index = @fromBackingInt(@intCast(files.entries.len));
     try files.put(gpa, file_name, .{ .ast = ast });
 
     var w: Walk = .{

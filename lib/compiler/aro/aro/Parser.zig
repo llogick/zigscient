@@ -316,7 +316,7 @@ fn validateExtendedIdentifier(p: *Parser) !bool {
         // Check NFC normalization.
         if (!normalized) continue;
         const canonical_class = char_info.getCanonicalClass(codepoint);
-        if (@intFromEnum(last_canonical_class) > @intFromEnum(canonical_class) and
+        if (@backingInt(last_canonical_class) > @backingInt(canonical_class) and
             canonical_class != .not_reordered)
         {
             normalized = false;
@@ -515,7 +515,7 @@ fn formatResult(p: *Parser, w: *std.Io.Writer, fmt: []const u8, res: Result) !us
         .null => try w.writeAll("nullptr_t"),
         else => if (try res.val.print(res.qt, p.comp, w)) |nested| switch (nested) {
             .pointer => |ptr| {
-                const ptr_node: Node.Index = @enumFromInt(ptr.node);
+                const ptr_node: Node.Index = @fromBackingInt(@intCast(ptr.node));
                 const decl_name = p.tree.tokSlice(ptr_node.tok(&p.tree));
                 try ptr.offset.printPointer(decl_name, p.comp, w);
             },
@@ -666,16 +666,16 @@ fn addList(p: *Parser, nodes: []const Node.Index) Allocator.Error!Tree.Node.Rang
 
 /// Recursively sets the defintion field of `tentative_decl` to `definition`.
 pub fn setTentativeDeclDefinition(p: *Parser, tentative_decl: Node.Index, definition: Node.Index) void {
-    const node_data = &p.tree.nodes.items(.data)[@intFromEnum(tentative_decl)];
-    switch (p.tree.nodes.items(.tag)[@intFromEnum(tentative_decl)]) {
+    const node_data = &p.tree.nodes.items(.data)[@backingInt(tentative_decl)];
+    switch (p.tree.nodes.items(.tag)[@backingInt(tentative_decl)]) {
         .fn_proto => {},
         .variable => {},
         else => return,
     }
 
-    const prev: Node.OptIndex = @enumFromInt(node_data[2]);
+    const prev: Node.OptIndex = @fromBackingInt(@intCast(node_data[2]));
 
-    node_data[2] = @intFromEnum(definition);
+    node_data[2] = @backingInt(definition);
     if (prev.unpack()) |some| {
         p.setTentativeDeclDefinition(some, definition);
     }
@@ -687,20 +687,20 @@ fn clearNonTentativeDefinitions(p: *Parser) void {
     const tags = p.tree.nodes.items(.tag);
     const data = p.tree.nodes.items(.data);
     for (p.tree.root_decls.items) |root_decl| {
-        switch (tags[@intFromEnum(root_decl)]) {
+        switch (tags[@backingInt(root_decl)]) {
             .fn_proto => {
-                const node_data = &data[@intFromEnum(root_decl)];
-                if (node_data[2] != @intFromEnum(Node.OptIndex.null)) {
+                const node_data = &data[@backingInt(root_decl)];
+                if (node_data[2] != @backingInt(Node.OptIndex.null)) {
                     if (tags[node_data[2]] != .fn_def) {
-                        node_data[2] = @intFromEnum(Node.OptIndex.null);
+                        node_data[2] = @backingInt(Node.OptIndex.null);
                     }
                 }
             },
             .variable => {
-                const node_data = &data[@intFromEnum(root_decl)];
-                if (node_data[2] != @intFromEnum(Node.OptIndex.null)) {
+                const node_data = &data[@backingInt(root_decl)];
+                if (node_data[2] != @backingInt(Node.OptIndex.null)) {
                     if (tags[node_data[2]] != .variable_def) {
-                        node_data[2] = @intFromEnum(Node.OptIndex.null);
+                        node_data[2] = @backingInt(Node.OptIndex.null);
                     }
                 }
             },
@@ -1326,7 +1326,7 @@ fn decl(p: *Parser) Error!bool {
             .qt = p.func.qt.?,
             .body = body,
             .definition = null,
-        } }, @intFromEnum(decl_node));
+        } }, @backingInt(decl_node));
 
         try p.decl_buf.append(gpa, decl_node);
 
@@ -1358,7 +1358,7 @@ fn decl(p: *Parser) Error!bool {
                 .name_tok = init_d.d.name,
                 .qt = init_d.d.qt,
                 .implicit = false,
-            } }, @intFromEnum(decl_node));
+            } }, @backingInt(decl_node));
         } else if (init_d.d.declarator_type == .func or init_d.d.qt.is(p.comp, .func)) {
             try decl_spec.validateFnDecl(p);
             try p.tree.setNode(.{ .function = .{
@@ -1368,7 +1368,7 @@ fn decl(p: *Parser) Error!bool {
                 .@"inline" = decl_spec.@"inline" != null,
                 .body = null,
                 .definition = null,
-            } }, @intFromEnum(decl_node));
+            } }, @backingInt(decl_node));
         } else {
             try decl_spec.validateDecl(p, init_d.asm_label);
             var node_qt = init_d.d.qt;
@@ -1400,7 +1400,7 @@ fn decl(p: *Parser) Error!bool {
                     .initializer = if (init_d.initializer) |some| some.node else null,
                     .definition = null,
                 },
-            }, @intFromEnum(decl_node));
+            }, @backingInt(decl_node));
         }
         try p.decl_buf.append(gpa, decl_node);
 
@@ -2425,7 +2425,7 @@ fn recordSpec(p: *Parser) Error!QualType {
             const record_ty: Type.Record = .{
                 .name = interned_name,
                 .layout = null,
-                .decl_node = @enumFromInt(reserved_index),
+                .decl_node = @fromBackingInt(@intCast(reserved_index)),
                 .fields = &.{},
             };
             const record_qt = try p.comp.type_store.put(gpa, if (is_struct)
@@ -2451,7 +2451,7 @@ fn recordSpec(p: *Parser) Error!QualType {
                 .{ .struct_forward_decl = fw }
             else
                 .{ .union_forward_decl = fw }, reserved_index);
-            try p.decl_buf.append(gpa, @enumFromInt(reserved_index));
+            try p.decl_buf.append(gpa, @fromBackingInt(@intCast(reserved_index)));
             return attributed_qt;
         }
     };
@@ -2481,7 +2481,7 @@ fn recordSpec(p: *Parser) Error!QualType {
         // can be specified after the closing rbrace, which we haven't encountered yet.
         const record_ty: Type.Record = .{
             .name = interned_name,
-            .decl_node = @enumFromInt(reserved_index),
+            .decl_node = @fromBackingInt(@intCast(reserved_index)),
             .layout = null,
             .fields = &.{},
         };
@@ -2505,7 +2505,7 @@ fn recordSpec(p: *Parser) Error!QualType {
         break :blk .{ record_ty, record_qt };
     };
 
-    try p.decl_buf.append(gpa, @enumFromInt(reserved_index));
+    try p.decl_buf.append(gpa, @fromBackingInt(@intCast(reserved_index)));
     const decl_buf_top = p.decl_buf.items.len;
     const record_buf_top = p.record_buf.items.len;
     errdefer p.decl_buf.items.len = decl_buf_top - 1;
@@ -2557,15 +2557,15 @@ fn recordSpec(p: *Parser) Error!QualType {
             .pointer_alignment_bits = 8,
             .required_alignment_bits = 8,
         };
-        record_ty.decl_node = @enumFromInt(reserved_index);
+        record_ty.decl_node = @fromBackingInt(@intCast(reserved_index));
 
         const base_type = qt.base(p.comp);
         if (is_struct) {
             std.debug.assert(base_type.type.@"struct".name == record_ty.name);
-            try p.comp.type_store.set(gpa, .{ .@"struct" = record_ty }, @intFromEnum(base_type.qt._index));
+            try p.comp.type_store.set(gpa, .{ .@"struct" = record_ty }, @backingInt(base_type.qt._index));
         } else {
             std.debug.assert(base_type.type.@"union".name == record_ty.name);
-            try p.comp.type_store.set(gpa, .{ .@"union" = record_ty }, @intFromEnum(base_type.qt._index));
+            try p.comp.type_store.set(gpa, .{ .@"union" = record_ty }, @backingInt(base_type.qt._index));
         }
         break :blk false;
     };
@@ -2597,7 +2597,7 @@ fn recordSpec(p: *Parser) Error!QualType {
         // Override previous incomplete layout and fields.
         const base_qt = qt.base(p.comp).qt;
         const ts = &p.comp.type_store;
-        var extra_index = ts.types.items(.data)[@intFromEnum(base_qt._index)][1];
+        var extra_index = ts.types.items(.data)[@backingInt(base_qt._index)][1];
 
         const layout_size = 5;
         comptime std.debug.assert(@sizeOf(Type.Record.Layout) == @sizeOf(u32) * layout_size);
@@ -2804,7 +2804,7 @@ fn recordDecl(p: *Parser) Error!bool {
                 .name = interned_name,
                 .qt = qt,
                 .name_tok = name_tok,
-                .bit_width = if (bits) |some| @enumFromInt(some) else .null,
+                .bit_width = if (bits) |some| @fromBackingInt(@intCast(some)) else .null,
                 ._attr_index = attr_index,
                 ._attr_len = attr_len,
             });
@@ -2951,7 +2951,7 @@ fn enumSpec(p: *Parser) Error!QualType {
                 .tag = fixed_qt,
                 .fixed = fixed_qt != null,
                 .incomplete = true,
-                .decl_node = @enumFromInt(reserved_index),
+                .decl_node = @fromBackingInt(@intCast(reserved_index)),
                 .fields = &.{},
             } });
 
@@ -3001,7 +3001,7 @@ fn enumSpec(p: *Parser) Error!QualType {
         // can be specified after the closing rbrace, which we haven't encountered yet.
         const enum_ty: Type.Enum = .{
             .name = interned_name,
-            .decl_node = @enumFromInt(reserved_index),
+            .decl_node = @fromBackingInt(@intCast(reserved_index)),
             .tag = fixed_qt,
             .incomplete = true,
             .fixed = fixed_qt != null,
@@ -3012,7 +3012,7 @@ fn enumSpec(p: *Parser) Error!QualType {
     };
 
     // reserve space for this enum
-    try p.decl_buf.append(gpa, @enumFromInt(reserved_index));
+    try p.decl_buf.append(gpa, @fromBackingInt(@intCast(reserved_index)));
     const decl_buf_top = p.decl_buf.items.len;
     const list_buf_top = p.list_buf.items.len;
     const enum_buf_top = p.enum_buf.items.len;
@@ -3076,17 +3076,17 @@ fn enumSpec(p: *Parser) Error!QualType {
                 new_field_node.enum_field.init = res.node;
             }
 
-            try p.tree.setNode(new_field_node, @intFromEnum(field_node));
+            try p.tree.setNode(new_field_node, @backingInt(field_node));
         }
     }
 
     { // Override previous incomplete type
         enum_ty.fields = enum_fields;
         enum_ty.incomplete = false;
-        enum_ty.decl_node = @enumFromInt(reserved_index);
+        enum_ty.decl_node = @fromBackingInt(@intCast(reserved_index));
         const base_type = attributed_qt.base(p.comp);
         std.debug.assert(base_type.type.@"enum".name == enum_ty.name);
-        try p.comp.type_store.set(gpa, .{ .@"enum" = enum_ty }, @intFromEnum(base_type.qt._index));
+        try p.comp.type_store.set(gpa, .{ .@"enum" = enum_ty }, @backingInt(base_type.qt._index));
     }
 
     // declare a symbol for the type
@@ -3619,7 +3619,7 @@ fn declarator(
                     else => unreachable,
                 }
                 // Child type is always stored in repr.data[0]
-                p.comp.type_store.types.items(.data)[@intFromEnum(cur._index)][0] = @bitCast(outer);
+                p.comp.type_store.types.items(.data)[@backingInt(cur._index)][0] = @bitCast(outer);
                 break;
             }
         }
@@ -5565,7 +5565,7 @@ fn pointerValue(p: *Parser, node: Node.Index, offset: Value) !Value {
             const var_name = try p.comp.internString(p.tokSlice(decl_ref.name_tok));
             const sym = p.syms.findSymbol(var_name) orelse return .{};
             const sym_node = sym.node.unpack() orelse return .{};
-            return Value.pointer(.{ .node = @intFromEnum(sym_node), .offset = offset.ref() }, p.comp);
+            return Value.pointer(.{ .node = @backingInt(sym_node), .offset = offset.ref() }, p.comp);
         },
         .string_literal_expr => return p.tree.value_map.get(node).?,
         else => return .{},
@@ -10066,7 +10066,7 @@ fn stringLiteral(p: *Parser) Error!Result {
     const strings_top = p.strings.items.len;
     defer p.strings.items.len = strings_top;
 
-    const literal_start = mem.alignForward(usize, strings_top, @intFromEnum(char_width));
+    const literal_start = mem.alignForward(usize, strings_top, @backingInt(char_width));
     try p.strings.resize(gpa, literal_start);
 
     while (p.tok_i < string_end) : (p.tok_i += 1) {
@@ -10082,7 +10082,7 @@ fn stringLiteral(p: *Parser) Error!Result {
             .incorrect_encoding_is_error = count > 1,
         };
 
-        try p.strings.ensureUnusedCapacity(gpa, (slice.len + 1) * @intFromEnum(char_width)); // +1 for null terminator
+        try p.strings.ensureUnusedCapacity(gpa, (slice.len + 1) * @backingInt(char_width)); // +1 for null terminator
         while (try char_literal_parser.next()) |item| switch (item) {
             .value => |v| {
                 switch (char_width) {
@@ -10143,7 +10143,7 @@ fn stringLiteral(p: *Parser) Error!Result {
             },
         };
     }
-    p.strings.appendNTimesAssumeCapacity(0, @intFromEnum(char_width));
+    p.strings.appendNTimesAssumeCapacity(0, @backingInt(char_width));
     const slice = p.strings.items[literal_start..];
 
     // TODO this won't do anything if there is a cache hit
@@ -10158,7 +10158,7 @@ fn stringLiteral(p: *Parser) Error!Result {
 
     const array_qt = try p.comp.type_store.put(gpa, .{ .array = .{
         .elem = string_kind.elementType(p.comp),
-        .len = .{ .fixed = @divExact(slice.len, @intFromEnum(char_width)) },
+        .len = .{ .fixed = @divExact(slice.len, @backingInt(char_width)) },
     } });
     const res: Result = .{
         .qt = array_qt,
@@ -10503,7 +10503,7 @@ fn parseInt(p: *Parser, prefix: NumberPrefix, buf: []const u8, suffix: NumberSuf
     if (prefix == .binary) {
         try p.err(tok_i, .binary_integer_literal, .{});
     }
-    const base = @intFromEnum(prefix);
+    const base = @backingInt(prefix);
     var res = if (suffix.isBitInt())
         try p.bitInt(base, buf, suffix, tok_i)
     else

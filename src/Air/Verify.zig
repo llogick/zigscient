@@ -69,7 +69,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
     const data = air.instructions.items(.data);
     for (body_insts, 0..) |inst, body_index| {
         verify.cur_inst = inst;
-        switch (tags[@intFromEnum(inst)]) {
+        switch (tags[@backingInt(inst)]) {
             .block => {
                 const block = air.unwrapBlock(inst);
                 try verify.body(block.body);
@@ -107,11 +107,11 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
                 }
             },
             .ret, .ret_safe => {
-                const operand = data[@intFromEnum(inst)].un_op;
+                const operand = data[@backingInt(inst)].un_op;
                 if (air.typeOf(operand, ip).toIntern() != verify.ret_ty.toIntern()) return verify.fail("bad return type");
             },
             .ret_load => {
-                const operand = data[@intFromEnum(inst)].un_op;
+                const operand = data[@backingInt(inst)].un_op;
                 const ptr_ty = air.typeOf(operand, ip);
                 if (ptr_ty.zigTypeTag(zcu) != .pointer) return verify.fail("operand is not a pointer");
                 if (ptr_ty.ptrSize(zcu) != .one) return verify.fail("pointer size is not '.one'");
@@ -119,7 +119,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             },
 
             .bit_cast, .bit_cast_safe => {
-                const ty_op = data[@intFromEnum(inst)].ty_op;
+                const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
                 const result_ty = ty_op.ty.toType();
                 // Enums are allowed here even if their backing type is implicit.
@@ -134,7 +134,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
                 if (operand_ty.bitSize(zcu) != result_ty.bitSize(zcu)) return verify.fail("bit size mismatch");
             },
             .ptr_cast => {
-                const ty_op = data[@intFromEnum(inst)].ty_op;
+                const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
                 const result_ty = ty_op.ty.toType();
                 const operand_scalar_ty = operand_ty.scalarType(zcu);
@@ -152,7 +152,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
                 }
             },
             .ptr_from_int => {
-                const ty_op = data[@intFromEnum(inst)].ty_op;
+                const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
                 const result_ty = ty_op.ty.toType();
                 const operand_scalar_ty = operand_ty.scalarType(zcu);
@@ -163,7 +163,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
                 if (!operand_ty.isVector(zcu) and result_ty.isVector(zcu)) return verify.fail("result is vector, but operand is not");
             },
             .int_from_ptr => {
-                const ty_op = data[@intFromEnum(inst)].ty_op;
+                const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
                 const result_ty = ty_op.ty.toType();
                 const operand_scalar_ty = operand_ty.scalarType(zcu);
@@ -174,7 +174,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
                 if (!operand_ty.isVector(zcu) and result_ty.isVector(zcu)) return verify.fail("result is vector, but operand is not");
             },
             .error_cast => {
-                const ty_op = data[@intFromEnum(inst)].ty_op;
+                const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
                 const result_ty = ty_op.ty.toType();
                 switch (operand_ty.zigTypeTag(zcu)) {
@@ -193,7 +193,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
                 }
             },
             .error_from_int => {
-                const ty_op = data[@intFromEnum(inst)].ty_op;
+                const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
                 const result_ty = ty_op.ty.toType();
                 if (!operand_ty.isUnsignedInt(zcu)) return verify.fail("bad operand type");
@@ -201,7 +201,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
                 if (result_ty.zigTypeTag(zcu) != .error_set) return verify.fail("bad result type");
             },
             .int_from_error => {
-                const ty_op = data[@intFromEnum(inst)].ty_op;
+                const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
                 const result_ty = ty_op.ty.toType();
                 if (operand_ty.zigTypeTag(zcu) != .error_set) return verify.fail("bad operand type");
@@ -209,7 +209,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
                 if (result_ty.bitSize(zcu) != zcu.errorSetBits()) return verify.fail("bad result bit size");
             },
             .union_from_enum => {
-                const ty_op = data[@intFromEnum(inst)].ty_op;
+                const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
                 const result_ty = ty_op.ty.toType();
                 if (operand_ty.zigTypeTag(zcu) != .@"enum") return verify.fail("bad operand type");
@@ -219,7 +219,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             },
 
             .ptr_elem_ptr => {
-                const ty_pl = data[@intFromEnum(inst)].ty_pl;
+                const ty_pl = data[@backingInt(inst)].ty_pl;
                 const bin_op = air.extraData(Air.Bin, ty_pl.payload).data;
                 const ptr_ty = air.typeOf(bin_op.lhs, ip);
                 const result_ty = ty_pl.ty.toType();
@@ -442,7 +442,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             // probably just needs to live exclusively in backends; putting AIR instructions after a
             // call implies that we have e.g. a valid stack at that point, which we can't actually
             // assume when the user has gotten a function's ABI wrong.
-            switch (tags[@intFromEnum(inst)]) {
+            switch (tags[@backingInt(inst)]) {
                 .call,
                 .call_always_tail,
                 .call_never_tail,

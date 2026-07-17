@@ -75,7 +75,7 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
             // Add and then de-duplicate dependencies.
             const dep_steps = try arena.alloc(Configuration.Step.Index, step.dependencies.items.len);
             for (dep_steps, step.dependencies.items) |*dest, src|
-                dest.* = @enumFromInt(s.step_map.getIndex(src).?);
+                dest.* = @fromBackingInt(@intCast(s.step_map.getIndex(src).?));
 
             const deps: Configuration.Deps.Index = try wc.addDeduped(Configuration.Deps, .{
                 .steps = .{ .slice = dep_steps },
@@ -87,7 +87,7 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                 .owner = try s.builderToPackage(step.owner),
                 .deps = deps,
                 .max_rss = .fromBytes(step.max_rss),
-                .extended = @enumFromInt(switch (step.tag) {
+                .extended = @fromBackingInt(@intCast(switch (step.tag) {
                     .top_level => e: {
                         const top_level: *Step.TopLevel = @fieldParentPtr("step", step);
                         break :e try wc.addExtraErased(Configuration.Step.TopLevel, .{
@@ -445,8 +445,8 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                                 },
                                 .expect_term => |t| expect_term = switch (t) {
                                     .exited => |x| .{ .status = .exited, .value = x },
-                                    .signal => |x| .{ .status = .signal, .value = @intFromEnum(x) },
-                                    .stopped => |x| .{ .status = .stopped, .value = @intFromEnum(x) },
+                                    .signal => |x| .{ .status = .signal, .value = @backingInt(x) },
+                                    .stopped => |x| .{ .status = .stopped, .value = @backingInt(x) },
                                     .unknown => |x| .{ .status = .unknown, .value = x },
                                 },
                                 .expect_stderr_snapshot => |path| expect_stderr_snapshot = try s.addLazyPath(path),
@@ -656,7 +656,7 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                             .args = .{ .slice = args },
                         });
                     },
-                }),
+                })),
             });
         }
     }
@@ -734,7 +734,7 @@ fn builderToPackage(s: *Serialize, b: *std.Build) !Configuration.Package.Index {
 
 fn addOptionalLazyPathEnum(s: *Serialize, lp: ?std.Build.LazyPath) !Configuration.LazyPath.OptionalIndex {
     const wc = s.wc;
-    return @enumFromInt(switch (lp orelse return .none) {
+    return @fromBackingInt(@intCast(switch (lp orelse return .none) {
         .src_path => |src_path| i: {
             const sub_path = try wc.addString(src_path.sub_path);
             break :i try wc.addExtraErased(Configuration.LazyPath.SourcePath, .{
@@ -770,7 +770,7 @@ fn addOptionalLazyPathEnum(s: *Serialize, lp: ?std.Build.LazyPath) !Configuratio
                 .sub_path = sub_path,
             });
         },
-    });
+    }));
 }
 
 fn addOptionalLazyPath(s: *Serialize, lp: ?std.Build.LazyPath) !?Configuration.LazyPath.Index {
@@ -778,7 +778,7 @@ fn addOptionalLazyPath(s: *Serialize, lp: ?std.Build.LazyPath) !?Configuration.L
 }
 
 fn addLazyPath(s: *Serialize, lp: std.Build.LazyPath) !Configuration.LazyPath.Index {
-    return @enumFromInt(@intFromEnum(try addOptionalLazyPathEnum(s, lp)));
+    return @fromBackingInt(@intCast(@backingInt(try addOptionalLazyPathEnum(s, lp))));
 }
 
 fn addOptionalSemVer(s: *Serialize, sem_ver: ?std.SemanticVersion) !?Configuration.String {
@@ -1163,17 +1163,17 @@ fn addModule(s: *Serialize, m: *std.Build.Module) !Configuration.Module.Index {
 
     comptime assert(std.mem.eql(u8, @typeInfo(Configuration.Module).@"struct".field_names[2], "import_table"));
     comptime assert(@typeInfo(Configuration.Module).@"struct".field_types[2] == Configuration.ImportTable.Index);
-    assert(wc.extra.items[@intFromEnum(module_index) + 2] == @intFromEnum(Configuration.ImportTable.Index.invalid));
+    assert(wc.extra.items[@backingInt(module_index) + 2] == @backingInt(Configuration.ImportTable.Index.invalid));
     const import_table_index = try wc.addDeduped(Configuration.ImportTable, .{
         .imports = .{ .mal = imports },
     });
-    wc.extra.items[@intFromEnum(module_index) + 2] = @intFromEnum(import_table_index);
+    wc.extra.items[@backingInt(module_index) + 2] = @backingInt(import_table_index);
 
     return module_index;
 }
 
 fn stepIndex(s: *const Serialize, step: *Step) Configuration.Step.Index {
-    return @enumFromInt(s.step_map.getIndex(step).?);
+    return @fromBackingInt(@intCast(s.step_map.getIndex(step).?));
 }
 
 fn addOptionalResolvedTarget(

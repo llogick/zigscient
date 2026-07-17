@@ -40,11 +40,11 @@ test stream {
     var fixed: std.Io.Reader = .fixed(&orig_buf);
 
     var limit_buf: [1]u8 = undefined;
-    var limited: std.Io.Reader.Limited = .init(&fixed, @enumFromInt(4), &limit_buf);
+    var limited: std.Io.Reader.Limited = .init(&fixed, @fromBackingInt(@intCast(4)), &limit_buf);
 
     var result_buf: [10]u8 = undefined;
     var fixed_writer: std.Io.Writer = .fixed(&result_buf);
-    const streamed = try limited.interface.stream(&fixed_writer, @enumFromInt(7));
+    const streamed = try limited.interface.stream(&fixed_writer, @fromBackingInt(@intCast(7)));
 
     try std.testing.expect(streamed == 4);
     try std.testing.expectEqualStrings("test", result_buf[0..streamed]);

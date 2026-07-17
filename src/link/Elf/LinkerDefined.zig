@@ -48,7 +48,7 @@ fn newSymbolAssumeCapacity(self: *LinkerDefined, name_off: u32, elf_file: *Elf) 
     esym.* = .{
         .st_name = name_off,
         .st_info = @as(u8, elf.STB_WEAK) << 4,
-        .st_other = @intFromEnum(elf.STV.HIDDEN),
+        .st_other = @backingInt(elf.STV.HIDDEN),
         .st_shndx = elf.SHN_ABS,
         .st_value = 0,
         .st_size = 0,

@@ -72,7 +72,7 @@ pub fn any(self: *Decoder, comptime T: type) !T {
             if (@hasDecl(T, "oids")) {
                 return T.oids.oidToEnum(bytes) orelse return error.UnknownOid;
             }
-            return @enumFromInt(try int(e.tag_type, bytes));
+            return @fromBackingInt(@intCast(try int(e.tag_type, bytes)));
         },
         .optional => |o| return self.any(o.child) catch return null,
         else => @compileError("cannot decode type " ++ @typeName(T)),
@@ -94,7 +94,7 @@ pub fn element(
     const res = try Element.decode(self.bytes, self.index);
     var e = expected;
     if (self.field_tag) |ft| {
-        e.number = @enumFromInt(ft.number);
+        e.number = @fromBackingInt(@intCast(ft.number));
         e.class = ft.class;
     }
     if (!e.match(res.tag)) {

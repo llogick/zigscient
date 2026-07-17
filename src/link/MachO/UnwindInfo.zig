@@ -30,8 +30,8 @@ fn canFold(macho_file: *MachO, lhs_ref: Record.Ref, rhs_ref: Record.Ref) bool {
     const lhs = lhs_ref.getUnwindRecord(macho_file);
     const rhs = rhs_ref.getUnwindRecord(macho_file);
     if (cpu_arch == .x86_64) {
-        if (lhs.enc.getMode() == @intFromEnum(macho.UNWIND_X86_64_MODE.STACK_IND) or
-            rhs.enc.getMode() == @intFromEnum(macho.UNWIND_X86_64_MODE.STACK_IND)) return false;
+        if (lhs.enc.getMode() == @backingInt(macho.UNWIND_X86_64_MODE.STACK_IND) or
+            rhs.enc.getMode() == @backingInt(macho.UNWIND_X86_64_MODE.STACK_IND)) return false;
     }
     const lhs_per = lhs.personality orelse 0;
     const rhs_per = rhs.personality orelse 0;
@@ -412,8 +412,8 @@ pub const Encoding = extern struct {
     pub fn isDwarf(enc: Encoding, macho_file: *MachO) bool {
         const mode = enc.getMode();
         return switch (macho_file.getTarget().cpu.arch) {
-            .aarch64 => @as(macho.UNWIND_ARM64_MODE, @enumFromInt(mode)) == .DWARF,
-            .x86_64 => @as(macho.UNWIND_X86_64_MODE, @enumFromInt(mode)) == .DWARF,
+            .aarch64 => @as(macho.UNWIND_ARM64_MODE, @fromBackingInt(@intCast(mode))) == .DWARF,
+            .x86_64 => @as(macho.UNWIND_X86_64_MODE, @fromBackingInt(@intCast(mode))) == .DWARF,
             else => unreachable,
         };
     }
@@ -421,7 +421,7 @@ pub const Encoding = extern struct {
     pub fn setMode(enc: *Encoding, mode: anytype) void {
         comptime assert(macho.UNWIND_ARM64_MODE_MASK == macho.UNWIND_X86_64_MODE_MASK);
         const shift = comptime @ctz(macho.UNWIND_ARM64_MODE_MASK);
-        enc.enc |= @as(u32, @intCast(@intFromEnum(mode))) << shift;
+        enc.enc |= @as(u32, @intCast(@backingInt(mode))) << shift;
     }
 
     pub fn hasLsda(enc: Encoding) bool {

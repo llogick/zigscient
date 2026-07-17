@@ -844,7 +844,7 @@ pub fn writeErrorReturnTrace(et: *const std.builtin.StackTrace, t: Io.Terminal) 
     // writing the stack trace.
     const len = @min(et.instruction_addresses.len, et.index);
     const skipped = et.index - len;
-    try writeTrace(et.instruction_addresses[0..len], @enumFromInt(skipped), t, false);
+    try writeTrace(et.instruction_addresses[0..len], @fromBackingInt(@intCast(skipped)), t, false);
 }
 
 /// Write a previously captured stack trace to `writer`, annotated with source locations.

@@ -268,8 +268,8 @@ pub const Versym = packed struct(u16) {
     VERSION: u15,
     HIDDEN: bool,
 
-    pub const LOCAL: Versym = @bitCast(@intFromEnum(VER_NDX.LOCAL));
-    pub const GLOBAL: Versym = @bitCast(@intFromEnum(VER_NDX.GLOBAL));
+    pub const LOCAL: Versym = @bitCast(@backingInt(VER_NDX.LOCAL));
+    pub const GLOBAL: Versym = @bitCast(@backingInt(VER_NDX.GLOBAL));
 };
 
 pub const VER_NDX = enum(u16) {
@@ -291,178 +291,178 @@ pub const VER_FLG_BASE = 1;
 pub const VER_FLG_WEAK = 2;
 
 /// Deprecated, use `@intFromEnum(std.elf.PT.NULL)`
-pub const PT_NULL = @intFromEnum(std.elf.PT.NULL);
+pub const PT_NULL = @backingInt(std.elf.PT.NULL);
 /// Deprecated, use `@intFromEnum(std.elf.PT.LOAD)`
-pub const PT_LOAD = @intFromEnum(std.elf.PT.LOAD);
+pub const PT_LOAD = @backingInt(std.elf.PT.LOAD);
 /// Deprecated, use `@intFromEnum(std.elf.PT.DYNAMIC)`
-pub const PT_DYNAMIC = @intFromEnum(std.elf.PT.DYNAMIC);
+pub const PT_DYNAMIC = @backingInt(std.elf.PT.DYNAMIC);
 /// Deprecated, use `@intFromEnum(std.elf.PT.INTERP)`
-pub const PT_INTERP = @intFromEnum(std.elf.PT.INTERP);
+pub const PT_INTERP = @backingInt(std.elf.PT.INTERP);
 /// Deprecated, use `@intFromEnum(std.elf.PT.NOTE)`
-pub const PT_NOTE = @intFromEnum(std.elf.PT.NOTE);
+pub const PT_NOTE = @backingInt(std.elf.PT.NOTE);
 /// Deprecated, use `@intFromEnum(std.elf.PT.SHLIB)`
-pub const PT_SHLIB = @intFromEnum(std.elf.PT.SHLIB);
+pub const PT_SHLIB = @backingInt(std.elf.PT.SHLIB);
 /// Deprecated, use `@intFromEnum(std.elf.PT.PHDR)`
-pub const PT_PHDR = @intFromEnum(std.elf.PT.PHDR);
+pub const PT_PHDR = @backingInt(std.elf.PT.PHDR);
 /// Deprecated, use `@intFromEnum(std.elf.PT.TLS)`
-pub const PT_TLS = @intFromEnum(std.elf.PT.TLS);
+pub const PT_TLS = @backingInt(std.elf.PT.TLS);
 /// Deprecated, use `std.elf.PT.NUM`.
 pub const PT_NUM = PT.NUM;
 /// Deprecated, use `@intFromEnum(std.elf.PT.LOOS)`
-pub const PT_LOOS = @intFromEnum(std.elf.PT.LOOS);
+pub const PT_LOOS = @backingInt(std.elf.PT.LOOS);
 /// Deprecated, use `@intFromEnum(std.elf.PT.GNU_EH_FRAME)`
-pub const PT_GNU_EH_FRAME = @intFromEnum(std.elf.PT.GNU_EH_FRAME);
+pub const PT_GNU_EH_FRAME = @backingInt(std.elf.PT.GNU_EH_FRAME);
 /// Deprecated, use `@intFromEnum(std.elf.PT.GNU_STACK)`
-pub const PT_GNU_STACK = @intFromEnum(std.elf.PT.GNU_STACK);
+pub const PT_GNU_STACK = @backingInt(std.elf.PT.GNU_STACK);
 /// Deprecated, use `@intFromEnum(std.elf.PT.GNU_RELRO)`
-pub const PT_GNU_RELRO = @intFromEnum(std.elf.PT.GNU_RELRO);
+pub const PT_GNU_RELRO = @backingInt(std.elf.PT.GNU_RELRO);
 /// Deprecated, use `@intFromEnum(std.elf.PT.LOSUNW)`
-pub const PT_LOSUNW = @intFromEnum(std.elf.PT.LOSUNW);
+pub const PT_LOSUNW = @backingInt(std.elf.PT.LOSUNW);
 /// Deprecated, use `@intFromEnum(std.elf.PT.SUNWBSS)`
-pub const PT_SUNWBSS = @intFromEnum(std.elf.PT.SUNWBSS);
+pub const PT_SUNWBSS = @backingInt(std.elf.PT.SUNWBSS);
 /// Deprecated, use `@intFromEnum(std.elf.PT.SUNWSTACK)`
-pub const PT_SUNWSTACK = @intFromEnum(std.elf.PT.SUNWSTACK);
+pub const PT_SUNWSTACK = @backingInt(std.elf.PT.SUNWSTACK);
 /// Deprecated, use `@intFromEnum(std.elf.PT.HISUNW)`
-pub const PT_HISUNW = @intFromEnum(std.elf.PT.HISUNW);
+pub const PT_HISUNW = @backingInt(std.elf.PT.HISUNW);
 /// Deprecated, use `@intFromEnum(std.elf.PT.HIOS)`
-pub const PT_HIOS = @intFromEnum(std.elf.PT.HIOS);
+pub const PT_HIOS = @backingInt(std.elf.PT.HIOS);
 /// Deprecated, use `@intFromEnum(std.elf.PT.LOPROC)`
-pub const PT_LOPROC = @intFromEnum(std.elf.PT.LOPROC);
+pub const PT_LOPROC = @backingInt(std.elf.PT.LOPROC);
 /// Deprecated, use `@intFromEnum(std.elf.PT.HIPROC)`
-pub const PT_HIPROC = @intFromEnum(std.elf.PT.HIPROC);
+pub const PT_HIPROC = @backingInt(std.elf.PT.HIPROC);
 
 pub const PN_XNUM = 0xffff;
 
 /// Deprecated, use `@intFromEnum(std.elf.SHT.NULL)`
-pub const SHT_NULL = @intFromEnum(std.elf.SHT.NULL);
+pub const SHT_NULL = @backingInt(std.elf.SHT.NULL);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.PROGBITS)`
-pub const SHT_PROGBITS = @intFromEnum(std.elf.SHT.PROGBITS);
+pub const SHT_PROGBITS = @backingInt(std.elf.SHT.PROGBITS);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.SYMTAB)`
-pub const SHT_SYMTAB = @intFromEnum(std.elf.SHT.SYMTAB);
+pub const SHT_SYMTAB = @backingInt(std.elf.SHT.SYMTAB);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.STRTAB)`
-pub const SHT_STRTAB = @intFromEnum(std.elf.SHT.STRTAB);
+pub const SHT_STRTAB = @backingInt(std.elf.SHT.STRTAB);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.RELA)`
-pub const SHT_RELA = @intFromEnum(std.elf.SHT.RELA);
+pub const SHT_RELA = @backingInt(std.elf.SHT.RELA);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.HASH)`
-pub const SHT_HASH = @intFromEnum(std.elf.SHT.HASH);
+pub const SHT_HASH = @backingInt(std.elf.SHT.HASH);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.DYNAMIC)`
-pub const SHT_DYNAMIC = @intFromEnum(std.elf.SHT.DYNAMIC);
+pub const SHT_DYNAMIC = @backingInt(std.elf.SHT.DYNAMIC);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.NOTE)`
-pub const SHT_NOTE = @intFromEnum(std.elf.SHT.NOTE);
+pub const SHT_NOTE = @backingInt(std.elf.SHT.NOTE);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.NOBITS)`
-pub const SHT_NOBITS = @intFromEnum(std.elf.SHT.NOBITS);
+pub const SHT_NOBITS = @backingInt(std.elf.SHT.NOBITS);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.REL)`
-pub const SHT_REL = @intFromEnum(std.elf.SHT.REL);
+pub const SHT_REL = @backingInt(std.elf.SHT.REL);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.SHLIB)`
-pub const SHT_SHLIB = @intFromEnum(std.elf.SHT.SHLIB);
+pub const SHT_SHLIB = @backingInt(std.elf.SHT.SHLIB);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.DYNSYM)`
-pub const SHT_DYNSYM = @intFromEnum(std.elf.SHT.DYNSYM);
+pub const SHT_DYNSYM = @backingInt(std.elf.SHT.DYNSYM);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.INIT_ARRAY)`
-pub const SHT_INIT_ARRAY = @intFromEnum(std.elf.SHT.INIT_ARRAY);
+pub const SHT_INIT_ARRAY = @backingInt(std.elf.SHT.INIT_ARRAY);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.FINI_ARRAY)`
-pub const SHT_FINI_ARRAY = @intFromEnum(std.elf.SHT.FINI_ARRAY);
+pub const SHT_FINI_ARRAY = @backingInt(std.elf.SHT.FINI_ARRAY);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.PREINIT_ARRAY)`
-pub const SHT_PREINIT_ARRAY = @intFromEnum(std.elf.SHT.PREINIT_ARRAY);
+pub const SHT_PREINIT_ARRAY = @backingInt(std.elf.SHT.PREINIT_ARRAY);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.GROUP)`
-pub const SHT_GROUP = @intFromEnum(std.elf.SHT.GROUP);
+pub const SHT_GROUP = @backingInt(std.elf.SHT.GROUP);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.SYMTAB_SHNDX)`
-pub const SHT_SYMTAB_SHNDX = @intFromEnum(std.elf.SHT.SYMTAB_SHNDX);
+pub const SHT_SYMTAB_SHNDX = @backingInt(std.elf.SHT.SYMTAB_SHNDX);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.RELR)`
-pub const SHT_RELR = @intFromEnum(std.elf.SHT.RELR);
+pub const SHT_RELR = @backingInt(std.elf.SHT.RELR);
 /// Deprecated, use `std.elf.SHT.NUM`.
 pub const SHT_NUM = SHT.NUM;
 /// Deprecated, use `@intFromEnum(std.elf.SHT.LOOS)`
-pub const SHT_LOOS = @intFromEnum(std.elf.SHT.LOOS);
+pub const SHT_LOOS = @backingInt(std.elf.SHT.LOOS);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.LLVM_ADDRSIG)`
-pub const SHT_LLVM_ADDRSIG = @intFromEnum(std.elf.SHT.LLVM_ADDRSIG);
+pub const SHT_LLVM_ADDRSIG = @backingInt(std.elf.SHT.LLVM_ADDRSIG);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.GNU_HASH)`
-pub const SHT_GNU_HASH = @intFromEnum(std.elf.SHT.GNU_HASH);
+pub const SHT_GNU_HASH = @backingInt(std.elf.SHT.GNU_HASH);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.GNU_VERDEF)`
-pub const SHT_GNU_VERDEF = @intFromEnum(std.elf.SHT.GNU_VERDEF);
+pub const SHT_GNU_VERDEF = @backingInt(std.elf.SHT.GNU_VERDEF);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.GNU_VERNEED)`
-pub const SHT_GNU_VERNEED = @intFromEnum(std.elf.SHT.GNU_VERNEED);
+pub const SHT_GNU_VERNEED = @backingInt(std.elf.SHT.GNU_VERNEED);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.GNU_VERSYM)`
-pub const SHT_GNU_VERSYM = @intFromEnum(std.elf.SHT.GNU_VERSYM);
+pub const SHT_GNU_VERSYM = @backingInt(std.elf.SHT.GNU_VERSYM);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.HIOS)`
-pub const SHT_HIOS = @intFromEnum(std.elf.SHT.HIOS);
+pub const SHT_HIOS = @backingInt(std.elf.SHT.HIOS);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.LOPROC)`
-pub const SHT_LOPROC = @intFromEnum(std.elf.SHT.LOPROC);
+pub const SHT_LOPROC = @backingInt(std.elf.SHT.LOPROC);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.X86_64_UNWIND)`
-pub const SHT_X86_64_UNWIND = @intFromEnum(std.elf.SHT.X86_64_UNWIND);
+pub const SHT_X86_64_UNWIND = @backingInt(std.elf.SHT.X86_64_UNWIND);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.HIPROC)`
-pub const SHT_HIPROC = @intFromEnum(std.elf.SHT.HIPROC);
+pub const SHT_HIPROC = @backingInt(std.elf.SHT.HIPROC);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.LOUSER)`
-pub const SHT_LOUSER = @intFromEnum(std.elf.SHT.LOUSER);
+pub const SHT_LOUSER = @backingInt(std.elf.SHT.LOUSER);
 /// Deprecated, use `@intFromEnum(std.elf.SHT.HIUSER)`
-pub const SHT_HIUSER = @intFromEnum(std.elf.SHT.HIUSER);
+pub const SHT_HIUSER = @backingInt(std.elf.SHT.HIUSER);
 
 // Note type for .note.gnu.build_id
 pub const NT_GNU_BUILD_ID = 3;
 
 /// Deprecated, use `@intFromEnum(std.elf.STB.LOCAL)`
-pub const STB_LOCAL = @intFromEnum(STB.LOCAL);
+pub const STB_LOCAL = @backingInt(STB.LOCAL);
 /// Deprecated, use `@intFromEnum(std.elf.STB.GLOBAL)`
-pub const STB_GLOBAL = @intFromEnum(STB.GLOBAL);
+pub const STB_GLOBAL = @backingInt(STB.GLOBAL);
 /// Deprecated, use `@intFromEnum(std.elf.STB.WEAK)`
-pub const STB_WEAK = @intFromEnum(STB.WEAK);
+pub const STB_WEAK = @backingInt(STB.WEAK);
 /// Deprecated, use `std.elf.STB.NUM`
 pub const STB_NUM = STB.NUM;
 /// Deprecated, use `@intFromEnum(std.elf.STB.LOOS)`
-pub const STB_LOOS = @intFromEnum(STB.LOOS);
+pub const STB_LOOS = @backingInt(STB.LOOS);
 /// Deprecated, use `@intFromEnum(std.elf.STB.GNU_UNIQUE)`
-pub const STB_GNU_UNIQUE = @intFromEnum(STB.GNU_UNIQUE);
+pub const STB_GNU_UNIQUE = @backingInt(STB.GNU_UNIQUE);
 /// Deprecated, use `@intFromEnum(std.elf.STB.HIOS)`
-pub const STB_HIOS = @intFromEnum(STB.HIOS);
+pub const STB_HIOS = @backingInt(STB.HIOS);
 /// Deprecated, use `@intFromEnum(std.elf.STB.LOPROC)`
-pub const STB_LOPROC = @intFromEnum(STB.LOPROC);
+pub const STB_LOPROC = @backingInt(STB.LOPROC);
 /// Deprecated, use `@intFromEnum(std.elf.STB.HIPROC)`
-pub const STB_HIPROC = @intFromEnum(STB.HIPROC);
+pub const STB_HIPROC = @backingInt(STB.HIPROC);
 
 /// Deprecated, use `@intFromEnum(std.elf.STB.MIPS_SPLIT_COMMON)`
-pub const STB_MIPS_SPLIT_COMMON = @intFromEnum(STB.MIBS_SPLIT_COMMON);
+pub const STB_MIPS_SPLIT_COMMON = @backingInt(STB.MIBS_SPLIT_COMMON);
 
 /// Deprecated, use `@intFromEnum(std.elf.STT.NOTYPE)`
-pub const STT_NOTYPE = @intFromEnum(STT.NOTYPE);
+pub const STT_NOTYPE = @backingInt(STT.NOTYPE);
 /// Deprecated, use `@intFromEnum(std.elf.STT.OBJECT)`
-pub const STT_OBJECT = @intFromEnum(STT.OBJECT);
+pub const STT_OBJECT = @backingInt(STT.OBJECT);
 /// Deprecated, use `@intFromEnum(std.elf.STT.FUNC)`
-pub const STT_FUNC = @intFromEnum(STT.FUNC);
+pub const STT_FUNC = @backingInt(STT.FUNC);
 /// Deprecated, use `@intFromEnum(std.elf.STT.SECTION)`
-pub const STT_SECTION = @intFromEnum(STT.SECTION);
+pub const STT_SECTION = @backingInt(STT.SECTION);
 /// Deprecated, use `@intFromEnum(std.elf.STT.FILE)`
-pub const STT_FILE = @intFromEnum(STT.FILE);
+pub const STT_FILE = @backingInt(STT.FILE);
 /// Deprecated, use `@intFromEnum(std.elf.STT.COMMON)`
-pub const STT_COMMON = @intFromEnum(STT.COMMON);
+pub const STT_COMMON = @backingInt(STT.COMMON);
 /// Deprecated, use `@intFromEnum(std.elf.STT.TLS)`
-pub const STT_TLS = @intFromEnum(STT.TLS);
+pub const STT_TLS = @backingInt(STT.TLS);
 /// Deprecated, use `std.elf.STT.NUM`
 pub const STT_NUM = STT.NUM;
 /// Deprecated, use `@intFromEnum(std.elf.STT.LOOS)`
-pub const STT_LOOS = @intFromEnum(STT.LOOS);
+pub const STT_LOOS = @backingInt(STT.LOOS);
 /// Deprecated, use `@intFromEnum(std.elf.STT.GNU_IFUNC)`
-pub const STT_GNU_IFUNC = @intFromEnum(STT.GNU_IFUNC);
+pub const STT_GNU_IFUNC = @backingInt(STT.GNU_IFUNC);
 /// Deprecated, use `@intFromEnum(std.elf.STT.HIOS)`
-pub const STT_HIOS = @intFromEnum(STT.HIOS);
+pub const STT_HIOS = @backingInt(STT.HIOS);
 /// Deprecated, use `@intFromEnum(std.elf.STT.LOPROC)`
-pub const STT_LOPROC = @intFromEnum(STT.LOPROC);
+pub const STT_LOPROC = @backingInt(STT.LOPROC);
 /// Deprecated, use `@intFromEnum(std.elf.STT.HIPROC)`
-pub const STT_HIPROC = @intFromEnum(STT.HIPROC);
+pub const STT_HIPROC = @backingInt(STT.HIPROC);
 
 /// Deprecated, use `@intFromEnum(std.elf.STT.SPARC_REGISTER)`
-pub const STT_SPARC_REGISTER = @intFromEnum(STT.SPARC_REGISTER);
+pub const STT_SPARC_REGISTER = @backingInt(STT.SPARC_REGISTER);
 
 /// Deprecated, use `@intFromEnum(std.elf.STT.PARISC_MILLICODE)`
-pub const STT_PARISC_MILLICODE = @intFromEnum(STT.PARISC_MILLICODE);
+pub const STT_PARISC_MILLICODE = @backingInt(STT.PARISC_MILLICODE);
 
 /// Deprecated, use `@intFromEnum(std.elf.STT.HP_OPAQUE)`
-pub const STT_HP_OPAQUE = @intFromEnum(STT.HP_OPAQUE);
+pub const STT_HP_OPAQUE = @backingInt(STT.HP_OPAQUE);
 /// Deprecated, use `@intFromEnum(std.elf.STT.HP_STUB)`
-pub const STT_HP_STUB = @intFromEnum(STT.HP_STUB);
+pub const STT_HP_STUB = @backingInt(STT.HP_STUB);
 
 /// Deprecated, use `@intFromEnum(std.elf.STT.ARM_TFUNC)`
-pub const STT_ARM_TFUNC = @intFromEnum(STT.ARM_TFUNC);
+pub const STT_ARM_TFUNC = @backingInt(STT.ARM_TFUNC);
 /// Deprecated, use `@intFromEnum(std.elf.STT.ARM_16BIT)`
-pub const STT_ARM_16BIT = @intFromEnum(STT.ARM_16BIT);
+pub const STT_ARM_16BIT = @backingInt(STT.ARM_16BIT);
 
 pub const PT = enum(Word) {
     /// Program header table entry unused
@@ -487,29 +487,29 @@ pub const PT = enum(Word) {
     pub const NUM = @typeInfo(PT).@"enum".field_names.len;
 
     /// Start of OS-specific
-    pub const LOOS: PT = @enumFromInt(0x60000000);
+    pub const LOOS: PT = @fromBackingInt(@intCast(0x60000000));
     /// End of OS-specific
-    pub const HIOS: PT = @enumFromInt(0x6fffffff);
+    pub const HIOS: PT = @fromBackingInt(@intCast(0x6fffffff));
 
     /// GCC .eh_frame_hdr segment
-    pub const GNU_EH_FRAME: PT = @enumFromInt(0x6474e550);
+    pub const GNU_EH_FRAME: PT = @fromBackingInt(@intCast(0x6474e550));
     /// Indicates stack executability
-    pub const GNU_STACK: PT = @enumFromInt(0x6474e551);
+    pub const GNU_STACK: PT = @fromBackingInt(@intCast(0x6474e551));
     /// Read-only after relocation
-    pub const GNU_RELRO: PT = @enumFromInt(0x6474e552);
+    pub const GNU_RELRO: PT = @fromBackingInt(@intCast(0x6474e552));
 
-    pub const LOSUNW: PT = @enumFromInt(0x6ffffffa);
-    pub const HISUNW: PT = @enumFromInt(0x6fffffff);
+    pub const LOSUNW: PT = @fromBackingInt(@intCast(0x6ffffffa));
+    pub const HISUNW: PT = @fromBackingInt(@intCast(0x6fffffff));
 
     /// Sun specific segment
-    pub const SUNWBSS: PT = @enumFromInt(0x6ffffffa);
+    pub const SUNWBSS: PT = @fromBackingInt(@intCast(0x6ffffffa));
     /// Stack segment
-    pub const SUNWSTACK: PT = @enumFromInt(0x6ffffffb);
+    pub const SUNWSTACK: PT = @fromBackingInt(@intCast(0x6ffffffb));
 
     /// Start of processor-specific
-    pub const LOPROC: PT = @enumFromInt(0x70000000);
+    pub const LOPROC: PT = @fromBackingInt(@intCast(0x70000000));
     /// End of processor-specific
-    pub const HIPROC: PT = @enumFromInt(0x7fffffff);
+    pub const HIPROC: PT = @fromBackingInt(@intCast(0x7fffffff));
 };
 
 pub const SHT = enum(Word) {
@@ -555,34 +555,34 @@ pub const SHT = enum(Word) {
     pub const NUM = @typeInfo(SHT).@"enum".field_names.len;
 
     /// Start of OS-specific
-    pub const LOOS: SHT = @enumFromInt(0x60000000);
+    pub const LOOS: SHT = @fromBackingInt(@intCast(0x60000000));
     /// End of OS-specific
-    pub const HIOS: SHT = @enumFromInt(0x6fffffff);
+    pub const HIOS: SHT = @fromBackingInt(@intCast(0x6fffffff));
 
     /// LLVM address-significance table
-    pub const LLVM_ADDRSIG: SHT = @enumFromInt(0x6fff4c03);
+    pub const LLVM_ADDRSIG: SHT = @fromBackingInt(@intCast(0x6fff4c03));
 
     /// GNU hash table
-    pub const GNU_HASH: SHT = @enumFromInt(0x6ffffff6);
+    pub const GNU_HASH: SHT = @fromBackingInt(@intCast(0x6ffffff6));
     /// GNU version definition table
-    pub const GNU_VERDEF: SHT = @enumFromInt(0x6ffffffd);
+    pub const GNU_VERDEF: SHT = @fromBackingInt(@intCast(0x6ffffffd));
     /// GNU needed versions table
-    pub const GNU_VERNEED: SHT = @enumFromInt(0x6ffffffe);
+    pub const GNU_VERNEED: SHT = @fromBackingInt(@intCast(0x6ffffffe));
     /// GNU symbol version table
-    pub const GNU_VERSYM: SHT = @enumFromInt(0x6fffffff);
+    pub const GNU_VERSYM: SHT = @fromBackingInt(@intCast(0x6fffffff));
 
     /// Start of processor-specific
-    pub const LOPROC: SHT = @enumFromInt(0x70000000);
+    pub const LOPROC: SHT = @fromBackingInt(@intCast(0x70000000));
     /// End of processor-specific
-    pub const HIPROC: SHT = @enumFromInt(0x7fffffff);
+    pub const HIPROC: SHT = @fromBackingInt(@intCast(0x7fffffff));
 
     /// Unwind information
-    pub const X86_64_UNWIND: SHT = @enumFromInt(0x70000001);
+    pub const X86_64_UNWIND: SHT = @fromBackingInt(@intCast(0x70000001));
 
     /// Start of application-specific
-    pub const LOUSER: SHT = @enumFromInt(0x80000000);
+    pub const LOUSER: SHT = @fromBackingInt(@intCast(0x80000000));
     /// End of application-specific
-    pub const HIUSER: SHT = @enumFromInt(0xffffffff);
+    pub const HIUSER: SHT = @fromBackingInt(@intCast(0xffffffff));
 };
 
 pub const STB = enum(u4) {
@@ -598,19 +598,19 @@ pub const STB = enum(u4) {
     pub const NUM = @typeInfo(STB).@"enum".field_names.len;
 
     /// Start of OS-specific
-    pub const LOOS: STB = @enumFromInt(10);
+    pub const LOOS: STB = @fromBackingInt(@intCast(10));
     /// End of OS-specific
-    pub const HIOS: STB = @enumFromInt(12);
+    pub const HIOS: STB = @fromBackingInt(@intCast(12));
 
     /// Unique symbol
-    pub const GNU_UNIQUE: STB = @enumFromInt(@intFromEnum(LOOS) + 0);
+    pub const GNU_UNIQUE: STB = @fromBackingInt(@intCast(@backingInt(LOOS) + 0));
 
     /// Start of processor-specific
-    pub const LOPROC: STB = @enumFromInt(13);
+    pub const LOPROC: STB = @fromBackingInt(@intCast(13));
     /// End of processor-specific
-    pub const HIPROC: STB = @enumFromInt(15);
+    pub const HIPROC: STB = @fromBackingInt(@intCast(15));
 
-    pub const MIPS_SPLIT_COMMON: STB = @enumFromInt(@intFromEnum(LOPROC) + 0);
+    pub const MIPS_SPLIT_COMMON: STB = @fromBackingInt(@intCast(@backingInt(LOPROC) + 0));
 };
 
 pub const STT = enum(u4) {
@@ -634,27 +634,27 @@ pub const STT = enum(u4) {
     pub const NUM = @typeInfo(STT).@"enum".field_names.len;
 
     /// Start of OS-specific
-    pub const LOOS: STT = @enumFromInt(10);
+    pub const LOOS: STT = @fromBackingInt(@intCast(10));
     /// End of OS-specific
-    pub const HIOS: STT = @enumFromInt(12);
+    pub const HIOS: STT = @fromBackingInt(@intCast(12));
 
     /// Symbol is indirect code object
-    pub const GNU_IFUNC: STT = @enumFromInt(@intFromEnum(LOOS) + 0);
+    pub const GNU_IFUNC: STT = @fromBackingInt(@intCast(@backingInt(LOOS) + 0));
 
-    pub const HP_OPAQUE: STT = @enumFromInt(@intFromEnum(LOOS) + 1);
-    pub const HP_STUB: STT = @enumFromInt(@intFromEnum(LOOS) + 2);
+    pub const HP_OPAQUE: STT = @fromBackingInt(@intCast(@backingInt(LOOS) + 1));
+    pub const HP_STUB: STT = @fromBackingInt(@intCast(@backingInt(LOOS) + 2));
 
     /// Start of processor-specific
-    pub const LOPROC: STT = @enumFromInt(13);
+    pub const LOPROC: STT = @fromBackingInt(@intCast(13));
     /// End of processor-specific
-    pub const HIPROC: STT = @enumFromInt(15);
+    pub const HIPROC: STT = @fromBackingInt(@intCast(15));
 
-    pub const SPARC_REGISTER: STT = @enumFromInt(@intFromEnum(LOPROC) + 0);
+    pub const SPARC_REGISTER: STT = @fromBackingInt(@intCast(@backingInt(LOPROC) + 0));
 
-    pub const PARISC_MILLICODE: STT = @enumFromInt(@intFromEnum(LOPROC) + 0);
+    pub const PARISC_MILLICODE: STT = @fromBackingInt(@intCast(@backingInt(LOPROC) + 0));
 
-    pub const ARM_TFUNC: STT = @enumFromInt(@intFromEnum(LOPROC) + 0);
-    pub const ARM_16BIT: STT = @enumFromInt(@intFromEnum(HIPROC) + 2);
+    pub const ARM_TFUNC: STT = @fromBackingInt(@intCast(@backingInt(LOPROC) + 0));
+    pub const ARM_16BIT: STT = @fromBackingInt(@intCast(@backingInt(HIPROC) + 2));
 };
 
 pub const STV = enum(u3) {
@@ -823,7 +823,7 @@ pub const Header = struct {
                 else => @compileError("bad type"),
             },
             .endian = endian,
-            .os_abi = @enumFromInt(hdr.e_ident[EI.OSABI]),
+            .os_abi = @fromBackingInt(@intCast(hdr.e_ident[EI.OSABI])),
             .abi_version = hdr.e_ident[EI.ABIVERSION],
             .type = hdr.e_type,
             .machine = hdr.e_machine,
@@ -1629,11 +1629,11 @@ pub const Ident = extern struct {
 };
 
 /// Deprecated, use `@intFromEnum(std.elf.CLASS.NONE)`
-pub const ELFCLASSNONE = @intFromEnum(CLASS.NONE);
+pub const ELFCLASSNONE = @backingInt(CLASS.NONE);
 /// Deprecated, use `@intFromEnum(std.elf.CLASS.@"32")`
-pub const ELFCLASS32 = @intFromEnum(CLASS.@"32");
+pub const ELFCLASS32 = @backingInt(CLASS.@"32");
 /// Deprecated, use `@intFromEnum(std.elf.CLASS.@"64")`
-pub const ELFCLASS64 = @intFromEnum(CLASS.@"64");
+pub const ELFCLASS64 = @backingInt(CLASS.@"64");
 /// Deprecated, use `@intFromEnum(std.elf.CLASS.NUM)`
 pub const ELFCLASSNUM = CLASS.NUM;
 pub const CLASS = enum(u8) {
@@ -1662,11 +1662,11 @@ pub const CLASS = enum(u8) {
 };
 
 /// Deprecated, use `@intFromEnum(std.elf.DATA.NONE)`
-pub const ELFDATANONE = @intFromEnum(DATA.NONE);
+pub const ELFDATANONE = @backingInt(DATA.NONE);
 /// Deprecated, use `@intFromEnum(std.elf.DATA.@"2LSB")`
-pub const ELFDATA2LSB = @intFromEnum(DATA.@"2LSB");
+pub const ELFDATA2LSB = @backingInt(DATA.@"2LSB");
 /// Deprecated, use `@intFromEnum(std.elf.DATA.@"2MSB")`
-pub const ELFDATA2MSB = @intFromEnum(DATA.@"2MSB");
+pub const ELFDATA2MSB = @backingInt(DATA.@"2MSB");
 /// Deprecated, use `@intFromEnum(std.elf.DATA.NUM)`
 pub const ELFDATANUM = DATA.NUM;
 pub const DATA = enum(u8) {

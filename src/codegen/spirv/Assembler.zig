@@ -267,7 +267,7 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
             break :blk result_id;
         },
         .OpTypePointer => blk: {
-            const storage_class: StorageClass = @enumFromInt(operands[1].value);
+            const storage_class: StorageClass = @fromBackingInt(@intCast(operands[1].value));
             const child_type = try ass.resolveRefId(operands[2].ref_id);
             const result_id = cg.allocId();
             try section.emit(cg.gpa, .OpTypePointer, .{
@@ -290,12 +290,12 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
             try section.emit(gpa, .OpTypeImage, .{
                 .id_result = result_id,
                 .sampled_type = sampled_type,
-                .dim = @enumFromInt(operands[2].value),
+                .dim = @fromBackingInt(@intCast(operands[2].value)),
                 .depth = operands[3].literal32,
                 .arrayed = operands[4].literal32,
                 .ms = operands[5].literal32,
                 .sampled = operands[6].literal32,
-                .image_format = @enumFromInt(operands[7].value),
+                .image_format = @fromBackingInt(@intCast(operands[7].value)),
             });
             break :blk result_id;
         },
@@ -350,7 +350,7 @@ fn processGenericInstruction(ass: *Assembler) !?AsmValue {
             .OpEntryPoint => unreachable,
             .OpExecutionMode, .OpExecutionModeId => &cg.sections.execution_modes,
             .OpVariable => section: {
-                const storage_class: spec.StorageClass = @enumFromInt(operands[2].value);
+                const storage_class: spec.StorageClass = @fromBackingInt(@intCast(operands[2].value));
                 if (storage_class == .function) break :section &ass.cg.prologue;
                 maybe_spv_decl_index = try cg.allocDecl(.global);
                 if (!target.cpu.has(.spirv, .v1_4) and storage_class != .input and storage_class != .output) {
@@ -404,7 +404,7 @@ fn processGenericInstruction(ass: *Assembler) !?AsmValue {
     }
 
     const actual_word_count = section.instructions.items.len - first_word;
-    section.instructions.items[first_word] |= @as(u32, @as(u16, @intCast(actual_word_count))) << 16 | @intFromEnum(ass.inst.opcode);
+    section.instructions.items[first_word] |= @as(u32, @as(u16, @intCast(actual_word_count))) << 16 | @backingInt(ass.inst.opcode);
 
     switch (ass.inst.opcode) {
         .OpKill,
@@ -487,7 +487,7 @@ fn processSpecConstVector(ass: *Assembler) !?AsmValue {
         };
         try annotations.emitRaw(gpa, .OpDecorate, 3);
         annotations.writeOperand(Id, elem_id);
-        annotations.writeWord(@intFromEnum(spec.Decoration.spec_id));
+        annotations.writeWord(@backingInt(spec.Decoration.spec_id));
         annotations.writeWord(spec_id_word);
     }
 
@@ -561,7 +561,7 @@ fn parseInstruction(ass: *Assembler) !void {
     };
 
     const inst = spec.InstructionSet.core.instructions()[index];
-    ass.inst.opcode = @enumFromInt(inst.opcode);
+    ass.inst.opcode = @fromBackingInt(@intCast(inst.opcode));
 
     const expected_operands = inst.operands;
     // This is a loop because the result-id is not always the first operand.
@@ -855,16 +855,16 @@ fn parseContextDependentNumber(ass: *Assembler) !void {
     var offset: usize = 0;
     while (offset < words.len) {
         const word_count = words[offset] >> 16;
-        const opcode: Opcode = @enumFromInt(words[offset] & 0xFFFF);
+        const opcode: Opcode = @fromBackingInt(@intCast(words[offset] & 0xFFFF));
         defer offset += word_count;
         if (word_count == 0) break;
         switch (opcode) {
-            .OpTypeInt => if (word_count >= 4 and @as(Id, @enumFromInt(words[offset + 1])) == result_id) {
+            .OpTypeInt => if (word_count >= 4 and @as(Id, @fromBackingInt(@intCast(words[offset + 1]))) == result_id) {
                 const width: u16 = @intCast(words[offset + 2]);
                 const signedness: std.lang.Signedness = if (words[offset + 3] == 0) .unsigned else .signed;
                 return ass.parseContextDependentInt(signedness, width);
             },
-            .OpTypeFloat => if (word_count >= 3 and @as(Id, @enumFromInt(words[offset + 1])) == result_id) {
+            .OpTypeFloat => if (word_count >= 3 and @as(Id, @fromBackingInt(@intCast(words[offset + 1]))) == result_id) {
                 const bits = words[offset + 2];
                 return switch (bits) {
                     16 => ass.parseContextDependentFloat(16),

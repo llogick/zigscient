@@ -197,7 +197,7 @@ fn translate(d: *aro.Driver, tc: *aro.Toolchain, args: []const [:0]const u8, zig
             if (val_str.len != 1 or val_str[0] < '0' or val_str[0] > '3') {
                 return d.fatal("-fstrict-flex-arrays= requires a value of '0', '1', '2', or '3'", .{});
             }
-            strict_flex_arrays = @enumFromInt(val_str[0] - '0');
+            strict_flex_arrays = @fromBackingInt(@intCast(val_str[0] - '0'));
         } else {
             aro_args.appendAssumeCapacity(arg);
         }

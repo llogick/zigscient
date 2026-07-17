@@ -247,7 +247,7 @@ pub const Status = enum(u10) {
     };
 
     pub fn class(self: Status) Class {
-        return switch (@intFromEnum(self)) {
+        return switch (@backingInt(self)) {
             100...199 => .informational,
             200...299 => .success,
             300...399 => .redirect,
@@ -338,11 +338,11 @@ pub const Reader = struct {
         _,
 
         pub fn init(integer: u64) RemainingChunkLen {
-            return @enumFromInt(integer);
+            return @fromBackingInt(@intCast(integer));
         }
 
         pub fn int(rcl: RemainingChunkLen) u64 {
-            return @intFromEnum(rcl);
+            return @backingInt(rcl);
         }
     };
 
@@ -597,8 +597,8 @@ pub const Reader = struct {
                 continue :len .head;
             },
             else => |remaining_chunk_len| {
-                const n = try in.stream(w, limit.min(.limited64(@intFromEnum(remaining_chunk_len) - 2)));
-                chunk_len_ptr.* = .init(@intFromEnum(remaining_chunk_len) - n);
+                const n = try in.stream(w, limit.min(.limited64(@backingInt(remaining_chunk_len) - 2)));
+                chunk_len_ptr.* = .init(@backingInt(remaining_chunk_len) - n);
                 return n;
             },
         }

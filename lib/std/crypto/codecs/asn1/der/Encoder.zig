@@ -68,7 +68,7 @@ fn anyTag(self: *Encoder, tag_: Tag, val: anytype) !void {
             if (@hasDecl(T, "oids")) {
                 return self.any(T.oids.enumToOid(val));
             } else {
-                try self.int(e.tag_type, @intFromEnum(val));
+                try self.int(e.tag_type, @backingInt(val));
             }
         },
         .optional => if (val) |v| return try self.anyTag(tag_, v) else return,
@@ -91,7 +91,7 @@ fn mergedTag(self: *Encoder, tag_: Tag) Tag {
     var res = tag_;
     if (self.field_tag) |ft| {
         if (!ft.explicit) {
-            res.number = @enumFromInt(ft.number);
+            res.number = @fromBackingInt(@intCast(ft.number));
             res.class = ft.class;
         }
     }

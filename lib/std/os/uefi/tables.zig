@@ -24,11 +24,11 @@ pub const TimerDelay = enum(u32) {
 pub const MemoryType = enum(u32) {
     pub const Oem = math.IntFittingRange(
         0,
-        @intFromEnum(MemoryType.oem_end) - @intFromEnum(MemoryType.oem_start),
+        @backingInt(MemoryType.oem_end) - @backingInt(MemoryType.oem_start),
     );
     pub const Vendor = math.IntFittingRange(
         0,
-        @intFromEnum(MemoryType.vendor_end) - @intFromEnum(MemoryType.vendor_start),
+        @backingInt(MemoryType.vendor_end) - @backingInt(MemoryType.vendor_start),
     );
 
     /// can only be allocated using .allocate_any_pages mode unless you are explicitly targeting an interface that states otherwise
@@ -65,28 +65,28 @@ pub const MemoryType = enum(u32) {
     _,
 
     pub fn fromOem(value: Oem) MemoryType {
-        const oem_start = @intFromEnum(MemoryType.oem_start);
-        return @enumFromInt(oem_start + value);
+        const oem_start = @backingInt(MemoryType.oem_start);
+        return @fromBackingInt(@intCast(oem_start + value));
     }
 
     pub fn toOem(memtype: MemoryType) ?Oem {
-        const as_int = @intFromEnum(memtype);
-        const oem_start = @intFromEnum(MemoryType.oem_start);
+        const as_int = @backingInt(memtype);
+        const oem_start = @backingInt(MemoryType.oem_start);
         if (as_int < oem_start) return null;
-        if (as_int > @intFromEnum(MemoryType.oem_end)) return null;
+        if (as_int > @backingInt(MemoryType.oem_end)) return null;
         return @truncate(as_int - oem_start);
     }
 
     pub fn fromVendor(value: Vendor) MemoryType {
-        const vendor_start = @intFromEnum(MemoryType.vendor_start);
-        return @enumFromInt(vendor_start + value);
+        const vendor_start = @backingInt(MemoryType.vendor_start);
+        return @fromBackingInt(@intCast(vendor_start + value));
     }
 
     pub fn toVendor(memtype: MemoryType) ?Vendor {
-        const as_int = @intFromEnum(memtype);
-        const vendor_start = @intFromEnum(MemoryType.vendor_start);
-        if (as_int < @intFromEnum(MemoryType.vendor_end)) return null;
-        if (as_int > @intFromEnum(MemoryType.vendor_end)) return null;
+        const as_int = @backingInt(memtype);
+        const vendor_start = @backingInt(MemoryType.vendor_start);
+        if (as_int < @backingInt(MemoryType.vendor_end)) return null;
+        if (as_int > @backingInt(MemoryType.vendor_end)) return null;
         return @truncate(as_int - vendor_start);
     }
 
@@ -98,7 +98,7 @@ pub const MemoryType = enum(u32) {
         else if (std.enums.tagName(MemoryType, self)) |name|
             try w.print("{s}", .{name})
         else
-            try w.print("INVALID({X})", .{@intFromEnum(self)});
+            try w.print("INVALID({X})", .{@backingInt(self)});
     }
 };
 

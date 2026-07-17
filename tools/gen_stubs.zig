@@ -144,7 +144,7 @@ const Family = enum {
 const arches: [@typeInfo(Arch).@"enum".field_names.len]Arch = blk: {
     var result: [@typeInfo(Arch).@"enum".field_names.len]Arch = undefined;
     for (@typeInfo(Arch).@"enum".field_values) |field_value| {
-        const arch: Arch = @enumFromInt(field_value);
+        const arch: Arch = @fromBackingInt(@intCast(field_value));
         result[archIndex(arch)] = arch;
     }
     break :blk result;
@@ -161,7 +161,7 @@ const MultiSym = struct {
     fn isSingleArch(ms: MultiSym) ?Arch {
         var result: ?Arch = null;
         inline for (@typeInfo(Arch).@"enum".field_values) |field_value| {
-            const arch: Arch = @enumFromInt(field_value);
+            const arch: Arch = @fromBackingInt(@intCast(field_value));
             if (ms.present[archIndex(arch)]) {
                 if (result != null) return null;
                 result = arch;
@@ -173,7 +173,7 @@ const MultiSym = struct {
     fn isFamily(ms: MultiSym) ?Family {
         var result: ?Family = null;
         inline for (@typeInfo(Arch).@"enum".field_values) |field_value| {
-            const arch: Arch = @enumFromInt(field_value);
+            const arch: Arch = @fromBackingInt(@intCast(field_value));
             if (ms.present[archIndex(arch)]) {
                 const family = arch.family();
                 if (result) |r| if (family != r) return null;
@@ -194,7 +194,7 @@ const MultiSym = struct {
 
     fn isTime32Only(ms: MultiSym) bool {
         inline for (@typeInfo(Arch).@"enum".field_values) |field_value| {
-            const arch: Arch = @enumFromInt(field_value);
+            const arch: Arch = @fromBackingInt(@intCast(field_value));
             if (ms.present[archIndex(arch)] != arch.isTime32()) {
                 return false;
             }
@@ -234,7 +234,7 @@ const MultiSym = struct {
 
     fn isPtrSize(ms: MultiSym, mult: u16) bool {
         inline for (@typeInfo(Arch).@"enum".field_values) |field_value| {
-            const arch: Arch = @enumFromInt(field_value);
+            const arch: Arch = @fromBackingInt(@intCast(field_value));
             const arch_index = archIndex(arch);
             if (ms.present[arch_index] and ms.size[arch_index] != arch.ptrSize() * mult) {
                 return false;
@@ -245,7 +245,7 @@ const MultiSym = struct {
 
     fn isWeak64(ms: MultiSym) bool {
         inline for (@typeInfo(Arch).@"enum".field_values) |field_value| {
-            const arch: Arch = @enumFromInt(field_value);
+            const arch: Arch = @fromBackingInt(@intCast(field_value));
             const arch_index = archIndex(arch);
             const binding: u4 = switch (arch.ptrSize()) {
                 4 => std.elf.STB_GLOBAL,
@@ -261,7 +261,7 @@ const MultiSym = struct {
 
     fn isWeakTime64(ms: MultiSym) bool {
         inline for (@typeInfo(Arch).@"enum".field_values) |field_value| {
-            const arch: Arch = @enumFromInt(field_value);
+            const arch: Arch = @fromBackingInt(@intCast(field_value));
             const arch_index = archIndex(arch);
             const binding: u4 = if (arch.isTime32()) std.elf.STB_GLOBAL else std.elf.STB_WEAK;
             if (ms.present[arch_index] and ms.binding[arch_index] != binding) {
@@ -605,7 +605,7 @@ fn parseElf(parse: Parse, comptime is_64: bool, comptime endian: std.builtin.End
         const name = try arena.dupe(u8, mem.sliceTo(dynstr[s(sym.st_name)..], 0));
         const ty = @as(u4, @truncate(sym.st_info));
         const binding = @as(u4, @truncate(sym.st_info >> 4));
-        const visib = @as(elf.STV, @enumFromInt(@as(u3, @truncate(sym.st_other))));
+        const visib = @as(elf.STV, @fromBackingInt(@intCast(@as(u3, @truncate(sym.st_other)))));
         const size = s(sym.st_size);
 
         if (size == 0) {
@@ -717,7 +717,7 @@ fn parseElf(parse: Parse, comptime is_64: bool, comptime endian: std.builtin.End
 }
 
 fn archIndex(arch: Arch) u8 {
-    return @intFromEnum(arch);
+    return @backingInt(arch);
 }
 
 fn archSetName(arch_set: [arches.len]bool) []const u8 {

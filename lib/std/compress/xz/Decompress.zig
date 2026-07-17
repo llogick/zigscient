@@ -219,7 +219,7 @@ fn readBlock(input: *Reader, allocating: *Writer.Allocating) !void {
             _,
         };
 
-        const filter_id: FilterId = @enumFromInt(try input.takeLeb128(u64));
+        const filter_id: FilterId = @fromBackingInt(@intCast(try input.takeLeb128(u64)));
         if (filter_id != .lzma2) return error.Unsupported;
 
         const properties_size = try input.takeLeb128(u64);

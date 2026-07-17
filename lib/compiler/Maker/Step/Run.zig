@@ -1380,7 +1380,7 @@ fn sendRunFuzzTestMessage(
     w.interface.writeStruct(header, .little) catch |err| switch (err) {
         error.WriteFailed => return w.err.?,
     };
-    w.interface.writeByte(@intFromEnum(kind)) catch |err| switch (err) {
+    w.interface.writeByte(@backingInt(kind)) catch |err| switch (err) {
         error.WriteFailed => return w.err.?,
     };
     w.interface.writeInt(u64, amount_or_instance, .little) catch |err| switch (err) {
@@ -2106,8 +2106,8 @@ fn runCommand(
             if (conf_run.expect_term_value.value) |expected_term_value| {
                 const expected_term: process.Child.Term = switch (conf_run.flags2.expect_term_status) {
                     .exited => .{ .exited = @intCast(expected_term_value) },
-                    .signal => .{ .signal = @enumFromInt(expected_term_value) },
-                    .stopped => .{ .stopped = @enumFromInt(expected_term_value) },
+                    .signal => .{ .signal = @fromBackingInt(@intCast(expected_term_value)) },
+                    .stopped => .{ .stopped = @fromBackingInt(@intCast(expected_term_value)) },
                     .unknown => .{ .unknown = expected_term_value },
                 };
                 if (!termMatches(expected_term, generic_result.term)) {

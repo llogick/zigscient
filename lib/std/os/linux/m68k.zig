@@ -9,7 +9,7 @@ pub fn syscall0(
 ) u32 {
     return asm volatile ("trap #0"
         : [ret] "={d0}" (-> u32),
-        : [number] "{d0}" (@intFromEnum(number)),
+        : [number] "{d0}" (@backingInt(number)),
         : .{ .memory = true });
 }
 
@@ -19,7 +19,7 @@ pub fn syscall1(
 ) u32 {
     return asm volatile ("trap #0"
         : [ret] "={d0}" (-> u32),
-        : [number] "{d0}" (@intFromEnum(number)),
+        : [number] "{d0}" (@backingInt(number)),
           [arg1] "{d1}" (arg1),
         : .{ .memory = true });
 }
@@ -31,7 +31,7 @@ pub fn syscall2(
 ) u32 {
     return asm volatile ("trap #0"
         : [ret] "={d0}" (-> u32),
-        : [number] "{d0}" (@intFromEnum(number)),
+        : [number] "{d0}" (@backingInt(number)),
           [arg1] "{d1}" (arg1),
           [arg2] "{d2}" (arg2),
         : .{ .memory = true });
@@ -45,7 +45,7 @@ pub fn syscall3(
 ) u32 {
     return asm volatile ("trap #0"
         : [ret] "={d0}" (-> u32),
-        : [number] "{d0}" (@intFromEnum(number)),
+        : [number] "{d0}" (@backingInt(number)),
           [arg1] "{d1}" (arg1),
           [arg2] "{d2}" (arg2),
           [arg3] "{d3}" (arg3),
@@ -61,7 +61,7 @@ pub fn syscall4(
 ) u32 {
     return asm volatile ("trap #0"
         : [ret] "={d0}" (-> u32),
-        : [number] "{d0}" (@intFromEnum(number)),
+        : [number] "{d0}" (@backingInt(number)),
           [arg1] "{d1}" (arg1),
           [arg2] "{d2}" (arg2),
           [arg3] "{d3}" (arg3),
@@ -79,7 +79,7 @@ pub fn syscall5(
 ) u32 {
     return asm volatile ("trap #0"
         : [ret] "={d0}" (-> u32),
-        : [number] "{d0}" (@intFromEnum(number)),
+        : [number] "{d0}" (@backingInt(number)),
           [arg1] "{d1}" (arg1),
           [arg2] "{d2}" (arg2),
           [arg3] "{d3}" (arg3),
@@ -99,7 +99,7 @@ pub fn syscall6(
 ) u32 {
     return asm volatile ("trap #0"
         : [ret] "={d0}" (-> u32),
-        : [number] "{d0}" (@intFromEnum(number)),
+        : [number] "{d0}" (@backingInt(number)),
           [arg1] "{d1}" (arg1),
           [arg2] "{d2}" (arg2),
           [arg3] "{d3}" (arg3),
@@ -167,7 +167,7 @@ pub const restore = restore_rt;
 pub fn restore_rt() callconv(.naked) noreturn {
     asm volatile ("trap #0"
         :
-        : [number] "{d0}" (@intFromEnum(SYS.rt_sigreturn)),
+        : [number] "{d0}" (@backingInt(SYS.rt_sigreturn)),
     );
 }
 

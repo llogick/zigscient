@@ -26,11 +26,11 @@ pub fn print(sc: *const ScannedConfig, w: *Writer) Writer.Error!void {
         try tf.end();
     }
 
-    try s.field("default_step", @intFromEnum(c.default_step), .{});
+    try s.field("default_step", @backingInt(c.default_step), .{});
     {
         var sf = try s.beginStructField("top_level_steps", .{});
         for (sc.top_level_steps.keys(), sc.top_level_steps.values()) |name, step| {
-            try sf.field(name, @intFromEnum(step), .{});
+            try sf.field(name, @backingInt(step), .{});
         }
         try sf.end();
     }
@@ -122,7 +122,7 @@ fn printValue(sc: *const ScannedConfig, s: *Serializer, comptime Field: type, fi
                 } else if (std.enums.tagName(Field, field_value)) |name| {
                     try s.ident(name);
                 } else {
-                    try s.int(@intFromEnum(field_value));
+                    try s.int(@backingInt(field_value));
                 }
             },
             .@"struct" => |info| switch (info.layout) {
@@ -152,7 +152,7 @@ fn printValue(sc: *const ScannedConfig, s: *Serializer, comptime Field: type, fi
                             inline else => |tag| {
                                 var sub_struct = try s.beginStruct(.{});
                                 try sub_struct.fieldPrefix(@tagName(tag));
-                                try printValue(sc, s, @FieldType(Field.Union, @tagName(tag)), @enumFromInt(elem));
+                                try printValue(sc, s, @FieldType(Field.Union, @tagName(tag)), @fromBackingInt(@intCast(elem)));
                                 try sub_struct.end();
                             },
                         };

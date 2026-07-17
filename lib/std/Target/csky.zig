@@ -79,26 +79,26 @@ pub const all_features = blk: {
     const len = @typeInfo(Feature).@"enum".field_names.len;
     std.debug.assert(len <= CpuFeature.Set.needed_bit_count);
     var result: [len]CpuFeature = undefined;
-    result[@intFromEnum(Feature.@"10e60")] = .{
+    result[@backingInt(Feature.@"10e60")] = .{
         .llvm_name = "10e60",
         .description = "Support CSKY 10e60 instructions",
         .dependencies = featureSet(&[_]Feature{
             .@"7e10",
         }),
     };
-    result[@intFromEnum(Feature.@"2e3")] = .{
+    result[@backingInt(Feature.@"2e3")] = .{
         .llvm_name = "2e3",
         .description = "Support CSKY 2e3 instructions",
         .dependencies = featureSet(&[_]Feature{
             .e2,
         }),
     };
-    result[@intFromEnum(Feature.@"3e3r1")] = .{
+    result[@backingInt(Feature.@"3e3r1")] = .{
         .llvm_name = "3e3r1",
         .description = "Support CSKY 3e3r1 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.@"3e3r2")] = .{
+    result[@backingInt(Feature.@"3e3r2")] = .{
         .llvm_name = "3e3r2",
         .description = "Support CSKY 3e3r2 instructions",
         .dependencies = featureSet(&[_]Feature{
@@ -106,311 +106,311 @@ pub const all_features = blk: {
             .doloop,
         }),
     };
-    result[@intFromEnum(Feature.@"3e3r3")] = .{
+    result[@backingInt(Feature.@"3e3r3")] = .{
         .llvm_name = "3e3r3",
         .description = "Support CSKY 3e3r3 instructions",
         .dependencies = featureSet(&[_]Feature{
             .doloop,
         }),
     };
-    result[@intFromEnum(Feature.@"3e7")] = .{
+    result[@backingInt(Feature.@"3e7")] = .{
         .llvm_name = "3e7",
         .description = "Support CSKY 3e7 instructions",
         .dependencies = featureSet(&[_]Feature{
             .@"2e3",
         }),
     };
-    result[@intFromEnum(Feature.@"7e10")] = .{
+    result[@backingInt(Feature.@"7e10")] = .{
         .llvm_name = "7e10",
         .description = "Support CSKY 7e10 instructions",
         .dependencies = featureSet(&[_]Feature{
             .@"3e7",
         }),
     };
-    result[@intFromEnum(Feature.btst16)] = .{
+    result[@backingInt(Feature.btst16)] = .{
         .llvm_name = "btst16",
         .description = "Use the 16-bit btsti instruction",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.cache)] = .{
+    result[@backingInt(Feature.cache)] = .{
         .llvm_name = "cache",
         .description = "Enable cache",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ccrt)] = .{
+    result[@backingInt(Feature.ccrt)] = .{
         .llvm_name = "ccrt",
         .description = "Use CSKY compiler runtime",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ck801)] = .{
+    result[@backingInt(Feature.ck801)] = .{
         .llvm_name = "ck801",
         .description = "CSKY ck801 processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ck802)] = .{
+    result[@backingInt(Feature.ck802)] = .{
         .llvm_name = "ck802",
         .description = "CSKY ck802 processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ck803)] = .{
+    result[@backingInt(Feature.ck803)] = .{
         .llvm_name = "ck803",
         .description = "CSKY ck803 processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ck803s)] = .{
+    result[@backingInt(Feature.ck803s)] = .{
         .llvm_name = "ck803s",
         .description = "CSKY ck803s processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ck804)] = .{
+    result[@backingInt(Feature.ck804)] = .{
         .llvm_name = "ck804",
         .description = "CSKY ck804 processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ck805)] = .{
+    result[@backingInt(Feature.ck805)] = .{
         .llvm_name = "ck805",
         .description = "CSKY ck805 processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ck807)] = .{
+    result[@backingInt(Feature.ck807)] = .{
         .llvm_name = "ck807",
         .description = "CSKY ck807 processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ck810)] = .{
+    result[@backingInt(Feature.ck810)] = .{
         .llvm_name = "ck810",
         .description = "CSKY ck810 processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ck810v)] = .{
+    result[@backingInt(Feature.ck810v)] = .{
         .llvm_name = "ck810v",
         .description = "CSKY ck810v processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ck860)] = .{
+    result[@backingInt(Feature.ck860)] = .{
         .llvm_name = "ck860",
         .description = "CSKY ck860 processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ck860v)] = .{
+    result[@backingInt(Feature.ck860v)] = .{
         .llvm_name = "ck860v",
         .description = "CSKY ck860v processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.constpool)] = .{
+    result[@backingInt(Feature.constpool)] = .{
         .llvm_name = "constpool",
         .description = "Dump the constant pool by compiler",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.doloop)] = .{
+    result[@backingInt(Feature.doloop)] = .{
         .llvm_name = "doloop",
         .description = "Enable doloop instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.dsp1e2)] = .{
+    result[@backingInt(Feature.dsp1e2)] = .{
         .llvm_name = "dsp1e2",
         .description = "Support CSKY dsp1e2 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.dsp_silan)] = .{
+    result[@backingInt(Feature.dsp_silan)] = .{
         .llvm_name = "dsp_silan",
         .description = "Enable DSP Silan instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.dspe60)] = .{
+    result[@backingInt(Feature.dspe60)] = .{
         .llvm_name = "dspe60",
         .description = "Support CSKY dspe60 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.dspv2)] = .{
+    result[@backingInt(Feature.dspv2)] = .{
         .llvm_name = "dspv2",
         .description = "Enable DSP V2.0 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.e1)] = .{
+    result[@backingInt(Feature.e1)] = .{
         .llvm_name = "e1",
         .description = "Support CSKY e1 instructions",
         .dependencies = featureSet(&[_]Feature{
             .elrw,
         }),
     };
-    result[@intFromEnum(Feature.e2)] = .{
+    result[@backingInt(Feature.e2)] = .{
         .llvm_name = "e2",
         .description = "Support CSKY e2 instructions",
         .dependencies = featureSet(&[_]Feature{
             .e1,
         }),
     };
-    result[@intFromEnum(Feature.edsp)] = .{
+    result[@backingInt(Feature.edsp)] = .{
         .llvm_name = "edsp",
         .description = "Enable DSP instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.elrw)] = .{
+    result[@backingInt(Feature.elrw)] = .{
         .llvm_name = "elrw",
         .description = "Use the extend LRW instruction",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fdivdu)] = .{
+    result[@backingInt(Feature.fdivdu)] = .{
         .llvm_name = "fdivdu",
         .description = "Enable float divide instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.float1e2)] = .{
+    result[@backingInt(Feature.float1e2)] = .{
         .llvm_name = "float1e2",
         .description = "Support CSKY float1e2 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.float1e3)] = .{
+    result[@backingInt(Feature.float1e3)] = .{
         .llvm_name = "float1e3",
         .description = "Support CSKY float1e3 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.float3e4)] = .{
+    result[@backingInt(Feature.float3e4)] = .{
         .llvm_name = "float3e4",
         .description = "Support CSKY float3e4 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.float7e60)] = .{
+    result[@backingInt(Feature.float7e60)] = .{
         .llvm_name = "float7e60",
         .description = "Support CSKY float7e60 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.floate1)] = .{
+    result[@backingInt(Feature.floate1)] = .{
         .llvm_name = "floate1",
         .description = "Support CSKY floate1 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fpuv2_df)] = .{
+    result[@backingInt(Feature.fpuv2_df)] = .{
         .llvm_name = "fpuv2_df",
         .description = "Enable FPUv2 double float instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fpuv2_sf)] = .{
+    result[@backingInt(Feature.fpuv2_sf)] = .{
         .llvm_name = "fpuv2_sf",
         .description = "Enable FPUv2 single float instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fpuv3_df)] = .{
+    result[@backingInt(Feature.fpuv3_df)] = .{
         .llvm_name = "fpuv3_df",
         .description = "Enable FPUv3 double float instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fpuv3_hf)] = .{
+    result[@backingInt(Feature.fpuv3_hf)] = .{
         .llvm_name = "fpuv3_hf",
         .description = "Enable FPUv3 half precision operate instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fpuv3_hi)] = .{
+    result[@backingInt(Feature.fpuv3_hi)] = .{
         .llvm_name = "fpuv3_hi",
         .description = "Enable FPUv3 half word converting instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fpuv3_sf)] = .{
+    result[@backingInt(Feature.fpuv3_sf)] = .{
         .llvm_name = "fpuv3_sf",
         .description = "Enable FPUv3 single float instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.hard_float)] = .{
+    result[@backingInt(Feature.hard_float)] = .{
         .llvm_name = "hard-float",
         .description = "Use hard floating point features",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.hard_float_abi)] = .{
+    result[@backingInt(Feature.hard_float_abi)] = .{
         .llvm_name = "hard-float-abi",
         .description = "Use hard floating point ABI to pass args",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.hard_tp)] = .{
+    result[@backingInt(Feature.hard_tp)] = .{
         .llvm_name = "hard-tp",
         .description = "Enable TLS Pointer register",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.high_registers)] = .{
+    result[@backingInt(Feature.high_registers)] = .{
         .llvm_name = "high-registers",
         .description = "Enable r16-r31 registers",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.hwdiv)] = .{
+    result[@backingInt(Feature.hwdiv)] = .{
         .llvm_name = "hwdiv",
         .description = "Enable divide instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.istack)] = .{
+    result[@backingInt(Feature.istack)] = .{
         .llvm_name = "istack",
         .description = "Enable interrupt attribute",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.java)] = .{
+    result[@backingInt(Feature.java)] = .{
         .llvm_name = "java",
         .description = "Enable java instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.mp)] = .{
+    result[@backingInt(Feature.mp)] = .{
         .llvm_name = "mp",
         .description = "Support CSKY mp instructions",
         .dependencies = featureSet(&[_]Feature{
             .@"2e3",
         }),
     };
-    result[@intFromEnum(Feature.mp1e2)] = .{
+    result[@backingInt(Feature.mp1e2)] = .{
         .llvm_name = "mp1e2",
         .description = "Support CSKY mp1e2 instructions",
         .dependencies = featureSet(&[_]Feature{
             .@"3e7",
         }),
     };
-    result[@intFromEnum(Feature.multiple_stld)] = .{
+    result[@backingInt(Feature.multiple_stld)] = .{
         .llvm_name = "multiple_stld",
         .description = "Enable multiple load/store instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.nvic)] = .{
+    result[@backingInt(Feature.nvic)] = .{
         .llvm_name = "nvic",
         .description = "Enable NVIC",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.pushpop)] = .{
+    result[@backingInt(Feature.pushpop)] = .{
         .llvm_name = "pushpop",
         .description = "Enable push/pop instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.smart)] = .{
+    result[@backingInt(Feature.smart)] = .{
         .llvm_name = "smart",
         .description = "Let CPU work in Smart Mode",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.soft_tp)] = .{
+    result[@backingInt(Feature.soft_tp)] = .{
         .llvm_name = "soft-tp",
         .description = "Disable TLS Pointer register",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.stack_size)] = .{
+    result[@backingInt(Feature.stack_size)] = .{
         .llvm_name = "stack-size",
         .description = "Output stack size information",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.trust)] = .{
+    result[@backingInt(Feature.trust)] = .{
         .llvm_name = "trust",
         .description = "Enable trust instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vdsp2e3)] = .{
+    result[@backingInt(Feature.vdsp2e3)] = .{
         .llvm_name = "vdsp2e3",
         .description = "Support CSKY vdsp2e3 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vdsp2e60f)] = .{
+    result[@backingInt(Feature.vdsp2e60f)] = .{
         .llvm_name = "vdsp2e60f",
         .description = "Support CSKY vdsp2e60f instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vdspv1)] = .{
+    result[@backingInt(Feature.vdspv1)] = .{
         .llvm_name = "vdspv1",
         .description = "Enable 128bit vdsp-v1 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vdspv2)] = .{
+    result[@backingInt(Feature.vdspv2)] = .{
         .llvm_name = "vdspv2",
         .description = "Enable vdsp-v2 instructions",
         .dependencies = featureSet(&[_]Feature{}),

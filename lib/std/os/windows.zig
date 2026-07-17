@@ -77,7 +77,7 @@ pub const PS = struct {
             _,
 
             pub fn construct(num: NUM, thread: bool, input: bool, additive: bool) ULONG_PTR {
-                var val: ULONG_PTR = @intFromEnum(num);
+                var val: ULONG_PTR = @backingInt(num);
                 if (thread) val |= 0x10000;
                 if (input) val |= 0x20000;
                 if (additive) val |= 0x40000;
@@ -739,7 +739,7 @@ pub const FILE = struct {
             SYNCHRONOUS_NONALERT = 0b10,
             _,
 
-            pub const VALID_FLAGS: @This() = @enumFromInt(0b11);
+            pub const VALID_FLAGS: @This() = @fromBackingInt(@intCast(0b11));
         },
         /// The file being opened must not be a directory file or this call
         /// fails. The file object being opened can represent a data file, a
@@ -1975,7 +1975,7 @@ pub const HEAP = opaque {
             CSR_PORT,
             _,
 
-            pub const MASK: CLASS = @enumFromInt(maxInt(@typeInfo(CLASS).@"enum".tag_type));
+            pub const MASK: CLASS = @fromBackingInt(@intCast(maxInt(@typeInfo(CLASS).@"enum".tag_type)));
         };
 
         pub const CREATE = packed struct(ULONG) {
@@ -1990,7 +1990,7 @@ pub const HEAP = opaque {
             /// Callers are therefore responsible for synchronizing access to hardened heaps.
             HARDENED: bool = false,
             Reserved10: u2 = 0,
-            CLASS: CLASS = @enumFromInt(0),
+            CLASS: CLASS = @fromBackingInt(@intCast(0)),
             /// Create heap with 16 byte alignment (obsolete)
             ALIGN_16: bool = false,
             /// Create heap call tracing enabled (obsolete)
@@ -2035,7 +2035,7 @@ pub const HEAP = opaque {
                     FLAG3: bool = false,
                 } = .{},
             } = .{},
-            CLASS: CLASS = @enumFromInt(0),
+            CLASS: CLASS = @fromBackingInt(@intCast(0)),
             Reserved16: u2 = 0,
             TAG: u12 = 0,
             Reserved30: u2 = 0,
@@ -3945,7 +3945,7 @@ pub fn unexpectedError(err: Win32Error) UnexpectedError {
 pub fn unexpectedStatus(status: NTSTATUS) UnexpectedError {
     if (std.options.unexpected_error_tracing) {
         std.debug.print("error.Unexpected NTSTATUS=0x{x} ({s})\n", .{
-            @intFromEnum(status),
+            @backingInt(status),
             std.enums.tagName(NTSTATUS, status) orelse "<unnamed>",
         });
         std.debug.dumpCurrentStackTrace(.{ .first_address = @returnAddress() });
@@ -3956,7 +3956,7 @@ pub fn unexpectedStatus(status: NTSTATUS) UnexpectedError {
 pub fn statusBug(status: NTSTATUS) UnexpectedError {
     switch (builtin.mode) {
         .Debug => std.debug.panic("programmer bug caused syscall status: 0x{x} ({s})", .{
-            @intFromEnum(status),
+            @backingInt(status),
             std.enums.tagName(NTSTATUS, status) orelse "<unnamed>",
         }),
         else => return error.Unexpected,
@@ -3966,7 +3966,7 @@ pub fn statusBug(status: NTSTATUS) UnexpectedError {
 pub fn errorBug(err: Win32Error) UnexpectedError {
     switch (builtin.mode) {
         .Debug => std.debug.panic("programmer bug caused syscall error: 0x{x} ({s})", .{
-            @intFromEnum(err),
+            @backingInt(err),
             std.enums.tagName(Win32Error, err) orelse "<unnamed>",
         }),
         else => return error.Unexpected,
@@ -4091,7 +4091,7 @@ fn Bool(comptime BackingInteger: type) type {
         _,
 
         /// This is not the only truthy value, comparisons against this value are always a bug.
-        pub const TRUE: @This() = @enumFromInt(1);
+        pub const TRUE: @This() = @fromBackingInt(@intCast(1));
 
         pub const Backing = BackingInteger;
 
@@ -4100,7 +4100,7 @@ fn Bool(comptime BackingInteger: type) type {
         }
 
         pub fn fromBool(b: bool) @This() {
-            return @enumFromInt(@intFromBool(b));
+            return @fromBackingInt(@intCast(@intFromBool(b)));
         }
     };
 }
@@ -5947,8 +5947,8 @@ pub const KUSER_SHARED_DATA = extern struct {
 pub const SharedUserData: *const KUSER_SHARED_DATA = @ptrFromInt(0x7FFE0000);
 
 pub fn IsProcessorFeaturePresent(feature: PF) bool {
-    if (@intFromEnum(feature) >= PROCESSOR_FEATURE_MAX) return false;
-    return SharedUserData.ProcessorFeatures[@intFromEnum(feature)].toBool();
+    if (@backingInt(feature) >= PROCESSOR_FEATURE_MAX) return false;
+    return SharedUserData.ProcessorFeatures[@backingInt(feature)].toBool();
 }
 
 // https://github.com/reactos/reactos/blob/master/sdk/include/ndk/pstypes.h#L977-L983

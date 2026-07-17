@@ -2191,7 +2191,7 @@ fn renderArrayInit(
                 width.* = for (w) |c| {
                     if (!std.ascii.isPrint(c))
                         break .nonprint;
-                } else @enumFromInt(w.len - @intFromBool(w[w.len - 1] == ','));
+                } else @fromBackingInt(@intCast(w.len - @intFromBool(w[w.len - 1] == ',')));
             } else {
                 width.* = .nonprint;
             }
@@ -2264,7 +2264,7 @@ fn renderArrayInit(
                 col = 0;
                 continue;
             }
-            col_widths[col] = @max(col_widths[col], @intFromEnum(w));
+            col_widths[col] = @max(col_widths[col], @backingInt(w));
             col += 1;
             if (col == row_size) {
                 col = 0;
@@ -2284,7 +2284,7 @@ fn renderArrayInit(
                 }
             } else {
                 try renderExpression(r, e, .comma_space);
-                try ais.splatByteAll(' ', col_widths[col] - @intFromEnum(w));
+                try ais.splatByteAll(' ', col_widths[col] - @backingInt(w));
                 col += 1;
             }
         }

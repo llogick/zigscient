@@ -72,8 +72,8 @@ pub fn generate(
     const air_main_body = air.getMainBody();
     var param_it: Select.CallAbiIterator = .init;
     const air_args = for (air_main_body, 0..) |air_inst_index, body_index| {
-        if (air.instructions.items(.tag)[@intFromEnum(air_inst_index)] != .arg) break air_main_body[0..body_index];
-        const arg = air.instructions.items(.data)[@intFromEnum(air_inst_index)].arg;
+        if (air.instructions.items(.tag)[@backingInt(air_inst_index)] != .arg) break air_main_body[0..body_index];
+        const arg = air.instructions.items(.data)[@backingInt(air_inst_index)].arg;
         const param_ty = arg.ty.toType();
         const param_vi = param_vi: {
             if (arg.zir_param_index >= named_params_len) {
@@ -82,17 +82,17 @@ pub fn generate(
             }
             break :param_vi try param_it.param(&isel, param_ty);
         };
-        tracking_log.debug("${d} <- %{d}", .{ @intFromEnum(param_vi.?), @intFromEnum(air_inst_index) });
+        tracking_log.debug("${d} <- %{d}", .{ @backingInt(param_vi.?), @backingInt(air_inst_index) });
         try isel.live_values.putNoClobber(gpa, air_inst_index, param_vi.?);
     } else unreachable;
 
     const saved_gra_start = if (mod.strip) param_it.ngrn else Select.CallAbiIterator.ngrn_start;
     const saved_gra_end = if (is_sysv_var_args) Select.CallAbiIterator.ngrn_end else param_it.ngrn;
-    const saved_gra_len = @intFromEnum(saved_gra_end) - @intFromEnum(saved_gra_start);
+    const saved_gra_len = @backingInt(saved_gra_end) - @backingInt(saved_gra_start);
 
     const saved_vra_start = if (mod.strip) param_it.nsrn else Select.CallAbiIterator.nsrn_start;
     const saved_vra_end = if (is_sysv_var_args) Select.CallAbiIterator.nsrn_end else param_it.nsrn;
-    const saved_vra_len = @intFromEnum(saved_vra_end) - @intFromEnum(saved_vra_start);
+    const saved_vra_len = @backingInt(saved_vra_end) - @backingInt(saved_vra_start);
 
     const frame_record = 2;
     const named_stack_args: Select.Value.Indirect = .{
@@ -106,13 +106,13 @@ pub fn generate(
         .__stack = stack_var_args,
         .__gr_top = gr_top,
         .__vr_top = vr_top,
-        .__gr_offs = @as(i32, @intFromEnum(Select.CallAbiIterator.ngrn_end) - @intFromEnum(param_it.ngrn)) * -8,
-        .__vr_offs = @as(i32, @intFromEnum(Select.CallAbiIterator.nsrn_end) - @intFromEnum(param_it.nsrn)) * -16,
+        .__gr_offs = @as(i32, @backingInt(Select.CallAbiIterator.ngrn_end) - @backingInt(param_it.ngrn)) * -8,
+        .__vr_offs = @as(i32, @backingInt(Select.CallAbiIterator.nsrn_end) - @backingInt(param_it.nsrn)) * -16,
     } } else .{ .other = stack_var_args };
 
     // translate arg locations from caller-based to callee-based
     for (air_args) |air_inst_index| {
-        assert(air.instructions.items(.tag)[@intFromEnum(air_inst_index)] == .arg);
+        assert(air.instructions.items(.tag)[@backingInt(air_inst_index)] == .arg);
         const arg_vi = isel.live_values.get(air_inst_index).?;
         const passed_vi = switch (arg_vi.parent(&isel)) {
             .unallocated, .stack_slot => arg_vi,
@@ -125,9 +125,9 @@ pub fn generate(
                 const first_passed_part_vi = part_it.next().?;
                 const hint_ra = first_passed_part_vi.hint(&isel).?;
                 passed_vi.setParent(&isel, .{ .stack_slot = if (hint_ra.isVector())
-                    vr_top.withOffset(@as(i8, -16) * (@intFromEnum(saved_vra_end) - @intFromEnum(hint_ra)))
+                    vr_top.withOffset(@as(i8, -16) * (@backingInt(saved_vra_end) - @backingInt(hint_ra)))
                 else
-                    gr_top.withOffset(@as(i8, -8) * (@intFromEnum(saved_gra_end) - @intFromEnum(hint_ra))) });
+                    gr_top.withOffset(@as(i8, -8) * (@backingInt(saved_gra_end) - @backingInt(hint_ra))) });
             },
             .stack_slot => |stack_slot| {
                 assert(stack_slot.base == .sp);
@@ -140,7 +140,7 @@ pub fn generate(
     ret: {
         var ret_it: Select.CallAbiIterator = .init;
         const ret_vi = try ret_it.ret(&isel, .fromInterned(func_type.return_type)) orelse break :ret;
-        tracking_log.debug("${d} <- %main", .{@intFromEnum(ret_vi)});
+        tracking_log.debug("${d} <- %main", .{@backingInt(ret_vi)});
         try isel.live_values.putNoClobber(gpa, Select.Block.main, ret_vi);
     }
 

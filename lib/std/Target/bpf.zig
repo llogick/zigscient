@@ -20,22 +20,22 @@ pub const all_features = blk: {
     const len = @typeInfo(Feature).@"enum".field_names.len;
     std.debug.assert(len <= CpuFeature.Set.needed_bit_count);
     var result: [len]CpuFeature = undefined;
-    result[@intFromEnum(Feature.allows_misaligned_mem_access)] = .{
+    result[@backingInt(Feature.allows_misaligned_mem_access)] = .{
         .llvm_name = "allows-misaligned-mem-access",
         .description = "Allows misaligned memory access",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.alu32)] = .{
+    result[@backingInt(Feature.alu32)] = .{
         .llvm_name = "alu32",
         .description = "Enable ALU32 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.dummy)] = .{
+    result[@backingInt(Feature.dummy)] = .{
         .llvm_name = "dummy",
         .description = "unused feature",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.dwarfris)] = .{
+    result[@backingInt(Feature.dwarfris)] = .{
         .llvm_name = "dwarfris",
         .description = "Disable MCAsmInfo DwarfUsesRelocationsAcrossSections",
         .dependencies = featureSet(&[_]Feature{}),

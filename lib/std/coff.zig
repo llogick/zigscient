@@ -99,8 +99,8 @@ pub const Header = extern struct {
 
 // OptionalHeader.magic values
 // see https://msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx
-pub const IMAGE_NT_OPTIONAL_HDR32_MAGIC = @intFromEnum(OptionalHeader.Magic.PE32);
-pub const IMAGE_NT_OPTIONAL_HDR64_MAGIC = @intFromEnum(OptionalHeader.Magic.@"PE32+");
+pub const IMAGE_NT_OPTIONAL_HDR32_MAGIC = @backingInt(OptionalHeader.Magic.PE32);
+pub const IMAGE_NT_OPTIONAL_HDR64_MAGIC = @backingInt(OptionalHeader.Magic.@"PE32+");
 
 pub const DllFlags = packed struct(u16) {
     _reserved_0: u5 = 0,
@@ -655,12 +655,12 @@ pub const SectionHeader = extern struct {
 
             pub fn toByteUnits(a: Align) ?u16 {
                 if (a == .NONE) return null;
-                return @as(u16, 1) << (@intFromEnum(a) - 1);
+                return @as(u16, 1) << (@backingInt(a) - 1);
             }
 
             pub fn fromByteUnits(n: u16) Align {
                 std.debug.assert(std.math.isPowerOfTwo(n));
-                return @enumFromInt(@ctz(n) + 1);
+                return @fromBackingInt(@intCast(@ctz(n) + 1));
             }
 
             pub fn alignment(a: Align) ?std.mem.Alignment {
@@ -1058,9 +1058,9 @@ pub const Coff = struct {
         assert(self.is_image);
 
         const data_dirs = self.getDataDirectories();
-        if (@intFromEnum(IMAGE.DIRECTORY_ENTRY.DEBUG) >= data_dirs.len) return null;
+        if (@backingInt(IMAGE.DIRECTORY_ENTRY.DEBUG) >= data_dirs.len) return null;
 
-        const debug_dir = data_dirs[@intFromEnum(IMAGE.DIRECTORY_ENTRY.DEBUG)];
+        const debug_dir = data_dirs[@backingInt(IMAGE.DIRECTORY_ENTRY.DEBUG)];
         var reader: std.Io.Reader = .fixed(self.data);
 
         if (self.is_loaded) {
@@ -1125,7 +1125,7 @@ pub const Coff = struct {
 
     pub fn getImageBase(self: Coff) u64 {
         const hdr = self.getOptionalHeader();
-        return switch (@intFromEnum(hdr.magic)) {
+        return switch (@backingInt(hdr.magic)) {
             IMAGE_NT_OPTIONAL_HDR32_MAGIC => self.getOptionalHeader32().image_base,
             IMAGE_NT_OPTIONAL_HDR64_MAGIC => self.getOptionalHeader64().image_base,
             else => unreachable, // We assume we have validated the header already
@@ -1134,7 +1134,7 @@ pub const Coff = struct {
 
     pub fn getNumberOfDataDirectories(self: Coff) u32 {
         const hdr = self.getOptionalHeader();
-        return switch (@intFromEnum(hdr.magic)) {
+        return switch (@backingInt(hdr.magic)) {
             IMAGE_NT_OPTIONAL_HDR32_MAGIC => self.getOptionalHeader32().number_of_rva_and_sizes,
             IMAGE_NT_OPTIONAL_HDR64_MAGIC => self.getOptionalHeader64().number_of_rva_and_sizes,
             else => unreachable, // We assume we have validated the header already
@@ -1143,7 +1143,7 @@ pub const Coff = struct {
 
     pub fn getDataDirectories(self: *const Coff) []align(1) const ImageDataDirectory {
         const hdr = self.getOptionalHeader();
-        const size: usize = switch (@intFromEnum(hdr.magic)) {
+        const size: usize = switch (@backingInt(hdr.magic)) {
             IMAGE_NT_OPTIONAL_HDR32_MAGIC => @sizeOf(OptionalHeader.PE32),
             IMAGE_NT_OPTIONAL_HDR64_MAGIC => @sizeOf(OptionalHeader.@"PE32+"),
             else => unreachable, // We assume we have validated the header already
@@ -1268,9 +1268,9 @@ pub const Symtab = struct {
         return .{
             .name = raw[0..8].*,
             .value = mem.readInt(u32, raw[8..12], .little),
-            .section_number = @as(SectionNumber, @enumFromInt(mem.readInt(u16, raw[12..14], .little))),
+            .section_number = @as(SectionNumber, @fromBackingInt(@intCast(mem.readInt(u16, raw[12..14], .little)))),
             .type = @as(SymType, @bitCast(mem.readInt(u16, raw[14..16], .little))),
-            .storage_class = @as(StorageClass, @enumFromInt(raw[16])),
+            .storage_class = @as(StorageClass, @fromBackingInt(@intCast(raw[16]))),
             .number_of_aux_symbols = raw[17],
         };
     }
@@ -1298,7 +1298,7 @@ pub const Symtab = struct {
     fn asWeakExtDef(raw: []const u8) WeakExternalDefinition {
         return .{
             .tag_index = mem.readInt(u32, raw[0..4], .little),
-            .flag = @as(WeakExternalFlag, @enumFromInt(mem.readInt(u32, raw[4..8], .little))),
+            .flag = @as(WeakExternalFlag, @fromBackingInt(@intCast(mem.readInt(u32, raw[4..8], .little)))),
             .unused = raw[8..18].*,
         };
     }
@@ -1316,7 +1316,7 @@ pub const Symtab = struct {
             .number_of_linenumbers = mem.readInt(u16, raw[6..8], .little),
             .checksum = mem.readInt(u32, raw[8..12], .little),
             .number = mem.readInt(u16, raw[12..14], .little),
-            .selection = @as(ComdatSelection, @enumFromInt(raw[14])),
+            .selection = @as(ComdatSelection, @fromBackingInt(@intCast(raw[14]))),
             .unused = raw[15..18].*,
         };
     }

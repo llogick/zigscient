@@ -903,7 +903,7 @@ pub const Match = struct {
     pub const Context = struct {
         pub fn hash(self: Context, a: Match) u32 {
             _ = self;
-            var hasher = Hash.init(@intFromEnum(a.step_index));
+            var hasher = Hash.init(@backingInt(a.step_index));
             hasher.update(a.basename);
             return @truncate(hasher.final());
         }

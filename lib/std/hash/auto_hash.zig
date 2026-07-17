@@ -106,7 +106,7 @@ pub fn hash(hasher: anytype, key: anytype, comptime strat: HashStrategy) void {
         },
 
         .bool => hash(hasher, @intFromBool(key), strat),
-        .@"enum" => hash(hasher, @intFromEnum(key), strat),
+        .@"enum" => hash(hasher, @backingInt(key), strat),
         .error_set => hash(hasher, @intFromError(key), strat),
         .@"anyframe", .@"fn" => hash(hasher, @intFromPtr(key), strat),
 

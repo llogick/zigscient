@@ -9,7 +9,7 @@ pub fn syscall0(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={a2}" (-> u32),
-        : [number] "{a2}" (@intFromEnum(number)),
+        : [number] "{a2}" (@backingInt(number)),
         : .{ .memory = true });
 }
 
@@ -19,7 +19,7 @@ pub fn syscall1(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={a2}" (-> u32),
-        : [number] "{a2}" (@intFromEnum(number)),
+        : [number] "{a2}" (@backingInt(number)),
           [arg1] "{a6}" (arg1),
         : .{ .memory = true });
 }
@@ -31,7 +31,7 @@ pub fn syscall2(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={a2}" (-> u32),
-        : [number] "{a2}" (@intFromEnum(number)),
+        : [number] "{a2}" (@backingInt(number)),
           [arg1] "{a6}" (arg1),
           [arg2] "{a3}" (arg2),
         : .{ .memory = true });
@@ -45,7 +45,7 @@ pub fn syscall3(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={a2}" (-> u32),
-        : [number] "{a2}" (@intFromEnum(number)),
+        : [number] "{a2}" (@backingInt(number)),
           [arg1] "{a6}" (arg1),
           [arg2] "{a3}" (arg2),
           [arg3] "{a4}" (arg3),
@@ -61,7 +61,7 @@ pub fn syscall4(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={a2}" (-> u32),
-        : [number] "{a2}" (@intFromEnum(number)),
+        : [number] "{a2}" (@backingInt(number)),
           [arg1] "{a6}" (arg1),
           [arg2] "{a3}" (arg2),
           [arg3] "{a4}" (arg3),
@@ -79,7 +79,7 @@ pub fn syscall5(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={a2}" (-> u32),
-        : [number] "{a2}" (@intFromEnum(number)),
+        : [number] "{a2}" (@backingInt(number)),
           [arg1] "{a6}" (arg1),
           [arg2] "{a3}" (arg2),
           [arg3] "{a4}" (arg3),
@@ -99,7 +99,7 @@ pub fn syscall6(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={a2}" (-> u32),
-        : [number] "{a2}" (@intFromEnum(number)),
+        : [number] "{a2}" (@backingInt(number)),
           [arg1] "{a6}" (arg1),
           [arg2] "{a3}" (arg2),
           [arg3] "{a4}" (arg3),
@@ -178,12 +178,12 @@ pub fn restore_rt() callconv(.naked) noreturn {
             \\ movi a2, %[number]
             \\ syscall
             :
-            : [number] "I" (@intFromEnum(SYS.rt_sigreturn)),
+            : [number] "I" (@backingInt(SYS.rt_sigreturn)),
         ),
         else => asm volatile (
             \\ syscall
             :
-            : [number] "{a2}" (@intFromEnum(SYS.rt_sigreturn)),
+            : [number] "{a2}" (@backingInt(SYS.rt_sigreturn)),
         ),
     }
 }

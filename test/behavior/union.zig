@@ -337,7 +337,7 @@ test "simple union(enum(u32))" {
     var x = MultipleChoice.C;
     _ = &x;
     try expect(x == MultipleChoice.C);
-    try expect(@intFromEnum(@as(Tag(MultipleChoice), x)) == 60);
+    try expect(@backingInt(@as(Tag(MultipleChoice), x)) == 60);
 }
 
 test "packed union size" {
@@ -639,7 +639,7 @@ const MultipleChoice2 = union(enum(u32)) {
 };
 
 fn testEnumWithSpecifiedAndUnspecifiedTagValues(x: MultipleChoice2) !void {
-    try expect(@intFromEnum(@as(Tag(MultipleChoice2), x)) == 60);
+    try expect(@backingInt(@as(Tag(MultipleChoice2), x)) == 60);
     try expect(1123 == switch (x) {
         MultipleChoice2.A => 1,
         MultipleChoice2.B => 2,
@@ -701,9 +701,9 @@ test "union with only 1 field casted to its enum type which has enum value speci
 
     const t: ExprTag = e;
     comptime assert(t == Expr.literal);
-    comptime assert(@intFromEnum(t) == 33);
+    comptime assert(@backingInt(t) == 33);
     try expect(t == Expr.literal);
-    try expect(@intFromEnum(t) == 33);
+    try expect(@backingInt(t) == 33);
 }
 
 test "@intFromEnum works on unions" {
@@ -721,9 +721,9 @@ test "@intFromEnum works on unions" {
     var b = Bar{ .B = undefined };
     var c = Bar.C;
     _ = .{ &b, &c };
-    try expect(@intFromEnum(a) == 0);
-    try expect(@intFromEnum(b) == 1);
-    try expect(@intFromEnum(c) == 2);
+    try expect(@backingInt(a) == 0);
+    try expect(@backingInt(b) == 1);
+    try expect(@backingInt(c) == 2);
 }
 
 test "comptime union field value equality" {
@@ -1278,7 +1278,7 @@ test "@unionInit uses tag value instead of field index" {
         _ = &a;
         try expect(a.* == i);
     }
-    try expect(@intFromEnum(u) == 255);
+    try expect(@backingInt(u) == 255);
 }
 
 test "union field ptr - zero sized payload" {

@@ -777,10 +777,10 @@ test "enum value without tag name used as switch item" {
         b = 2,
         _,
     };
-    var e: E = @enumFromInt(0);
+    var e: E = @fromBackingInt(@intCast(0));
     _ = &e;
     switch (e) {
-        @as(E, @enumFromInt(0)) => {},
+        @as(E, @fromBackingInt(@intCast(0))) => {},
         .a => return error.TestFailed,
         .b => return error.TestFailed,
         _ => return error.TestFailed,
@@ -1117,7 +1117,7 @@ test "decl literals as switch cases" {
         bar = 3,
         _,
 
-        const foo: @This() = @enumFromInt(0xa);
+        const foo: @This() = @fromBackingInt(@intCast(0xa));
 
         fn doTheTest(e: @This()) !void {
             switch (e) {
@@ -1185,7 +1185,7 @@ test "switch with tag capture" {
                 .a => |nothing, tag| {
                     comptime assert(nothing == {});
                     comptime assert(tag == .a);
-                    try expect(@intFromEnum(tag) == @intFromEnum(@This().a));
+                    try expect(@backingInt(tag) == @backingInt(@This().a));
                 },
                 .b, .d => |_, tag| {
                     try expect(tag == .b or tag == .d);
@@ -1226,8 +1226,8 @@ test "switch with complex item expressions" {
             try doTheSwitch(2000, 10);
             try doTheSwitch(2000, 5);
 
-            try doTheOtherSwitch(@enumFromInt(123));
-            try doTheOtherSwitch(@enumFromInt(456));
+            try doTheOtherSwitch(@fromBackingInt(@intCast(123)));
+            try doTheOtherSwitch(@fromBackingInt(@intCast(456)));
         }
         fn doTheSwitch(x: u32, comptime factor: u32) !void {
             const ok = switch (x) {
@@ -1252,8 +1252,8 @@ test "switch with complex item expressions" {
         const E = enum(u32) { _ };
         fn doTheOtherSwitch(e: E) !void {
             const ok = switch (e) {
-                @enumFromInt(123) => true,
-                @enumFromInt(456) => true,
+                @fromBackingInt(@intCast(123)) => true,
+                @fromBackingInt(@intCast(456)) => true,
                 else => false,
             };
             try expect(ok);

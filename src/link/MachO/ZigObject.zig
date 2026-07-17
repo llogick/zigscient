@@ -632,7 +632,7 @@ pub fn getNavVAddr(
     switch (reloc_info.parent) {
         .none => unreachable,
         .atom_index => |atom_index| {
-            const parent_atom = self.symbols.items[@intFromEnum(atom_index)].getAtom(macho_file).?;
+            const parent_atom = self.symbols.items[@backingInt(atom_index)].getAtom(macho_file).?;
             try parent_atom.addReloc(macho_file, .{
                 .tag = .@"extern",
                 .offset = @intCast(reloc_info.offset),
@@ -650,7 +650,7 @@ pub fn getNavVAddr(
         .debug_output => |debug_output| switch (debug_output) {
             .dwarf => |wip_nav| try wip_nav.infoExternalReloc(.{
                 .source_off = @intCast(reloc_info.offset),
-                .target_sym = @enumFromInt(sym_index),
+                .target_sym = @fromBackingInt(@intCast(sym_index)),
                 .target_off = reloc_info.addend,
             }),
             .none => unreachable,
@@ -671,7 +671,7 @@ pub fn getUavVAddr(
     switch (reloc_info.parent) {
         .none => unreachable,
         .atom_index => |atom_index| {
-            const parent_atom = self.symbols.items[@intFromEnum(atom_index)].getAtom(macho_file).?;
+            const parent_atom = self.symbols.items[@backingInt(atom_index)].getAtom(macho_file).?;
             try parent_atom.addReloc(macho_file, .{
                 .tag = .@"extern",
                 .offset = @intCast(reloc_info.offset),
@@ -689,7 +689,7 @@ pub fn getUavVAddr(
         .debug_output => |debug_output| switch (debug_output) {
             .dwarf => |wip_nav| try wip_nav.infoExternalReloc(.{
                 .source_off = @intCast(reloc_info.offset),
-                .target_sym = @enumFromInt(sym_index),
+                .target_sym = @fromBackingInt(@intCast(sym_index)),
                 .target_off = reloc_info.addend,
             }),
             .none => unreachable,
@@ -716,12 +716,12 @@ pub fn lowerUav(
         const sym = self.symbols.items[metadata.symbol_index];
         const existing_alignment = sym.getAtom(macho_file).?.alignment;
         if (uav_alignment.order(existing_alignment).compare(.lte))
-            return @enumFromInt(metadata.symbol_index);
+            return @fromBackingInt(@intCast(metadata.symbol_index));
     }
 
     var name_buf: [32]u8 = undefined;
     const name = std.fmt.bufPrint(&name_buf, "__anon_{d}", .{
-        @intFromEnum(uav),
+        @backingInt(uav),
     }) catch unreachable;
     const sym_index = self.lowerConst(
         macho_file,
@@ -737,7 +737,7 @@ pub fn lowerUav(
             .{e},
         ),
     };
-    try self.uavs.put(gpa, uav, .{ .symbol_index = @intFromEnum(sym_index) });
+    try self.uavs.put(gpa, uav, .{ .symbol_index = @backingInt(sym_index) });
     return sym_index;
 }
 
@@ -783,14 +783,14 @@ pub fn updateFunc(
     var aw: std.Io.Writer.Allocating = .init(gpa);
     defer aw.deinit();
 
-    var debug_wip_nav = if (self.dwarf) |*dwarf| try dwarf.initWipNav(pt, func.owner_nav, @enumFromInt(sym_index)) else null;
+    var debug_wip_nav = if (self.dwarf) |*dwarf| try dwarf.initWipNav(pt, func.owner_nav, @fromBackingInt(@intCast(sym_index))) else null;
     defer if (debug_wip_nav) |*wip_nav| wip_nav.deinit();
 
     codegen.emitFunction(
         &macho_file.base,
         pt,
         func_index,
-        @enumFromInt(sym_index),
+        @fromBackingInt(@intCast(sym_index)),
         mir,
         &aw.writer,
         if (debug_wip_nav) |*wip_nav| .{ .dwarf = wip_nav } else .none,
@@ -876,7 +876,7 @@ pub fn updateNav(
             const sym_index = try self.getGlobalSymbol(macho_file, name, lib_name);
             if (nav.resolved.?.@"threadlocal" and macho_file.base.comp.config.any_non_single_threaded) self.symbols.items[sym_index].flags.tlv = true;
             if (self.dwarf) |*dwarf| {
-                var debug_wip_nav = try dwarf.initWipNav(pt, nav_index, @enumFromInt(sym_index));
+                var debug_wip_nav = try dwarf.initWipNav(pt, nav_index, @fromBackingInt(@intCast(sym_index)));
                 defer debug_wip_nav.deinit();
                 dwarf.finishWipNav(pt, nav_index, &debug_wip_nav) catch |err| switch (err) {
                     error.OutOfMemory, error.Canceled, error.AlreadyReported => |e| return e,
@@ -894,7 +894,7 @@ pub fn updateNav(
         var aw: std.Io.Writer.Allocating = .init(zcu.gpa);
         defer aw.deinit();
 
-        var debug_wip_nav = if (self.dwarf) |*dwarf| try dwarf.initWipNav(pt, nav_index, @enumFromInt(sym_index)) else null;
+        var debug_wip_nav = if (self.dwarf) |*dwarf| try dwarf.initWipNav(pt, nav_index, @fromBackingInt(@intCast(sym_index))) else null;
         defer if (debug_wip_nav) |*wip_nav| wip_nav.deinit();
 
         codegen.generateSymbol(
@@ -902,7 +902,7 @@ pub fn updateNav(
             pt,
             .fromInterned(nav.resolved.?.value),
             &aw.writer,
-            .{ .atom_index = @enumFromInt(sym_index) },
+            .{ .atom_index = @fromBackingInt(@intCast(sym_index)) },
         ) catch |err| switch (err) {
             error.WriteFailed => return error.OutOfMemory,
             else => |e| return e,
@@ -1203,7 +1203,7 @@ fn lowerConst(
         pt,
         val,
         &aw.writer,
-        .{ .atom_index = @enumFromInt(sym_index) },
+        .{ .atom_index = @fromBackingInt(@intCast(sym_index)) },
     ) catch |err| switch (err) {
         error.WriteFailed => return error.OutOfMemory,
         else => |e| return e,
@@ -1231,7 +1231,7 @@ fn lowerConst(
     const file_offset = sect.offset + atom.value;
     try macho_file.pwriteAll(code, file_offset);
 
-    return @enumFromInt(sym_index);
+    return @fromBackingInt(@intCast(sym_index));
 }
 
 pub fn updateExports(
@@ -1353,7 +1353,7 @@ fn updateLazySymbol(
         &required_alignment,
         &aw.writer,
         .none,
-        .{ .atom_index = @enumFromInt(symbol_index) },
+        .{ .atom_index = @fromBackingInt(@intCast(symbol_index)) },
     );
     const code = aw.written();
 

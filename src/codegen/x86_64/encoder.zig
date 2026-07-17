@@ -250,13 +250,13 @@ pub const Instruction = struct {
                                 .frame => |frame_index| try w.print("{f}", .{frame_index}),
                                 .table => try w.print("Table", .{}),
                                 .rip_inst => |inst_index| try w.print("RipInst({d})", .{inst_index}),
-                                .nav => |nav| try w.print("Nav({d})", .{@intFromEnum(nav)}),
-                                .uav => |uav| try w.print("Uav({d})", .{@intFromEnum(uav.val)}),
+                                .nav => |nav| try w.print("Nav({d})", .{@backingInt(nav)}),
+                                .uav => |uav| try w.print("Uav({d})", .{@backingInt(uav.val)}),
                                 .lazy_sym => |lazy_sym| try w.print("LazySym({s}, {d})", .{
                                     @tagName(lazy_sym.kind),
-                                    @intFromEnum(lazy_sym.ty),
+                                    @backingInt(lazy_sym.ty),
                                 }),
-                                .extern_func => |extern_func| try w.print("ExternFunc({d})", .{@intFromEnum(extern_func)}),
+                                .extern_func => |extern_func| try w.print("ExternFunc({d})", .{@backingInt(extern_func)}),
                             }
                             if (mem.scaleIndex()) |si| {
                                 if (any) try w.writeAll(" + ");
@@ -845,14 +845,14 @@ fn Encoder(comptime opts: Options) type {
                     @as(u8, ~@intFromBool(fields.r)) << 7 |
                         @as(u8, ~@intFromBool(fields.x)) << 6 |
                         @as(u8, ~@intFromBool(fields.b)) << 5 |
-                        @as(u8, @intFromEnum(fields.m)) << 0,
+                        @as(u8, @backingInt(fields.m)) << 0,
                 );
 
                 try self.w.writeByte(
                     @as(u8, @intFromBool(fields.w)) << 7 |
                         @as(u8, ~@as(u4, @intCast(fields.v.enc()))) << 3 |
                         @as(u8, @intFromBool(fields.l)) << 2 |
-                        @as(u8, @intFromEnum(fields.p)) << 0,
+                        @as(u8, @backingInt(fields.p)) << 0,
                 );
             } else {
                 try self.w.writeByte(0b1100_0101);
@@ -860,7 +860,7 @@ fn Encoder(comptime opts: Options) type {
                     @as(u8, ~@intFromBool(fields.r)) << 7 |
                         @as(u8, ~@as(u4, @intCast(fields.v.enc()))) << 3 |
                         @as(u8, @intFromBool(fields.l)) << 2 |
-                        @as(u8, @intFromEnum(fields.p)) << 0,
+                        @as(u8, @backingInt(fields.p)) << 0,
                 );
             }
         }

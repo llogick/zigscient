@@ -9,7 +9,7 @@ pub fn syscall0(
 ) u32 {
     return asm volatile ("int $0x80"
         : [ret] "={eax}" (-> u32),
-        : [number] "{eax}" (@intFromEnum(number)),
+        : [number] "{eax}" (@backingInt(number)),
         : .{ .memory = true });
 }
 
@@ -19,7 +19,7 @@ pub fn syscall1(
 ) u32 {
     return asm volatile ("int $0x80"
         : [ret] "={eax}" (-> u32),
-        : [number] "{eax}" (@intFromEnum(number)),
+        : [number] "{eax}" (@backingInt(number)),
           [arg1] "{ebx}" (arg1),
         : .{ .memory = true });
 }
@@ -31,7 +31,7 @@ pub fn syscall2(
 ) u32 {
     return asm volatile ("int $0x80"
         : [ret] "={eax}" (-> u32),
-        : [number] "{eax}" (@intFromEnum(number)),
+        : [number] "{eax}" (@backingInt(number)),
           [arg1] "{ebx}" (arg1),
           [arg2] "{ecx}" (arg2),
         : .{ .memory = true });
@@ -45,7 +45,7 @@ pub fn syscall3(
 ) u32 {
     return asm volatile ("int $0x80"
         : [ret] "={eax}" (-> u32),
-        : [number] "{eax}" (@intFromEnum(number)),
+        : [number] "{eax}" (@backingInt(number)),
           [arg1] "{ebx}" (arg1),
           [arg2] "{ecx}" (arg2),
           [arg3] "{edx}" (arg3),
@@ -61,7 +61,7 @@ pub fn syscall4(
 ) u32 {
     return asm volatile ("int $0x80"
         : [ret] "={eax}" (-> u32),
-        : [number] "{eax}" (@intFromEnum(number)),
+        : [number] "{eax}" (@backingInt(number)),
           [arg1] "{ebx}" (arg1),
           [arg2] "{ecx}" (arg2),
           [arg3] "{edx}" (arg3),
@@ -79,7 +79,7 @@ pub fn syscall5(
 ) u32 {
     return asm volatile ("int $0x80"
         : [ret] "={eax}" (-> u32),
-        : [number] "{eax}" (@intFromEnum(number)),
+        : [number] "{eax}" (@backingInt(number)),
           [arg1] "{ebx}" (arg1),
           [arg2] "{ecx}" (arg2),
           [arg3] "{edx}" (arg3),
@@ -117,7 +117,7 @@ pub fn syscall6(
         \\ pop  %%ebp
         \\ pop  %%edi
         : [ret] "={eax}" (-> u32),
-        : [number] "{eax}" (@intFromEnum(number)),
+        : [number] "{eax}" (@backingInt(number)),
           [arg1] "{ebx}" (arg1),
           [arg2] "{ecx}" (arg2),
           [arg3] "{edx}" (arg3),
@@ -129,7 +129,7 @@ pub fn syscall6(
 pub fn socketcall(call: u32, args: [*]const u32) u32 {
     return asm volatile ("int $0x80"
         : [ret] "={eax}" (-> u32),
-        : [number] "{eax}" (@intFromEnum(SYS.socketcall)),
+        : [number] "{eax}" (@backingInt(SYS.socketcall)),
           [arg1] "{ebx}" (call),
           [arg2] "{ecx}" (@intFromPtr(args)),
         : .{ .memory = true });
@@ -192,13 +192,13 @@ pub fn restore() callconv(.naked) noreturn {
             \\ movl %[number], %%eax
             \\ int $0x80
             :
-            : [number] "i" (@intFromEnum(SYS.sigreturn)),
+            : [number] "i" (@backingInt(SYS.sigreturn)),
         ),
         else => asm volatile (
             \\ addl $4, %%esp
             \\ int $0x80
             :
-            : [number] "{eax}" (@intFromEnum(SYS.sigreturn)),
+            : [number] "{eax}" (@backingInt(SYS.sigreturn)),
         ),
     }
 }
@@ -209,12 +209,12 @@ pub fn restore_rt() callconv(.naked) noreturn {
             \\ movl %[number], %%eax
             \\ int $0x80
             :
-            : [number] "i" (@intFromEnum(SYS.rt_sigreturn)),
+            : [number] "i" (@backingInt(SYS.rt_sigreturn)),
         ),
         else => asm volatile (
             \\ int $0x80
             :
-            : [number] "{eax}" (@intFromEnum(SYS.rt_sigreturn)),
+            : [number] "{eax}" (@backingInt(SYS.rt_sigreturn)),
         ),
     }
 }

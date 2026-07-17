@@ -875,10 +875,10 @@ pub fn exit(status: u8) noreturn {
             // exit() is only available if exitBootServices() has not been called yet.
             // This call to exit should not fail, so we catch-ignore errors.
             if (uefi.system_table.boot_services) |bs| {
-                bs.exit(uefi.handle, @enumFromInt(status), null) catch {};
+                bs.exit(uefi.handle, @fromBackingInt(@intCast(status)), null) catch {};
             }
             // If we can't exit, reboot the system instead.
-            uefi.system_table.runtime_services.resetSystem(.cold, @enumFromInt(status), null);
+            uefi.system_table.runtime_services.resetSystem(.cold, @fromBackingInt(@intCast(status)), null);
         },
         else => posix.system.exit(status),
     }

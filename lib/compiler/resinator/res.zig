@@ -407,7 +407,7 @@ pub const NameOrOrdinal = union(enum) {
         switch (self) {
             .ordinal => |ordinal| {
                 if (ordinal >= 256) return null;
-                switch (@as(RT, @enumFromInt(ordinal))) {
+                switch (@as(RT, @fromBackingInt(@intCast(ordinal)))) {
                     .ACCELERATOR,
                     .ANICURSOR,
                     .ANIICON,
@@ -456,7 +456,7 @@ pub const NameOrOrdinal = union(enum) {
                 try w.print("{f}", .{std.unicode.fmtUtf16Le(name)});
             },
             .ordinal => |ordinal| {
-                if (std.enums.tagName(RT, @enumFromInt(ordinal))) |predefined_type_name| {
+                if (std.enums.tagName(RT, @fromBackingInt(@intCast(ordinal)))) |predefined_type_name| {
                     try w.print("{s}", .{predefined_type_name});
                 } else {
                     try w.print("{d}", .{ordinal});

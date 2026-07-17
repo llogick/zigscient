@@ -17,14 +17,14 @@ fn Table(comptime len: comptime_int, comptime RelType: type, comptime mapping: [
     return struct {
         fn decode(r_type: u32) Kind {
             inline for (mapping) |entry| {
-                if (@intFromEnum(entry[1]) == r_type) return entry[0];
+                if (@backingInt(entry[1]) == r_type) return entry[0];
             }
             return .other;
         }
 
         fn encode(comptime kind: Kind) u32 {
             inline for (mapping) |entry| {
-                if (entry[0] == kind) return @intFromEnum(entry[1]);
+                if (entry[0] == kind) return @backingInt(entry[1]);
             }
             @panic("encoding .other is ambiguous");
         }
@@ -94,15 +94,15 @@ pub fn encode(comptime kind: Kind, cpu_arch: std.Target.Cpu.Arch) u32 {
 pub const dwarf = struct {
     pub fn crossSectionRelocType(format: DW.Format, cpu_arch: std.Target.Cpu.Arch) u32 {
         return switch (cpu_arch) {
-            .x86_64 => @intFromEnum(@as(elf.R_X86_64, switch (format) {
+            .x86_64 => @backingInt(@as(elf.R_X86_64, switch (format) {
                 .@"32" => .@"32",
                 .@"64" => .@"64",
             })),
-            .aarch64, .aarch64_be => @intFromEnum(@as(elf.R_AARCH64, switch (format) {
+            .aarch64, .aarch64_be => @backingInt(@as(elf.R_AARCH64, switch (format) {
                 .@"32" => .ABS32,
                 .@"64" => .ABS64,
             })),
-            .riscv64, .riscv64be => @intFromEnum(@as(elf.R_RISCV, switch (format) {
+            .riscv64, .riscv64be => @backingInt(@as(elf.R_RISCV, switch (format) {
                 .@"32" => .@"32",
                 .@"64" => .@"64",
             })),
@@ -117,7 +117,7 @@ pub const dwarf = struct {
         cpu_arch: std.Target.Cpu.Arch,
     ) u32 {
         return switch (cpu_arch) {
-            .x86_64 => @intFromEnum(@as(elf.R_X86_64, switch (source_section) {
+            .x86_64 => @backingInt(@as(elf.R_X86_64, switch (source_section) {
                 else => switch (address_size) {
                     .@"32" => if (target.flags.is_tls) .DTPOFF32 else .@"32",
                     .@"64" => if (target.flags.is_tls) .DTPOFF64 else .@"64",
@@ -125,7 +125,7 @@ pub const dwarf = struct {
                 },
                 .debug_frame => .PC32,
             })),
-            .aarch64, .aarch64_be => @intFromEnum(@as(elf.R_AARCH64, switch (source_section) {
+            .aarch64, .aarch64_be => @backingInt(@as(elf.R_AARCH64, switch (source_section) {
                 else => switch (address_size) {
                     .@"32" => .ABS32,
                     .@"64" => .ABS64,
@@ -133,7 +133,7 @@ pub const dwarf = struct {
                 },
                 .debug_frame => .PREL32,
             })),
-            .riscv64, .riscv64be => @intFromEnum(@as(elf.R_RISCV, switch (source_section) {
+            .riscv64, .riscv64be => @backingInt(@as(elf.R_RISCV, switch (source_section) {
                 else => switch (address_size) {
                     .@"32" => .@"32",
                     .@"64" => .@"64",
@@ -163,9 +163,9 @@ pub fn fmtRelocType(r_type: u32, cpu_arch: std.Target.Cpu.Arch) std.fmt.Alt(Form
 fn formatRelocType(ctx: FormatRelocTypeCtx, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     const r_type = ctx.r_type;
     switch (ctx.cpu_arch) {
-        .x86_64 => try writer.print("R_X86_64_{s}", .{@tagName(@as(elf.R_X86_64, @enumFromInt(r_type)))}),
-        .aarch64, .aarch64_be => try writer.print("R_AARCH64_{s}", .{@tagName(@as(elf.R_AARCH64, @enumFromInt(r_type)))}),
-        .riscv64, .riscv64be => try writer.print("R_RISCV_{s}", .{@tagName(@as(elf.R_RISCV, @enumFromInt(r_type)))}),
+        .x86_64 => try writer.print("R_X86_64_{s}", .{@tagName(@as(elf.R_X86_64, @fromBackingInt(@intCast(r_type))))}),
+        .aarch64, .aarch64_be => try writer.print("R_AARCH64_{s}", .{@tagName(@as(elf.R_AARCH64, @fromBackingInt(@intCast(r_type))))}),
+        .riscv64, .riscv64be => try writer.print("R_RISCV_{s}", .{@tagName(@as(elf.R_RISCV, @fromBackingInt(@intCast(r_type))))}),
         else => unreachable,
     }
 }

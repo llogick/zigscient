@@ -516,10 +516,10 @@ fn loadOFile(gpa: Allocator, io: Io, o_file_name: []const u8) !OFile {
         };
     }
 
-    if (sections[@intFromEnum(Dwarf.Section.Id.debug_info)] == null or
-        sections[@intFromEnum(Dwarf.Section.Id.debug_abbrev)] == null or
-        sections[@intFromEnum(Dwarf.Section.Id.debug_str)] == null or
-        sections[@intFromEnum(Dwarf.Section.Id.debug_line)] == null)
+    if (sections[@backingInt(Dwarf.Section.Id.debug_info)] == null or
+        sections[@backingInt(Dwarf.Section.Id.debug_abbrev)] == null or
+        sections[@backingInt(Dwarf.Section.Id.debug_str)] == null or
+        sections[@backingInt(Dwarf.Section.Id.debug_line)] == null)
     {
         return error.MissingDebugInfo;
     }

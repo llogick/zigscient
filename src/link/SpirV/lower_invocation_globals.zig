@@ -94,7 +94,7 @@ const ModuleInfo = struct {
 
             switch (inst.opcode) {
                 .OpEntryPoint => {
-                    const entry_point: ResultId = @enumFromInt(inst.operands[1]);
+                    const entry_point: ResultId = @fromBackingInt(@intCast(inst.operands[1]));
                     const entry = try entry_points.getOrPut(arena, entry_point);
                     if (entry.found_existing) {
                         log.err("Entry point type {f} has duplicate definition", .{entry_point});
@@ -102,8 +102,8 @@ const ModuleInfo = struct {
                     }
                 },
                 .OpTypeFunction => {
-                    const fn_type: ResultId = @enumFromInt(inst.operands[0]);
-                    const return_type: ResultId = @enumFromInt(inst.operands[1]);
+                    const fn_type: ResultId = @fromBackingInt(@intCast(inst.operands[0]));
+                    const return_type: ResultId = @fromBackingInt(@intCast(inst.operands[1]));
                     const param_types: []const ResultId = @ptrCast(inst.operands[2..]);
 
                     const entry = try fn_types.getOrPut(fn_type);
@@ -119,15 +119,15 @@ const ModuleInfo = struct {
                 },
                 .OpExtInst => {
                     // Note: format and set are already verified by parseInstructionResultIds().
-                    const global_type: ResultId = @enumFromInt(inst.operands[0]);
-                    const result_id: ResultId = @enumFromInt(inst.operands[1]);
-                    const set_id: ResultId = @enumFromInt(inst.operands[2]);
+                    const global_type: ResultId = @fromBackingInt(@intCast(inst.operands[0]));
+                    const result_id: ResultId = @fromBackingInt(@intCast(inst.operands[1]));
+                    const set_id: ResultId = @fromBackingInt(@intCast(inst.operands[2]));
                     const set_inst = inst.operands[3];
 
                     const set = binary.ext_inst_map.get(set_id).?;
                     if (set == .zig and set_inst == 0) {
                         const initializer: ResultId = if (inst.operands.len >= 5)
-                            @enumFromInt(inst.operands[4])
+                            @fromBackingInt(@intCast(inst.operands[4]))
                         else
                             .none;
 
@@ -144,12 +144,12 @@ const ModuleInfo = struct {
                         return error.InvalidPhysicalFormat;
                     }
 
-                    maybe_current_function = @enumFromInt(inst.operands[1]);
-                    fn_ty_id = @enumFromInt(inst.operands[3]);
+                    maybe_current_function = @fromBackingInt(@intCast(inst.operands[1]));
+                    fn_ty_id = @fromBackingInt(@intCast(inst.operands[3]));
                     function_invocation_globals.clearRetainingCapacity();
                 },
                 .OpFunctionCall => {
-                    const callee: ResultId = @enumFromInt(inst.operands[2]);
+                    const callee: ResultId = @fromBackingInt(@intCast(inst.operands[2]));
                     try calls.put(arena, callee, {});
                 },
                 .OpFunctionEnd => {
@@ -184,7 +184,7 @@ const ModuleInfo = struct {
             }
 
             for (result_id_offsets.items) |off| {
-                const result_id: ResultId = @enumFromInt(inst.operands[off]);
+                const result_id: ResultId = @fromBackingInt(@intCast(inst.operands[off]));
                 if (invocation_globals.contains(result_id)) {
                     try function_invocation_globals.put(arena, result_id, {});
                 }
@@ -355,7 +355,7 @@ const ModuleBuilder = struct {
         global_id_base: u32,
 
         fn invocationGlobalId(self: FunctionNewInfo, index: usize) ResultId {
-            return @enumFromInt(self.global_id_base + @as(u32, @intCast(index)));
+            return @fromBackingInt(@intCast(self.global_id_base + @as(u32, @intCast(index))));
         }
     };
 
@@ -384,7 +384,7 @@ const ModuleBuilder = struct {
             .entry_point_new_id_base = undefined,
             .new_functions_section = null,
         };
-        self.entry_point_new_id_base = @intFromEnum(self.allocIds(@intCast(info.entry_points.count())));
+        self.entry_point_new_id_base = @backingInt(self.allocIds(@intCast(info.entry_points.count())));
         return self;
     }
 
@@ -394,7 +394,7 @@ const ModuleBuilder = struct {
 
     fn allocIds(self: *ModuleBuilder, n: u32) ResultId {
         defer self.id_bound += n;
-        return @enumFromInt(self.id_bound);
+        return @fromBackingInt(@intCast(self.id_bound));
     }
 
     fn finalize(self: *ModuleBuilder, arena: Allocator, binary: *BinaryModule) !void {
@@ -435,7 +435,7 @@ const ModuleBuilder = struct {
 
             switch (inst.opcode) {
                 .OpName => {
-                    const id: ResultId = @enumFromInt(inst.operands[0]);
+                    const id: ResultId = @fromBackingInt(@intCast(inst.operands[0]));
                     if (info.invocation_globals.contains(id)) {
                         try self.global_names.put(self.arena, id, inst.operands[1..]);
                         continue;
@@ -443,12 +443,12 @@ const ModuleBuilder = struct {
                     if (info.dead_initializers.contains(id)) continue;
                 },
                 .OpExtInstImport => {
-                    const set_id: ResultId = @enumFromInt(inst.operands[0]);
+                    const set_id: ResultId = @fromBackingInt(@intCast(inst.operands[0]));
                     const set = binary.ext_inst_map.get(set_id).?;
                     if (set == .zig) continue;
                 },
                 .OpExtInst => {
-                    const set_id: ResultId = @enumFromInt(inst.operands[2]);
+                    const set_id: ResultId = @fromBackingInt(@intCast(inst.operands[2]));
                     const set_inst = inst.operands[3];
                     const set = binary.ext_inst_map.get(set_id).?;
                     if (set == .zig and set_inst == 0) {
@@ -456,11 +456,11 @@ const ModuleBuilder = struct {
                     }
                 },
                 .OpEntryPoint => {
-                    const original_id: ResultId = @enumFromInt(inst.operands[1]);
+                    const original_id: ResultId = @fromBackingInt(@intCast(inst.operands[1]));
                     const fn_info = info.functions.get(original_id).?;
                     if (fn_info.invocation_globals.count() > 0) {
                         const new_id_index = info.entry_points.getIndex(original_id).?;
-                        const new_id: ResultId = @enumFromInt(self.entry_point_new_id_base + new_id_index);
+                        const new_id: ResultId = @fromBackingInt(@intCast(self.entry_point_new_id_base + new_id_index));
                         try self.section.emitRaw(self.arena, .OpEntryPoint, inst.operands.len);
                         self.section.writeWord(inst.operands[0]);
                         self.section.writeOperand(ResultId, new_id);
@@ -471,11 +471,11 @@ const ModuleBuilder = struct {
                     continue;
                 },
                 .OpExecutionMode, .OpExecutionModeId => {
-                    const original_id: ResultId = @enumFromInt(inst.operands[0]);
+                    const original_id: ResultId = @fromBackingInt(@intCast(inst.operands[0]));
                     const fn_info = info.functions.get(original_id).?;
                     if (fn_info.invocation_globals.count() > 0) {
                         const new_id_index = info.entry_points.getIndex(original_id).?;
-                        const new_id: ResultId = @enumFromInt(self.entry_point_new_id_base + new_id_index);
+                        const new_id: ResultId = @fromBackingInt(@intCast(self.entry_point_new_id_base + new_id_index));
                         try self.section.emitRaw(self.arena, inst.opcode, inst.operands.len);
                         self.section.writeOperand(ResultId, new_id);
                         self.section.writeWords(inst.operands[1..]);
@@ -512,7 +512,7 @@ const ModuleBuilder = struct {
             const new_type = try self.internFunctionType(fn_info.return_type, new_param_types);
             try self.function_new_info.put(self.arena, func, .{
                 .new_function_type = new_type,
-                .global_id_base = @intFromEnum(self.allocIds(@intCast(invocation_global_count))),
+                .global_id_base = @backingInt(self.allocIds(@intCast(invocation_global_count))),
             });
         }
     }
@@ -583,20 +583,20 @@ const ModuleBuilder = struct {
 
             // Replace the result-ids with the global's new result-id if required.
             for (result_id_offsets.items) |off| {
-                const result_id: ResultId = @enumFromInt(operands.items[off]);
+                const result_id: ResultId = @fromBackingInt(@intCast(operands.items[off]));
                 if (info.invocation_globals.contains(result_id)) {
                     const func = maybe_current_function.?;
                     const new_info = self.function_new_info.get(func).?;
                     const fn_info = info.functions.get(func).?;
                     const index = fn_info.invocation_globals.getIndex(result_id).?;
-                    operands.items[off] = @intFromEnum(new_info.invocationGlobalId(index));
+                    operands.items[off] = @backingInt(new_info.invocationGlobalId(index));
                 }
             }
 
             switch (inst.opcode) {
                 .OpFunction => {
                     // Re-declare the function with the new parameters.
-                    const func: ResultId = @enumFromInt(operands.items[1]);
+                    const func: ResultId = @fromBackingInt(@intCast(operands.items[1]));
                     if (info.dead_initializers.contains(func)) {
                         skip_until_end = true;
                         continue;
@@ -628,7 +628,7 @@ const ModuleBuilder = struct {
                 .OpFunctionCall => {
                     // Add the required invocation globals to the function's new parameter list.
                     const caller = maybe_current_function.?;
-                    const callee: ResultId = @enumFromInt(operands.items[2]);
+                    const callee: ResultId = @fromBackingInt(@intCast(operands.items[2]));
                     const caller_info = info.functions.get(caller).?;
                     const callee_info = info.functions.get(callee).?;
                     const caller_new_info = self.function_new_info.get(caller).?;
@@ -663,7 +663,7 @@ const ModuleBuilder = struct {
         for (info.entry_points.keys(), 0..) |func, entry_point_index| {
             const fn_info = info.functions.get(func).?;
             if (fn_info.invocation_globals.count() == 0) continue;
-            const ep_id: ResultId = @enumFromInt(self.entry_point_new_id_base + @as(u32, @intCast(entry_point_index)));
+            const ep_id: ResultId = @fromBackingInt(@intCast(self.entry_point_new_id_base + @as(u32, @intCast(entry_point_index))));
             const fn_type = self.function_types.get(.{
                 .return_type = fn_info.return_type,
                 .param_types = fn_info.param_types,
@@ -677,9 +677,9 @@ const ModuleBuilder = struct {
             });
 
             // Emit OpFunctionParameter instructions for the original kernel's parameters.
-            const params_id_base: u32 = @intFromEnum(self.allocIds(@intCast(fn_info.param_types.len)));
+            const params_id_base: u32 = @backingInt(self.allocIds(@intCast(fn_info.param_types.len)));
             for (fn_info.param_types, 0..) |param_type, i| {
-                const id: ResultId = @enumFromInt(params_id_base + @as(u32, @intCast(i)));
+                const id: ResultId = @fromBackingInt(@intCast(params_id_base + @as(u32, @intCast(i))));
                 try self.section.emit(arena, .OpFunctionParameter, .{
                     .id_result_type = param_type,
                     .id_result = id,
@@ -703,11 +703,11 @@ const ModuleBuilder = struct {
             }
 
             // Declare the IDs of the invocation globals.
-            const global_id_base: u32 = @intFromEnum(self.allocIds(@intCast(all_function_invocation_globals.count())));
+            const global_id_base: u32 = @backingInt(self.allocIds(@intCast(all_function_invocation_globals.count())));
             for (all_function_invocation_globals.keys(), 0..) |global, i| {
                 const global_info = info.invocation_globals.get(global).?;
 
-                const id: ResultId = @enumFromInt(global_id_base + @as(u32, @intCast(i)));
+                const id: ResultId = @fromBackingInt(@intCast(global_id_base + @as(u32, @intCast(i))));
                 try self.section.emit(arena, .OpVariable, .{
                     .id_result_type = global_info.ty,
                     .id_result = id,
@@ -764,13 +764,13 @@ const ModuleBuilder = struct {
         // Add the invocation globals
         for (callee_info.invocation_globals.keys()) |global| {
             const index = all_globals.getIndex(global).?;
-            const id: ResultId = @enumFromInt(global_id_base + @as(u32, @intCast(index)));
+            const id: ResultId = @fromBackingInt(@intCast(global_id_base + @as(u32, @intCast(index))));
             self.section.writeOperand(ResultId, id);
         }
 
         // Add the arguments
         for (0..callee_info.param_types.len) |index| {
-            const id: ResultId = @enumFromInt(params_id_base + @as(u32, @intCast(index)));
+            const id: ResultId = @fromBackingInt(@intCast(params_id_base + @as(u32, @intCast(index))));
             self.section.writeOperand(ResultId, id);
         }
     }

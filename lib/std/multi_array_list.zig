@@ -92,7 +92,7 @@ pub fn MultiArrayList(comptime T: type) type {
                 if (self.capacity == 0) {
                     return &[_]F{};
                 }
-                const byte_ptr = self.ptrs[@intFromEnum(field)];
+                const byte_ptr = self.ptrs[@backingInt(field)];
                 const casted_ptr: [*]F = if (@sizeOf(F) == 0)
                     undefined
                 else
@@ -107,14 +107,14 @@ pub fn MultiArrayList(comptime T: type) type {
                     else => unreachable,
                 };
                 inline for (field_names, 0..) |field_name, i| {
-                    self.items(@as(Field, @enumFromInt(i)))[index] = @field(e, field_name);
+                    self.items(@as(Field, @fromBackingInt(@intCast(i))))[index] = @field(e, field_name);
                 }
             }
 
             pub fn get(self: Slice, index: usize) T {
                 var result: Elem = undefined;
                 inline for (field_names, 0..) |field_name, i| {
-                    @field(result, field_name) = self.items(@as(Field, @enumFromInt(i)))[index];
+                    @field(result, field_name) = self.items(@as(Field, @fromBackingInt(@intCast(i))))[index];
                 }
                 return switch (@typeInfo(T)) {
                     .@"struct" => result,
@@ -361,7 +361,7 @@ pub fn MultiArrayList(comptime T: type) type {
             };
             const slices = self.slice();
             inline for (field_names, 0..) |field_name, field_index| {
-                const field_slice = slices.items(@as(Field, @enumFromInt(field_index)));
+                const field_slice = slices.items(@as(Field, @fromBackingInt(@intCast(field_index))));
                 var i: usize = self.len - 1;
                 while (i > index) : (i -= 1) {
                     field_slice[i] = field_slice[i - 1];
@@ -387,7 +387,7 @@ pub fn MultiArrayList(comptime T: type) type {
         pub fn swapRemove(self: *Self, index: usize) void {
             const slices = self.slice();
             inline for (field_names, 0..) |_, i| {
-                const field_slice = slices.items(@as(Field, @enumFromInt(i)));
+                const field_slice = slices.items(@as(Field, @fromBackingInt(@intCast(i))));
                 field_slice[index] = field_slice[self.len - 1];
                 field_slice[self.len - 1] = undefined;
             }
@@ -399,7 +399,7 @@ pub fn MultiArrayList(comptime T: type) type {
         pub fn orderedRemove(self: *Self, index: usize) void {
             const slices = self.slice();
             inline for (field_names, 0..) |_, field_index| {
-                const field_slice = slices.items(@as(Field, @enumFromInt(field_index)));
+                const field_slice = slices.items(@as(Field, @fromBackingInt(@intCast(field_index))));
                 var i = index;
                 while (i < self.len - 1) : (i += 1) {
                     field_slice[i] = field_slice[i + 1];
@@ -430,7 +430,7 @@ pub fn MultiArrayList(comptime T: type) type {
                 const start = removed + 1;
                 const len = end - start; // safety checks `sorted_indexes` are sorted
                 inline for (field_names, 0..) |_, field_index| {
-                    const field_slice = slices.items(@enumFromInt(field_index));
+                    const field_slice = slices.items(@fromBackingInt(@intCast(field_index)));
                     @memmove(field_slice[start - shift ..][0..len], field_slice[start..][0..len]); // safety checks initial `sorted_indexes` are in range
                 }
                 shift += 1;
@@ -439,7 +439,7 @@ pub fn MultiArrayList(comptime T: type) type {
             const end = self.len;
             const len = end - start; // safety checks final `sorted_indexes` are in range
             inline for (field_names, 0..) |_, field_index| {
-                const field_slice = slices.items(@enumFromInt(field_index));
+                const field_slice = slices.items(@fromBackingInt(@intCast(field_index)));
                 @memmove(field_slice[start - shift ..][0..len], field_slice[start..][0..len]);
             }
             self.len = end - shift;
@@ -465,7 +465,7 @@ pub fn MultiArrayList(comptime T: type) type {
                 const self_slice = self.slice();
                 inline for (field_types, 0..) |field_type, i| {
                     if (@sizeOf(field_type) != 0) {
-                        const field = @as(Field, @enumFromInt(i));
+                        const field = @as(Field, @fromBackingInt(@intCast(i)));
                         const dest_slice = self_slice.items(field)[new_len..];
                         // We use memset here for more efficient codegen in safety-checked,
                         // valgrind-enabled builds. Otherwise the valgrind client request
@@ -486,7 +486,7 @@ pub fn MultiArrayList(comptime T: type) type {
             const other_slice = other.slice();
             inline for (field_types, 0..) |field_type, i| {
                 if (@sizeOf(field_type) != 0) {
-                    const field = @as(Field, @enumFromInt(i));
+                    const field = @as(Field, @fromBackingInt(@intCast(i)));
                     @memcpy(other_slice.items(field), self_slice.items(field));
                 }
             }
@@ -558,7 +558,7 @@ pub fn MultiArrayList(comptime T: type) type {
             const other_slice = other.slice();
             inline for (field_types, 0..) |field_type, i| {
                 if (@sizeOf(field_type) != 0) {
-                    const field = @as(Field, @enumFromInt(i));
+                    const field = @as(Field, @fromBackingInt(@intCast(i)));
                     @memcpy(other_slice.items(field), self_slice.items(field));
                 }
             }
@@ -577,7 +577,7 @@ pub fn MultiArrayList(comptime T: type) type {
             const result_slice = result.slice();
             inline for (field_types, 0..) |field_type, i| {
                 if (@sizeOf(field_type) != 0) {
-                    const field = @as(Field, @enumFromInt(i));
+                    const field = @as(Field, @fromBackingInt(@intCast(i)));
                     @memcpy(result_slice.items(field), self_slice.items(field));
                 }
             }
@@ -594,7 +594,7 @@ pub fn MultiArrayList(comptime T: type) type {
                 pub fn swap(sc: @This(), a_index: usize, b_index: usize) void {
                     inline for (field_types, 0..) |field_type, i| {
                         if (@sizeOf(field_type) != 0) {
-                            const field: Field = @enumFromInt(i);
+                            const field: Field = @fromBackingInt(@intCast(i));
                             const ptr = sc.slice.items(field);
                             mem.swap(field_type, &ptr[a_index], &ptr[b_index]);
                         }

@@ -459,7 +459,7 @@ pub const Instruction = union(enum) {
                 .def_cfa_offset_sf => .{ .def_cfa_offset_sf = try reader.takeLeb128(i64) },
                 .def_cfa_expression => .{ .def_cfa_expr = try reader.takeLeb128(usize) },
 
-                _ => switch (@intFromEnum(inst.low.extended)) {
+                _ => switch (@backingInt(inst.low.extended)) {
                     0x1C...0x3F => return error.UnimplementedUserOpcode,
                     else => return error.InvalidOpcode,
                 },

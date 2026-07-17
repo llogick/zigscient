@@ -15,7 +15,7 @@ pub fn syscall0(
         \\ or r0, r0
         \\ or r0, r0
         : [ret] "={r0}" (-> u32),
-        : [number] "{r3}" (@intFromEnum(number)),
+        : [number] "{r3}" (@backingInt(number)),
         : .{ .memory = true });
 }
 
@@ -31,7 +31,7 @@ pub fn syscall1(
         \\ or r0, r0
         \\ or r0, r0
         : [ret] "={r0}" (-> u32),
-        : [number] "{r3}" (@intFromEnum(number)),
+        : [number] "{r3}" (@backingInt(number)),
           [arg1] "{r4}" (arg1),
         : .{ .memory = true });
 }
@@ -49,7 +49,7 @@ pub fn syscall2(
         \\ or r0, r0
         \\ or r0, r0
         : [ret] "={r0}" (-> u32),
-        : [number] "{r3}" (@intFromEnum(number)),
+        : [number] "{r3}" (@backingInt(number)),
           [arg1] "{r4}" (arg1),
           [arg2] "{r5}" (arg2),
         : .{ .memory = true });
@@ -69,7 +69,7 @@ pub fn syscall3(
         \\ or r0, r0
         \\ or r0, r0
         : [ret] "={r0}" (-> u32),
-        : [number] "{r3}" (@intFromEnum(number)),
+        : [number] "{r3}" (@backingInt(number)),
           [arg1] "{r4}" (arg1),
           [arg2] "{r5}" (arg2),
           [arg3] "{r6}" (arg3),
@@ -91,7 +91,7 @@ pub fn syscall4(
         \\ or r0, r0
         \\ or r0, r0
         : [ret] "={r0}" (-> u32),
-        : [number] "{r3}" (@intFromEnum(number)),
+        : [number] "{r3}" (@backingInt(number)),
           [arg1] "{r4}" (arg1),
           [arg2] "{r5}" (arg2),
           [arg3] "{r6}" (arg3),
@@ -115,7 +115,7 @@ pub fn syscall5(
         \\ or r0, r0
         \\ or r0, r0
         : [ret] "={r0}" (-> u32),
-        : [number] "{r3}" (@intFromEnum(number)),
+        : [number] "{r3}" (@backingInt(number)),
           [arg1] "{r4}" (arg1),
           [arg2] "{r5}" (arg2),
           [arg3] "{r6}" (arg3),
@@ -141,7 +141,7 @@ pub fn syscall6(
         \\ or r0, r0
         \\ or r0, r0
         : [ret] "={r0}" (-> u32),
-        : [number] "{r3}" (@intFromEnum(number)),
+        : [number] "{r3}" (@backingInt(number)),
           [arg1] "{r4}" (arg1),
           [arg2] "{r5}" (arg2),
           [arg3] "{r6}" (arg3),
@@ -217,7 +217,7 @@ pub fn restore() callconv(.naked) noreturn {
         \\ or r0, r0
         \\ or r0, r0
         :
-        : [number] "{r3}" (@intFromEnum(SYS.sigreturn)),
+        : [number] "{r3}" (@backingInt(SYS.sigreturn)),
     );
 }
 
@@ -230,7 +230,7 @@ pub fn restore_rt() callconv(.naked) noreturn {
         \\ or r0, r0
         \\ or r0, r0
         :
-        : [number] "{r3}" (@intFromEnum(SYS.rt_sigreturn)),
+        : [number] "{r3}" (@backingInt(SYS.rt_sigreturn)),
     );
 }
 

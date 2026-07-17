@@ -265,7 +265,7 @@ pub const fuzz = struct {
             return switch (@typeInfo(T)) {
                 .comptime_int => x,
                 .bool => @intFromBool(x),
-                .@"enum" => @intFromEnum(x),
+                .@"enum" => @backingInt(x),
                 else => @as(@Int(.unsigned, @bitSizeOf(T)), @bitCast(x)),
 
                 .int => |i| x: {

@@ -187,7 +187,7 @@ fn mainServer(init: std.process.Init.Minimal) !void {
                 defer io_instance.deinit();
                 const io = io_instance.io();
 
-                const mode: fuzz_abi.LimitKind = @enumFromInt(try server.receiveBody_u8());
+                const mode: fuzz_abi.LimitKind = @fromBackingInt(@intCast(try server.receiveBody_u8()));
                 const amount_or_instance = try server.receiveBody_u64();
                 const main_instance = mode == .iterations or amount_or_instance == 0;
 
@@ -249,7 +249,7 @@ fn mainServer(init: std.process.Init.Minimal) !void {
             },
 
             else => {
-                std.debug.print("unsupported message: {x}\n", .{@intFromEnum(hdr.tag)});
+                std.debug.print("unsupported message: {x}\n", .{@backingInt(hdr.tag)});
                 std.process.exit(1);
             },
         }
@@ -351,10 +351,10 @@ pub fn log(
     args: anytype,
 ) void {
     @disableInstrumentation();
-    if (@intFromEnum(message_level) <= @intFromEnum(std.log.Level.err)) {
+    if (@backingInt(message_level) <= @backingInt(std.log.Level.err)) {
         log_err_count +|= 1;
     }
-    if (@intFromEnum(message_level) <= @intFromEnum(testing.log_level)) {
+    if (@backingInt(message_level) <= @backingInt(testing.log_level)) {
         std.debug.print(
             "[" ++ @tagName(scope) ++ "] (" ++ @tagName(message_level) ++ "): " ++ format ++ "\n",
             args,
@@ -513,7 +513,7 @@ var fuzz_runner: if (builtin.fuzz) struct {
         while (true) {
             const hdr = try server.receiveMessage();
             if (hdr.tag != .new_fuzz_input) {
-                panic("unexpected message: {x}\n", .{@intFromEnum(hdr.tag)});
+                panic("unexpected message: {x}\n", .{@backingInt(hdr.tag)});
             }
             const test_i = try server.receiveBody_u32();
             const input_len = hdr.bytes_len - 4;

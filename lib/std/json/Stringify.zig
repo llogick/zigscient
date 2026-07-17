@@ -127,7 +127,7 @@ pub fn endObject(self: *Stringify) Error!void {
 fn pushIndentation(self: *Stringify, mode: IndentationMode) !void {
     switch (safety_checks) {
         .checked_to_fixed_depth => {
-            BitStack.pushWithStateAssumeCapacity(&self.nesting_stack, &self.indent_level, @intFromEnum(mode));
+            BitStack.pushWithStateAssumeCapacity(&self.nesting_stack, &self.indent_level, @backingInt(mode));
         },
         .assumed_correct => {
             self.indent_level += 1;
@@ -137,7 +137,7 @@ fn pushIndentation(self: *Stringify, mode: IndentationMode) !void {
 fn popIndentation(self: *Stringify, expected_mode: IndentationMode) void {
     switch (safety_checks) {
         .checked_to_fixed_depth => {
-            assert(BitStack.popWithState(&self.nesting_stack, &self.indent_level) == @intFromEnum(expected_mode));
+            assert(BitStack.popWithState(&self.nesting_stack, &self.indent_level) == @backingInt(expected_mode));
         },
         .assumed_correct => {
             self.indent_level -= 1;
@@ -202,7 +202,7 @@ fn valueDone(self: *Stringify) void {
 fn isObjectKeyExpected(self: *const Stringify) ?bool {
     switch (safety_checks) {
         .checked_to_fixed_depth => return self.indent_level > 0 and
-            BitStack.peekWithState(&self.nesting_stack, self.indent_level) == @intFromEnum(IndentationMode.object) and
+            BitStack.peekWithState(&self.nesting_stack, self.indent_level) == @backingInt(IndentationMode.object) and
             self.next_punctuation != .colon,
         .assumed_correct => return null,
     }
@@ -407,7 +407,7 @@ pub fn write(self: *Stringify, v: anytype) Error!void {
                         break;
                     }
                 } else {
-                    return self.write(@intFromEnum(v));
+                    return self.write(@backingInt(v));
                 }
             }
 
@@ -858,7 +858,7 @@ test "stringify non-exhaustive enum" {
         _,
     };
     try testStringify("\"foo\"", E.foo, .{});
-    try testStringify("1", @as(E, @enumFromInt(1)), .{});
+    try testStringify("1", @as(E, @fromBackingInt(@intCast(1))), .{});
 }
 
 test "stringify enum literals" {

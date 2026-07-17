@@ -530,7 +530,7 @@ fn checkver(def_arg: *elf.Verdef, vsym_arg: elf.Versym, vername: []const u8, str
     var def = def_arg;
     const vsym_index = vsym_arg.VERSION;
     while (true) {
-        if (0 == (def.flags & elf.VER_FLG_BASE) and @intFromEnum(def.ndx) == vsym_index) break;
+        if (0 == (def.flags & elf.VER_FLG_BASE) and @backingInt(def.ndx) == vsym_index) break;
         if (def.next == 0) return false;
         def = @ptrFromInt(@intFromPtr(def) + def.next);
     }

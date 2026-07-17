@@ -44,7 +44,7 @@ pub fn main(init: std.process.Init) !void {
     var stdout_writer = Io.File.stdout().writerStreaming(io, &buffer);
     const w = &stdout_writer.interface;
     inline for (@typeInfo(std.Target.CType).@"enum".field_values) |field_value| {
-        const c_type: std.Target.CType = @enumFromInt(field_value);
+        const c_type: std.Target.CType = @fromBackingInt(@intCast(field_value));
         try w.print("_Static_assert(sizeof({0s}) == {1d}, \"sizeof({0s}) == {1d}\");\n", .{
             cName(c_type),
             target.cTypeByteSize(c_type),

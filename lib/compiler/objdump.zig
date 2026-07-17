@@ -594,7 +594,7 @@ const coff = struct {
 
             const member_sig = try r.peek(4);
             const machine: std.coff.IMAGE.FILE.MACHINE =
-                @enumFromInt(std.mem.readInt(u16, member_sig[0..2], .little));
+                @fromBackingInt(@intCast(std.mem.readInt(u16, member_sig[0..2], .little)));
             const sig = std.mem.readInt(u16, member_sig[2..4], .little);
 
             const is_imp_lib = machine == std.coff.IMAGE.FILE.MACHINE.UNKNOWN and sig == 0xffff;
@@ -723,7 +723,7 @@ const coff = struct {
             if (d.opts.file_headers and d.element(.@"header-name"))
                 try w.writeAll("COFF Optional Header:\n");
 
-            const magic: std.coff.OptionalHeader.Magic = @enumFromInt(try r.peekInt(u16, .little));
+            const magic: std.coff.OptionalHeader.Magic = @fromBackingInt(@intCast(try r.peekInt(u16, .little)));
             const num_directory_entries, const image_base = switch (magic) {
                 inline .PE32, .@"PE32+" => |v| num_data_dirs: {
                     const OptionalHeader = if (v == .PE32)
@@ -795,7 +795,7 @@ const coff = struct {
                 if (d.opts.file_headers)
                     try w.print(
                         "{x: >16} {x: >8} {t}\n",
-                        .{ dir.virtual_address, dir.size, @as(DIRECTORY_ENTRY, @enumFromInt(dir_i)) },
+                        .{ dir.virtual_address, dir.size, @as(DIRECTORY_ENTRY, @fromBackingInt(@intCast(dir_i))) },
                     );
             }
             if (d.opts.file_headers and d.element(.newlines)) try w.writeByte('\n');
@@ -980,7 +980,7 @@ const coff = struct {
                         .ABSOLUTE => w.writeAll("  ABS"),
                         .DEBUG => w.writeAll("DEBUG"),
                         else => |v| {
-                            const backing = @intFromEnum(v);
+                            const backing = @backingInt(v);
                             const fmt = "{x: >5}";
                             if (backing >= 0)
                                 try w.print(fmt, .{@as(u15, @intCast(backing))})
@@ -1009,7 +1009,7 @@ const coff = struct {
                                 .complex_type = .FUNCTION,
                                 .base_type = .NULL,
                             } and
-                            @intFromEnum(symbol.section_number) > 0)
+                            @backingInt(symbol.section_number) > 0)
                         {
                             try w.writeAll("TODO function aux symbol");
                         } else if (symbol.type == std.coff.SymType{
@@ -1064,10 +1064,10 @@ const coff = struct {
                             symbol.value == 0 and
                             switch (symbol.section_number) {
                                 .UNDEFINED, .DEBUG, .ABSOLUTE => false,
-                                else => |sn| @intFromEnum(sn) > 0,
+                                else => |sn| @backingInt(sn) > 0,
                             })
                         {
-                            const section_i: u15 = @intCast(@intFromEnum(symbol.section_number) - 1);
+                            const section_i: u15 = @intCast(@backingInt(symbol.section_number) - 1);
                             try w.writeAll("  Section ");
 
                             if (section_i >= sections.items.len) {
@@ -1160,7 +1160,7 @@ const coff = struct {
                             void => try w.writeAll("(unknown arch)"),
                             else => |RelocationType| try w.print(
                                 "{t: <17} ",
-                                .{@as(RelocationType, @enumFromInt(reloc.type))},
+                                .{@as(RelocationType, @fromBackingInt(@intCast(reloc.type)))},
                             ),
                         },
                     }
@@ -1263,7 +1263,7 @@ const coff = struct {
 
                 // All the variable length fields should be contained within this directory.
                 // Read it entirely to avoid needing to seek per-name when iterating.
-                const dir = image_info.?.data_dirs[@intFromEnum(DIRECTORY_ENTRY.EXPORT)];
+                const dir = image_info.?.data_dirs[@backingInt(DIRECTORY_ENTRY.EXPORT)];
                 const dir_end_rva = dir.virtual_address + dir.size;
                 const dir_loc = fr.logicalPos();
                 const dir_slice = try r.readAlloc(gpa, dir.size);
@@ -1533,8 +1533,8 @@ const coff = struct {
         data_dirs: []const std.coff.ImageDataDirectory,
         entry: DIRECTORY_ENTRY,
     ) !?u16 {
-        if (@intFromEnum(entry) < data_dirs.len) blk: {
-            const rva = data_dirs[@intFromEnum(entry)].virtual_address;
+        if (@backingInt(entry) < data_dirs.len) blk: {
+            const rva = data_dirs[@backingInt(entry)].virtual_address;
             if (rva == 0) break :blk;
 
             const section_index = sectionContainingRva(rva_index, sections, rva) orelse
@@ -1603,7 +1603,7 @@ const coff = struct {
             .ABSOLUTE => w.writeAll("  ABS"),
             .DEBUG => w.writeAll("DEBUG"),
             else => |v| {
-                const backing = @intFromEnum(v);
+                const backing = @backingInt(v);
                 const fmt = "{x: >5}";
                 if (backing >= 0)
                     try w.print(fmt, .{@as(u15, @intCast(backing))})

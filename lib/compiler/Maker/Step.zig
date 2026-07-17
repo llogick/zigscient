@@ -610,7 +610,7 @@ fn zigProcessUpdate(step_index: Configuration.Step.Index, maker: *Maker, zp: *Zi
                 const conf_step = step_index.ptr(conf);
                 var it = std.mem.splitScalar(u8, body, 0);
                 while (it.next()) |prefixed_path| {
-                    const prefix_index: std.zig.Server.Message.PathPrefix = @enumFromInt(prefixed_path[0] - 1);
+                    const prefix_index: std.zig.Server.Message.PathPrefix = @fromBackingInt(@intCast(prefixed_path[0] - 1));
                     const sub_path = try arena.dupe(u8, prefixed_path[1..]);
                     const sub_path_dirname = Dir.path.dirname(sub_path) orelse "";
                     switch (prefix_index) {

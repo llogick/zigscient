@@ -211,7 +211,7 @@ pub fn addConst(
     const zcu = pt.zcu;
     const gpa = zcu.comp.gpa;
     assert(zcu.intern_pool.typeOf(val) == .type_type);
-    assert(@intFromEnum(pool_index) == c.types.items.len);
+    assert(@backingInt(pool_index) == c.types.items.len);
 
     const ty: Type = .fromInterned(val);
 
@@ -262,7 +262,7 @@ pub fn addConst(
         _ = try codegen.CType.lower(ty, &deps, arena.allocator(), zcu);
         // This call may add more items to `c.types`.
         const type_deps = try c.addCTypeDependencies(pt, &deps);
-        c.types.items[@intFromEnum(pool_index)].deps = type_deps;
+        c.types.items[@backingInt(pool_index)].deps = type_deps;
     }
 }
 
@@ -279,7 +279,7 @@ pub fn updateConstIncomplete(
     assert(zcu.intern_pool.typeOf(val) == .type_type);
     const ty: Type = .fromInterned(val);
 
-    const rendered: *RenderedType = &c.types.items[@intFromEnum(index)];
+    const rendered: *RenderedType = &c.types.items[@backingInt(index)];
 
     rendered.errunion_definition = .empty;
     rendered.definition_deps = .empty;
@@ -315,7 +315,7 @@ pub fn updateConst(
     assert(zcu.intern_pool.typeOf(val) == .type_type);
     const ty: Type = .fromInterned(val);
 
-    const rendered: *RenderedType = &c.types.items[@intFromEnum(index)];
+    const rendered: *RenderedType = &c.types.items[@backingInt(index)];
 
     var arena: std.heap.ArenaAllocator = .init(gpa);
     defer arena.deinit();
@@ -371,7 +371,7 @@ pub fn updateConst(
     {
         // This call invalidates `rendered`.
         const definition_deps = try c.addCTypeDependencies(pt, &deps);
-        c.types.items[@intFromEnum(index)].definition_deps = definition_deps;
+        c.types.items[@backingInt(index)].definition_deps = definition_deps;
     }
 }
 
@@ -858,7 +858,7 @@ pub fn flush(c: *C, arena: Allocator, tid: Zcu.PerThread.Id, prog_node: std.Prog
         while (true) {
             if (index < need_types.count()) {
                 const pool_index = need_types.keys()[index];
-                const rendered = &c.types.items[@intFromEnum(pool_index)];
+                const rendered = &c.types.items[@backingInt(pool_index)];
                 try mergeNeededCTypes(
                     c,
                     &need_types,
@@ -872,7 +872,7 @@ pub fn flush(c: *C, arena: Allocator, tid: Zcu.PerThread.Id, prog_node: std.Prog
 
             if (errunion_index < need_errunion_types.count()) {
                 const payload_pool_index = need_errunion_types.keys()[errunion_index];
-                const rendered = &c.types.items[@intFromEnum(payload_pool_index)];
+                const rendered = &c.types.items[@backingInt(payload_pool_index)];
                 try mergeNeededCTypes(
                     c,
                     &need_types,
@@ -886,7 +886,7 @@ pub fn flush(c: *C, arena: Allocator, tid: Zcu.PerThread.Id, prog_node: std.Prog
 
             if (aligned_index < need_aligned_types.count()) {
                 const pool_index = need_aligned_types.keys()[aligned_index];
-                const rendered = &c.types.items[@intFromEnum(pool_index)];
+                const rendered = &c.types.items[@backingInt(pool_index)];
                 try mergeNeededCTypes(
                     c,
                     &need_types,
@@ -916,7 +916,7 @@ pub fn flush(c: *C, arena: Allocator, tid: Zcu.PerThread.Id, prog_node: std.Prog
             aligned_type_strings,
         ) |pool_index, align_mask, *str_out| {
             const ty: Type = .fromInterned(pool_index.val(&c.type_pool));
-            const has_layout = c.types.items[@intFromEnum(pool_index)].errunion_definition.len > 0;
+            const has_layout = c.types.items[@backingInt(pool_index)].errunion_definition.len > 0;
             for (0..@bitSizeOf(@TypeOf(align_mask))) |bit_index| {
                 switch (@as(u1, @truncate(align_mask >> @intCast(bit_index)))) {
                     0 => continue,
@@ -1450,7 +1450,7 @@ const FlushTypes = struct {
         const c = ft.c;
         if (ft.aligned_status.contains(pool_index)) return;
         if (ft.aligned_types.getIndex(pool_index)) |i| {
-            const rendered = &c.types.items[@intFromEnum(pool_index)];
+            const rendered = &c.types.items[@backingInt(pool_index)];
             ft.processDepsAsFwd(&rendered.deps);
             ft.f.appendBufAssumeCapacity(ft.aligned_type_strings[i]);
         }
@@ -1459,7 +1459,7 @@ const FlushTypes = struct {
     fn doTypeFwd(ft: *FlushTypes, pool_index: link.ConstPool.Index) void {
         const c = ft.c;
         if (ft.status.contains(pool_index)) return;
-        const rendered = &c.types.items[@intFromEnum(pool_index)];
+        const rendered = &c.types.items[@backingInt(pool_index)];
         if (rendered.fwd_decl.len > 0) {
             ft.f.appendBufAssumeCapacity(rendered.fwd_decl.get(c));
             ft.status.putAssumeCapacityNoClobber(pool_index, false);
@@ -1477,7 +1477,7 @@ const FlushTypes = struct {
         if (ft.status.get(pool_index)) |completed| {
             if (completed) return;
         }
-        const rendered = &c.types.items[@intFromEnum(pool_index)];
+        const rendered = &c.types.items[@backingInt(pool_index)];
         ft.processDeps(&rendered.definition_deps);
         if (rendered.fwd_decl.len == 0 and ft.status.contains(pool_index)) {
             // `doTypeFwd` already rendered the defintion, we just had to complete the type by
@@ -1495,7 +1495,7 @@ const FlushTypes = struct {
         const c = ft.c;
         const gop = ft.errunion_status.getOrPutAssumeCapacity(pool_index);
         if (gop.found_existing) return;
-        const rendered = &c.types.items[@intFromEnum(pool_index)];
+        const rendered = &c.types.items[@backingInt(pool_index)];
         ft.f.appendBufAssumeCapacity(rendered.errunion_fwd_decl.get(c));
         gop.value_ptr.* = false;
     }
@@ -1504,7 +1504,7 @@ const FlushTypes = struct {
         if (ft.errunion_status.get(pool_index)) |completed| {
             if (completed) return;
         }
-        const rendered = &c.types.items[@intFromEnum(pool_index)];
+        const rendered = &c.types.items[@backingInt(pool_index)];
         ft.processDeps(&rendered.deps);
         if (rendered.errunion_definition.len > 0) {
             ft.f.appendBufAssumeCapacity(rendered.errunion_definition.get(c));

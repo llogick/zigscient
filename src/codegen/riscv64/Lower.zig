@@ -554,7 +554,7 @@ fn pushPopRegList(lower: *Lower, comptime spilling: bool, reg_list: Mir.Register
 
     var reg_i: u31 = 0;
     while (it.next()) |i| {
-        const frame = lower.mir.frame_locs.get(@intFromEnum(bits.FrameIndex.spill_frame));
+        const frame = lower.mir.frame_locs.get(@backingInt(bits.FrameIndex.spill_frame));
         const reg = abi.Registers.all_preserved[i];
 
         const reg_class = reg.class();

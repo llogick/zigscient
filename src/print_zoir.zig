@@ -55,7 +55,7 @@ const PrintZon = struct {
 
     fn renderNode(pz: *PrintZon, node: Zoir.Node.Index) Error!void {
         const zoir = pz.zoir;
-        try pz.w.print("%{d} = ", .{@intFromEnum(node)});
+        try pz.w.print("%{d} = ", .{@backingInt(node)});
         switch (node.get(zoir)) {
             .true => try pz.w.writeAll("true"),
             .false => try pz.w.writeAll("false"),

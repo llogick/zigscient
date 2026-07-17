@@ -238,11 +238,11 @@ pub fn parse(
             const verdef = mem.bytesAsValue(elf.Verdef, verdefs[offset..][0..@sizeOf(elf.Verdef)]);
             if (verdef.ndx == .UNSPECIFIED) return error.VerDefSymbolTooLarge;
 
-            if (verstrings.items.len <= @intFromEnum(verdef.ndx))
-                try verstrings.appendNTimes(gpa, 0, @intFromEnum(verdef.ndx) + 1 - verstrings.items.len);
+            if (verstrings.items.len <= @backingInt(verdef.ndx))
+                try verstrings.appendNTimes(gpa, 0, @backingInt(verdef.ndx) + 1 - verstrings.items.len);
 
             const aux = mem.bytesAsValue(elf.Verdaux, verdefs[offset + verdef.aux ..][0..@sizeOf(elf.Verdaux)]);
-            verstrings.items[@intFromEnum(verdef.ndx)] = aux.name;
+            verstrings.items[@backingInt(verdef.ndx)] = aux.name;
 
             if (verdef.next == 0) break;
             offset += verdef.next;
@@ -380,7 +380,7 @@ pub fn markImportExports(self: *SharedObject, elf_file: *Elf) void {
         const ref = self.resolveSymbol(@intCast(i), elf_file);
         const ref_sym = elf_file.symbol(ref) orelse continue;
         const ref_file = ref_sym.file(elf_file).?;
-        const vis: elf.STV = @enumFromInt(@as(u3, @truncate(ref_sym.elfSym(elf_file).st_other)));
+        const vis: elf.STV = @fromBackingInt(@intCast(@as(u3, @truncate(ref_sym.elfSym(elf_file).st_other))));
         if (ref_file != .shared_object and vis != .HIDDEN) ref_sym.flags.@"export" = true;
     }
 }

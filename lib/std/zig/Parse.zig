@@ -34,15 +34,15 @@ fn tokenStart(p: *const Parse, token_index: TokenIndex) Ast.ByteOffset {
 }
 
 fn nodeTag(p: *const Parse, node: Node.Index) Node.Tag {
-    return p.nodes.items(.tag)[@intFromEnum(node)];
+    return p.nodes.items(.tag)[@backingInt(node)];
 }
 
 fn nodeMainToken(p: *const Parse, node: Node.Index) TokenIndex {
-    return p.nodes.items(.main_token)[@intFromEnum(node)];
+    return p.nodes.items(.main_token)[@backingInt(node)];
 }
 
 fn nodeData(p: *const Parse, node: Node.Index) Node.Data {
-    return p.nodes.items(.data)[@intFromEnum(node)];
+    return p.nodes.items(.data)[@backingInt(node)];
 }
 
 const SmallSpan = union(enum) {
@@ -69,20 +69,20 @@ const Members = struct {
 fn listToSpan(p: *Parse, list: []const Node.Index) Allocator.Error!Node.SubRange {
     try p.extra_data.appendSlice(p.gpa, @ptrCast(list));
     return .{
-        .start = @enumFromInt(p.extra_data.items.len - list.len),
-        .end = @enumFromInt(p.extra_data.items.len),
+        .start = @fromBackingInt(@intCast(p.extra_data.items.len - list.len)),
+        .end = @fromBackingInt(@intCast(p.extra_data.items.len)),
     };
 }
 
 fn addNode(p: *Parse, elem: Ast.Node) Allocator.Error!Node.Index {
-    const result: Node.Index = @enumFromInt(p.nodes.len);
+    const result: Node.Index = @fromBackingInt(@intCast(p.nodes.len));
     try p.nodes.append(p.gpa, elem);
     return result;
 }
 
 fn setNode(p: *Parse, i: usize, elem: Ast.Node) Node.Index {
     p.nodes.set(i, elem);
-    return @enumFromInt(i);
+    return @fromBackingInt(@intCast(i));
 }
 
 fn reserveNode(p: *Parse, tag: Ast.Node.Tag) !usize {
@@ -105,14 +105,14 @@ fn unreserveNode(p: *Parse, node_index: usize) void {
 fn addExtra(p: *Parse, extra: anytype) Allocator.Error!ExtraIndex {
     const info = @typeInfo(@TypeOf(extra)).@"struct";
     try p.extra_data.ensureUnusedCapacity(p.gpa, info.field_names.len);
-    const result: ExtraIndex = @enumFromInt(p.extra_data.items.len);
+    const result: ExtraIndex = @fromBackingInt(@intCast(p.extra_data.items.len));
     inline for (info.field_names, info.field_types) |field_name, field_type| {
         const data: u32 = switch (field_type) {
             Node.Index,
             Node.OptionalIndex,
             OptionalTokenIndex,
             ExtraIndex,
-            => @intFromEnum(@field(extra, field_name)),
+            => @backingInt(@field(extra, field_name)),
             TokenIndex,
             => @field(extra, field_name),
             else => @compileError("unexpected field type"),
@@ -796,9 +796,9 @@ fn parseFnProto(p: *Parse) !?Node.Index {
 
 fn setVarDeclInitExpr(p: *Parse, var_decl: Node.Index, init_expr: Node.OptionalIndex) void {
     const init_expr_result = switch (p.nodeTag(var_decl)) {
-        .simple_var_decl => &p.nodes.items(.data)[@intFromEnum(var_decl)].opt_node_and_opt_node[1],
-        .aligned_var_decl => &p.nodes.items(.data)[@intFromEnum(var_decl)].node_and_opt_node[1],
-        .local_var_decl, .global_var_decl => &p.nodes.items(.data)[@intFromEnum(var_decl)].extra_and_opt_node[1],
+        .simple_var_decl => &p.nodes.items(.data)[@backingInt(var_decl)].opt_node_and_opt_node[1],
+        .aligned_var_decl => &p.nodes.items(.data)[@backingInt(var_decl)].node_and_opt_node[1],
+        .local_var_decl, .global_var_decl => &p.nodes.items(.data)[@backingInt(var_decl)].extra_and_opt_node[1],
         else => unreachable,
     };
     init_expr_result.* = init_expr;
@@ -1114,7 +1114,7 @@ fn expectVarAssignStatement(p: *Parse, comptime_token: ?TokenIndex) !Node.Index 
 
     // An actual destructure! No need for any `comptime` wrapper here.
 
-    const extra_start: ExtraIndex = @enumFromInt(p.extra_data.items.len);
+    const extra_start: ExtraIndex = @fromBackingInt(@intCast(p.extra_data.items.len));
     try p.extra_data.ensureUnusedCapacity(p.gpa, lhs_count + 1);
     p.extra_data.appendAssumeCapacity(@intCast(lhs_count));
     p.extra_data.appendSliceAssumeCapacity(@ptrCast(p.scratch.items[scratch_top..]));
@@ -1488,7 +1488,7 @@ fn finishAssignDestructureExpr(p: *Parse, first_lhs: Node.Index) !Node.Index {
     const lhs_count = p.scratch.items.len - scratch_top;
     assert(lhs_count > 1); // we already had first_lhs, and must have at least one more lvalue
 
-    const extra_start: ExtraIndex = @enumFromInt(p.extra_data.items.len);
+    const extra_start: ExtraIndex = @fromBackingInt(@intCast(p.extra_data.items.len));
     try p.extra_data.ensureUnusedCapacity(p.gpa, lhs_count + 1);
     p.extra_data.appendAssumeCapacity(@intCast(lhs_count));
     p.extra_data.appendSliceAssumeCapacity(@ptrCast(p.scratch.items[scratch_top..]));
@@ -1579,7 +1579,7 @@ fn parseExprPrecedence(p: *Parse, min_prec: i32) Error!?Node.Index {
 
     while (true) {
         const tok_tag = p.tokenTag(p.tok_i);
-        const info = operTable[@as(usize, @intCast(@intFromEnum(tok_tag)))];
+        const info = operTable[@as(usize, @intCast(@backingInt(tok_tag)))];
         if (info.prec < min_prec) {
             break;
         }

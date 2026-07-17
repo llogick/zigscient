@@ -212,26 +212,26 @@ const Node = union(enum) {
         _,
 
         pub fn path(ii: InputIndex, elf: *const Elf) std.Build.Cache.Path {
-            return elf.inputs.items[@intFromEnum(ii)].path;
+            return elf.inputs.items[@backingInt(ii)].path;
         }
 
         pub fn member(ii: InputIndex, elf: *const Elf) ?[]const u8 {
-            return elf.inputs.items[@intFromEnum(ii)].member;
+            return elf.inputs.items[@backingInt(ii)].member;
         }
 
         pub fn fileSymbol(ii: InputIndex, elf: *const Elf) Symbol.LocalIndex {
-            return elf.inputs.items[@intFromEnum(ii)].file_symbol;
+            return elf.inputs.items[@backingInt(ii)].file_symbol;
         }
 
         pub fn localSymbolRange(ii: InputIndex, elf: *Elf) [2]Symbol.LocalIndex {
-            if (@intFromEnum(ii) + 1 < elf.inputs.items.len) {
-                const next_ii: InputIndex = @enumFromInt(@intFromEnum(ii) + 1);
+            if (@backingInt(ii) + 1 < elf.inputs.items.len) {
+                const next_ii: InputIndex = @fromBackingInt(@intCast(@backingInt(ii) + 1));
                 return .{ ii.fileSymbol(elf), next_ii.fileSymbol(elf) };
             } else {
                 const local_symbols_len = switch (elf.shdrPtr(.symtab)) {
                     inline else => |shdr| elf.targetLoad(&shdr.info),
                 };
-                return .{ ii.fileSymbol(elf), @enumFromInt(local_symbols_len) };
+                return .{ ii.fileSymbol(elf), @fromBackingInt(@intCast(local_symbols_len)) };
             }
         }
     };
@@ -240,18 +240,18 @@ const Node = union(enum) {
         _,
 
         pub fn navIndex(nmi: NavMapIndex, elf: *const Elf) InternPool.Nav.Index {
-            return elf.navs.keys()[@intFromEnum(nmi)];
+            return elf.navs.keys()[@backingInt(nmi)];
         }
 
         pub fn symbol(nmi: NavMapIndex, elf: *const Elf) Symbol.LocalIndex {
-            return elf.navs.values()[@intFromEnum(nmi)].lsi;
+            return elf.navs.values()[@backingInt(nmi)].lsi;
         }
 
         fn firstSymbolReloc(nmi: NavMapIndex, elf: *const Elf) SymbolReloc.Index {
-            return elf.navs.values()[@intFromEnum(nmi)].first_symbol_reloc;
+            return elf.navs.values()[@backingInt(nmi)].first_symbol_reloc;
         }
         fn firstGotReloc(nmi: NavMapIndex, elf: *const Elf) GotReloc.Index {
-            return elf.navs.values()[@intFromEnum(nmi)].first_got_reloc;
+            return elf.navs.values()[@backingInt(nmi)].first_got_reloc;
         }
     };
 
@@ -259,15 +259,15 @@ const Node = union(enum) {
         _,
 
         pub fn uavValue(umi: UavMapIndex, elf: *const Elf) InternPool.Index {
-            return elf.uavs.keys()[@intFromEnum(umi)];
+            return elf.uavs.keys()[@backingInt(umi)];
         }
 
         pub fn symbol(umi: UavMapIndex, elf: *const Elf) Symbol.LocalIndex {
-            return elf.uavs.values()[@intFromEnum(umi)].lsi;
+            return elf.uavs.values()[@backingInt(umi)].lsi;
         }
 
         fn firstSymbolReloc(umi: UavMapIndex, elf: *const Elf) SymbolReloc.Index {
-            return elf.uavs.values()[@intFromEnum(umi)].first_symbol_reloc;
+            return elf.uavs.values()[@backingInt(umi)].first_symbol_reloc;
         }
         fn firstGotReloc(umi: UavMapIndex, elf: *const Elf) GotReloc.Index {
             _ = umi;
@@ -285,7 +285,7 @@ const Node = union(enum) {
                 _,
 
                 pub fn ref(lmi: @This()) LazyMapRef {
-                    return .{ .kind = kind, .index = @intFromEnum(lmi) };
+                    return .{ .kind = kind, .index = @backingInt(lmi) };
                 }
 
                 pub fn lazySymbol(lmi: @This(), elf: *const Elf) link.File.LazySymbol {
@@ -297,10 +297,10 @@ const Node = union(enum) {
                 }
 
                 fn firstSymbolReloc(lmi: @This(), elf: *const Elf) SymbolReloc.Index {
-                    return elf.lazy.getPtrConst(kind).map.values()[@intFromEnum(lmi)].first_symbol_reloc;
+                    return elf.lazy.getPtrConst(kind).map.values()[@backingInt(lmi)].first_symbol_reloc;
                 }
                 fn firstGotReloc(lmi: @This(), elf: *const Elf) GotReloc.Index {
-                    return elf.lazy.getPtrConst(kind).map.values()[@intFromEnum(lmi)].first_got_reloc;
+                    return elf.lazy.getPtrConst(kind).map.values()[@backingInt(lmi)].first_got_reloc;
                 }
             };
         }
@@ -316,13 +316,13 @@ const Node = union(enum) {
 
     pub const Known = struct {
         comptime file: MappedFile.Node.Index = .root,
-        comptime ehdr: MappedFile.Node.Index = @enumFromInt(1),
-        comptime shdr: MappedFile.Node.Index = @enumFromInt(2),
-        comptime rodata: MappedFile.Node.Index = @enumFromInt(3),
-        comptime phdr: MappedFile.Node.Index = @enumFromInt(4),
-        comptime text: MappedFile.Node.Index = @enumFromInt(5),
-        comptime data: MappedFile.Node.Index = @enumFromInt(6),
-        comptime data_rel_ro: MappedFile.Node.Index = @enumFromInt(7),
+        comptime ehdr: MappedFile.Node.Index = @fromBackingInt(@intCast(1)),
+        comptime shdr: MappedFile.Node.Index = @fromBackingInt(@intCast(2)),
+        comptime rodata: MappedFile.Node.Index = @fromBackingInt(@intCast(3)),
+        comptime phdr: MappedFile.Node.Index = @fromBackingInt(@intCast(4)),
+        comptime text: MappedFile.Node.Index = @fromBackingInt(@intCast(5)),
+        comptime data: MappedFile.Node.Index = @fromBackingInt(@intCast(6)),
+        comptime data_rel_ro: MappedFile.Node.Index = @fromBackingInt(@intCast(7)),
 
         tls: MappedFile.Node.Index,
     };
@@ -333,11 +333,11 @@ const Node = union(enum) {
 
     /// In this linker implementation, `link.File.AtomId` is a type-erased `MappedFile.Node.Index`.
     fn toAtom(ni: MappedFile.Node.Index) link.File.AtomId {
-        return @enumFromInt(@intFromEnum(ni));
+        return @fromBackingInt(@intCast(@backingInt(ni)));
     }
     /// In this linker implementation, `link.File.AtomId` is a type-erased `MappedFile.Node.Index`.
     fn fromAtom(atom: link.File.AtomId) MappedFile.Node.Index {
-        return @enumFromInt(@intFromEnum(atom));
+        return @fromBackingInt(@intCast(@backingInt(atom)));
     }
 };
 
@@ -356,11 +356,11 @@ const InputSection = struct {
         _,
 
         fn ptr(isi: InputSection.Index, elf: *Elf) *InputSection {
-            return &elf.input_sections.items[@intFromEnum(isi)];
+            return &elf.input_sections.items[@backingInt(isi)];
         }
 
         fn ptrConst(isi: InputSection.Index, elf: *const Elf) *const InputSection {
-            return &elf.input_sections.items[@intFromEnum(isi)];
+            return &elf.input_sections.items[@backingInt(isi)];
         }
 
         fn input(isi: InputSection.Index, elf: *const Elf) Node.InputIndex {
@@ -424,13 +424,13 @@ const Section = struct {
             fn unwrap(opt: RelaIndex.Optional) ?RelaIndex {
                 return switch (opt) {
                     .none => null,
-                    _ => @enumFromInt(@intFromEnum(opt)),
+                    _ => @fromBackingInt(@intCast(@backingInt(opt))),
                 };
             }
         };
 
         fn toOptional(i: RelaIndex) RelaIndex.Optional {
-            return @enumFromInt(@intFromEnum(i));
+            return @fromBackingInt(@intCast(@backingInt(i)));
         }
     };
 
@@ -455,7 +455,7 @@ const Section = struct {
         pub const LORESERVE: Index = .fromSection(std.elf.SHN_LORESERVE);
         pub const HIRESERVE: Index = .fromSection(std.elf.SHN_HIRESERVE);
         comptime {
-            assert(@intFromEnum(HIRESERVE) == std.math.maxInt(Tag));
+            assert(@backingInt(HIRESERVE) == std.math.maxInt(Tag));
         }
 
         fn reserve(sec: std.elf.Section) Tag {
@@ -465,12 +465,12 @@ const Section = struct {
 
         pub fn fromSection(sec: std.elf.Section) Index {
             return switch (sec) {
-                std.elf.SHN_UNDEF...std.elf.SHN_LORESERVE - 1 => @enumFromInt(sec),
-                std.elf.SHN_LORESERVE...std.elf.SHN_HIRESERVE => @enumFromInt(reserve(sec)),
+                std.elf.SHN_UNDEF...std.elf.SHN_LORESERVE - 1 => @fromBackingInt(@intCast(sec)),
+                std.elf.SHN_LORESERVE...std.elf.SHN_HIRESERVE => @fromBackingInt(@intCast(reserve(sec))),
             };
         }
         pub fn toSection(s: Index) ?std.elf.Section {
-            return switch (@intFromEnum(s)) {
+            return switch (@backingInt(s)) {
                 std.elf.SHN_UNDEF...std.elf.SHN_LORESERVE - 1 => |sec| @intCast(sec),
                 std.elf.SHN_LORESERVE...reserve(std.elf.SHN_LORESERVE) - 1 => null,
                 reserve(std.elf.SHN_LORESERVE)...reserve(std.elf.SHN_HIRESERVE) => |sec| @intCast(
@@ -480,12 +480,12 @@ const Section = struct {
         }
 
         fn get(s: Index, elf: *Elf) *Section {
-            return &elf.shdrs.items[@intFromEnum(s)];
+            return &elf.shdrs.items[@backingInt(s)];
         }
 
         fn name(s: Index, elf: *Elf) String(.shstrtab) {
             return switch (elf.shdrPtr(s)) {
-                inline else => |shdr| @enumFromInt(elf.targetLoad(&shdr.name)),
+                inline else => |shdr| @fromBackingInt(@intCast(elf.targetLoad(&shdr.name))),
             };
         }
 
@@ -510,7 +510,7 @@ const Section = struct {
         fn rename(shndx: Index, elf: *Elf, new_name: []const u8) Error!void {
             const shstrtab_entry = try elf.string(.shstrtab, new_name);
             switch (elf.shdrPtr(shndx)) {
-                inline else => |shdr| elf.targetStore(&shdr.name, @intFromEnum(shstrtab_entry)),
+                inline else => |shdr| elf.targetStore(&shdr.name, @backingInt(shstrtab_entry)),
             }
         }
 
@@ -530,7 +530,7 @@ const Section = struct {
                         const relas: []const class.ElfN().Rela = @ptrCast(@alignCast(
                             node.slice(&elf.mf)[0..@intCast(cur_size)],
                         ));
-                        const free_len = elf.targetLoad(&relas[@intFromEnum(free_head)].addend);
+                        const free_len = elf.targetLoad(&relas[@backingInt(free_head)].addend);
                         assert(free_len > 0);
                         break :free_len @intCast(free_len);
                     };
@@ -555,17 +555,17 @@ const Section = struct {
                     const opt_free_head = rela_shndx.get(elf).rela.free_head;
                     const old_free_len: u32 = free_len: {
                         const free_head = opt_free_head.unwrap() orelse break :free_len 0;
-                        const free_len = elf.targetLoad(&relas[@intFromEnum(free_head)].addend);
+                        const free_len = elf.targetLoad(&relas[@backingInt(free_head)].addend);
                         assert(free_len > 0);
                         break :free_len @intCast(free_len);
                     };
                     const none_reloc_type = MachineRelocType.none(elf).unwrap(elf);
                     {
-                        const old_type = elf.targetLoad(&relas[@intFromEnum(index)].info).type;
+                        const old_type = elf.targetLoad(&relas[@backingInt(index)].info).type;
                         assert(old_type != none_reloc_type); // bug: `index` is already in the free-list
                     }
-                    relas[@intFromEnum(index)] = .{
-                        .offset = @intFromEnum(opt_free_head), // next
+                    relas[@backingInt(index)] = .{
+                        .offset = @backingInt(opt_free_head), // next
                         .info = .{
                             .type = @intCast(none_reloc_type),
                             .sym = 0,
@@ -573,7 +573,7 @@ const Section = struct {
                         .addend = @intCast(old_free_len + 1), // list length
                     };
                     if (elf.targetEndian() != native_endian) {
-                        std.mem.byteSwapAllFields(class.ElfN().Rela, &relas[@intFromEnum(index)]);
+                        std.mem.byteSwapAllFields(class.ElfN().Rela, &relas[@backingInt(index)]);
                     }
                 },
             }
@@ -600,16 +600,16 @@ const Section = struct {
                         const relas: []class.ElfN().Rela = @ptrCast(@alignCast(
                             rela_shndx.get(elf).ni.slice(&elf.mf)[0..@intCast(elf.targetLoad(&shdr.size))],
                         ));
-                        const next: RelaIndex.Optional = @enumFromInt(elf.targetLoad(
-                            &relas[@intFromEnum(free_head)].offset,
-                        ));
+                        const next: RelaIndex.Optional = @fromBackingInt(@intCast(elf.targetLoad(
+                            &relas[@backingInt(free_head)].offset,
+                        )));
                         rela_shndx.get(elf).rela.free_head = next;
 
                         const old_free_len: u32 = @intCast(
-                            elf.targetLoad(&relas[@intFromEnum(free_head)].addend),
+                            elf.targetLoad(&relas[@backingInt(free_head)].addend),
                         );
                         const new_free_len: u32 = if (next.unwrap()) |i| @intCast(
-                            elf.targetLoad(&relas[@intFromEnum(i)].addend),
+                            elf.targetLoad(&relas[@backingInt(i)].addend),
                         ) else 0;
                         assert(new_free_len == old_free_len - 1);
 
@@ -623,12 +623,12 @@ const Section = struct {
                         } else if (rela_shndx == elf.shndx.rela_plt) {
                             elf.updateDynamicEntry(std.elf.DT_PLTRELSZ, new_size);
                         }
-                        break :new_index @enumFromInt(@divExact(old_size, ent_size));
+                        break :new_index @fromBackingInt(@intCast(@divExact(old_size, ent_size)));
                     };
                     const relas: []class.ElfN().Rela = @ptrCast(@alignCast(
                         rela_shndx.get(elf).ni.slice(&elf.mf)[0..@intCast(elf.targetLoad(&shdr.size))],
                     ));
-                    relas[@intFromEnum(new_index)] = .{
+                    relas[@backingInt(new_index)] = .{
                         .offset = @intCast(opts.offset),
                         .info = .{
                             .type = @intCast(opts.type.unwrap(elf)),
@@ -637,7 +637,7 @@ const Section = struct {
                         .addend = @intCast(opts.addend),
                     };
                     if (elf.targetEndian() != native_endian) {
-                        std.mem.byteSwapAllFields(class.ElfN().Rela, &relas[@intFromEnum(new_index)]);
+                        std.mem.byteSwapAllFields(class.ElfN().Rela, &relas[@backingInt(new_index)]);
                     }
                     return new_index;
                 },
@@ -656,12 +656,12 @@ const Section = struct {
                     const relas: []class.ElfN().Rela = @ptrCast(@alignCast(
                         rela_shndx.get(elf).ni.slice(&elf.mf)[0..@intCast(elf.targetLoad(&shdr.size))],
                     ));
-                    const rela_info = elf.targetLoad(&relas[@intFromEnum(index)].info);
+                    const rela_info = elf.targetLoad(&relas[@backingInt(index)].info);
                     {
                         const none_reloc_type = MachineRelocType.none(elf).unwrap(elf);
                         assert(rela_info.type != none_reloc_type); // bug: `index` is in the free-list
                     }
-                    elf.targetStore(&relas[@intFromEnum(index)].info, .{
+                    elf.targetStore(&relas[@backingInt(index)].info, .{
                         .type = rela_info.type,
                         .sym = @intCast(raw_sym_index),
                     });
@@ -681,11 +681,11 @@ const Section = struct {
                         rela_shndx.get(elf).ni.slice(&elf.mf)[0..@intCast(elf.targetLoad(&shdr.size))],
                     ));
                     {
-                        const rela_info = elf.targetLoad(&relas[@intFromEnum(index)].info);
+                        const rela_info = elf.targetLoad(&relas[@backingInt(index)].info);
                         const none_reloc_type = MachineRelocType.none(elf).unwrap(elf);
                         assert(rela_info.type != none_reloc_type); // bug: `index` is in the free-list
                     }
-                    elf.targetStore(&relas[@intFromEnum(index)].offset, @intCast(new_offset));
+                    elf.targetStore(&relas[@backingInt(index)].offset, @intCast(new_offset));
                 },
             }
         }
@@ -702,12 +702,12 @@ const Section = struct {
                         rela_shndx.get(elf).ni.slice(&elf.mf)[0..@intCast(elf.targetLoad(&shdr.size))],
                     ));
                     {
-                        const rela_info = elf.targetLoad(&relas[@intFromEnum(index)].info);
+                        const rela_info = elf.targetLoad(&relas[@backingInt(index)].info);
                         const none_reloc_type = MachineRelocType.none(elf).unwrap(elf);
                         assert(rela_info.type != none_reloc_type); // bug: `index` is in the free-list
                     }
-                    const old_offset = elf.targetLoad(&relas[@intFromEnum(index)].offset);
-                    elf.targetStore(&relas[@intFromEnum(index)].offset, @intCast(
+                    const old_offset = elf.targetLoad(&relas[@backingInt(index)].offset);
+                    elf.targetStore(&relas[@backingInt(index)].offset, @intCast(
                         old_offset - old_base + new_base,
                     ));
                 },
@@ -726,12 +726,12 @@ const Section = struct {
                         rela_shndx.get(elf).ni.slice(&elf.mf)[0..@intCast(elf.targetLoad(&shdr.size))],
                     ));
                     {
-                        const rela_info = elf.targetLoad(&relas[@intFromEnum(index)].info);
+                        const rela_info = elf.targetLoad(&relas[@backingInt(index)].info);
                         const none_reloc_type = MachineRelocType.none(elf).unwrap(elf);
                         assert(rela_info.type != none_reloc_type); // bug: `index` is in the free-list
                     }
                     const unsigned: class.ElfN().Addr = @intCast(new_addend);
-                    elf.targetStore(&relas[@intFromEnum(index)].addend, @bitCast(unsigned));
+                    elf.targetStore(&relas[@backingInt(index)].addend, @bitCast(unsigned));
                 },
             }
         }
@@ -896,7 +896,7 @@ const GotReloc = struct {
         _,
 
         fn get(index: GotReloc.Index, elf: *Elf) *GotReloc {
-            return &elf.got_relocs.items[@intFromEnum(index)];
+            return &elf.got_relocs.items[@backingInt(index)];
         }
     };
 
@@ -1131,22 +1131,22 @@ pub const MachineRelocType = union {
 
     pub fn wrap(int: u32, elf: *const Elf) MachineRelocType {
         return switch (elf.ehdrMachine()) {
-            .AARCH64 => .{ .AARCH64 = @enumFromInt(int) },
-            .LOONGARCH => .{ .LARCH = @enumFromInt(int) },
-            .PPC64 => .{ .PPC64 = @enumFromInt(int) },
-            .RISCV => .{ .RISCV = @enumFromInt(int) },
-            .SPARCV9 => .{ .SPARC = @enumFromInt(int) },
-            .X86_64 => .{ .X86_64 = @enumFromInt(int) },
+            .AARCH64 => .{ .AARCH64 = @fromBackingInt(@intCast(int)) },
+            .LOONGARCH => .{ .LARCH = @fromBackingInt(@intCast(int)) },
+            .PPC64 => .{ .PPC64 = @fromBackingInt(@intCast(int)) },
+            .RISCV => .{ .RISCV = @fromBackingInt(@intCast(int)) },
+            .SPARCV9 => .{ .SPARC = @fromBackingInt(@intCast(int)) },
+            .X86_64 => .{ .X86_64 = @fromBackingInt(@intCast(int)) },
         };
     }
     pub fn unwrap(rt: MachineRelocType, elf: *const Elf) u32 {
         return switch (elf.ehdrMachine()) {
-            .AARCH64 => @intFromEnum(rt.AARCH64),
-            .LOONGARCH => @intFromEnum(rt.LARCH),
-            .PPC64 => @intFromEnum(rt.PPC64),
-            .RISCV => @intFromEnum(rt.RISCV),
-            .SPARCV9 => @intFromEnum(rt.SPARC),
-            .X86_64 => @intFromEnum(rt.X86_64),
+            .AARCH64 => @backingInt(rt.AARCH64),
+            .LOONGARCH => @backingInt(rt.LARCH),
+            .PPC64 => @backingInt(rt.PPC64),
+            .RISCV => @backingInt(rt.RISCV),
+            .SPARCV9 => @backingInt(rt.SPARC),
+            .X86_64 => @backingInt(rt.X86_64),
         };
     }
 };
@@ -1209,7 +1209,7 @@ const SymbolReloc = struct {
         _,
 
         fn get(index: SymbolReloc.Index, elf: *Elf) *SymbolReloc {
-            return &elf.symbol_relocs.items[@intFromEnum(index)];
+            return &elf.symbol_relocs.items[@backingInt(index)];
         }
     };
 
@@ -1875,17 +1875,17 @@ fn addLocalSymbolAssumeCapacity(elf: *Elf, opts: AddLocalSymbolOptions) Symbol.L
 
             // `shdr.info` stores the index of the first global symbol. We will replace it with our
             // new local symbol, and move the global symbol to a new index at the end of the symtab.
-            const target_index: Symbol.Index = @enumFromInt(elf.targetLoad(&shdr.info));
+            const target_index: Symbol.Index = @fromBackingInt(@intCast(elf.targetLoad(&shdr.info)));
 
             const old_size = elf.targetLoad(&shdr.size);
             const new_size = old_size + ent_size;
 
             assert(elf.symtab.items.len == @divExact(old_size, ent_size));
 
-            elf.targetStore(&shdr.info, @intFromEnum(target_index) + 1);
+            elf.targetStore(&shdr.info, @backingInt(target_index) + 1);
             elf.targetStore(&shdr.size, new_size);
 
-            const new_index: Symbol.Index = @enumFromInt(elf.symtab.items.len);
+            const new_index: Symbol.Index = @fromBackingInt(@intCast(elf.symtab.items.len));
             elf.symtab.appendAssumeCapacity(undefined);
 
             const target_sym = @field(elf.symPtr(target_index), @tagName(class));
@@ -1897,7 +1897,7 @@ fn addLocalSymbolAssumeCapacity(elf: *Elf, opts: AddLocalSymbolOptions) Symbol.L
                 // ...then the `elf.symtab` metadata...
                 new_index.ptr(elf).* = target_index.ptr(elf).*;
                 // ...then update the `elf.globals` tracking.
-                const global_name: String(.strtab) = @enumFromInt(elf.targetLoad(&new_sym.name));
+                const global_name: String(.strtab) = @fromBackingInt(@intCast(elf.targetLoad(&new_sym.name)));
                 elf.globalByName(global_name).?.symtab_index = new_index;
 
                 if (elf.ehdrType() == .REL and target_index.ptr(elf).first_target_reloc != .none) {
@@ -1912,7 +1912,7 @@ fn addLocalSymbolAssumeCapacity(elf: *Elf, opts: AddLocalSymbolOptions) Symbol.L
             };
 
             target_sym.* = .{
-                .name = @intFromEnum(opts.name),
+                .name = @backingInt(opts.name),
                 .value = @intCast(opts.value),
                 .size = @intCast(opts.size),
                 .info = .{ .type = opts.type, .bind = .LOCAL },
@@ -1923,7 +1923,7 @@ fn addLocalSymbolAssumeCapacity(elf: *Elf, opts: AddLocalSymbolOptions) Symbol.L
                 std.mem.byteSwapAllFields(class.ElfN().Sym, target_sym);
             }
 
-            return @enumFromInt(@intFromEnum(target_index));
+            return @fromBackingInt(@intCast(@backingInt(target_index)));
         },
     }
 }
@@ -2082,7 +2082,7 @@ fn addGlobalSymbolAssumeCapacity(elf: *Elf, opts: AddGlobalSymbolOptions) error{
         else => |t| t,
     };
 
-    const sym_index: Symbol.Index = @enumFromInt(elf.symtab.items.len);
+    const sym_index: Symbol.Index = @fromBackingInt(@intCast(elf.symtab.items.len));
     elf.symtab.appendAssumeCapacity(.{
         .node = opts.node,
         .first_target_reloc = .none,
@@ -2092,12 +2092,12 @@ fn addGlobalSymbolAssumeCapacity(elf: *Elf, opts: AddGlobalSymbolOptions) error{
             const Sym = class.ElfN().Sym;
             // Increase the symtab size...
             const old_size = elf.targetLoad(&shdr.size);
-            assert(old_size == @intFromEnum(sym_index) * @sizeOf(Sym));
+            assert(old_size == @backingInt(sym_index) * @sizeOf(Sym));
             elf.targetStore(&shdr.size, old_size + @sizeOf(Sym));
             // ...then populate the newly-valid symbol pointer
             const sym = @field(elf.symPtr(sym_index), @tagName(class));
             sym.* = .{
-                .name = @intFromEnum(opts.name.strtab),
+                .name = @backingInt(opts.name.strtab),
                 .value = @intCast(opts.value),
                 .size = @intCast(opts.size),
                 .info = .{ .type = @"type", .bind = bind },
@@ -2133,7 +2133,7 @@ fn addGlobalSymbolAssumeCapacity(elf: *Elf, opts: AddGlobalSymbolOptions) error{
                     // ...then populate the newly-valid symbol pointer
                     const sym = @field(elf.dynsymPtr(dynsym_index), @tagName(class));
                     sym.* = .{
-                        .name = @intFromEnum(opts.name.dynstr),
+                        .name = @backingInt(opts.name.dynstr),
                         .value = @intCast(opts.value),
                         .size = @intCast(opts.size),
                         .info = .{ .type = @"type", .bind = bind },
@@ -2285,7 +2285,7 @@ fn setGlobalSymbolValue(
         if (!elf.pltEntryIsDead(plt_index) and
             elf.classifySymbolValue(.global(global_name)) != .dynamic)
         {
-            elf.shndx.rela_plt.relaDeleteOne(elf, @enumFromInt(plt_index));
+            elf.shndx.rela_plt.relaDeleteOne(elf, @fromBackingInt(@intCast(plt_index)));
             assert(elf.pltEntryIsDead(plt_index));
         }
     }
@@ -2371,14 +2371,14 @@ fn moveDemotedGlobal(elf: *Elf, global_ptr: *Symbol.Global) void {
         inline else => |shdr, class| {
             // `shdr.info` stores the index of the first global symbol. We are going to swap the
             // demoted symbol with that first global symbol, then increment that start index.
-            const dest_index: Symbol.Index = @enumFromInt(elf.targetLoad(&shdr.info));
+            const dest_index: Symbol.Index = @fromBackingInt(@intCast(elf.targetLoad(&shdr.info)));
             const src_index = global_ptr.symtab_index;
 
             // This global should currently be in the "global symbols" part of the symtab, since our
             // job is to move it *out* of that part:
-            assert(@intFromEnum(src_index) >= @intFromEnum(dest_index));
+            assert(@backingInt(src_index) >= @backingInt(dest_index));
 
-            elf.targetStore(&shdr.info, @intFromEnum(dest_index) + 1);
+            elf.targetStore(&shdr.info, @backingInt(dest_index) + 1);
 
             if (src_index != dest_index) {
                 // The demoted global was not the first global in the symtab, so we need to swap it
@@ -2387,10 +2387,10 @@ fn moveDemotedGlobal(elf: *Elf, global_ptr: *Symbol.Global) void {
                 const src_sym_ptr = @field(elf.symPtr(src_index), @tagName(class));
                 const dest_sym_ptr = @field(elf.symPtr(dest_index), @tagName(class));
 
-                const this_name: String(.strtab) = @enumFromInt(elf.targetLoad(&src_sym_ptr.name));
+                const this_name: String(.strtab) = @fromBackingInt(@intCast(elf.targetLoad(&src_sym_ptr.name)));
                 assert(elf.globalByName(this_name).? == global_ptr);
 
-                const other_name: String(.strtab) = @enumFromInt(elf.targetLoad(&dest_sym_ptr.name));
+                const other_name: String(.strtab) = @fromBackingInt(@intCast(elf.targetLoad(&dest_sym_ptr.name)));
                 const other_global_ptr = elf.globalByName(other_name).?;
                 assert(other_global_ptr.symtab_index == dest_index);
 
@@ -2426,7 +2426,7 @@ fn moveDemotedGlobal(elf: *Elf, global_ptr: *Symbol.Global) void {
                     const src_dynsym_ptr = @field(elf.dynsymPtr(remove_dynsym_index), @tagName(class));
                     const dest_dynsym_ptr = @field(elf.dynsymPtr(free_dynsym_index), @tagName(class));
 
-                    const moved_name_dynstr: String(.dynstr) = @enumFromInt(elf.targetLoad(&src_dynsym_ptr.name));
+                    const moved_name_dynstr: String(.dynstr) = @fromBackingInt(@intCast(elf.targetLoad(&src_dynsym_ptr.name)));
                     const moved_name = elf.stringExisting(.strtab, moved_name_dynstr.slice(elf));
                     const moved_global_ptr = elf.globalByName(moved_name).?;
 
@@ -2486,7 +2486,7 @@ const Symbol = struct {
         _,
 
         fn ptr(si: Symbol.Index, elf: *Elf) *Symbol {
-            return &elf.symtab.items[@intFromEnum(si)];
+            return &elf.symtab.items[@backingInt(si)];
         }
     };
 
@@ -2505,7 +2505,7 @@ const Symbol = struct {
         _,
 
         fn index(li: LocalIndex) Index {
-            return @enumFromInt(@intFromEnum(li));
+            return @fromBackingInt(@intCast(@backingInt(li)));
         }
     };
 
@@ -2517,26 +2517,26 @@ const Symbol = struct {
         const @"null": Symbol.Id = .local(.null);
 
         fn local(lsi: Symbol.LocalIndex) Symbol.Id {
-            return .{ .kind = .local, .raw = @intCast(@intFromEnum(lsi)) };
+            return .{ .kind = .local, .raw = @intCast(@backingInt(lsi)) };
         }
         fn global(name: String(.strtab)) Symbol.Id {
-            return .{ .kind = .global, .raw = @intCast(@intFromEnum(name)) };
+            return .{ .kind = .global, .raw = @intCast(@backingInt(name)) };
         }
         fn unwrap(s: Symbol.Id) union(enum) {
             local: Symbol.LocalIndex,
             global: String(.strtab),
         } {
             return switch (s.kind) {
-                .local => .{ .local = @enumFromInt(s.raw) },
-                .global => .{ .global = @enumFromInt(s.raw) },
+                .local => .{ .local = @fromBackingInt(@intCast(s.raw)) },
+                .global => .{ .global = @fromBackingInt(@intCast(s.raw)) },
             };
         }
 
         fn toTypeErased(s: Symbol.Id) link.File.SymbolId {
-            return @enumFromInt(@as(u32, @bitCast(s)));
+            return @fromBackingInt(@intCast(@as(u32, @bitCast(s))));
         }
         fn fromTypeErased(s: link.File.SymbolId) Symbol.Id {
-            return @bitCast(@intFromEnum(s));
+            return @bitCast(@backingInt(s));
         }
 
         fn index(s: Symbol.Id, elf: *const Elf) Symbol.Index {
@@ -2814,7 +2814,7 @@ fn lazySymbolInner(elf: *Elf, lazy: link.File.LazySymbol) Error!link.File.Symbol
         const name = std.fmt.bufPrint(
             &name_buf,
             "__lazy_{t}_{d}",
-            .{ lazy.kind, @intFromEnum(lazy.ty) },
+            .{ lazy.kind, @backingInt(lazy.ty) },
         ) catch unreachable;
         gop.value_ptr.* = .{
             .lsi = elf.addLocalSymbolAssumeCapacity(.{
@@ -2829,8 +2829,8 @@ fn lazySymbolInner(elf: *Elf, lazy: link.File.LazySymbol) Error!link.File.Symbol
             .first_got_reloc = .none,
         };
         elf.nodes.appendAssumeCapacity(switch (lazy.kind) {
-            .code => .{ .lazy_code = @enumFromInt(gop.index) },
-            .const_data => .{ .lazy_const_data = @enumFromInt(gop.index) },
+            .code => .{ .lazy_code = @fromBackingInt(@intCast(gop.index)) },
+            .const_data => .{ .lazy_const_data = @fromBackingInt(@intCast(gop.index)) },
         });
         elf.synth_prog_node.increaseEstimatedTotalItems(1);
     }
@@ -2994,19 +2994,19 @@ fn String(section: StringSection) type {
 
         fn slice(str: @This(), elf: *Elf) [:0]const u8 {
             const section_node = section.shndx(elf).get(elf).ni;
-            const overlong = section_node.sliceConst(&elf.mf)[@intFromEnum(str)..];
+            const overlong = section_node.sliceConst(&elf.mf)[@backingInt(str)..];
             return overlong[0..std.mem.findScalar(u8, overlong, 0).? :0];
         }
     };
 }
 fn string(elf: *Elf, comptime section: StringSection, key: []const u8) Error!String(section) {
     const st: *StringTable = &@field(elf, @tagName(section));
-    return @enumFromInt(try st.get(elf, section.shndx(elf), key));
+    return @fromBackingInt(@intCast(try st.get(elf, section.shndx(elf), key)));
 }
 /// Like `string`, but asserts that the string is already in `section`.
 fn stringExisting(elf: *Elf, comptime section: StringSection, key: []const u8) String(section) {
     const st: *StringTable = &@field(elf, @tagName(section));
-    return @enumFromInt(st.getExisting(elf, section.shndx(elf), key));
+    return @fromBackingInt(@intCast(st.getExisting(elf, section.shndx(elf), key)));
 }
 
 const StringTable = struct {
@@ -3688,7 +3688,7 @@ fn initHeaders(
 
             const sh_undef: *ElfN.Shdr = @ptrCast(@alignCast(elf.ni.shdr.slice(&elf.mf)));
             sh_undef.* = .{
-                .name = @intFromEnum(String(.shstrtab).empty),
+                .name = @backingInt(String(.shstrtab).empty),
                 .type = .NULL,
                 .flags = .{ .shf = .{} },
                 .addr = 0,
@@ -3716,7 +3716,7 @@ fn initHeaders(
             }));
             const symtab_null = @field(elf.symPtr(.null), @tagName(ct_class));
             symtab_null.* = .{
-                .name = @intFromEnum(String(.strtab).empty),
+                .name = @backingInt(String(.strtab).empty),
                 .value = 0,
                 .size = 0,
                 .info = .{ .type = .NOTYPE, .bind = .LOCAL },
@@ -3749,7 +3749,7 @@ fn initHeaders(
     }));
     Section.Index.get(.strtab, elf).ni.slice(&elf.mf)[0] = 0;
     switch (elf.shdrPtr(.symtab)) {
-        inline else => |shdr| elf.targetStore(&shdr.link, @intFromEnum(Section.Index.strtab)),
+        inline else => |shdr| elf.targetStore(&shdr.link, @backingInt(Section.Index.strtab)),
     }
 
     assert(.rodata == try elf.addSection(elf.ni.rodata, .{
@@ -3872,7 +3872,7 @@ fn initHeaders(
                     });
                     const dynsym_null = @field(elf.dynsymPtr(0), @tagName(ct_class));
                     dynsym_null.* = .{
-                        .name = @intFromEnum(String(.dynstr).empty),
+                        .name = @backingInt(String(.dynstr).empty),
                         .value = 0,
                         .size = 0,
                         .info = .{ .type = .NOTYPE, .bind = .LOCAL },
@@ -3926,7 +3926,7 @@ fn initHeaders(
                         0xff, 0x25, 0x00, 0x00, 0x00, 0x00, // jmp *0x0(%rip)
                         0x0f, 0x1f, 0x40, 0x00, // nopl 0x0(%rax)
                     });
-                    elf.plt_first_symbol_reloc = @enumFromInt(elf.symbol_relocs.items.len);
+                    elf.plt_first_symbol_reloc = @fromBackingInt(@intCast(elf.symbol_relocs.items.len));
                     try elf.ensureUnusedRelocCapacity(plt_ni, 2);
                     try elf.addSymbolRelocAssumeCapacity(
                         plt_ni,
@@ -3969,7 +3969,7 @@ fn initHeaders(
                             0x4c, 0x00, 0x01, 0xe0, // jr        $t3
                         },
                     });
-                    elf.plt_first_symbol_reloc = @enumFromInt(elf.symbol_relocs.items.len);
+                    elf.plt_first_symbol_reloc = @fromBackingInt(@intCast(elf.symbol_relocs.items.len));
                     try elf.ensureUnusedRelocCapacity(plt_ni, 3);
                     elf.addRelocAssumeCapacity(plt_ni, 0, got_plt_sym, 0, .{ .LARCH = .PCALA_HI20 }) catch |err| switch (err) {
                         error.UnknownRelocation => unreachable,
@@ -4184,7 +4184,7 @@ fn initHeaders(
     assert(elf.shdrs.items.len == shnum);
 
     for (0..shnum) |shndx_raw| {
-        const shndx: Section.Index = @enumFromInt(shndx_raw);
+        const shndx: Section.Index = @fromBackingInt(@intCast(shndx_raw));
         elf.section_by_name.putAssumeCapacityNoClobber(shndx.name(elf), {});
     }
 
@@ -4239,7 +4239,7 @@ pub fn endProgress(elf: *Elf) void {
 }
 
 fn getNode(elf: *const Elf, ni: MappedFile.Node.Index) Node {
-    return elf.nodes.get(@intFromEnum(ni));
+    return elf.nodes.get(@backingInt(ni));
 }
 /// Asserts that `ni` is a section, input section, copied global, NAV, UAV, or lazy code/data.
 fn getNodeShndx(elf: *const Elf, ni: MappedFile.Node.Index) Section.Index {
@@ -4290,15 +4290,15 @@ fn resetNodeRelocs(elf: *Elf, ni: MappedFile.Node.Index) void {
         .section => unreachable, // cannot contain relocs (.plt and .dynamic unsupported)
         .copied_global => unreachable, // cannot contain relocs
         .input_section => |isi| .{
-            &elf.input_sections.items[@intFromEnum(isi)].first_symbol_reloc,
-            &elf.input_sections.items[@intFromEnum(isi)].first_got_reloc,
+            &elf.input_sections.items[@backingInt(isi)].first_symbol_reloc,
+            &elf.input_sections.items[@backingInt(isi)].first_got_reloc,
         },
         .nav => |nmi| .{
-            &elf.navs.values()[@intFromEnum(nmi)].first_symbol_reloc,
-            &elf.navs.values()[@intFromEnum(nmi)].first_got_reloc,
+            &elf.navs.values()[@backingInt(nmi)].first_symbol_reloc,
+            &elf.navs.values()[@backingInt(nmi)].first_got_reloc,
         },
         .uav => |umi| .{
-            &elf.uavs.values()[@intFromEnum(umi)].first_symbol_reloc,
+            &elf.uavs.values()[@backingInt(umi)].first_symbol_reloc,
             null,
         },
         inline .lazy_code, .lazy_const_data => |lmi| .{
@@ -4309,23 +4309,23 @@ fn resetNodeRelocs(elf: *Elf, ni: MappedFile.Node.Index) void {
 
     if (symbol_relocs.* != .none) {
         for (
-            elf.symbol_relocs.items[@intFromEnum(symbol_relocs.*)..],
-            @intFromEnum(symbol_relocs.*)..,
+            elf.symbol_relocs.items[@backingInt(symbol_relocs.*)..],
+            @backingInt(symbol_relocs.*)..,
         ) |*reloc, index| {
             if (reloc.node != ni) break;
-            reloc.delete(elf, @enumFromInt(index));
+            reloc.delete(elf, @fromBackingInt(@intCast(index)));
         }
     }
-    symbol_relocs.* = @enumFromInt(elf.symbol_relocs.items.len);
+    symbol_relocs.* = @fromBackingInt(@intCast(elf.symbol_relocs.items.len));
 
     if (got_relocs) |ptr| {
         if (ptr.* != .none) {
-            for (elf.got_relocs.items[@intFromEnum(ptr.*)..]) |*reloc| {
+            for (elf.got_relocs.items[@backingInt(ptr.*)..]) |*reloc| {
                 if (reloc.node != ni) break;
                 reloc.delete(elf);
             }
         }
-        ptr.* = @enumFromInt(elf.got_relocs.items.len);
+        ptr.* = @fromBackingInt(@intCast(elf.got_relocs.items.len));
     }
 }
 
@@ -4339,7 +4339,7 @@ fn flushMovedNodeRelocs(
     first_got_reloc: GotReloc.Index,
 ) void {
     if (first_symbol_reloc != .none) {
-        for (elf.symbol_relocs.items[@intFromEnum(first_symbol_reloc)..]) |*reloc| {
+        for (elf.symbol_relocs.items[@backingInt(first_symbol_reloc)..]) |*reloc| {
             if (reloc.node != node) break;
             if (reloc.rela_index.unwrap()) |rela_index| {
                 // The node has moved, so the offset of the relocation within the section might have
@@ -4351,7 +4351,7 @@ fn flushMovedNodeRelocs(
     }
 
     if (first_got_reloc != .none) {
-        for (elf.got_relocs.items[@intFromEnum(first_got_reloc)..]) |*reloc| {
+        for (elf.got_relocs.items[@backingInt(first_got_reloc)..]) |*reloc| {
             if (reloc.node != node) break;
             reloc.apply(elf);
         }
@@ -4359,33 +4359,33 @@ fn flushMovedNodeRelocs(
 }
 
 fn identClass(elf: *const Elf) std.elf.CLASS {
-    return @enumFromInt(elf.mf.memory_map.memory[std.elf.EI.CLASS]);
+    return @fromBackingInt(@intCast(elf.mf.memory_map.memory[std.elf.EI.CLASS]));
 }
 
 /// Like `std.elf.ET`, but only includes the ELF machine architectures we support, so that we can
 /// use exhaustive `switch` statements in the linker implementation.
 const EhdrMachine = enum(u16) {
-    AARCH64 = @intFromEnum(std.elf.EM.AARCH64),
-    LOONGARCH = @intFromEnum(std.elf.EM.LOONGARCH),
-    PPC64 = @intFromEnum(std.elf.EM.PPC64),
-    RISCV = @intFromEnum(std.elf.EM.RISCV),
-    SPARCV9 = @intFromEnum(std.elf.EM.SPARCV9),
-    X86_64 = @intFromEnum(std.elf.EM.X86_64),
+    AARCH64 = @backingInt(std.elf.EM.AARCH64),
+    LOONGARCH = @backingInt(std.elf.EM.LOONGARCH),
+    PPC64 = @backingInt(std.elf.EM.PPC64),
+    RISCV = @backingInt(std.elf.EM.RISCV),
+    SPARCV9 = @backingInt(std.elf.EM.SPARCV9),
+    X86_64 = @backingInt(std.elf.EM.X86_64),
 
     fn toElf(m: EhdrMachine) std.elf.EM {
         return @bitCast(m);
     }
     /// Returns `null` if `m` is not a supported ELF machine architecture.
     fn fromElf(m: std.elf.EM) ?EhdrMachine {
-        return std.enums.fromInt(EhdrMachine, @intFromEnum(m));
+        return std.enums.fromInt(EhdrMachine, @backingInt(m));
     }
 };
 /// Like `std.elf.ET`, but only includes the types of ELF file we can produce, so that we can use
 /// exhaustive `switch` statements in the linker implementation.
 const EhdrType = enum(u16) {
-    REL = @intFromEnum(std.elf.ET.REL),
-    EXEC = @intFromEnum(std.elf.ET.EXEC),
-    DYN = @intFromEnum(std.elf.ET.DYN),
+    REL = @backingInt(std.elf.ET.REL),
+    EXEC = @backingInt(std.elf.ET.EXEC),
+    DYN = @backingInt(std.elf.ET.DYN),
     fn toElf(t: EhdrType) std.elf.ET {
         return @bitCast(t);
     }
@@ -4415,7 +4415,7 @@ fn targetPtrSize(elf: *const Elf) u8 {
     return elf.identClass().size();
 }
 fn targetEndian(elf: *const Elf) std.lang.Endian {
-    const ident_data: std.elf.DATA = @enumFromInt(elf.mf.memory_map.memory[std.elf.EI.DATA]);
+    const ident_data: std.elf.DATA = @fromBackingInt(@intCast(elf.mf.memory_map.memory[std.elf.EI.DATA]));
     return ident_data.endian();
 }
 fn targetTlsVariant(elf: *const Elf) union(enum) {
@@ -4487,7 +4487,7 @@ fn targetLoad(elf: *const Elf, ptr: anytype) @typeInfo(@TypeOf(ptr)).pointer.chi
     return switch (@typeInfo(Child)) {
         else => @compileError(@typeName(Child)),
         .int => std.mem.toNative(Child, ptr.*, elf.targetEndian()),
-        .@"enum" => |@"enum"| @enumFromInt(elf.targetLoad(@as(*align(alignment) const @"enum".tag_type, @ptrCast(ptr)))),
+        .@"enum" => |@"enum"| @fromBackingInt(@intCast(elf.targetLoad(@as(*align(alignment) const @"enum".tag_type, @ptrCast(ptr))))),
         .@"struct" => |@"struct"| @bitCast(
             elf.targetLoad(@as(*align(alignment) @"struct".backing_integer.?, @ptrCast(ptr))),
         ),
@@ -4502,7 +4502,7 @@ fn targetStore(elf: *const Elf, ptr: anytype, val: @typeInfo(@TypeOf(ptr)).point
         .int => ptr.* = std.mem.nativeTo(Child, val, elf.targetEndian()),
         .@"enum" => |@"enum"| elf.targetStore(
             @as(*align(alignment) @"enum".tag_type, @ptrCast(ptr)),
-            @intFromEnum(val),
+            @backingInt(val),
         ),
         .@"struct" => |@"struct"| elf.targetStore(
             @as(*align(alignment) @"struct".backing_integer.?, @ptrCast(ptr)),
@@ -4557,7 +4557,7 @@ fn shdrPtr(elf: *Elf, shndx: Section.Index) ShdrPtr {
         .NONE, _ => unreachable,
         inline else => |class| {
             const shdr_slice: []class.ElfN().Shdr = @ptrCast(@alignCast(raw_slice));
-            const shdr_ptr = &shdr_slice[@intFromEnum(shndx)];
+            const shdr_ptr = &shdr_slice[@backingInt(shndx)];
             return @unionInit(ShdrPtr, @tagName(class), shdr_ptr);
         },
     }
@@ -4574,7 +4574,7 @@ fn symPtr(elf: *Elf, index: Symbol.Index) SymPtr {
         inline else => |shdr, class| {
             const size = elf.targetLoad(&shdr.size);
             const slice: []class.ElfN().Sym = @ptrCast(@alignCast(raw_slice[0..@intCast(size)]));
-            return @unionInit(SymPtr, @tagName(class), &slice[@intFromEnum(index)]);
+            return @unionInit(SymPtr, @tagName(class), &slice[@backingInt(index)]);
         },
     }
 }
@@ -4653,7 +4653,7 @@ fn mapInputSection(elf: *Elf, opts: struct {
         const name_shstrtab = try elf.string(.shstrtab, name);
         const gop = try elf.section_by_name.getOrPut(gpa, name_shstrtab);
         if (gop.found_existing) {
-            break :existing @enumFromInt(gop.index);
+            break :existing @fromBackingInt(@intCast(gop.index));
         }
         errdefer assert(elf.section_by_name.pop().?.key == name_shstrtab);
         const parent_node: MappedFile.Node.Index = parent: {
@@ -4736,7 +4736,7 @@ fn navMapIndex(elf: *Elf, zcu: *Zcu, nav_index: InternPool.Nav.Index) Error!Node
     try elf.navs.ensureUnusedCapacity(gpa, 1);
 
     const nav_gop = elf.navs.getOrPutAssumeCapacity(nav_index);
-    const nmi: Node.NavMapIndex = @enumFromInt(nav_gop.index);
+    const nmi: Node.NavMapIndex = @fromBackingInt(@intCast(nav_gop.index));
     if (!nav_gop.found_existing) {
         const shndx: Section.Index = section: {
             if (nav.resolved.?.@"linksection".toSlice(ip)) |@"linksection"| {
@@ -4835,7 +4835,7 @@ fn uavMapIndex(
     };
 
     const uav_gop = elf.uavs.getOrPutAssumeCapacity(uav_val);
-    const umi: Node.UavMapIndex = @enumFromInt(uav_gop.index);
+    const umi: Node.UavMapIndex = @fromBackingInt(@intCast(uav_gop.index));
     if (!uav_gop.found_existing) {
         const shndx: Section.Index = .data_rel_ro; // TODO: it would be better to use `.rodata` if the UAV value doesn't have relocs
         const node = try elf.mf.addLastChildNode(gpa, shndx.get(elf).ni, .{
@@ -4846,7 +4846,7 @@ fn uavMapIndex(
         const name = std.fmt.bufPrint(
             &name_buf,
             "__anon_{d}",
-            .{@intFromEnum(uav_val)},
+            .{@backingInt(uav_val)},
         ) catch unreachable;
         uav_gop.value_ptr.* = .{
             .lsi = elf.addLocalSymbolAssumeCapacity(.{
@@ -5061,7 +5061,7 @@ fn loadObject(
     const diags = &comp.link_diags;
     const r = &fr.interface;
 
-    const input_index: Node.InputIndex = @enumFromInt(elf.inputs.items.len);
+    const input_index: Node.InputIndex = @fromBackingInt(@intCast(elf.inputs.items.len));
     log.debug("loadObject({f}{f})", .{ path.fmtEscapeString(), fmtMemberString(member) });
     elf.checkInputIdent(path, r) catch |err| switch (err) {
         else => |e| return e,
@@ -5251,9 +5251,9 @@ fn loadObject(
                     .fixed = opts.node_fixed,
                 });
                 elf.nodes.appendAssumeCapacity(.{
-                    .input_section = @enumFromInt(elf.input_sections.items.len),
+                    .input_section = @fromBackingInt(@intCast(elf.input_sections.items.len)),
                 });
-                section.isi = @enumFromInt(elf.input_sections.items.len);
+                section.isi = @fromBackingInt(@intCast(elf.input_sections.items.len));
                 elf.input_sections.addOneAssumeCapacity().* = .{
                     .input = input_index,
                     .file_location = .{
@@ -5598,7 +5598,7 @@ fn loadDso(elf: *Elf, path: std.Build.Cache.Path, fr: *Io.File.Reader) (LoadPars
                 // insane---refer to the doc comment on `alignment` in `Elf.dso_globals`.
                 const sym_align: std.mem.Alignment = switch (sym.value) {
                     0 => section_aligns[sym.shndx],
-                    else => section_aligns[sym.shndx].min(@enumFromInt(@ctz(sym.value))),
+                    else => section_aligns[sym.shndx].min(@fromBackingInt(@intCast(@ctz(sym.value)))),
                 };
 
                 const name = try elf.string(.strtab, std.mem.sliceTo(dynstr[sym.name..], 0));
@@ -5900,16 +5900,16 @@ fn flushDynamic(elf: *Elf) void {
                 dynamic_entries[dynamic_index..][0..elf.needed.count()],
                 elf.needed.keys(),
             ) |*dynamic_entry, needed| {
-                dynamic_entry.* = .{ std.elf.DT_NEEDED, @intFromEnum(needed) };
+                dynamic_entry.* = .{ std.elf.DT_NEEDED, @backingInt(needed) };
             }
             dynamic_index += elf.needed.count();
 
             if (elf.dynamic.soname != .empty) {
-                dynamic_entries[dynamic_index] = .{ std.elf.DT_SONAME, @intFromEnum(elf.dynamic.soname) };
+                dynamic_entries[dynamic_index] = .{ std.elf.DT_SONAME, @backingInt(elf.dynamic.soname) };
                 dynamic_index += 1;
             }
             if (elf.dynamic.rpath != .empty) {
-                dynamic_entries[dynamic_index] = .{ std.elf.DT_RUNPATH, @intFromEnum(elf.dynamic.rpath) };
+                dynamic_entries[dynamic_index] = .{ std.elf.DT_RUNPATH, @backingInt(elf.dynamic.rpath) };
                 dynamic_index += 1;
             }
             if (elf.dynamic.flags != 0) {
@@ -6033,8 +6033,8 @@ fn addSection(elf: *Elf, segment_ni: MappedFile.Node.Index, opts: struct {
                     break :alloc_shndx .{ shndx, shnum };
                 },
             };
-            assert(shndx < @intFromEnum(Section.Index.LORESERVE));
-            break :shndx .{ @enumFromInt(shndx), @as(u64, elf.targetLoad(&ehdr.shentsize)) * @as(u64, shnum) };
+            assert(shndx < @backingInt(Section.Index.LORESERVE));
+            break :shndx .{ @fromBackingInt(@intCast(shndx)), @as(u64, elf.targetLoad(&ehdr.shentsize)) * @as(u64, shnum) };
         },
     };
     try elf.ensureNodeSize(elf.ni.shdr, new_shdr_size);
@@ -6066,7 +6066,7 @@ fn addSection(elf: *Elf, segment_ni: MappedFile.Node.Index, opts: struct {
     switch (elf.shdrPtr(shndx)) {
         inline else => |shdr, class| {
             shdr.* = .{
-                .name = @intFromEnum(shstrtab_entry),
+                .name = @backingInt(shstrtab_entry),
                 .type = opts.type,
                 .flags = .{ .shf = opts.flags },
                 .addr = @intCast(addr),
@@ -6105,7 +6105,7 @@ fn ensureUnusedRelocCapacity(elf: *Elf, node: MappedFile.Node.Index, len: usize)
                 const rela_shndx = try elf.addSection(.none, .{
                     .name = rela_name,
                     .type = .RELA,
-                    .link = @intFromEnum(Section.Index.symtab),
+                    .link = @backingInt(Section.Index.symtab),
                     .info = shndx.toSection().?,
                     .addralign = switch (class) {
                         .NONE, _ => unreachable,
@@ -6160,10 +6160,10 @@ fn addRelocAssumeCapacity(
                 // the section offset now, but there's no point, because `flushMovedNodeRelocs` will
                 // eventually do it for us anyway, so just init to 0.
                 .offset = 0,
-                .raw_sym_index = @intFromEnum(target.index(elf)),
+                .raw_sym_index = @backingInt(target.index(elf)),
                 .addend = addend,
             });
-            const ri: SymbolReloc.Index = @enumFromInt(elf.symbol_relocs.items.len);
+            const ri: SymbolReloc.Index = @fromBackingInt(@intCast(elf.symbol_relocs.items.len));
             const next: SymbolReloc.Index = next: {
                 const target_ptr = target.index(elf).ptr(elf);
                 const next = target_ptr.first_target_reloc;
@@ -6621,7 +6621,7 @@ fn addSymbolRelocAssumeCapacity(
         }
     };
 
-    const ri: SymbolReloc.Index = @enumFromInt(elf.symbol_relocs.items.len);
+    const ri: SymbolReloc.Index = @fromBackingInt(@intCast(elf.symbol_relocs.items.len));
     const target_ptr = target.index(elf).ptr(elf);
     const next = target_ptr.first_target_reloc;
     target_ptr.first_target_reloc = ri;
@@ -7125,7 +7125,7 @@ pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
 
     task: {
         if (elf.input_section_pending_index < elf.input_sections.items.len) {
-            const isi: InputSection.Index = @enumFromInt(elf.input_section_pending_index);
+            const isi: InputSection.Index = @fromBackingInt(@intCast(elf.input_section_pending_index));
             elf.input_section_pending_index += 1;
             const sub_prog_node = elf.idleProgNode(tid, elf.input_prog_node, elf.getNode(isi.node(elf)));
             defer sub_prog_node.end();
@@ -7148,7 +7148,7 @@ pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
                 .REL => {
                     // Index in `.symtab` has changed. Relocatables are easy, we just need to update
                     // all of the output relocations.
-                    const symtab_index = @intFromEnum(global.symtab_index);
+                    const symtab_index = @backingInt(global.symtab_index);
                     var ri = sym.first_target_reloc;
                     while (ri != .none) {
                         const reloc = ri.get(elf);
@@ -7190,7 +7190,7 @@ pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
                         // Update the PLT entry's reloc if there is one:
                         if (elf.plt.getIndex(global_name)) |plt_index| {
                             // PLT indices exactly match `.rela.plt` relocation indices.
-                            elf.shndx.rela_plt.relaUpdateSym(elf, @enumFromInt(plt_index), global.dynsym_index);
+                            elf.shndx.rela_plt.relaUpdateSym(elf, @fromBackingInt(@intCast(plt_index)), global.dynsym_index);
                         }
 
                         // Update relocs for any relevant GOT entries:
@@ -7526,7 +7526,7 @@ fn flushMoved(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!void
             // Update local symbols
             const ii = isi.input(elf);
             var lsi, const end_lsi = ii.localSymbolRange(elf);
-            while (lsi != end_lsi) : (lsi = @enumFromInt(@intFromEnum(lsi) + 1)) {
+            while (lsi != end_lsi) : (lsi = @fromBackingInt(@intCast(@backingInt(lsi) + 1))) {
                 if (lsi.index().ptr(elf).node != ni) continue;
                 const visibility: std.elf.STV = switch (elf.symPtr(lsi.index())) {
                     inline else => |sym| elf.targetLoad(&sym.other).visibility,
@@ -7672,7 +7672,7 @@ fn flushResized(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!vo
                         std.mem.swap(@TypeOf(ph.*), &phdr[new_phndx], next_ph);
                         const next_ni = elf.phdrs.items[next_phndx];
                         elf.phdrs.items[new_phndx] = next_ni;
-                        elf.nodes.items(.data)[@intFromEnum(next_ni)] = .{ .segment = new_phndx };
+                        elf.nodes.items(.data)[@backingInt(next_ni)] = .{ .segment = new_phndx };
                         new_phndx = @intCast(next_phndx);
                     }
                     if (new_phndx != phndx) {
@@ -7680,7 +7680,7 @@ fn flushResized(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!vo
                         elf.targetStore(&new_ph.vaddr, vaddr);
                         new_ph.paddr = new_ph.vaddr;
                         elf.phdrs.items[new_phndx] = ni;
-                        elf.nodes.items(.data)[@intFromEnum(ni)] = .{ .segment = new_phndx };
+                        elf.nodes.items(.data)[@backingInt(ni)] = .{ .segment = new_phndx };
                         try ni.childrenMoved(elf.base.comp.gpa, &elf.mf);
                     }
                 }
@@ -7736,7 +7736,7 @@ fn addPltEntry(elf: *Elf, global_name: String(.strtab), dynsym_index: u32) void 
 
     // We use the existing free-list tracking of the `.rela.plt` section to also behave as a
     // free-list for the PLT itself---see `pltEntryIsDead` for details.
-    const plt_index: u32 = @intFromEnum(elf.shndx.rela_plt.relaAddOneAssumeCapacity(elf, .{
+    const plt_index: u32 = @backingInt(elf.shndx.rela_plt.relaAddOneAssumeCapacity(elf, .{
         .type = .jumpSlot(elf),
         .offset = 0, // populated later
         .raw_sym_index = dynsym_index,
@@ -7756,7 +7756,7 @@ fn addPltEntry(elf: *Elf, global_name: String(.strtab), dynsym_index: u32) void 
     };
 
     // Now that we know the index, we can set the relocation's offset.
-    elf.shndx.rela_plt.relaSetOffset(elf, @enumFromInt(plt_index), got_plt_section.vaddr(elf) + got_plt_offset);
+    elf.shndx.rela_plt.relaSetOffset(elf, @fromBackingInt(@intCast(plt_index)), got_plt_section.vaddr(elf) + got_plt_offset);
 
     if (plt_index < elf.plt.count()) {
         // We reused a free entry, so we're already done!
@@ -7951,7 +7951,7 @@ fn flushMovedPltSection(elf: *Elf, which: enum { plt, plt_sec, got_plt }, old_ad
                     const rela_plt_shndx = elf.shndx.rela_plt;
                     for (0..elf.plt.count()) |plt_index| {
                         if (elf.pltEntryIsDead(plt_index)) continue;
-                        rela_plt_shndx.relaAdjustOffset(elf, @enumFromInt(plt_index), old_addr, addr);
+                        rela_plt_shndx.relaAdjustOffset(elf, @fromBackingInt(@intCast(plt_index)), old_addr, addr);
                     }
                     // We also need to update all of the references from `.plt.sec` to `.got.plt`.
                     // However, if there's also a flush pending for `.plt.sec`, don't bother doing
@@ -8002,7 +8002,7 @@ fn flushMovedPltSection(elf: *Elf, which: enum { plt, plt_sec, got_plt }, old_ad
                     const rela_plt_shndx = elf.shndx.rela_plt;
                     for (0..elf.plt.count()) |plt_index| {
                         if (elf.pltEntryIsDead(plt_index)) continue;
-                        rela_plt_shndx.relaAdjustOffset(elf, @enumFromInt(plt_index), old_addr, addr);
+                        rela_plt_shndx.relaAdjustOffset(elf, @fromBackingInt(@intCast(plt_index)), old_addr, addr);
                     }
                     // We also need to update all of the references from `.plt` to `.got.plt`.
                     // However, if there's also a flush pending for `.plt`, don't bother doing
@@ -8052,7 +8052,7 @@ fn flushMovedPltSection(elf: *Elf, which: enum { plt, plt_sec, got_plt }, old_ad
                 const rela_plt_shndx = elf.shndx.rela_plt;
                 for (0..elf.plt.count()) |plt_index| {
                     if (elf.pltEntryIsDead(plt_index)) continue;
-                    rela_plt_shndx.relaAdjustOffset(elf, @enumFromInt(plt_index), old_addr, addr);
+                    rela_plt_shndx.relaAdjustOffset(elf, @fromBackingInt(@intCast(plt_index)), old_addr, addr);
                 }
             },
             .plt_sec, .got_plt => unreachable,
@@ -8225,10 +8225,10 @@ pub fn printNode(
         }),
     }
     {
-        const mf_node = &elf.mf.nodes.items[@intFromEnum(ni)];
+        const mf_node = &elf.mf.nodes.items[@backingInt(ni)];
         const off, const size = mf_node.location().resolve(&elf.mf);
         try w.print(" index={d} offset=0x{x} size=0x{x} align=0x{x}{s}{s}{s}{s}\n", .{
-            @intFromEnum(ni),
+            @backingInt(ni),
             off,
             size,
             mf_node.flags.alignment.toByteUnits(),

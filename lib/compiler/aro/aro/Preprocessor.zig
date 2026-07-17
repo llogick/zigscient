@@ -45,11 +45,11 @@ const IfContext = struct {
     level: u8,
 
     fn get(self: *const IfContext) Nesting {
-        return @enumFromInt(std.mem.readPackedInt(Backing, &self.kind, @as(usize, self.level) * 2, .native));
+        return @fromBackingInt(@intCast(std.mem.readPackedInt(Backing, &self.kind, @as(usize, self.level) * 2, .native)));
     }
 
     fn set(self: *IfContext, context: Nesting) void {
-        std.mem.writePackedInt(Backing, &self.kind, @as(usize, self.level) * 2, @intFromEnum(context), .native);
+        std.mem.writePackedInt(Backing, &self.kind, @as(usize, self.level) * 2, @backingInt(context), .native);
     }
 
     fn increment(self: *IfContext) bool {

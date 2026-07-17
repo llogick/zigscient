@@ -126,8 +126,8 @@ pub const Node = struct {
 
         pub fn asNumber(start: ListStart) ?u30 {
             if (start == .unordered) return null;
-            assert(@intFromEnum(start) <= 999_999_999);
-            return @intFromEnum(start);
+            assert(@backingInt(start) <= 999_999_999);
+            return @backingInt(start);
         }
     };
 
@@ -171,7 +171,7 @@ pub fn ExtraData(comptime T: type) type {
 
 pub fn extraData(doc: Document, comptime T: type, index: ExtraIndex) ExtraData(T) {
     const info = @typeInfo(T).@"struct";
-    var i: usize = @intFromEnum(index);
+    var i: usize = @backingInt(index);
     var result: T = undefined;
     inline for (info.field_names, info.field_types) |field_name, field_type| {
         @field(result, field_name) = switch (field_type) {
@@ -189,6 +189,6 @@ pub fn extraChildren(doc: Document, index: ExtraIndex) []const Node.Index {
 }
 
 pub fn string(doc: Document, index: StringIndex) [:0]const u8 {
-    const start = @intFromEnum(index);
+    const start = @backingInt(index);
     return std.mem.span(@as([*:0]u8, @ptrCast(doc.string_bytes[start..].ptr)));
 }

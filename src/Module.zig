@@ -353,11 +353,11 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Module {
                 // See https://github.com/ziglang/zig/issues/23539
                 if (target_util.isDynamicAMDGCNFeature(target, feature)) continue;
 
-                if (target.cpu.arch.isPowerPC() and @as(std.Target.powerpc.Feature, @enumFromInt(feature.index)) == .@"64bit") continue;
-                if (target.cpu.arch.isX86() and @as(std.Target.x86.Feature, @enumFromInt(feature.index)) == .x32) continue;
+                if (target.cpu.arch.isPowerPC() and @as(std.Target.powerpc.Feature, @fromBackingInt(@intCast(feature.index))) == .@"64bit") continue;
+                if (target.cpu.arch.isX86() and @as(std.Target.x86.Feature, @fromBackingInt(@intCast(feature.index))) == .x32) continue;
 
                 var is_enabled = target.cpu.features.isEnabled(feature.index);
-                if (target.cpu.arch == .s390x and @as(std.Target.s390x.Feature, @enumFromInt(feature.index)) == .backchain) {
+                if (target.cpu.arch == .s390x and @as(std.Target.s390x.Feature, @fromBackingInt(@intCast(feature.index))) == .backchain) {
                     is_enabled = !omit_frame_pointer;
                 }
 

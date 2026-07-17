@@ -379,7 +379,7 @@ fn parseEncoding(dis: *Disassembler, prefixes: Prefixes) !?Encoding {
 
 fn parseGpRegister(low_enc: u3, is_extended: bool, rex: Rex, bit_size: u64) Register {
     const reg_id: u4 = @as(u4, @intCast(@intFromBool(is_extended))) << 3 | low_enc;
-    const reg = @as(Register, @enumFromInt(reg_id)).toBitSize(bit_size);
+    const reg = @as(Register, @fromBackingInt(@intCast(reg_id))).toBitSize(bit_size);
     return switch (reg) {
         .spl => if (rex.present or rex.isSet()) .spl else .ah,
         .dil => if (rex.present or rex.isSet()) .dil else .bh,

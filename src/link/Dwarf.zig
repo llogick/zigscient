@@ -81,11 +81,11 @@ const ModInfo = struct {
 
 const DebugAbbrev = struct {
     section: Section,
-    const unit: Unit.Index = @enumFromInt(0);
+    const unit: Unit.Index = @fromBackingInt(@intCast(0));
 
     const header_bytes = 0;
 
-    const trailer_bytes = uleb128Bytes(@intFromEnum(AbbrevCode.null));
+    const trailer_bytes = uleb128Bytes(@backingInt(AbbrevCode.null));
 };
 
 const DebugAranges = struct {
@@ -96,7 +96,7 @@ const DebugAranges = struct {
     }
 
     fn trailerBytes(dwarf: *Dwarf) u32 {
-        return @intFromEnum(dwarf.address_size) * 2;
+        return @backingInt(dwarf.address_size) * 2;
     }
 };
 
@@ -146,8 +146,8 @@ const DebugInfo = struct {
 
     fn headerBytes(dwarf: *Dwarf) u32 {
         return dwarf.unitLengthBytes() + 2 + 1 + 1 + dwarf.sectionOffsetBytes() +
-            uleb128Bytes(@intFromEnum(AbbrevCode.compile_unit)) + 1 + dwarf.sectionOffsetBytes() * 6 + uleb128Bytes(0) +
-            uleb128Bytes(@intFromEnum(AbbrevCode.module)) + dwarf.sectionOffsetBytes() + uleb128Bytes(0);
+            uleb128Bytes(@backingInt(AbbrevCode.compile_unit)) + 1 + dwarf.sectionOffsetBytes() * 6 + uleb128Bytes(0) +
+            uleb128Bytes(@backingInt(AbbrevCode.module)) + dwarf.sectionOffsetBytes() + uleb128Bytes(0);
     }
 
     fn declEntryLineOff(dwarf: *Dwarf) u32 {
@@ -168,9 +168,9 @@ const DebugInfo = struct {
             debug_info.section.off(dwarf) + unit_ptr.off + unit_ptr.header_len + entry_ptr.off,
         ) != abbrev_code_buf.len) return error.InputOutput;
         var abbrev_code_reader: std.Io.Reader = .fixed(&abbrev_code_buf);
-        return @enumFromInt(
+        return @fromBackingInt(@intCast(
             abbrev_code_reader.takeLeb128(@typeInfo(AbbrevCode).@"enum".tag_type) catch unreachable,
-        );
+        ));
     }
 
     const trailer_bytes = 1 + 1;
@@ -202,7 +202,7 @@ const DebugLine = struct {
         const dir_index_info = dirIndexInfo(dir_count);
         return dwarf.unitLengthBytes() + 2 + 1 + 1 + dwarf.sectionOffsetBytes() + 1 + 1 + 1 + 1 + 1 + 1 + 1 * (dwarf.debug_line.header.opcode_base - 1) +
             1 + uleb128Bytes(DW.LNCT.path) + uleb128Bytes(DW.FORM.line_strp) + uleb128Bytes(dir_count) + (dwarf.sectionOffsetBytes()) * dir_count +
-            1 + uleb128Bytes(DW.LNCT.path) + uleb128Bytes(DW.FORM.line_strp) + uleb128Bytes(DW.LNCT.directory_index) + uleb128Bytes(@intFromEnum(dir_index_info.form)) + uleb128Bytes(DW.LNCT.LLVM_source) + uleb128Bytes(DW.FORM.line_strp) + uleb128Bytes(file_count) + (dwarf.sectionOffsetBytes() + dir_index_info.bytes + dwarf.sectionOffsetBytes()) * file_count;
+            1 + uleb128Bytes(DW.LNCT.path) + uleb128Bytes(DW.FORM.line_strp) + uleb128Bytes(DW.LNCT.directory_index) + uleb128Bytes(@backingInt(dir_index_info.form)) + uleb128Bytes(DW.LNCT.LLVM_source) + uleb128Bytes(DW.FORM.line_strp) + uleb128Bytes(file_count) + (dwarf.sectionOffsetBytes() + dir_index_info.bytes + dwarf.sectionOffsetBytes()) * file_count;
     }
 
     const trailer_bytes = 1 + uleb128Bytes(1) + 1;
@@ -239,7 +239,7 @@ const StringSection = struct {
     map: std.array_hash_map.Auto(void, void),
     section: Section,
 
-    const unit: Unit.Index = @enumFromInt(0);
+    const unit: Unit.Index = @fromBackingInt(@intCast(0));
 
     const init: StringSection = .{
         .contents = .empty,
@@ -255,7 +255,7 @@ const StringSection = struct {
 
     fn addString(str_sec: *StringSection, dwarf: *Dwarf, str: []const u8) UpdateError!Entry.Index {
         const gop = try str_sec.map.getOrPutAdapted(dwarf.gpa, str, Adapter{ .str_sec = str_sec });
-        const entry: Entry.Index = @enumFromInt(gop.index);
+        const entry: Entry.Index = @fromBackingInt(@intCast(gop.index));
         if (!gop.found_existing) {
             errdefer _ = str_sec.map.pop();
             const unit_ptr = str_sec.section.getUnit(unit);
@@ -284,7 +284,7 @@ const StringSection = struct {
         }
 
         pub fn eql(adapter: Adapter, key: []const u8, _: void, rhs_index: usize) bool {
-            const entry = adapter.str_sec.section.getUnit(unit).getEntry(@enumFromInt(rhs_index));
+            const entry = adapter.str_sec.section.getUnit(unit).getEntry(@fromBackingInt(@intCast(rhs_index)));
             return std.mem.eql(u8, key, adapter.str_sec.contents.items[entry.off..][0 .. entry.len - 1 :0]);
         }
     };
@@ -345,7 +345,7 @@ pub const Section = struct {
     }
 
     fn addUnit(sec: *Section, header_len: u32, trailer_len: u32, dwarf: *Dwarf) UpdateError!Unit.Index {
-        const unit: Unit.Index = @enumFromInt(sec.units.items.len);
+        const unit: Unit.Index = @fromBackingInt(@intCast(sec.units.items.len));
         const unit_ptr = try sec.units.addOne(dwarf.gpa);
         errdefer sec.popUnit(dwarf.gpa);
         const aligned_header_len: u32 = @intCast(sec.alignment.forward(header_len));
@@ -385,14 +385,14 @@ pub const Section = struct {
     }
 
     fn popUnit(sec: *Section, gpa: Allocator) void {
-        const unit_index: Unit.Index = @enumFromInt(sec.units.items.len - 1);
+        const unit_index: Unit.Index = @fromBackingInt(@intCast(sec.units.items.len - 1));
         sec.unlinkUnit(unit_index);
         var unit = sec.units.pop().?;
         unit.deinit(gpa);
     }
 
     pub fn getUnit(sec: *Section, unit: Unit.Index) *Unit {
-        return &sec.units.items[@intFromEnum(unit)];
+        return &sec.units.items[@backingInt(unit)];
     }
 
     fn resizeEntry(
@@ -548,12 +548,12 @@ const Unit = struct {
             _,
 
             pub fn unwrap(uio: Optional) ?Index {
-                return if (uio != .none) @enumFromInt(@intFromEnum(uio)) else null;
+                return if (uio != .none) @fromBackingInt(@intCast(@backingInt(uio))) else null;
             }
         };
 
         fn toOptional(ui: Index) Optional {
-            return @enumFromInt(@intFromEnum(ui));
+            return @fromBackingInt(@intCast(@backingInt(ui)));
         }
     };
 
@@ -577,7 +577,7 @@ const Unit = struct {
             entry_ptr.next = .none;
             return entry;
         }
-        const entry: Entry.Index = @enumFromInt(unit.entries.items.len);
+        const entry: Entry.Index = @fromBackingInt(@intCast(unit.entries.items.len));
         const entry_ptr = try unit.entries.addOne(gpa);
         entry_ptr.* = .{
             .prev = .none,
@@ -593,7 +593,7 @@ const Unit = struct {
     }
 
     pub fn getEntry(unit: *Unit, entry: Entry.Index) *Entry {
-        return &unit.entries.items[@intFromEnum(entry)];
+        return &unit.entries.items[@backingInt(entry)];
     }
 
     fn resize(unit_ptr: *Unit, sec: *Section, dwarf: *Dwarf, extra_header_len: u32, len: u32) UpdateError!void {
@@ -719,11 +719,11 @@ const Unit = struct {
         defer trailer_aw.deinit();
         const tw = &trailer_aw.writer;
         const fill_byte: u8 = if (sec == &dwarf.debug_abbrev.section) fill: {
-            tw.writeUleb128(@intFromEnum(AbbrevCode.null)) catch unreachable;
-            assert(uleb128Bytes(@intFromEnum(AbbrevCode.null)) == 1);
-            break :fill @intFromEnum(AbbrevCode.null);
+            tw.writeUleb128(@backingInt(AbbrevCode.null)) catch unreachable;
+            assert(uleb128Bytes(@backingInt(AbbrevCode.null)) == 1);
+            break :fill @backingInt(AbbrevCode.null);
         } else if (sec == &dwarf.debug_aranges.section) fill: {
-            tw.splatByteAll(0, @intFromEnum(dwarf.address_size) * 2) catch unreachable;
+            tw.splatByteAll(0, @backingInt(dwarf.address_size) * 2) catch unreachable;
             break :fill 0;
         } else if (sec == &dwarf.debug_frame.section) fill: {
             switch (dwarf.debug_frame.header.format) {
@@ -746,7 +746,7 @@ const Unit = struct {
                             }
                             tw.writeByte(4) catch unreachable;
                             tw.writeAll("\x00") catch unreachable;
-                            tw.writeByte(@intFromEnum(dwarf.address_size)) catch unreachable;
+                            tw.writeByte(@backingInt(dwarf.address_size)) catch unreachable;
                             tw.writeByte(0) catch unreachable;
                         },
                         .eh_frame => {
@@ -763,9 +763,9 @@ const Unit = struct {
             tw.splatByteAll(DW.CFA.nop, unit.trailer_len - tw.end) catch unreachable;
             break :fill DW.CFA.nop;
         } else if (sec == &dwarf.debug_info.section) fill: {
-            for (0..2) |_| tw.writeUleb128(@intFromEnum(AbbrevCode.null)) catch unreachable;
-            assert(uleb128Bytes(@intFromEnum(AbbrevCode.null)) == 1);
-            break :fill @intFromEnum(AbbrevCode.null);
+            for (0..2) |_| tw.writeUleb128(@backingInt(AbbrevCode.null)) catch unreachable;
+            assert(uleb128Bytes(@backingInt(AbbrevCode.null)) == 1);
+            break :fill @backingInt(AbbrevCode.null);
         } else if (sec == &dwarf.debug_rnglists.section) fill: {
             tw.writeByte(DW.RLE.end_of_list) catch unreachable;
             break :fill DW.RLE.end_of_list;
@@ -843,12 +843,12 @@ const Entry = struct {
             _,
 
             pub fn unwrap(eio: Optional) ?Index {
-                return if (eio != .none) @enumFromInt(@intFromEnum(eio)) else null;
+                return if (eio != .none) @fromBackingInt(@intCast(@backingInt(eio))) else null;
             }
         };
 
         fn toOptional(ei: Index) Optional {
-            return @enumFromInt(@intFromEnum(ei));
+            return @fromBackingInt(@intCast(@backingInt(ei)));
         }
     };
 
@@ -880,8 +880,8 @@ const Entry = struct {
         const len = unit.getEntry(entry.next.unwrap() orelse return).off - start;
         var buf: [
             @max(
-                uleb128Bytes(@intFromEnum(AbbrevCode.pad_1)),
-                uleb128Bytes(@intFromEnum(AbbrevCode.pad_n)) + uleb128Bytes(std.math.maxInt(u32)),
+                uleb128Bytes(@backingInt(AbbrevCode.pad_1)),
+                uleb128Bytes(@backingInt(AbbrevCode.pad_n)) + uleb128Bytes(std.math.maxInt(u32)),
                 1 + uleb128Bytes(std.math.maxInt(u32)) + 1,
             )
         ]u8 = undefined;
@@ -984,17 +984,17 @@ const Entry = struct {
             defer dwarf.gpa.free(buf);
             _ = try dwarf.getFile().?.readPositionalAll(io, buf, sec.off(dwarf));
             log.info("Section{{ .first = {}, .last = {}, .off = 0x{x}, .len = 0x{x} }}", .{
-                @intFromEnum(sec.first),
-                @intFromEnum(sec.last),
+                @backingInt(sec.first),
+                @backingInt(sec.last),
                 sec.off(dwarf),
                 sec.len,
             });
             for (sec.units.items) |*unit_ptr| {
                 log.info("  Unit{{ .prev = {}, .next = {}, .first = {}, .last = {}, .off = 0x{x}, .header_len = 0x{x}, .trailer_len = 0x{x}, .len = 0x{x} }}", .{
-                    @intFromEnum(unit_ptr.prev),
-                    @intFromEnum(unit_ptr.next),
-                    @intFromEnum(unit_ptr.first),
-                    @intFromEnum(unit_ptr.last),
+                    @backingInt(unit_ptr.prev),
+                    @backingInt(unit_ptr.next),
+                    @backingInt(unit_ptr.first),
+                    @backingInt(unit_ptr.last),
                     unit_ptr.off,
                     unit_ptr.header_len,
                     unit_ptr.trailer_len,
@@ -1002,8 +1002,8 @@ const Entry = struct {
                 });
                 for (unit_ptr.entries.items) |*entry| {
                     log.info("    Entry{{ .prev = {}, .next = {}, .off = 0x{x}, .len = 0x{x} }}", .{
-                        @intFromEnum(entry.prev),
-                        @intFromEnum(entry.next),
+                        @backingInt(entry.prev),
+                        @backingInt(entry.next),
                         entry.off,
                         entry.len,
                     });
@@ -1017,7 +1017,7 @@ const Entry = struct {
         if (entry.len > 0) return entry;
         if (std.debug.runtime_safety) {
             log.err("missing {} from {s}", .{
-                @as(Entry.Index, @enumFromInt(entry - unit.entries.items.ptr)),
+                @as(Entry.Index, @fromBackingInt(@intCast(entry - unit.entries.items.ptr))),
                 std.mem.sliceTo(if (dwarf.bin_file.cast(.elf)) |elf_file|
                     elf_file.zigObjectPtr().?.symbol(sec.index).name(elf_file)
                 else if (dwarf.bin_file.cast(.macho)) |macho_file|
@@ -1031,19 +1031,19 @@ const Entry = struct {
             const zcu = dwarf.bin_file.comp.zcu.?;
             const ip = &zcu.intern_pool;
             for (0.., dwarf.values.items) |raw_index, unit_and_entry| {
-                const index: link.ConstPool.Index = @enumFromInt(raw_index);
+                const index: link.ConstPool.Index = @fromBackingInt(@intCast(raw_index));
                 const val = index.val(&dwarf.const_pool);
                 const val_unit, const val_entry = unit_and_entry;
                 if (sec.getUnit(val_unit) == unit and unit.getEntry(val_entry) == entry)
                     log.err("missing Value({f}({d}))", .{
                         Value.fromInterned(val).fmtValue(.{ .tid = .main, .zcu = zcu }),
-                        @intFromEnum(val),
+                        @backingInt(val),
                     });
             }
             for (dwarf.navs.keys(), dwarf.navs.values()) |nav, other_entry| {
                 const nav_unit = dwarf.getUnit(zcu.fileByIndex(ip.getNav(nav).srcInst(ip).resolveFile(ip)).mod.?) catch unreachable;
                 if (sec.getUnit(nav_unit) == unit and unit.getEntry(other_entry) == entry)
-                    log.err("missing Nav({f}({d}))", .{ ip.getNav(nav).fqn.fmt(ip), @intFromEnum(nav) });
+                    log.err("missing Nav({f}({d}))", .{ ip.getNav(nav).fqn.fmt(ip), @backingInt(nav) });
             }
         }
         @panic("missing dwarf relocation target");
@@ -1108,7 +1108,7 @@ const Entry = struct {
                     entry_off + reloc.source_off,
                     @bitCast(symbol.address(.{}, elf_file) + @as(i64, @intCast(reloc.target_off)) -
                         if (symbol.flags.is_tls) elf_file.dtpAddress() else 0),
-                    @intFromEnum(dwarf.address_size),
+                    @backingInt(dwarf.address_size),
                 );
             }
         } else if (dwarf.bin_file.cast(.macho)) |macho_file| {
@@ -1118,7 +1118,7 @@ const Entry = struct {
                 try dwarf.resolveReloc(
                     entry_off + reloc.source_off,
                     ref.getSymbol(macho_file).?.getAddress(.{}, macho_file) + @as(i64, @intCast(reloc.target_off)),
-                    @intFromEnum(dwarf.address_size),
+                    @backingInt(dwarf.address_size),
                 );
             }
         }
@@ -1735,10 +1735,10 @@ pub const WipNav = struct {
         };
     }
     fn leaveBlockWriterError(wip_nav: *WipNav, code_off: u64) (UpdateError || Writer.Error)!void {
-        const block_bytes = comptime uleb128Bytes(@intFromEnum(AbbrevCode.block));
+        const block_bytes = comptime uleb128Bytes(@backingInt(AbbrevCode.block));
         const block = wip_nav.blocks.pop().?;
         if (wip_nav.any_children)
-            try wip_nav.debug_info.writer.writeUleb128(@intFromEnum(AbbrevCode.null))
+            try wip_nav.debug_info.writer.writeUleb128(@backingInt(AbbrevCode.null))
         else
             std.leb.writeUnsignedFixed(
                 block_bytes,
@@ -1797,10 +1797,10 @@ pub const WipNav = struct {
         func: InternPool.Index,
         code_off: u64,
     ) (UpdateError || Writer.Error)!void {
-        const inlined_func_bytes = comptime uleb128Bytes(@intFromEnum(AbbrevCode.inlined_func));
+        const inlined_func_bytes = comptime uleb128Bytes(@backingInt(AbbrevCode.inlined_func));
         const block = wip_nav.blocks.pop().?;
         if (wip_nav.any_children)
-            try wip_nav.debug_info.writer.writeUleb128(@intFromEnum(AbbrevCode.null))
+            try wip_nav.debug_info.writer.writeUleb128(@backingInt(AbbrevCode.null))
         else
             std.leb.writeUnsignedFixed(
                 inlined_func_bytes,
@@ -1959,7 +1959,7 @@ pub const WipNav = struct {
             return @import("builtin").cpu.arch.endian();
         }
         fn addrSym(counter: *ExprLocCounter, _: link.File.SymbolId) Writer.Error!void {
-            try counter.dw.writer.splatByteAll(undefined, @intFromEnum(counter.address_size));
+            try counter.dw.writer.splatByteAll(undefined, @backingInt(counter.address_size));
         }
         fn infoEntry(counter: *ExprLocCounter, _: Unit.Index, _: Entry.Index) Writer.Error!void {
             try counter.dw.writer.splatByteAll(undefined, counter.section_offset_bytes);
@@ -2005,7 +2005,7 @@ pub const WipNav = struct {
             .target_sym = sym_index,
             .target_off = sym_off,
         });
-        try diw.splatByteAll(0, @intFromEnum(wip_nav.dwarf.address_size));
+        try diw.splatByteAll(0, @backingInt(wip_nav.dwarf.address_size));
     }
 
     fn frameExprLoc(wip_nav: *WipNav, loc: Loc) (UpdateError || Writer.Error)!void {
@@ -2047,7 +2047,7 @@ pub const WipNav = struct {
             .target_sym = sym_index,
             .target_off = sym_off,
         });
-        try dfw.splatByteAll(0, @intFromEnum(wip_nav.dwarf.address_size));
+        try dfw.splatByteAll(0, @backingInt(wip_nav.dwarf.address_size));
     }
 
     fn refNav(
@@ -2073,7 +2073,7 @@ pub const WipNav = struct {
         }
         const dwarf = wip_nav.dwarf;
         const index = try dwarf.const_pool.get(wip_nav.pt, .{ .dwarf = dwarf }, value.toIntern());
-        return dwarf.values.items[@intFromEnum(index)];
+        return dwarf.values.items[@backingInt(index)];
     }
 
     fn refForward(wip_nav: *WipNav) (Allocator.Error || Writer.Error)!u32 {
@@ -2438,14 +2438,14 @@ pub fn initMetadata(dwarf: *Dwarf) UpdateError!void {
     assert(try dwarf.debug_abbrev.section.addUnit(DebugAbbrev.header_bytes, DebugAbbrev.trailer_bytes, dwarf) == DebugAbbrev.unit);
     errdefer dwarf.debug_abbrev.section.popUnit(dwarf.gpa);
     for (std.enums.values(AbbrevCode)) |abbrev_code|
-        assert(@intFromEnum(try dwarf.debug_abbrev.section.getUnit(DebugAbbrev.unit).addEntry(dwarf.gpa)) == @intFromEnum(abbrev_code));
+        assert(@backingInt(try dwarf.debug_abbrev.section.getUnit(DebugAbbrev.unit).addEntry(dwarf.gpa)) == @backingInt(abbrev_code));
 
     dwarf.debug_aranges.section.pad_entries_to_ideal = false;
-    dwarf.debug_aranges.section.alignment = InternPool.Alignment.fromNonzeroByteUnits(@intFromEnum(dwarf.address_size) * 2);
+    dwarf.debug_aranges.section.alignment = InternPool.Alignment.fromNonzeroByteUnits(@backingInt(dwarf.address_size) * 2);
 
     dwarf.debug_frame.section.alignment = switch (dwarf.debug_frame.header.format) {
         .none => .@"1",
-        .debug_frame => InternPool.Alignment.fromNonzeroByteUnits(@intFromEnum(dwarf.address_size)),
+        .debug_frame => InternPool.Alignment.fromNonzeroByteUnits(@backingInt(dwarf.address_size)),
         .eh_frame => .@"4",
     };
 
@@ -2499,7 +2499,7 @@ fn getNavEntry(
 
 fn getUnit(dwarf: *Dwarf, mod: *Module) !Unit.Index {
     const mod_gop = try dwarf.mods.getOrPut(dwarf.gpa, mod);
-    const unit: Unit.Index = @enumFromInt(mod_gop.index);
+    const unit: Unit.Index = @fromBackingInt(@intCast(mod_gop.index));
     if (!mod_gop.found_existing) {
         errdefer _ = dwarf.mods.pop();
         mod_gop.value_ptr.* = .{
@@ -2550,15 +2550,15 @@ fn getUnit(dwarf: *Dwarf, mod: *Module) !Unit.Index {
 }
 
 fn getUnitIfExists(dwarf: *const Dwarf, mod: *Module) ?Unit.Index {
-    return @enumFromInt(dwarf.mods.getIndex(mod) orelse return null);
+    return @fromBackingInt(@intCast(dwarf.mods.getIndex(mod) orelse return null));
 }
 
 fn getModInfo(dwarf: *Dwarf, unit: Unit.Index) *ModInfo {
-    return &dwarf.mods.values()[@intFromEnum(unit)];
+    return &dwarf.mods.values()[@backingInt(unit)];
 }
 
 fn getUnitModule(dwarf: *Dwarf, unit: Unit.Index) *Module {
-    return dwarf.mods.keys()[@intFromEnum(unit)];
+    return dwarf.mods.keys()[@backingInt(unit)];
 }
 
 pub fn initWipNav(
@@ -2590,7 +2590,7 @@ fn initWipNavInner(
         file.sub_file_path,
         decl.src_line + 1,
         decl.src_column + 1,
-        @intFromEnum(inst_info.inst),
+        @backingInt(inst_info.inst),
         nav.fqn.fmt(ip),
     });
 
@@ -2650,7 +2650,7 @@ fn initWipNavInner(
                             try wip_nav.refType(.fromInterned(param_type));
                         }
                         if (func_type.is_var_args) try wip_nav.abbrevCode(.is_var_args);
-                        try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                        try diw.writeUleb128(@backingInt(AbbrevCode.null));
                     }
                 } else try wip_nav.infoExprLoc(.{ .addr_reloc = sym_index });
             },
@@ -2678,7 +2678,7 @@ fn initWipNavInner(
                             try wip_nav.refType(.fromInterned(param_type));
                         }
                         if (func_type.is_var_args) try wip_nav.abbrevCode(.is_var_args);
-                        try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                        try diw.writeUleb128(@backingInt(AbbrevCode.null));
                     }
                 },
             },
@@ -2720,7 +2720,7 @@ fn initWipNavInner(
                             });
                             try dfw.splatByteAll(0, dwarf.sectionOffsetBytes());
                             try wip_nav.frameAddrSym(sym_index, 0);
-                            try dfw.splatByteAll(undefined, @intFromEnum(dwarf.address_size));
+                            try dfw.splatByteAll(undefined, @backingInt(dwarf.address_size));
                         },
                         .eh_frame => {
                             try dfw.writeInt(u32, undefined, dwarf.endian);
@@ -2776,13 +2776,13 @@ fn initWipNavInner(
 
                 try wip_nav.advancePCAndLine(func.lbrace_line, 0);
             } else {
-                try dlw.writeUleb128(1 + @intFromEnum(dwarf.address_size));
+                try dlw.writeUleb128(1 + @backingInt(dwarf.address_size));
                 try dlw.writeByte(DW.LNE.set_address);
                 try dwarf.debug_line.section.getUnit(wip_nav.unit).getEntry(wip_nav.entry).external_relocs.append(dwarf.gpa, .{
                     .source_off = @intCast(dlw.end),
                     .target_sym = sym_index,
                 });
-                try dlw.splatByteAll(0, @intFromEnum(dwarf.address_size));
+                try dlw.splatByteAll(0, @backingInt(dwarf.address_size));
 
                 const file_gop = try dwarf.getModInfo(unit).files.getOrPut(dwarf.gpa, inst_info.file);
                 try dlw.writeByte(DW.LNS.set_file);
@@ -2872,13 +2872,13 @@ fn finishWipNavFuncWriterError(
         const external_relocs = &dwarf.debug_aranges.section.getUnit(wip_nav.unit).getEntry(wip_nav.entry).external_relocs;
         try external_relocs.append(dwarf.gpa, .{ .target_sym = wip_nav.func_sym_index });
         var entry: [8 + 8]u8 = undefined;
-        @memset(entry[0..@intFromEnum(dwarf.address_size)], 0);
-        dwarf.writeInt(entry[@intFromEnum(dwarf.address_size)..][0..@intFromEnum(dwarf.address_size)], code_size);
+        @memset(entry[0..@backingInt(dwarf.address_size)], 0);
+        dwarf.writeInt(entry[@backingInt(dwarf.address_size)..][0..@backingInt(dwarf.address_size)], code_size);
         try dwarf.debug_aranges.section.replaceEntry(
             wip_nav.unit,
             wip_nav.entry,
             dwarf,
-            entry[0 .. @intFromEnum(dwarf.address_size) * 2],
+            entry[0 .. @backingInt(dwarf.address_size) * 2],
         );
     }
     switch (dwarf.debug_frame.header.format) {
@@ -2901,7 +2901,7 @@ fn finishWipNavFuncWriterError(
             switch (format) {
                 .none => unreachable,
                 .debug_frame => dwarf.writeInt(contents[dwarf.unitLengthBytes() + dwarf.sectionOffsetBytes() +
-                    @intFromEnum(dwarf.address_size) ..][0..@intFromEnum(dwarf.address_size)], code_size),
+                    @backingInt(dwarf.address_size) ..][0..@backingInt(dwarf.address_size)], code_size),
                 .eh_frame => {
                     std.mem.writeInt(
                         u32,
@@ -2919,13 +2919,13 @@ fn finishWipNavFuncWriterError(
         std.mem.writeInt(u32, wip_nav.debug_info.written()[wip_nav.func_high_pc..][0..4], @intCast(code_size), dwarf.endian);
         if (wip_nav.any_children) {
             const diw = &wip_nav.debug_info.writer;
-            try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            try diw.writeUleb128(@backingInt(AbbrevCode.null));
         } else {
             const abbrev_code_buf = wip_nav.debug_info.written()[0..AbbrevCode.decl_bytes];
             var abbrev_code_fr: std.Io.Reader = .fixed(abbrev_code_buf);
-            const abbrev_code: AbbrevCode = @enumFromInt(
+            const abbrev_code: AbbrevCode = @fromBackingInt(@intCast(
                 abbrev_code_fr.takeLeb128(@typeInfo(AbbrevCode).@"enum".tag_type) catch unreachable,
-            );
+            ));
             std.leb.writeUnsignedFixed(
                 AbbrevCode.decl_bytes,
                 abbrev_code_buf,
@@ -2944,7 +2944,7 @@ fn finishWipNavFuncWriterError(
                 .target_sym = wip_nav.func_sym_index,
             },
             .{
-                .source_off = 1 + @intFromEnum(dwarf.address_size),
+                .source_off = 1 + @backingInt(dwarf.address_size),
                 .target_sym = wip_nav.func_sym_index,
                 .target_off = code_size,
             },
@@ -2953,7 +2953,7 @@ fn finishWipNavFuncWriterError(
             wip_nav.unit,
             wip_nav.entry,
             dwarf,
-            ([1]u8{DW.RLE.start_end} ++ @as([8 + 8]u8, @splat(0)))[0 .. 1 + @intFromEnum(dwarf.address_size) + @intFromEnum(dwarf.address_size)],
+            ([1]u8{DW.RLE.start_end} ++ @as([8 + 8]u8, @splat(0)))[0 .. 1 + @backingInt(dwarf.address_size) + @backingInt(dwarf.address_size)],
         );
     }
 
@@ -3015,7 +3015,7 @@ fn updateComptimeNavInner(dwarf: *Dwarf, pt: Zcu.PerThread, nav_index: InternPoo
         file.sub_file_path,
         decl.src_line + 1,
         decl.src_column + 1,
-        @intFromEnum(inst_info.inst),
+        @backingInt(inst_info.inst),
         nav.fqn.fmt(ip),
     });
 
@@ -3248,7 +3248,7 @@ fn updateComptimeNavInner(dwarf: *Dwarf, pt: Zcu.PerThread, nav_index: InternPoo
                     try wip_nav.refType(.fromInterned(func_type.param_types.get(ip)[param_index]));
                 }
                 if (func_type.is_var_args) try wip_nav.abbrevCode(.is_var_args);
-                try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                try diw.writeUleb128(@backingInt(AbbrevCode.null));
             }
         },
         .func_alias => |owner_nav| {
@@ -3305,7 +3305,7 @@ fn addConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, index: link.ConstPool.Index, 
         },
     };
 
-    assert(@intFromEnum(index) == dwarf.values.items.len);
+    assert(@backingInt(index) == dwarf.values.items.len);
     try dwarf.values.append(dwarf.gpa, .{ unit, entry });
 }
 /// Should only be called by the `link.ConstPool` implementation.
@@ -3332,7 +3332,7 @@ fn updateConstIncompleteInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_inde
         }),
     }
 
-    const unit, const entry = dwarf.values.items[@intFromEnum(debug_const_index)];
+    const unit, const entry = dwarf.values.items[@backingInt(debug_const_index)];
 
     for ([_]*Section{
         &dwarf.debug_aranges.section,
@@ -3501,7 +3501,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
         }),
     }
 
-    const unit, const entry = dwarf.values.items[@intFromEnum(debug_const_index)];
+    const unit, const entry = dwarf.values.items[@backingInt(debug_const_index)];
 
     for ([_]*Section{
         &dwarf.debug_aranges.section,
@@ -3556,7 +3556,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                 try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
                 if (ptr_type.sentinel != .none) try wip_nav.blockValue(.fromInterned(ptr_type.sentinel));
                 if (ptr_type.flags.alignment.toByteUnits()) |a| try diw.writeUleb128(a);
-                try diw.writeByte(@intFromEnum(ptr_type.flags.address_space));
+                try diw.writeByte(@backingInt(ptr_type.flags.address_space));
                 if (ptr_type.flags.is_const or ptr_type.flags.is_volatile) try wip_nav.infoSectionOffset(
                     .debug_info,
                     wip_nav.unit,
@@ -3592,7 +3592,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                 const len_field_type: Type = .usize;
                 try wip_nav.refType(len_field_type);
                 try diw.writeUleb128(len_field_type.abiAlignment(zcu).forward(ptr_field_type.abiSize(zcu)));
-                try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                try diw.writeUleb128(@backingInt(AbbrevCode.null));
             },
         },
         .array_type => |array_type| {
@@ -3604,7 +3604,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
             try wip_nav.abbrevCode(.array_len);
             try wip_nav.refType(.usize);
             try diw.writeUleb128(array_type.len);
-            try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            try diw.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .vector_type => |vector_type| {
             try wip_nav.abbrevCode(.vector_type);
@@ -3613,7 +3613,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
             try wip_nav.abbrevCode(.array_len);
             try wip_nav.refType(.usize);
             try diw.writeUleb128(vector_type.len);
-            try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            try diw.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .opt_type => |opt_child_type_index| {
             const opt_child_type: Type = .fromInterned(opt_child_type_index);
@@ -3671,7 +3671,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                             try wip_nav.refType(.null);
                             try diw.writeUleb128(0);
                         }
-                        try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                        try diw.writeUleb128(@backingInt(AbbrevCode.null));
 
                         try wip_nav.abbrevCode(.tagged_union_default_field);
                         {
@@ -3680,12 +3680,12 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                             try wip_nav.refType(opt_child_type);
                             try diw.writeUleb128(0);
                         }
-                        try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                        try diw.writeUleb128(@backingInt(AbbrevCode.null));
                     }
-                    try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                    try diw.writeUleb128(@backingInt(AbbrevCode.null));
                 },
             }
-            try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            try diw.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .anyframe_type => unreachable,
         .error_union_type => |error_union_type| {
@@ -3736,7 +3736,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                         try wip_nav.refType(error_union_payload_type);
                         try diw.writeUleb128(error_union_payload_offset);
                     }
-                    try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                    try diw.writeUleb128(@backingInt(AbbrevCode.null));
 
                     try wip_nav.abbrevCode(.tagged_union_default_field);
                     {
@@ -3745,11 +3745,11 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                         try wip_nav.refType(error_union_error_set_type);
                         try diw.writeUleb128(error_union_error_set_offset);
                     }
-                    try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                    try diw.writeUleb128(@backingInt(AbbrevCode.null));
                 }
-                try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                try diw.writeUleb128(@backingInt(AbbrevCode.null));
             }
-            try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            try diw.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .simple_type => |simple_type| switch (simple_type) {
             .f16,
@@ -3850,7 +3850,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                 else if (has_runtime_bits)
                     try wip_nav.blockValue(.fromInterned(comptime_value));
             }
-            try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            try diw.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .struct_type => {
             const loaded_struct = ip.loadStructType(value_index);
@@ -3937,7 +3937,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                             else if (has_runtime_bits)
                                 try wip_nav.blockValue(.fromInterned(field_init));
                         }
-                        try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                        try diw.writeUleb128(@backingInt(AbbrevCode.null));
                     }
                 },
                 .@"packed" => {
@@ -3968,7 +3968,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                         try diw.writeUleb128(field_bit_offset);
                         field_bit_offset += @intCast(field_type.bitSize(zcu));
                     }
-                    if (need_terminator) try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                    if (need_terminator) try diw.writeUleb128(@backingInt(AbbrevCode.null));
                 },
             }
         },
@@ -4024,10 +4024,10 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                                     try diw.writeUleb128(loaded_union.field_aligns.getOrNone(ip, field_index).toByteUnits() orelse
                                         if (field_type.isNoReturn(zcu)) 1 else field_type.abiAlignment(zcu).toByteUnits().?);
                                 }
-                                try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                                try diw.writeUleb128(@backingInt(AbbrevCode.null));
                             }
                         }
-                        try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                        try diw.writeUleb128(@backingInt(AbbrevCode.null));
                     } else for (0..loaded_union.field_types.len) |field_index| {
                         try wip_nav.abbrevCode(.field);
                         try wip_nav.strp(loaded_tag.field_names.get(ip)[field_index].toSlice(ip));
@@ -4037,7 +4037,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                         try diw.writeUleb128(loaded_union.field_aligns.getOrNone(ip, field_index).toByteUnits() orelse
                             if (field_type.isNoReturn(zcu)) 1 else field_type.abiAlignment(zcu).toByteUnits().?);
                     }
-                    if (need_terminator) try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                    if (need_terminator) try diw.writeUleb128(@backingInt(AbbrevCode.null));
                 },
                 .@"packed" => {
                     const need_terminator: bool = if (loaded_union.name_nav.unwrap()) |nav_index| t: {
@@ -4064,7 +4064,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                         try wip_nav.refType(.fromInterned(loaded_union.field_types.get(ip)[field_index]));
                         try diw.writeUleb128(0);
                     }
-                    if (need_terminator) try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                    if (need_terminator) try diw.writeUleb128(@backingInt(AbbrevCode.null));
                 },
             }
         },
@@ -4098,7 +4098,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                     try wip_nav.enumConstValue(loaded_enum, field_index);
                     try wip_nav.strp(loaded_enum.field_names.get(ip)[field_index].toSlice(ip));
                 }
-                if (loaded_enum.field_names.len > 0) try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                if (loaded_enum.field_names.len > 0) try diw.writeUleb128(@backingInt(AbbrevCode.null));
             } else {
                 assert(loaded_enum.owner_union != .none);
                 try wip_nav.abbrevCode(if (loaded_enum.field_names.len == 0) .generated_empty_enum_type else .generated_enum_type);
@@ -4109,7 +4109,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                     try wip_nav.enumConstValue(loaded_enum, field_index);
                     try wip_nav.strp(loaded_enum.field_names.get(ip)[field_index].toSlice(ip));
                 }
-                if (loaded_enum.field_names.len > 0) try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                if (loaded_enum.field_names.len > 0) try diw.writeUleb128(@backingInt(AbbrevCode.null));
             }
         },
         .opaque_type => {
@@ -4204,7 +4204,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                     else => .nocall,
                 };
             };
-            try diw.writeByte(@intFromEnum(cc));
+            try diw.writeByte(@backingInt(cc));
             try wip_nav.refType(.fromInterned(func_type.return_type));
             if (!is_nullary) {
                 for (0..func_type.param_types.len) |param_index| {
@@ -4212,7 +4212,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                     try wip_nav.refType(.fromInterned(func_type.param_types.get(ip)[param_index]));
                 }
                 if (func_type.is_var_args) try wip_nav.abbrevCode(.is_var_args);
-                try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                try diw.writeUleb128(@backingInt(AbbrevCode.null));
             }
         },
         .error_set_type => |error_set_type| {
@@ -4229,7 +4229,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                 try diw.writeUleb128(ip.getErrorValueIfExists(field_name).?);
                 try wip_nav.strp(field_name.toSlice(ip));
             }
-            if (error_set_type.names.len > 0) try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            if (error_set_type.names.len > 0) try diw.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .inferred_error_set_type => |func| {
             try wip_nav.abbrevCode(.inferred_error_set_type);
@@ -4311,7 +4311,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                 try diw.writeUleb128(err_bytes.len);
                 try diw.writeAll(err_bytes);
             }
-            try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            try diw.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .enum_literal => |enum_literal| {
             try wip_nav.abbrevCode(.comptime_value);
@@ -4459,7 +4459,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                         try wip_nav.strp(field_name);
                     },
                 };
-                try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+                try diw.writeUleb128(@backingInt(AbbrevCode.null));
             }
         },
         .slice => |slice| {
@@ -4475,7 +4475,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                 try wip_nav.strp("len");
                 try wip_nav.blockValue(.fromInterned(slice.len));
             }
-            try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            try diw.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .opt => |opt| {
             const opt_child_type: Type = .fromInterned(ip.indexToKey(opt.ty).opt_type);
@@ -4505,7 +4505,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                 else
                     try wip_nav.blockValue(.fromInterned(opt.val));
             }
-            try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            try diw.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .aggregate => |aggregate| {
             try wip_nav.abbrevCode(.aggregate_undefined_comptime_value);
@@ -4586,7 +4586,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                 },
                 else => unreachable,
             }
-            try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            try diw.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .un => |un| {
             try wip_nav.abbrevCode(.aggregate_undefined_comptime_value);
@@ -4611,7 +4611,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                 else if (has_runtime_bits)
                     try wip_nav.blockValue(.fromInterned(un.val));
             }
-            try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+            try diw.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .memoized_call => unreachable, // not a value
     }
@@ -4644,7 +4644,7 @@ pub fn updateLineNumber(dwarf: *Dwarf, zcu: *Zcu, zir_index: InternPool.TrackedI
         file.sub_file_path,
         decl.src_line + 1,
         decl.src_column + 1,
-        @intFromEnum(inst_info.inst),
+        @backingInt(inst_info.inst),
         file.zir.?.nullTerminatedString(decl.name),
     });
 
@@ -4666,19 +4666,19 @@ fn refAbbrevCode(
     abbrev_code: AbbrevCode,
 ) (UpdateError || Writer.Error)!@typeInfo(AbbrevCode).@"enum".tag_type {
     assert(abbrev_code != .null);
-    const entry: Entry.Index = @enumFromInt(@intFromEnum(abbrev_code));
-    if (dwarf.debug_abbrev.section.getUnit(DebugAbbrev.unit).getEntry(entry).len > 0) return @intFromEnum(abbrev_code);
+    const entry: Entry.Index = @fromBackingInt(@intCast(@backingInt(abbrev_code)));
+    if (dwarf.debug_abbrev.section.getUnit(DebugAbbrev.unit).getEntry(entry).len > 0) return @backingInt(abbrev_code);
     var debug_abbrev_aw: Writer.Allocating = .init(dwarf.gpa);
     defer debug_abbrev_aw.deinit();
     const daw = &debug_abbrev_aw.writer;
     const abbrev = AbbrevCode.abbrevs.get(abbrev_code);
-    try daw.writeUleb128(@intFromEnum(abbrev_code));
-    try daw.writeUleb128(@intFromEnum(abbrev.tag));
+    try daw.writeUleb128(@backingInt(abbrev_code));
+    try daw.writeUleb128(@backingInt(abbrev.tag));
     try daw.writeByte(if (abbrev.children) DW.CHILDREN.yes else DW.CHILDREN.no);
-    for (abbrev.attrs) |*attr| inline for (attr) |info| try daw.writeUleb128(@intFromEnum(info));
+    for (abbrev.attrs) |*attr| inline for (attr) |info| try daw.writeUleb128(@backingInt(info));
     for (0..2) |_| try daw.writeUleb128(0);
     try dwarf.debug_abbrev.section.replaceEntry(DebugAbbrev.unit, entry, dwarf, debug_abbrev_aw.written());
-    return @intFromEnum(abbrev_code);
+    return @backingInt(abbrev_code);
 }
 
 pub fn flush(dwarf: *Dwarf, pt: Zcu.PerThread) UpdateError!void {
@@ -4696,7 +4696,7 @@ fn flushWriterError(dwarf: *Dwarf, pt: Zcu.PerThread) (UpdateError || Writer.Err
     // Update `anyerror` based on the finished global error set.
     {
         const index = try dwarf.const_pool.get(pt, .{ .dwarf = dwarf }, .anyerror_type);
-        const unit, const entry = dwarf.values.items[@intFromEnum(index)];
+        const unit, const entry = dwarf.values.items[@backingInt(index)];
         var wip_nav: WipNav = .{
             .dwarf = dwarf,
             .pt = pt,
@@ -4728,7 +4728,7 @@ fn flushWriterError(dwarf: *Dwarf, pt: Zcu.PerThread) (UpdateError || Writer.Err
             try diw.writeUleb128(value);
             try wip_nav.strp(name.toSlice(ip));
         }
-        if (global_error_set_names.len > 0) try diw.writeUleb128(@intFromEnum(AbbrevCode.null));
+        if (global_error_set_names.len > 0) try diw.writeUleb128(@backingInt(AbbrevCode.null));
         try dwarf.debug_info.section.replaceEntry(wip_nav.unit, wip_nav.entry, dwarf, wip_nav.debug_info.written());
         try dwarf.const_pool.flushPending(pt, .{ .dwarf = dwarf });
     }
@@ -4744,7 +4744,7 @@ fn flushWriterError(dwarf: *Dwarf, pt: Zcu.PerThread) (UpdateError || Writer.Err
     const hw = &header_aw.writer;
     if (dwarf.debug_aranges.section.dirty) {
         for (dwarf.debug_aranges.section.units.items, 0..) |*unit_ptr, unit_index| {
-            const unit: Unit.Index = @enumFromInt(unit_index);
+            const unit: Unit.Index = @fromBackingInt(@intCast(unit_index));
             unit_ptr.clear();
             try unit_ptr.cross_section_relocs.ensureTotalCapacity(dwarf.gpa, 1);
             header_aw.clearRetainingCapacity();
@@ -4767,7 +4767,7 @@ fn flushWriterError(dwarf: *Dwarf, pt: Zcu.PerThread) (UpdateError || Writer.Err
                 .target_unit = unit,
             });
             hw.splatByteAll(0, dwarf.sectionOffsetBytes()) catch unreachable;
-            hw.writeByte(@intFromEnum(dwarf.address_size)) catch unreachable;
+            hw.writeByte(@backingInt(dwarf.address_size)) catch unreachable;
             hw.writeByte(0) catch unreachable;
             hw.splatByteAll(0, unit_ptr.header_len - hw.end) catch unreachable;
             try unit_ptr.replaceHeader(&dwarf.debug_aranges.section, dwarf, header_aw.written());
@@ -4820,7 +4820,7 @@ fn flushWriterError(dwarf: *Dwarf, pt: Zcu.PerThread) (UpdateError || Writer.Err
     }
     if (dwarf.debug_info.section.dirty) {
         for (dwarf.mods.keys(), dwarf.mods.values(), dwarf.debug_info.section.units.items, 0..) |mod, mod_info, *unit_ptr, unit_index| {
-            const unit: Unit.Index = @enumFromInt(unit_index);
+            const unit: Unit.Index = @fromBackingInt(@intCast(unit_index));
             unit_ptr.clear();
             try unit_ptr.cross_unit_relocs.ensureTotalCapacity(dwarf.gpa, 1);
             try unit_ptr.cross_section_relocs.ensureTotalCapacity(dwarf.gpa, 7);
@@ -4839,7 +4839,7 @@ fn flushWriterError(dwarf: *Dwarf, pt: Zcu.PerThread) (UpdateError || Writer.Err
             }
             hw.writeInt(u16, 5, dwarf.endian) catch unreachable;
             hw.writeByte(DW.UT.compile) catch unreachable;
-            hw.writeByte(@intFromEnum(dwarf.address_size)) catch unreachable;
+            hw.writeByte(@backingInt(dwarf.address_size)) catch unreachable;
             unit_ptr.cross_section_relocs.appendAssumeCapacity(.{
                 .source_off = @intCast(hw.end),
                 .target_sec = .debug_abbrev,
@@ -4938,7 +4938,7 @@ fn flushWriterError(dwarf: *Dwarf, pt: Zcu.PerThread) (UpdateError || Writer.Err
                 },
             }
             hw.writeInt(u16, 5, dwarf.endian) catch unreachable;
-            hw.writeByte(@intFromEnum(dwarf.address_size)) catch unreachable;
+            hw.writeByte(@backingInt(dwarf.address_size)) catch unreachable;
             hw.writeByte(0) catch unreachable;
             switch (dwarf.format) {
                 .@"32" => hw.writeInt(u32, @intCast(unit.header_len - hw.end - 4), dwarf.endian) catch unreachable,
@@ -4986,7 +4986,7 @@ fn flushWriterError(dwarf: *Dwarf, pt: Zcu.PerThread) (UpdateError || Writer.Err
             hw.writeUleb128(DW.LNCT.path) catch unreachable;
             hw.writeUleb128(DW.FORM.line_strp) catch unreachable;
             hw.writeUleb128(DW.LNCT.directory_index) catch unreachable;
-            hw.writeUleb128(@intFromEnum(dir_index_info.form)) catch unreachable;
+            hw.writeUleb128(@backingInt(dir_index_info.form)) catch unreachable;
             hw.writeUleb128(DW.LNCT.LLVM_source) catch unreachable;
             hw.writeUleb128(DW.FORM.line_strp) catch unreachable;
             hw.writeUleb128(mod_info.files.count()) catch unreachable;
@@ -5046,7 +5046,7 @@ fn flushWriterError(dwarf: *Dwarf, pt: Zcu.PerThread) (UpdateError || Writer.Err
                 },
             }
             hw.writeInt(u16, 5, dwarf.endian) catch unreachable;
-            hw.writeByte(@intFromEnum(dwarf.address_size)) catch unreachable;
+            hw.writeByte(@backingInt(dwarf.address_size)) catch unreachable;
             hw.writeByte(0) catch unreachable;
             hw.writeInt(u32, 1, dwarf.endian) catch unreachable;
             switch (dwarf.format) {
@@ -5238,11 +5238,11 @@ const AbbrevCode = enum {
     comptime_value_elem_runtime_bits,
     comptime_value_elem_comptime_state,
 
-    const decl_bytes = uleb128Bytes(@intFromEnum(AbbrevCode.decl_instance_extern_func));
+    const decl_bytes = uleb128Bytes(@backingInt(AbbrevCode.decl_instance_extern_func));
     comptime {
-        assert(uleb128Bytes(@intFromEnum(AbbrevCode.pad_1)) == 1);
-        assert(uleb128Bytes(@intFromEnum(AbbrevCode.pad_n)) == 1);
-        assert(uleb128Bytes(@intFromEnum(AbbrevCode.decl_alias)) == decl_bytes);
+        assert(uleb128Bytes(@backingInt(AbbrevCode.pad_1)) == 1);
+        assert(uleb128Bytes(@backingInt(AbbrevCode.pad_n)) == 1);
+        assert(uleb128Bytes(@backingInt(AbbrevCode.decl_alias)) == decl_bytes);
     }
 
     const Attr = struct {

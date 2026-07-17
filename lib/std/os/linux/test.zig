@@ -186,8 +186,8 @@ test "sysinfo" {
 }
 
 comptime {
-    assert(128 == @as(u32, @bitCast(linux.FUTEX_OP{ .cmd = @enumFromInt(0), .private = true, .realtime = false })));
-    assert(256 == @as(u32, @bitCast(linux.FUTEX_OP{ .cmd = @enumFromInt(0), .private = false, .realtime = true })));
+    assert(128 == @as(u32, @bitCast(linux.FUTEX_OP{ .cmd = @fromBackingInt(@intCast(0)), .private = true, .realtime = false })));
+    assert(256 == @as(u32, @bitCast(linux.FUTEX_OP{ .cmd = @fromBackingInt(@intCast(0)), .private = false, .realtime = true })));
 
     // Check futex_param4 union is packed correctly
     const param_union = linux.futex_param4{
@@ -277,7 +277,7 @@ test "futex v1" {
 
 comptime {
     assert(2 == @as(u32, @bitCast(linux.FUTEX2_FLAGS{ .size = .U32, .private = false })));
-    assert(128 == @as(u32, @bitCast(linux.FUTEX2_FLAGS{ .size = @enumFromInt(0), .private = true })));
+    assert(128 == @as(u32, @bitCast(linux.FUTEX2_FLAGS{ .size = @fromBackingInt(@intCast(0)), .private = true })));
 }
 
 test "futex2_waitv" {

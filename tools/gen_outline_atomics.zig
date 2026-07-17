@@ -145,11 +145,11 @@ const N = enum(u8) {
     }
 
     fn register(n: N) []const u8 {
-        return if (@intFromEnum(n) < 8) "w" else "x";
+        return if (@backingInt(n) < 8) "w" else "x";
     }
 
     fn toBytes(n: N) u8 {
-        return @intFromEnum(n);
+        return @backingInt(n);
     }
 
     fn toBits(n: N) u8 {
@@ -213,7 +213,7 @@ fn generateCas(arena: Allocator, n: N, order: Ordering) ![]const u8 {
 
     const reg = n.register();
 
-    if (@intFromEnum(n) < 16) {
+    if (@backingInt(n) < 16) {
         const cas = try std.fmt.allocPrint(arena, ".inst 0x08a07c41 + {s} + {s}", .{ s_def.b, o_def.m });
         const ldxr = try std.fmt.allocPrint(arena, "ld{s}xr{s}", .{ o_def.a, s_def.s });
         const stxr = try std.fmt.allocPrint(arena, "st{s}xr{s}", .{ o_def.l, s_def.s });

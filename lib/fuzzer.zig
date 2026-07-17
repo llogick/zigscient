@@ -830,7 +830,7 @@ const Fuzzer = struct {
                 .seen_uids = .empty,
 
                 .corpus = .empty,
-                .corpus_pos = @enumFromInt(0),
+                .corpus_pos = @fromBackingInt(@intCast(0)),
                 .start_mut_corpus = math.maxInt(u32),
                 .dirname = dirname,
                 .lock_file = lock_file,
@@ -965,14 +965,14 @@ const Fuzzer = struct {
             var i: usize = t.start_mut_corpus;
             while (i < t.corpus.len) {
                 if (ref[i].best_i_len == 0) {
-                    f.removeInput(@enumFromInt(i));
+                    f.removeInput(@fromBackingInt(@intCast(i)));
                 } else {
                     i += 1;
                 }
             }
         }
 
-        t.corpus_pos = @enumFromInt(0);
+        t.corpus_pos = @fromBackingInt(@intCast(0));
     }
 
     const CorpusFileName = struct {
@@ -1084,12 +1084,12 @@ const Fuzzer = struct {
 
     fn removeBest(f: *Fuzzer, i: Input.Index, best_i: u32) void {
         const t = &f.tests[f.test_i];
-        const ref = &t.corpus.items(.ref)[@intFromEnum(i)];
+        const ref = &t.corpus.items(.ref)[@backingInt(i)];
         const list_i = mem.indexOfScalar(u32, ref.best_i_buf[0..ref.best_i_len], best_i).?;
         ref.best_i_len -= 1;
         ref.best_i_buf[list_i] = ref.best_i_buf[ref.best_i_len];
 
-        if (ref.best_i_len == 0 and @intFromEnum(i) >= t.start_mut_corpus) {
+        if (ref.best_i_len == 0 and @backingInt(i) >= t.start_mut_corpus) {
             // The input is no longer valuable, so remove it.
             f.removeInput(i);
         }
@@ -1097,10 +1097,10 @@ const Fuzzer = struct {
 
     fn removeInput(f: *Fuzzer, i: Input.Index) void {
         const t = &f.tests[f.test_i];
-        const ref = &t.corpus.items(.ref)[@intFromEnum(i)];
-        assert(ref.best_i_len == 0 and @intFromEnum(i) >= t.start_mut_corpus);
+        const ref = &t.corpus.items(.ref)[@backingInt(i)];
+        assert(ref.best_i_len == 0 and @backingInt(i) >= t.start_mut_corpus);
 
-        var removed_input = t.corpus.get(@intFromEnum(i));
+        var removed_input = t.corpus.get(@backingInt(i));
         for (
             removed_input.data.uid_slices.keys(),
             removed_input.data.uid_slices.values(),
@@ -1135,18 +1135,18 @@ const Fuzzer = struct {
             }
         }
         removed_input.deinit();
-        t.corpus.swapRemove(@intFromEnum(i));
+        t.corpus.swapRemove(@backingInt(i));
 
-        if (@intFromEnum(i) != t.corpus.len) {
+        if (@backingInt(i) != t.corpus.len) {
             // The last item was moved so its refs need updated.
             // `ref` can be reused since it was a swap remove.
             for (ref.best_i_buf[0..ref.best_i_len]) |update_pc_i| {
                 const best = &t.bests.input_buf[update_pc_i];
-                assert(@intFromEnum(best.min) == t.corpus.len or
-                    @intFromEnum(best.max) == t.corpus.len);
+                assert(@backingInt(best.min) == t.corpus.len or
+                    @backingInt(best.max) == t.corpus.len);
 
-                if (@intFromEnum(best.min) == t.corpus.len) best.min = i;
-                if (@intFromEnum(best.max) == t.corpus.len) best.max = i;
+                if (@backingInt(best.min) == t.corpus.len) best.min = i;
+                if (@backingInt(best.max) == t.corpus.len) best.max = i;
             }
         }
 
@@ -1161,8 +1161,8 @@ const Fuzzer = struct {
         }) catch |e| panic("failed to open '{s}': {t}", .{ readlock_name, e });
         defer readlock_file.close(io);
 
-        const removed_name = removed_cname.inputName(@intFromEnum(i) - t.start_mut_corpus);
-        if (@intFromEnum(i) == t.corpus.len) {
+        const removed_name = removed_cname.inputName(@backingInt(i) - t.start_mut_corpus);
+        if (@backingInt(i) == t.corpus.len) {
             exec.cache_f.deleteFile(io, removed_name) catch |e| panic(
                 "failed to remove corpus file '{s}': {t}",
                 .{ removed_name, e },
@@ -1201,7 +1201,7 @@ const Fuzzer = struct {
             // omitted (i.e. test corpus inputs and filesystem inputs cannot be dropped)
         ) {
             f.input_builder.reset();
-            t.corpus_pos = @enumFromInt(0);
+            t.corpus_pos = @fromBackingInt(@intCast(0));
             return;
         }
 
@@ -1250,7 +1250,7 @@ const Fuzzer = struct {
         }
 
         // Must come after the above since some inputs may be removed
-        const input_i: Input.Index = @enumFromInt(t.corpus.len);
+        const input_i: Input.Index = @fromBackingInt(@intCast(t.corpus.len));
         if (input_i == Input.Index.reserved_start) {
             @panic("corpus size limit exceeded");
         }
@@ -1295,7 +1295,7 @@ const Fuzzer = struct {
         if (best_i_list.items.len == 0 and new_is_mut) {
             assert(best_i_list.capacity == 0);
             f.input_builder.reset();
-            t.corpus_pos = @enumFromInt(0);
+            t.corpus_pos = @fromBackingInt(@intCast(0));
             return;
         }
 
@@ -1338,7 +1338,7 @@ const Fuzzer = struct {
             _ = @atomicRmw(usize, &exec.seenPcsHeader().unique_runs, .Add, 1, .monotonic);
             // Write new input to the cache
             var cname: CorpusFileName = .fromTest(t.dirname);
-            const name = cname.inputName(@intFromEnum(input_i) - t.start_mut_corpus);
+            const name = cname.inputName(@backingInt(input_i) - t.start_mut_corpus);
             exec.cache_f.writeFile(io, .{ .sub_path = name, .data = bytes, .flags = .{
                 .exclusive = true,
             } }) catch |e| panic("failed to write corpus file '{s}': {t}", .{ name, e });
@@ -1377,7 +1377,7 @@ const Fuzzer = struct {
 
         const t = &f.tests[f.test_i];
         const corpus = t.corpus.slice();
-        const corpus_i = @intFromEnum(t.corpus_pos);
+        const corpus_i = @backingInt(t.corpus_pos);
 
         var small_entronopy: SmallEntronopy = .{ .bits = f.rngInt(u64) };
         var n_mutate = mutCount(small_entronopy.take(u16));
@@ -1436,8 +1436,8 @@ const Fuzzer = struct {
             abi.runner_broadcast_input(f.test_i, .fromSlice(f.mmap_input.inputSlice()));
             f.newInput();
         } else {
-            assert(@intFromEnum(t.corpus_pos) < t.corpus.len);
-            t.corpus_pos = @enumFromInt((@intFromEnum(t.corpus_pos) + 1) % t.corpus.len);
+            assert(@backingInt(t.corpus_pos) < t.corpus.len);
+            t.corpus_pos = @fromBackingInt(@intCast((@backingInt(t.corpus_pos) + 1) % t.corpus.len));
         }
         f.mmap_input.clearRetainingCapacity();
     }
@@ -1669,7 +1669,7 @@ const Fuzzer = struct {
     } {
         const t = &f.tests[f.test_i];
         const corpus = t.corpus.slice();
-        const corpus_i = @intFromEnum(t.corpus_pos);
+        const corpus_i = @backingInt(t.corpus_pos);
         const data = &corpus.items(.data)[corpus_i];
         var small_entronopy: SmallEntronopy = .{ .bits = f.rngInt(u64) };
 
@@ -1689,7 +1689,7 @@ const Fuzzer = struct {
             f.uid_data_i.items[uid_i] += 1;
             const mut_i = std.simd.firstIndexOfValue(
                 @as(@Vector(4, u32), f.mut_data.i),
-                data_i + @as(u32, @intCast(data.ints.len)) * @intFromEnum(uid.kind),
+                data_i + @as(u32, @intCast(data.ints.len)) * @backingInt(uid.kind),
             ) orelse {
                 @branchHint(.likely);
                 switch (uid.kind) {
@@ -1918,7 +1918,7 @@ const Fuzzer = struct {
     pub fn nextInt(f: *Fuzzer, uid: Uid, weights: []const abi.Weight) u64 {
         const t = &f.tests[f.test_i];
         f.req_values += 1;
-        if (@intFromEnum(t.corpus_pos) >= @intFromEnum(Input.Index.reserved_start)) {
+        if (@backingInt(t.corpus_pos) >= @backingInt(Input.Index.reserved_start)) {
             @branchHint(.unlikely);
             const int = f.bytes_input.valueWeightedWithHash(u64, weights, undefined);
             if (t.corpus_pos == .bytes_fresh) {
@@ -1942,7 +1942,7 @@ const Fuzzer = struct {
     pub fn nextEos(f: *Fuzzer, uid: Uid, weights: []const abi.Weight) bool {
         const t = &f.tests[f.test_i];
         f.req_values += 1;
-        if (@intFromEnum(t.corpus_pos) >= @intFromEnum(Input.Index.reserved_start)) {
+        if (@backingInt(t.corpus_pos) >= @backingInt(Input.Index.reserved_start)) {
             @branchHint(.unlikely);
             const eos = f.bytes_input.eosWeightedWithHash(weights, undefined);
             if (t.corpus_pos == .bytes_fresh) {
@@ -2059,7 +2059,7 @@ const Fuzzer = struct {
         f.req_values += 1;
         f.req_bytes +%= @truncate(out.len); // This function should panic since the 32-bit
         // data limit is exceeded, so wrapping is fine.
-        if (@intFromEnum(t.corpus_pos) >= @intFromEnum(Input.Index.reserved_start)) {
+        if (@backingInt(t.corpus_pos) >= @backingInt(Input.Index.reserved_start)) {
             @branchHint(.unlikely);
             f.bytes_input.bytesWeightedWithHash(out, weights, undefined);
             if (t.corpus_pos == .bytes_fresh) {
@@ -2149,7 +2149,7 @@ const Fuzzer = struct {
     ) u32 {
         const t = &f.tests[f.test_i];
         f.req_values += 1;
-        if (@intFromEnum(t.corpus_pos) >= @intFromEnum(Input.Index.reserved_start)) {
+        if (@backingInt(t.corpus_pos) >= @backingInt(Input.Index.reserved_start)) {
             @branchHint(.unlikely);
             const n = f.bytes_input.sliceWeightedWithHash(
                 buf,

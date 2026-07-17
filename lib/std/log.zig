@@ -75,9 +75,9 @@ fn log(
 /// Determine if a specific log message level and scope combination are enabled for logging.
 pub fn logEnabled(comptime level: Level, comptime scope: @EnumLiteral()) bool {
     inline for (std.options.log_scope_levels) |scope_level| {
-        if (scope_level.scope == scope) return @intFromEnum(level) <= @intFromEnum(scope_level.level);
+        if (scope_level.scope == scope) return @backingInt(level) <= @backingInt(scope_level.level);
     }
-    return @intFromEnum(level) <= @intFromEnum(std.options.log_level);
+    return @backingInt(level) <= @backingInt(std.options.log_level);
 }
 
 pub const terminalMode = std.Options.logTerminalMode;

@@ -377,7 +377,7 @@ pub const Iterator = struct {
                 if (end > extra.len)
                     return error.ZipBadExtraFieldSize;
                 const data = extra[extra_offset + 4 .. end];
-                switch (@as(ExtraHeader, @enumFromInt(header_id))) {
+                switch (@as(ExtraHeader, @fromBackingInt(@intCast(header_id)))) {
                     .zip64_info => try readZip64FileExtents(CentralDirectoryFileHeader, header, &extents, data),
                     else => {}, // ignore
                 }
@@ -485,7 +485,7 @@ pub const Iterator = struct {
                         if (end > local_header.extra_len)
                             return error.ZipBadExtraFieldSize;
                         const data = extra[extra_offset + 4 .. end];
-                        switch (@as(ExtraHeader, @enumFromInt(header_id))) {
+                        switch (@as(ExtraHeader, @fromBackingInt(@intCast(header_id)))) {
                             .zip64_info => try readZip64FileExtents(LocalFileHeader, local_header, &extents, data),
                             else => {}, // ignore
                         }

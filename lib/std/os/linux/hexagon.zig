@@ -9,7 +9,7 @@ pub fn syscall0(
 ) u32 {
     return asm volatile ("trap0(#1)"
         : [ret] "={r0}" (-> u32),
-        : [number] "{r6}" (@intFromEnum(number)),
+        : [number] "{r6}" (@backingInt(number)),
         : .{ .memory = true });
 }
 
@@ -19,7 +19,7 @@ pub fn syscall1(
 ) u32 {
     return asm volatile ("trap0(#1)"
         : [ret] "={r0}" (-> u32),
-        : [number] "{r6}" (@intFromEnum(number)),
+        : [number] "{r6}" (@backingInt(number)),
           [arg1] "{r0}" (arg1),
         : .{ .memory = true });
 }
@@ -31,7 +31,7 @@ pub fn syscall2(
 ) u32 {
     return asm volatile ("trap0(#1)"
         : [ret] "={r0}" (-> u32),
-        : [number] "{r6}" (@intFromEnum(number)),
+        : [number] "{r6}" (@backingInt(number)),
           [arg1] "{r0}" (arg1),
           [arg2] "{r1}" (arg2),
         : .{ .memory = true });
@@ -45,7 +45,7 @@ pub fn syscall3(
 ) u32 {
     return asm volatile ("trap0(#1)"
         : [ret] "={r0}" (-> u32),
-        : [number] "{r6}" (@intFromEnum(number)),
+        : [number] "{r6}" (@backingInt(number)),
           [arg1] "{r0}" (arg1),
           [arg2] "{r1}" (arg2),
           [arg3] "{r2}" (arg3),
@@ -61,7 +61,7 @@ pub fn syscall4(
 ) u32 {
     return asm volatile ("trap0(#1)"
         : [ret] "={r0}" (-> u32),
-        : [number] "{r6}" (@intFromEnum(number)),
+        : [number] "{r6}" (@backingInt(number)),
           [arg1] "{r0}" (arg1),
           [arg2] "{r1}" (arg2),
           [arg3] "{r2}" (arg3),
@@ -72,7 +72,7 @@ pub fn syscall4(
 pub fn syscall5(number: SYS, arg1: u32, arg2: u32, arg3: u32, arg4: u32, arg5: u32) u32 {
     return asm volatile ("trap0(#1)"
         : [ret] "={r0}" (-> u32),
-        : [number] "{r6}" (@intFromEnum(number)),
+        : [number] "{r6}" (@backingInt(number)),
           [arg1] "{r0}" (arg1),
           [arg2] "{r1}" (arg2),
           [arg3] "{r2}" (arg3),
@@ -92,7 +92,7 @@ pub fn syscall6(
 ) u32 {
     return asm volatile ("trap0(#1)"
         : [ret] "={r0}" (-> u32),
-        : [number] "{r6}" (@intFromEnum(number)),
+        : [number] "{r6}" (@backingInt(number)),
           [arg1] "{r0}" (arg1),
           [arg2] "{r1}" (arg2),
           [arg3] "{r2}" (arg3),

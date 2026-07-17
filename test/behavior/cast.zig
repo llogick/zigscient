@@ -440,7 +440,7 @@ test "*usize to *void" {
 
 test "@enumFromInt passed a comptime_int to an enum with one item" {
     const E = enum { A };
-    const x = @as(E, @enumFromInt(0));
+    const x = @as(E, @fromBackingInt(@intCast(0)));
     try expect(x == E.A);
 }
 
@@ -2709,7 +2709,7 @@ test "cast builtins can wrap result in optional" {
     const S = struct {
         const MyEnum = enum(u32) { _ };
         fn a() ?MyEnum {
-            return @enumFromInt(123);
+            return @fromBackingInt(@intCast(123));
         }
         fn b() ?u32 {
             return @intFromFloat(42.50);
@@ -2728,7 +2728,7 @@ test "cast builtins can wrap result in optional" {
             comptime assert(@TypeOf(rb) == u32);
             comptime assert(@TypeOf(rc) == *const f32);
 
-            try expect(@intFromEnum(ra) == 123);
+            try expect(@backingInt(ra) == 123);
             try expect(rb == 42);
             try expect(@as(*const u32, @ptrCast(rc)).* == 1);
         }
@@ -2747,7 +2747,7 @@ test "cast builtins can wrap result in error union" {
         const MyEnum = enum(u32) { _ };
         const E = error{ImpossibleError};
         fn a() E!MyEnum {
-            return @enumFromInt(123);
+            return @fromBackingInt(@intCast(123));
         }
         fn b() E!u32 {
             return @intFromFloat(42.50);
@@ -2766,7 +2766,7 @@ test "cast builtins can wrap result in error union" {
             comptime assert(@TypeOf(rb) == u32);
             comptime assert(@TypeOf(rc) == *const f32);
 
-            try expect(@intFromEnum(ra) == 123);
+            try expect(@backingInt(ra) == 123);
             try expect(rb == 42);
             try expect(@as(*const u32, @ptrCast(rc)).* == 1);
         }
@@ -2785,7 +2785,7 @@ test "cast builtins can wrap result in error union and optional" {
         const MyEnum = enum(u32) { _ };
         const E = error{ImpossibleError};
         fn a() E!?MyEnum {
-            return @enumFromInt(123);
+            return @fromBackingInt(@intCast(123));
         }
         fn b() E!?u32 {
             return @intFromFloat(42.50);
@@ -2804,7 +2804,7 @@ test "cast builtins can wrap result in error union and optional" {
             comptime assert(@TypeOf(rb) == u32);
             comptime assert(@TypeOf(rc) == *const f32);
 
-            try expect(@intFromEnum(ra) == 123);
+            try expect(@backingInt(ra) == 123);
             try expect(rb == 42);
             try expect(@as(*const u32, @ptrCast(rc)).* == 1);
         }

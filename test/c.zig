@@ -15,14 +15,14 @@ test {
 }
 
 pub fn expectErrno(expected_errno: c.E) !void {
-    try std.testing.expectEqual(expected_errno, @as(c.E, @enumFromInt(c._errno().*)));
-    c._errno().* = @intFromEnum(c.E.SUCCESS);
+    try std.testing.expectEqual(expected_errno, @as(c.E, @fromBackingInt(@intCast(c._errno().*))));
+    c._errno().* = @backingInt(c.E.SUCCESS);
 }
 
 pub fn expectErrnoAny(expected_errnos: []const c.E) !void {
     const errno = c._errno().*;
     for (expected_errnos) |expected_errno| {
-        if (errno == @intFromEnum(expected_errno)) break;
+        if (errno == @backingInt(expected_errno)) break;
     } else {
         var buffer: [64]u8 = undefined;
         const stderr = std.debug.lockStderr(&buffer);
@@ -31,8 +31,8 @@ pub fn expectErrnoAny(expected_errnos: []const c.E) !void {
         for (expected_errnos[1..]) |expected_errno| {
             try stderr.file_writer.interface.print(", {t}", .{expected_errno});
         }
-        try stderr.file_writer.interface.print(", found {t}\n", .{@as(c.E, @enumFromInt(errno))});
+        try stderr.file_writer.interface.print(", found {t}\n", .{@as(c.E, @fromBackingInt(@intCast(errno)))});
         return error.TestExpectedEqual;
     }
-    c._errno().* = @intFromEnum(c.E.SUCCESS);
+    c._errno().* = @backingInt(c.E.SUCCESS);
 }

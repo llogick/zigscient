@@ -65,247 +65,247 @@ pub const all_features = blk: {
     const len = @typeInfo(Feature).@"enum".field_names.len;
     std.debug.assert(len <= CpuFeature.Set.needed_bit_count);
     var result: [len]CpuFeature = undefined;
-    result[@intFromEnum(Feature.backchain)] = .{
+    result[@backingInt(Feature.backchain)] = .{
         .llvm_name = "backchain",
         .description = "Store the address of the caller's frame into the callee's stack frame",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.bear_enhancement)] = .{
+    result[@backingInt(Feature.bear_enhancement)] = .{
         .llvm_name = "bear-enhancement",
         .description = "Assume that the BEAR-enhancement facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.concurrent_functions)] = .{
+    result[@backingInt(Feature.concurrent_functions)] = .{
         .llvm_name = "concurrent-functions",
         .description = "Assume that the concurrent-functions facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.deflate_conversion)] = .{
+    result[@backingInt(Feature.deflate_conversion)] = .{
         .llvm_name = "deflate-conversion",
         .description = "Assume that the deflate-conversion facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.dfp_packed_conversion)] = .{
+    result[@backingInt(Feature.dfp_packed_conversion)] = .{
         .llvm_name = "dfp-packed-conversion",
         .description = "Assume that the DFP packed-conversion facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.dfp_zoned_conversion)] = .{
+    result[@backingInt(Feature.dfp_zoned_conversion)] = .{
         .llvm_name = "dfp-zoned-conversion",
         .description = "Assume that the DFP zoned-conversion facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.distinct_ops)] = .{
+    result[@backingInt(Feature.distinct_ops)] = .{
         .llvm_name = "distinct-ops",
         .description = "Assume that the distinct-operands facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.enhanced_dat_2)] = .{
+    result[@backingInt(Feature.enhanced_dat_2)] = .{
         .llvm_name = "enhanced-dat-2",
         .description = "Assume that the enhanced-DAT facility 2 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.enhanced_sort)] = .{
+    result[@backingInt(Feature.enhanced_sort)] = .{
         .llvm_name = "enhanced-sort",
         .description = "Assume that the enhanced-sort facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.execution_hint)] = .{
+    result[@backingInt(Feature.execution_hint)] = .{
         .llvm_name = "execution-hint",
         .description = "Assume that the execution-hint facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fast_serialization)] = .{
+    result[@backingInt(Feature.fast_serialization)] = .{
         .llvm_name = "fast-serialization",
         .description = "Assume that the fast-serialization facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fp_extension)] = .{
+    result[@backingInt(Feature.fp_extension)] = .{
         .llvm_name = "fp-extension",
         .description = "Assume that the floating-point extension facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.guarded_storage)] = .{
+    result[@backingInt(Feature.guarded_storage)] = .{
         .llvm_name = "guarded-storage",
         .description = "Assume that the guarded-storage facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.high_word)] = .{
+    result[@backingInt(Feature.high_word)] = .{
         .llvm_name = "high-word",
         .description = "Assume that the high-word facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.insert_reference_bits_multiple)] = .{
+    result[@backingInt(Feature.insert_reference_bits_multiple)] = .{
         .llvm_name = "insert-reference-bits-multiple",
         .description = "Assume that the insert-reference-bits-multiple facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.interlocked_access1)] = .{
+    result[@backingInt(Feature.interlocked_access1)] = .{
         .llvm_name = "interlocked-access1",
         .description = "Assume that interlocked-access facility 1 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.load_and_trap)] = .{
+    result[@backingInt(Feature.load_and_trap)] = .{
         .llvm_name = "load-and-trap",
         .description = "Assume that the load-and-trap facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.load_and_zero_rightmost_byte)] = .{
+    result[@backingInt(Feature.load_and_zero_rightmost_byte)] = .{
         .llvm_name = "load-and-zero-rightmost-byte",
         .description = "Assume that the load-and-zero-rightmost-byte facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.load_store_on_cond)] = .{
+    result[@backingInt(Feature.load_store_on_cond)] = .{
         .llvm_name = "load-store-on-cond",
         .description = "Assume that the load/store-on-condition facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.load_store_on_cond_2)] = .{
+    result[@backingInt(Feature.load_store_on_cond_2)] = .{
         .llvm_name = "load-store-on-cond-2",
         .description = "Assume that the load/store-on-condition facility 2 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.message_security_assist_extension12)] = .{
+    result[@backingInt(Feature.message_security_assist_extension12)] = .{
         .llvm_name = "message-security-assist-extension12",
         .description = "Assume that the message-security-assist extension facility 12 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.message_security_assist_extension3)] = .{
+    result[@backingInt(Feature.message_security_assist_extension3)] = .{
         .llvm_name = "message-security-assist-extension3",
         .description = "Assume that the message-security-assist extension facility 3 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.message_security_assist_extension4)] = .{
+    result[@backingInt(Feature.message_security_assist_extension4)] = .{
         .llvm_name = "message-security-assist-extension4",
         .description = "Assume that the message-security-assist extension facility 4 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.message_security_assist_extension5)] = .{
+    result[@backingInt(Feature.message_security_assist_extension5)] = .{
         .llvm_name = "message-security-assist-extension5",
         .description = "Assume that the message-security-assist extension facility 5 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.message_security_assist_extension7)] = .{
+    result[@backingInt(Feature.message_security_assist_extension7)] = .{
         .llvm_name = "message-security-assist-extension7",
         .description = "Assume that the message-security-assist extension facility 7 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.message_security_assist_extension8)] = .{
+    result[@backingInt(Feature.message_security_assist_extension8)] = .{
         .llvm_name = "message-security-assist-extension8",
         .description = "Assume that the message-security-assist extension facility 8 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.message_security_assist_extension9)] = .{
+    result[@backingInt(Feature.message_security_assist_extension9)] = .{
         .llvm_name = "message-security-assist-extension9",
         .description = "Assume that the message-security-assist extension facility 9 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.miscellaneous_extensions)] = .{
+    result[@backingInt(Feature.miscellaneous_extensions)] = .{
         .llvm_name = "miscellaneous-extensions",
         .description = "Assume that the miscellaneous-extensions facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.miscellaneous_extensions_2)] = .{
+    result[@backingInt(Feature.miscellaneous_extensions_2)] = .{
         .llvm_name = "miscellaneous-extensions-2",
         .description = "Assume that the miscellaneous-extensions facility 2 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.miscellaneous_extensions_3)] = .{
+    result[@backingInt(Feature.miscellaneous_extensions_3)] = .{
         .llvm_name = "miscellaneous-extensions-3",
         .description = "Assume that the miscellaneous-extensions facility 3 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.miscellaneous_extensions_4)] = .{
+    result[@backingInt(Feature.miscellaneous_extensions_4)] = .{
         .llvm_name = "miscellaneous-extensions-4",
         .description = "Assume that the miscellaneous-extensions facility 4 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.nnp_assist)] = .{
+    result[@backingInt(Feature.nnp_assist)] = .{
         .llvm_name = "nnp-assist",
         .description = "Assume that the NNP-assist facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.population_count)] = .{
+    result[@backingInt(Feature.population_count)] = .{
         .llvm_name = "population-count",
         .description = "Assume that the population-count facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.processor_activity_instrumentation)] = .{
+    result[@backingInt(Feature.processor_activity_instrumentation)] = .{
         .llvm_name = "processor-activity-instrumentation",
         .description = "Assume that the processor-activity-instrumentation facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.processor_assist)] = .{
+    result[@backingInt(Feature.processor_assist)] = .{
         .llvm_name = "processor-assist",
         .description = "Assume that the processor-assist facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reset_dat_protection)] = .{
+    result[@backingInt(Feature.reset_dat_protection)] = .{
         .llvm_name = "reset-dat-protection",
         .description = "Assume that the reset-DAT-protection facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reset_reference_bits_multiple)] = .{
+    result[@backingInt(Feature.reset_reference_bits_multiple)] = .{
         .llvm_name = "reset-reference-bits-multiple",
         .description = "Assume that the reset-reference-bits-multiple facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.soft_float)] = .{
+    result[@backingInt(Feature.soft_float)] = .{
         .llvm_name = "soft-float",
         .description = "Use software emulation for floating point",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.test_pending_external_interruption)] = .{
+    result[@backingInt(Feature.test_pending_external_interruption)] = .{
         .llvm_name = "test-pending-external-interruption",
         .description = "Assume that the test-pending-external-interruption facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.transactional_execution)] = .{
+    result[@backingInt(Feature.transactional_execution)] = .{
         .llvm_name = "transactional-execution",
         .description = "Assume that the transactional-execution facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.unaligned_symbols)] = .{
+    result[@backingInt(Feature.unaligned_symbols)] = .{
         .llvm_name = "unaligned-symbols",
         .description = "Don't apply the ABI minimum alignment to external symbols.",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vector)] = .{
+    result[@backingInt(Feature.vector)] = .{
         .llvm_name = "vector",
         .description = "Assume that the vectory facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vector_enhancements_1)] = .{
+    result[@backingInt(Feature.vector_enhancements_1)] = .{
         .llvm_name = "vector-enhancements-1",
         .description = "Assume that the vector enhancements facility 1 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vector_enhancements_2)] = .{
+    result[@backingInt(Feature.vector_enhancements_2)] = .{
         .llvm_name = "vector-enhancements-2",
         .description = "Assume that the vector enhancements facility 2 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vector_enhancements_3)] = .{
+    result[@backingInt(Feature.vector_enhancements_3)] = .{
         .llvm_name = "vector-enhancements-3",
         .description = "Assume that the vector enhancements facility 3 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vector_packed_decimal)] = .{
+    result[@backingInt(Feature.vector_packed_decimal)] = .{
         .llvm_name = "vector-packed-decimal",
         .description = "Assume that the vector packed decimal facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vector_packed_decimal_enhancement)] = .{
+    result[@backingInt(Feature.vector_packed_decimal_enhancement)] = .{
         .llvm_name = "vector-packed-decimal-enhancement",
         .description = "Assume that the vector packed decimal enhancement facility is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vector_packed_decimal_enhancement_2)] = .{
+    result[@backingInt(Feature.vector_packed_decimal_enhancement_2)] = .{
         .llvm_name = "vector-packed-decimal-enhancement-2",
         .description = "Assume that the vector packed decimal enhancement facility 2 is installed",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vector_packed_decimal_enhancement_3)] = .{
+    result[@backingInt(Feature.vector_packed_decimal_enhancement_3)] = .{
         .llvm_name = "vector-packed-decimal-enhancement-3",
         .description = "Assume that the vector packed decimal enhancement facility 3 is installed",
         .dependencies = featureSet(&[_]Feature{}),

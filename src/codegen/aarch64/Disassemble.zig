@@ -363,7 +363,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                 return writer.print("{f}{s}{f}{s}#0x{d}{s}.{c}0x{x}", .{
                     fmtCase(group.op, dis.case),
                     dis.mnemonic_operands_separator,
-                    group.Rt.decode(.{}).general(@enumFromInt(group.b5)).fmtCase(dis.case),
+                    group.Rt.decode(.{}).general(@fromBackingInt(@intCast(group.b5))).fmtCase(dis.case),
                     dis.operands_separator,
                     @as(u6, group.b5) << 5 |
                         @as(u6, group.b40) << 0,
@@ -383,7 +383,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                     const decoded = integer.decode();
                     if (decoded == .unallocated) break :unallocated;
                     const group = integer.group;
-                    const sf: aarch64.encoding.Register.GeneralSize = @enumFromInt(group.opc >> 1);
+                    const sf: aarch64.encoding.Register.GeneralSize = @fromBackingInt(@intCast(group.opc >> 1));
                     return writer.print("{f}{s}{f}{s}{f}{s}[{f}]{s}#{s}0x{x}", .{
                         fmtCase(decoded, dis.case),
                         dis.mnemonic_operands_separator,
@@ -394,7 +394,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                         group.Rn.decode(.{ .sp = true }).x().fmtCase(dis.case),
                         dis.operands_separator,
                         if (group.imm7 < 0) "-" else "",
-                        @as(u10, @abs(group.imm7)) << (@as(u2, 2) + @intFromEnum(sf)),
+                        @as(u10, @abs(group.imm7)) << (@as(u2, 2) + @backingInt(sf)),
                     });
                 },
                 .vector => |vector| {
@@ -412,7 +412,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                         group.Rn.decode(.{ .sp = true }).x().fmtCase(dis.case),
                         dis.operands_separator,
                         if (group.imm7 < 0) "-" else "",
-                        @as(u11, @abs(group.imm7)) << (@as(u3, 2) + @intFromEnum(vs)),
+                        @as(u11, @abs(group.imm7)) << (@as(u3, 2) + @backingInt(vs)),
                     });
                 },
             },
@@ -421,7 +421,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                     const decoded = integer.decode();
                     if (decoded == .unallocated) break :unallocated;
                     const group = integer.group;
-                    const sf: aarch64.encoding.Register.GeneralSize = @enumFromInt(group.opc >> 1);
+                    const sf: aarch64.encoding.Register.GeneralSize = @fromBackingInt(@intCast(group.opc >> 1));
                     try writer.print("{f}{s}{f}{s}{f}{s}[{f}", .{
                         fmtCase(decoded, dis.case),
                         dis.mnemonic_operands_separator,
@@ -434,7 +434,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                     if (group.imm7 != 0) try writer.print("{s}#{s}0x{x}", .{
                         dis.operands_separator,
                         if (group.imm7 < 0) "-" else "",
-                        @as(u10, @abs(group.imm7)) << (@as(u2, 2) + @intFromEnum(sf)),
+                        @as(u10, @abs(group.imm7)) << (@as(u2, 2) + @backingInt(sf)),
                     });
                     return writer.writeByte(']');
                 },
@@ -455,7 +455,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                     if (group.imm7 != 0) try writer.print("{s}#{s}0x{x}", .{
                         dis.operands_separator,
                         if (group.imm7 < 0) "-" else "",
-                        @as(u11, @abs(group.imm7)) << (@as(u3, 2) + @intFromEnum(vs)),
+                        @as(u11, @abs(group.imm7)) << (@as(u3, 2) + @backingInt(vs)),
                     });
                     return writer.writeByte(']');
                 },
@@ -465,7 +465,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                     const decoded = integer.decode();
                     if (decoded == .unallocated) break :unallocated;
                     const group = integer.group;
-                    const sf: aarch64.encoding.Register.GeneralSize = @enumFromInt(group.opc >> 1);
+                    const sf: aarch64.encoding.Register.GeneralSize = @fromBackingInt(@intCast(group.opc >> 1));
                     return writer.print("{f}{s}{f}{s}{f}{s}[{f}{s}#{s}0x{x}]!", .{
                         fmtCase(decoded, dis.case),
                         dis.mnemonic_operands_separator,
@@ -476,7 +476,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                         group.Rn.decode(.{ .sp = true }).x().fmtCase(dis.case),
                         dis.operands_separator,
                         if (group.imm7 < 0) "-" else "",
-                        @as(u10, @abs(group.imm7)) << (@as(u2, 2) + @intFromEnum(sf)),
+                        @as(u10, @abs(group.imm7)) << (@as(u2, 2) + @backingInt(sf)),
                     });
                 },
                 .vector => |vector| {
@@ -494,7 +494,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                         group.Rn.decode(.{ .sp = true }).x().fmtCase(dis.case),
                         dis.operands_separator,
                         if (group.imm7 < 0) "-" else "",
-                        @as(u11, @abs(group.imm7)) << (@as(u3, 2) + @intFromEnum(vs)),
+                        @as(u11, @abs(group.imm7)) << (@as(u3, 2) + @backingInt(vs)),
                     });
                 },
             },
@@ -597,7 +597,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                             fmtCase(group.option, dis.case),
                         });
                         if (group.S) try writer.print(" #{d}", .{
-                            @intFromEnum(group.size),
+                            @backingInt(group.size),
                         });
                     }
                     return writer.writeByte(']');
@@ -627,7 +627,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                     });
                     if (group.imm12 > 0) try writer.print("{s}#0x{x}", .{
                         dis.operands_separator,
-                        @as(u15, group.imm12) << @intFromEnum(group.size),
+                        @as(u15, group.imm12) << @backingInt(group.size),
                     });
                     return writer.writeByte(']');
                 },
@@ -969,10 +969,10 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                     else
                         fmtCase(decoded, dis.case),
                     dis.mnemonic_operands_separator,
-                    group.Rd.decode(.{ .V = true }).scalar(@enumFromInt(elem_size)).fmtCase(dis.case),
+                    group.Rd.decode(.{ .V = true }).scalar(@fromBackingInt(@intCast(elem_size))).fmtCase(dis.case),
                     dis.operands_separator,
                     group.Rn.decode(.{ .V = true }).element(
-                        @enumFromInt(elem_size),
+                        @fromBackingInt(@intCast(elem_size)),
                         @intCast(group.imm5 >> (elem_size + 1)),
                     ).fmtCase(dis.case),
                 });
@@ -1066,11 +1066,11 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                         .unallocated => unreachable,
                         .dup => |dup| group.Rd.decode(.{ .V = true }).vector(.wrap(.{
                             .size = dup.Q,
-                            .elem_size = @enumFromInt(elem_size),
+                            .elem_size = @fromBackingInt(@intCast(elem_size)),
                         })),
                         inline .smov, .umov => |mov| group.Rd.decode(.{}).general(mov.Q),
                         .ins => group.Rd.decode(.{ .V = true }).element(
-                            @enumFromInt(elem_size),
+                            @fromBackingInt(@intCast(elem_size)),
                             @intCast(group.imm5 >> (elem_size + 1)),
                         ),
                     }.fmtCase(dis.case),
@@ -1079,7 +1079,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                         .unallocated => unreachable,
                         .dup => |dup| switch (dup.imm4) {
                             .element => group.Rn.decode(.{ .V = true }).element(
-                                @enumFromInt(elem_size),
+                                @fromBackingInt(@intCast(elem_size)),
                                 @intCast(group.imm5 >> (elem_size + 1)),
                             ),
                             .general => group.Rn.decode(.{}).general(switch (elem_size) {
@@ -1090,12 +1090,12 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                             _ => unreachable,
                         },
                         .smov, .umov => group.Rn.decode(.{ .V = true }).element(
-                            @enumFromInt(elem_size),
+                            @fromBackingInt(@intCast(elem_size)),
                             @intCast(group.imm5 >> (elem_size + 1)),
                         ),
                         .ins => |ins| switch (ins.op) {
                             .element => group.Rn.decode(.{ .V = true }).element(
-                                @enumFromInt(elem_size),
+                                @fromBackingInt(@intCast(elem_size)),
                                 @intCast(group.imm4 >> @intCast(elem_size)),
                             ),
                             .general => group.Rn.decode(.{}).general(switch (elem_size) {
@@ -1263,7 +1263,7 @@ pub fn printInstruction(dis: Disassemble, inst: aarch64.encoding.Instruction, wr
                         .size = group.Q,
                         .elem_size = switch (group.o2) {
                             0b1 => .half,
-                            0b0 => DataProcessingVector.Sz.toSize(@enumFromInt(group.op)),
+                            0b0 => DataProcessingVector.Sz.toSize(@fromBackingInt(@intCast(group.op))),
                         },
                     })).fmtCase(dis.case),
                 });
@@ -1404,7 +1404,7 @@ pub const RegisterFormatter = struct {
                 .r30,
                 => |alias| try writer.print("{c}{d}", .{
                     data.case.convert(size.prefix()),
-                    @intFromEnum(alias.encode(.{})),
+                    @backingInt(alias.encode(.{})),
                 }),
                 .zr => try writer.print("{c}{f}", .{
                     data.case.convert(size.prefix()),
@@ -1420,7 +1420,7 @@ pub const RegisterFormatter = struct {
             },
             .scalar => |size| try writer.print("{c}{d}", .{
                 data.case.convert(size.prefix()),
-                @intFromEnum(data.reg.alias.encode(.{ .V = true })),
+                @backingInt(data.reg.alias.encode(.{ .V = true })),
             }),
             .vector => |arrangement| try writer.print("{f}.{f}", .{
                 fmtCase(data.reg.alias, data.case),
@@ -1433,7 +1433,7 @@ pub const RegisterFormatter = struct {
             }),
             .scalable => try writer.print("{c}{d}", .{
                 data.case.convert('z'),
-                @intFromEnum(data.reg.alias.encode(.{ .V = true })),
+                @backingInt(data.reg.alias.encode(.{ .V = true })),
             }),
         }
     }

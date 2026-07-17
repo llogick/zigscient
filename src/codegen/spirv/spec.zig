@@ -21,7 +21,7 @@ pub const Id = enum(Word) {
     pub fn format(self: Id, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self) {
             .none => try writer.writeAll("(none)"),
-            else => try writer.print("%{d}", .{@intFromEnum(self)}),
+            else => try writer.print("%{d}", .{@backingInt(self)}),
         }
     }
 };
@@ -32,7 +32,7 @@ pub const IdRange = struct {
 
     pub fn at(range: IdRange, i: usize) Id {
         std.debug.assert(i < range.len);
-        return @enumFromInt(range.base + i);
+        return @fromBackingInt(@intCast(range.base + i));
     }
 };
 

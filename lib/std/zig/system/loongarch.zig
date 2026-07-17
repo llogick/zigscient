@@ -13,7 +13,7 @@ inline fn bit(input: u32, offset: u5) bool {
 }
 
 fn setFeature(cpu: *std.Target.Cpu, feature: std.Target.loongarch.Feature, enabled: bool) void {
-    const idx = @as(std.Target.Cpu.Feature.Set.Index, @intFromEnum(feature));
+    const idx = @as(std.Target.Cpu.Feature.Set.Index, @backingInt(feature));
 
     if (enabled) cpu.features.addFeature(idx) else cpu.features.removeFeature(idx);
 }
@@ -26,7 +26,7 @@ pub fn detectNativeCpuAndFeatures(
     _ = os;
     _ = query;
 
-    const variant: Variant = @enumFromInt(cpucfg(1) & 0b11);
+    const variant: Variant = @fromBackingInt(@intCast(cpucfg(1) & 0b11));
 
     var cpu: std.Target.Cpu = .{
         .arch = arch,

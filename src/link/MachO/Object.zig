@@ -979,7 +979,7 @@ fn initSymbolStabs(self: *Object, allocator: Allocator, nlists: anytype, macho_f
         const open = syms[i];
         if (open.n_type.stab != .so) {
             try macho_file.reportParseError2(self.index, "unexpected symbol stab type 0x{x} as the first entry", .{
-                @intFromEnum(open.n_type.stab),
+                @backingInt(open.n_type.stab),
             });
             return error.MalformedObject;
         }
@@ -1009,7 +1009,7 @@ fn initSymbolStabs(self: *Object, allocator: Allocator, nlists: anytype, macho_f
                     stab.index = sym_lookup.find(nlist.n_value);
                 },
                 _ => {
-                    try macho_file.reportParseError2(self.index, "unhandled symbol stab type 0x{x}", .{@intFromEnum(nlist.n_type.stab)});
+                    try macho_file.reportParseError2(self.index, "unhandled symbol stab type 0x{x}", .{@backingInt(nlist.n_type.stab)});
                     return error.MalformedObject;
                 },
                 else => {
@@ -2032,8 +2032,8 @@ fn addReloc(offset: u32, arch: std.Target.Cpu.Arch) !macho.relocation_info {
         .r_length = 3,
         .r_extern = 0,
         .r_type = switch (arch) {
-            .aarch64 => @intFromEnum(macho.reloc_type_arm64.ARM64_RELOC_UNSIGNED),
-            .x86_64 => @intFromEnum(macho.reloc_type_x86_64.X86_64_RELOC_UNSIGNED),
+            .aarch64 => @backingInt(macho.reloc_type_arm64.ARM64_RELOC_UNSIGNED),
+            .x86_64 => @backingInt(macho.reloc_type_x86_64.X86_64_RELOC_UNSIGNED),
             else => unreachable,
         },
     };
@@ -2844,7 +2844,7 @@ const x86_64 = struct {
         var i: usize = 0;
         while (i < relocs.len) : (i += 1) {
             const rel = relocs[i];
-            const rel_type: macho.reloc_type_x86_64 = @enumFromInt(rel.r_type);
+            const rel_type: macho.reloc_type_x86_64 = @fromBackingInt(@intCast(rel.r_type));
             const rel_offset = @as(u32, @intCast(rel.r_address));
 
             var addend = switch (rel.r_length) {
@@ -2853,7 +2853,7 @@ const x86_64 = struct {
                 2 => mem.readInt(i32, code[rel_offset..][0..4], .little),
                 3 => mem.readInt(i64, code[rel_offset..][0..8], .little),
             };
-            addend += switch (@as(macho.reloc_type_x86_64, @enumFromInt(rel.r_type))) {
+            addend += switch (@as(macho.reloc_type_x86_64, @fromBackingInt(@intCast(rel.r_type)))) {
                 .X86_64_RELOC_SIGNED_1 => 1,
                 .X86_64_RELOC_SIGNED_2 => 2,
                 .X86_64_RELOC_SIGNED_4 => 4,
@@ -2884,7 +2884,7 @@ const x86_64 = struct {
             } else rel.r_symbolnum;
 
             const has_subtractor = if (i > 0 and
-                @as(macho.reloc_type_x86_64, @enumFromInt(relocs[i - 1].r_type)) == .X86_64_RELOC_SUBTRACTOR)
+                @as(macho.reloc_type_x86_64, @fromBackingInt(@intCast(relocs[i - 1].r_type))) == .X86_64_RELOC_SUBTRACTOR)
             blk: {
                 if (rel_type != .X86_64_RELOC_UNSIGNED) {
                     try macho_file.reportParseError2(self.index, "{s},{s}: 0x{x}: X86_64_RELOC_SUBTRACTOR followed by {s}", .{
@@ -3017,7 +3017,7 @@ const aarch64 = struct {
 
             var addend: i64 = 0;
 
-            switch (@as(macho.reloc_type_arm64, @enumFromInt(rel.r_type))) {
+            switch (@as(macho.reloc_type_arm64, @fromBackingInt(@intCast(rel.r_type)))) {
                 .ARM64_RELOC_ADDEND => {
                     addend = rel.r_symbolnum;
                     i += 1;
@@ -3028,7 +3028,7 @@ const aarch64 = struct {
                         return error.MalformedObject;
                     }
                     rel = relocs[i];
-                    switch (@as(macho.reloc_type_arm64, @enumFromInt(rel.r_type))) {
+                    switch (@as(macho.reloc_type_arm64, @fromBackingInt(@intCast(rel.r_type)))) {
                         .ARM64_RELOC_PAGE21, .ARM64_RELOC_PAGEOFF12 => {},
                         else => |x| {
                             try macho_file.reportParseError2(
@@ -3051,7 +3051,7 @@ const aarch64 = struct {
                 else => {},
             }
 
-            const rel_type: macho.reloc_type_arm64 = @enumFromInt(rel.r_type);
+            const rel_type: macho.reloc_type_arm64 = @fromBackingInt(@intCast(rel.r_type));
             var is_extern = rel.r_extern == 1;
 
             const target = if (!is_extern) blk: {
@@ -3077,7 +3077,7 @@ const aarch64 = struct {
             } else rel.r_symbolnum;
 
             const has_subtractor = if (i > 0 and
-                @as(macho.reloc_type_arm64, @enumFromInt(relocs[i - 1].r_type)) == .ARM64_RELOC_SUBTRACTOR)
+                @as(macho.reloc_type_arm64, @fromBackingInt(@intCast(relocs[i - 1].r_type))) == .ARM64_RELOC_SUBTRACTOR)
             blk: {
                 if (rel_type != .ARM64_RELOC_UNSIGNED) {
                     try macho_file.reportParseError2(self.index, "{s},{s}: 0x{x}: ARM64_RELOC_SUBTRACTOR followed by {s}", .{

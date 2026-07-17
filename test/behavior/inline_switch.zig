@@ -98,7 +98,7 @@ test "inline else enum" {
     _ = &a;
     switch (a) {
         .a, .b => {},
-        inline else => |val| comptime if (@intFromEnum(val) < 4) @compileError("bad"),
+        inline else => |val| comptime if (@backingInt(val) < 4) @compileError("bad"),
     }
 }
 

@@ -2373,7 +2373,7 @@ pub fn uninterpret(val: anytype, ty: Type, pt: Zcu.PerThread) error{ OutOfMemory
             try pt.nullValue(ty),
 
         .@"enum" => switch (interpret_mode) {
-            .direct => try pt.enumValue(ty, try uninterpret(@intFromEnum(val), ty.backingIntType(zcu), pt)),
+            .direct => try pt.enumValue(ty, try uninterpret(@backingInt(val), ty.backingIntType(zcu), pt)),
             .by_name => {
                 const field_name_ip = try ip.getOrPutString(zcu.gpa, io, pt.tid, @tagName(val), .no_embedded_nulls);
                 const field_idx = ty.enumFieldIndex(field_name_ip, zcu) orelse return error.TypeMismatch;

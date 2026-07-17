@@ -28,7 +28,7 @@ const Xcr0 = packed struct(u32) {
 };
 
 fn setFeature(cpu: *Target.Cpu, feature: Target.x86.Feature, enabled: bool) void {
-    const idx = @as(Target.Cpu.Feature.Set.Index, @intFromEnum(feature));
+    const idx = @as(Target.Cpu.Feature.Set.Index, @backingInt(feature));
 
     if (enabled) cpu.features.addFeature(idx) else cpu.features.removeFeature(idx);
 }

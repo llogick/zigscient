@@ -197,13 +197,13 @@ test "Type.Enum" {
 
     const Foo = @Enum(u8, .exhaustive, &.{ "a", "b" }, &.{ 1, 5 });
     try testing.expectEqual(std.builtin.Type.Enum.Mode.exhaustive, @typeInfo(Foo).@"enum".mode);
-    try testing.expectEqual(@as(u8, 1), @intFromEnum(Foo.a));
-    try testing.expectEqual(@as(u8, 5), @intFromEnum(Foo.b));
+    try testing.expectEqual(@as(u8, 1), @backingInt(Foo.a));
+    try testing.expectEqual(@as(u8, 5), @backingInt(Foo.b));
     const Bar = @Enum(u32, .nonexhaustive, &.{ "a", "b" }, &.{ 1, 5 });
     try testing.expectEqual(std.builtin.Type.Enum.Mode.nonexhaustive, @typeInfo(Bar).@"enum".mode);
-    try testing.expectEqual(@as(u32, 1), @intFromEnum(Bar.a));
-    try testing.expectEqual(@as(u32, 5), @intFromEnum(Bar.b));
-    try testing.expectEqual(@as(u32, 6), @intFromEnum(@as(Bar, @enumFromInt(6))));
+    try testing.expectEqual(@as(u32, 1), @backingInt(Bar.a));
+    try testing.expectEqual(@as(u32, 5), @backingInt(Bar.b));
+    try testing.expectEqual(@as(u32, 6), @backingInt(@as(Bar, @fromBackingInt(@intCast(6)))));
 
     { // from https://github.com/ziglang/zig/issues/19985
         { // enum with single field can be initialized.

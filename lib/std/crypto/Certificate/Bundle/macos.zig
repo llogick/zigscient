@@ -55,7 +55,7 @@ fn scanReader(cb: *Bundle, gpa: Allocator, reader: *Io.Reader, now_sec: i64) !vo
 
         const table_header = try reader.takeStruct(TableHeader, .big);
 
-        if (@as(std.c.DB_RECORDTYPE, @enumFromInt(table_header.table_id)) != .X509_CERTIFICATE) {
+        if (@as(std.c.DB_RECORDTYPE, @fromBackingInt(@intCast(table_header.table_id))) != .X509_CERTIFICATE) {
             continue;
         }
 

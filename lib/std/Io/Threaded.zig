@@ -581,7 +581,7 @@ const Group = struct {
         var it = t.worker_threads.load(.acquire); // acquire `Thread` values
         while (it) |thread| : (it = thread.next) {
             // This non-mutating RMW exists for ordering reasons: see comment in `Group.Task.start` for reasons.
-            _ = thread.status.fetchOr(.{ .cancelation = @enumFromInt(0), .awaitable = .null }, .release);
+            _ = thread.status.fetchOr(.{ .cancelation = @fromBackingInt(@intCast(0)), .awaitable = .null }, .release);
             if (thread.cancelAwaitable(.fromGroup(g.ptr))) any_blocked = true;
         }
         return any_blocked;
@@ -1019,7 +1019,7 @@ const Thread = struct {
                 };
                 syscall.finish();
                 if (status >= 0) return;
-                switch (@as(c.E, @enumFromInt(-status))) {
+                switch (@as(c.E, @fromBackingInt(@intCast(-status)))) {
                     .INTR => {}, // spurious wake
                     // Address of the futex was paged out. This is unlikely, but possible in theory, and
                     // pthread/libdispatch on darwin bother to handle it. In this case we'll return
@@ -1030,7 +1030,7 @@ const Thread = struct {
                 }
             },
             .freebsd => {
-                const flags = @intFromEnum(std.c.UMTX_OP.WAIT_UINT_PRIVATE);
+                const flags = @backingInt(std.c.UMTX_OP.WAIT_UINT_PRIVATE);
                 var tm_size: usize = 0;
                 var tm: std.c._umtx_time = undefined;
                 var tm_ptr: ?*const std.c._umtx_time = null;
@@ -1147,7 +1147,7 @@ const Thread = struct {
                 while (true) {
                     const status = c.__ulock_wake(flags, ptr, 0);
                     if (status >= 0) return;
-                    switch (@as(c.E, @enumFromInt(-status))) {
+                    switch (@as(c.E, @fromBackingInt(@intCast(-status)))) {
                         .INTR, .CANCELED => continue, // spurious wake()
                         .FAULT => unreachable, // __ulock_wake doesn't generate EFAULT according to darwin pthread_cond_t
                         .NOENT => return, // nothing was woken up
@@ -1159,7 +1159,7 @@ const Thread = struct {
             .freebsd => {
                 const rc = std.c._umtx_op(
                     @intFromPtr(ptr),
-                    @intFromEnum(std.c.UMTX_OP.WAKE_PRIVATE),
+                    @backingInt(std.c.UMTX_OP.WAKE_PRIVATE),
                     @as(c_ulong, @min(max_waiters, std.math.maxInt(c_int))),
                     0, // there is no timeout struct
                     0, // there is no timeout struct pointer
@@ -1283,9 +1283,9 @@ const Thread = struct {
                 .linux => {
                     const pid: posix.pid_t = pid: {
                         const cached_pid = @atomicLoad(Pid, &t.pid, .monotonic);
-                        if (cached_pid != .unknown) break :pid @intFromEnum(cached_pid);
+                        if (cached_pid != .unknown) break :pid @backingInt(cached_pid);
                         const pid = std.os.linux.getpid();
-                        @atomicStore(Pid, &t.pid, @enumFromInt(pid), .monotonic);
+                        @atomicStore(Pid, &t.pid, @fromBackingInt(@intCast(pid)), .monotonic);
                         break :pid pid;
                     };
                     return switch (std.os.linux.tgkill(pid, @bitCast(thread.id), .IO)) {
@@ -1352,7 +1352,7 @@ const Syscall = struct {
             .unblocked => {},
         }
         switch (thread.status.fetchOr(.{
-            .cancelation = @enumFromInt(0b011),
+            .cancelation = @fromBackingInt(@intCast(0b011)),
             .awaitable = .null,
         }, .monotonic).cancelation) {
             .parked => unreachable,
@@ -1372,7 +1372,7 @@ const Syscall = struct {
     fn checkCancel(s: Syscall) Io.Cancelable!void {
         const thread = s.thread orelse return;
         switch (thread.status.fetchOr(.{
-            .cancelation = @enumFromInt(0b010),
+            .cancelation = @fromBackingInt(@intCast(0b010)),
             .awaitable = .null,
         }, .monotonic).cancelation) {
             .none => unreachable,
@@ -1389,7 +1389,7 @@ const Syscall = struct {
     fn finish(s: Syscall) void {
         const thread = s.thread orelse return;
         switch (thread.status.fetchXor(.{
-            .cancelation = @enumFromInt(0b011),
+            .cancelation = @fromBackingInt(@intCast(0b011)),
             .awaitable = .null,
         }, .monotonic).cancelation) {
             .none => unreachable,
@@ -1474,7 +1474,7 @@ const AlertableSyscall = struct {
             .unblocked => {},
         }
         const old_status = thread.status.fetchOr(.{
-            .cancelation = @enumFromInt(0b010),
+            .cancelation = @fromBackingInt(@intCast(0b010)),
             .awaitable = .null,
         }, .monotonic);
         switch (old_status.cancelation) {
@@ -1497,7 +1497,7 @@ const AlertableSyscall = struct {
         comptime assert(is_windows);
         const thread = s.thread orelse return;
         const old_status = thread.status.fetchOr(.{
-            .cancelation = @enumFromInt(0b010),
+            .cancelation = @fromBackingInt(@intCast(0b010)),
             .awaitable = .null,
         }, .monotonic);
         switch (old_status.cancelation) {
@@ -1520,7 +1520,7 @@ const AlertableSyscall = struct {
         comptime assert(is_windows);
         const thread = s.thread orelse return;
         switch (thread.status.fetchXor(.{
-            .cancelation = @enumFromInt(0b010),
+            .cancelation = @fromBackingInt(@intCast(0b010)),
             .awaitable = .null,
         }, .monotonic).cancelation) {
             .none => unreachable,
@@ -2094,7 +2094,7 @@ fn async(
 
     const busy_count = t.busy_count;
 
-    if (busy_count >= @intFromEnum(t.async_limit)) {
+    if (busy_count >= @backingInt(t.async_limit)) {
         mutexUnlock(&t.mutex);
         future.destroy(gpa);
         start(context.ptr, result.ptr);
@@ -2147,7 +2147,7 @@ fn concurrent(
 
     const busy_count = t.busy_count;
 
-    if (busy_count >= @intFromEnum(t.concurrent_limit))
+    if (busy_count >= @backingInt(t.concurrent_limit))
         return error.ConcurrencyUnavailable;
 
     t.busy_count = busy_count + 1;
@@ -2191,7 +2191,7 @@ fn groupAsync(
 
     const busy_count = t.busy_count;
 
-    if (busy_count >= @intFromEnum(t.async_limit)) {
+    if (busy_count >= @backingInt(t.async_limit)) {
         mutexUnlock(&t.mutex);
         task.destroy(gpa);
         return groupAsyncEager(start, context.ptr);
@@ -2255,7 +2255,7 @@ fn groupConcurrent(
 
     const busy_count = t.busy_count;
 
-    if (busy_count >= @intFromEnum(t.concurrent_limit))
+    if (busy_count >= @backingInt(t.concurrent_limit))
         return error.ConcurrencyUnavailable;
 
     t.busy_count = busy_count + 1;
@@ -2382,7 +2382,7 @@ fn recancel(userdata: ?*anyopaque) void {
 fn recancelInner() void {
     const thread = Thread.current.?; // called `recancel` but was not canceled
     switch (thread.status.fetchXor(.{
-        .cancelation = @enumFromInt(0b001),
+        .cancelation = @fromBackingInt(@intCast(0b001)),
         .awaitable = .null,
     }, .monotonic).cancelation) {
         .canceled => {},
@@ -5347,7 +5347,7 @@ fn dirOpenDirHaiku(
             syscall.finish();
             return .{ .handle = rc };
         }
-        switch (@as(posix.E, @enumFromInt(rc))) {
+        switch (@as(posix.E, @fromBackingInt(@intCast(rc)))) {
             .INTR => {
                 try syscall.checkCancel();
                 continue;
@@ -5826,7 +5826,7 @@ fn dirReadHaiku(userdata: ?*anyopaque, dr: *Dir.Reader, buffer: []Dir.Entry) Dir
                 const syscall: Syscall = try .start();
                 while (true) {
                     const rc = posix.system._kern_rewind_dir(dr.dir.handle);
-                    switch (@as(posix.E, @enumFromInt(@min(rc, 0)))) {
+                    switch (@as(posix.E, @fromBackingInt(@intCast(@min(rc, 0))))) {
                         .SUCCESS => {
                             syscall.finish();
                             break;
@@ -5848,7 +5848,7 @@ fn dirReadHaiku(userdata: ?*anyopaque, dr: *Dir.Reader, buffer: []Dir.Entry) Dir
             const syscall: Syscall = try .start();
             const n: usize = while (true) {
                 const rc = posix.system._kern_read_dir(dr.dir.handle, dr.buffer.ptr, dr.buffer.len, @truncate(dr.buffer.len / @sizeOf(posix.system.DirEnt)));
-                switch (@as(posix.E, @enumFromInt(@min(rc, 0)))) {
+                switch (@as(posix.E, @fromBackingInt(@intCast(@min(rc, 0))))) {
                     .SUCCESS => {
                         syscall.finish();
                         break @intCast(rc);
@@ -5891,7 +5891,7 @@ fn dirReadHaiku(userdata: ?*anyopaque, dr: *Dir.Reader, buffer: []Dir.Entry) Dir
             const syscall: Syscall = try .start();
             while (true) {
                 const rc = posix.system._kern_read_stat(dr.dir.handle, name, false, &stat, @sizeOf(std.c.Stat));
-                switch (@as(posix.E, @enumFromInt(@min(rc, 0)))) {
+                switch (@as(posix.E, @fromBackingInt(@intCast(@min(rc, 0))))) {
                     .SUCCESS => {
                         syscall.finish();
                         break;
@@ -6819,7 +6819,7 @@ fn dirRealPathFilePosix(userdata: ?*anyopaque, dir: Dir, sub_path: []const u8, o
                 assert(redundant_pointer == out_buffer.ptr);
                 return std.mem.indexOfScalar(u8, out_buffer, 0) orelse out_buffer.len;
             }
-            const err: posix.E = @enumFromInt(std.c._errno().*);
+            const err: posix.E = @fromBackingInt(@intCast(std.c._errno().*));
             if (err == .INTR) {
                 try syscall.checkCancel();
                 continue;
@@ -10477,7 +10477,7 @@ fn processExecutablePath(userdata: ?*anyopaque, out_buffer: []u8) process.Execut
                     if (std.c.realpath(argv0, &resolved_buf)) |p| {
                         assert(p == &resolved_buf);
                         break syscall.finish();
-                    } else switch (@as(std.c.E, @enumFromInt(std.c._errno().*))) {
+                    } else switch (@as(std.c.E, @fromBackingInt(@intCast(std.c._errno().*)))) {
                         .INTR => {
                             try syscall.checkCancel();
                             continue;
@@ -10520,7 +10520,7 @@ fn processExecutablePath(userdata: ?*anyopaque, out_buffer: []u8) process.Execut
                         if (std.c.realpath(resolved_path, &resolved_buf)) |p| {
                             assert(p == &resolved_buf);
                             break syscall.finish();
-                        } else switch (@as(std.c.E, @enumFromInt(std.c._errno().*))) {
+                        } else switch (@as(std.c.E, @fromBackingInt(@intCast(std.c._errno().*)))) {
                             .INTR => {
                                 try syscall.checkCancel();
                                 continue;
@@ -10979,12 +10979,12 @@ fn fileWriteFileStreaming(
 ) File.Writer.WriteFileError!usize {
     const t: *Threaded = @ptrCast(@alignCast(userdata));
     const reader_buffered = file_reader.interface.buffered();
-    if (reader_buffered.len >= @intFromEnum(limit)) {
+    if (reader_buffered.len >= @backingInt(limit)) {
         const n = try fileWriteStreaming(t, file, header, &.{limit.slice(reader_buffered)}, 1);
         file_reader.interface.toss(n -| header.len);
         return n;
     }
-    const file_limit = @intFromEnum(limit) - reader_buffered.len;
+    const file_limit = @backingInt(limit) - reader_buffered.len;
     const out_fd = file.handle;
     const in_fd = file_reader.file.handle;
 
@@ -11186,7 +11186,7 @@ fn fileWriteFileStreaming(
             .positional => o: {
                 const size = file_reader.getSize() catch return 0;
                 off = std.math.cast(std.os.linux.off_t, file_reader.pos) orelse return error.ReadFailed;
-                break :o .{ &off, @min(@intFromEnum(limit), size - file_reader.pos, max_count) };
+                break :o .{ &off, @min(@backingInt(limit), size - file_reader.pos, max_count) };
             },
             .streaming => .{ null, limit.minInt(max_count) },
             .streaming_simple, .positional_simple => break :sf,
@@ -11258,7 +11258,7 @@ fn fileWriteFileStreaming(
             file_reader.interface.toss(n -| header.len);
             return n;
         }
-        var len: usize = @intFromEnum(limit);
+        var len: usize = @backingInt(limit);
         var off_in: i64 = undefined;
         const off_in_ptr: ?*i64 = switch (file_reader.mode) {
             .positional_simple, .streaming_simple => return error.Unimplemented,
@@ -11318,7 +11318,7 @@ fn fileWriteFileStreaming(
             .freebsd => n: {
                 const syscall: Syscall = try .start();
                 while (true) {
-                    const rc = std.c.copy_file_range(in_fd, off_in_ptr, out_fd, null, @intFromEnum(limit), 0);
+                    const rc = std.c.copy_file_range(in_fd, off_in_ptr, out_fd, null, @backingInt(limit), 0);
                     switch (std.c.errno(rc)) {
                         .SUCCESS => {
                             syscall.finish();
@@ -11392,7 +11392,7 @@ fn fileWriteFilePositional(
 ) File.WriteFilePositionalError!usize {
     const t: *Threaded = @ptrCast(@alignCast(userdata));
     const reader_buffered = file_reader.interface.buffered();
-    if (reader_buffered.len >= @intFromEnum(limit)) {
+    if (reader_buffered.len >= @backingInt(limit)) {
         const n = try fileWritePositional(t, file, header, &.{limit.slice(reader_buffered)}, 1, offset);
         file_reader.interface.toss(n -| header.len);
         return n;
@@ -11419,7 +11419,7 @@ fn fileWriteFilePositional(
             file_reader.interface.toss(n -| header.len);
             return n;
         }
-        var len: usize = @min(@intFromEnum(limit), std.math.maxInt(usize) - offset);
+        var len: usize = @min(@backingInt(limit), std.math.maxInt(usize) - offset);
         var off_in: i64 = undefined;
         const off_in_ptr: ?*i64 = switch (file_reader.mode) {
             .positional_simple, .streaming_simple => return error.Unimplemented,
@@ -11481,7 +11481,7 @@ fn fileWriteFilePositional(
             .freebsd => n: {
                 const syscall: Syscall = try .start();
                 while (true) {
-                    const rc = std.c.copy_file_range(in_fd, off_in_ptr, out_fd, &off_out, @intFromEnum(limit), 0);
+                    const rc = std.c.copy_file_range(in_fd, off_in_ptr, out_fd, &off_out, @backingInt(limit), 0);
                     switch (std.c.errno(rc)) {
                         .SUCCESS => {
                             syscall.finish();
@@ -11751,7 +11751,7 @@ fn sleepPosix(timeout: Io.Timeout) Io.Cancelable!void {
             .deadline => true,
         } }, &timespec, &timespec);
         // POSIX-standard libc clock_nanosleep() returns *positive* errno values directly
-        switch (if (builtin.link_libc) @as(posix.E, @enumFromInt(rc)) else posix.errno(rc)) {
+        switch (if (builtin.link_libc) @as(posix.E, @fromBackingInt(@intCast(rc))) else posix.errno(rc)) {
             .INTR => {
                 try syscall.checkCancel();
                 continue;
@@ -13525,7 +13525,7 @@ fn netInterfaceNameResolve(
             .INVALID_PARAMETER => unreachable,
             else => |err| return windows.unexpectedError(err),
         }
-        return .{ .index = @intFromEnum(index) };
+        return .{ .index = @backingInt(index) };
     }
 
     if (builtin.link_libc) {
@@ -13588,7 +13588,7 @@ fn netInterfaceName(userdata: ?*anyopaque, interface: net.Interface) net.Interfa
         }
         try Thread.checkCancel();
         var luid: windows.NET.LUID = undefined;
-        switch (ConvertInterfaceIndexToLuid.?(@enumFromInt(interface.index), &luid)) {
+        switch (ConvertInterfaceIndexToLuid.?(@fromBackingInt(@intCast(interface.index)), &luid)) {
             .SUCCESS => {},
             .FILE_NOT_FOUND => return error.InterfaceNotFound,
             .INVALID_PARAMETER => unreachable,
@@ -13884,7 +13884,7 @@ fn netLookupFallible(
         const syscall: Syscall = try .start();
         while (true) {
             switch (posix.system.getaddrinfo(name_c.ptr, port_c.ptr, &hints, &res)) {
-                @as(posix.system.EAI, @enumFromInt(0)) => {
+                @as(posix.system.EAI, @fromBackingInt(@intCast(0))) => {
                     syscall.finish();
                     break;
                 },
@@ -14029,7 +14029,7 @@ fn processCurrentPath(userdata: ?*anyopaque, buffer: []u8) process.CurrentPathEr
 
     const err: posix.E = if (builtin.link_libc) err: {
         const c_err = if (std.c.getcwd(buffer.ptr, buffer.len)) |_| 0 else std.c._errno().*;
-        break :err @enumFromInt(c_err);
+        break :err @fromBackingInt(@intCast(c_err));
     } else err: {
         break :err posix.errno(posix.system.getcwd(buffer.ptr, buffer.len));
     };
@@ -14223,12 +14223,12 @@ pub fn posixSocketModeProtocol(family: posix.sa_family_t, mode: net.Socket.Mode,
             .raw => posix.SOCK.RAW,
             .rdm => if (@hasDecl(posix.SOCK, "RDM")) posix.SOCK.RDM else return error.OptionUnsupported,
         },
-        if (protocol) |p| @intFromEnum(p) else if (is_windows) switch (family) {
+        if (protocol) |p| @backingInt(p) else if (is_windows) switch (family) {
             posix.AF.UNIX => switch (mode) {
                 .stream => 0,
                 else => return error.ProtocolUnsupportedByAddressFamily,
             },
-            posix.AF.INET, posix.AF.INET6 => @intFromEnum(@as(net.Protocol, switch (mode) {
+            posix.AF.INET, posix.AF.INET6 => @backingInt(@as(net.Protocol, switch (mode) {
                 .stream => .tcp,
                 .dgram => .udp,
                 else => return error.ProtocolUnsupportedByAddressFamily,
@@ -14824,7 +14824,7 @@ fn writeResolutionQuery(q: *[280]u8, op: u4, dname: []const u8, class: u8, ty: H
         if (j - i - 1 > 62) unreachable;
         q[i - 1] = @intCast(j - i);
     }
-    q[i + 1] = @intFromEnum(ty);
+    q[i + 1] = @backingInt(ty);
     q[i + 3] = class;
     return n;
 }
@@ -15299,8 +15299,8 @@ fn childKill(userdata: ?*anyopaque, child: *process.Child) void {
 fn childKillWindows(t: *Threaded, child: *process.Child, exit_code: windows.UINT) !void {
     _ = t; // TODO cancelation
     const handle = child.id.?;
-    _ = windows.ntdll.RtlReportSilentProcessExit(handle, @enumFromInt(exit_code));
-    switch (windows.ntdll.NtTerminateProcess(handle, @enumFromInt(exit_code))) {
+    _ = windows.ntdll.RtlReportSilentProcessExit(handle, @fromBackingInt(@intCast(exit_code)));
+    switch (windows.ntdll.NtTerminateProcess(handle, @fromBackingInt(@intCast(exit_code)))) {
         .SUCCESS, .PROCESS_IS_TERMINATING => {
             const infinite_timeout: windows.LARGE_INTEGER = std.math.minInt(windows.LARGE_INTEGER);
             _ = windows.ntdll.NtWaitForSingleObject(handle, .FALSE, &infinite_timeout);
@@ -15344,7 +15344,7 @@ fn childWaitWindows(child: *process.Child) process.Child.WaitError!process.Child
         @sizeOf(windows.PROCESS.BASIC_INFORMATION),
         null,
     )) {
-        .SUCCESS => .{ .exited = @as(u8, @truncate(@intFromEnum(info.ExitStatus))) },
+        .SUCCESS => .{ .exited = @as(u8, @truncate(@backingInt(info.ExitStatus))) },
         else => .{ .unknown = 0 },
     };
 
@@ -15424,11 +15424,11 @@ fn childWaitPosix(child: *process.Child) process.Child.WaitError!process.Child.T
                 syscall.finish();
                 if (ru_ptr) |p| child.resource_usage_statistics.rusage = p.*;
                 const status: u32 = @bitCast(info.fields.common.second.sigchld.status);
-                const code: linux.CLD = @enumFromInt(info.code);
+                const code: linux.CLD = @fromBackingInt(@intCast(info.code));
                 return switch (code) {
                     .EXITED => .{ .exited = @truncate(status) },
-                    .KILLED, .DUMPED => .{ .signal = @enumFromInt(status) },
-                    .TRAPPED, .STOPPED => .{ .stopped = @enumFromInt(status) },
+                    .KILLED, .DUMPED => .{ .signal = @fromBackingInt(@intCast(status)) },
+                    .TRAPPED, .STOPPED => .{ .stopped = @fromBackingInt(@intCast(status)) },
                     _, .CONTINUED => .{ .unknown = status },
                 };
             },
@@ -16254,7 +16254,7 @@ fn windowsCreateProcessPathExt(
                 //       fails to spawn, in which case we still want to try the PATHEXT appended versions.
                 unappended_exists = true;
             } else if (windowsCreateProcessSupportsExtension(filename[app_name_len..])) |pathext_ext| {
-                pathext_seen[@intFromEnum(pathext_ext)] = true;
+                pathext_seen[@backingInt(pathext_ext)] = true;
                 any_pathext_seen = true;
             }
         }
@@ -16327,7 +16327,7 @@ fn windowsCreateProcessPathExt(
     var ext_it = std.mem.tokenizeScalar(u16, pathext, ';');
     while (ext_it.next()) |ext| {
         const ext_enum = windowsCreateProcessSupportsExtension(ext) orelse continue;
-        if (!pathext_seen[@intFromEnum(ext_enum)]) continue;
+        if (!pathext_seen[@backingInt(ext_enum)]) continue;
 
         dir_buf.shrinkRetainingCapacity(dir_path_len);
         if (dir_path_len != 0) switch (dir_buf.items[dir_buf.items.len - 1]) {
@@ -16451,10 +16451,10 @@ fn windowsCreateProcessSupportsExtension(ext: []const u16) ?process.WindowsExten
         // Ensures keeping this function in sync with the enum.
         const field_names = @typeInfo(process.WindowsExtension).@"enum".field_names;
         assert(field_names.len == 4);
-        assert(@intFromEnum(process.WindowsExtension.bat) == 0);
-        assert(@intFromEnum(process.WindowsExtension.cmd) == 1);
-        assert(@intFromEnum(process.WindowsExtension.com) == 2);
-        assert(@intFromEnum(process.WindowsExtension.exe) == 3);
+        assert(@backingInt(process.WindowsExtension.bat) == 0);
+        assert(@backingInt(process.WindowsExtension.cmd) == 1);
+        assert(@backingInt(process.WindowsExtension.com) == 2);
+        assert(@backingInt(process.WindowsExtension.exe) == 3);
     }
 
     if (ext.len != 4) return null;
@@ -17509,7 +17509,7 @@ const parking_futex = struct {
                     }
                     thread.futex_waiter = &waiter;
                     const old_status = thread.status.fetchOr(
-                        .{ .cancelation = @enumFromInt(0b001), .awaitable = .null },
+                        .{ .cancelation = @fromBackingInt(@intCast(0b001)), .awaitable = .null },
                         .release, // release `thread.futex_waiter`
                     );
                     switch (old_status.cancelation) {
@@ -17547,7 +17547,7 @@ const parking_futex = struct {
             error.Timeout => {
                 // We're not out of the woods yet: an unpark could race with the timeout.
                 const old_status = waiter.thread_status.fetchAnd(
-                    .{ .cancelation = @enumFromInt(0b110), .awaitable = .all_ones },
+                    .{ .cancelation = @fromBackingInt(@intCast(0b110)), .awaitable = .all_ones },
                     .monotonic,
                 );
                 switch (old_status.cancelation) {
@@ -17604,7 +17604,7 @@ const parking_futex = struct {
                 it = waiter.node.next;
                 if (waiter.address != @intFromPtr(ptr)) continue;
                 const old_status = waiter.thread_status.fetchAnd(
-                    .{ .cancelation = @enumFromInt(0b110), .awaitable = .all_ones },
+                    .{ .cancelation = @fromBackingInt(@intCast(0b110)), .awaitable = .all_ones },
                     .monotonic,
                 );
                 switch (old_status.cancelation) {
@@ -17669,7 +17669,7 @@ const parking_sleep = struct {
             thread.futex_waiter = null;
             {
                 const old_status = thread.status.fetchOr(
-                    .{ .cancelation = @enumFromInt(0b001), .awaitable = .null },
+                    .{ .cancelation = @fromBackingInt(@intCast(0b001)), .awaitable = .null },
                     .release, // release `thread.futex_waiter`
                 );
                 switch (old_status.cancelation) {
@@ -17696,7 +17696,7 @@ const parking_sleep = struct {
                 error.Timeout => {
                     // We're not out of the woods yet: an unpark could race with the timeout.
                     const old_status = thread.status.fetchAnd(
-                        .{ .cancelation = @enumFromInt(0b110), .awaitable = .all_ones },
+                        .{ .cancelation = @fromBackingInt(@intCast(0b110)), .awaitable = .all_ones },
                         .monotonic,
                     );
                     switch (old_status.cancelation) {
@@ -17747,12 +17747,12 @@ const ParkingMutex = struct {
         _,
         /// Returns the head of the waiter list. Illegal to call if `s == .unlocked`.
         fn waiter(s: State) ?*Waiter {
-            return @ptrFromInt(@intFromEnum(s));
+            return @ptrFromInt(@backingInt(s));
         }
         /// Returns a locked state where `w` is contending the lock.
         /// If `w` is `null`, returns `.locked_once`.
         fn fromWaiter(w: ?*Waiter) State {
-            return @enumFromInt(@intFromPtr(w));
+            return @fromBackingInt(@intCast(@intFromPtr(w)));
         }
     };
     const Waiter = struct {
@@ -18316,7 +18316,7 @@ fn createFileMap(
                 if (rc != std.c.MAP_FAILED) {
                     break @as([*]align(page_align) u8, @ptrCast(@alignCast(rc)))[0..len];
                 }
-                break :e @enumFromInt(posix.system._errno().*);
+                break :e @fromBackingInt(@intCast(posix.system._errno().*));
             } else e: {
                 const err = posix.errno(rc);
                 if (err == .SUCCESS) {
@@ -18409,7 +18409,7 @@ fn fileMemoryMapSetLength(
                     syscall.finish();
                     const err: posix.E = if (builtin.link_libc) e: {
                         if (rc != std.c.MAP_FAILED) break @as([*]align(page_align) u8, @ptrCast(@alignCast(rc)))[0..new_len];
-                        break :e @enumFromInt(posix.system._errno().*);
+                        break :e @fromBackingInt(@intCast(posix.system._errno().*));
                     } else e: {
                         const err = posix.errno(rc);
                         if (err == .SUCCESS) break @as([*]align(page_align) u8, @ptrFromInt(rc))[0..new_len];
@@ -18733,7 +18733,7 @@ fn deviceIoControl(o: *const Io.Operation.DeviceIoControl) Io.Cancelable!Io.Oper
                 },
                 else => |err| {
                     syscall.finish();
-                    return -@as(i32, @intFromEnum(err));
+                    return -@as(i32, @backingInt(err));
                 },
             }
         }
@@ -18782,7 +18782,7 @@ fn eventWait(event: *Io.Event) void {
         .is_set => return,
     };
     while (true) {
-        Thread.futexWaitUncancelable(@ptrCast(event), @intFromEnum(Io.Event.waiting), null);
+        Thread.futexWaitUncancelable(@ptrCast(event), @backingInt(Io.Event.waiting), null);
         switch (@atomicLoad(Io.Event, event, .acquire)) {
             .unset => unreachable, // `reset` called before pending `wait` returned
             .waiting => continue,
@@ -18881,10 +18881,10 @@ pub fn mutexLock(m: *Io.Mutex) void {
         return;
     };
     if (initial_state == .contended) {
-        Thread.futexWaitUncancelable(@ptrCast(&m.state.raw), @intFromEnum(Io.Mutex.State.contended), null);
+        Thread.futexWaitUncancelable(@ptrCast(&m.state.raw), @backingInt(Io.Mutex.State.contended), null);
     }
     while (m.state.swap(.contended, .acquire) != .unlocked) {
-        Thread.futexWaitUncancelable(@ptrCast(&m.state.raw), @intFromEnum(Io.Mutex.State.contended), null);
+        Thread.futexWaitUncancelable(@ptrCast(&m.state.raw), @backingInt(Io.Mutex.State.contended), null);
     }
 }
 

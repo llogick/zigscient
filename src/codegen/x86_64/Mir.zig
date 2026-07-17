@@ -1822,7 +1822,7 @@ pub const NullTerminatedString = enum(u32) {
 
     pub fn toSlice(nts: NullTerminatedString, mir: *const Mir) ?[:0]const u8 {
         if (nts == .none) return null;
-        const string_bytes = mir.string_bytes[@intFromEnum(nts)..];
+        const string_bytes = mir.string_bytes[@backingInt(nts)..];
         return string_bytes[0..std.mem.indexOfScalar(u8, string_bytes, 0).? :0];
     }
 };
@@ -1890,13 +1890,13 @@ pub const Memory = struct {
             },
             .base = switch (mem.base) {
                 .none, .table => undefined,
-                .reg => |reg| @intFromEnum(reg),
-                .frame => |frame_index| @intFromEnum(frame_index),
+                .reg => |reg| @backingInt(reg),
+                .frame => |frame_index| @backingInt(frame_index),
                 .rip_inst => |inst_index| inst_index,
-                .nav => |nav| @intFromEnum(nav),
-                .uav => |uav| @intFromEnum(uav.val),
-                .lazy_sym => |lazy_sym| @intFromEnum(lazy_sym.ty),
-                .extern_func => |extern_func| @intFromEnum(extern_func),
+                .nav => |nav| @backingInt(nav),
+                .uav => |uav| @backingInt(uav.val),
+                .lazy_sym => |lazy_sym| @backingInt(lazy_sym.ty),
+                .extern_func => |extern_func| @backingInt(extern_func),
             },
             .off = switch (mem.mod) {
                 .rm => |rm| @bitCast(rm.disp),
@@ -1905,8 +1905,8 @@ pub const Memory = struct {
             .extra = switch (mem.mod) {
                 .rm => switch (mem.base) {
                     else => undefined,
-                    .uav => |uav| @intFromEnum(uav.orig_ty),
-                    .lazy_sym => |lazy_sym| @intFromEnum(lazy_sym.kind),
+                    .uav => |uav| @backingInt(uav.orig_ty),
+                    .lazy_sym => |lazy_sym| @backingInt(lazy_sym.kind),
                 },
                 .off => switch (mem.base) {
                     .reg => @intCast(mem.mod.off >> 32),
@@ -1919,7 +1919,7 @@ pub const Memory = struct {
     pub fn decode(mem: Memory) encoder.Instruction.Memory {
         switch (mem.info.mod) {
             .rm => {
-                if (mem.info.base == .reg and @as(Register, @enumFromInt(mem.base)) == .rip) {
+                if (mem.info.base == .reg and @as(Register, @fromBackingInt(@intCast(mem.base))) == .rip) {
                     assert(mem.info.index == .none and mem.info.scale == .@"1");
                     return encoder.Instruction.Memory.initRip(mem.info.size, @bitCast(mem.off));
                 }
@@ -1927,14 +1927,14 @@ pub const Memory = struct {
                     .disp = @bitCast(mem.off),
                     .base = switch (mem.info.base) {
                         .none => .none,
-                        .reg => .{ .reg = @enumFromInt(mem.base) },
-                        .frame => .{ .frame = @enumFromInt(mem.base) },
+                        .reg => .{ .reg = @fromBackingInt(@intCast(mem.base)) },
+                        .frame => .{ .frame = @fromBackingInt(@intCast(mem.base)) },
                         .table => .table,
                         .rip_inst => .{ .rip_inst = mem.base },
-                        .nav => .{ .nav = @enumFromInt(mem.base) },
-                        .uav => .{ .uav = .{ .val = @enumFromInt(mem.base), .orig_ty = @enumFromInt(mem.extra) } },
-                        .lazy_sym => .{ .lazy_sym = .{ .kind = @enumFromInt(mem.extra), .ty = @enumFromInt(mem.base) } },
-                        .extern_func => .{ .extern_func = @enumFromInt(mem.base) },
+                        .nav => .{ .nav = @fromBackingInt(@intCast(mem.base)) },
+                        .uav => .{ .uav = .{ .val = @fromBackingInt(@intCast(mem.base)), .orig_ty = @fromBackingInt(@intCast(mem.extra)) } },
+                        .lazy_sym => .{ .lazy_sym = .{ .kind = @fromBackingInt(@intCast(mem.extra)), .ty = @fromBackingInt(@intCast(mem.base)) } },
+                        .extern_func => .{ .extern_func = @fromBackingInt(@intCast(mem.base)) },
                     },
                     .scale_index = switch (mem.info.index) {
                         .none => null,
@@ -1951,7 +1951,7 @@ pub const Memory = struct {
             .off => {
                 assert(mem.info.base == .reg);
                 return encoder.Instruction.Memory.initMoffs(
-                    @enumFromInt(mem.base),
+                    @fromBackingInt(@intCast(mem.base)),
                     @as(u64, mem.extra) << 32 | mem.off,
                 );
             },
@@ -2074,7 +2074,7 @@ pub fn extraData(mir: Mir, comptime T: type, index: u32) struct { data: T, end: 
         @field(result, field_name) = switch (field_type) {
             u32 => mir.extra[i],
             i32, Memory.Info => @bitCast(mir.extra[i]),
-            bits.FrameIndex => @enumFromInt(mir.extra[i]),
+            bits.FrameIndex => @fromBackingInt(@intCast(mir.extra[i])),
             else => @compileError("bad field type: " ++ field_name ++ ": " ++ @typeName(field_type)),
         };
         i += 1;
@@ -2091,7 +2091,7 @@ pub const FrameLoc = struct {
 };
 
 pub fn resolveFrameAddr(mir: Mir, frame_addr: bits.FrameAddr) bits.RegisterOffset {
-    const frame_loc = mir.frame_locs.get(@intFromEnum(frame_addr.index));
+    const frame_loc = mir.frame_locs.get(@backingInt(frame_addr.index));
     return .{ .reg = frame_loc.base, .off = frame_loc.disp + frame_addr.off };
 }
 
@@ -2107,7 +2107,7 @@ pub fn resolveMemoryExtra(mir: Mir, payload: u32) Memory {
                 .index = mem.info.index,
                 .scale = mem.info.scale,
             },
-            .base = @intFromEnum(mir.frame_locs.items(.base)[mem.base]),
+            .base = @backingInt(mir.frame_locs.items(.base)[mem.base]),
             .off = @bitCast(mir.frame_locs.items(.disp)[mem.base] + @as(i32, @bitCast(mem.off))),
             .extra = mem.extra,
         } else mem,

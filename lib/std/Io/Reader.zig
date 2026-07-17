@@ -174,7 +174,7 @@ pub fn stream(r: *Reader, w: *Writer, limit: Limit) StreamError!usize {
         return n;
     }
     const n = try r.vtable.stream(r, w, limit);
-    assert(n <= @intFromEnum(limit));
+    assert(n <= @backingInt(limit));
     return n;
 }
 
@@ -189,7 +189,7 @@ pub fn discard(r: *Reader, limit: Limit) Error!usize {
     } else .unlimited;
     r.seek = r.end;
     const n = try r.vtable.discard(r, remaining);
-    assert(n <= @intFromEnum(remaining));
+    assert(n <= @backingInt(remaining));
     return buffered_len + n;
 }
 
@@ -204,11 +204,11 @@ pub fn defaultDiscard(r: *Reader, limit: Limit) Error!usize {
     };
     // If `stream` wrote to `r.buffer` without going through the writer,
     // we need to discard as much of the buffered data as possible.
-    const remaining = @intFromEnum(limit) - n;
+    const remaining = @backingInt(limit) - n;
     const buffered_n_to_discard = @min(remaining, r.end - r.seek);
     n += buffered_n_to_discard;
     r.seek += buffered_n_to_discard;
-    assert(n <= @intFromEnum(limit));
+    assert(n <= @backingInt(limit));
     return n;
 }
 
@@ -1010,17 +1010,17 @@ pub fn streamDelimiterLimit(
     delimiter: u8,
     limit: Limit,
 ) StreamDelimiterLimitError!usize {
-    var remaining = @intFromEnum(limit);
+    var remaining = @backingInt(limit);
     while (remaining != 0) {
         const available = Limit.limited(remaining).slice(r.peekGreedy(1) catch |err| switch (err) {
             error.ReadFailed => |e| return e,
-            error.EndOfStream => return @intFromEnum(limit) - remaining,
+            error.EndOfStream => return @backingInt(limit) - remaining,
         });
         if (std.mem.findScalar(u8, available, delimiter)) |delimiter_index| {
             try w.writeAll(available[0..delimiter_index]);
             r.toss(delimiter_index);
             remaining -= delimiter_index;
-            return @intFromEnum(limit) - remaining;
+            return @backingInt(limit) - remaining;
         }
         try w.writeAll(available);
         r.toss(available.len);
@@ -1081,16 +1081,16 @@ pub const DiscardDelimiterLimitError = error{
 /// Succeeds if stream ends before delimiter found. End of stream can be
 /// detected by checking if the delimiter is buffered.
 pub fn discardDelimiterLimit(r: *Reader, delimiter: u8, limit: Limit) DiscardDelimiterLimitError!usize {
-    var remaining = @intFromEnum(limit);
+    var remaining = @backingInt(limit);
     while (remaining != 0) {
         const available = Limit.limited(remaining).slice(r.peekGreedy(1) catch |err| switch (err) {
             error.ReadFailed => |e| return e,
-            error.EndOfStream => return @intFromEnum(limit) - remaining,
+            error.EndOfStream => return @backingInt(limit) - remaining,
         });
         if (std.mem.findScalar(u8, available, delimiter)) |delimiter_index| {
             r.toss(delimiter_index);
             remaining -= delimiter_index;
-            return @intFromEnum(limit) - remaining;
+            return @backingInt(limit) - remaining;
         }
         r.toss(available.len);
         remaining -= available.len;
@@ -1704,7 +1704,7 @@ test takeEnum {
     const E1 = enum(u8) { a, b, c };
     const E2 = enum(u16) { _ };
     try testing.expectEqual(E1.c, try r.takeEnum(E1, .little));
-    try testing.expectEqual(@as(E2, @enumFromInt(0x0001)), try r.takeEnum(E2, .big));
+    try testing.expectEqual(@as(E2, @fromBackingInt(@intCast(0x0001))), try r.takeEnum(E2, .big));
 }
 
 test readSliceShort {

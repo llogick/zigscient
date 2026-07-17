@@ -17,7 +17,7 @@ comptime {
 
 const SpinLock = enum(c.pthread_spinlock_t) {
     unlocked = if (builtin.target.isMinGW()) -1 else 0,
-    locked = if (builtin.target.isMinGW()) 0 else @intFromEnum(c.E.BUSY),
+    locked = if (builtin.target.isMinGW()) 0 else @backingInt(c.E.BUSY),
 };
 
 fn pthread_spin_init(s: *c.pthread_spinlock_t, pshared: c_int) callconv(.c) c_int {
@@ -35,12 +35,12 @@ fn pthread_spin_destroy(s: *c.pthread_spinlock_t) callconv(.c) c_int {
 
 fn pthread_spin_trylock(s: *c.pthread_spinlock_t) callconv(.c) c_int {
     const spin: *SpinLock = @ptrCast(s);
-    return if (@cmpxchgStrong(SpinLock, spin, .unlocked, .locked, .acquire, .monotonic)) |_| @intFromEnum(c.E.BUSY) else 0;
+    return if (@cmpxchgStrong(SpinLock, spin, .unlocked, .locked, .acquire, .monotonic)) |_| @backingInt(c.E.BUSY) else 0;
 }
 
 fn pthread_spin_lock(s: *c.pthread_spinlock_t) callconv(.c) c_int {
     const spin: *SpinLock = @ptrCast(s);
-    if (builtin.single_threaded and @atomicLoad(SpinLock, spin, .monotonic) == .locked) return @intFromEnum(c.E.DEADLK);
+    if (builtin.single_threaded and @atomicLoad(SpinLock, spin, .monotonic) == .locked) return @backingInt(c.E.DEADLK);
 
     while (@cmpxchgWeak(SpinLock, spin, .unlocked, .locked, .acquire, .monotonic)) |_| {
         std.atomic.spinLoopHint();

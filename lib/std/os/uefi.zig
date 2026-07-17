@@ -181,7 +181,7 @@ pub const Time = extern struct {
         var days: u9 = 0;
         var month: u4 = 0;
         while (month < max_month) : (month += 1) {
-            days += std.time.epoch.getDaysInMonth(year, @enumFromInt(month + 1));
+            days += std.time.epoch.getDaysInMonth(year, @fromBackingInt(@intCast(month + 1)));
         }
         return days;
     }

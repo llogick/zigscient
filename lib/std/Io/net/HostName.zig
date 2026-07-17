@@ -277,7 +277,7 @@ pub const DnsResponse = struct {
         if (i + 10 + len > r.len) return error.InvalidDnsPacket;
         defer dr.bytes_index = i + 10 + len;
         return .{
-            .rr = @enumFromInt(r[i + 1]),
+            .rr = @fromBackingInt(@intCast(r[i + 1])),
             .packet = r,
             .data_off = i + 10,
             .data_len = len,

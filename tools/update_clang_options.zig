@@ -666,7 +666,7 @@ pub fn main(init: std.process.Init) !void {
 
         for (all_features, 0..) |feat, i| {
             const llvm_name = feat.llvm_name orelse continue;
-            const zig_feat = @as(Feature, @enumFromInt(i));
+            const zig_feat = @as(Feature, @fromBackingInt(@intCast(i)));
             const zig_name = @tagName(zig_feat);
             try llvm_to_zig_cpu_features.put(llvm_name, zig_name);
         }

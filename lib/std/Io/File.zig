@@ -340,7 +340,7 @@ pub const Permissions = std.Options.FilePermissions orelse if (is_windows) enum(
     const windows = std.os.windows;
 
     pub fn toAttributes(self: @This()) windows.FILE.ATTRIBUTE {
-        return @bitCast(@intFromEnum(self));
+        return @bitCast(@backingInt(self));
     }
 
     pub fn readOnly(self: @This()) bool {
@@ -350,10 +350,10 @@ pub const Permissions = std.Options.FilePermissions orelse if (is_windows) enum(
 
     pub fn setReadOnly(self: @This(), read_only: bool) @This() {
         const attributes = toAttributes(self);
-        return @enumFromInt(if (read_only)
+        return @fromBackingInt(@intCast(if (read_only)
             attributes | windows.FILE_ATTRIBUTE_READONLY
         else
-            attributes & ~@as(windows.DWORD, windows.FILE_ATTRIBUTE_READONLY));
+            attributes & ~@as(windows.DWORD, windows.FILE_ATTRIBUTE_READONLY)));
     }
 } else if (std.posix.mode_t != u0) enum(std.posix.mode_t) {
     /// This is the default mode given to POSIX operating systems for creating
@@ -375,11 +375,11 @@ pub const Permissions = std.Options.FilePermissions orelse if (is_windows) enum(
     pub const executable_file: @This() = .default_dir;
 
     pub fn toMode(self: @This()) std.posix.mode_t {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     pub fn fromMode(mode: std.posix.mode_t) @This() {
-        return @enumFromInt(mode);
+        return @fromBackingInt(@intCast(mode));
     }
 
     /// Returns `true` if and only if no class has write permissions.
@@ -392,7 +392,7 @@ pub const Permissions = std.Options.FilePermissions orelse if (is_windows) enum(
     pub fn setReadOnly(self: @This(), read_only: bool) @This() {
         const mode = toMode(self);
         const o222 = @as(std.posix.mode_t, 0o222);
-        return @enumFromInt(if (read_only) mode & ~o222 else mode | o222);
+        return @fromBackingInt(@intCast(if (read_only) mode & ~o222 else mode | o222));
     }
 } else enum(u0) {
     default_file = 0,

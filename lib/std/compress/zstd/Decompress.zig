@@ -175,7 +175,7 @@ fn discardDirect(r: *Reader, limit: std.Io.Limit) Reader.Error!usize {
         error.WriteFailed => unreachable,
         error.ReadFailed, error.EndOfStream => |e| return e,
     };
-    assert(n <= @intFromEnum(limit));
+    assert(n <= @backingInt(limit));
     return n;
 }
 
@@ -297,7 +297,7 @@ fn readInFrame(d: *Decompress, w: *Writer, limit: Limit, state: *State.InFrame) 
     const block_size = block_header.size;
     const frame_block_size_max = state.frame.block_size_max;
     if (frame_block_size_max < block_size) return error.BlockOversize;
-    if (@intFromEnum(limit) < block_size) return error.OutputBufferUndersize;
+    if (@backingInt(limit) < block_size) return error.OutputBufferUndersize;
     var bytes_written: usize = 0;
     switch (block_header.type) {
         .raw => {
@@ -320,7 +320,7 @@ fn readInFrame(d: *Decompress, w: *Writer, limit: Limit, state: *State.InFrame) 
             try decode.prepare(in, &remaining, literals, sequences_header);
 
             {
-                if (sequence_buffer.len < @intFromEnum(remaining))
+                if (sequence_buffer.len < @backingInt(remaining))
                     return error.SequenceBufferUndersize;
                 const seq_slice = remaining.slice(&sequence_buffer);
                 try in.readSliceAll(seq_slice);
@@ -409,16 +409,16 @@ pub const Frame = struct {
         _,
 
         pub fn kind(m: Magic) ?Kind {
-            return switch (@intFromEnum(m)) {
-                @intFromEnum(Magic.zstandard) => .zstandard,
-                @intFromEnum(Skippable.magic_min)...@intFromEnum(Skippable.magic_max) => .skippable,
+            return switch (@backingInt(m)) {
+                @backingInt(Magic.zstandard) => .zstandard,
+                @backingInt(Skippable.magic_min)...@backingInt(Skippable.magic_max) => .skippable,
                 else => null,
             };
         }
 
         pub fn isSkippable(m: Magic) bool {
-            return switch (@intFromEnum(m)) {
-                @intFromEnum(Skippable.magic_min)...@intFromEnum(Skippable.magic_max) => true,
+            return switch (@backingInt(m)) {
+                @backingInt(Skippable.magic_min)...@backingInt(Skippable.magic_max) => true,
                 else => false,
             };
         }
@@ -902,8 +902,8 @@ pub const Frame = struct {
     };
 
     pub const Skippable = struct {
-        pub const magic_min: Magic = @enumFromInt(0x184D2A50);
-        pub const magic_max: Magic = @enumFromInt(0x184D2A5F);
+        pub const magic_min: Magic = @fromBackingInt(@intCast(0x184D2A50));
+        pub const magic_max: Magic = @fromBackingInt(@intCast(0x184D2A5F));
 
         pub const Header = struct {
             magic_number: u32,
@@ -1001,7 +1001,7 @@ pub const LiteralsSection = struct {
         pub fn decode(in: *Reader, remaining: *Limit) !Header {
             remaining.* = remaining.subtract(1) orelse return error.EndOfStream;
             const byte0 = try in.takeByte();
-            const block_type: BlockType = @enumFromInt(byte0 & 0b11);
+            const block_type: BlockType = @fromBackingInt(@intCast(byte0 & 0b11));
             const size_format: u2 = @intCast((byte0 & 0b1100) >> 2);
             var regenerated_size: u20 = undefined;
             var compressed_size: ?u18 = null;
@@ -1330,7 +1330,7 @@ pub const LiteralsSection = struct {
                     try HuffmanTree.decode(in, remaining)
                 else
                     null;
-                const huffman_tree_size = @intFromEnum(before_remaining) - @intFromEnum(remaining.*);
+                const huffman_tree_size = @backingInt(before_remaining) - @backingInt(remaining.*);
                 const total_streams_size = std.math.sub(usize, header.compressed_size.?, huffman_tree_size) catch
                     return error.MalformedLiteralsSection;
                 if (total_streams_size > buffer.len) return error.MalformedLiteralsSection;
@@ -1398,9 +1398,9 @@ pub const SequencesSection = struct {
 
             const compression_modes = try in.takeByte();
 
-            const matches_mode: Header.Mode = @enumFromInt((compression_modes & 0b00001100) >> 2);
-            const offsets_mode: Header.Mode = @enumFromInt((compression_modes & 0b00110000) >> 4);
-            const literal_mode: Header.Mode = @enumFromInt((compression_modes & 0b11000000) >> 6);
+            const matches_mode: Header.Mode = @fromBackingInt(@intCast((compression_modes & 0b00001100) >> 2));
+            const offsets_mode: Header.Mode = @fromBackingInt(@intCast((compression_modes & 0b00110000) >> 4));
+            const literal_mode: Header.Mode = @fromBackingInt(@intCast((compression_modes & 0b11000000) >> 6));
             if (compression_modes & 0b11 != 0) return error.ReservedBitSet;
 
             return .{

@@ -589,7 +589,7 @@ test "sendmsg/recvmsg" {
     try testing.expectEqual(@as(u32, 2), ring.cq_ready());
 
     const cqe_sendmsg = try ring.copy_cqe();
-    if (cqe_sendmsg.res == -@as(i32, @intFromEnum(linux.E.INVAL))) return error.SkipZigTest;
+    if (cqe_sendmsg.res == -@as(i32, @backingInt(linux.E.INVAL))) return error.SkipZigTest;
     try testing.expectEqual(linux.io_uring_cqe{
         .user_data = 0x11111111,
         .res = buffer_send.len,
@@ -597,7 +597,7 @@ test "sendmsg/recvmsg" {
     }, cqe_sendmsg);
 
     const cqe_recvmsg = try ring.copy_cqe();
-    if (cqe_recvmsg.res == -@as(i32, @intFromEnum(linux.E.INVAL))) return error.SkipZigTest;
+    if (cqe_recvmsg.res == -@as(i32, @backingInt(linux.E.INVAL))) return error.SkipZigTest;
     try testing.expectEqual(linux.io_uring_cqe{
         .user_data = 0x22222222,
         .res = buffer_recv.len,
@@ -631,7 +631,7 @@ test "timeout (after a relative time)" {
 
     try testing.expectEqual(linux.io_uring_cqe{
         .user_data = 0x55555555,
-        .res = -@as(i32, @intFromEnum(linux.E.TIME)),
+        .res = -@as(i32, @backingInt(linux.E.TIME)),
         .flags = 0,
     }, cqe);
 
@@ -716,7 +716,7 @@ test "timeout_remove" {
         if (cqe.user_data == 0x88888888) {
             try testing.expectEqual(linux.io_uring_cqe{
                 .user_data = 0x88888888,
-                .res = -@as(i32, @intFromEnum(linux.E.CANCELED)),
+                .res = -@as(i32, @backingInt(linux.E.CANCELED)),
                 .flags = 0,
             }, cqe);
         } else if (cqe.user_data == 0x99999999) {
@@ -759,16 +759,16 @@ test "accept/connect/recv/link_timeout" {
         const cqe = try ring.copy_cqe();
         switch (cqe.user_data) {
             0xffffffff => {
-                if (cqe.res != -@as(i32, @intFromEnum(linux.E.INTR)) and
-                    cqe.res != -@as(i32, @intFromEnum(linux.E.CANCELED)))
+                if (cqe.res != -@as(i32, @backingInt(linux.E.INTR)) and
+                    cqe.res != -@as(i32, @backingInt(linux.E.CANCELED)))
                 {
                     std.debug.print("Req 0x{x} got {d}\n", .{ cqe.user_data, cqe.res });
                     try testing.expect(false);
                 }
             },
             0x22222222 => {
-                if (cqe.res != -@as(i32, @intFromEnum(linux.E.ALREADY)) and
-                    cqe.res != -@as(i32, @intFromEnum(linux.E.TIME)))
+                if (cqe.res != -@as(i32, @backingInt(linux.E.ALREADY)) and
+                    cqe.res != -@as(i32, @backingInt(linux.E.TIME)))
                 {
                     std.debug.print("Req 0x{x} got {d}\n", .{ cqe.user_data, cqe.res });
                     try testing.expect(false);
@@ -922,7 +922,7 @@ test "accept/connect/recv/cancel" {
 
     try testing.expectEqual(linux.io_uring_cqe{
         .user_data = 0xffffffff,
-        .res = -@as(i32, @intFromEnum(linux.E.CANCELED)),
+        .res = -@as(i32, @backingInt(linux.E.CANCELED)),
         .flags = 0,
     }, cqe_recv);
 

@@ -198,7 +198,7 @@ pub fn main(init: std.process.Init) !void {
 
                 if (zir.hasCompileErrors()) {
                     more_fixups.clearRetainingCapacity();
-                    const payload_index = zir.extra[@intFromEnum(Zir.ExtraIndex.compile_errors)];
+                    const payload_index = zir.extra[@backingInt(Zir.ExtraIndex.compile_errors)];
                     assert(payload_index != 0);
                     const header = zir.extraData(Zir.Inst.CompileErrors, payload_index);
                     var extra_index = header.end;

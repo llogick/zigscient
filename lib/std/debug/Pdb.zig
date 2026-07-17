@@ -935,7 +935,7 @@ pub fn getStreamById(self: *Pdb, id: u32) ?*MsfStream {
 }
 
 pub fn getStream(self: *Pdb, stream: pdb.StreamType) ?*MsfStream {
-    const id = @intFromEnum(stream);
+    const id = @backingInt(stream);
     return self.getStreamById(id);
 }
 
@@ -1078,7 +1078,7 @@ const MsfStream = struct {
             return error.ReadFailed;
         };
 
-        var remaining = @intFromEnum(limit);
+        var remaining = @backingInt(limit);
         while (remaining != 0) {
             const stream_len: usize = @min(remaining, ms.block_size - offset);
             const n = try ms.file_reader.interface.stream(w, .limited(stream_len));
@@ -1098,7 +1098,7 @@ const MsfStream = struct {
             }
         }
 
-        const total = @intFromEnum(limit) - remaining;
+        const total = @backingInt(limit) - remaining;
         ms.next_read_pos += total;
         return total;
     }

@@ -60,8 +60,8 @@ pub fn controlBarrier(
     asm volatile (
         \\OpControlBarrier %exec %mem %sem
         :
-        : [exec] "" (@as(u32, @intFromEnum(execution))),
-          [mem] "" (@as(u32, @intFromEnum(memory))),
+        : [exec] "" (@as(u32, @backingInt(execution))),
+          [mem] "" (@as(u32, @backingInt(memory))),
           [sem] "" (@as(u32, @bitCast(semantics))),
     );
 }
@@ -70,7 +70,7 @@ pub fn memoryBarrier(comptime memory: Scope, comptime semantics: MemorySemantics
     asm volatile (
         \\OpMemoryBarrier %mem %sem
         :
-        : [mem] "" (@as(u32, @intFromEnum(memory))),
+        : [mem] "" (@as(u32, @backingInt(memory))),
           [sem] "" (@as(u32, @bitCast(semantics))),
     );
 }

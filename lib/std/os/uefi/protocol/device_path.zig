@@ -26,7 +26,7 @@ pub const DevicePath = extern struct {
 
     /// Returns the next DevicePath node in the sequence, if any.
     pub fn next(self: *const DevicePath) ?*const DevicePath {
-        const subtype: uefi.DevicePath.End.Subtype = @enumFromInt(self.subtype);
+        const subtype: uefi.DevicePath.End.Subtype = @fromBackingInt(@intCast(self.subtype));
         if (self.type == .end and subtype == .end_entire) return null;
         const bytes: [*]const u8 = @ptrCast(self);
         return @ptrCast(bytes + self.length);
@@ -106,7 +106,7 @@ pub const DevicePath = extern struct {
 
         inline for (type_info.field_names, type_info.field_types) |subtype_name, subtype_type| {
             // The tag names match the union names, so just grab that off the enum
-            const tag_val: u8 = @intFromEnum(@field(TTag, subtype_name));
+            const tag_val: u8 = @backingInt(@field(TTag, subtype_name));
 
             if (self.subtype == tag_val) {
                 // e.g. expr = .{ .pci = @ptrCast(...) }

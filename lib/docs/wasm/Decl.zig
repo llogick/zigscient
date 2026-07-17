@@ -24,7 +24,7 @@ pub const Index = enum(u32) {
     _,
 
     pub fn get(i: Index) *Decl {
-        return &Walk.decls.items[@intFromEnum(i)];
+        return &Walk.decls.items[@backingInt(i)];
     }
 };
 
@@ -130,7 +130,7 @@ pub fn get_child(decl: *const Decl, name: []const u8) ?Decl.Index {
             // Find a decl with this function as the parent, with a name matching `name`
             for (Walk.decls.items, 0..) |*candidate, i| {
                 if (candidate.parent != .none and candidate.parent.get() == decl and std.mem.eql(u8, candidate.extra_info().name, name)) {
-                    return @enumFromInt(i);
+                    return @fromBackingInt(@intCast(i));
                 }
             }
 

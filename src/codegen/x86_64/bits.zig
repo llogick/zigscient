@@ -241,7 +241,7 @@ pub const SseFloatPredicate = enum(u3) {
     pub const ord_q: SseFloatPredicate = .ord;
 
     pub fn imm(pred: SseFloatPredicate) Immediate {
-        return .u(@intFromEnum(pred));
+        return .u(@backingInt(pred));
     }
 };
 
@@ -342,7 +342,7 @@ pub const VexFloatPredicate = enum(u5) {
     pub const @"true": VexFloatPredicate = .true_uq;
 
     pub fn imm(pred: VexFloatPredicate) Immediate {
-        return .u(@intFromEnum(pred));
+        return .u(@backingInt(pred));
     }
 };
 
@@ -407,7 +407,7 @@ pub const Register = enum(u8) {
     };
 
     pub fn class(reg: Register) Class {
-        return switch (@intFromEnum(reg)) {
+        return switch (@backingInt(reg)) {
             // zig fmt: off
             @intFromEnum(Register.rax)  ... @intFromEnum(Register.r15)   => .general_purpose,
             @intFromEnum(Register.eax)  ... @intFromEnum(Register.r15d)  => .general_purpose,
@@ -442,7 +442,7 @@ pub const Register = enum(u8) {
     }
 
     pub fn id(reg: Register) u7 {
-        const base = switch (@intFromEnum(reg)) {
+        const base = switch (@backingInt(reg)) {
             // zig fmt: off
             @intFromEnum(Register.rax)  ... @intFromEnum(Register.r15)   => @intFromEnum(Register.rax),
             @intFromEnum(Register.eax)  ... @intFromEnum(Register.r15d)  => @intFromEnum(Register.eax),
@@ -462,11 +462,11 @@ pub const Register = enum(u8) {
             else => unreachable,
             // zig fmt: on
         };
-        return @intCast(@intFromEnum(reg) - base);
+        return @intCast(@backingInt(reg) - base);
     }
 
     pub fn size(reg: Register) Memory.Size {
-        return switch (@intFromEnum(reg)) {
+        return switch (@backingInt(reg)) {
             // zig fmt: off
             @intFromEnum(Register.rax)  ... @intFromEnum(Register.r15)   => .qword,
             @intFromEnum(Register.eax)  ... @intFromEnum(Register.r15d)  => .dword,
@@ -491,7 +491,7 @@ pub const Register = enum(u8) {
     }
 
     pub fn isExtended(reg: Register) bool {
-        return switch (@intFromEnum(reg)) {
+        return switch (@backingInt(reg)) {
             // zig fmt: off
             @intFromEnum(Register.r8)  ... @intFromEnum(Register.r15)    => true,
             @intFromEnum(Register.r8d) ... @intFromEnum(Register.r15d)   => true,
@@ -511,7 +511,7 @@ pub const Register = enum(u8) {
     }
 
     pub fn enc(reg: Register) u5 {
-        const base = switch (@intFromEnum(reg)) {
+        const base = switch (@backingInt(reg)) {
             // zig fmt: off
             @intFromEnum(Register.rax)  ... @intFromEnum(Register.r15)   => @intFromEnum(Register.rax),
             @intFromEnum(Register.eax)  ... @intFromEnum(Register.r15d)  => @intFromEnum(Register.eax),
@@ -532,7 +532,7 @@ pub const Register = enum(u8) {
             else => unreachable,
             // zig fmt: on
         };
-        return @truncate(@intFromEnum(reg) - base);
+        return @truncate(@backingInt(reg) - base);
     }
 
     pub fn toBitSize(reg: Register, bit_size: u64) Register {
@@ -572,7 +572,7 @@ pub const Register = enum(u8) {
     }
 
     fn gpBase(reg: Register) u7 {
-        return switch (@intFromEnum(reg)) {
+        return switch (@backingInt(reg)) {
             // zig fmt: off
             @intFromEnum(Register.rax)  ... @intFromEnum(Register.r15)   => @intFromEnum(Register.rax),
             @intFromEnum(Register.eax)  ... @intFromEnum(Register.r15d)  => @intFromEnum(Register.eax),
@@ -586,7 +586,7 @@ pub const Register = enum(u8) {
 
     pub fn to64(reg: Register) Register {
         return switch (reg.class()) {
-            .general_purpose, .gphi => @enumFromInt(@intFromEnum(reg) - reg.gpBase() + @intFromEnum(Register.rax)),
+            .general_purpose, .gphi => @fromBackingInt(@intCast(@backingInt(reg) - reg.gpBase() + @backingInt(Register.rax))),
             .segment => unreachable,
             .x87, .mmx, .cr, .dr => reg,
             .sse => reg.to128(),
@@ -596,7 +596,7 @@ pub const Register = enum(u8) {
 
     pub fn to32(reg: Register) Register {
         return switch (reg.class()) {
-            .general_purpose, .gphi => @enumFromInt(@intFromEnum(reg) - reg.gpBase() + @intFromEnum(Register.eax)),
+            .general_purpose, .gphi => @fromBackingInt(@intCast(@backingInt(reg) - reg.gpBase() + @backingInt(Register.eax))),
             .segment => unreachable,
             .x87, .mmx, .cr, .dr => reg,
             .sse => reg.to128(),
@@ -606,7 +606,7 @@ pub const Register = enum(u8) {
 
     pub fn to16(reg: Register) Register {
         return switch (reg.class()) {
-            .general_purpose, .gphi => @enumFromInt(@intFromEnum(reg) - reg.gpBase() + @intFromEnum(Register.ax)),
+            .general_purpose, .gphi => @fromBackingInt(@intCast(@backingInt(reg) - reg.gpBase() + @backingInt(Register.ax))),
             .segment, .x87, .mmx, .cr, .dr => reg,
             .sse => reg.to128(),
             .ip => .ip,
@@ -623,12 +623,12 @@ pub const Register = enum(u8) {
     }
 
     pub fn toLo8(reg: Register) Register {
-        return @enumFromInt(@intFromEnum(reg) - reg.gpBase() + @intFromEnum(Register.al));
+        return @fromBackingInt(@intCast(@backingInt(reg) - reg.gpBase() + @backingInt(Register.al)));
     }
 
     pub fn toHi8(reg: Register) Register {
         assert(reg.isClass(.gphi));
-        return @enumFromInt(@intFromEnum(reg) - reg.gpBase() + @intFromEnum(Register.ah));
+        return @fromBackingInt(@intCast(@backingInt(reg) - reg.gpBase() + @backingInt(Register.ah)));
     }
 
     pub fn to80(reg: Register) Register {
@@ -638,24 +638,24 @@ pub const Register = enum(u8) {
 
     fn sseBase(reg: Register) u8 {
         assert(reg.isClass(.sse));
-        return switch (@intFromEnum(reg)) {
-            @intFromEnum(Register.zmm0)...@intFromEnum(Register.zmm31) => @intFromEnum(Register.zmm0),
-            @intFromEnum(Register.ymm0)...@intFromEnum(Register.ymm31) => @intFromEnum(Register.ymm0),
-            @intFromEnum(Register.xmm0)...@intFromEnum(Register.xmm31) => @intFromEnum(Register.xmm0),
+        return switch (@backingInt(reg)) {
+            @backingInt(Register.zmm0)...@backingInt(Register.zmm31) => @backingInt(Register.zmm0),
+            @backingInt(Register.ymm0)...@backingInt(Register.ymm31) => @backingInt(Register.ymm0),
+            @backingInt(Register.xmm0)...@backingInt(Register.xmm31) => @backingInt(Register.xmm0),
             else => unreachable,
         };
     }
 
     pub fn to512(reg: Register) Register {
-        return @enumFromInt(@intFromEnum(reg) - reg.sseBase() + @intFromEnum(Register.zmm0));
+        return @fromBackingInt(@intCast(@backingInt(reg) - reg.sseBase() + @backingInt(Register.zmm0)));
     }
 
     pub fn to256(reg: Register) Register {
-        return @enumFromInt(@intFromEnum(reg) - reg.sseBase() + @intFromEnum(Register.ymm0));
+        return @fromBackingInt(@intCast(@backingInt(reg) - reg.sseBase() + @backingInt(Register.ymm0)));
     }
 
     pub fn to128(reg: Register) Register {
-        return @enumFromInt(@intFromEnum(reg) - reg.sseBase() + @intFromEnum(Register.xmm0));
+        return @fromBackingInt(@intCast(@backingInt(reg) - reg.sseBase() + @backingInt(Register.xmm0)));
     }
 
     /// DWARF register encoding
@@ -725,14 +725,14 @@ pub const FrameIndex = enum(u32) {
     pub const named_count = @typeInfo(FrameIndex).@"enum".field_names.len;
 
     pub fn isNamed(fi: FrameIndex) bool {
-        return @intFromEnum(fi) < named_count;
+        return @backingInt(fi) < named_count;
     }
 
     pub fn format(fi: FrameIndex, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (fi.isNamed()) {
             try writer.print("FrameIndex.{t}", .{fi});
         } else {
-            try writer.print("FrameIndex({d})", .{@intFromEnum(fi)});
+            try writer.print("FrameIndex({d})", .{@backingInt(fi)});
         }
     }
 };
@@ -875,11 +875,11 @@ pub const Memory = struct {
         }
 
         pub fn fromLog2(log2: u2) Scale {
-            return @enumFromInt(log2);
+            return @fromBackingInt(@intCast(log2));
         }
 
         pub fn toLog2(scale: Scale) u2 {
-            return @intFromEnum(scale);
+            return @backingInt(scale);
         }
     };
 };
@@ -903,10 +903,10 @@ pub const Immediate = union(enum) {
     pub fn format(imm: Immediate, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (imm) {
             inline else => |int| try writer.print("{d}", .{int}),
-            .nav => |nav_off| try writer.print("Nav({d}) + {d}", .{ @intFromEnum(nav_off.nav), nav_off.off }),
-            .uav => |uav| try writer.print("Uav({d})", .{@intFromEnum(uav.val)}),
-            .lazy_sym => |lazy_sym| try writer.print("LazySym({s}, {d})", .{ @tagName(lazy_sym.kind), @intFromEnum(lazy_sym.ty) }),
-            .extern_func => |extern_func| try writer.print("ExternFunc({d})", .{@intFromEnum(extern_func)}),
+            .nav => |nav_off| try writer.print("Nav({d}) + {d}", .{ @backingInt(nav_off.nav), nav_off.off }),
+            .uav => |uav| try writer.print("Uav({d})", .{@backingInt(uav.val)}),
+            .lazy_sym => |lazy_sym| try writer.print("LazySym({s}, {d})", .{ @tagName(lazy_sym.kind), @backingInt(lazy_sym.ty) }),
+            .extern_func => |extern_func| try writer.print("ExternFunc({d})", .{@backingInt(extern_func)}),
         }
     }
 };

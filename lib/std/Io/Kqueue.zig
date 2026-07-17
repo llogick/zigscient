@@ -332,7 +332,7 @@ fn schedule(k: *Kqueue, thread: *Thread, ready_queue: Fiber.Queue) void {
                 .flags = std.c.EV.ADD | std.c.EV.ONESHOT,
                 .fflags = std.c.NOTE.TRIGGER,
                 .data = 0,
-                .udata = @intFromEnum(Completion.UserData.wakeup),
+                .udata = @backingInt(Completion.UserData.wakeup),
             },
         };
         // If an error occurs it only pessimises scheduling.
@@ -439,7 +439,7 @@ fn idle(k: *Kqueue, thread: *Thread) void {
             @panic(@errorName(err)); // TODO
         };
         var maybe_ready_queue: ?Fiber.Queue = null;
-        for (events_buffer[0..n]) |event| switch (@as(Completion.UserData, @enumFromInt(event.udata))) {
+        for (events_buffer[0..n]) |event| switch (@as(Completion.UserData, @fromBackingInt(@intCast(event.udata)))) {
             .unused => unreachable, // bad submission queued?
             .wakeup => {},
             .cleanup => @panic("failed to notify other threads that we are exiting"),
@@ -522,7 +522,7 @@ const SwitchMessage = struct {
                         .flags = std.c.EV.ADD | std.c.EV.ONESHOT,
                         .fflags = std.c.NOTE.TRIGGER,
                         .data = 0,
-                        .udata = @intFromEnum(Completion.UserData.exit),
+                        .udata = @backingInt(Completion.UserData.exit),
                     },
                 };
                 _ = kevent(each_thread.kq_fd, &changes, &.{}, null) catch |err| {

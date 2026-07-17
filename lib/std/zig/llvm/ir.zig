@@ -189,7 +189,7 @@ pub const ModuleBlock = struct {
 
     pub const Version = struct {
         pub const ops = [_]AbbrevOp{
-            .{ .literal = @intFromEnum(ModuleBlock.Code.VERSION) },
+            .{ .literal = @backingInt(ModuleBlock.Code.VERSION) },
             .{ .literal = 2 },
         };
     };
@@ -211,7 +211,7 @@ pub const ModuleBlock = struct {
         };
 
         pub const ops = [_]AbbrevOp{
-            .{ .literal = @intFromEnum(ModuleBlock.Code.GLOBALVAR) }, // Code
+            .{ .literal = @backingInt(ModuleBlock.Code.GLOBALVAR) }, // Code
             .{ .vbr = 16 }, // strtab_offset
             .{ .vbr = 16 }, // strtab_size
             .{ .fixed_runtime = Builder.Type },
@@ -247,7 +247,7 @@ pub const ModuleBlock = struct {
 
     pub const Function = struct {
         pub const ops = [_]AbbrevOp{
-            .{ .literal = @intFromEnum(ModuleBlock.Code.FUNCTION) }, // Code
+            .{ .literal = @backingInt(ModuleBlock.Code.FUNCTION) }, // Code
             .{ .vbr = 16 }, // strtab_offset
             .{ .vbr = 16 }, // strtab_size
             .{ .fixed_runtime = Builder.Type },
@@ -286,7 +286,7 @@ pub const ModuleBlock = struct {
 
     pub const Alias = struct {
         pub const ops = [_]AbbrevOp{
-            .{ .literal = @intFromEnum(ModuleBlock.Code.ALIAS) }, // Code
+            .{ .literal = @backingInt(ModuleBlock.Code.ALIAS) }, // Code
             .{ .vbr = 16 }, // strtab_offset
             .{ .vbr = 16 }, // strtab_size
             .{ .fixed_runtime = Builder.Type },
@@ -330,7 +330,7 @@ pub const ModuleBlock = struct {
 
         pub const Entry = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ParamattrBlock.Code.ENTRY) },
+                .{ .literal = @backingInt(ModuleBlock.ParamattrBlock.Code.ENTRY) },
                 .{ .array_vbr = 8 },
             };
             group_indices: []const u64,
@@ -451,7 +451,7 @@ pub const ModuleBlock = struct {
 
         pub const SetType = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.SETTYPE) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.SETTYPE) },
                 .{ .fixed_runtime = Builder.Type },
             };
             type_id: Builder.Type,
@@ -459,25 +459,25 @@ pub const ModuleBlock = struct {
 
         pub const Null = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.NULL) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.NULL) },
             };
         };
 
         pub const Undef = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.UNDEF) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.UNDEF) },
             };
         };
 
         pub const Poison = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.POISON) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.POISON) },
             };
         };
 
         pub const Integer = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.INTEGER) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.INTEGER) },
                 .{ .vbr = 16 },
             };
             value: u64,
@@ -485,7 +485,7 @@ pub const ModuleBlock = struct {
 
         pub const Half = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.FLOAT) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.FLOAT) },
                 .{ .fixed = 16 },
             };
             value: u16,
@@ -493,7 +493,7 @@ pub const ModuleBlock = struct {
 
         pub const Float = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.FLOAT) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.FLOAT) },
                 .{ .fixed = 32 },
             };
             value: u32,
@@ -501,7 +501,7 @@ pub const ModuleBlock = struct {
 
         pub const Double = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.FLOAT) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.FLOAT) },
                 .{ .vbr = 6 },
             };
             value: u64,
@@ -509,7 +509,7 @@ pub const ModuleBlock = struct {
 
         pub const Fp80 = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.FLOAT) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.FLOAT) },
                 .{ .vbr = 6 },
                 .{ .vbr = 6 },
             };
@@ -519,7 +519,7 @@ pub const ModuleBlock = struct {
 
         pub const Fp128 = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.FLOAT) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.FLOAT) },
                 .{ .vbr = 6 },
                 .{ .vbr = 6 },
             };
@@ -529,7 +529,7 @@ pub const ModuleBlock = struct {
 
         pub const Aggregate = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.AGGREGATE) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.AGGREGATE) },
                 .{ .array_fixed = 32 },
             };
             values: []const Builder.Constant,
@@ -537,7 +537,7 @@ pub const ModuleBlock = struct {
 
         pub const String = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.STRING) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.STRING) },
                 .{ .array_fixed = 8 },
             };
             string: []const u8,
@@ -545,7 +545,7 @@ pub const ModuleBlock = struct {
 
         pub const CString = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.CSTRING) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.CSTRING) },
                 .{ .array_fixed = 8 },
             };
             string: []const u8,
@@ -554,7 +554,7 @@ pub const ModuleBlock = struct {
         pub const Cast = struct {
             const CastOpcode = Builder.CastOpcode;
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.CE_CAST) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.CE_CAST) },
                 .{ .fixed = @bitSizeOf(CastOpcode) },
                 .{ .fixed_runtime = Builder.Type },
                 ConstantAbbrev,
@@ -568,7 +568,7 @@ pub const ModuleBlock = struct {
         pub const Binary = struct {
             const BinaryOpcode = Builder.BinaryOpcode;
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.CE_BINOP) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.CE_BINOP) },
                 .{ .fixed = @bitSizeOf(BinaryOpcode) },
                 ConstantAbbrev,
                 ConstantAbbrev,
@@ -581,7 +581,7 @@ pub const ModuleBlock = struct {
 
         pub const Cmp = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.CE_CMP) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.CE_CMP) },
                 .{ .fixed_runtime = Builder.Type },
                 ConstantAbbrev,
                 ConstantAbbrev,
@@ -596,7 +596,7 @@ pub const ModuleBlock = struct {
 
         pub const ExtractElement = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.CE_EXTRACTELT) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.CE_EXTRACTELT) },
                 .{ .fixed_runtime = Builder.Type },
                 ConstantAbbrev,
                 .{ .fixed_runtime = Builder.Type },
@@ -611,7 +611,7 @@ pub const ModuleBlock = struct {
 
         pub const InsertElement = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.CE_INSERTELT) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.CE_INSERTELT) },
                 ConstantAbbrev,
                 ConstantAbbrev,
                 .{ .fixed_runtime = Builder.Type },
@@ -626,7 +626,7 @@ pub const ModuleBlock = struct {
 
         pub const ShuffleVector = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.CE_SHUFFLEVEC) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.CE_SHUFFLEVEC) },
                 ValueAbbrev,
                 ValueAbbrev,
                 ValueAbbrev,
@@ -639,7 +639,7 @@ pub const ModuleBlock = struct {
 
         pub const ShuffleVectorEx = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.CE_SHUFVEC_EX) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.CE_SHUFVEC_EX) },
                 .{ .fixed_runtime = Builder.Type },
                 ValueAbbrev,
                 ValueAbbrev,
@@ -654,7 +654,7 @@ pub const ModuleBlock = struct {
 
         pub const BlockAddress = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.ConstantsBlock.Code.BLOCKADDRESS) },
+                .{ .literal = @backingInt(ModuleBlock.ConstantsBlock.Code.BLOCKADDRESS) },
                 .{ .fixed_runtime = Builder.Type },
                 ConstantAbbrev,
                 BlockAbbrev,
@@ -867,7 +867,7 @@ pub const ModuleBlock = struct {
 
         pub const DeclareBlocks = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.DECLAREBLOCKS) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.DECLAREBLOCKS) },
                 .{ .vbr = 8 },
             };
             num_blocks: usize,
@@ -884,7 +884,7 @@ pub const ModuleBlock = struct {
                 no_tail: bool = false,
             };
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_CALL) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_CALL) },
                 .{ .fixed_runtime = Builder.FunctionAttributes },
                 .{ .fixed = @bitSizeOf(CallType) },
                 .{ .fixed_runtime = Builder.Type },
@@ -912,7 +912,7 @@ pub const ModuleBlock = struct {
             };
 
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_CALL) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_CALL) },
                 .{ .fixed_runtime = Builder.FunctionAttributes },
                 .{ .fixed = @bitSizeOf(CallType) },
                 .{ .fixed = @bitSizeOf(Builder.FastMath) },
@@ -931,7 +931,7 @@ pub const ModuleBlock = struct {
 
         pub const FNeg = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_UNOP) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_UNOP) },
                 ValueAbbrev,
                 .{ .literal = 0 },
             };
@@ -941,7 +941,7 @@ pub const ModuleBlock = struct {
 
         pub const FNegFast = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_UNOP) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_UNOP) },
                 ValueAbbrev,
                 .{ .literal = 0 },
                 .{ .fixed = @bitSizeOf(Builder.FastMath) },
@@ -954,7 +954,7 @@ pub const ModuleBlock = struct {
         pub const Binary = struct {
             const BinaryOpcode = Builder.BinaryOpcode;
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_BINOP) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_BINOP) },
                 ValueAbbrev,
                 ValueAbbrev,
                 .{ .fixed = @bitSizeOf(BinaryOpcode) },
@@ -968,7 +968,7 @@ pub const ModuleBlock = struct {
         pub const BinaryNoWrap = struct {
             const BinaryOpcode = Builder.BinaryOpcode;
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_BINOP) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_BINOP) },
                 ValueAbbrev,
                 ValueAbbrev,
                 .{ .fixed = @bitSizeOf(BinaryOpcode) },
@@ -987,7 +987,7 @@ pub const ModuleBlock = struct {
         pub const BinaryExact = struct {
             const BinaryOpcode = Builder.BinaryOpcode;
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_BINOP) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_BINOP) },
                 ValueAbbrev,
                 ValueAbbrev,
                 .{ .fixed = @bitSizeOf(BinaryOpcode) },
@@ -1002,7 +1002,7 @@ pub const ModuleBlock = struct {
         pub const BinaryFast = struct {
             const BinaryOpcode = Builder.BinaryOpcode;
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_BINOP) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_BINOP) },
                 ValueAbbrev,
                 ValueAbbrev,
                 .{ .fixed = @bitSizeOf(BinaryOpcode) },
@@ -1018,7 +1018,7 @@ pub const ModuleBlock = struct {
         pub const Cmp = struct {
             const CmpPredicate = Builder.CmpPredicate;
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_CMP2) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_CMP2) },
                 ValueAbbrev,
                 ValueAbbrev,
                 .{ .fixed = @bitSizeOf(CmpPredicate) },
@@ -1032,7 +1032,7 @@ pub const ModuleBlock = struct {
         pub const CmpFast = struct {
             const CmpPredicate = Builder.CmpPredicate;
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_CMP2) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_CMP2) },
                 ValueAbbrev,
                 ValueAbbrev,
                 .{ .fixed = @bitSizeOf(CmpPredicate) },
@@ -1047,7 +1047,7 @@ pub const ModuleBlock = struct {
 
         pub const Select = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_VSELECT) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_VSELECT) },
                 ValueAbbrev,
                 ValueAbbrev,
                 ValueAbbrev,
@@ -1060,7 +1060,7 @@ pub const ModuleBlock = struct {
 
         pub const SelectFast = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_VSELECT) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_VSELECT) },
                 ValueAbbrev,
                 ValueAbbrev,
                 ValueAbbrev,
@@ -1076,7 +1076,7 @@ pub const ModuleBlock = struct {
         pub const Cast = struct {
             const CastOpcode = Builder.CastOpcode;
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_CAST) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_CAST) },
                 ValueAbbrev,
                 .{ .fixed_runtime = Builder.Type },
                 .{ .fixed = @bitSizeOf(CastOpcode) },
@@ -1093,10 +1093,10 @@ pub const ModuleBlock = struct {
                 no_signed_wrap: bool,
             };
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_CAST) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_CAST) },
                 ValueAbbrev,
                 .{ .fixed_runtime = Builder.Type },
-                .{ .literal = @intFromEnum(Builder.CastOpcode.trunc) },
+                .{ .literal = @backingInt(Builder.CastOpcode.trunc) },
                 .{ .fixed = @bitSizeOf(Flags) },
             };
 
@@ -1114,7 +1114,7 @@ pub const ModuleBlock = struct {
                 align_upper: u3,
             };
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_ALLOCA) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_ALLOCA) },
                 .{ .fixed_runtime = Builder.Type },
                 .{ .fixed_runtime = Builder.Type },
                 ValueAbbrev,
@@ -1129,13 +1129,13 @@ pub const ModuleBlock = struct {
 
         pub const RetVoid = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_RET) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_RET) },
             };
         };
 
         pub const Ret = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_RET) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_RET) },
                 ValueAbbrev,
             };
             val: u32,
@@ -1143,7 +1143,7 @@ pub const ModuleBlock = struct {
 
         pub const GetElementPtr = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_GEP) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_GEP) },
                 .{ .fixed = 1 },
                 .{ .fixed_runtime = Builder.Type },
                 ValueAbbrev,
@@ -1158,7 +1158,7 @@ pub const ModuleBlock = struct {
 
         pub const ExtractValue = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_EXTRACTVAL) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_EXTRACTVAL) },
                 ValueAbbrev,
                 ValueArrayAbbrev,
             };
@@ -1169,7 +1169,7 @@ pub const ModuleBlock = struct {
 
         pub const InsertValue = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_INSERTVAL) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_INSERTVAL) },
                 ValueAbbrev,
                 ValueAbbrev,
                 ValueArrayAbbrev,
@@ -1182,7 +1182,7 @@ pub const ModuleBlock = struct {
 
         pub const ExtractElement = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_EXTRACTELT) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_EXTRACTELT) },
                 ValueAbbrev,
                 ValueAbbrev,
             };
@@ -1193,7 +1193,7 @@ pub const ModuleBlock = struct {
 
         pub const InsertElement = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_INSERTELT) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_INSERTELT) },
                 ValueAbbrev,
                 ValueAbbrev,
                 ValueAbbrev,
@@ -1206,7 +1206,7 @@ pub const ModuleBlock = struct {
 
         pub const ShuffleVector = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_SHUFFLEVEC) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_SHUFFLEVEC) },
                 ValueAbbrev,
                 ValueAbbrev,
                 ValueAbbrev,
@@ -1219,13 +1219,13 @@ pub const ModuleBlock = struct {
 
         pub const Unreachable = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_UNREACHABLE) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_UNREACHABLE) },
             };
         };
 
         pub const Load = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_LOAD) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_LOAD) },
                 ValueAbbrev,
                 .{ .fixed_runtime = Builder.Type },
                 .{ .fixed = @bitSizeOf(Builder.Alignment) },
@@ -1239,7 +1239,7 @@ pub const ModuleBlock = struct {
 
         pub const LoadAtomic = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_LOADATOMIC) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_LOADATOMIC) },
                 ValueAbbrev,
                 .{ .fixed_runtime = Builder.Type },
                 .{ .fixed = @bitSizeOf(Builder.Alignment) },
@@ -1257,7 +1257,7 @@ pub const ModuleBlock = struct {
 
         pub const Store = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_STORE) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_STORE) },
                 ValueAbbrev,
                 ValueAbbrev,
                 .{ .fixed = @bitSizeOf(Builder.Alignment) },
@@ -1271,7 +1271,7 @@ pub const ModuleBlock = struct {
 
         pub const StoreAtomic = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_STOREATOMIC) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_STOREATOMIC) },
                 ValueAbbrev,
                 ValueAbbrev,
                 .{ .fixed = @bitSizeOf(Builder.Alignment) },
@@ -1289,7 +1289,7 @@ pub const ModuleBlock = struct {
 
         pub const BrUnconditional = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_BR) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_BR) },
                 BlockAbbrev,
             };
             block: u32,
@@ -1297,7 +1297,7 @@ pub const ModuleBlock = struct {
 
         pub const BrConditional = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_BR) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_BR) },
                 BlockAbbrev,
                 BlockAbbrev,
                 BlockAbbrev,
@@ -1309,7 +1309,7 @@ pub const ModuleBlock = struct {
 
         pub const VaArg = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_VAARG) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_VAARG) },
                 .{ .fixed_runtime = Builder.Type },
                 ValueAbbrev,
                 .{ .fixed_runtime = Builder.Type },
@@ -1321,7 +1321,7 @@ pub const ModuleBlock = struct {
 
         pub const AtomicRmw = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_ATOMICRMW) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_ATOMICRMW) },
                 ValueAbbrev,
                 ValueAbbrev,
                 .{ .fixed = @bitSizeOf(Builder.Function.Instruction.AtomicRmw.Operation) },
@@ -1341,7 +1341,7 @@ pub const ModuleBlock = struct {
 
         pub const CmpXchg = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_CMPXCHG) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_CMPXCHG) },
                 ValueAbbrev,
                 ValueAbbrev,
                 ValueAbbrev,
@@ -1365,7 +1365,7 @@ pub const ModuleBlock = struct {
 
         pub const Fence = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_FENCE) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_FENCE) },
                 .{ .fixed = @bitSizeOf(Builder.AtomicOrdering) },
                 .{ .fixed = @bitSizeOf(Builder.SyncScope) },
             };
@@ -1375,7 +1375,7 @@ pub const ModuleBlock = struct {
 
         pub const DebugLoc = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.DEBUG_LOC) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.DEBUG_LOC) },
                 LineAbbrev,
                 ColumnAbbrev,
                 MetadataAbbrev,
@@ -1390,20 +1390,20 @@ pub const ModuleBlock = struct {
 
         pub const DebugLocAgain = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.DEBUG_LOC_AGAIN) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.DEBUG_LOC_AGAIN) },
             };
         };
 
         pub const ColdOperandBundle = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.OPERAND_BUNDLE) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.OPERAND_BUNDLE) },
                 .{ .literal = 0 },
             };
         };
 
         pub const IndirectBr = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.Code.INST_INDIRECTBR) },
+                .{ .literal = @backingInt(ModuleBlock.FunctionBlock.Code.INST_INDIRECTBR) },
                 .{ .fixed_runtime = Builder.Type },
                 ValueAbbrev,
                 BlockArrayAbbrev,
@@ -1434,7 +1434,7 @@ pub const ModuleBlock = struct {
 
             pub const BlockEntry = struct {
                 pub const ops = [_]AbbrevOp{
-                    .{ .literal = @intFromEnum(ModuleBlock.FunctionBlock.ValueSymtabBlock.Code.BBENTRY) },
+                    .{ .literal = @backingInt(ModuleBlock.FunctionBlock.ValueSymtabBlock.Code.BBENTRY) },
                     ValueAbbrev,
                     .{ .array_fixed = 8 },
                 };
@@ -1452,7 +1452,7 @@ pub const ModuleBlock = struct {
 
             pub const Value = struct {
                 pub const ops = [_]AbbrevOp{
-                    .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.VALUE) },
+                    .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.VALUE) },
                     .{ .fixed = 32 }, // variable
                     .{ .fixed = 32 }, // expression
                 };
@@ -1472,7 +1472,7 @@ pub const ModuleBlock = struct {
 
             pub const AttachmentGlobalSingle = struct {
                 pub const ops = [_]AbbrevOp{
-                    .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.ATTACHMENT) },
+                    .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.ATTACHMENT) },
                     .{ .fixed = 1 },
                     MetadataAbbrev,
                 };
@@ -1482,7 +1482,7 @@ pub const ModuleBlock = struct {
 
             pub const AttachmentInstructionSingle = struct {
                 pub const ops = [_]AbbrevOp{
-                    .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.ATTACHMENT) },
+                    .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.ATTACHMENT) },
                     ValueAbbrev,
                     .{ .fixed = 5 },
                     MetadataAbbrev,
@@ -1617,7 +1617,7 @@ pub const ModuleBlock = struct {
 
         pub const Strings = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.STRINGS) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.STRINGS) },
                 .{ .vbr = 6 },
                 .{ .vbr = 6 },
                 .blob,
@@ -1629,7 +1629,7 @@ pub const ModuleBlock = struct {
 
         pub const File = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.FILE) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.FILE) },
                 .{ .literal = 0 }, // is distinct
                 MetadataAbbrev, // filename
                 MetadataAbbrev, // directory
@@ -1643,7 +1643,7 @@ pub const ModuleBlock = struct {
 
         pub const CompileUnit = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.COMPILE_UNIT) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.COMPILE_UNIT) },
                 .{ .literal = 1 }, // is distinct
                 .{ .literal = std.dwarf.LANG.C99 }, // source language
                 MetadataAbbrev, // file
@@ -1677,7 +1677,7 @@ pub const ModuleBlock = struct {
 
         pub const Subprogram = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.SUBPROGRAM) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.SUBPROGRAM) },
                 .{ .literal = 0b111 }, // is distinct | has sp flags | has flags
                 MetadataAbbrev, // scope
                 MetadataAbbrev, // name
@@ -1714,7 +1714,7 @@ pub const ModuleBlock = struct {
 
         pub const LexicalBlock = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.LEXICAL_BLOCK) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.LEXICAL_BLOCK) },
                 .{ .literal = 0 }, // is distinct
                 MetadataAbbrev, // scope
                 MetadataAbbrev, // file
@@ -1730,7 +1730,7 @@ pub const ModuleBlock = struct {
 
         pub const Location = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.LOCATION) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.LOCATION) },
                 .{ .literal = 0 }, // is distinct
                 LineAbbrev, // line
                 ColumnAbbrev, // column
@@ -1747,7 +1747,7 @@ pub const ModuleBlock = struct {
 
         pub const BasicType = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.BASIC_TYPE) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.BASIC_TYPE) },
                 .{ .literal = 0 }, // is distinct
                 .{ .literal = std.dwarf.TAG.base_type }, // tag
                 MetadataAbbrev, // name
@@ -1764,7 +1764,7 @@ pub const ModuleBlock = struct {
 
         pub const CompositeType = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.COMPOSITE_TYPE) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.COMPOSITE_TYPE) },
                 .{ .literal = 0 | 0x2 }, // is distinct | is not used in old type ref
                 .{ .fixed = 32 }, // tag
                 MetadataAbbrev, // name
@@ -1803,7 +1803,7 @@ pub const ModuleBlock = struct {
 
         pub const DerivedType = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.DERIVED_TYPE) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.DERIVED_TYPE) },
                 .{ .literal = 0 }, // is distinct
                 .{ .fixed = 32 }, // tag
                 MetadataAbbrev, // name
@@ -1831,7 +1831,7 @@ pub const ModuleBlock = struct {
 
         pub const SubroutineType = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.SUBROUTINE_TYPE) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.SUBROUTINE_TYPE) },
                 .{ .literal = 0 | 0x2 }, // is distinct | has no old type refs
                 .{ .literal = 0 }, // flags
                 MetadataAbbrev, // types
@@ -1849,7 +1849,7 @@ pub const ModuleBlock = struct {
             };
 
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.ENUMERATOR) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.ENUMERATOR) },
                 .{ .fixed = @bitSizeOf(Flags) }, // flags
                 .{ .vbr = 6 }, // bit width
                 MetadataAbbrev, // name
@@ -1864,7 +1864,7 @@ pub const ModuleBlock = struct {
 
         pub const Subrange = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.SUBRANGE) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.SUBRANGE) },
                 .{ .literal = 0 | (2 << 1) }, // is distinct | version
                 MetadataAbbrev, // count
                 MetadataAbbrev, // lower bound
@@ -1878,7 +1878,7 @@ pub const ModuleBlock = struct {
 
         pub const Expression = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.EXPRESSION) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.EXPRESSION) },
                 .{ .literal = 0 | (3 << 1) }, // is distinct | version
                 MetadataArrayAbbrev, // elements
             };
@@ -1888,7 +1888,7 @@ pub const ModuleBlock = struct {
 
         pub const Node = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.NODE) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.NODE) },
                 MetadataArrayAbbrev, // elements
             };
 
@@ -1897,7 +1897,7 @@ pub const ModuleBlock = struct {
 
         pub const LocalVar = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.LOCAL_VAR) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.LOCAL_VAR) },
                 .{ .literal = 0b10 }, // is distinct | has alignment
                 MetadataAbbrev, // scope
                 MetadataAbbrev, // name
@@ -1919,7 +1919,7 @@ pub const ModuleBlock = struct {
 
         pub const Parameter = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.LOCAL_VAR) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.LOCAL_VAR) },
                 .{ .literal = 0b10 }, // is distinct | has alignment
                 MetadataAbbrev, // scope
                 MetadataAbbrev, // name
@@ -1942,7 +1942,7 @@ pub const ModuleBlock = struct {
 
         pub const GlobalVar = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.GLOBAL_VAR) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.GLOBAL_VAR) },
                 .{ .literal = 0b101 }, // is distinct | version
                 MetadataAbbrev, // scope
                 MetadataAbbrev, // name
@@ -1969,7 +1969,7 @@ pub const ModuleBlock = struct {
 
         pub const GlobalVarExpression = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.GLOBAL_VAR_EXPR) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.GLOBAL_VAR_EXPR) },
                 .{ .literal = 0 }, // is distinct
                 MetadataAbbrev, // variable
                 MetadataAbbrev, // expression
@@ -1981,7 +1981,7 @@ pub const ModuleBlock = struct {
 
         pub const Constant = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.VALUE) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.VALUE) },
                 MetadataAbbrev, // type
                 MetadataAbbrev, // value
             };
@@ -1992,7 +1992,7 @@ pub const ModuleBlock = struct {
 
         pub const Name = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.NAME) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.NAME) },
                 .{ .array_fixed = 8 }, // name
             };
 
@@ -2001,7 +2001,7 @@ pub const ModuleBlock = struct {
 
         pub const NamedNode = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.NAMED_NODE) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.NAMED_NODE) },
                 MetadataArrayAbbrev, // elements
             };
 
@@ -2010,7 +2010,7 @@ pub const ModuleBlock = struct {
 
         pub const GlobalDeclAttachment = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.GLOBAL_DECL_ATTACHMENT) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.GLOBAL_DECL_ATTACHMENT) },
                 ValueAbbrev, // value id
                 .{ .fixed = 1 }, // kind
                 MetadataAbbrev, // elements
@@ -2115,7 +2115,7 @@ pub const ModuleBlock = struct {
 
         pub const NumEntry = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.TypeBlock.Code.NUMENTRY) },
+                .{ .literal = @backingInt(ModuleBlock.TypeBlock.Code.NUMENTRY) },
                 .{ .fixed = 32 },
             };
             num: u32,
@@ -2130,14 +2130,14 @@ pub const ModuleBlock = struct {
 
         pub const Opaque = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.TypeBlock.Code.OPAQUE) },
+                .{ .literal = @backingInt(ModuleBlock.TypeBlock.Code.OPAQUE) },
                 .{ .literal = 0 },
             };
         };
 
         pub const Integer = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.TypeBlock.Code.INTEGER) },
+                .{ .literal = @backingInt(ModuleBlock.TypeBlock.Code.INTEGER) },
                 .{ .fixed = 28 },
             };
             width: u28,
@@ -2145,7 +2145,7 @@ pub const ModuleBlock = struct {
 
         pub const StructAnon = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.TypeBlock.Code.STRUCT_ANON) },
+                .{ .literal = @backingInt(ModuleBlock.TypeBlock.Code.STRUCT_ANON) },
                 .{ .fixed = 1 },
                 .{ .array_fixed_runtime = Builder.Type },
             };
@@ -2155,7 +2155,7 @@ pub const ModuleBlock = struct {
 
         pub const StructNamed = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.TypeBlock.Code.STRUCT_NAMED) },
+                .{ .literal = @backingInt(ModuleBlock.TypeBlock.Code.STRUCT_NAMED) },
                 .{ .fixed = 1 },
                 .{ .array_fixed_runtime = Builder.Type },
             };
@@ -2165,7 +2165,7 @@ pub const ModuleBlock = struct {
 
         pub const StructName = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.TypeBlock.Code.STRUCT_NAME) },
+                .{ .literal = @backingInt(ModuleBlock.TypeBlock.Code.STRUCT_NAME) },
                 .{ .array_fixed = 8 },
             };
             string: []const u8,
@@ -2173,7 +2173,7 @@ pub const ModuleBlock = struct {
 
         pub const Array = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.TypeBlock.Code.ARRAY) },
+                .{ .literal = @backingInt(ModuleBlock.TypeBlock.Code.ARRAY) },
                 .{ .vbr = 16 },
                 .{ .fixed_runtime = Builder.Type },
             };
@@ -2183,7 +2183,7 @@ pub const ModuleBlock = struct {
 
         pub const Vector = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.TypeBlock.Code.VECTOR) },
+                .{ .literal = @backingInt(ModuleBlock.TypeBlock.Code.VECTOR) },
                 .{ .vbr = 16 },
                 .{ .fixed_runtime = Builder.Type },
             };
@@ -2193,7 +2193,7 @@ pub const ModuleBlock = struct {
 
         pub const Pointer = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.TypeBlock.Code.OPAQUE_POINTER) },
+                .{ .literal = @backingInt(ModuleBlock.TypeBlock.Code.OPAQUE_POINTER) },
                 .{ .vbr = 4 },
             };
             addr_space: Builder.AddrSpace,
@@ -2201,7 +2201,7 @@ pub const ModuleBlock = struct {
 
         pub const Target = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.TypeBlock.Code.TARGET_TYPE) },
+                .{ .literal = @backingInt(ModuleBlock.TypeBlock.Code.TARGET_TYPE) },
                 .{ .vbr = 4 },
                 .{ .array_fixed_runtime = Builder.Type },
                 .{ .array_fixed = 32 },
@@ -2213,7 +2213,7 @@ pub const ModuleBlock = struct {
 
         pub const Function = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.TypeBlock.Code.FUNCTION) },
+                .{ .literal = @backingInt(ModuleBlock.TypeBlock.Code.FUNCTION) },
                 .{ .fixed = 1 },
                 .{ .fixed_runtime = Builder.Type },
                 .{ .array_fixed_runtime = Builder.Type },
@@ -2238,7 +2238,7 @@ pub const ModuleBlock = struct {
 
         pub const OperandBundleTag = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.OperandBundleTagsBlock.Code.OPERAND_BUNDLE_TAG) },
+                .{ .literal = @backingInt(ModuleBlock.OperandBundleTagsBlock.Code.OPERAND_BUNDLE_TAG) },
                 .array_char6,
             };
             tag: []const u8,
@@ -2254,7 +2254,7 @@ pub const ModuleBlock = struct {
 
         pub const Kind = struct {
             pub const ops = [_]AbbrevOp{
-                .{ .literal = @intFromEnum(ModuleBlock.MetadataBlock.Code.KIND) },
+                .{ .literal = @backingInt(ModuleBlock.MetadataBlock.Code.KIND) },
                 .{ .vbr = 4 },
                 .{ .array_fixed = 8 },
             };
@@ -2283,7 +2283,7 @@ pub const IdentificationBlock = struct {
 
     pub const Version = struct {
         pub const ops = [_]AbbrevOp{
-            .{ .literal = @intFromEnum(IdentificationBlock.Code.STRING) },
+            .{ .literal = @backingInt(IdentificationBlock.Code.STRING) },
             .{ .array_fixed = 8 },
         };
         string: []const u8,
@@ -2291,7 +2291,7 @@ pub const IdentificationBlock = struct {
 
     pub const Epoch = struct {
         pub const ops = [_]AbbrevOp{
-            .{ .literal = @intFromEnum(IdentificationBlock.Code.EPOCH) },
+            .{ .literal = @backingInt(IdentificationBlock.Code.EPOCH) },
             .{ .vbr = 6 },
         };
         epoch: u32,
@@ -2309,7 +2309,7 @@ pub const StrtabBlock = struct {
 
     pub const Blob = struct {
         pub const ops = [_]AbbrevOp{
-            .{ .literal = @intFromEnum(StrtabBlock.Code.BLOB) },
+            .{ .literal = @backingInt(StrtabBlock.Code.BLOB) },
             .blob,
         };
         blob: []const u8,

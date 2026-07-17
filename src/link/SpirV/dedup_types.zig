@@ -35,7 +35,7 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
             },
         }
         if (inst.operands.len == 0) continue;
-        const target_id: Id = @enumFromInt(inst.operands[0]);
+        const target_id: Id = @fromBackingInt(@intCast(inst.operands[0]));
 
         const gop = try decorations_by_id.getOrPut(gpa, target_id);
         if (!gop.found_existing) gop.value_ptr.* = .empty;
@@ -75,10 +75,10 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
             else => continue,
         };
         if (result_id_index >= inst.operands.len) continue;
-        const result_id: Id = @enumFromInt(inst.operands[result_id_index]);
+        const result_id: Id = @fromBackingInt(@intCast(inst.operands[result_id_index]));
 
         key_words.items.len = 0;
-        try key_words.append(gpa, @intFromEnum(inst.opcode));
+        try key_words.append(gpa, @backingInt(inst.opcode));
 
         id_offsets.items.len = 0;
         parser.parseInstructionResultIds(binary.*, inst, &id_offsets) catch continue;
@@ -86,8 +86,8 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
         for (inst.operands, 0..) |word, i| {
             if (i == result_id_index) continue;
             if (std.mem.indexOfScalar(u16, id_offsets.items, @intCast(i)) != null) {
-                const canonical = id_remap.get(@enumFromInt(word)) orelse @as(Id, @enumFromInt(word));
-                try key_words.append(gpa, @intFromEnum(canonical));
+                const canonical = id_remap.get(@fromBackingInt(@intCast(word))) orelse @as(Id, @fromBackingInt(@intCast(word)));
+                try key_words.append(gpa, @backingInt(canonical));
             } else {
                 try key_words.append(gpa, word);
             }
@@ -100,7 +100,7 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
                 var hasher = std.hash.Wyhash.init(0);
                 hasher.update(std.mem.asBytes(&dec_words[0]));
                 for (dec_words[2..]) |w| {
-                    const w_val = if (id_remap.get(@enumFromInt(w))) |c| @intFromEnum(c) else w;
+                    const w_val = if (id_remap.get(@fromBackingInt(@intCast(w)))) |c| @backingInt(c) else w;
                     hasher.update(std.mem.asBytes(&w_val));
                 }
                 try dec_hashes.append(gpa, hasher.final());
@@ -151,7 +151,7 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
                 else => unreachable,
             };
             if (result_id_index < inst.operands.len) {
-                const result_id: Id = @enumFromInt(inst.operands[result_id_index]);
+                const result_id: Id = @fromBackingInt(@intCast(inst.operands[result_id_index]));
                 if (id_remap.contains(result_id)) continue;
             }
         }
@@ -159,7 +159,7 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
         switch (inst.opcode.class()) {
             .annotation, .debug => {
                 if (inst.operands.len > 0) {
-                    const target: Id = @enumFromInt(inst.operands[0]);
+                    const target: Id = @fromBackingInt(@intCast(inst.operands[0]));
                     if (id_remap.contains(target)) continue;
                 }
             },
@@ -186,8 +186,8 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
             max_id = @max(max_id, word.*);
             if (maybe_result_id_index != null and i == maybe_result_id_index.?) continue;
 
-            if (id_remap.get(@enumFromInt(word.*))) |canonical| {
-                word.* = @intFromEnum(canonical);
+            if (id_remap.get(@fromBackingInt(@intCast(word.*)))) |canonical| {
+                word.* = @backingInt(canonical);
                 max_id = @max(max_id, word.*);
             }
         }

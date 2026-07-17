@@ -405,7 +405,7 @@ pub const ImportTableAdapter = struct {
     zcu: *const Zcu,
     pub fn hash(ctx: ImportTableAdapter, path: Compilation.Path) u32 {
         _ = ctx;
-        return @truncate(std.hash.Wyhash.hash(@intFromEnum(path.root), path.sub_path));
+        return @truncate(std.hash.Wyhash.hash(@backingInt(path.root), path.sub_path));
     }
     pub fn eql(ctx: ImportTableAdapter, a_path: Compilation.Path, b_file: File.Index, b_index: usize) bool {
         _ = b_index;
@@ -417,7 +417,7 @@ pub const ImportTableAdapter = struct {
 pub const EmbedTableAdapter = struct {
     pub fn hash(ctx: EmbedTableAdapter, path: Compilation.Path) u32 {
         _ = ctx;
-        return @truncate(std.hash.Wyhash.hash(@intFromEnum(path.root), path.sub_path));
+        return @truncate(std.hash.Wyhash.hash(@backingInt(path.root), path.sub_path));
     }
     pub fn eql(ctx: EmbedTableAdapter, a_path: Compilation.Path, b_file: *EmbedFile, b_index: usize) bool {
         _ = ctx;
@@ -617,7 +617,7 @@ pub const StdLangDecl = enum {
             .VaList => .va_list,
             .assembly, .@"assembly.Clobbers" => .assembly,
             else => {
-                if (@intFromEnum(decl) <= @intFromEnum(StdLangDecl.@"Type.Spirv.Image.Access")) {
+                if (@backingInt(decl) <= @backingInt(StdLangDecl.@"Type.Spirv.Image.Access")) {
                     return .main;
                 } else {
                     return .panic;
@@ -638,7 +638,7 @@ pub const StdLangDecl = enum {
                 const name = @tagName(tag);
                 const split = (comptime std.mem.lastIndexOfScalar(u8, name, '.')) orelse return .{ .direct = name };
                 const parent = @field(StdLangDecl, name[0..split]);
-                comptime assert(@intFromEnum(parent) < @intFromEnum(tag)); // dependencies ordered correctly
+                comptime assert(@backingInt(parent) < @backingInt(tag)); // dependencies ordered correctly
                 return .{ .nested = .{ parent, name[split + 1 ..] } };
             },
         };
@@ -760,7 +760,7 @@ pub const Export = struct {
         _,
 
         pub fn ptr(i: Index, zcu: *const Zcu) *Export {
-            return &zcu.all_exports.items[@intFromEnum(i)];
+            return &zcu.all_exports.items[@backingInt(i)];
         }
     };
 };
@@ -772,10 +772,10 @@ pub const CompileLogLine = struct {
     pub const Index = enum(u32) {
         _,
         pub fn get(idx: Index, zcu: *Zcu) *CompileLogLine {
-            return &zcu.compile_log_lines.items[@intFromEnum(idx)];
+            return &zcu.compile_log_lines.items[@backingInt(idx)];
         }
         pub fn toOptional(idx: Index) Optional {
-            return @enumFromInt(@intFromEnum(idx));
+            return @fromBackingInt(@intCast(@backingInt(idx)));
         }
         pub const Optional = enum(u32) {
             none = std.math.maxInt(u32),
@@ -783,7 +783,7 @@ pub const CompileLogLine = struct {
             pub fn unwrap(opt: Optional) ?Index {
                 return switch (opt) {
                     .none => null,
-                    _ => @enumFromInt(@intFromEnum(opt)),
+                    _ => @fromBackingInt(@intCast(@backingInt(opt))),
                 };
             }
         };
@@ -818,10 +818,10 @@ pub const InlineReferenceFrame = struct {
     pub const Index = enum(u32) {
         _,
         pub fn ptr(idx: Index, zcu: *Zcu) *InlineReferenceFrame {
-            return &zcu.inline_reference_frames.items[@intFromEnum(idx)];
+            return &zcu.inline_reference_frames.items[@backingInt(idx)];
         }
         pub fn toOptional(idx: Index) Optional {
-            return @enumFromInt(@intFromEnum(idx));
+            return @fromBackingInt(@intCast(@backingInt(idx)));
         }
         pub const Optional = enum(u32) {
             none = std.math.maxInt(u32),
@@ -829,7 +829,7 @@ pub const InlineReferenceFrame = struct {
             pub fn unwrap(opt: Optional) ?Index {
                 return switch (opt) {
                     .none => null,
-                    _ => @enumFromInt(@intFromEnum(opt)),
+                    _ => @fromBackingInt(@intCast(@backingInt(opt))),
                 };
             }
         };
@@ -872,7 +872,7 @@ pub const Namespace = struct {
 
         pub fn hash(ctx: NavNameContext, nav: InternPool.Nav.Index) u32 {
             const name = ctx.zcu.intern_pool.getNav(nav).name;
-            return std.hash.int(@intFromEnum(name));
+            return std.hash.int(@backingInt(name));
         }
 
         pub fn eql(ctx: NavNameContext, a_nav: InternPool.Nav.Index, b_nav: InternPool.Nav.Index, b_index: usize) bool {
@@ -888,7 +888,7 @@ pub const Namespace = struct {
 
         pub fn hash(ctx: NameAdapter, s: InternPool.NullTerminatedString) u32 {
             _ = ctx;
-            return std.hash.int(@intFromEnum(s));
+            return std.hash.int(@backingInt(s));
         }
 
         pub fn eql(ctx: NameAdapter, a: InternPool.NullTerminatedString, b_nav: InternPool.Nav.Index, b_index: usize) bool {
@@ -1276,7 +1276,7 @@ pub const EmbedFile = struct {
     pub const Index = enum(u32) {
         _,
         pub fn get(idx: Index, zcu: *const Zcu) *EmbedFile {
-            return zcu.embed_table.keys()[@intFromEnum(idx)];
+            return zcu.embed_table.keys()[@backingInt(idx)];
         }
     };
 };
@@ -1666,7 +1666,7 @@ pub const SrcLoc = struct {
                 // that contains this input.
                 const node_tags = tree.nodes.items(.tag);
                 for (node_tags, 0..) |node_tag, node_usize| {
-                    const node: Ast.Node.Index = @enumFromInt(node_usize);
+                    const node: Ast.Node.Index = @fromBackingInt(@intCast(node_usize));
                     switch (node_tag) {
                         .for_simple, .@"for" => {
                             const for_full = tree.fullFor(node).?;
@@ -1706,7 +1706,7 @@ pub const SrcLoc = struct {
                 var buf: [2]Ast.Node.Index = undefined;
                 const call_full = tree.fullCall(buf[0..1], node) orelse {
                     assert(tree.nodeTag(node) == .builtin_call);
-                    const call_args_node: Ast.Node.Index = @enumFromInt(tree.extra_data[@intFromEnum(tree.nodeData(node).extra_range.end) - 1]);
+                    const call_args_node: Ast.Node.Index = @fromBackingInt(@intCast(tree.extra_data[@backingInt(tree.nodeData(node).extra_range.end) - 1]));
                     switch (tree.nodeTag(call_args_node)) {
                         .array_init_one,
                         .array_init_one_comma,
@@ -2781,7 +2781,7 @@ pub const LazySrcLoc = struct {
         // Otherwise, make sure ZIR is loaded.
         const zir = file.zir.?;
 
-        const inst = zir.instructions.get(@intFromEnum(zir_inst));
+        const inst = zir.instructions.get(@backingInt(zir_inst));
         const base_node: Ast.Node.Index = switch (inst.tag) {
             .declaration => inst.data.declaration.src_node,
             .struct_init, .struct_init_ref => zir.extraData(Zir.Inst.StructInit, inst.data.pl_node.payload_index).data.abs_node,
@@ -2830,7 +2830,7 @@ pub const LazySrcLoc = struct {
         if (lhs_resolved.file_scope != rhs_resolved.file_scope) {
             const lhs_path = lhs_resolved.file_scope.path;
             const rhs_path = rhs_resolved.file_scope.path;
-            return std.math.order(@intFromEnum(lhs_path.root), @intFromEnum(rhs_path.root)).differ() orelse
+            return std.math.order(@backingInt(lhs_path.root), @backingInt(rhs_path.root)).differ() orelse
                 std.mem.order(u8, lhs_path.sub_path, rhs_path.sub_path).differ().?;
         }
         const prev_prot = zcu.comp.io.swapCancelProtection(.blocked);
@@ -3051,10 +3051,10 @@ pub fn loadZirCacheBody(gpa: Allocator, header: Zir.Header, cache_br: *Io.Reader
     if (data_has_safety_tag) {
         const tags = zir.instructions.items(.tag);
         for (zir.instructions.items(.data), 0..) |*data, i| {
-            const union_tag = Zir.Inst.Tag.data_tags[@intFromEnum(tags[i])];
+            const union_tag = Zir.Inst.Tag.data_tags[@backingInt(tags[i])];
             const as_struct = @as(*HackDataLayout, @ptrCast(data));
             as_struct.* = .{
-                .safety_tag = @intFromEnum(union_tag),
+                .safety_tag = @backingInt(union_tag),
                 .data = safety_buffer[i],
             };
         }
@@ -3450,8 +3450,8 @@ pub fn mapOldZirToNew(
         // updates. If they have, we need to ignore this mapping. These properties are essentially
         // everything passed into `InternPool.getDeclaredStructType` (likewise for unions, enums,
         // and opaques).
-        const old_tag = old_zir.instructions.items(.data)[@intFromEnum(match_item.old_inst)].extended.opcode;
-        const new_tag = new_zir.instructions.items(.data)[@intFromEnum(match_item.new_inst)].extended.opcode;
+        const old_tag = old_zir.instructions.items(.data)[@backingInt(match_item.old_inst)].extended.opcode;
+        const new_tag = new_zir.instructions.items(.data)[@backingInt(match_item.new_inst)].extended.opcode;
         if (old_tag != new_tag) continue;
         switch (old_tag) {
             .struct_decl => {
@@ -3798,7 +3798,7 @@ pub fn resetUnit(zcu: *Zcu, unit: AnalUnit) void {
     exports: {
         const base: u32, const len: u32 = index: {
             if (zcu.single_exports.fetchSwapRemove(unit)) |kv| {
-                break :index .{ @intFromEnum(kv.value), 1 };
+                break :index .{ @backingInt(kv.value), 1 };
             }
             if (zcu.multi_exports.fetchSwapRemove(unit)) |kv| {
                 break :index .{ kv.value.index, kv.value.len };
@@ -3806,7 +3806,7 @@ pub fn resetUnit(zcu: *Zcu, unit: AnalUnit) void {
             break :exports;
         };
         for (zcu.all_exports.items[base..][0..len], base..) |exp, exp_index_usize| {
-            const exp_index: Export.Index = @enumFromInt(exp_index_usize);
+            const exp_index: Export.Index = @fromBackingInt(@intCast(exp_index_usize));
             if (zcu.llvm_object) |llvm_object| {
                 _ = llvm_object; // TODO: delete exports from LLVM
             } else if (zcu.comp.bin_file) |lf| {
@@ -3822,7 +3822,7 @@ pub fn resetUnit(zcu: *Zcu, unit: AnalUnit) void {
             break :exports;
         };
         for (base..base + len) |exp_index| {
-            zcu.free_exports.appendAssumeCapacity(@enumFromInt(exp_index));
+            zcu.free_exports.appendAssumeCapacity(@fromBackingInt(@intCast(exp_index)));
         }
     }
 
@@ -3878,7 +3878,7 @@ pub fn resetUnit(zcu: *Zcu, unit: AnalUnit) void {
 pub fn addInlineReferenceFrame(zcu: *Zcu, frame: InlineReferenceFrame) Allocator.Error!Zcu.InlineReferenceFrame.Index {
     const frame_idx: InlineReferenceFrame.Index = zcu.free_inline_reference_frames.pop() orelse idx: {
         _ = try zcu.inline_reference_frames.addOne(zcu.gpa);
-        break :idx @enumFromInt(zcu.inline_reference_frames.items.len - 1);
+        break :idx @fromBackingInt(@intCast(zcu.inline_reference_frames.items.len - 1));
     };
     frame_idx.ptr(zcu).* = frame;
     return frame_idx;
@@ -4293,7 +4293,7 @@ fn resolveReferencesInner(zcu: *Zcu) Allocator.Error!std.array_hash_map.Auto(Ana
                 if (!gop.found_existing) {
                     refs_log.debug("type '{f}': ref comptime %{}", .{
                         Type.fromInterned(ty).containerTypeName(ip).fmt(ip),
-                        @intFromEnum(ip.getComptimeUnit(cu).zir_index.resolve(ip) orelse continue),
+                        @backingInt(ip.getComptimeUnit(cu).zir_index.resolve(ip) orelse continue),
                     });
                     gop.value_ptr.* = referencer;
                 }
@@ -4327,7 +4327,7 @@ fn resolveReferencesInner(zcu: *Zcu) Allocator.Error!std.array_hash_map.Auto(Ana
                         if (!gop.found_existing) {
                             refs_log.debug("type '{f}': ref test %{}", .{
                                 Type.fromInterned(ty).containerTypeName(ip).fmt(ip),
-                                @intFromEnum(inst_info.inst),
+                                @backingInt(inst_info.inst),
                             });
                             gop.value_ptr.* = referencer;
                         }
@@ -4350,7 +4350,7 @@ fn resolveReferencesInner(zcu: *Zcu) Allocator.Error!std.array_hash_map.Auto(Ana
                     if (!gop.found_existing) {
                         refs_log.debug("type '{f}': ref named %{}", .{
                             Type.fromInterned(ty).containerTypeName(ip).fmt(ip),
-                            @intFromEnum(inst_info.inst),
+                            @backingInt(inst_info.inst),
                         });
                         gop.value_ptr.* = referencer;
                     }
@@ -4367,7 +4367,7 @@ fn resolveReferencesInner(zcu: *Zcu) Allocator.Error!std.array_hash_map.Auto(Ana
                     if (!gop.found_existing) {
                         refs_log.debug("type '{f}': ref named %{}", .{
                             Type.fromInterned(ty).containerTypeName(ip).fmt(ip),
-                            @intFromEnum(inst_info.inst),
+                            @backingInt(inst_info.inst),
                         });
                         gop.value_ptr.* = referencer;
                     }
@@ -4536,16 +4536,16 @@ fn formatAnalUnit(data: FormatAnalUnit, writer: *Io.Writer) Io.Writer.Error!void
             const cu = ip.getComptimeUnit(cu_id);
             if (cu.zir_index.resolveFull(ip)) |resolved| {
                 const file_path = zcu.fileByIndex(resolved.file).path;
-                return writer.print("comptime(inst=('{f}', %{}) [{}])", .{ file_path.fmt(zcu.comp), @intFromEnum(resolved.inst), @intFromEnum(cu_id) });
+                return writer.print("comptime(inst=('{f}', %{}) [{}])", .{ file_path.fmt(zcu.comp), @backingInt(resolved.inst), @backingInt(cu_id) });
             } else {
-                return writer.print("comptime(inst=<lost> [{}])", .{@intFromEnum(cu_id)});
+                return writer.print("comptime(inst=<lost> [{}])", .{@backingInt(cu_id)});
             }
         },
-        .nav_val, .nav_ty => |nav, tag| return writer.print("{t}('{f}' [{}])", .{ tag, ip.getNav(nav).fqn.fmt(ip), @intFromEnum(nav) }),
-        .type_layout, .struct_defaults => |ty, tag| return writer.print("{t}('{f}' [{}])", .{ tag, Type.fromInterned(ty).containerTypeName(ip).fmt(ip), @intFromEnum(ty) }),
+        .nav_val, .nav_ty => |nav, tag| return writer.print("{t}('{f}' [{}])", .{ tag, ip.getNav(nav).fqn.fmt(ip), @backingInt(nav) }),
+        .type_layout, .struct_defaults => |ty, tag| return writer.print("{t}('{f}' [{}])", .{ tag, Type.fromInterned(ty).containerTypeName(ip).fmt(ip), @backingInt(ty) }),
         .func => |func| {
             const nav = zcu.funcInfo(func).owner_nav;
-            return writer.print("func('{f}' [{}])", .{ ip.getNav(nav).fqn.fmt(ip), @intFromEnum(func) });
+            return writer.print("func('{f}' [{}])", .{ ip.getNav(nav).fqn.fmt(ip), @backingInt(func) });
         },
         .memoized_state => return writer.writeAll("memoized_state"),
     }
@@ -4561,7 +4561,7 @@ fn formatDependee(data: FormatDependee, writer: *Io.Writer) Io.Writer.Error!void
                 return writer.writeAll("inst(<lost>)");
             };
             const file_path = zcu.fileByIndex(info.file).path;
-            return writer.print("inst('{f}', %{d})", .{ file_path.fmt(zcu.comp), @intFromEnum(info.inst) });
+            return writer.print("inst('{f}', %{d})", .{ file_path.fmt(zcu.comp), @backingInt(info.inst) });
         },
         .nav_val, .nav_ty => |nav, tag| {
             const fqn = ip.getNav(nav).fqn;
@@ -4588,14 +4588,14 @@ fn formatDependee(data: FormatDependee, writer: *Io.Writer) Io.Writer.Error!void
                 return writer.writeAll("namespace(<lost>)");
             };
             const file_path = zcu.fileByIndex(info.file).path;
-            return writer.print("namespace('{f}', %{d})", .{ file_path.fmt(zcu.comp), @intFromEnum(info.inst) });
+            return writer.print("namespace('{f}', %{d})", .{ file_path.fmt(zcu.comp), @backingInt(info.inst) });
         },
         .namespace_name => |k| {
             const info = k.namespace.resolveFull(ip) orelse {
                 return writer.print("namespace(<lost>, '{f}')", .{k.name.fmt(ip)});
             };
             const file_path = zcu.fileByIndex(info.file).path;
-            return writer.print("namespace('{f}', %{d}, '{f}')", .{ file_path.fmt(zcu.comp), @intFromEnum(info.inst), k.name.fmt(ip) });
+            return writer.print("namespace('{f}', %{d}, '{f}')", .{ file_path.fmt(zcu.comp), @backingInt(info.inst), k.name.fmt(ip) });
         },
         .memoized_state => return writer.writeAll("memoized_state"),
     }
@@ -5318,7 +5318,7 @@ pub const CodegenTaskPool = struct {
         @memset(task_funcs, .none);
 
         var free: std.ArrayList(Index) = try .initCapacity(arena, max_funcs_in_flight);
-        for (0..max_funcs_in_flight) |index| free.appendAssumeCapacity(@enumFromInt(index));
+        for (0..max_funcs_in_flight) |index| free.appendAssumeCapacity(@fromBackingInt(@intCast(index)));
 
         return .{
             .available_air_bytes = max_air_bytes_in_flight,
@@ -5391,10 +5391,10 @@ pub const CodegenTaskPool = struct {
         errdefer comptime unreachable;
 
         assert(zcu.pending_codegen_jobs.fetchAdd(1, .monotonic) > 0); // the "Code Generation" node is still active
-        assert(pool.task_funcs[@intFromEnum(index)] == .none);
-        pool.task_funcs[@intFromEnum(index)] = func_index;
-        pool.task_air_bytes[@intFromEnum(index)] = actual_air_bytes;
-        pool.task_futures[@intFromEnum(index)] = if (move_air) io.async(
+        assert(pool.task_funcs[@backingInt(index)] == .none);
+        pool.task_funcs[@backingInt(index)] = func_index;
+        pool.task_air_bytes[@backingInt(index)] = actual_air_bytes;
+        pool.task_futures[@backingInt(index)] = if (move_air) io.async(
             workerCodegenOwnedAir,
             .{ zcu, func_index, air.* },
         ) else io.async(
@@ -5415,14 +5415,14 @@ pub const CodegenTaskPool = struct {
             zcu: *const Zcu,
         ) PerThread.RunCodegenError!struct { InternPool.Index, codegen.AnyMir } {
             const io = zcu.comp.io;
-            const func = pool.task_funcs[@intFromEnum(index)];
+            const func = pool.task_funcs[@backingInt(index)];
             assert(func != .none);
-            const effective_air_bytes = pool.task_air_bytes[@intFromEnum(index)];
-            const result = pool.task_futures[@intFromEnum(index)].await(io);
+            const effective_air_bytes = pool.task_air_bytes[@backingInt(index)];
+            const result = pool.task_futures[@backingInt(index)].await(io);
 
-            pool.task_funcs[@intFromEnum(index)] = .none;
-            pool.task_air_bytes[@intFromEnum(index)] = undefined;
-            pool.task_futures[@intFromEnum(index)] = undefined;
+            pool.task_funcs[@backingInt(index)] = .none;
+            pool.task_air_bytes[@backingInt(index)] = undefined;
+            pool.task_futures[@backingInt(index)] = undefined;
 
             {
                 pool.mutex.lockUncancelable(io);

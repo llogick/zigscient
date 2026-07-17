@@ -372,11 +372,11 @@ test "Enum constructed by @Enum passed as generic argument" {
             alive: bool,
         });
         fn foo(comptime a: E, b: u32) !void {
-            try expect(@intFromEnum(a) == b);
+            try expect(@backingInt(a) == b);
         }
     };
     inline for (@typeInfo(S.E).@"enum".field_names, 0..) |_, i| {
-        try S.foo(@as(S.E, @enumFromInt(i)), i);
+        try S.foo(@as(S.E, @fromBackingInt(@intCast(i))), i);
     }
 }
 

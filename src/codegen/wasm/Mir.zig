@@ -618,12 +618,12 @@ pub const Inst = struct {
 
         /// From a given wasm opcode, returns a MIR tag.
         pub fn fromOpcode(opcode: std.wasm.Opcode) Tag {
-            return @as(Tag, @enumFromInt(@intFromEnum(opcode))); // Given `Opcode` is not present as a tag for MIR yet
+            return @as(Tag, @fromBackingInt(@intCast(@backingInt(opcode)))); // Given `Opcode` is not present as a tag for MIR yet
         }
 
         /// Returns a wasm opcode from a given MIR tag.
         pub fn toOpcode(self: Tag) std.wasm.Opcode {
-            return @as(std.wasm.Opcode, @enumFromInt(@intFromEnum(self)));
+            return @as(std.wasm.Opcode, @fromBackingInt(@intCast(@backingInt(self))));
         }
     };
 
@@ -690,7 +690,7 @@ pub fn lower(mir: *const Mir, wasm: *Wasm, code: *std.ArrayList(u8)) std.mem.All
 
     for (mir.locals) |local| {
         w.writeLeb128(@as(u32, 1)) catch unreachable;
-        w.writeByte(@intFromEnum(local)) catch unreachable;
+        w.writeByte(@backingInt(local)) catch unreachable;
     }
 
     // Stack management section of function prologue.
@@ -698,31 +698,31 @@ pub fn lower(mir: *const Mir, wasm: *Wasm, code: *std.ArrayList(u8)) std.mem.All
     if (stack_alignment.toByteUnits()) |align_bytes| {
         const sp_global: Wasm.GlobalIndex = .stack_pointer;
         // load stack pointer
-        w.writeByte(@intFromEnum(std.wasm.Opcode.global_get)) catch unreachable;
-        w.writeUleb128(@intFromEnum(sp_global)) catch unreachable;
+        w.writeByte(@backingInt(std.wasm.Opcode.global_get)) catch unreachable;
+        w.writeUleb128(@backingInt(sp_global)) catch unreachable;
         // store stack pointer so we can restore it when we return from the function
-        w.writeByte(@intFromEnum(std.wasm.Opcode.local_tee)) catch unreachable;
+        w.writeByte(@backingInt(std.wasm.Opcode.local_tee)) catch unreachable;
         w.writeUleb128(mir.prologue.sp_local) catch unreachable;
         // get the total stack size
         const aligned_stack: i32 = @intCast(stack_alignment.forward(mir.prologue.stack_size));
-        w.writeByte(@intFromEnum(std.wasm.Opcode.i32_const)) catch unreachable;
+        w.writeByte(@backingInt(std.wasm.Opcode.i32_const)) catch unreachable;
         w.writeSleb128(aligned_stack) catch unreachable;
         // subtract it from the current stack pointer
-        w.writeByte(@intFromEnum(std.wasm.Opcode.i32_sub)) catch unreachable;
+        w.writeByte(@backingInt(std.wasm.Opcode.i32_sub)) catch unreachable;
         // Get negative stack alignment
         const neg_stack_align = @as(i32, @intCast(align_bytes)) * -1;
-        w.writeByte(@intFromEnum(std.wasm.Opcode.i32_const)) catch unreachable;
+        w.writeByte(@backingInt(std.wasm.Opcode.i32_const)) catch unreachable;
         w.writeSleb128(neg_stack_align) catch unreachable;
         // Bitwise-and the value to get the new stack pointer to ensure the
         // pointers are aligned with the abi alignment.
-        w.writeByte(@intFromEnum(std.wasm.Opcode.i32_and)) catch unreachable;
+        w.writeByte(@backingInt(std.wasm.Opcode.i32_and)) catch unreachable;
         // The bottom will be used to calculate all stack pointer offsets.
-        w.writeByte(@intFromEnum(std.wasm.Opcode.local_tee)) catch unreachable;
+        w.writeByte(@backingInt(std.wasm.Opcode.local_tee)) catch unreachable;
         w.writeUleb128(mir.prologue.bottom_stack_local) catch unreachable;
         // Store the current stack pointer value into the global stack pointer so other function calls will
         // start from this value instead and not overwrite the current stack.
-        w.writeByte(@intFromEnum(std.wasm.Opcode.global_set)) catch unreachable;
-        w.writeUleb128(@intFromEnum(sp_global)) catch unreachable;
+        w.writeByte(@backingInt(std.wasm.Opcode.global_set)) catch unreachable;
+        w.writeUleb128(@backingInt(sp_global)) catch unreachable;
     }
 
     code.items.len += w.end;
@@ -747,7 +747,7 @@ pub fn extraData(self: *const Mir, comptime T: type, index: usize) struct { data
             Wasm.UavsExeIndex,
             InternPool.Nav.Index,
             InternPool.Index,
-            => @enumFromInt(self.extra[i]),
+            => @fromBackingInt(@intCast(self.extra[i])),
             else => @compileError("Unsupported field type " ++ @typeName(field_type)),
         };
         i += 1;

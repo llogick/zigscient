@@ -256,8 +256,8 @@ test "switch loop on non-exhaustive enum" {
             start = .a;
             const result: u32 = s: switch (start) {
                 .a => continue :s .c,
-                else => continue :s @enumFromInt(123),
-                .b, _ => |x| break :s @intFromEnum(x),
+                else => continue :s @fromBackingInt(@intCast(123)),
+                .b, _ => |x| break :s @backingInt(x),
             };
             try expect(result == 123);
         }
@@ -407,7 +407,7 @@ test "switch loop with tag capture" {
                 .a => |nothing, tag| {
                     comptime assert(nothing == {});
                     comptime assert(tag == .a);
-                    try expect(@intFromEnum(tag) == @intFromEnum(@This().a));
+                    try expect(@backingInt(tag) == @backingInt(@This().a));
                     continue :label .{ .d = 456 };
                 },
                 .b, .d => |_, tag| {

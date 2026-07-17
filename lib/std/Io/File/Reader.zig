@@ -311,7 +311,7 @@ fn discard(io_reader: *Io.Reader, limit: Io.Limit) Io.Reader.Error!usize {
             const logical_pos = logicalPos(r);
             const bytes_remaining = size - logical_pos;
             if (bytes_remaining == 0) return error.EndOfStream;
-            const delta = @min(@intFromEnum(limit), bytes_remaining);
+            const delta = @min(@backingInt(limit), bytes_remaining);
             setLogicalPos(r, logical_pos + delta);
             return delta;
         },
@@ -324,7 +324,7 @@ fn discard(io_reader: *Io.Reader, limit: Io.Limit) Io.Reader.Error!usize {
                 if (r.size_err == null and r.seek_err == null) break :fallback;
 
                 const buffered_len = r.interface.bufferedLen();
-                var remaining = @intFromEnum(limit);
+                var remaining = @backingInt(limit);
                 if (remaining <= buffered_len) {
                     r.interface.seek += remaining;
                     return remaining;
@@ -356,10 +356,10 @@ fn discard(io_reader: *Io.Reader, limit: Io.Limit) Io.Reader.Error!usize {
                 } else {
                     remaining -= n;
                 }
-                return @intFromEnum(limit) - remaining;
+                return @backingInt(limit) - remaining;
             }
             const size = r.getSize() catch return 0;
-            const n = @min(size - r.pos, std.math.maxInt(i64), @intFromEnum(limit));
+            const n = @min(size - r.pos, std.math.maxInt(i64), @backingInt(limit));
             io.vtable.fileSeekBy(io.userdata, file, n) catch |err| {
                 r.seek_err = err;
                 return 0;

@@ -1218,7 +1218,7 @@ pub fn next(self: *Tokenizer) Token {
                             break;
                         },
                         .hex4, .hex8 => {
-                            self.index += @intFromEnum(ucn_kind);
+                            self.index += @backingInt(ucn_kind);
                             id = .extended_identifier;
                             state = .extended_identifier;
                         },
@@ -1458,7 +1458,7 @@ pub fn next(self: *Tokenizer) Token {
                         },
                         .hex4, .hex8 => {
                             state = .extended_identifier;
-                            self.index += @intFromEnum(ucn_kind);
+                            self.index += @backingInt(ucn_kind);
                         },
                     }
                 },

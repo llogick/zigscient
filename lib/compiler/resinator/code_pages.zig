@@ -191,7 +191,7 @@ pub const CodePage = blk: {
 
 pub fn isSupported(code_page: CodePage) bool {
     inline for (@typeInfo(SupportedCodePage).@"enum".field_names) |field_name| {
-        if (@intFromEnum(code_page) == @intFromEnum(@field(SupportedCodePage, field_name))) {
+        if (@backingInt(code_page) == @backingInt(@field(SupportedCodePage, field_name))) {
             return true;
         }
     }
@@ -213,7 +213,7 @@ pub fn getByIdentifier(identifier: u16) !CodePage {
 pub fn getByIdentifierEnsureSupported(identifier: u16) !SupportedCodePage {
     const code_page = try getByIdentifier(identifier);
     return if (isSupported(code_page))
-        @enumFromInt(@intFromEnum(code_page))
+        @fromBackingInt(@intCast(@backingInt(code_page)))
     else
         error.UnsupportedCodePage;
 }

@@ -70,23 +70,23 @@ pub const Record = struct {
                 try operands.append(.{ .literal = record.operands[i + 1] });
                 i += 2;
             },
-            @intFromEnum(Abbrev.Operand.Encoding.fixed) => {
+            @backingInt(Abbrev.Operand.Encoding.fixed) => {
                 try operands.append(.{ .encoding = .{ .fixed = @intCast(record.operands[i + 1]) } });
                 i += 2;
             },
-            @intFromEnum(Abbrev.Operand.Encoding.vbr) => {
+            @backingInt(Abbrev.Operand.Encoding.vbr) => {
                 try operands.append(.{ .encoding = .{ .vbr = @intCast(record.operands[i + 1]) } });
                 i += 2;
             },
-            @intFromEnum(Abbrev.Operand.Encoding.array) => {
+            @backingInt(Abbrev.Operand.Encoding.array) => {
                 try operands.append(.{ .encoding = .{ .array = 6 } });
                 i += 1;
             },
-            @intFromEnum(Abbrev.Operand.Encoding.char6) => {
+            @backingInt(Abbrev.Operand.Encoding.char6) => {
                 try operands.append(.{ .encoding = .char6 });
                 i += 1;
             },
-            @intFromEnum(Abbrev.Operand.Encoding.blob) => {
+            @backingInt(Abbrev.Operand.Encoding.blob) => {
                 try operands.append(.{ .encoding = .{ .blob = 6 } });
                 i += 1;
             },
@@ -225,8 +225,8 @@ fn nextRecord(bc: *BitcodeReader) !?Record {
                         }),
                         0 => {
                             const encoding: Abbrev.Operand.Encoding =
-                                @enumFromInt(try bc.readFixed(u3, 3));
-                            try operands.append(@intFromEnum(encoding));
+                                @fromBackingInt(@intCast(try bc.readFixed(u3, 3)));
+                            try operands.append(@backingInt(encoding));
                             switch (encoding) {
                                 .fixed, .vbr => try operands.append(try bc.readVbr(u7, 5)),
                                 .array, .char6, .blob => {},
@@ -285,14 +285,14 @@ fn startBlock(bc: *BitcodeReader, block_id: ?u32, new_abbrev_len: u6) !void {
         @typeInfo(Abbrev.Builtin).@"enum".field_names.len + abbrevs.len,
     );
 
-    assert(state.abbrevs.abbrevs.items.len == @intFromEnum(Abbrev.Builtin.end_block));
+    assert(state.abbrevs.abbrevs.items.len == @backingInt(Abbrev.Builtin.end_block));
     try state.abbrevs.addAbbrevAssumeCapacity(bc.allocator, .{
         .operands = &.{
             .{ .literal = Abbrev.Builtin.end_block.toRecordId() },
             .align_32_bits,
         },
     });
-    assert(state.abbrevs.abbrevs.items.len == @intFromEnum(Abbrev.Builtin.enter_subblock));
+    assert(state.abbrevs.abbrevs.items.len == @backingInt(Abbrev.Builtin.enter_subblock));
     try state.abbrevs.addAbbrevAssumeCapacity(bc.allocator, .{
         .operands = &.{
             .{ .literal = Abbrev.Builtin.enter_subblock.toRecordId() },
@@ -302,7 +302,7 @@ fn startBlock(bc: *BitcodeReader, block_id: ?u32, new_abbrev_len: u6) !void {
             .block_len,
         },
     });
-    assert(state.abbrevs.abbrevs.items.len == @intFromEnum(Abbrev.Builtin.define_abbrev));
+    assert(state.abbrevs.abbrevs.items.len == @backingInt(Abbrev.Builtin.define_abbrev));
     try state.abbrevs.addAbbrevAssumeCapacity(bc.allocator, .{
         .operands = &.{
             .{ .literal = Abbrev.Builtin.define_abbrev.toRecordId() },
@@ -310,7 +310,7 @@ fn startBlock(bc: *BitcodeReader, block_id: ?u32, new_abbrev_len: u6) !void {
             .abbrev_op,
         },
     });
-    assert(state.abbrevs.abbrevs.items.len == @intFromEnum(Abbrev.Builtin.unabbrev_record));
+    assert(state.abbrevs.abbrevs.items.len == @backingInt(Abbrev.Builtin.unabbrev_record));
     try state.abbrevs.addAbbrevAssumeCapacity(bc.allocator, .{
         .operands = &.{
             .{ .encoding = .{ .vbr = 6 } }, // code
@@ -459,7 +459,7 @@ const Abbrev = struct {
 
         const first_record_id: u32 = std.math.maxInt(u32) - @typeInfo(Builtin).@"enum".field_names.len + 1;
         fn toRecordId(builtin: Builtin) u32 {
-            return first_record_id + @intFromEnum(builtin);
+            return first_record_id + @backingInt(builtin);
         }
     };
 

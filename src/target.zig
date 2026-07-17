@@ -636,8 +636,8 @@ pub fn shouldBlockPointerOps(target: *const std.Target, as: AddressSpace) bool {
         // Physical pointers always support operations
         .global, .physical_storage_buffer => false,
         // Logical pointers that support operations with VariablePointers capability
-        .shared => !target.cpu.features.isEnabled(@intFromEnum(std.Target.spirv.Feature.variable_pointers)),
-        .storage_buffer => !target.cpu.features.isEnabled(@intFromEnum(std.Target.spirv.Feature.variable_pointers)),
+        .shared => !target.cpu.features.isEnabled(@backingInt(std.Target.spirv.Feature.variable_pointers)),
+        .storage_buffer => !target.cpu.features.isEnabled(@backingInt(std.Target.spirv.Feature.variable_pointers)),
         // Logical pointers that never support operations
         .constant,
         .local,
@@ -678,7 +678,7 @@ pub fn isDynamicAMDGCNFeature(target: *const std.Target, feature: std.Target.Cpu
         &std.Target.amdgcn.cpu.gfx1200,
         &std.Target.amdgcn.cpu.gfx1201,
     };
-    const feature_tag: std.Target.amdgcn.Feature = @enumFromInt(feature.index);
+    const feature_tag: std.Target.amdgcn.Feature = @fromBackingInt(@intCast(feature.index));
 
     if (feature_tag == .sramecc) {
         if (std.mem.indexOfScalar(

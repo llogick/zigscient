@@ -10,7 +10,7 @@ pub fn syscall0(
     return asm volatile (
         \\ l.sys 1
         : [ret] "={r11}" (-> u32),
-        : [number] "{r11}" (@intFromEnum(number)),
+        : [number] "{r11}" (@backingInt(number)),
         : .{ .r3 = true, .r4 = true, .r5 = true, .r6 = true, .r7 = true, .r8 = true, .r12 = true, .r13 = true, .r15 = true, .r17 = true, .r19 = true, .r21 = true, .r23 = true, .r25 = true, .r27 = true, .r29 = true, .r31 = true, .memory = true });
 }
 
@@ -21,7 +21,7 @@ pub fn syscall1(
     return asm volatile (
         \\ l.sys 1
         : [ret] "={r11}" (-> u32),
-        : [number] "{r11}" (@intFromEnum(number)),
+        : [number] "{r11}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
         : .{ .r4 = true, .r5 = true, .r6 = true, .r7 = true, .r8 = true, .r12 = true, .r13 = true, .r15 = true, .r17 = true, .r19 = true, .r21 = true, .r23 = true, .r25 = true, .r27 = true, .r29 = true, .r31 = true, .memory = true });
 }
@@ -34,7 +34,7 @@ pub fn syscall2(
     return asm volatile (
         \\ l.sys 1
         : [ret] "={r11}" (-> u32),
-        : [number] "{r11}" (@intFromEnum(number)),
+        : [number] "{r11}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
           [arg2] "{r4}" (arg2),
         : .{ .r5 = true, .r6 = true, .r7 = true, .r8 = true, .r12 = true, .r13 = true, .r15 = true, .r17 = true, .r19 = true, .r21 = true, .r23 = true, .r25 = true, .r27 = true, .r29 = true, .r31 = true, .memory = true });
@@ -49,7 +49,7 @@ pub fn syscall3(
     return asm volatile (
         \\ l.sys 1
         : [ret] "={r11}" (-> u32),
-        : [number] "{r11}" (@intFromEnum(number)),
+        : [number] "{r11}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
           [arg2] "{r4}" (arg2),
           [arg3] "{r5}" (arg3),
@@ -66,7 +66,7 @@ pub fn syscall4(
     return asm volatile (
         \\ l.sys 1
         : [ret] "={r11}" (-> u32),
-        : [number] "{r11}" (@intFromEnum(number)),
+        : [number] "{r11}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
           [arg2] "{r4}" (arg2),
           [arg3] "{r5}" (arg3),
@@ -85,7 +85,7 @@ pub fn syscall5(
     return asm volatile (
         \\ l.sys 1
         : [ret] "={r11}" (-> u32),
-        : [number] "{r11}" (@intFromEnum(number)),
+        : [number] "{r11}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
           [arg2] "{r4}" (arg2),
           [arg3] "{r5}" (arg3),
@@ -106,7 +106,7 @@ pub fn syscall6(
     return asm volatile (
         \\ l.sys 1
         : [ret] "={r11}" (-> u32),
-        : [number] "{r11}" (@intFromEnum(number)),
+        : [number] "{r11}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
           [arg2] "{r4}" (arg2),
           [arg3] "{r5}" (arg3),

@@ -133,7 +133,7 @@ fn testStrToLLikeFunctionAnyErrno(
 test "strtol" {
     if (builtin.target.cpu.arch.isX86() and builtin.target.os.tag == .windows and builtin.target.abi == .msvc) return error.SkipZigTest; // TODO
 
-    c._errno().* = @intFromEnum(c.E.SUCCESS);
+    c._errno().* = @backingInt(c.E.SUCCESS);
     try testStrToLLikeFunctionAnyErrno(c.strtol, @ptrCast("stop42true"), 0, 0, 0, &.{ .SUCCESS, .INVAL });
     try testStrToLLikeFunction(c.strtol, @ptrCast("42true"), 0, 42, 2, .SUCCESS);
     try testStrToLLikeFunction(c.strtol, @ptrCast("-01"), 0, -1, 3, .SUCCESS);
@@ -173,7 +173,7 @@ test "strtol" {
 test "strtoll" {
     if (builtin.target.cpu.arch.isX86() and builtin.target.os.tag == .windows and builtin.target.abi == .msvc) return error.SkipZigTest; // TODO
 
-    c._errno().* = @intFromEnum(c.E.SUCCESS);
+    c._errno().* = @backingInt(c.E.SUCCESS);
     try testStrToLLikeFunctionAnyErrno(c.strtoll, @ptrCast("stop42true"), 0, 0, 0, &.{ .SUCCESS, .INVAL });
     try testStrToLLikeFunction(c.strtoll, @ptrCast("42true"), 0, 42, 2, .SUCCESS);
     try testStrToLLikeFunction(c.strtoll, @ptrCast("-01"), 0, -1, 3, .SUCCESS);
@@ -213,7 +213,7 @@ test "strtoll" {
 test "strtoul" {
     if (builtin.target.cpu.arch.isX86() and builtin.target.os.tag == .windows and builtin.target.abi == .msvc) return error.SkipZigTest; // TODO
 
-    c._errno().* = @intFromEnum(c.E.SUCCESS);
+    c._errno().* = @backingInt(c.E.SUCCESS);
     try testStrToLLikeFunctionAnyErrno(c.strtoul, @ptrCast("stop42true"), 0, 0, 0, &.{ .SUCCESS, .INVAL });
     try testStrToLLikeFunction(c.strtoul, @ptrCast("42true"), 0, 42, 2, .SUCCESS);
     try testStrToLLikeFunction(c.strtoul, @ptrCast("-01"), 0, math.maxInt(c_ulong), 3, .SUCCESS);
@@ -251,7 +251,7 @@ test "strtoul" {
 test "strtoull" {
     if (builtin.target.cpu.arch.isX86() and builtin.target.os.tag == .windows and builtin.target.abi == .msvc) return error.SkipZigTest; // TODO
 
-    c._errno().* = @intFromEnum(c.E.SUCCESS);
+    c._errno().* = @backingInt(c.E.SUCCESS);
     try testStrToLLikeFunctionAnyErrno(c.strtoull, @ptrCast("stop42true"), 0, 0, 0, &.{ .SUCCESS, .INVAL });
     try testStrToLLikeFunction(c.strtoull, @ptrCast("42true"), 0, 42, 2, .SUCCESS);
     try testStrToLLikeFunction(c.strtoull, @ptrCast("-01"), 0, math.maxInt(c_ulonglong), 3, .SUCCESS);
@@ -289,7 +289,7 @@ test "strtoull" {
 test "strtoimax" {
     if (builtin.target.cpu.arch.isX86() and builtin.target.os.tag == .windows and builtin.target.abi == .msvc) return error.SkipZigTest; // TODO
 
-    c._errno().* = @intFromEnum(c.E.SUCCESS);
+    c._errno().* = @backingInt(c.E.SUCCESS);
     try testStrToLLikeFunctionAnyErrno(c.strtoimax, @ptrCast("stop42true"), 0, 0, 0, &.{ .SUCCESS, .INVAL });
     try testStrToLLikeFunction(c.strtoimax, @ptrCast("42true"), 0, 42, 2, .SUCCESS);
     try testStrToLLikeFunction(c.strtoimax, @ptrCast("-01"), 0, -1, 3, .SUCCESS);
@@ -329,7 +329,7 @@ test "strtoimax" {
 test "strtoumax" {
     if (builtin.target.cpu.arch.isX86() and builtin.target.os.tag == .windows and builtin.target.abi == .msvc) return error.SkipZigTest; // TODO
 
-    c._errno().* = @intFromEnum(c.E.SUCCESS);
+    c._errno().* = @backingInt(c.E.SUCCESS);
     try testStrToLLikeFunctionAnyErrno(c.strtoumax, @ptrCast("stop42true"), 0, 0, 0, &.{ .SUCCESS, .INVAL });
     try testStrToLLikeFunction(c.strtoumax, @ptrCast("42true"), 0, 42, 2, .SUCCESS);
     try testStrToLLikeFunction(c.strtoumax, @ptrCast("-01"), 0, math.maxInt(c.uintmax_t), 3, .SUCCESS);

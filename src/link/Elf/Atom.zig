@@ -288,7 +288,7 @@ pub fn scanRelocsRequiresCode(self: Atom, elf_file: *Elf) bool {
     for (self.relocs(elf_file)) |rel| {
         switch (cpu_arch) {
             .x86_64 => {
-                const r_type: elf.R_X86_64 = @enumFromInt(rel.r_type());
+                const r_type: elf.R_X86_64 = @fromBackingInt(@intCast(rel.r_type()));
                 if (r_type == .GOTTPOFF) return true;
             },
             else => {},
@@ -950,7 +950,7 @@ const x86_64 = struct {
         const is_static = elf_file.base.isStatic();
         const is_dyn_lib = elf_file.isEffectivelyDynLib();
 
-        const r_type: elf.R_X86_64 = @enumFromInt(rel.r_type());
+        const r_type: elf.R_X86_64 = @fromBackingInt(@intCast(rel.r_type()));
         const r_offset = std.math.cast(usize, rel.r_offset) orelse return error.Overflow;
 
         switch (r_type) {
@@ -1062,7 +1062,7 @@ const x86_64 = struct {
         dev.check(.x86_64_backend);
         const t = &elf_file.base.comp.root_mod.resolved_target.result;
         const diags = &elf_file.base.comp.link_diags;
-        const r_type: elf.R_X86_64 = @enumFromInt(rel.r_type());
+        const r_type: elf.R_X86_64 = @fromBackingInt(@intCast(rel.r_type()));
         const r_offset = std.math.cast(usize, rel.r_offset) orelse return error.Overflow;
 
         const P, const A, const S, const GOT, const G, const TP, const DTP = args;
@@ -1201,7 +1201,7 @@ const x86_64 = struct {
         code: []u8,
     ) !void {
         dev.check(.x86_64_backend);
-        const r_type: elf.R_X86_64 = @enumFromInt(rel.r_type());
+        const r_type: elf.R_X86_64 = @fromBackingInt(@intCast(rel.r_type()));
 
         _, const A, const S, const GOT, _, _, const DTP = args;
 
@@ -1282,7 +1282,7 @@ const x86_64 = struct {
         dev.check(.x86_64_backend);
         assert(rels.len == 2);
         const diags = &elf_file.base.comp.link_diags;
-        const rel: elf.R_X86_64 = @enumFromInt(rels[1].r_type());
+        const rel: elf.R_X86_64 = @fromBackingInt(@intCast(rels[1].r_type()));
         switch (rel) {
             .PC32,
             .PLT32,
@@ -1322,7 +1322,7 @@ const x86_64 = struct {
         dev.check(.x86_64_backend);
         assert(rels.len == 2);
         const diags = &elf_file.base.comp.link_diags;
-        const rel: elf.R_X86_64 = @enumFromInt(rels[1].r_type());
+        const rel: elf.R_X86_64 = @fromBackingInt(@intCast(rels[1].r_type()));
         switch (rel) {
             .PC32,
             .PLT32,
@@ -1428,7 +1428,7 @@ const x86_64 = struct {
         dev.check(.x86_64_backend);
         assert(rels.len == 2);
         const diags = &elf_file.base.comp.link_diags;
-        const rel: elf.R_X86_64 = @enumFromInt(rels[1].r_type());
+        const rel: elf.R_X86_64 = @fromBackingInt(@intCast(rels[1].r_type()));
         switch (rel) {
             .PC32,
             .PLT32,
@@ -1493,7 +1493,7 @@ const aarch64 = struct {
         _ = code;
         _ = it;
 
-        const r_type: elf.R_AARCH64 = @enumFromInt(rel.r_type());
+        const r_type: elf.R_AARCH64 = @fromBackingInt(@intCast(rel.r_type()));
         const is_dyn_lib = elf_file.isEffectivelyDynLib();
 
         switch (r_type) {
@@ -1571,7 +1571,7 @@ const aarch64 = struct {
         _ = it;
 
         const diags = &elf_file.base.comp.link_diags;
-        const r_type: elf.R_AARCH64 = @enumFromInt(rel.r_type());
+        const r_type: elf.R_AARCH64 = @fromBackingInt(@intCast(rel.r_type()));
         const r_offset = std.math.cast(usize, rel.r_offset) orelse return error.Overflow;
         const code = code_buffer[r_offset..][0..4];
         const file_ptr = atom.file(elf_file).?;
@@ -1742,7 +1742,7 @@ const aarch64 = struct {
         args: ResolveArgs,
         code: []u8,
     ) !void {
-        const r_type: elf.R_AARCH64 = @enumFromInt(rel.r_type());
+        const r_type: elf.R_AARCH64 = @fromBackingInt(@intCast(rel.r_type()));
 
         _, const A, const S, _, _, _, _ = args;
 
@@ -1773,7 +1773,7 @@ const riscv = struct {
         _ = code;
         _ = it;
 
-        const r_type: elf.R_RISCV = @enumFromInt(rel.r_type());
+        const r_type: elf.R_RISCV = @fromBackingInt(@intCast(rel.r_type()));
 
         switch (r_type) {
             .@"32" => try atom.scanReloc(symbol, rel, absRelocAction(symbol, elf_file), elf_file),
@@ -1816,7 +1816,7 @@ const riscv = struct {
         code: []u8,
     ) !void {
         const diags = &elf_file.base.comp.link_diags;
-        const r_type: elf.R_RISCV = @enumFromInt(rel.r_type());
+        const r_type: elf.R_RISCV = @fromBackingInt(@intCast(rel.r_type()));
         const r_offset = std.math.cast(usize, rel.r_offset) orelse return error.Overflow;
 
         const P, const A, const S, const GOT, const G, const TP, const DTP = args;
@@ -1893,7 +1893,7 @@ const riscv = struct {
                 const A_ = pair.r_addend;
                 const P_ = atom_addr + @as(i64, @intCast(pair.r_offset));
                 const G_ = target_.gotAddress(elf_file) - GOT;
-                const disp = switch (@as(elf.R_RISCV, @enumFromInt(pair.r_type()))) {
+                const disp = switch (@as(elf.R_RISCV, @fromBackingInt(@intCast(pair.r_type())))) {
                     .PCREL_HI20 => math.cast(i32, S_ + A_ - P_) orelse return error.Overflow,
                     .GOT_HI20 => math.cast(i32, G_ + GOT + A_ - P_) orelse return error.Overflow,
                     else => unreachable,
@@ -1951,7 +1951,7 @@ const riscv = struct {
         args: ResolveArgs,
         code: []u8,
     ) !void {
-        const r_type: elf.R_RISCV = @enumFromInt(rel.r_type());
+        const r_type: elf.R_RISCV = @fromBackingInt(@intCast(rel.r_type()));
 
         _, const A, const S, const GOT, _, _, const DTP = args;
         _ = GOT;

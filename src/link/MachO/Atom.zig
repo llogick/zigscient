@@ -797,8 +797,8 @@ fn resolveRelocInner(
                 .data_processing_immediate => aarch64.writeAddImmInst(@truncate(target), inst_code),
                 .load_store => |load_store| {
                     inst.load_store.register_unsigned_immediate.group.imm12 = switch (load_store.register_unsigned_immediate.decode()) {
-                        .integer => |integer| try divExact(self, rel, @truncate(target), @as(u4, 1) << @intFromEnum(integer.group.size), macho_file),
-                        .vector => |vector| try divExact(self, rel, @truncate(target), @as(u5, 1) << @intFromEnum(vector.group.opc1.decode(vector.group.size)), macho_file),
+                        .integer => |integer| try divExact(self, rel, @truncate(target), @as(u4, 1) << @backingInt(integer.group.size), macho_file),
+                        .vector => |vector| try divExact(self, rel, @truncate(target), @as(u5, 1) << @backingInt(vector.group.opc1.decode(vector.group.size)), macho_file),
                     };
                     try writer.writeInt(u32, @bitCast(inst), .little);
                 },
@@ -990,7 +990,7 @@ pub fn writeRelocs(self: Atom, macho_file: *MachO, code: []u8, buffer: []macho.r
                         .r_pcrel = 0,
                         .r_length = 2,
                         .r_extern = 0,
-                        .r_type = @intFromEnum(macho.reloc_type_arm64.ARM64_RELOC_ADDEND),
+                        .r_type = @backingInt(macho.reloc_type_arm64.ARM64_RELOC_ADDEND),
                     };
                     i += 1;
                 }
@@ -1021,7 +1021,7 @@ pub fn writeRelocs(self: Atom, macho_file: *MachO, code: []u8, buffer: []macho.r
                     .r_pcrel = @intFromBool(rel.meta.pcrel),
                     .r_extern = @intFromBool(r_extern),
                     .r_length = rel.meta.length,
-                    .r_type = @intFromEnum(r_type),
+                    .r_type = @backingInt(r_type),
                 };
             },
             .x86_64 => {
@@ -1064,7 +1064,7 @@ pub fn writeRelocs(self: Atom, macho_file: *MachO, code: []u8, buffer: []macho.r
                     .r_pcrel = @intFromBool(rel.meta.pcrel),
                     .r_extern = @intFromBool(r_extern),
                     .r_length = rel.meta.length,
-                    .r_type = @intFromEnum(r_type),
+                    .r_type = @backingInt(r_type),
                 };
             },
             else => unreachable,

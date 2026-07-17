@@ -229,7 +229,7 @@ fn addCaseInstance(
     run.addCheck(.{ .expect_term = term: {
         if (!expect_panic) break :term .{ .exited = 0 };
         if (target.result.os.tag == .windows) break :term .{ .exited = 3 };
-        break :term .{ .signal = @enumFromInt(6) };
+        break :term .{ .signal = @fromBackingInt(@intCast(6)) };
     } });
     run.expectStdOutEqual("");
 

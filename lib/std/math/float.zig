@@ -92,13 +92,13 @@ pub fn FloatRepr(comptime Float: type) type {
             pub fn unbias(biased: BiasedExponent) Exponent {
                 switch (biased) {
                     .denormal => unreachable,
-                    else => return @bitCast(@intFromEnum(biased) -% @intFromEnum(BiasedExponent.zero)),
+                    else => return @bitCast(@backingInt(biased) -% @backingInt(BiasedExponent.zero)),
                     .infinite => unreachable,
                 }
             }
 
             pub fn bias(unbiased: Exponent) BiasedExponent {
-                return @enumFromInt(@intFromEnum(BiasedExponent.zero) +% @as(Int, @bitCast(unbiased)));
+                return @fromBackingInt(@intCast(@backingInt(BiasedExponent.zero) +% @as(Int, @bitCast(unbiased))));
             }
         };
 

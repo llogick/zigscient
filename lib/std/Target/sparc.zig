@@ -75,111 +75,111 @@ pub const all_features = blk: {
     const len = @typeInfo(Feature).@"enum".field_names.len;
     std.debug.assert(len <= CpuFeature.Set.needed_bit_count);
     var result: [len]CpuFeature = undefined;
-    result[@intFromEnum(Feature.@"64bit")] = .{
+    result[@backingInt(Feature.@"64bit")] = .{
         .llvm_name = "64bit",
         .description = "Enable 64-bit mode",
         .dependencies = featureSet(&[_]Feature{
             .v9,
         }),
     };
-    result[@intFromEnum(Feature.crypto)] = .{
+    result[@backingInt(Feature.crypto)] = .{
         .llvm_name = "crypto",
         .description = "Enable cryptographic extensions",
         .dependencies = featureSet(&[_]Feature{
             .osa2011,
         }),
     };
-    result[@intFromEnum(Feature.deprecated_v8)] = .{
+    result[@backingInt(Feature.deprecated_v8)] = .{
         .llvm_name = "deprecated-v8",
         .description = "Enable deprecated V8 instructions in V9 mode",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.detectroundchange)] = .{
+    result[@backingInt(Feature.detectroundchange)] = .{
         .llvm_name = "detectroundchange",
         .description = "LEON3 erratum detection: Detects any rounding mode change request: use only the round-to-nearest rounding mode",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fix_tn0009)] = .{
+    result[@backingInt(Feature.fix_tn0009)] = .{
         .llvm_name = "fix-tn0009",
         .description = "Enable workaround for errata described in GRLIB-TN-0009",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fix_tn0010)] = .{
+    result[@backingInt(Feature.fix_tn0010)] = .{
         .llvm_name = "fix-tn0010",
         .description = "Enable workaround for errata described in GRLIB-TN-0010",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fix_tn0011)] = .{
+    result[@backingInt(Feature.fix_tn0011)] = .{
         .llvm_name = "fix-tn0011",
         .description = "Enable workaround for errata described in GRLIB-TN-0011",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fix_tn0012)] = .{
+    result[@backingInt(Feature.fix_tn0012)] = .{
         .llvm_name = "fix-tn0012",
         .description = "Enable workaround for errata described in GRLIB-TN-0012",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fix_tn0013)] = .{
+    result[@backingInt(Feature.fix_tn0013)] = .{
         .llvm_name = "fix-tn0013",
         .description = "Enable workaround for errata described in GRLIB-TN-0013",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.fixallfdivsqrt)] = .{
+    result[@backingInt(Feature.fixallfdivsqrt)] = .{
         .llvm_name = "fixallfdivsqrt",
         .description = "LEON erratum fix: Fix FDIVS/FDIVD/FSQRTS/FSQRTD instructions with NOPs and floating-point store",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.hard_quad_float)] = .{
+    result[@backingInt(Feature.hard_quad_float)] = .{
         .llvm_name = "hard-quad-float",
         .description = "Enable quad-word floating point instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.hasleoncasa)] = .{
+    result[@backingInt(Feature.hasleoncasa)] = .{
         .llvm_name = "hasleoncasa",
         .description = "Enable CASA instruction for LEON3 and LEON4 processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.hasumacsmac)] = .{
+    result[@backingInt(Feature.hasumacsmac)] = .{
         .llvm_name = "hasumacsmac",
         .description = "Enable UMAC and SMAC for LEON3 and LEON4 processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.insertnopload)] = .{
+    result[@backingInt(Feature.insertnopload)] = .{
         .llvm_name = "insertnopload",
         .description = "LEON3 erratum fix: Insert a NOP instruction after every single-cycle load instruction when the next instruction is another load/store instruction",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.leon)] = .{
+    result[@backingInt(Feature.leon)] = .{
         .llvm_name = "leon",
         .description = "Enable LEON extensions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.leoncyclecounter)] = .{
+    result[@backingInt(Feature.leoncyclecounter)] = .{
         .llvm_name = "leoncyclecounter",
         .description = "Use the Leon cycle counter register",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.leonpwrpsr)] = .{
+    result[@backingInt(Feature.leonpwrpsr)] = .{
         .llvm_name = "leonpwrpsr",
         .description = "Enable the PWRPSR instruction",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.no_fmuls)] = .{
+    result[@backingInt(Feature.no_fmuls)] = .{
         .llvm_name = "no-fmuls",
         .description = "Disable the fmuls instruction.",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.no_fsmuld)] = .{
+    result[@backingInt(Feature.no_fsmuld)] = .{
         .llvm_name = "no-fsmuld",
         .description = "Disable the fsmuld instruction.",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.no_predictor)] = .{
+    result[@backingInt(Feature.no_predictor)] = .{
         .llvm_name = "no-predictor",
         .description = "Processor has no branch predictor, branches stall execution",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.osa2011)] = .{
+    result[@backingInt(Feature.osa2011)] = .{
         .llvm_name = "osa2011",
         .description = "Enable Oracle SPARC Architecture 2011 extensions",
         .dependencies = featureSet(&[_]Feature{
@@ -188,164 +188,164 @@ pub const all_features = blk: {
             .vis3,
         }),
     };
-    result[@intFromEnum(Feature.popc)] = .{
+    result[@backingInt(Feature.popc)] = .{
         .llvm_name = "popc",
         .description = "Use the popc (population count) instruction",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_g1)] = .{
+    result[@backingInt(Feature.reserve_g1)] = .{
         .llvm_name = "reserve-g1",
         .description = "Reserve G1, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_g2)] = .{
+    result[@backingInt(Feature.reserve_g2)] = .{
         .llvm_name = "reserve-g2",
         .description = "Reserve G2, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_g3)] = .{
+    result[@backingInt(Feature.reserve_g3)] = .{
         .llvm_name = "reserve-g3",
         .description = "Reserve G3, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_g4)] = .{
+    result[@backingInt(Feature.reserve_g4)] = .{
         .llvm_name = "reserve-g4",
         .description = "Reserve G4, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_g5)] = .{
+    result[@backingInt(Feature.reserve_g5)] = .{
         .llvm_name = "reserve-g5",
         .description = "Reserve G5, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_g6)] = .{
+    result[@backingInt(Feature.reserve_g6)] = .{
         .llvm_name = "reserve-g6",
         .description = "Reserve G6, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_g7)] = .{
+    result[@backingInt(Feature.reserve_g7)] = .{
         .llvm_name = "reserve-g7",
         .description = "Reserve G7, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_i0)] = .{
+    result[@backingInt(Feature.reserve_i0)] = .{
         .llvm_name = "reserve-i0",
         .description = "Reserve I0, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_i1)] = .{
+    result[@backingInt(Feature.reserve_i1)] = .{
         .llvm_name = "reserve-i1",
         .description = "Reserve I1, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_i2)] = .{
+    result[@backingInt(Feature.reserve_i2)] = .{
         .llvm_name = "reserve-i2",
         .description = "Reserve I2, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_i3)] = .{
+    result[@backingInt(Feature.reserve_i3)] = .{
         .llvm_name = "reserve-i3",
         .description = "Reserve I3, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_i4)] = .{
+    result[@backingInt(Feature.reserve_i4)] = .{
         .llvm_name = "reserve-i4",
         .description = "Reserve I4, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_i5)] = .{
+    result[@backingInt(Feature.reserve_i5)] = .{
         .llvm_name = "reserve-i5",
         .description = "Reserve I5, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_l0)] = .{
+    result[@backingInt(Feature.reserve_l0)] = .{
         .llvm_name = "reserve-l0",
         .description = "Reserve L0, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_l1)] = .{
+    result[@backingInt(Feature.reserve_l1)] = .{
         .llvm_name = "reserve-l1",
         .description = "Reserve L1, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_l2)] = .{
+    result[@backingInt(Feature.reserve_l2)] = .{
         .llvm_name = "reserve-l2",
         .description = "Reserve L2, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_l3)] = .{
+    result[@backingInt(Feature.reserve_l3)] = .{
         .llvm_name = "reserve-l3",
         .description = "Reserve L3, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_l4)] = .{
+    result[@backingInt(Feature.reserve_l4)] = .{
         .llvm_name = "reserve-l4",
         .description = "Reserve L4, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_l5)] = .{
+    result[@backingInt(Feature.reserve_l5)] = .{
         .llvm_name = "reserve-l5",
         .description = "Reserve L5, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_l6)] = .{
+    result[@backingInt(Feature.reserve_l6)] = .{
         .llvm_name = "reserve-l6",
         .description = "Reserve L6, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_l7)] = .{
+    result[@backingInt(Feature.reserve_l7)] = .{
         .llvm_name = "reserve-l7",
         .description = "Reserve L7, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_o0)] = .{
+    result[@backingInt(Feature.reserve_o0)] = .{
         .llvm_name = "reserve-o0",
         .description = "Reserve O0, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_o1)] = .{
+    result[@backingInt(Feature.reserve_o1)] = .{
         .llvm_name = "reserve-o1",
         .description = "Reserve O1, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_o2)] = .{
+    result[@backingInt(Feature.reserve_o2)] = .{
         .llvm_name = "reserve-o2",
         .description = "Reserve O2, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_o3)] = .{
+    result[@backingInt(Feature.reserve_o3)] = .{
         .llvm_name = "reserve-o3",
         .description = "Reserve O3, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_o4)] = .{
+    result[@backingInt(Feature.reserve_o4)] = .{
         .llvm_name = "reserve-o4",
         .description = "Reserve O4, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_o5)] = .{
+    result[@backingInt(Feature.reserve_o5)] = .{
         .llvm_name = "reserve-o5",
         .description = "Reserve O5, making it unavailable as a GPR",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.slow_rdpc)] = .{
+    result[@backingInt(Feature.slow_rdpc)] = .{
         .llvm_name = "slow-rdpc",
         .description = "rd %pc, %XX is slow",
         .dependencies = featureSet(&[_]Feature{
             .v9,
         }),
     };
-    result[@intFromEnum(Feature.soft_float)] = .{
+    result[@backingInt(Feature.soft_float)] = .{
         .llvm_name = "soft-float",
         .description = "Use software emulation for floating point",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.soft_mul_div)] = .{
+    result[@backingInt(Feature.soft_mul_div)] = .{
         .llvm_name = "soft-mul-div",
         .description = "Use software emulation for integer multiply and divide",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ua2005)] = .{
+    result[@backingInt(Feature.ua2005)] = .{
         .llvm_name = "ua2005",
         .description = "Enable UltraSPARC Architecture 2005 extensions",
         .dependencies = featureSet(&[_]Feature{
@@ -353,7 +353,7 @@ pub const all_features = blk: {
             .vis2,
         }),
     };
-    result[@intFromEnum(Feature.ua2007)] = .{
+    result[@backingInt(Feature.ua2007)] = .{
         .llvm_name = "ua2007",
         .description = "Enable UltraSPARC Architecture 2007 extensions",
         .dependencies = featureSet(&[_]Feature{
@@ -361,31 +361,31 @@ pub const all_features = blk: {
             .vis2,
         }),
     };
-    result[@intFromEnum(Feature.v8plus)] = .{
+    result[@backingInt(Feature.v8plus)] = .{
         .llvm_name = "v8plus",
         .description = "Enable V8+ mode, allowing use of 64-bit V9 instructions in 32-bit code",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.v9)] = .{
+    result[@backingInt(Feature.v9)] = .{
         .llvm_name = "v9",
         .description = "Enable SPARC-V9 instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vis)] = .{
+    result[@backingInt(Feature.vis)] = .{
         .llvm_name = "vis",
         .description = "Enable UltraSPARC Visual Instruction Set extensions",
         .dependencies = featureSet(&[_]Feature{
             .v9,
         }),
     };
-    result[@intFromEnum(Feature.vis2)] = .{
+    result[@backingInt(Feature.vis2)] = .{
         .llvm_name = "vis2",
         .description = "Enable Visual Instruction Set extensions II",
         .dependencies = featureSet(&[_]Feature{
             .v9,
         }),
     };
-    result[@intFromEnum(Feature.vis3)] = .{
+    result[@backingInt(Feature.vis3)] = .{
         .llvm_name = "vis3",
         .description = "Enable Visual Instruction Set extensions III",
         .dependencies = featureSet(&[_]Feature{

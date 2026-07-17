@@ -13,9 +13,9 @@ test "pthread_spinlock_t" {
     _ = c.pthread_spin_init(&spin, c.PTHREAD_PROCESS_PRIVATE);
     defer _ = c.pthread_spin_destroy(&spin);
 
-    try std.testing.expectEqual(@intFromEnum(c.E.SUCCESS), c.pthread_spin_trylock(&spin));
-    try std.testing.expectEqual(@intFromEnum(c.E.SUCCESS), c.pthread_spin_unlock(&spin));
+    try std.testing.expectEqual(@backingInt(c.E.SUCCESS), c.pthread_spin_trylock(&spin));
+    try std.testing.expectEqual(@backingInt(c.E.SUCCESS), c.pthread_spin_unlock(&spin));
 
-    try std.testing.expectEqual(@intFromEnum(c.E.SUCCESS), c.pthread_spin_lock(&spin));
-    try std.testing.expectEqual(@intFromEnum(c.E.SUCCESS), c.pthread_spin_unlock(&spin));
+    try std.testing.expectEqual(@backingInt(c.E.SUCCESS), c.pthread_spin_lock(&spin));
+    try std.testing.expectEqual(@backingInt(c.E.SUCCESS), c.pthread_spin_unlock(&spin));
 }

@@ -153,7 +153,7 @@ pub fn loadInput(linker: *Linker, input: link.Input) !void {
             var it: BinaryModule.Instruction.Iterator = .init(instructions, 0);
             const has_linkage = while (it.next()) |inst| switch (inst.opcode) {
                 .OpCapability => {
-                    const cap: spec.Capability = @enumFromInt(inst.operands[0]);
+                    const cap: spec.Capability = @fromBackingInt(@intCast(inst.operands[0]));
                     if (cap == .linkage) break true;
                 },
                 else => break false,
@@ -343,7 +343,7 @@ fn mergeFragments(linker: *Linker, gpa: Allocator, arena: Allocator) error{OutOf
         const id_offset = next_id - 1;
         frag_infos.appendAssumeCapacity(.{ .id_offset = id_offset });
         if (mir.decl_result_id != .none) {
-            try nav_final_ids.put(gpa, nav, @enumFromInt(@intFromEnum(mir.decl_result_id) + id_offset));
+            try nav_final_ids.put(gpa, nav, @fromBackingInt(@intCast(@backingInt(mir.decl_result_id) + id_offset)));
         }
         next_id += mir.id_bound - 1;
     }
@@ -351,13 +351,13 @@ fn mergeFragments(linker: *Linker, gpa: Allocator, arena: Allocator) error{OutOf
     for (linker.fragments.values(), frag_infos.items) |*mir, frag_info| {
         for (mir.nav_refs) |ref| {
             if (!nav_final_ids.contains(ref.nav)) {
-                try nav_final_ids.put(gpa, ref.nav, @enumFromInt(@intFromEnum(ref.local_id) + frag_info.id_offset));
+                try nav_final_ids.put(gpa, ref.nav, @fromBackingInt(@intCast(@backingInt(ref.local_id) + frag_info.id_offset)));
             }
         }
         for (mir.uav_refs) |ref| {
             const key = .{ ref.val, ref.storage_class };
             if (!uav_final_ids.contains(key)) {
-                try uav_final_ids.put(gpa, key, @enumFromInt(@intFromEnum(ref.local_id) + frag_info.id_offset));
+                try uav_final_ids.put(gpa, key, @fromBackingInt(@intCast(@backingInt(ref.local_id) + frag_info.id_offset)));
             }
         }
     }
@@ -391,10 +391,10 @@ fn mergeFragments(linker: *Linker, gpa: Allocator, arena: Allocator) error{OutOf
             while (it.next()) |inst| {
                 const ld = LinkageDecoration.parse(inst) orelse continue;
                 if (ld.linkage_type != .@"export") continue;
-                const remapped_id: Id = @enumFromInt(@intFromEnum(ld.target_id) + id_offset);
+                const remapped_id: Id = @fromBackingInt(@intCast(@backingInt(ld.target_id) + id_offset));
 
                 if (extern_name_map.get(ld.name)) |nav_index| {
-                    log.debug("extern resolve: '{s}' -> ext_fn_id={d}", .{ ld.name, @intFromEnum(remapped_id) });
+                    log.debug("extern resolve: '{s}' -> ext_fn_id={d}", .{ ld.name, @backingInt(remapped_id) });
                     nav_final_ids.getPtr(nav_index).?.* = remapped_id;
                     _ = extern_name_map.swapRemove(ld.name);
                     try resolved_ids.put(gpa, remapped_id, {});
@@ -579,7 +579,7 @@ fn remapFilteredInsts(
         switch (mode) {
             .skip_functions => {
                 if (inst.opcode == .OpFunction) {
-                    skip_function = skip_ids.contains(@enumFromInt(inst.operands[1]));
+                    skip_function = skip_ids.contains(@fromBackingInt(@intCast(inst.operands[1])));
                 }
                 if (skip_function) {
                     if (inst.opcode == .OpFunctionEnd) skip_function = false;
@@ -593,7 +593,7 @@ fn remapFilteredInsts(
             },
             .skip_names => {
                 if (inst.opcode == .OpName and inst.operands.len >= 1) {
-                    if (skip_ids.contains(@enumFromInt(inst.operands[0]))) continue;
+                    if (skip_ids.contains(@fromBackingInt(@intCast(inst.operands[0])))) continue;
                 }
             },
         }
@@ -817,11 +817,11 @@ const LinkageDecoration = struct {
     fn parse(inst: BinaryModule.Instruction) ?LinkageDecoration {
         if (inst.opcode != .OpDecorate) return null;
         if (inst.operands.len < 3) return null;
-        if (inst.operands[1] != @intFromEnum(spec.Decoration.linkage_attributes)) return null;
+        if (inst.operands[1] != @backingInt(spec.Decoration.linkage_attributes)) return null;
         return .{
-            .target_id = @enumFromInt(inst.operands[0]),
+            .target_id = @fromBackingInt(@intCast(inst.operands[0])),
             .name = std.mem.sliceTo(std.mem.sliceAsBytes(inst.operands[2 .. inst.operands.len - 1]), 0),
-            .linkage_type = @enumFromInt(inst.operands[inst.operands.len - 1]),
+            .linkage_type = @fromBackingInt(@intCast(inst.operands[inst.operands.len - 1])),
         };
     }
 };
@@ -897,7 +897,7 @@ fn appendExternalObjects(
         while (it.next()) |inst| {
             const ld = LinkageDecoration.parse(inst) orelse continue;
             if (ld.linkage_type != .@"export") continue;
-            try export_map.put(gpa, ld.name, @enumFromInt(@intFromEnum(ld.target_id) + id_offset));
+            try export_map.put(gpa, ld.name, @fromBackingInt(@intCast(@backingInt(ld.target_id) + id_offset)));
         }
     }
 
@@ -920,14 +920,14 @@ fn appendExternalObjects(
         while (it.next()) |inst| {
             const ld = LinkageDecoration.parse(inst) orelse continue;
             if (ld.linkage_type != .import) continue;
-            const remapped_import: Id = @enumFromInt(@intFromEnum(ld.target_id) + id_offset);
+            const remapped_import: Id = @fromBackingInt(@intCast(@backingInt(ld.target_id) + id_offset));
 
             if (export_map.get(ld.name)) |export_id| {
                 try per_obj_remaps[obj_idx].put(gpa, ld.target_id, export_id);
                 try resolved_linkage_ids.put(gpa, remapped_import, {});
                 try resolved_linkage_ids.put(gpa, export_id, {});
                 log.debug("cross-object resolve: '{s}' import={d} -> export={d}", .{
-                    ld.name, @intFromEnum(remapped_import), @intFromEnum(export_id),
+                    ld.name, @backingInt(remapped_import), @backingInt(export_id),
                 });
             } else {
                 has_linkage.* = true;
@@ -968,7 +968,7 @@ fn appendExternalObjects(
             }
 
             if (LinkageDecoration.parse(inst)) |ld| {
-                const remapped: Id = @enumFromInt(@intFromEnum(ld.target_id) + id_offset);
+                const remapped: Id = @fromBackingInt(@intCast(@backingInt(ld.target_id) + id_offset));
                 if (resolved_linkage_ids.contains(remapped)) {
                     if (ld.linkage_type == .@"export" and is_obj) {
                         has_linkage.* = true;
@@ -979,7 +979,7 @@ fn appendExternalObjects(
             }
 
             if (inst.opcode == .OpName and inst.operands.len >= 1) {
-                if (id_remap.contains(@enumFromInt(inst.operands[0]))) continue;
+                if (id_remap.contains(@fromBackingInt(@intCast(inst.operands[0])))) continue;
             }
 
             const dest = sections.getSection(Sections.classifyPreambleInst(inst.opcode));
@@ -990,7 +990,7 @@ fn appendExternalObjects(
         var skip_function = false;
         while (fn_it.next()) |inst| {
             if (inst.opcode == .OpFunction) {
-                skip_function = id_remap.contains(@enumFromInt(inst.operands[1]));
+                skip_function = id_remap.contains(@fromBackingInt(@intCast(inst.operands[1])));
             }
             if (!skip_function) {
                 try remapAndAppendInst(gpa, &sections.functions, ext_obj.instructions, inst, id_offset, id_remap, parser);
@@ -1034,7 +1034,7 @@ fn collectEntryPointInterface(
     }
 
     for (mir.internal_globals) |local_id| {
-        const global_id: Id = @enumFromInt(@intFromEnum(local_id) + id_offset);
+        const global_id: Id = @fromBackingInt(@intCast(@backingInt(local_id) + id_offset));
         try interface.append(gpa, global_id);
     }
 
@@ -1206,11 +1206,11 @@ fn operandLiteralWordCount(kind: spec.OperandKind, inst: BinaryModule.Instructio
 }
 
 fn remapSingleId(word: *Word, id_offset: Word, id_remap: *const std.AutoHashMapUnmanaged(Id, Id)) void {
-    const id: Id = @enumFromInt(word.*);
+    const id: Id = @fromBackingInt(@intCast(word.*));
     if (id == .none) return;
     if (id_remap.get(id)) |final_id| {
-        word.* = @intFromEnum(final_id);
+        word.* = @backingInt(final_id);
     } else {
-        word.* = @intFromEnum(id) + id_offset;
+        word.* = @backingInt(id) + id_offset;
     }
 }

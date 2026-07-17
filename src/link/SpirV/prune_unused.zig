@@ -59,11 +59,11 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
     while (it.next()) |inst| {
         if (inst.offset >= binary.functions_start) break;
         if (inst.opcode == .OpDecorate and inst.operands.len >= 2 and
-            inst.operands[1] == @intFromEnum(spec.Decoration.linkage_attributes))
+            inst.operands[1] == @backingInt(spec.Decoration.linkage_attributes))
         {
             // Last word after the string is the linkage type; Export = 0.
-            if (inst.operands[inst.operands.len - 1] == @intFromEnum(spec.LinkageType.@"export")) {
-                const target: ResultId = @enumFromInt(inst.operands[0]);
+            if (inst.operands[inst.operands.len - 1] == @backingInt(spec.LinkageType.@"export")) {
+                const target: ResultId = @fromBackingInt(@intCast(inst.operands[0]));
                 if (id_to_index.get(target)) |index| {
                     alive.set(index);
                 }
@@ -133,7 +133,7 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
             } else {
                 // annotation-style: emit only if the target id is alive
                 if (inst.operands.len > 0) {
-                    const target: ResultId = @enumFromInt(inst.operands[0]);
+                    const target: ResultId = @fromBackingInt(@intCast(inst.operands[0]));
                     if (id_to_index.get(target)) |idx| {
                         if (!alive.isSet(idx)) continue;
                     } else continue;
@@ -199,14 +199,14 @@ fn markAlive(
     var i = start;
     while (i < end) : (i += 1) {
         const off = id_offset_buf.items[i];
-        const id: ResultId = @enumFromInt(inst.operands[off]);
+        const id: ResultId = @fromBackingInt(@intCast(inst.operands[off]));
         const index = id_to_index.get(id) orelse continue;
         if (alive.isSet(index)) continue;
         alive.set(index);
 
         const offset = code_offsets.items[index];
         const ref_inst = BinaryModule.Instruction{
-            .opcode = @enumFromInt(binary.instructions[offset] & 0xFFFF),
+            .opcode = @fromBackingInt(@intCast(binary.instructions[offset] & 0xFFFF)),
             .offset = offset,
             .operands = blk: {
                 const l = binary.instructions[offset] >> 16;
@@ -231,7 +231,7 @@ fn markAlive(
 fn getResultId(inst: BinaryModule.Instruction, inst_spec: spec.Instruction) ?ResultId {
     for (0..@min(2, inst_spec.operands.len)) |i| {
         if (inst_spec.operands[i].kind == .id_result) {
-            if (i < inst.operands.len) return @enumFromInt(inst.operands[i]);
+            if (i < inst.operands.len) return @fromBackingInt(@intCast(inst.operands[i]));
         }
     }
     return null;

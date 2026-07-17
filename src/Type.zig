@@ -476,7 +476,7 @@ pub fn print(ty: Type, writer: *std.Io.Writer, pt: Zcu.PerThread, ctx: ?*Compari
                     });
                 }
                 if (info.flags.vector_index != .none) {
-                    try writer.print(":{d}", .{@intFromEnum(info.flags.vector_index)});
+                    try writer.print(":{d}", .{@backingInt(info.flags.vector_index)});
                 }
                 try writer.writeAll(") ");
             }
@@ -2660,7 +2660,7 @@ pub fn typeDeclSrcLine(ty: Type, zcu: *Zcu) ?u32 {
         .zig => file.zir.?,
         .zon => return 0,
     };
-    const inst = zir.instructions.get(@intFromEnum(info.inst));
+    const inst = zir.instructions.get(@backingInt(info.inst));
     return switch (inst.tag) {
         .struct_init, .struct_init_ref => zir.extraData(Zir.Inst.StructInit, inst.data.pl_node.payload_index).data.abs_line,
         .struct_init_anon => zir.extraData(Zir.Inst.StructInitAnon, inst.data.pl_node.payload_index).data.abs_line,

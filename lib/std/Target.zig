@@ -286,7 +286,7 @@ pub const Os = struct {
 
         /// Returns whether the first version `ver` is newer (greater) than or equal to the second version `ver`.
         pub inline fn isAtLeast(ver: WindowsVersion, min_ver: WindowsVersion) bool {
-            return @intFromEnum(ver) >= @intFromEnum(min_ver);
+            return @backingInt(ver) >= @backingInt(min_ver);
         }
 
         pub const Range = struct {
@@ -294,23 +294,23 @@ pub const Os = struct {
             max: WindowsVersion,
 
             pub inline fn includesVersion(range: Range, ver: WindowsVersion) bool {
-                return @intFromEnum(ver) >= @intFromEnum(range.min) and
-                    @intFromEnum(ver) <= @intFromEnum(range.max);
+                return @backingInt(ver) >= @backingInt(range.min) and
+                    @backingInt(ver) <= @backingInt(range.max);
             }
 
             /// Checks if system is guaranteed to be at least `version` or older than `version`.
             /// Returns `null` if a runtime check is required.
             pub inline fn isAtLeast(range: Range, min_ver: WindowsVersion) ?bool {
-                if (@intFromEnum(range.min) >= @intFromEnum(min_ver)) return true;
-                if (@intFromEnum(range.max) < @intFromEnum(min_ver)) return false;
+                if (@backingInt(range.min) >= @backingInt(min_ver)) return true;
+                if (@backingInt(range.max) < @backingInt(min_ver)) return false;
                 return null;
             }
         };
 
         pub fn parse(str: []const u8) !WindowsVersion {
             return std.meta.stringToEnum(WindowsVersion, str) orelse
-                @enumFromInt(std.fmt.parseInt(u32, str, 0) catch
-                    return error.InvalidOperatingSystemVersion);
+                @fromBackingInt(@intCast(std.fmt.parseInt(u32, str, 0) catch
+                    return error.InvalidOperatingSystemVersion));
         }
 
         /// This function is defined to serialize a Zig source code representation of this
@@ -1320,20 +1320,20 @@ pub const Cpu = struct {
                 pub fn featureSet(features: []const F) Set {
                     var x = Set.empty;
                     for (features) |feature| {
-                        x.addFeature(@intFromEnum(feature));
+                        x.addFeature(@backingInt(feature));
                     }
                     return x;
                 }
 
                 /// Returns true if the specified feature is enabled.
                 pub fn featureSetHas(set: Set, feature: F) bool {
-                    return set.isEnabled(@intFromEnum(feature));
+                    return set.isEnabled(@backingInt(feature));
                 }
 
                 /// Returns true if any specified feature is enabled.
                 pub fn featureSetHasAny(set: Set, features: anytype) bool {
                     inline for (features) |feature| {
-                        if (set.isEnabled(@intFromEnum(@as(F, feature)))) return true;
+                        if (set.isEnabled(@backingInt(@as(F, feature)))) return true;
                     }
                     return false;
                 }
@@ -1341,7 +1341,7 @@ pub const Cpu = struct {
                 /// Returns true if every specified feature is enabled.
                 pub fn featureSetHasAll(set: Set, features: anytype) bool {
                     inline for (features) |feature| {
-                        if (!set.isEnabled(@intFromEnum(@as(F, feature)))) return false;
+                        if (!set.isEnabled(@backingInt(@as(F, feature)))) return false;
                     }
                     return true;
                 }
@@ -2119,14 +2119,14 @@ pub const Cpu = struct {
     /// Returns true if `feature` is enabled.
     pub fn has(cpu: Cpu, comptime family: Arch.Family, feature: @field(Target, @tagName(family)).Feature) bool {
         if (family != cpu.arch.family()) return false;
-        return cpu.features.isEnabled(@intFromEnum(feature));
+        return cpu.features.isEnabled(@backingInt(feature));
     }
 
     /// Returns true if any feature in `features` is enabled.
     pub fn hasAny(cpu: Cpu, comptime family: Arch.Family, features: []const @field(Target, @tagName(family)).Feature) bool {
         if (family != cpu.arch.family()) return false;
         for (features) |feature| {
-            if (cpu.features.isEnabled(@intFromEnum(feature))) return true;
+            if (cpu.features.isEnabled(@backingInt(feature))) return true;
         }
         return false;
     }
@@ -2135,7 +2135,7 @@ pub const Cpu = struct {
     pub fn hasAll(cpu: Cpu, comptime family: Arch.Family, features: []const @field(Target, @tagName(family)).Feature) bool {
         if (family != cpu.arch.family()) return false;
         for (features) |feature| {
-            if (!cpu.features.isEnabled(@intFromEnum(feature))) return false;
+            if (!cpu.features.isEnabled(@backingInt(feature))) return false;
         }
         return true;
     }

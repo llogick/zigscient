@@ -5,7 +5,7 @@ pub const Bool = enum(c_int) {
     _,
 
     pub fn fromBool(b: bool) Bool {
-        return @as(Bool, @enumFromInt(@intFromBool(b)));
+        return @as(Bool, @fromBackingInt(@intCast(@intFromBool(b))));
     }
 
     pub fn toBool(b: Bool) bool {

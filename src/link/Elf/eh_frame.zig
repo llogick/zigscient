@@ -535,7 +535,7 @@ pub fn writeEhFrameHdr(elf_file: *Elf, writer: anytype) !void {
 
 const x86_64 = struct {
     fn resolveReloc(rec: anytype, elf_file: *Elf, rel: elf.Elf64_Rela, source: i64, target: i64, data: []u8) !void {
-        const r_type: elf.R_X86_64 = @enumFromInt(rel.r_type());
+        const r_type: elf.R_X86_64 = @fromBackingInt(@intCast(rel.r_type()));
         switch (r_type) {
             .NONE => {},
             .@"32" => std.mem.writeInt(i32, data[0..4], @as(i32, @truncate(target)), .little),
@@ -549,7 +549,7 @@ const x86_64 = struct {
 
 const aarch64 = struct {
     fn resolveReloc(rec: anytype, elf_file: *Elf, rel: elf.Elf64_Rela, source: i64, target: i64, data: []u8) !void {
-        const r_type: elf.R_AARCH64 = @enumFromInt(rel.r_type());
+        const r_type: elf.R_AARCH64 = @fromBackingInt(@intCast(rel.r_type()));
         switch (r_type) {
             .NONE => {},
             .ABS64 => std.mem.writeInt(i64, data[0..8], target, .little),
@@ -562,7 +562,7 @@ const aarch64 = struct {
 
 const riscv = struct {
     fn resolveReloc(rec: anytype, elf_file: *Elf, rel: elf.Elf64_Rela, source: i64, target: i64, data: []u8) !void {
-        const r_type: elf.R_RISCV = @enumFromInt(rel.r_type());
+        const r_type: elf.R_RISCV = @fromBackingInt(@intCast(rel.r_type()));
         switch (r_type) {
             .NONE => {},
             .@"32_PCREL" => std.mem.writeInt(i32, data[0..4], @as(i32, @intCast(target - source)), .little),

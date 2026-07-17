@@ -40,7 +40,7 @@ pub fn deinit(pool: *ConstPool, gpa: Allocator) void {
 pub const Index = enum(u32) {
     _,
     pub fn val(i: Index, pool: *const ConstPool) InternPool.Index {
-        return pool.values.keys()[@intFromEnum(i)];
+        return pool.values.keys()[@backingInt(i)];
     }
 };
 
@@ -107,15 +107,15 @@ const ContainerDepEntry = extern struct {
             fn unwrap(o: Optional) ?ContainerDepEntry.Index {
                 return switch (o) {
                     .none => null,
-                    else => @enumFromInt(@intFromEnum(o)),
+                    else => @fromBackingInt(@intCast(@backingInt(o))),
                 };
             }
         };
         fn toOptional(i: ContainerDepEntry.Index) Optional {
-            return @enumFromInt(@intFromEnum(i));
+            return @fromBackingInt(@intCast(@backingInt(i)));
         }
         fn ptr(i: ContainerDepEntry.Index, pool: *ConstPool) *ContainerDepEntry {
-            return &pool.container_dep_entries.items[@intFromEnum(i)];
+            return &pool.container_dep_entries.items[@backingInt(i)];
         }
     };
 };
@@ -148,7 +148,7 @@ pub fn get(pool: *ConstPool, pt: Zcu.PerThread, user: User, val: InternPool.Inde
     const ip = &zcu.intern_pool;
     const gpa = zcu.comp.gpa;
     const gop = try pool.values.getOrPut(gpa, val);
-    const index: ConstPool.Index = @enumFromInt(gop.index);
+    const index: ConstPool.Index = @fromBackingInt(@intCast(gop.index));
     if (!gop.found_existing) {
         const ty: Type = switch (ip.typeOf(val)) {
             .type_type => if (ip.isUndef(val)) .type else .fromInterned(val),
@@ -272,7 +272,7 @@ fn registerTypeDeps(pool: *ConstPool, root: Index, ty: Type, zcu: *const Zcu) Al
             errdefer comptime unreachable;
 
             const gop = pool.container_deps.getOrPutAssumeCapacity(ty.toIntern());
-            const entry: ContainerDepEntry.Index = @enumFromInt(pool.container_dep_entries.items.len);
+            const entry: ContainerDepEntry.Index = @fromBackingInt(@intCast(pool.container_dep_entries.items.len));
             pool.container_dep_entries.appendAssumeCapacity(.{
                 .next = if (gop.found_existing) gop.value_ptr.toOptional() else .none,
                 .depender = root,

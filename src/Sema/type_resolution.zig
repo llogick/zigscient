@@ -375,7 +375,7 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
         }
         struct_align = struct_align.maxStrict(field_align);
         if (struct_obj.layout == .auto) {
-            struct_obj.field_runtime_order.get(ip)[field_idx] = @enumFromInt(field_idx);
+            struct_obj.field_runtime_order.get(ip)[field_idx] = @fromBackingInt(@intCast(field_idx));
         }
         switch (field_ty.classify(zcu)) {
             .one_possible_value => {},
@@ -428,8 +428,8 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
                     assert(b != .unresolved);
                     if (a == .omitted) return false;
                     if (b == .omitted) return true;
-                    const a_align = ctx.aligns[@intFromEnum(a)];
-                    const b_align = ctx.aligns[@intFromEnum(b)];
+                    const a_align = ctx.aligns[@backingInt(a)];
+                    const b_align = ctx.aligns[@backingInt(b)];
                     return a_align.compare(.gt, b_align);
                 }
             };

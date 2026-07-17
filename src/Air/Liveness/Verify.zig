@@ -48,7 +48,7 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
             continue;
         }
 
-        switch (tags[@intFromEnum(inst)]) {
+        switch (tags[@backingInt(inst)]) {
             // no operands
             .arg,
             .alloc,
@@ -131,7 +131,7 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
             .c_va_copy,
             .abs,
             => {
-                const ty_op = data[@intFromEnum(inst)].ty_op;
+                const ty_op = data[@backingInt(inst)].ty_op;
                 try self.verifyInstOperands(inst, .{ ty_op.operand, .none, .none });
             },
             .is_null,
@@ -164,14 +164,14 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
             .set_err_return_trace,
             .c_va_end,
             => {
-                const un_op = data[@intFromEnum(inst)].un_op;
+                const un_op = data[@backingInt(inst)].un_op;
                 try self.verifyInstOperands(inst, .{ un_op, .none, .none });
             },
             .ret,
             .ret_safe,
             .ret_load,
             => {
-                const un_op = data[@intFromEnum(inst)].un_op;
+                const un_op = data[@backingInt(inst)].un_op;
                 try self.verifyInstOperands(inst, .{ un_op, .none, .none });
                 // This instruction terminates the function, so everything should be dead
                 if (self.live.count() > 0) return invalid("{f}: instructions still alive", .{inst});
@@ -181,36 +181,36 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
             .dbg_arg_inline,
             .wasm_memory_grow,
             => {
-                const pl_op = data[@intFromEnum(inst)].pl_op;
+                const pl_op = data[@backingInt(inst)].pl_op;
                 try self.verifyInstOperands(inst, .{ pl_op.operand, .none, .none });
             },
             .prefetch => {
-                const prefetch = data[@intFromEnum(inst)].prefetch;
+                const prefetch = data[@backingInt(inst)].prefetch;
                 try self.verifyInstOperands(inst, .{ prefetch.ptr, .none, .none });
             },
             .reduce,
             .reduce_optimized,
             => {
-                const reduce = data[@intFromEnum(inst)].reduce;
+                const reduce = data[@backingInt(inst)].reduce;
                 try self.verifyInstOperands(inst, .{ reduce.operand, .none, .none });
             },
             .union_init => {
-                const ty_pl = data[@intFromEnum(inst)].ty_pl;
+                const ty_pl = data[@backingInt(inst)].ty_pl;
                 const extra = self.air.extraData(Air.UnionInit, ty_pl.payload).data;
                 try self.verifyInstOperands(inst, .{ extra.init, .none, .none });
             },
             .struct_field_ptr, .agg_field_val, .spirv_runtime_array_len => {
-                const ty_pl = data[@intFromEnum(inst)].ty_pl;
+                const ty_pl = data[@backingInt(inst)].ty_pl;
                 const extra = self.air.extraData(Air.StructField, ty_pl.payload).data;
                 try self.verifyInstOperands(inst, .{ extra.struct_operand, .none, .none });
             },
             .field_parent_ptr => {
-                const ty_pl = data[@intFromEnum(inst)].ty_pl;
+                const ty_pl = data[@backingInt(inst)].ty_pl;
                 const extra = self.air.extraData(Air.FieldParentPtr, ty_pl.payload).data;
                 try self.verifyInstOperands(inst, .{ extra.field_ptr, .none, .none });
             },
             .atomic_load => {
-                const atomic_load = data[@intFromEnum(inst)].atomic_load;
+                const atomic_load = data[@backingInt(inst)].atomic_load;
                 try self.verifyInstOperands(inst, .{ atomic_load.ptr, .none, .none });
             },
 
@@ -282,7 +282,7 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
             .memmove,
             .legalize_vec_elem_val,
             => {
-                const bin_op = data[@intFromEnum(inst)].bin_op;
+                const bin_op = data[@backingInt(inst)].bin_op;
                 try self.verifyInstOperands(inst, .{ bin_op.lhs, bin_op.rhs, .none });
             },
             .add_with_overflow,
@@ -295,7 +295,7 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
             .slice_elem_ptr,
             .slice,
             => {
-                const ty_pl = data[@intFromEnum(inst)].ty_pl;
+                const ty_pl = data[@backingInt(inst)].ty_pl;
                 const extra = self.air.extraData(Air.Bin, ty_pl.payload).data;
                 try self.verifyInstOperands(inst, .{ extra.lhs, extra.rhs, .none });
             },
@@ -310,38 +310,38 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
             .cmp_vector,
             .cmp_vector_optimized,
             => {
-                const ty_pl = data[@intFromEnum(inst)].ty_pl;
+                const ty_pl = data[@backingInt(inst)].ty_pl;
                 const extra = self.air.extraData(Air.VectorCmp, ty_pl.payload).data;
                 try self.verifyInstOperands(inst, .{ extra.lhs, extra.rhs, .none });
             },
             .atomic_rmw => {
-                const pl_op = data[@intFromEnum(inst)].pl_op;
+                const pl_op = data[@backingInt(inst)].pl_op;
                 const extra = self.air.extraData(Air.AtomicRmw, pl_op.payload).data;
                 try self.verifyInstOperands(inst, .{ pl_op.operand, extra.operand, .none });
             },
 
             // ternary
             .select => {
-                const pl_op = data[@intFromEnum(inst)].pl_op;
+                const pl_op = data[@backingInt(inst)].pl_op;
                 const extra = self.air.extraData(Air.Bin, pl_op.payload).data;
                 try self.verifyInstOperands(inst, .{ pl_op.operand, extra.lhs, extra.rhs });
             },
             .mul_add => {
-                const pl_op = data[@intFromEnum(inst)].pl_op;
+                const pl_op = data[@backingInt(inst)].pl_op;
                 const extra = self.air.extraData(Air.Bin, pl_op.payload).data;
                 try self.verifyInstOperands(inst, .{ extra.lhs, extra.rhs, pl_op.operand });
             },
             .cmpxchg_strong,
             .cmpxchg_weak,
             => {
-                const ty_pl = data[@intFromEnum(inst)].ty_pl;
+                const ty_pl = data[@backingInt(inst)].ty_pl;
                 const extra = self.air.extraData(Air.Cmpxchg, ty_pl.payload).data;
                 try self.verifyInstOperands(inst, .{ extra.ptr, extra.expected_value, extra.new_value });
             },
 
             // big tombs
             .aggregate_init => {
-                const ty_pl = data[@intFromEnum(inst)].ty_pl;
+                const ty_pl = data[@backingInt(inst)].ty_pl;
                 const aggregate_ty = ty_pl.ty.toType();
                 const len = @as(usize, @intCast(aggregate_ty.arrayLenIp(ip)));
                 const elements = @as([]const Air.Inst.Ref, @ptrCast(self.air.extra.items[ty_pl.payload..][0..len]));
@@ -422,7 +422,7 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
                 try self.verifyInst(inst);
             },
             .br => {
-                const br = data[@intFromEnum(inst)].br;
+                const br = data[@backingInt(inst)].br;
                 const gop = try self.blocks.getOrPut(self.gpa, br.block_inst);
 
                 try self.verifyOperand(inst, br.operand, self.liveness.operandDies(inst, 0));
@@ -434,14 +434,14 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
                 try self.verifyInst(inst);
             },
             .repeat => {
-                const repeat = data[@intFromEnum(inst)].repeat;
+                const repeat = data[@backingInt(inst)].repeat;
                 const expected_live = self.loops.get(repeat.loop_inst) orelse
                     return invalid("{f}: loop {f} not in scope", .{ inst, repeat.loop_inst });
 
                 try self.verifyMatchingLiveness(repeat.loop_inst, expected_live);
             },
             .switch_dispatch => {
-                const br = data[@intFromEnum(inst)].br;
+                const br = data[@backingInt(inst)].br;
 
                 try self.verifyOperand(inst, br.operand, self.liveness.operandDies(inst, 0));
 
@@ -451,7 +451,7 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
                 try self.verifyMatchingLiveness(br.block_inst, expected_live);
             },
             .block, .dbg_inline_block => |tag| {
-                const ty_pl = data[@intFromEnum(inst)].ty_pl;
+                const ty_pl = data[@backingInt(inst)].ty_pl;
                 const block_ty = ty_pl.ty.toType();
                 const block_body = switch (tag) {
                     .block => self.air.unwrapBlock(inst).body,
@@ -570,7 +570,7 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
                 try self.verifyInst(inst);
             },
             .legalize_vec_store_elem => {
-                const pl_op = data[@intFromEnum(inst)].pl_op;
+                const pl_op = data[@backingInt(inst)].pl_op;
                 const bin = self.air.extraData(Air.Bin, pl_op.payload).data;
                 try self.verifyInstOperands(inst, .{ pl_op.operand, bin.lhs, bin.rhs });
             },

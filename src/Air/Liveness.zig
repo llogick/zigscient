@@ -188,23 +188,23 @@ pub fn analyze(zcu: *Zcu, air: Air, intern_pool: *InternPool) Allocator.Error!Li
 }
 
 pub fn getTombBits(l: Liveness, inst: Air.Inst.Index) Bpi {
-    const usize_index = (@intFromEnum(inst) * bpi) / @bitSizeOf(usize);
+    const usize_index = (@backingInt(inst) * bpi) / @bitSizeOf(usize);
     return @as(Bpi, @truncate(l.tomb_bits[usize_index] >>
-        @as(Log2Int(usize), @intCast((@intFromEnum(inst) % (@bitSizeOf(usize) / bpi)) * bpi))));
+        @as(Log2Int(usize), @intCast((@backingInt(inst) % (@bitSizeOf(usize) / bpi)) * bpi))));
 }
 
 pub fn isUnused(l: Liveness, inst: Air.Inst.Index) bool {
-    const usize_index = (@intFromEnum(inst) * bpi) / @bitSizeOf(usize);
+    const usize_index = (@backingInt(inst) * bpi) / @bitSizeOf(usize);
     const mask = @as(usize, 1) <<
-        @as(Log2Int(usize), @intCast((@intFromEnum(inst) % (@bitSizeOf(usize) / bpi)) * bpi + (bpi - 1)));
+        @as(Log2Int(usize), @intCast((@backingInt(inst) % (@bitSizeOf(usize) / bpi)) * bpi + (bpi - 1)));
     return (l.tomb_bits[usize_index] & mask) != 0;
 }
 
 pub fn operandDies(l: Liveness, inst: Air.Inst.Index, operand: OperandInt) bool {
     assert(operand < bpi - 1);
-    const usize_index = (@intFromEnum(inst) * bpi) / @bitSizeOf(usize);
+    const usize_index = (@backingInt(inst) * bpi) / @bitSizeOf(usize);
     const mask = @as(usize, 1) <<
-        @as(Log2Int(usize), @intCast((@intFromEnum(inst) % (@bitSizeOf(usize) / bpi)) * bpi + operand));
+        @as(Log2Int(usize), @intCast((@backingInt(inst) % (@bitSizeOf(usize) / bpi)) * bpi + operand));
     return (l.tomb_bits[usize_index] & mask) != 0;
 }
 
@@ -393,7 +393,7 @@ fn analyzeInst(
     const inst_tags = a.air.instructions.items(.tag);
     const inst_datas = a.air.instructions.items(.data);
 
-    switch (inst_tags[@intFromEnum(inst)]) {
+    switch (inst_tags[@backingInt(inst)]) {
         .add,
         .add_safe,
         .add_optimized,
@@ -461,7 +461,7 @@ fn analyzeInst(
         .memmove,
         .legalize_vec_elem_val,
         => {
-            const o = inst_datas[@intFromEnum(inst)].bin_op;
+            const o = inst_datas[@backingInt(inst)].bin_op;
             return analyzeOperands(a, pass, data, inst, .{ o.lhs, o.rhs, .none });
         },
 
@@ -543,7 +543,7 @@ fn analyzeInst(
         .c_va_copy,
         .abs,
         => {
-            const o = inst_datas[@intFromEnum(inst)].ty_op;
+            const o = inst_datas[@backingInt(inst)].ty_op;
             return analyzeOperands(a, pass, data, inst, .{ o.operand, .none, .none });
         },
 
@@ -577,7 +577,7 @@ fn analyzeInst(
         .set_err_return_trace,
         .c_va_end,
         => {
-            const operand = inst_datas[@intFromEnum(inst)].un_op;
+            const operand = inst_datas[@backingInt(inst)].un_op;
             return analyzeOperands(a, pass, data, inst, .{ operand, .none, .none });
         },
 
@@ -585,7 +585,7 @@ fn analyzeInst(
         .ret_safe,
         .ret_load,
         => {
-            const operand = inst_datas[@intFromEnum(inst)].un_op;
+            const operand = inst_datas[@backingInt(inst)].un_op;
             return analyzeFuncEnd(a, pass, data, inst, .{ operand, .none, .none });
         },
 
@@ -599,7 +599,7 @@ fn analyzeInst(
         .slice_elem_ptr,
         .slice,
         => {
-            const ty_pl = inst_datas[@intFromEnum(inst)].ty_pl;
+            const ty_pl = inst_datas[@backingInt(inst)].ty_pl;
             const extra = a.air.extraData(Air.Bin, ty_pl.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ extra.lhs, extra.rhs, .none });
         },
@@ -608,12 +608,12 @@ fn analyzeInst(
         .dbg_var_val,
         .dbg_arg_inline,
         => {
-            const operand = inst_datas[@intFromEnum(inst)].pl_op.operand;
+            const operand = inst_datas[@backingInt(inst)].pl_op.operand;
             return analyzeOperands(a, pass, data, inst, .{ operand, .none, .none });
         },
 
         .prefetch => {
-            const prefetch = inst_datas[@intFromEnum(inst)].prefetch;
+            const prefetch = inst_datas[@backingInt(inst)].prefetch;
             return analyzeOperands(a, pass, data, inst, .{ prefetch.ptr, .none, .none });
         },
 
@@ -638,7 +638,7 @@ fn analyzeInst(
             return big.finish();
         },
         .select => {
-            const pl_op = inst_datas[@intFromEnum(inst)].pl_op;
+            const pl_op = inst_datas[@backingInt(inst)].pl_op;
             const extra = a.air.extraData(Air.Bin, pl_op.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ pl_op.operand, extra.lhs, extra.rhs });
         },
@@ -651,15 +651,15 @@ fn analyzeInst(
             return analyzeOperands(a, pass, data, inst, .{ unwrapped.operand_a, unwrapped.operand_b, .none });
         },
         .reduce, .reduce_optimized => {
-            const reduce = inst_datas[@intFromEnum(inst)].reduce;
+            const reduce = inst_datas[@backingInt(inst)].reduce;
             return analyzeOperands(a, pass, data, inst, .{ reduce.operand, .none, .none });
         },
         .cmp_vector, .cmp_vector_optimized => {
-            const extra = a.air.extraData(Air.VectorCmp, inst_datas[@intFromEnum(inst)].ty_pl.payload).data;
+            const extra = a.air.extraData(Air.VectorCmp, inst_datas[@backingInt(inst)].ty_pl.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ extra.lhs, extra.rhs, .none });
         },
         .aggregate_init => {
-            const ty_pl = inst_datas[@intFromEnum(inst)].ty_pl;
+            const ty_pl = inst_datas[@backingInt(inst)].ty_pl;
             const aggregate_ty = ty_pl.ty.toType();
             const len = @as(usize, @intCast(aggregate_ty.arrayLenIp(ip)));
             const elements = @as([]const Air.Inst.Ref, @ptrCast(a.air.extra.items[ty_pl.payload..][0..len]));
@@ -680,32 +680,32 @@ fn analyzeInst(
             return big.finish();
         },
         .union_init => {
-            const extra = a.air.extraData(Air.UnionInit, inst_datas[@intFromEnum(inst)].ty_pl.payload).data;
+            const extra = a.air.extraData(Air.UnionInit, inst_datas[@backingInt(inst)].ty_pl.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ extra.init, .none, .none });
         },
         .struct_field_ptr, .agg_field_val, .spirv_runtime_array_len => {
-            const extra = a.air.extraData(Air.StructField, inst_datas[@intFromEnum(inst)].ty_pl.payload).data;
+            const extra = a.air.extraData(Air.StructField, inst_datas[@backingInt(inst)].ty_pl.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ extra.struct_operand, .none, .none });
         },
         .field_parent_ptr => {
-            const extra = a.air.extraData(Air.FieldParentPtr, inst_datas[@intFromEnum(inst)].ty_pl.payload).data;
+            const extra = a.air.extraData(Air.FieldParentPtr, inst_datas[@backingInt(inst)].ty_pl.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ extra.field_ptr, .none, .none });
         },
         .cmpxchg_strong, .cmpxchg_weak => {
-            const extra = a.air.extraData(Air.Cmpxchg, inst_datas[@intFromEnum(inst)].ty_pl.payload).data;
+            const extra = a.air.extraData(Air.Cmpxchg, inst_datas[@backingInt(inst)].ty_pl.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ extra.ptr, extra.expected_value, extra.new_value });
         },
         .mul_add => {
-            const pl_op = inst_datas[@intFromEnum(inst)].pl_op;
+            const pl_op = inst_datas[@backingInt(inst)].pl_op;
             const extra = a.air.extraData(Air.Bin, pl_op.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ extra.lhs, extra.rhs, pl_op.operand });
         },
         .atomic_load => {
-            const ptr = inst_datas[@intFromEnum(inst)].atomic_load.ptr;
+            const ptr = inst_datas[@backingInt(inst)].atomic_load.ptr;
             return analyzeOperands(a, pass, data, inst, .{ ptr, .none, .none });
         },
         .atomic_rmw => {
-            const pl_op = inst_datas[@intFromEnum(inst)].pl_op;
+            const pl_op = inst_datas[@backingInt(inst)].pl_op;
             const extra = a.air.extraData(Air.AtomicRmw, pl_op.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ pl_op.operand, extra.operand, .none });
         },
@@ -769,12 +769,12 @@ fn analyzeInst(
         .loop_switch_br => return analyzeInstSwitchBr(a, pass, data, inst, true),
 
         .wasm_memory_grow => {
-            const pl_op = inst_datas[@intFromEnum(inst)].pl_op;
+            const pl_op = inst_datas[@backingInt(inst)].pl_op;
             return analyzeOperands(a, pass, data, inst, .{ pl_op.operand, .none, .none });
         },
 
         .legalize_vec_store_elem => {
-            const pl_op = inst_datas[@intFromEnum(inst)].pl_op;
+            const pl_op = inst_datas[@backingInt(inst)].pl_op;
             const bin = a.air.extraData(Air.Bin, pl_op.payload).data;
             return analyzeOperands(a, pass, data, inst, .{ pl_op.operand, bin.lhs, bin.rhs });
         },
@@ -823,7 +823,7 @@ fn analyzeOperands(
         },
 
         .main_analysis => {
-            const usize_index = (@intFromEnum(inst) * bpi) / @bitSizeOf(usize);
+            const usize_index = (@backingInt(inst) * bpi) / @bitSizeOf(usize);
 
             // This logic must synchronize with `will_die_immediately` in `AnalyzeBigOperands.init`.
             const immediate_death = if (data.live_set.remove(inst)) blk: {
@@ -858,7 +858,7 @@ fn analyzeOperands(
             }
 
             a.tomb_bits[usize_index] |= @as(usize, tomb_bits) <<
-                @as(Log2Int(usize), @intCast((@intFromEnum(inst) % (@bitSizeOf(usize) / bpi)) * bpi));
+                @as(Log2Int(usize), @intCast((@backingInt(inst) % (@bitSizeOf(usize) / bpi)) * bpi));
         },
     }
 }
@@ -893,7 +893,7 @@ fn analyzeInstBr(
     inst: Air.Inst.Index,
 ) !void {
     const inst_datas = a.air.instructions.items(.data);
-    const br = inst_datas[@intFromEnum(inst)].br;
+    const br = inst_datas[@backingInt(inst)].br;
     const gpa = a.gpa;
 
     switch (pass) {
@@ -920,7 +920,7 @@ fn analyzeInstRepeat(
     inst: Air.Inst.Index,
 ) !void {
     const inst_datas = a.air.instructions.items(.data);
-    const repeat = inst_datas[@intFromEnum(inst)].repeat;
+    const repeat = inst_datas[@backingInt(inst)].repeat;
     const gpa = a.gpa;
 
     switch (pass) {
@@ -949,7 +949,7 @@ fn analyzeInstSwitchDispatch(
     // This happens to be identical to `analyzeInstBr`, but is separated anyway for clarity.
 
     const inst_datas = a.air.instructions.items(.data);
-    const br = inst_datas[@intFromEnum(inst)].br;
+    const br = inst_datas[@backingInt(inst)].br;
     const gpa = a.gpa;
 
     switch (pass) {
@@ -1023,7 +1023,7 @@ fn analyzeInstBlock(
                     const alive = key.*;
                     if (!block_scope.live_set.contains(alive)) {
                         // Dies in block
-                        a.extra.appendAssumeCapacity(@intFromEnum(alive));
+                        a.extra.appendAssumeCapacity(@backingInt(alive));
                         measured_num += 1;
                     }
                 }
@@ -1064,7 +1064,7 @@ fn writeLoopInfo(
     var it = data.breaks.keyIterator();
     while (it.next()) |key| {
         const block_inst = key.*;
-        a.extra.appendAssumeCapacity(@intFromEnum(block_inst));
+        a.extra.appendAssumeCapacity(@backingInt(block_inst));
     }
     log.debug("[{t}] {f}: includes breaks to {f}", .{ LivenessPass.loop_analysis, inst, fmtInstSet(&data.breaks) });
 
@@ -1076,7 +1076,7 @@ fn writeLoopInfo(
     it = data.live_set.keyIterator();
     while (it.next()) |key| {
         const alive = key.*;
-        a.extra.appendAssumeCapacity(@intFromEnum(alive));
+        a.extra.appendAssumeCapacity(@backingInt(alive));
     }
     log.debug("[{t}] {f}: maintain liveness of {f}", .{ LivenessPass.loop_analysis, inst, fmtInstSet(&data.live_set) });
 
@@ -1297,7 +1297,7 @@ fn analyzeInstSwitchBr(
     is_dispatch_loop: bool,
 ) !void {
     const inst_datas = a.air.instructions.items(.data);
-    const pl_op = inst_datas[@intFromEnum(inst)].pl_op;
+    const pl_op = inst_datas[@backingInt(inst)].pl_op;
     const condition = pl_op.operand;
     const switch_br = a.air.unwrapSwitch(inst);
     const gpa = a.gpa;

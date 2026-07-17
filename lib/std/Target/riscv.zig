@@ -364,17 +364,17 @@ pub const all_features = blk: {
     const len = @typeInfo(Feature).@"enum".field_names.len;
     std.debug.assert(len <= CpuFeature.Set.needed_bit_count);
     var result: [len]CpuFeature = undefined;
-    result[@intFromEnum(Feature.@"32bit")] = .{
+    result[@backingInt(Feature.@"32bit")] = .{
         .llvm_name = "32bit",
         .description = "Implements RV32",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.@"64bit")] = .{
+    result[@backingInt(Feature.@"64bit")] = .{
         .llvm_name = "64bit",
         .description = "Implements RV64",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.a)] = .{
+    result[@backingInt(Feature.a)] = .{
         .llvm_name = "a",
         .description = "'A' (Atomic Instructions)",
         .dependencies = featureSet(&[_]Feature{
@@ -382,32 +382,32 @@ pub const all_features = blk: {
             .zalrsc,
         }),
     };
-    result[@intFromEnum(Feature.add_load_fusion)] = .{
+    result[@backingInt(Feature.add_load_fusion)] = .{
         .llvm_name = "add-load-fusion",
         .description = "Enable ADD(.UW) + load macrofusion",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.addi_load_fusion)] = .{
+    result[@backingInt(Feature.addi_load_fusion)] = .{
         .llvm_name = "addi-load-fusion",
         .description = "Enable ADDI + load macrofusion",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.andes45)] = .{
+    result[@backingInt(Feature.andes45)] = .{
         .llvm_name = "andes45",
         .description = "Andes 45-Series processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.auipc_addi_fusion)] = .{
+    result[@backingInt(Feature.auipc_addi_fusion)] = .{
         .llvm_name = "auipc-addi-fusion",
         .description = "Enable AUIPC+ADDI macrofusion",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.auipc_load_fusion)] = .{
+    result[@backingInt(Feature.auipc_load_fusion)] = .{
         .llvm_name = "auipc-load-fusion",
         .description = "Enable AUIPC + load macrofusion",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.b)] = .{
+    result[@backingInt(Feature.b)] = .{
         .llvm_name = "b",
         .description = "'B' (the collection of the Zba, Zbb, Zbs extensions)",
         .dependencies = featureSet(&[_]Feature{
@@ -416,86 +416,86 @@ pub const all_features = blk: {
             .zbs,
         }),
     };
-    result[@intFromEnum(Feature.bfext_fusion)] = .{
+    result[@backingInt(Feature.bfext_fusion)] = .{
         .llvm_name = "bfext-fusion",
         .description = "Enable SLLI+SRLI (bitfield extract) macrofusion",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.c)] = .{
+    result[@backingInt(Feature.c)] = .{
         .llvm_name = "c",
         .description = "'C' (Compressed Instructions)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.conditional_cmv_fusion)] = .{
+    result[@backingInt(Feature.conditional_cmv_fusion)] = .{
         .llvm_name = "conditional-cmv-fusion",
         .description = "Enable branch+c.mv fusion",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.d)] = .{
+    result[@backingInt(Feature.d)] = .{
         .llvm_name = "d",
         .description = "'D' (Double-Precision Floating-Point)",
         .dependencies = featureSet(&[_]Feature{
             .f,
         }),
     };
-    result[@intFromEnum(Feature.disable_latency_sched_heuristic)] = .{
+    result[@backingInt(Feature.disable_latency_sched_heuristic)] = .{
         .llvm_name = "disable-latency-sched-heuristic",
         .description = "Disable latency scheduling heuristic",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.disable_misched_load_clustering)] = .{
+    result[@backingInt(Feature.disable_misched_load_clustering)] = .{
         .llvm_name = "disable-misched-load-clustering",
         .description = "Disable load clustering in the machine scheduler",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.disable_misched_store_clustering)] = .{
+    result[@backingInt(Feature.disable_misched_store_clustering)] = .{
         .llvm_name = "disable-misched-store-clustering",
         .description = "Disable store clustering in the machine scheduler",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.disable_postmisched_load_clustering)] = .{
+    result[@backingInt(Feature.disable_postmisched_load_clustering)] = .{
         .llvm_name = "disable-postmisched-load-clustering",
         .description = "Disable PostRA load clustering in the machine scheduler",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.disable_postmisched_store_clustering)] = .{
+    result[@backingInt(Feature.disable_postmisched_store_clustering)] = .{
         .llvm_name = "disable-postmisched-store-clustering",
         .description = "Disable PostRA store clustering in the machine scheduler",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.dlen_factor_2)] = .{
+    result[@backingInt(Feature.dlen_factor_2)] = .{
         .llvm_name = "dlen-factor-2",
         .description = "Vector unit DLEN(data path width) is half of VLEN",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.e)] = .{
+    result[@backingInt(Feature.e)] = .{
         .llvm_name = "e",
         .description = "'E' (Embedded Instruction Set with 16 GPRs)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.enable_vsetvli_sched_heuristic)] = .{
+    result[@backingInt(Feature.enable_vsetvli_sched_heuristic)] = .{
         .llvm_name = "enable-vsetvli-sched-heuristic",
         .description = "Enable vsetvli-based scheduling heuristic",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.exact_asm)] = .{
+    result[@backingInt(Feature.exact_asm)] = .{
         .llvm_name = "exact-asm",
         .description = "Enable Exact Assembly (Disables Compression and Relaxation)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.experimental)] = .{
+    result[@backingInt(Feature.experimental)] = .{
         .llvm_name = "experimental",
         .description = "Experimental intrinsics",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.experimental_p)] = .{
+    result[@backingInt(Feature.experimental_p)] = .{
         .llvm_name = "experimental-p",
         .description = "'P' ('Base P' (Packed SIMD))",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.experimental_rvm23u32)] = .{
+    result[@backingInt(Feature.experimental_rvm23u32)] = .{
         .llvm_name = "experimental-rvm23u32",
         .description = "RISC-V experimental-rvm23u32 profile",
         .dependencies = featureSet(&[_]Feature{
@@ -512,49 +512,49 @@ pub const all_features = blk: {
             .zimop,
         }),
     };
-    result[@intFromEnum(Feature.experimental_smpmpmt)] = .{
+    result[@backingInt(Feature.experimental_smpmpmt)] = .{
         .llvm_name = "experimental-smpmpmt",
         .description = "'Smpmpmt' (PMP-based Memory Types Extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.experimental_svukte)] = .{
+    result[@backingInt(Feature.experimental_svukte)] = .{
         .llvm_name = "experimental-svukte",
         .description = "'Svukte' (Address-Independent Latency of User-Mode Faults to Supervisor Addresses)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.experimental_xrivosvisni)] = .{
+    result[@backingInt(Feature.experimental_xrivosvisni)] = .{
         .llvm_name = "experimental-xrivosvisni",
         .description = "'XRivosVisni' (Rivos Vector Integer Small New)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.experimental_xrivosvizip)] = .{
+    result[@backingInt(Feature.experimental_xrivosvizip)] = .{
         .llvm_name = "experimental-xrivosvizip",
         .description = "'XRivosVizip' (Rivos Vector Register Zips)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.experimental_xsfmclic)] = .{
+    result[@backingInt(Feature.experimental_xsfmclic)] = .{
         .llvm_name = "experimental-xsfmclic",
         .description = "'XSfmclic' (SiFive CLIC Machine-mode CSRs)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.experimental_xsfsclic)] = .{
+    result[@backingInt(Feature.experimental_xsfsclic)] = .{
         .llvm_name = "experimental-xsfsclic",
         .description = "'XSfsclic' (SiFive CLIC Supervisor-mode CSRs)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.experimental_zibi)] = .{
+    result[@backingInt(Feature.experimental_zibi)] = .{
         .llvm_name = "experimental-zibi",
         .description = "'Zibi' (Branch with Immediate)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.experimental_zicfilp)] = .{
+    result[@backingInt(Feature.experimental_zicfilp)] = .{
         .llvm_name = "experimental-zicfilp",
         .description = "'Zicfilp' (Landing pad)",
         .dependencies = featureSet(&[_]Feature{
             .zicsr,
         }),
     };
-    result[@intFromEnum(Feature.experimental_zicfiss)] = .{
+    result[@backingInt(Feature.experimental_zicfiss)] = .{
         .llvm_name = "experimental-zicfiss",
         .description = "'Zicfiss' (Shadow stack)",
         .dependencies = featureSet(&[_]Feature{
@@ -562,14 +562,14 @@ pub const all_features = blk: {
             .zimop,
         }),
     };
-    result[@intFromEnum(Feature.experimental_zvbc32e)] = .{
+    result[@backingInt(Feature.experimental_zvbc32e)] = .{
         .llvm_name = "experimental-zvbc32e",
         .description = "'Zvbc32e' (Vector Carryless Multiplication with 32-bits elements)",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.experimental_zvfbfa)] = .{
+    result[@backingInt(Feature.experimental_zvfbfa)] = .{
         .llvm_name = "experimental-zvfbfa",
         .description = "'Zvfbfa' (Additional BF16 vector compute support)",
         .dependencies = featureSet(&[_]Feature{
@@ -577,324 +577,324 @@ pub const all_features = blk: {
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.experimental_zvfofp8min)] = .{
+    result[@backingInt(Feature.experimental_zvfofp8min)] = .{
         .llvm_name = "experimental-zvfofp8min",
         .description = "'Zvfofp8min' (Vector OFP8 Converts)",
         .dependencies = featureSet(&[_]Feature{
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.experimental_zvkgs)] = .{
+    result[@backingInt(Feature.experimental_zvkgs)] = .{
         .llvm_name = "experimental-zvkgs",
         .description = "'Zvkgs' (Vector-Scalar GCM instructions for Cryptography)",
         .dependencies = featureSet(&[_]Feature{
             .zvkg,
         }),
     };
-    result[@intFromEnum(Feature.experimental_zvqdotq)] = .{
+    result[@backingInt(Feature.experimental_zvqdotq)] = .{
         .llvm_name = "experimental-zvqdotq",
         .description = "'Zvqdotq' (Vector quad widening 4D Dot Product)",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.f)] = .{
+    result[@backingInt(Feature.f)] = .{
         .llvm_name = "f",
         .description = "'F' (Single-Precision Floating-Point)",
         .dependencies = featureSet(&[_]Feature{
             .zicsr,
         }),
     };
-    result[@intFromEnum(Feature.forced_atomics)] = .{
+    result[@backingInt(Feature.forced_atomics)] = .{
         .llvm_name = "forced-atomics",
         .description = "Assume that lock-free native-width atomics are available",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.h)] = .{
+    result[@backingInt(Feature.h)] = .{
         .llvm_name = "h",
         .description = "'H' (Hypervisor)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.i)] = .{
+    result[@backingInt(Feature.i)] = .{
         .llvm_name = "i",
         .description = "'I' (Base Integer Instruction Set)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ld_add_fusion)] = .{
+    result[@backingInt(Feature.ld_add_fusion)] = .{
         .llvm_name = "ld-add-fusion",
         .description = "Enable LD+ADD macrofusion",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.log_vrgather)] = .{
+    result[@backingInt(Feature.log_vrgather)] = .{
         .llvm_name = "log-vrgather",
         .description = "Has vrgather.vv with LMUL*log2(LMUL) latency",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.lui_addi_fusion)] = .{
+    result[@backingInt(Feature.lui_addi_fusion)] = .{
         .llvm_name = "lui-addi-fusion",
         .description = "Enable LUI+ADDI macro fusion",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.lui_load_fusion)] = .{
+    result[@backingInt(Feature.lui_load_fusion)] = .{
         .llvm_name = "lui-load-fusion",
         .description = "Enable LUI + load macrofusion",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.m)] = .{
+    result[@backingInt(Feature.m)] = .{
         .llvm_name = "m",
         .description = "'M' (Integer Multiplication and Division)",
         .dependencies = featureSet(&[_]Feature{
             .zmmul,
         }),
     };
-    result[@intFromEnum(Feature.mips_p8700)] = .{
+    result[@backingInt(Feature.mips_p8700)] = .{
         .llvm_name = "mips-p8700",
         .description = "MIPS p8700 processor",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.no_default_unroll)] = .{
+    result[@backingInt(Feature.no_default_unroll)] = .{
         .llvm_name = "no-default-unroll",
         .description = "Disable default unroll preference.",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.no_sink_splat_operands)] = .{
+    result[@backingInt(Feature.no_sink_splat_operands)] = .{
         .llvm_name = "no-sink-splat-operands",
         .description = "Disable sink splat operands to enable .vx, .vf,.wx, and .wf instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.no_trailing_seq_cst_fence)] = .{
+    result[@backingInt(Feature.no_trailing_seq_cst_fence)] = .{
         .llvm_name = "no-trailing-seq-cst-fence",
         .description = "Disable trailing fence for seq-cst store.",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.optimized_nf2_segment_load_store)] = .{
+    result[@backingInt(Feature.optimized_nf2_segment_load_store)] = .{
         .llvm_name = "optimized-nf2-segment-load-store",
         .description = "vlseg2eN.v and vsseg2eN.v are implemented as a wide memory op and shuffle",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.optimized_nf3_segment_load_store)] = .{
+    result[@backingInt(Feature.optimized_nf3_segment_load_store)] = .{
         .llvm_name = "optimized-nf3-segment-load-store",
         .description = "vlseg3eN.v and vsseg3eN.v are implemented as a wide memory op and shuffle",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.optimized_nf4_segment_load_store)] = .{
+    result[@backingInt(Feature.optimized_nf4_segment_load_store)] = .{
         .llvm_name = "optimized-nf4-segment-load-store",
         .description = "vlseg4eN.v and vsseg4eN.v are implemented as a wide memory op and shuffle",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.optimized_nf5_segment_load_store)] = .{
+    result[@backingInt(Feature.optimized_nf5_segment_load_store)] = .{
         .llvm_name = "optimized-nf5-segment-load-store",
         .description = "vlseg5eN.v and vsseg5eN.v are implemented as a wide memory op and shuffle",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.optimized_nf6_segment_load_store)] = .{
+    result[@backingInt(Feature.optimized_nf6_segment_load_store)] = .{
         .llvm_name = "optimized-nf6-segment-load-store",
         .description = "vlseg6eN.v and vsseg6eN.v are implemented as a wide memory op and shuffle",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.optimized_nf7_segment_load_store)] = .{
+    result[@backingInt(Feature.optimized_nf7_segment_load_store)] = .{
         .llvm_name = "optimized-nf7-segment-load-store",
         .description = "vlseg7eN.v and vsseg7eN.v are implemented as a wide memory op and shuffle",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.optimized_nf8_segment_load_store)] = .{
+    result[@backingInt(Feature.optimized_nf8_segment_load_store)] = .{
         .llvm_name = "optimized-nf8-segment-load-store",
         .description = "vlseg8eN.v and vsseg8eN.v are implemented as a wide memory op and shuffle",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.optimized_zero_stride_load)] = .{
+    result[@backingInt(Feature.optimized_zero_stride_load)] = .{
         .llvm_name = "optimized-zero-stride-load",
         .description = "Optimized (perform fewer memory operations)zero-stride vector load",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.permissive_zalrsc)] = .{
+    result[@backingInt(Feature.permissive_zalrsc)] = .{
         .llvm_name = "permissive-zalrsc",
         .description = "Implementation permits non-base instructions between LR/SC pairs",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.predictable_select_expensive)] = .{
+    result[@backingInt(Feature.predictable_select_expensive)] = .{
         .llvm_name = "predictable-select-expensive",
         .description = "Prefer likely predicted branches over selects",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.prefer_vsetvli_over_read_vlenb)] = .{
+    result[@backingInt(Feature.prefer_vsetvli_over_read_vlenb)] = .{
         .llvm_name = "prefer-vsetvli-over-read-vlenb",
         .description = "Prefer vsetvli over read vlenb CSR to calculate VLEN",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.prefer_w_inst)] = .{
+    result[@backingInt(Feature.prefer_w_inst)] = .{
         .llvm_name = "prefer-w-inst",
         .description = "Prefer instructions with W suffix",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.q)] = .{
+    result[@backingInt(Feature.q)] = .{
         .llvm_name = "q",
         .description = "'Q' (Quad-Precision Floating-Point)",
         .dependencies = featureSet(&[_]Feature{
             .d,
         }),
     };
-    result[@intFromEnum(Feature.relax)] = .{
+    result[@backingInt(Feature.relax)] = .{
         .llvm_name = "relax",
         .description = "Enable Linker relaxation.",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x1)] = .{
+    result[@backingInt(Feature.reserve_x1)] = .{
         .llvm_name = "reserve-x1",
         .description = "Reserve X1",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x10)] = .{
+    result[@backingInt(Feature.reserve_x10)] = .{
         .llvm_name = "reserve-x10",
         .description = "Reserve X10",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x11)] = .{
+    result[@backingInt(Feature.reserve_x11)] = .{
         .llvm_name = "reserve-x11",
         .description = "Reserve X11",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x12)] = .{
+    result[@backingInt(Feature.reserve_x12)] = .{
         .llvm_name = "reserve-x12",
         .description = "Reserve X12",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x13)] = .{
+    result[@backingInt(Feature.reserve_x13)] = .{
         .llvm_name = "reserve-x13",
         .description = "Reserve X13",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x14)] = .{
+    result[@backingInt(Feature.reserve_x14)] = .{
         .llvm_name = "reserve-x14",
         .description = "Reserve X14",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x15)] = .{
+    result[@backingInt(Feature.reserve_x15)] = .{
         .llvm_name = "reserve-x15",
         .description = "Reserve X15",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x16)] = .{
+    result[@backingInt(Feature.reserve_x16)] = .{
         .llvm_name = "reserve-x16",
         .description = "Reserve X16",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x17)] = .{
+    result[@backingInt(Feature.reserve_x17)] = .{
         .llvm_name = "reserve-x17",
         .description = "Reserve X17",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x18)] = .{
+    result[@backingInt(Feature.reserve_x18)] = .{
         .llvm_name = "reserve-x18",
         .description = "Reserve X18",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x19)] = .{
+    result[@backingInt(Feature.reserve_x19)] = .{
         .llvm_name = "reserve-x19",
         .description = "Reserve X19",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x2)] = .{
+    result[@backingInt(Feature.reserve_x2)] = .{
         .llvm_name = "reserve-x2",
         .description = "Reserve X2",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x20)] = .{
+    result[@backingInt(Feature.reserve_x20)] = .{
         .llvm_name = "reserve-x20",
         .description = "Reserve X20",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x21)] = .{
+    result[@backingInt(Feature.reserve_x21)] = .{
         .llvm_name = "reserve-x21",
         .description = "Reserve X21",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x22)] = .{
+    result[@backingInt(Feature.reserve_x22)] = .{
         .llvm_name = "reserve-x22",
         .description = "Reserve X22",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x23)] = .{
+    result[@backingInt(Feature.reserve_x23)] = .{
         .llvm_name = "reserve-x23",
         .description = "Reserve X23",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x24)] = .{
+    result[@backingInt(Feature.reserve_x24)] = .{
         .llvm_name = "reserve-x24",
         .description = "Reserve X24",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x25)] = .{
+    result[@backingInt(Feature.reserve_x25)] = .{
         .llvm_name = "reserve-x25",
         .description = "Reserve X25",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x26)] = .{
+    result[@backingInt(Feature.reserve_x26)] = .{
         .llvm_name = "reserve-x26",
         .description = "Reserve X26",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x27)] = .{
+    result[@backingInt(Feature.reserve_x27)] = .{
         .llvm_name = "reserve-x27",
         .description = "Reserve X27",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x28)] = .{
+    result[@backingInt(Feature.reserve_x28)] = .{
         .llvm_name = "reserve-x28",
         .description = "Reserve X28",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x29)] = .{
+    result[@backingInt(Feature.reserve_x29)] = .{
         .llvm_name = "reserve-x29",
         .description = "Reserve X29",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x3)] = .{
+    result[@backingInt(Feature.reserve_x3)] = .{
         .llvm_name = "reserve-x3",
         .description = "Reserve X3",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x30)] = .{
+    result[@backingInt(Feature.reserve_x30)] = .{
         .llvm_name = "reserve-x30",
         .description = "Reserve X30",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x31)] = .{
+    result[@backingInt(Feature.reserve_x31)] = .{
         .llvm_name = "reserve-x31",
         .description = "Reserve X31",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x4)] = .{
+    result[@backingInt(Feature.reserve_x4)] = .{
         .llvm_name = "reserve-x4",
         .description = "Reserve X4",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x5)] = .{
+    result[@backingInt(Feature.reserve_x5)] = .{
         .llvm_name = "reserve-x5",
         .description = "Reserve X5",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x6)] = .{
+    result[@backingInt(Feature.reserve_x6)] = .{
         .llvm_name = "reserve-x6",
         .description = "Reserve X6",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x7)] = .{
+    result[@backingInt(Feature.reserve_x7)] = .{
         .llvm_name = "reserve-x7",
         .description = "Reserve X7",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x8)] = .{
+    result[@backingInt(Feature.reserve_x8)] = .{
         .llvm_name = "reserve-x8",
         .description = "Reserve X8",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.reserve_x9)] = .{
+    result[@backingInt(Feature.reserve_x9)] = .{
         .llvm_name = "reserve-x9",
         .description = "Reserve X9",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.rva20s64)] = .{
+    result[@backingInt(Feature.rva20s64)] = .{
         .llvm_name = "rva20s64",
         .description = "RISC-V rva20s64 profile",
         .dependencies = featureSet(&[_]Feature{
@@ -918,7 +918,7 @@ pub const all_features = blk: {
             .zifencei,
         }),
     };
-    result[@intFromEnum(Feature.rva20u64)] = .{
+    result[@backingInt(Feature.rva20u64)] = .{
         .llvm_name = "rva20u64",
         .description = "RISC-V rva20u64 profile",
         .dependencies = featureSet(&[_]Feature{
@@ -936,7 +936,7 @@ pub const all_features = blk: {
             .zicntr,
         }),
     };
-    result[@intFromEnum(Feature.rva22s64)] = .{
+    result[@backingInt(Feature.rva22s64)] = .{
         .llvm_name = "rva22s64",
         .description = "RISC-V rva22s64 profile",
         .dependencies = featureSet(&[_]Feature{
@@ -972,7 +972,7 @@ pub const all_features = blk: {
             .zkt,
         }),
     };
-    result[@intFromEnum(Feature.rva22u64)] = .{
+    result[@backingInt(Feature.rva22u64)] = .{
         .llvm_name = "rva22u64",
         .description = "RISC-V rva22u64 profile",
         .dependencies = featureSet(&[_]Feature{
@@ -999,7 +999,7 @@ pub const all_features = blk: {
             .zkt,
         }),
     };
-    result[@intFromEnum(Feature.rva23s64)] = .{
+    result[@backingInt(Feature.rva23s64)] = .{
         .llvm_name = "rva23s64",
         .description = "RISC-V rva23s64 profile",
         .dependencies = featureSet(&[_]Feature{
@@ -1052,7 +1052,7 @@ pub const all_features = blk: {
             .zvkt,
         }),
     };
-    result[@intFromEnum(Feature.rva23u64)] = .{
+    result[@backingInt(Feature.rva23u64)] = .{
         .llvm_name = "rva23u64",
         .description = "RISC-V rva23u64 profile",
         .dependencies = featureSet(&[_]Feature{
@@ -1090,7 +1090,7 @@ pub const all_features = blk: {
             .zvkt,
         }),
     };
-    result[@intFromEnum(Feature.rvb23s64)] = .{
+    result[@backingInt(Feature.rvb23s64)] = .{
         .llvm_name = "rvb23s64",
         .description = "RISC-V rvb23s64 profile",
         .dependencies = featureSet(&[_]Feature{
@@ -1136,7 +1136,7 @@ pub const all_features = blk: {
             .zkt,
         }),
     };
-    result[@intFromEnum(Feature.rvb23u64)] = .{
+    result[@backingInt(Feature.rvb23u64)] = .{
         .llvm_name = "rvb23u64",
         .description = "RISC-V rvb23u64 profile",
         .dependencies = featureSet(&[_]Feature{
@@ -1169,7 +1169,7 @@ pub const all_features = blk: {
             .zkt,
         }),
     };
-    result[@intFromEnum(Feature.rvi20u32)] = .{
+    result[@backingInt(Feature.rvi20u32)] = .{
         .llvm_name = "rvi20u32",
         .description = "RISC-V rvi20u32 profile",
         .dependencies = featureSet(&[_]Feature{
@@ -1177,7 +1177,7 @@ pub const all_features = blk: {
             .i,
         }),
     };
-    result[@intFromEnum(Feature.rvi20u64)] = .{
+    result[@backingInt(Feature.rvi20u64)] = .{
         .llvm_name = "rvi20u64",
         .description = "RISC-V rvi20u64 profile",
         .dependencies = featureSet(&[_]Feature{
@@ -1185,22 +1185,22 @@ pub const all_features = blk: {
             .i,
         }),
     };
-    result[@intFromEnum(Feature.save_restore)] = .{
+    result[@backingInt(Feature.save_restore)] = .{
         .llvm_name = "save-restore",
         .description = "Enable save/restore.",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.sdext)] = .{
+    result[@backingInt(Feature.sdext)] = .{
         .llvm_name = "sdext",
         .description = "'Sdext' (External debugger)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.sdtrig)] = .{
+    result[@backingInt(Feature.sdtrig)] = .{
         .llvm_name = "sdtrig",
         .description = "'Sdtrig' (Debugger triggers)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.sha)] = .{
+    result[@backingInt(Feature.sha)] = .{
         .llvm_name = "sha",
         .description = "'Sha' (Augmented Hypervisor)",
         .dependencies = featureSet(&[_]Feature{
@@ -1214,291 +1214,291 @@ pub const all_features = blk: {
             .ssstateen,
         }),
     };
-    result[@intFromEnum(Feature.shcounterenw)] = .{
+    result[@backingInt(Feature.shcounterenw)] = .{
         .llvm_name = "shcounterenw",
         .description = "'Shcounterenw' (Support writeable hcounteren enable bit for any hpmcounter that is not read-only zero)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.shgatpa)] = .{
+    result[@backingInt(Feature.shgatpa)] = .{
         .llvm_name = "shgatpa",
         .description = "'Shgatpa' (SvNNx4 mode supported for all modes supported by satp, as well as Bare)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.shifted_zextw_fusion)] = .{
+    result[@backingInt(Feature.shifted_zextw_fusion)] = .{
         .llvm_name = "shifted-zextw-fusion",
         .description = "Enable SLLI+SRLI to be fused when computing (shifted) word zero extension",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.shlcofideleg)] = .{
+    result[@backingInt(Feature.shlcofideleg)] = .{
         .llvm_name = "shlcofideleg",
         .description = "'Shlcofideleg' (Delegating LCOFI Interrupts to VS-mode)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.short_forward_branch_ialu)] = .{
+    result[@backingInt(Feature.short_forward_branch_ialu)] = .{
         .llvm_name = "short-forward-branch-ialu",
         .description = "Enable short forward branch optimization for RVI base instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.short_forward_branch_iload)] = .{
+    result[@backingInt(Feature.short_forward_branch_iload)] = .{
         .llvm_name = "short-forward-branch-iload",
         .description = "Enable short forward branch optimization for load instructions",
         .dependencies = featureSet(&[_]Feature{
             .short_forward_branch_ialu,
         }),
     };
-    result[@intFromEnum(Feature.short_forward_branch_iminmax)] = .{
+    result[@backingInt(Feature.short_forward_branch_iminmax)] = .{
         .llvm_name = "short-forward-branch-iminmax",
         .description = "Enable short forward branch optimization for MIN,MAX instructions in Zbb",
         .dependencies = featureSet(&[_]Feature{
             .short_forward_branch_ialu,
         }),
     };
-    result[@intFromEnum(Feature.short_forward_branch_imul)] = .{
+    result[@backingInt(Feature.short_forward_branch_imul)] = .{
         .llvm_name = "short-forward-branch-imul",
         .description = "Enable short forward branch optimization for MUL instruction",
         .dependencies = featureSet(&[_]Feature{
             .short_forward_branch_ialu,
         }),
     };
-    result[@intFromEnum(Feature.shtvala)] = .{
+    result[@backingInt(Feature.shtvala)] = .{
         .llvm_name = "shtvala",
         .description = "'Shtvala' (htval provides all needed values)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.shvsatpa)] = .{
+    result[@backingInt(Feature.shvsatpa)] = .{
         .llvm_name = "shvsatpa",
         .description = "'Shvsatpa' (vsatp supports all modes supported by satp)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.shvstvala)] = .{
+    result[@backingInt(Feature.shvstvala)] = .{
         .llvm_name = "shvstvala",
         .description = "'Shvstvala' (vstval provides all needed values)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.shvstvecd)] = .{
+    result[@backingInt(Feature.shvstvecd)] = .{
         .llvm_name = "shvstvecd",
         .description = "'Shvstvecd' (vstvec supports Direct mode)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.shxadd_load_fusion)] = .{
+    result[@backingInt(Feature.shxadd_load_fusion)] = .{
         .llvm_name = "shxadd-load-fusion",
         .description = "Enable SH(1|2|3)ADD(.UW) + load macrofusion",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.single_element_vec_fp64)] = .{
+    result[@backingInt(Feature.single_element_vec_fp64)] = .{
         .llvm_name = "single-element-vec-fp64",
         .description = "Certain vector FP64 operations produce a single result element per cycle",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.smaia)] = .{
+    result[@backingInt(Feature.smaia)] = .{
         .llvm_name = "smaia",
         .description = "'Smaia' (Advanced Interrupt Architecture Machine Level)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.smcdeleg)] = .{
+    result[@backingInt(Feature.smcdeleg)] = .{
         .llvm_name = "smcdeleg",
         .description = "'Smcdeleg' (Counter Delegation Machine Level)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.smcntrpmf)] = .{
+    result[@backingInt(Feature.smcntrpmf)] = .{
         .llvm_name = "smcntrpmf",
         .description = "'Smcntrpmf' (Cycle and Instret Privilege Mode Filtering)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.smcsrind)] = .{
+    result[@backingInt(Feature.smcsrind)] = .{
         .llvm_name = "smcsrind",
         .description = "'Smcsrind' (Indirect CSR Access Machine Level)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.smctr)] = .{
+    result[@backingInt(Feature.smctr)] = .{
         .llvm_name = "smctr",
         .description = "'Smctr' (Control Transfer Records Machine Level)",
         .dependencies = featureSet(&[_]Feature{
             .sscsrind,
         }),
     };
-    result[@intFromEnum(Feature.smdbltrp)] = .{
+    result[@backingInt(Feature.smdbltrp)] = .{
         .llvm_name = "smdbltrp",
         .description = "'Smdbltrp' (Double Trap Machine Level)",
         .dependencies = featureSet(&[_]Feature{
             .zicsr,
         }),
     };
-    result[@intFromEnum(Feature.smepmp)] = .{
+    result[@backingInt(Feature.smepmp)] = .{
         .llvm_name = "smepmp",
         .description = "'Smepmp' (Enhanced Physical Memory Protection)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.smmpm)] = .{
+    result[@backingInt(Feature.smmpm)] = .{
         .llvm_name = "smmpm",
         .description = "'Smmpm' (Machine-level Pointer Masking for M-mode)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.smnpm)] = .{
+    result[@backingInt(Feature.smnpm)] = .{
         .llvm_name = "smnpm",
         .description = "'Smnpm' (Machine-level Pointer Masking for next lower privilege mode)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.smrnmi)] = .{
+    result[@backingInt(Feature.smrnmi)] = .{
         .llvm_name = "smrnmi",
         .description = "'Smrnmi' (Resumable Non-Maskable Interrupts)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.smstateen)] = .{
+    result[@backingInt(Feature.smstateen)] = .{
         .llvm_name = "smstateen",
         .description = "'Smstateen' (Machine-mode view of the state-enable extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ssaia)] = .{
+    result[@backingInt(Feature.ssaia)] = .{
         .llvm_name = "ssaia",
         .description = "'Ssaia' (Advanced Interrupt Architecture Supervisor Level)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ssccfg)] = .{
+    result[@backingInt(Feature.ssccfg)] = .{
         .llvm_name = "ssccfg",
         .description = "'Ssccfg' (Counter Configuration Supervisor Level)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ssccptr)] = .{
+    result[@backingInt(Feature.ssccptr)] = .{
         .llvm_name = "ssccptr",
         .description = "'Ssccptr' (Main memory supports page table reads)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.sscofpmf)] = .{
+    result[@backingInt(Feature.sscofpmf)] = .{
         .llvm_name = "sscofpmf",
         .description = "'Sscofpmf' (Count Overflow and Mode-Based Filtering)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.sscounterenw)] = .{
+    result[@backingInt(Feature.sscounterenw)] = .{
         .llvm_name = "sscounterenw",
         .description = "'Sscounterenw' (Support writeable scounteren enable bit for any hpmcounter that is not read-only zero)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.sscsrind)] = .{
+    result[@backingInt(Feature.sscsrind)] = .{
         .llvm_name = "sscsrind",
         .description = "'Sscsrind' (Indirect CSR Access Supervisor Level)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ssctr)] = .{
+    result[@backingInt(Feature.ssctr)] = .{
         .llvm_name = "ssctr",
         .description = "'Ssctr' (Control Transfer Records Supervisor Level)",
         .dependencies = featureSet(&[_]Feature{
             .sscsrind,
         }),
     };
-    result[@intFromEnum(Feature.ssdbltrp)] = .{
+    result[@backingInt(Feature.ssdbltrp)] = .{
         .llvm_name = "ssdbltrp",
         .description = "'Ssdbltrp' (Double Trap Supervisor Level)",
         .dependencies = featureSet(&[_]Feature{
             .zicsr,
         }),
     };
-    result[@intFromEnum(Feature.ssnpm)] = .{
+    result[@backingInt(Feature.ssnpm)] = .{
         .llvm_name = "ssnpm",
         .description = "'Ssnpm' (Supervisor-level Pointer Masking for next lower privilege mode)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.sspm)] = .{
+    result[@backingInt(Feature.sspm)] = .{
         .llvm_name = "sspm",
         .description = "'Sspm' (Indicates Supervisor-mode Pointer Masking)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ssqosid)] = .{
+    result[@backingInt(Feature.ssqosid)] = .{
         .llvm_name = "ssqosid",
         .description = "'Ssqosid' (Quality-of-Service (QoS) Identifiers)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ssstateen)] = .{
+    result[@backingInt(Feature.ssstateen)] = .{
         .llvm_name = "ssstateen",
         .description = "'Ssstateen' (Supervisor-mode view of the state-enable extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ssstrict)] = .{
+    result[@backingInt(Feature.ssstrict)] = .{
         .llvm_name = "ssstrict",
         .description = "'Ssstrict' (No non-conforming extensions are present)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.sstc)] = .{
+    result[@backingInt(Feature.sstc)] = .{
         .llvm_name = "sstc",
         .description = "'Sstc' (Supervisor-mode timer interrupts)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.sstvala)] = .{
+    result[@backingInt(Feature.sstvala)] = .{
         .llvm_name = "sstvala",
         .description = "'Sstvala' (stval provides all needed values)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.sstvecd)] = .{
+    result[@backingInt(Feature.sstvecd)] = .{
         .llvm_name = "sstvecd",
         .description = "'Sstvecd' (stvec supports Direct mode)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ssu64xl)] = .{
+    result[@backingInt(Feature.ssu64xl)] = .{
         .llvm_name = "ssu64xl",
         .description = "'Ssu64xl' (UXLEN=64 supported)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.supm)] = .{
+    result[@backingInt(Feature.supm)] = .{
         .llvm_name = "supm",
         .description = "'Supm' (Indicates User-mode Pointer Masking)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.svade)] = .{
+    result[@backingInt(Feature.svade)] = .{
         .llvm_name = "svade",
         .description = "'Svade' (Raise exceptions on improper A/D bits)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.svadu)] = .{
+    result[@backingInt(Feature.svadu)] = .{
         .llvm_name = "svadu",
         .description = "'Svadu' (Hardware A/D updates)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.svbare)] = .{
+    result[@backingInt(Feature.svbare)] = .{
         .llvm_name = "svbare",
         .description = "'Svbare' (satp mode Bare supported)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.svinval)] = .{
+    result[@backingInt(Feature.svinval)] = .{
         .llvm_name = "svinval",
         .description = "'Svinval' (Fine-Grained Address-Translation Cache Invalidation)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.svnapot)] = .{
+    result[@backingInt(Feature.svnapot)] = .{
         .llvm_name = "svnapot",
         .description = "'Svnapot' (NAPOT Translation Contiguity)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.svpbmt)] = .{
+    result[@backingInt(Feature.svpbmt)] = .{
         .llvm_name = "svpbmt",
         .description = "'Svpbmt' (Page-Based Memory Types)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.svvptc)] = .{
+    result[@backingInt(Feature.svvptc)] = .{
         .llvm_name = "svvptc",
         .description = "'Svvptc' (Obviating Memory-Management Instructions after Marking PTEs Valid)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.tagged_globals)] = .{
+    result[@backingInt(Feature.tagged_globals)] = .{
         .llvm_name = "tagged-globals",
         .description = "Use an instruction sequence for taking the address of a global that allows a memory tag in the upper address bits",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.unaligned_scalar_mem)] = .{
+    result[@backingInt(Feature.unaligned_scalar_mem)] = .{
         .llvm_name = "unaligned-scalar-mem",
         .description = "Has reasonably performant unaligned scalar loads and stores",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.unaligned_vector_mem)] = .{
+    result[@backingInt(Feature.unaligned_vector_mem)] = .{
         .llvm_name = "unaligned-vector-mem",
         .description = "Has reasonably performant unaligned vector loads and stores",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.use_postra_scheduler)] = .{
+    result[@backingInt(Feature.use_postra_scheduler)] = .{
         .llvm_name = "use-postra-scheduler",
         .description = "Schedule again after register allocation",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.v)] = .{
+    result[@backingInt(Feature.v)] = .{
         .llvm_name = "v",
         .description = "'V' (Vector Extension for Application Processors)",
         .dependencies = featureSet(&[_]Feature{
@@ -1506,131 +1506,131 @@ pub const all_features = blk: {
             .zvl128b,
         }),
     };
-    result[@intFromEnum(Feature.ventana_veyron)] = .{
+    result[@backingInt(Feature.ventana_veyron)] = .{
         .llvm_name = "ventana-veyron",
         .description = "Ventana Veyron-Series processors",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vl_dependent_latency)] = .{
+    result[@backingInt(Feature.vl_dependent_latency)] = .{
         .llvm_name = "vl-dependent-latency",
         .description = "Latency of vector instructions is dependent on the dynamic value of vl",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.vxrm_pipeline_flush)] = .{
+    result[@backingInt(Feature.vxrm_pipeline_flush)] = .{
         .llvm_name = "vxrm-pipeline-flush",
         .description = "VXRM writes causes pipeline flush",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xandesbfhcvt)] = .{
+    result[@backingInt(Feature.xandesbfhcvt)] = .{
         .llvm_name = "xandesbfhcvt",
         .description = "'XAndesBFHCvt' (Andes Scalar BFLOAT16 Conversion Extension)",
         .dependencies = featureSet(&[_]Feature{
             .f,
         }),
     };
-    result[@intFromEnum(Feature.xandesperf)] = .{
+    result[@backingInt(Feature.xandesperf)] = .{
         .llvm_name = "xandesperf",
         .description = "'XAndesPerf' (Andes Performance Extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xandesvbfhcvt)] = .{
+    result[@backingInt(Feature.xandesvbfhcvt)] = .{
         .llvm_name = "xandesvbfhcvt",
         .description = "'XAndesVBFHCvt' (Andes Vector BFLOAT16 Conversion Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.xandesvdot)] = .{
+    result[@backingInt(Feature.xandesvdot)] = .{
         .llvm_name = "xandesvdot",
         .description = "'XAndesVDot' (Andes Vector Dot Product Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.xandesvpackfph)] = .{
+    result[@backingInt(Feature.xandesvpackfph)] = .{
         .llvm_name = "xandesvpackfph",
         .description = "'XAndesVPackFPH' (Andes Vector Packed FP16 Extension)",
         .dependencies = featureSet(&[_]Feature{
             .f,
         }),
     };
-    result[@intFromEnum(Feature.xandesvsinth)] = .{
+    result[@backingInt(Feature.xandesvsinth)] = .{
         .llvm_name = "xandesvsinth",
         .description = "'XAndesVSIntH' (Andes Vector Small INT Handling Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.xandesvsintload)] = .{
+    result[@backingInt(Feature.xandesvsintload)] = .{
         .llvm_name = "xandesvsintload",
         .description = "'XAndesVSIntLoad' (Andes Vector INT4 Load Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.xcvalu)] = .{
+    result[@backingInt(Feature.xcvalu)] = .{
         .llvm_name = "xcvalu",
         .description = "'XCValu' (CORE-V ALU Operations)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xcvbi)] = .{
+    result[@backingInt(Feature.xcvbi)] = .{
         .llvm_name = "xcvbi",
         .description = "'XCVbi' (CORE-V Immediate Branching)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xcvbitmanip)] = .{
+    result[@backingInt(Feature.xcvbitmanip)] = .{
         .llvm_name = "xcvbitmanip",
         .description = "'XCVbitmanip' (CORE-V Bit Manipulation)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xcvelw)] = .{
+    result[@backingInt(Feature.xcvelw)] = .{
         .llvm_name = "xcvelw",
         .description = "'XCVelw' (CORE-V Event Load Word)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xcvmac)] = .{
+    result[@backingInt(Feature.xcvmac)] = .{
         .llvm_name = "xcvmac",
         .description = "'XCVmac' (CORE-V Multiply-Accumulate)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xcvmem)] = .{
+    result[@backingInt(Feature.xcvmem)] = .{
         .llvm_name = "xcvmem",
         .description = "'XCVmem' (CORE-V Post-incrementing Load & Store)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xcvsimd)] = .{
+    result[@backingInt(Feature.xcvsimd)] = .{
         .llvm_name = "xcvsimd",
         .description = "'XCVsimd' (CORE-V SIMD ALU)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xmipscbop)] = .{
+    result[@backingInt(Feature.xmipscbop)] = .{
         .llvm_name = "xmipscbop",
         .description = "'XMIPSCBOP' (MIPS Software Prefetch)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xmipscmov)] = .{
+    result[@backingInt(Feature.xmipscmov)] = .{
         .llvm_name = "xmipscmov",
         .description = "'XMIPSCMov' (MIPS conditional move instruction (mips.ccmov))",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xmipsexectl)] = .{
+    result[@backingInt(Feature.xmipsexectl)] = .{
         .llvm_name = "xmipsexectl",
         .description = "'XMIPSEXECTL' (MIPS execution control)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xmipslsp)] = .{
+    result[@backingInt(Feature.xmipslsp)] = .{
         .llvm_name = "xmipslsp",
         .description = "'XMIPSLSP' (MIPS optimization for hardware load-store bonding)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xqccmp)] = .{
+    result[@backingInt(Feature.xqccmp)] = .{
         .llvm_name = "xqccmp",
         .description = "'Xqccmp' (Qualcomm 16-bit Push/Pop and Double Moves)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xqci)] = .{
+    result[@backingInt(Feature.xqci)] = .{
         .llvm_name = "xqci",
         .description = "'Xqci' (Qualcomm uC Extension)",
         .dependencies = featureSet(&[_]Feature{
@@ -1654,124 +1654,124 @@ pub const all_features = blk: {
             .xqcisync,
         }),
     };
-    result[@intFromEnum(Feature.xqcia)] = .{
+    result[@backingInt(Feature.xqcia)] = .{
         .llvm_name = "xqcia",
         .description = "'Xqcia' (Qualcomm uC Arithmetic Extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xqciac)] = .{
+    result[@backingInt(Feature.xqciac)] = .{
         .llvm_name = "xqciac",
         .description = "'Xqciac' (Qualcomm uC Load-Store Address Calculation Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xqcibi)] = .{
+    result[@backingInt(Feature.xqcibi)] = .{
         .llvm_name = "xqcibi",
         .description = "'Xqcibi' (Qualcomm uC Branch Immediate Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xqcibm)] = .{
+    result[@backingInt(Feature.xqcibm)] = .{
         .llvm_name = "xqcibm",
         .description = "'Xqcibm' (Qualcomm uC Bit Manipulation Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xqcicli)] = .{
+    result[@backingInt(Feature.xqcicli)] = .{
         .llvm_name = "xqcicli",
         .description = "'Xqcicli' (Qualcomm uC Conditional Load Immediate Extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xqcicm)] = .{
+    result[@backingInt(Feature.xqcicm)] = .{
         .llvm_name = "xqcicm",
         .description = "'Xqcicm' (Qualcomm uC Conditional Move Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xqcics)] = .{
+    result[@backingInt(Feature.xqcics)] = .{
         .llvm_name = "xqcics",
         .description = "'Xqcics' (Qualcomm uC Conditional Select Extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xqcicsr)] = .{
+    result[@backingInt(Feature.xqcicsr)] = .{
         .llvm_name = "xqcicsr",
         .description = "'Xqcicsr' (Qualcomm uC CSR Extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xqciint)] = .{
+    result[@backingInt(Feature.xqciint)] = .{
         .llvm_name = "xqciint",
         .description = "'Xqciint' (Qualcomm uC Interrupts Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xqciio)] = .{
+    result[@backingInt(Feature.xqciio)] = .{
         .llvm_name = "xqciio",
         .description = "'Xqciio' (Qualcomm uC External Input Output Extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xqcilb)] = .{
+    result[@backingInt(Feature.xqcilb)] = .{
         .llvm_name = "xqcilb",
         .description = "'Xqcilb' (Qualcomm uC Long Branch Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xqcili)] = .{
+    result[@backingInt(Feature.xqcili)] = .{
         .llvm_name = "xqcili",
         .description = "'Xqcili' (Qualcomm uC Load Large Immediate Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xqcilia)] = .{
+    result[@backingInt(Feature.xqcilia)] = .{
         .llvm_name = "xqcilia",
         .description = "'Xqcilia' (Qualcomm uC Large Immediate Arithmetic Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xqcilo)] = .{
+    result[@backingInt(Feature.xqcilo)] = .{
         .llvm_name = "xqcilo",
         .description = "'Xqcilo' (Qualcomm uC Large Offset Load Store Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xqcilsm)] = .{
+    result[@backingInt(Feature.xqcilsm)] = .{
         .llvm_name = "xqcilsm",
         .description = "'Xqcilsm' (Qualcomm uC Load Store Multiple Extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xqcisim)] = .{
+    result[@backingInt(Feature.xqcisim)] = .{
         .llvm_name = "xqcisim",
         .description = "'Xqcisim' (Qualcomm uC Simulation Hint Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xqcisls)] = .{
+    result[@backingInt(Feature.xqcisls)] = .{
         .llvm_name = "xqcisls",
         .description = "'Xqcisls' (Qualcomm uC Scaled Load Store Extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xqcisync)] = .{
+    result[@backingInt(Feature.xqcisync)] = .{
         .llvm_name = "xqcisync",
         .description = "'Xqcisync' (Qualcomm uC Sync Delay Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.xsfcease)] = .{
+    result[@backingInt(Feature.xsfcease)] = .{
         .llvm_name = "xsfcease",
         .description = "'XSfcease' (SiFive sf.cease Instruction)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xsfmm128t)] = .{
+    result[@backingInt(Feature.xsfmm128t)] = .{
         .llvm_name = "xsfmm128t",
         .description = "'XSfmm128t' (TE=128 configuration)",
         .dependencies = featureSet(&[_]Feature{
@@ -1779,7 +1779,7 @@ pub const all_features = blk: {
             .zvl512b,
         }),
     };
-    result[@intFromEnum(Feature.xsfmm16t)] = .{
+    result[@backingInt(Feature.xsfmm16t)] = .{
         .llvm_name = "xsfmm16t",
         .description = "'XSfmm16t' (TE=16 configuration)",
         .dependencies = featureSet(&[_]Feature{
@@ -1787,7 +1787,7 @@ pub const all_features = blk: {
             .zvl64b,
         }),
     };
-    result[@intFromEnum(Feature.xsfmm32a16f)] = .{
+    result[@backingInt(Feature.xsfmm32a16f)] = .{
         .llvm_name = "xsfmm32a16f",
         .description = "'XSfmm32a16f' (TEW=32-bit accumulation, operands - float: 16b, widen=2 (IEEE, BF))",
         .dependencies = featureSet(&[_]Feature{
@@ -1795,7 +1795,7 @@ pub const all_features = blk: {
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.xsfmm32a32f)] = .{
+    result[@backingInt(Feature.xsfmm32a32f)] = .{
         .llvm_name = "xsfmm32a32f",
         .description = "'XSfmm32a32f' (TEW=32-bit accumulation, operands - float: 32b)",
         .dependencies = featureSet(&[_]Feature{
@@ -1803,7 +1803,7 @@ pub const all_features = blk: {
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.xsfmm32a8f)] = .{
+    result[@backingInt(Feature.xsfmm32a8f)] = .{
         .llvm_name = "xsfmm32a8f",
         .description = "'XSfmm32a8f' (TEW=32-bit accumulation, operands - float: fp8)",
         .dependencies = featureSet(&[_]Feature{
@@ -1811,14 +1811,14 @@ pub const all_features = blk: {
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.xsfmm32a8i)] = .{
+    result[@backingInt(Feature.xsfmm32a8i)] = .{
         .llvm_name = "xsfmm32a8i",
         .description = "'XSfmm32a8i' (TEW=32-bit accumulation, operands - int: 8b)",
         .dependencies = featureSet(&[_]Feature{
             .xsfmmbase,
         }),
     };
-    result[@intFromEnum(Feature.xsfmm32t)] = .{
+    result[@backingInt(Feature.xsfmm32t)] = .{
         .llvm_name = "xsfmm32t",
         .description = "'XSfmm32t' (TE=32 configuration)",
         .dependencies = featureSet(&[_]Feature{
@@ -1826,7 +1826,7 @@ pub const all_features = blk: {
             .zvl128b,
         }),
     };
-    result[@intFromEnum(Feature.xsfmm64a64f)] = .{
+    result[@backingInt(Feature.xsfmm64a64f)] = .{
         .llvm_name = "xsfmm64a64f",
         .description = "'XSfmm64a64f' (TEW=64-bit accumulation, operands - float: fp64)",
         .dependencies = featureSet(&[_]Feature{
@@ -1834,7 +1834,7 @@ pub const all_features = blk: {
             .zve64d,
         }),
     };
-    result[@intFromEnum(Feature.xsfmm64t)] = .{
+    result[@backingInt(Feature.xsfmm64t)] = .{
         .llvm_name = "xsfmm64t",
         .description = "'XSfmm64t' (TE=64 configuration)",
         .dependencies = featureSet(&[_]Feature{
@@ -1842,47 +1842,47 @@ pub const all_features = blk: {
             .zvl256b,
         }),
     };
-    result[@intFromEnum(Feature.xsfmmbase)] = .{
+    result[@backingInt(Feature.xsfmmbase)] = .{
         .llvm_name = "xsfmmbase",
         .description = "'XSfmmbase' (All non arithmetic instructions for all TEWs and sf.vtzero)",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.xsfvcp)] = .{
+    result[@backingInt(Feature.xsfvcp)] = .{
         .llvm_name = "xsfvcp",
         .description = "'XSfvcp' (SiFive Custom Vector Coprocessor Interface Instructions)",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.xsfvfbfexp16e)] = .{
+    result[@backingInt(Feature.xsfvfbfexp16e)] = .{
         .llvm_name = "xsfvfbfexp16e",
         .description = "'XSfvfbfexp16e' (SiFive Vector Floating-Point Exponential Function Instruction, BFloat16)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xsfvfexp16e)] = .{
+    result[@backingInt(Feature.xsfvfexp16e)] = .{
         .llvm_name = "xsfvfexp16e",
         .description = "'XSfvfexp16e' (SiFive Vector Floating-Point Exponential Function Instruction, Half Precision)",
         .dependencies = featureSet(&[_]Feature{
             .zvfh,
         }),
     };
-    result[@intFromEnum(Feature.xsfvfexp32e)] = .{
+    result[@backingInt(Feature.xsfvfexp32e)] = .{
         .llvm_name = "xsfvfexp32e",
         .description = "'XSfvfexp32e' (SiFive Vector Floating-Point Exponential Function Instruction, Single Precision)",
         .dependencies = featureSet(&[_]Feature{
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.xsfvfexpa)] = .{
+    result[@backingInt(Feature.xsfvfexpa)] = .{
         .llvm_name = "xsfvfexpa",
         .description = "'XSfvfexpa' (SiFive Vector Floating-Point Exponential Approximation Instruction)",
         .dependencies = featureSet(&[_]Feature{
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.xsfvfexpa64e)] = .{
+    result[@backingInt(Feature.xsfvfexpa64e)] = .{
         .llvm_name = "xsfvfexpa64e",
         .description = "'XSfvfexpa64e' (SiFive Vector Floating-Point Exponential Approximation Instruction with Double-Precision)",
         .dependencies = featureSet(&[_]Feature{
@@ -1890,14 +1890,14 @@ pub const all_features = blk: {
             .zve64d,
         }),
     };
-    result[@intFromEnum(Feature.xsfvfnrclipxfqf)] = .{
+    result[@backingInt(Feature.xsfvfnrclipxfqf)] = .{
         .llvm_name = "xsfvfnrclipxfqf",
         .description = "'XSfvfnrclipxfqf' (SiFive FP32-to-int8 Ranged Clip Instructions)",
         .dependencies = featureSet(&[_]Feature{
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.xsfvfwmaccqqq)] = .{
+    result[@backingInt(Feature.xsfvfwmaccqqq)] = .{
         .llvm_name = "xsfvfwmaccqqq",
         .description = "'XSfvfwmaccqqq' (SiFive Matrix Multiply Accumulate Instruction (4-by-4))",
         .dependencies = featureSet(&[_]Feature{
@@ -1905,7 +1905,7 @@ pub const all_features = blk: {
             .zvl128b,
         }),
     };
-    result[@intFromEnum(Feature.xsfvqmaccdod)] = .{
+    result[@backingInt(Feature.xsfvqmaccdod)] = .{
         .llvm_name = "xsfvqmaccdod",
         .description = "'XSfvqmaccdod' (SiFive Int8 Matrix Multiplication Instructions (2-by-8 and 8-by-2))",
         .dependencies = featureSet(&[_]Feature{
@@ -1913,7 +1913,7 @@ pub const all_features = blk: {
             .zvl128b,
         }),
     };
-    result[@intFromEnum(Feature.xsfvqmaccqoq)] = .{
+    result[@backingInt(Feature.xsfvqmaccqoq)] = .{
         .llvm_name = "xsfvqmaccqoq",
         .description = "'XSfvqmaccqoq' (SiFive Int8 Matrix Multiplication Instructions (4-by-8 and 8-by-4))",
         .dependencies = featureSet(&[_]Feature{
@@ -1921,189 +1921,189 @@ pub const all_features = blk: {
             .zvl256b,
         }),
     };
-    result[@intFromEnum(Feature.xsifivecdiscarddlone)] = .{
+    result[@backingInt(Feature.xsifivecdiscarddlone)] = .{
         .llvm_name = "xsifivecdiscarddlone",
         .description = "'XSiFivecdiscarddlone' (SiFive sf.cdiscard.d.l1 Instruction)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xsifivecflushdlone)] = .{
+    result[@backingInt(Feature.xsifivecflushdlone)] = .{
         .llvm_name = "xsifivecflushdlone",
         .description = "'XSiFivecflushdlone' (SiFive sf.cflush.d.l1 Instruction)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xsmtvdot)] = .{
+    result[@backingInt(Feature.xsmtvdot)] = .{
         .llvm_name = "xsmtvdot",
         .description = "'XSMTVDot' (SpacemiT Vector Dot Product Extension)",
         .dependencies = featureSet(&[_]Feature{
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.xtheadba)] = .{
+    result[@backingInt(Feature.xtheadba)] = .{
         .llvm_name = "xtheadba",
         .description = "'XTHeadBa' (T-Head address calculation instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xtheadbb)] = .{
+    result[@backingInt(Feature.xtheadbb)] = .{
         .llvm_name = "xtheadbb",
         .description = "'XTHeadBb' (T-Head basic bit-manipulation instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xtheadbs)] = .{
+    result[@backingInt(Feature.xtheadbs)] = .{
         .llvm_name = "xtheadbs",
         .description = "'XTHeadBs' (T-Head single-bit instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xtheadcmo)] = .{
+    result[@backingInt(Feature.xtheadcmo)] = .{
         .llvm_name = "xtheadcmo",
         .description = "'XTHeadCmo' (T-Head cache management instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xtheadcondmov)] = .{
+    result[@backingInt(Feature.xtheadcondmov)] = .{
         .llvm_name = "xtheadcondmov",
         .description = "'XTHeadCondMov' (T-Head conditional move instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xtheadfmemidx)] = .{
+    result[@backingInt(Feature.xtheadfmemidx)] = .{
         .llvm_name = "xtheadfmemidx",
         .description = "'XTHeadFMemIdx' (T-Head FP Indexed Memory Operations)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xtheadmac)] = .{
+    result[@backingInt(Feature.xtheadmac)] = .{
         .llvm_name = "xtheadmac",
         .description = "'XTHeadMac' (T-Head Multiply-Accumulate Instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xtheadmemidx)] = .{
+    result[@backingInt(Feature.xtheadmemidx)] = .{
         .llvm_name = "xtheadmemidx",
         .description = "'XTHeadMemIdx' (T-Head Indexed Memory Operations)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xtheadmempair)] = .{
+    result[@backingInt(Feature.xtheadmempair)] = .{
         .llvm_name = "xtheadmempair",
         .description = "'XTHeadMemPair' (T-Head two-GPR Memory Operations)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xtheadsync)] = .{
+    result[@backingInt(Feature.xtheadsync)] = .{
         .llvm_name = "xtheadsync",
         .description = "'XTHeadSync' (T-Head multicore synchronization instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xtheadvdot)] = .{
+    result[@backingInt(Feature.xtheadvdot)] = .{
         .llvm_name = "xtheadvdot",
         .description = "'XTHeadVdot' (T-Head Vector Extensions for Dot)",
         .dependencies = featureSet(&[_]Feature{
             .v,
         }),
     };
-    result[@intFromEnum(Feature.xventanacondops)] = .{
+    result[@backingInt(Feature.xventanacondops)] = .{
         .llvm_name = "xventanacondops",
         .description = "'XVentanaCondOps' (Ventana Conditional Ops)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.xwchc)] = .{
+    result[@backingInt(Feature.xwchc)] = .{
         .llvm_name = "xwchc",
         .description = "'Xwchc' (WCH/QingKe additional compressed opcodes)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.za128rs)] = .{
+    result[@backingInt(Feature.za128rs)] = .{
         .llvm_name = "za128rs",
         .description = "'Za128rs' (Reservation Set Size of at Most 128 Bytes)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.za64rs)] = .{
+    result[@backingInt(Feature.za64rs)] = .{
         .llvm_name = "za64rs",
         .description = "'Za64rs' (Reservation Set Size of at Most 64 Bytes)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zaamo)] = .{
+    result[@backingInt(Feature.zaamo)] = .{
         .llvm_name = "zaamo",
         .description = "'Zaamo' (Atomic Memory Operations)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zabha)] = .{
+    result[@backingInt(Feature.zabha)] = .{
         .llvm_name = "zabha",
         .description = "'Zabha' (Byte and Halfword Atomic Memory Operations)",
         .dependencies = featureSet(&[_]Feature{
             .zaamo,
         }),
     };
-    result[@intFromEnum(Feature.zacas)] = .{
+    result[@backingInt(Feature.zacas)] = .{
         .llvm_name = "zacas",
         .description = "'Zacas' (Atomic Compare-And-Swap Instructions)",
         .dependencies = featureSet(&[_]Feature{
             .zaamo,
         }),
     };
-    result[@intFromEnum(Feature.zalasr)] = .{
+    result[@backingInt(Feature.zalasr)] = .{
         .llvm_name = "zalasr",
         .description = "'Zalasr' (Load-Acquire and Store-Release Instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zalrsc)] = .{
+    result[@backingInt(Feature.zalrsc)] = .{
         .llvm_name = "zalrsc",
         .description = "'Zalrsc' (Load-Reserved/Store-Conditional)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zama16b)] = .{
+    result[@backingInt(Feature.zama16b)] = .{
         .llvm_name = "zama16b",
         .description = "'Zama16b' (Atomic 16-byte misaligned loads, stores and AMOs)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zawrs)] = .{
+    result[@backingInt(Feature.zawrs)] = .{
         .llvm_name = "zawrs",
         .description = "'Zawrs' (Wait on Reservation Set)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zba)] = .{
+    result[@backingInt(Feature.zba)] = .{
         .llvm_name = "zba",
         .description = "'Zba' (Address Generation Instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zbb)] = .{
+    result[@backingInt(Feature.zbb)] = .{
         .llvm_name = "zbb",
         .description = "'Zbb' (Basic Bit-Manipulation)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zbc)] = .{
+    result[@backingInt(Feature.zbc)] = .{
         .llvm_name = "zbc",
         .description = "'Zbc' (Carry-Less Multiplication)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zbkb)] = .{
+    result[@backingInt(Feature.zbkb)] = .{
         .llvm_name = "zbkb",
         .description = "'Zbkb' (Bitmanip instructions for Cryptography)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zbkc)] = .{
+    result[@backingInt(Feature.zbkc)] = .{
         .llvm_name = "zbkc",
         .description = "'Zbkc' (Carry-less multiply instructions for Cryptography)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zbkx)] = .{
+    result[@backingInt(Feature.zbkx)] = .{
         .llvm_name = "zbkx",
         .description = "'Zbkx' (Crossbar permutation instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zbs)] = .{
+    result[@backingInt(Feature.zbs)] = .{
         .llvm_name = "zbs",
         .description = "'Zbs' (Single-Bit Instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zca)] = .{
+    result[@backingInt(Feature.zca)] = .{
         .llvm_name = "zca",
         .description = "'Zca' (part of the C extension, excluding compressed floating point loads/stores)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zcb)] = .{
+    result[@backingInt(Feature.zcb)] = .{
         .llvm_name = "zcb",
         .description = "'Zcb' (Compressed basic bit manipulation instructions)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.zcd)] = .{
+    result[@backingInt(Feature.zcd)] = .{
         .llvm_name = "zcd",
         .description = "'Zcd' (Compressed Double-Precision Floating-Point Instructions)",
         .dependencies = featureSet(&[_]Feature{
@@ -2111,7 +2111,7 @@ pub const all_features = blk: {
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.zce)] = .{
+    result[@backingInt(Feature.zce)] = .{
         .llvm_name = "zce",
         .description = "'Zce' (Compressed extensions for microcontrollers)",
         .dependencies = featureSet(&[_]Feature{
@@ -2120,7 +2120,7 @@ pub const all_features = blk: {
             .zcmt,
         }),
     };
-    result[@intFromEnum(Feature.zcf)] = .{
+    result[@backingInt(Feature.zcf)] = .{
         .llvm_name = "zcf",
         .description = "'Zcf' (Compressed Single-Precision Floating-Point Instructions)",
         .dependencies = featureSet(&[_]Feature{
@@ -2128,7 +2128,7 @@ pub const all_features = blk: {
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.zclsd)] = .{
+    result[@backingInt(Feature.zclsd)] = .{
         .llvm_name = "zclsd",
         .description = "'Zclsd' (Compressed Load/Store Pair Instructions)",
         .dependencies = featureSet(&[_]Feature{
@@ -2136,21 +2136,21 @@ pub const all_features = blk: {
             .zilsd,
         }),
     };
-    result[@intFromEnum(Feature.zcmop)] = .{
+    result[@backingInt(Feature.zcmop)] = .{
         .llvm_name = "zcmop",
         .description = "'Zcmop' (Compressed May-Be-Operations)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.zcmp)] = .{
+    result[@backingInt(Feature.zcmp)] = .{
         .llvm_name = "zcmp",
         .description = "'Zcmp' (sequenced instructions for code-size reduction)",
         .dependencies = featureSet(&[_]Feature{
             .zca,
         }),
     };
-    result[@intFromEnum(Feature.zcmt)] = .{
+    result[@backingInt(Feature.zcmt)] = .{
         .llvm_name = "zcmt",
         .description = "'Zcmt' (table jump instructions for code-size reduction)",
         .dependencies = featureSet(&[_]Feature{
@@ -2158,172 +2158,172 @@ pub const all_features = blk: {
             .zicsr,
         }),
     };
-    result[@intFromEnum(Feature.zdinx)] = .{
+    result[@backingInt(Feature.zdinx)] = .{
         .llvm_name = "zdinx",
         .description = "'Zdinx' (Double in Integer)",
         .dependencies = featureSet(&[_]Feature{
             .zfinx,
         }),
     };
-    result[@intFromEnum(Feature.zexth_fusion)] = .{
+    result[@backingInt(Feature.zexth_fusion)] = .{
         .llvm_name = "zexth-fusion",
         .description = "Enable SLLI+SRLI to be fused to zero extension of halfword",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zextw_fusion)] = .{
+    result[@backingInt(Feature.zextw_fusion)] = .{
         .llvm_name = "zextw-fusion",
         .description = "Enable SLLI+SRLI to be fused to zero extension of word",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zfa)] = .{
+    result[@backingInt(Feature.zfa)] = .{
         .llvm_name = "zfa",
         .description = "'Zfa' (Additional Floating-Point)",
         .dependencies = featureSet(&[_]Feature{
             .f,
         }),
     };
-    result[@intFromEnum(Feature.zfbfmin)] = .{
+    result[@backingInt(Feature.zfbfmin)] = .{
         .llvm_name = "zfbfmin",
         .description = "'Zfbfmin' (Scalar BF16 Converts)",
         .dependencies = featureSet(&[_]Feature{
             .f,
         }),
     };
-    result[@intFromEnum(Feature.zfh)] = .{
+    result[@backingInt(Feature.zfh)] = .{
         .llvm_name = "zfh",
         .description = "'Zfh' (Half-Precision Floating-Point)",
         .dependencies = featureSet(&[_]Feature{
             .zfhmin,
         }),
     };
-    result[@intFromEnum(Feature.zfhmin)] = .{
+    result[@backingInt(Feature.zfhmin)] = .{
         .llvm_name = "zfhmin",
         .description = "'Zfhmin' (Half-Precision Floating-Point Minimal)",
         .dependencies = featureSet(&[_]Feature{
             .f,
         }),
     };
-    result[@intFromEnum(Feature.zfinx)] = .{
+    result[@backingInt(Feature.zfinx)] = .{
         .llvm_name = "zfinx",
         .description = "'Zfinx' (Float in Integer)",
         .dependencies = featureSet(&[_]Feature{
             .zicsr,
         }),
     };
-    result[@intFromEnum(Feature.zhinx)] = .{
+    result[@backingInt(Feature.zhinx)] = .{
         .llvm_name = "zhinx",
         .description = "'Zhinx' (Half Float in Integer)",
         .dependencies = featureSet(&[_]Feature{
             .zhinxmin,
         }),
     };
-    result[@intFromEnum(Feature.zhinxmin)] = .{
+    result[@backingInt(Feature.zhinxmin)] = .{
         .llvm_name = "zhinxmin",
         .description = "'Zhinxmin' (Half Float in Integer Minimal)",
         .dependencies = featureSet(&[_]Feature{
             .zfinx,
         }),
     };
-    result[@intFromEnum(Feature.zic64b)] = .{
+    result[@backingInt(Feature.zic64b)] = .{
         .llvm_name = "zic64b",
         .description = "'Zic64b' (Cache Block Size Is 64 Bytes)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zicbom)] = .{
+    result[@backingInt(Feature.zicbom)] = .{
         .llvm_name = "zicbom",
         .description = "'Zicbom' (Cache-Block Management Instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zicbop)] = .{
+    result[@backingInt(Feature.zicbop)] = .{
         .llvm_name = "zicbop",
         .description = "'Zicbop' (Cache-Block Prefetch Instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zicboz)] = .{
+    result[@backingInt(Feature.zicboz)] = .{
         .llvm_name = "zicboz",
         .description = "'Zicboz' (Cache-Block Zero Instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ziccamoa)] = .{
+    result[@backingInt(Feature.ziccamoa)] = .{
         .llvm_name = "ziccamoa",
         .description = "'Ziccamoa' (Main Memory Supports All Atomics in A)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ziccamoc)] = .{
+    result[@backingInt(Feature.ziccamoc)] = .{
         .llvm_name = "ziccamoc",
         .description = "'Ziccamoc' (Main Memory Supports Atomics in Zacas)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ziccif)] = .{
+    result[@backingInt(Feature.ziccif)] = .{
         .llvm_name = "ziccif",
         .description = "'Ziccif' (Main Memory Supports Instruction Fetch with Atomicity Requirement)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zicclsm)] = .{
+    result[@backingInt(Feature.zicclsm)] = .{
         .llvm_name = "zicclsm",
         .description = "'Zicclsm' (Main Memory Supports Misaligned Loads/Stores)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ziccrse)] = .{
+    result[@backingInt(Feature.ziccrse)] = .{
         .llvm_name = "ziccrse",
         .description = "'Ziccrse' (Main Memory Supports Forward Progress on LR/SC Sequences)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zicntr)] = .{
+    result[@backingInt(Feature.zicntr)] = .{
         .llvm_name = "zicntr",
         .description = "'Zicntr' (Base Counters and Timers)",
         .dependencies = featureSet(&[_]Feature{
             .zicsr,
         }),
     };
-    result[@intFromEnum(Feature.zicond)] = .{
+    result[@backingInt(Feature.zicond)] = .{
         .llvm_name = "zicond",
         .description = "'Zicond' (Integer Conditional Operations)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zicsr)] = .{
+    result[@backingInt(Feature.zicsr)] = .{
         .llvm_name = "zicsr",
         .description = "'Zicsr' (CSRs)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zifencei)] = .{
+    result[@backingInt(Feature.zifencei)] = .{
         .llvm_name = "zifencei",
         .description = "'Zifencei' (fence.i)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zihintntl)] = .{
+    result[@backingInt(Feature.zihintntl)] = .{
         .llvm_name = "zihintntl",
         .description = "'Zihintntl' (Non-Temporal Locality Hints)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zihintpause)] = .{
+    result[@backingInt(Feature.zihintpause)] = .{
         .llvm_name = "zihintpause",
         .description = "'Zihintpause' (Pause Hint)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zihpm)] = .{
+    result[@backingInt(Feature.zihpm)] = .{
         .llvm_name = "zihpm",
         .description = "'Zihpm' (Hardware Performance Counters)",
         .dependencies = featureSet(&[_]Feature{
             .zicsr,
         }),
     };
-    result[@intFromEnum(Feature.zilsd)] = .{
+    result[@backingInt(Feature.zilsd)] = .{
         .llvm_name = "zilsd",
         .description = "'Zilsd' (Load/Store Pair Instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zilsd_4byte_align)] = .{
+    result[@backingInt(Feature.zilsd_4byte_align)] = .{
         .llvm_name = "zilsd-4byte-align",
         .description = "Allow 4-byte alignment for Zilsd LD/SD instructions",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zimop)] = .{
+    result[@backingInt(Feature.zimop)] = .{
         .llvm_name = "zimop",
         .description = "'Zimop' (May-Be-Operations)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zk)] = .{
+    result[@backingInt(Feature.zk)] = .{
         .llvm_name = "zk",
         .description = "'Zk' (Standard scalar cryptography extension)",
         .dependencies = featureSet(&[_]Feature{
@@ -2332,7 +2332,7 @@ pub const all_features = blk: {
             .zkt,
         }),
     };
-    result[@intFromEnum(Feature.zkn)] = .{
+    result[@backingInt(Feature.zkn)] = .{
         .llvm_name = "zkn",
         .description = "'Zkn' (NIST Algorithm Suite)",
         .dependencies = featureSet(&[_]Feature{
@@ -2344,27 +2344,27 @@ pub const all_features = blk: {
             .zknh,
         }),
     };
-    result[@intFromEnum(Feature.zknd)] = .{
+    result[@backingInt(Feature.zknd)] = .{
         .llvm_name = "zknd",
         .description = "'Zknd' (NIST Suite: AES Decryption)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zkne)] = .{
+    result[@backingInt(Feature.zkne)] = .{
         .llvm_name = "zkne",
         .description = "'Zkne' (NIST Suite: AES Encryption)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zknh)] = .{
+    result[@backingInt(Feature.zknh)] = .{
         .llvm_name = "zknh",
         .description = "'Zknh' (NIST Suite: Hash Function Instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zkr)] = .{
+    result[@backingInt(Feature.zkr)] = .{
         .llvm_name = "zkr",
         .description = "'Zkr' (Entropy Source Extension)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zks)] = .{
+    result[@backingInt(Feature.zks)] = .{
         .llvm_name = "zks",
         .description = "'Zks' (ShangMi Algorithm Suite)",
         .dependencies = featureSet(&[_]Feature{
@@ -2375,46 +2375,46 @@ pub const all_features = blk: {
             .zksh,
         }),
     };
-    result[@intFromEnum(Feature.zksed)] = .{
+    result[@backingInt(Feature.zksed)] = .{
         .llvm_name = "zksed",
         .description = "'Zksed' (ShangMi Suite: SM4 Block Cipher Instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zksh)] = .{
+    result[@backingInt(Feature.zksh)] = .{
         .llvm_name = "zksh",
         .description = "'Zksh' (ShangMi Suite: SM3 Hash Function Instructions)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zkt)] = .{
+    result[@backingInt(Feature.zkt)] = .{
         .llvm_name = "zkt",
         .description = "'Zkt' (Data Independent Execution Latency)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zmmul)] = .{
+    result[@backingInt(Feature.zmmul)] = .{
         .llvm_name = "zmmul",
         .description = "'Zmmul' (Integer Multiplication)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.ztso)] = .{
+    result[@backingInt(Feature.ztso)] = .{
         .llvm_name = "ztso",
         .description = "'Ztso' (Memory Model - Total Store Order)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zvbb)] = .{
+    result[@backingInt(Feature.zvbb)] = .{
         .llvm_name = "zvbb",
         .description = "'Zvbb' (Vector basic bit-manipulation instructions)",
         .dependencies = featureSet(&[_]Feature{
             .zvkb,
         }),
     };
-    result[@intFromEnum(Feature.zvbc)] = .{
+    result[@backingInt(Feature.zvbc)] = .{
         .llvm_name = "zvbc",
         .description = "'Zvbc' (Vector Carryless Multiplication)",
         .dependencies = featureSet(&[_]Feature{
             .zve64x,
         }),
     };
-    result[@intFromEnum(Feature.zve32f)] = .{
+    result[@backingInt(Feature.zve32f)] = .{
         .llvm_name = "zve32f",
         .description = "'Zve32f' (Vector Extensions for Embedded Processors with maximal 32 EEW and F extension)",
         .dependencies = featureSet(&[_]Feature{
@@ -2422,7 +2422,7 @@ pub const all_features = blk: {
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.zve32x)] = .{
+    result[@backingInt(Feature.zve32x)] = .{
         .llvm_name = "zve32x",
         .description = "'Zve32x' (Vector Extensions for Embedded Processors with maximal 32 EEW)",
         .dependencies = featureSet(&[_]Feature{
@@ -2430,7 +2430,7 @@ pub const all_features = blk: {
             .zvl32b,
         }),
     };
-    result[@intFromEnum(Feature.zve64d)] = .{
+    result[@backingInt(Feature.zve64d)] = .{
         .llvm_name = "zve64d",
         .description = "'Zve64d' (Vector Extensions for Embedded Processors with maximal 64 EEW, F and D extension)",
         .dependencies = featureSet(&[_]Feature{
@@ -2438,7 +2438,7 @@ pub const all_features = blk: {
             .zve64f,
         }),
     };
-    result[@intFromEnum(Feature.zve64f)] = .{
+    result[@backingInt(Feature.zve64f)] = .{
         .llvm_name = "zve64f",
         .description = "'Zve64f' (Vector Extensions for Embedded Processors with maximal 64 EEW and F extension)",
         .dependencies = featureSet(&[_]Feature{
@@ -2446,7 +2446,7 @@ pub const all_features = blk: {
             .zve64x,
         }),
     };
-    result[@intFromEnum(Feature.zve64x)] = .{
+    result[@backingInt(Feature.zve64x)] = .{
         .llvm_name = "zve64x",
         .description = "'Zve64x' (Vector Extensions for Embedded Processors with maximal 64 EEW)",
         .dependencies = featureSet(&[_]Feature{
@@ -2454,14 +2454,14 @@ pub const all_features = blk: {
             .zvl64b,
         }),
     };
-    result[@intFromEnum(Feature.zvfbfmin)] = .{
+    result[@backingInt(Feature.zvfbfmin)] = .{
         .llvm_name = "zvfbfmin",
         .description = "'Zvfbfmin' (Vector BF16 Converts)",
         .dependencies = featureSet(&[_]Feature{
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.zvfbfwma)] = .{
+    result[@backingInt(Feature.zvfbfwma)] = .{
         .llvm_name = "zvfbfwma",
         .description = "'Zvfbfwma' (Vector BF16 widening mul-add)",
         .dependencies = featureSet(&[_]Feature{
@@ -2469,7 +2469,7 @@ pub const all_features = blk: {
             .zvfbfmin,
         }),
     };
-    result[@intFromEnum(Feature.zvfh)] = .{
+    result[@backingInt(Feature.zvfh)] = .{
         .llvm_name = "zvfh",
         .description = "'Zvfh' (Vector Half-Precision Floating-Point)",
         .dependencies = featureSet(&[_]Feature{
@@ -2477,28 +2477,28 @@ pub const all_features = blk: {
             .zvfhmin,
         }),
     };
-    result[@intFromEnum(Feature.zvfhmin)] = .{
+    result[@backingInt(Feature.zvfhmin)] = .{
         .llvm_name = "zvfhmin",
         .description = "'Zvfhmin' (Vector Half-Precision Floating-Point Minimal)",
         .dependencies = featureSet(&[_]Feature{
             .zve32f,
         }),
     };
-    result[@intFromEnum(Feature.zvkb)] = .{
+    result[@backingInt(Feature.zvkb)] = .{
         .llvm_name = "zvkb",
         .description = "'Zvkb' (Vector Bit-manipulation used in Cryptography)",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.zvkg)] = .{
+    result[@backingInt(Feature.zvkg)] = .{
         .llvm_name = "zvkg",
         .description = "'Zvkg' (Vector GCM instructions for Cryptography)",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.zvkn)] = .{
+    result[@backingInt(Feature.zvkn)] = .{
         .llvm_name = "zvkn",
         .description = "'Zvkn' (shorthand for 'Zvkned', 'Zvknhb', 'Zvkb', and 'Zvkt')",
         .dependencies = featureSet(&[_]Feature{
@@ -2508,7 +2508,7 @@ pub const all_features = blk: {
             .zvkt,
         }),
     };
-    result[@intFromEnum(Feature.zvknc)] = .{
+    result[@backingInt(Feature.zvknc)] = .{
         .llvm_name = "zvknc",
         .description = "'Zvknc' (shorthand for 'Zvknc' and 'Zvbc')",
         .dependencies = featureSet(&[_]Feature{
@@ -2516,14 +2516,14 @@ pub const all_features = blk: {
             .zvkn,
         }),
     };
-    result[@intFromEnum(Feature.zvkned)] = .{
+    result[@backingInt(Feature.zvkned)] = .{
         .llvm_name = "zvkned",
         .description = "'Zvkned' (Vector AES Encryption & Decryption (Single Round))",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.zvkng)] = .{
+    result[@backingInt(Feature.zvkng)] = .{
         .llvm_name = "zvkng",
         .description = "'Zvkng' (shorthand for 'Zvkn' and 'Zvkg')",
         .dependencies = featureSet(&[_]Feature{
@@ -2531,21 +2531,21 @@ pub const all_features = blk: {
             .zvkn,
         }),
     };
-    result[@intFromEnum(Feature.zvknha)] = .{
+    result[@backingInt(Feature.zvknha)] = .{
         .llvm_name = "zvknha",
         .description = "'Zvknha' (Vector SHA-2 (SHA-256 only))",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.zvknhb)] = .{
+    result[@backingInt(Feature.zvknhb)] = .{
         .llvm_name = "zvknhb",
         .description = "'Zvknhb' (Vector SHA-2 (SHA-256 and SHA-512))",
         .dependencies = featureSet(&[_]Feature{
             .zve64x,
         }),
     };
-    result[@intFromEnum(Feature.zvks)] = .{
+    result[@backingInt(Feature.zvks)] = .{
         .llvm_name = "zvks",
         .description = "'Zvks' (shorthand for 'Zvksed', 'Zvksh', 'Zvkb', and 'Zvkt')",
         .dependencies = featureSet(&[_]Feature{
@@ -2555,7 +2555,7 @@ pub const all_features = blk: {
             .zvkt,
         }),
     };
-    result[@intFromEnum(Feature.zvksc)] = .{
+    result[@backingInt(Feature.zvksc)] = .{
         .llvm_name = "zvksc",
         .description = "'Zvksc' (shorthand for 'Zvks' and 'Zvbc')",
         .dependencies = featureSet(&[_]Feature{
@@ -2563,14 +2563,14 @@ pub const all_features = blk: {
             .zvks,
         }),
     };
-    result[@intFromEnum(Feature.zvksed)] = .{
+    result[@backingInt(Feature.zvksed)] = .{
         .llvm_name = "zvksed",
         .description = "'Zvksed' (SM4 Block Cipher Instructions)",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.zvksg)] = .{
+    result[@backingInt(Feature.zvksg)] = .{
         .llvm_name = "zvksg",
         .description = "'Zvksg' (shorthand for 'Zvks' and 'Zvkg')",
         .dependencies = featureSet(&[_]Feature{
@@ -2578,94 +2578,94 @@ pub const all_features = blk: {
             .zvks,
         }),
     };
-    result[@intFromEnum(Feature.zvksh)] = .{
+    result[@backingInt(Feature.zvksh)] = .{
         .llvm_name = "zvksh",
         .description = "'Zvksh' (SM3 Hash Function Instructions)",
         .dependencies = featureSet(&[_]Feature{
             .zve32x,
         }),
     };
-    result[@intFromEnum(Feature.zvkt)] = .{
+    result[@backingInt(Feature.zvkt)] = .{
         .llvm_name = "zvkt",
         .description = "'Zvkt' (Vector Data-Independent Execution Latency)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zvl1024b)] = .{
+    result[@backingInt(Feature.zvl1024b)] = .{
         .llvm_name = "zvl1024b",
         .description = "'Zvl1024b' (Minimum Vector Length 1024)",
         .dependencies = featureSet(&[_]Feature{
             .zvl512b,
         }),
     };
-    result[@intFromEnum(Feature.zvl128b)] = .{
+    result[@backingInt(Feature.zvl128b)] = .{
         .llvm_name = "zvl128b",
         .description = "'Zvl128b' (Minimum Vector Length 128)",
         .dependencies = featureSet(&[_]Feature{
             .zvl64b,
         }),
     };
-    result[@intFromEnum(Feature.zvl16384b)] = .{
+    result[@backingInt(Feature.zvl16384b)] = .{
         .llvm_name = "zvl16384b",
         .description = "'Zvl16384b' (Minimum Vector Length 16384)",
         .dependencies = featureSet(&[_]Feature{
             .zvl8192b,
         }),
     };
-    result[@intFromEnum(Feature.zvl2048b)] = .{
+    result[@backingInt(Feature.zvl2048b)] = .{
         .llvm_name = "zvl2048b",
         .description = "'Zvl2048b' (Minimum Vector Length 2048)",
         .dependencies = featureSet(&[_]Feature{
             .zvl1024b,
         }),
     };
-    result[@intFromEnum(Feature.zvl256b)] = .{
+    result[@backingInt(Feature.zvl256b)] = .{
         .llvm_name = "zvl256b",
         .description = "'Zvl256b' (Minimum Vector Length 256)",
         .dependencies = featureSet(&[_]Feature{
             .zvl128b,
         }),
     };
-    result[@intFromEnum(Feature.zvl32768b)] = .{
+    result[@backingInt(Feature.zvl32768b)] = .{
         .llvm_name = "zvl32768b",
         .description = "'Zvl32768b' (Minimum Vector Length 32768)",
         .dependencies = featureSet(&[_]Feature{
             .zvl16384b,
         }),
     };
-    result[@intFromEnum(Feature.zvl32b)] = .{
+    result[@backingInt(Feature.zvl32b)] = .{
         .llvm_name = "zvl32b",
         .description = "'Zvl32b' (Minimum Vector Length 32)",
         .dependencies = featureSet(&[_]Feature{}),
     };
-    result[@intFromEnum(Feature.zvl4096b)] = .{
+    result[@backingInt(Feature.zvl4096b)] = .{
         .llvm_name = "zvl4096b",
         .description = "'Zvl4096b' (Minimum Vector Length 4096)",
         .dependencies = featureSet(&[_]Feature{
             .zvl2048b,
         }),
     };
-    result[@intFromEnum(Feature.zvl512b)] = .{
+    result[@backingInt(Feature.zvl512b)] = .{
         .llvm_name = "zvl512b",
         .description = "'Zvl512b' (Minimum Vector Length 512)",
         .dependencies = featureSet(&[_]Feature{
             .zvl256b,
         }),
     };
-    result[@intFromEnum(Feature.zvl64b)] = .{
+    result[@backingInt(Feature.zvl64b)] = .{
         .llvm_name = "zvl64b",
         .description = "'Zvl64b' (Minimum Vector Length 64)",
         .dependencies = featureSet(&[_]Feature{
             .zvl32b,
         }),
     };
-    result[@intFromEnum(Feature.zvl65536b)] = .{
+    result[@backingInt(Feature.zvl65536b)] = .{
         .llvm_name = "zvl65536b",
         .description = "'Zvl65536b' (Minimum Vector Length 65536)",
         .dependencies = featureSet(&[_]Feature{
             .zvl32768b,
         }),
     };
-    result[@intFromEnum(Feature.zvl8192b)] = .{
+    result[@backingInt(Feature.zvl8192b)] = .{
         .llvm_name = "zvl8192b",
         .description = "'Zvl8192b' (Minimum Vector Length 8192)",
         .dependencies = featureSet(&[_]Feature{

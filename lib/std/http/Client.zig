@@ -531,7 +531,7 @@ pub const Response = struct {
                 else => return error.HttpHeadersInvalid,
             };
             if (first_line[8] != ' ') return error.HttpHeadersInvalid;
-            const status: http.Status = @enumFromInt(parseInt3(first_line[9..12]));
+            const status: http.Status = @fromBackingInt(@intCast(parseInt3(first_line[9..12])));
             const reason = mem.trimStart(u8, first_line[12..], " ");
 
             res.version = version;
@@ -825,9 +825,9 @@ pub const Request = struct {
 
     pub const default_accept_encoding: [@typeInfo(http.ContentEncoding).@"enum".field_names.len]bool = b: {
         var result: [@typeInfo(http.ContentEncoding).@"enum".field_names.len]bool = @splat(false);
-        result[@intFromEnum(http.ContentEncoding.gzip)] = true;
-        result[@intFromEnum(http.ContentEncoding.deflate)] = true;
-        result[@intFromEnum(http.ContentEncoding.identity)] = true;
+        result[@backingInt(http.ContentEncoding.gzip)] = true;
+        result[@backingInt(http.ContentEncoding.deflate)] = true;
+        result[@backingInt(http.ContentEncoding.identity)] = true;
         break :b result;
     };
 
@@ -864,20 +864,20 @@ pub const Request = struct {
 
         pub fn init(n: u16) RedirectBehavior {
             assert(n != std.math.maxInt(u16));
-            return @enumFromInt(n);
+            return @fromBackingInt(@intCast(n));
         }
 
         pub fn subtractOne(rb: *RedirectBehavior) void {
             switch (rb.*) {
                 .not_allowed => unreachable,
                 .unhandled => unreachable,
-                _ => rb.* = @enumFromInt(@intFromEnum(rb.*) - 1),
+                _ => rb.* = @fromBackingInt(@intCast(@backingInt(rb.*) - 1)),
             }
         }
 
         pub fn remaining(rb: RedirectBehavior) u16 {
             assert(rb != .unhandled);
-            return @intFromEnum(rb);
+            return @backingInt(rb);
         }
     };
 
@@ -1037,7 +1037,7 @@ pub const Request = struct {
             try w.writeAll("accept-encoding: ");
             for (r.accept_encoding, 0..) |enabled, i| {
                 if (!enabled) continue;
-                const tag: http.ContentEncoding = @enumFromInt(i);
+                const tag: http.ContentEncoding = @fromBackingInt(@intCast(i));
                 if (tag == .identity) continue;
                 const tag_name = @tagName(tag);
                 try w.ensureUnusedCapacity(tag_name.len + 2);
@@ -1188,7 +1188,7 @@ pub const Request = struct {
                 continue;
             }
 
-            if (!r.accept_encoding[@intFromEnum(head.content_encoding)])
+            if (!r.accept_encoding[@backingInt(head.content_encoding)])
                 return error.HttpContentEncodingUnsupported;
 
             r.response_transfer_encoding = head.transfer_encoding;
@@ -1654,7 +1654,7 @@ pub const RequestOptions = struct {
     ///
     /// This will only follow redirects for repeatable requests (ie. with no
     /// payload or the server has acknowledged the payload).
-    redirect_behavior: Request.RedirectBehavior = @enumFromInt(3),
+    redirect_behavior: Request.RedirectBehavior = @fromBackingInt(@intCast(3)),
 
     /// Must be an already acquired connection.
     connection: ?*Connection = null,
@@ -1813,7 +1813,7 @@ pub fn fetch(client: *Client, options: FetchOptions) FetchError!FetchResult {
         if (options.payload != null) .POST else .GET;
 
     const redirect_behavior: Request.RedirectBehavior = options.redirect_behavior orelse
-        if (options.payload == null) @enumFromInt(3) else .unhandled;
+        if (options.payload == null) @fromBackingInt(@intCast(3)) else .unhandled;
 
     var req = try request(client, method, uri, .{
         .redirect_behavior = redirect_behavior,

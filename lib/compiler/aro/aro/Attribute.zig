@@ -154,7 +154,7 @@ pub const Formatting = struct {
                 if (@typeInfo(Unwrapped) != .@"enum") unreachable;
 
                 const enum_field_names = @typeInfo(Unwrapped).@"enum".field_names;
-                const quote = comptime quoteChar(@enumFromInt(@intFromEnum(tag)));
+                const quote = comptime quoteChar(@fromBackingInt(@intCast(@backingInt(tag))));
                 comptime var values: []const u8 = quote ++ enum_field_names[0] ++ quote;
                 inline for (enum_field_names[1..]) |enum_field_name| {
                     values = values ++ ", ";
@@ -344,7 +344,7 @@ fn diagnoseField(
 pub fn diagnose(attr: Tag, arguments: *Arguments, arg_idx: u32, res: Parser.Result, arg_start: TokenIndex, node: Tree.Node, p: *Parser) !bool {
     switch (attr) {
         inline else => |tag| {
-            const decl_name = @typeInfo(attributes).@"struct".decl_names[@intFromEnum(tag)];
+            const decl_name = @typeInfo(attributes).@"struct".decl_names[@backingInt(tag)];
             const max_arg_count = comptime maxArgCount(tag);
             if (arg_idx >= max_arg_count) {
                 try p.err(arg_start, .attribute_too_many_args, .{ @tagName(attr), max_arg_count });
@@ -735,7 +735,7 @@ pub const Arguments = blk: {
 };
 
 pub fn ArgumentsForTag(comptime tag: Tag) type {
-    const decl_name = @typeInfo(attributes).@"struct".decl_names[@intFromEnum(tag)];
+    const decl_name = @typeInfo(attributes).@"struct".decl_names[@backingInt(tag)];
     return @field(attributes, decl_name);
 }
 

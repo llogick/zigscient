@@ -12,5 +12,5 @@ comptime {
 }
 
 fn rebootLinux(cmd: c_int) callconv(.c) c_int {
-    return errno(std.os.linux.reboot(.MAGIC1, .MAGIC2, @enumFromInt(cmd), null));
+    return errno(std.os.linux.reboot(.MAGIC1, .MAGIC2, @fromBackingInt(@intCast(cmd)), null));
 }

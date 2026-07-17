@@ -390,13 +390,13 @@ pub fn resolveTargetQuery(io: Io, query: Target.Query) DetectError!Target {
     // sets one of them, that takes precedence.
     switch (query_cpu_arch) {
         .x86_16 => {
-            cpu.features.addFeature(@intFromEnum(Target.x86.Feature.@"16bit_mode"));
+            cpu.features.addFeature(@backingInt(Target.x86.Feature.@"16bit_mode"));
         },
         .x86 => {
             if (!Target.x86.featureSetHasAny(query.cpu_features_add, .{
                 .@"16bit_mode", .@"32bit_mode",
             })) {
-                cpu.features.addFeature(@intFromEnum(Target.x86.Feature.@"32bit_mode"));
+                cpu.features.addFeature(@backingInt(Target.x86.Feature.@"32bit_mode"));
             }
         },
         .arm, .armeb => {
@@ -404,7 +404,7 @@ pub fn resolveTargetQuery(io: Io, query: Target.Query) DetectError!Target {
             //     What do we do if the user specifies +thumb_mode?
         },
         .thumb, .thumbeb => {
-            cpu.features.addFeature(@intFromEnum(Target.arm.Feature.thumb_mode));
+            cpu.features.addFeature(@backingInt(Target.arm.Feature.thumb_mode));
         },
         else => {},
     }
@@ -452,16 +452,16 @@ pub fn resolveTargetQuery(io: Io, query: Target.Query) DetectError!Target {
             // `-G <n>` to Clang...) We can't do the `-gpsize` hack because we can have multiple
             // concurrent LLVM emit jobs, and command line options in LLVM are shared globally. So
             // just force this feature off. Lovely stuff.
-            result.cpu.features.removeFeature(@intFromEnum(Target.hexagon.Feature.small_data));
+            result.cpu.features.removeFeature(@backingInt(Target.hexagon.Feature.small_data));
         }
 
         // https://github.com/llvm/llvm-project/issues/105978
         if (result.cpu.arch.isArm() and result.abi.float() == .soft) {
-            result.cpu.features.removeFeature(@intFromEnum(Target.arm.Feature.vfp2));
+            result.cpu.features.removeFeature(@backingInt(Target.arm.Feature.vfp2));
         }
 
         if (result.cpu.arch.isXtensa() and result.abi == .call0) {
-            result.cpu.features.removeFeature(@intFromEnum(Target.xtensa.Feature.windowed));
+            result.cpu.features.removeFeature(@backingInt(Target.xtensa.Feature.windowed));
         }
     }
 
@@ -972,7 +972,7 @@ fn detectAbiAndDynamicLinker(io: Io, cpu: Target.Cpu, os: Target.Os, query: Targ
     // and supported by Zig. But that means that we must detect the system ABI here rather than
     // relying on `builtin.target`.
     const all_abis = comptime blk: {
-        assert(@intFromEnum(Target.Abi.none) == 0);
+        assert(@backingInt(Target.Abi.none) == 0);
         const field_names = std.meta.fieldNames(Target.Abi)[1..];
         var array: [field_names.len]Target.Abi = undefined;
         for (field_names, 0..) |field_name, i| {

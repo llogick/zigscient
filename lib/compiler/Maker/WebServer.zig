@@ -257,7 +257,7 @@ pub fn updateStepStatus(
     const ptr = &configured.step_status_bits[step_idx / 4];
     const bit_offset: u3 = @intCast((step_idx % 4) * 2);
     const old_bits: u2 = @truncate(@atomicLoad(u8, ptr, .monotonic) >> bit_offset);
-    const mask = @as(u8, @intFromEnum(new_status) ^ old_bits) << bit_offset;
+    const mask = @as(u8, @backingInt(new_status) ^ old_bits) << bit_offset;
     _ = @atomicRmw(u8, ptr, .Xor, mask, .monotonic);
     ws.notifyUpdate();
 }
@@ -426,16 +426,16 @@ fn serveWebSocket(ws: *WebServer, sock: *http.Server.WebSocket) !noreturn {
             const cur_byte = @atomicLoad(u8, shared, .monotonic);
             if (prev_byte.* == cur_byte) continue;
             const cur: [4]abi.StepUpdate.Status = .{
-                @enumFromInt(@as(u2, @truncate(cur_byte >> 0))),
-                @enumFromInt(@as(u2, @truncate(cur_byte >> 2))),
-                @enumFromInt(@as(u2, @truncate(cur_byte >> 4))),
-                @enumFromInt(@as(u2, @truncate(cur_byte >> 6))),
+                @fromBackingInt(@intCast(@as(u2, @truncate(cur_byte >> 0)))),
+                @fromBackingInt(@intCast(@as(u2, @truncate(cur_byte >> 2)))),
+                @fromBackingInt(@intCast(@as(u2, @truncate(cur_byte >> 4)))),
+                @fromBackingInt(@intCast(@as(u2, @truncate(cur_byte >> 6)))),
             };
             const prev: [4]abi.StepUpdate.Status = .{
-                @enumFromInt(@as(u2, @truncate(prev_byte.* >> 0))),
-                @enumFromInt(@as(u2, @truncate(prev_byte.* >> 2))),
-                @enumFromInt(@as(u2, @truncate(prev_byte.* >> 4))),
-                @enumFromInt(@as(u2, @truncate(prev_byte.* >> 6))),
+                @fromBackingInt(@intCast(@as(u2, @truncate(prev_byte.* >> 0)))),
+                @fromBackingInt(@intCast(@as(u2, @truncate(prev_byte.* >> 2)))),
+                @fromBackingInt(@intCast(@as(u2, @truncate(prev_byte.* >> 4)))),
+                @fromBackingInt(@intCast(@as(u2, @truncate(prev_byte.* >> 6)))),
             };
             for (cur, prev, byte_idx * 4..) |cur_status, prev_status, step_idx| {
                 const msg: abi.StepUpdate = .{ .step_idx = @intCast(step_idx), .bits = .{ .status = cur_status } };
@@ -469,7 +469,7 @@ fn recvWebSocketMessages(ws: *WebServer, sock: *http.Server.WebSocket) void {
         const msg = sock.readSmallMessage() catch return;
         if (msg.opcode != .binary) continue;
         if (msg.data.len == 0) continue;
-        const tag: abi.ToServerTag = @enumFromInt(msg.data[0]);
+        const tag: abi.ToServerTag = @fromBackingInt(@intCast(msg.data[0]));
         switch (tag) {
             _ => continue,
             .rebuild => while (true) {

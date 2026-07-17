@@ -904,7 +904,7 @@ pub const CType = union(enum) {
                 },
                 .error_set => switch (ty.toIntern()) {
                     .anyerror_type => try w.writeAll("anyerror"),
-                    else => try w.print("error_{d}", .{@intFromEnum(ty.toIntern())}),
+                    else => try w.print("error_{d}", .{@backingInt(ty.toIntern())}),
                 },
                 .optional => try w.print("opt_{f}", .{fmtZigType(ty.optionalChild(zcu), zcu)}),
                 .error_union => try w.print("errunion_{f}", .{fmtZigType(ty.errorUnionPayload(zcu), zcu)}),
@@ -944,7 +944,7 @@ pub const CType = union(enum) {
 
                 .array => if (ty.sentinel(zcu)) |s| try w.print("arr_{d}s{d}_{f}", .{
                     ty.arrayLen(zcu),
-                    @intFromEnum(s.toIntern()),
+                    @backingInt(s.toIntern()),
                     fmtZigType(ty.childType(zcu), zcu),
                 }) else try w.print("arr_{d}_{f}", .{
                     ty.arrayLen(zcu),

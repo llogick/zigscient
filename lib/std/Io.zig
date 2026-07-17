@@ -437,14 +437,14 @@ pub const Operation = union(enum) {
         _,
 
         pub fn fromIndex(i: usize) OptionalIndex {
-            const oi: OptionalIndex = @enumFromInt(i);
+            const oi: OptionalIndex = @fromBackingInt(@intCast(i));
             assert(oi != .none);
             return oi;
         }
 
         pub fn toIndex(oi: OptionalIndex) u32 {
             assert(oi != .none);
-            return @intFromEnum(oi);
+            return @backingInt(oi);
         }
     };
     pub const List = struct {
@@ -640,13 +640,13 @@ pub const Limit = enum(usize) {
 
     /// `math.maxInt(usize)` is interpreted to mean `.unlimited`.
     pub fn limited(n: usize) Limit {
-        return @enumFromInt(n);
+        return @fromBackingInt(@intCast(n));
     }
 
     /// Any value grater than `math.maxInt(usize)` is interpreted to mean
     /// `.unlimited`.
     pub fn limited64(n: u64) Limit {
-        return @enumFromInt(@min(n, math.maxInt(usize)));
+        return @fromBackingInt(@intCast(@min(n, math.maxInt(usize))));
     }
 
     pub fn countVec(data: []const []const u8) Limit {
@@ -656,7 +656,7 @@ pub const Limit = enum(usize) {
     }
 
     pub fn min(a: Limit, b: Limit) Limit {
-        return @enumFromInt(@min(@intFromEnum(a), @intFromEnum(b)));
+        return @fromBackingInt(@intCast(@min(@backingInt(a), @backingInt(b))));
     }
 
     pub fn max(a: Limit, b: Limit) Limit {
@@ -664,15 +664,15 @@ pub const Limit = enum(usize) {
             return .unlimited;
         }
 
-        return @enumFromInt(@max(@intFromEnum(a), @intFromEnum(b)));
+        return @fromBackingInt(@intCast(@max(@backingInt(a), @backingInt(b))));
     }
 
     pub fn minInt(l: Limit, n: usize) usize {
-        return @min(n, @intFromEnum(l));
+        return @min(n, @backingInt(l));
     }
 
     pub fn minInt64(l: Limit, n: u64) usize {
-        return @min(n, @intFromEnum(l));
+        return @min(n, @backingInt(l));
     }
 
     pub fn slice(l: Limit, s: []u8) []u8 {
@@ -685,14 +685,14 @@ pub const Limit = enum(usize) {
 
     pub fn toInt(l: Limit) ?usize {
         return switch (l) {
-            else => @intFromEnum(l),
+            else => @backingInt(l),
             .unlimited => null,
         };
     }
 
     pub fn toInt64(l: Limit) ?u64 {
         return switch (l) {
-            else => @intFromEnum(l),
+            else => @backingInt(l),
             .unlimited => null,
         };
     }
@@ -702,7 +702,7 @@ pub const Limit = enum(usize) {
     /// between end-of-stream and reaching the limit.
     pub fn slice1(l: Limit, non_empty_buffer: []u8) []u8 {
         assert(non_empty_buffer.len >= 1);
-        return non_empty_buffer[0..@min(@intFromEnum(l) +| 1, non_empty_buffer.len)];
+        return non_empty_buffer[0..@min(@backingInt(l) +| 1, non_empty_buffer.len)];
     }
 
     pub fn nonzero(l: Limit) bool {
@@ -713,8 +713,8 @@ pub const Limit = enum(usize) {
     /// limit would be exceeded.
     pub fn subtract(l: Limit, amount: usize) ?Limit {
         if (l == .unlimited) return .unlimited;
-        if (amount > @intFromEnum(l)) return null;
-        return @enumFromInt(@intFromEnum(l) - amount);
+        if (amount > @backingInt(l)) return null;
+        return @fromBackingInt(@intCast(@backingInt(l) - amount));
     }
 };
 
@@ -1583,7 +1583,7 @@ pub fn futexWait(io: Io, comptime T: type, ptr: *align(@alignOf(u32)) const T, e
 /// three possible wake-up reasons if necessary.
 pub fn futexWaitTimeout(io: Io, comptime T: type, ptr: *align(@alignOf(u32)) const T, expected: T, timeout: Timeout) Cancelable!void {
     const expected_int: u32 = switch (@typeInfo(T)) {
-        .@"enum" => @bitCast(@intFromEnum(expected)),
+        .@"enum" => @bitCast(@backingInt(expected)),
         else => @bitCast(expected),
     };
     return io.vtable.futexWait(io.userdata, @ptrCast(ptr), expected_int, timeout);
@@ -1593,7 +1593,7 @@ pub fn futexWaitTimeout(io: Io, comptime T: type, ptr: *align(@alignOf(u32)) con
 /// For a description of cancelation and cancelation points, see `Future.cancel`.
 pub fn futexWaitUncancelable(io: Io, comptime T: type, ptr: *align(@alignOf(u32)) const T, expected: T) void {
     const expected_int: u32 = switch (@typeInfo(T)) {
-        .@"enum" => @bitCast(@intFromEnum(expected)),
+        .@"enum" => @bitCast(@backingInt(expected)),
         else => @bitCast(expected),
     };
     io.vtable.futexWaitUncancelable(io.userdata, @ptrCast(ptr), expected_int);

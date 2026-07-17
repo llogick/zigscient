@@ -328,7 +328,7 @@ pub fn legalize(air: *Air, pt: Zcu.PerThread, features: *const Features) Error!v
         .features = .init(features),
     };
     defer air.* = l.getTmpAir();
-    const main_extra = l.extraData(Air.Block, l.air_extra.items[@intFromEnum(Air.ExtraIndex.main_block)]);
+    const main_extra = l.extraData(Air.Block, l.air_extra.items[@backingInt(Air.ExtraIndex.main_block)]);
     try l.legalizeBody(main_extra.end, main_extra.data.body_len);
 }
 
@@ -359,8 +359,8 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
     const zcu = l.pt.zcu;
     const ip = &zcu.intern_pool;
     for (0..body_len) |body_index| {
-        const inst: Air.Inst.Index = @enumFromInt(l.air_extra.items[body_start + body_index]);
-        inst: switch (l.air_instructions.items(.tag)[@intFromEnum(inst)]) {
+        const inst: Air.Inst.Index = @fromBackingInt(@intCast(l.air_extra.items[body_start + body_index]));
+        inst: switch (l.air_instructions.items(.tag)[@backingInt(inst)]) {
             .arg => {},
             inline .add,
             .add_optimized,
@@ -377,7 +377,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .min,
             .max,
             => |air_tag| {
-                const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                const bin_op = l.air_instructions.items(.data)[@backingInt(inst)].bin_op;
                 const ty = l.typeOf(bin_op.lhs);
                 switch (l.wantScalarizeOrSoftFloat(air_tag, ty)) {
                     .none => {},
@@ -395,7 +395,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .div_floor,
             .div_floor_optimized,
             => |air_tag| {
-                const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                const bin_op = l.air_instructions.items(.data)[@backingInt(inst)].bin_op;
                 switch (l.wantScalarizeOrSoftFloat(air_tag, l.typeOf(bin_op.lhs))) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .bin_op)),
@@ -408,7 +408,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             inline .mod, .mod_optimized => |air_tag| {
-                const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                const bin_op = l.air_instructions.items(.data)[@backingInt(inst)].bin_op;
                 switch (l.wantScalarizeOrSoftFloat(air_tag, l.typeOf(bin_op.lhs))) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .bin_op)),
@@ -429,7 +429,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .bit_or,
             .xor,
             => |air_tag| if (l.features.has(comptime .scalarize(air_tag))) {
-                const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                const bin_op = l.air_instructions.items(.data)[@backingInt(inst)].bin_op;
                 if (l.typeOf(bin_op.lhs).isVector(zcu)) {
                     continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .bin_op));
                 }
@@ -438,7 +438,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 assert(!l.features.has(.scalarize_add_safe)); // it doesn't make sense to do both
                 continue :inst l.replaceInst(inst, .block, try l.safeArithmeticBlockPayload(inst, .add_with_overflow));
             } else if (l.features.has(.scalarize_add_safe)) {
-                const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                const bin_op = l.air_instructions.items(.data)[@backingInt(inst)].bin_op;
                 if (l.typeOf(bin_op.lhs).isVector(zcu)) {
                     continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .bin_op));
                 }
@@ -447,7 +447,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 assert(!l.features.has(.scalarize_sub_safe)); // it doesn't make sense to do both
                 continue :inst l.replaceInst(inst, .block, try l.safeArithmeticBlockPayload(inst, .sub_with_overflow));
             } else if (l.features.has(.scalarize_sub_safe)) {
-                const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                const bin_op = l.air_instructions.items(.data)[@backingInt(inst)].bin_op;
                 if (l.typeOf(bin_op.lhs).isVector(zcu)) {
                     continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .bin_op));
                 }
@@ -456,7 +456,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 assert(!l.features.has(.scalarize_mul_safe)); // it doesn't make sense to do both
                 continue :inst l.replaceInst(inst, .block, try l.safeArithmeticBlockPayload(inst, .mul_with_overflow));
             } else if (l.features.has(.scalarize_mul_safe)) {
-                const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                const bin_op = l.air_instructions.items(.data)[@backingInt(inst)].bin_op;
                 if (l.typeOf(bin_op.lhs).isVector(zcu)) {
                     continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .bin_op));
                 }
@@ -467,7 +467,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .mul_with_overflow,
             .shl_with_overflow,
             => |air_tag| if (l.features.has(comptime .scalarize(air_tag))) {
-                const ty_pl = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_pl;
+                const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
                 if (ty_pl.ty.toType().fieldType(0, zcu).isVector(zcu)) {
                     continue :inst l.replaceInst(inst, .block, try l.scalarizeOverflowBlockPayload(inst));
                 }
@@ -484,7 +484,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 .unsplat_shift_rhs,
                 .scalarize(air_tag),
             })) {
-                const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                const bin_op = l.air_instructions.items(.data)[@backingInt(inst)].bin_op;
                 if (l.typeOf(bin_op.rhs).isVector(zcu)) {
                     if (l.features.has(.unsplat_shift_rhs)) {
                         if (bin_op.rhs.toInterned()) |rhs_ip_index| switch (ip.indexToKey(rhs_ip_index)) {
@@ -498,11 +498,11 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                             },
                         } else {
                             const rhs_inst = bin_op.rhs.toIndex().?;
-                            switch (l.air_instructions.items(.tag)[@intFromEnum(rhs_inst)]) {
+                            switch (l.air_instructions.items(.tag)[@backingInt(rhs_inst)]) {
                                 else => {},
                                 .splat => continue :inst l.replaceInst(inst, air_tag, .{ .bin_op = .{
                                     .lhs = bin_op.lhs,
-                                    .rhs = l.air_instructions.items(.data)[@intFromEnum(rhs_inst)].ty_op.operand,
+                                    .rhs = l.air_instructions.items(.data)[@backingInt(rhs_inst)].ty_op.operand,
                                 } }),
                             }
                         }
@@ -524,13 +524,13 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .int_from_ptr,
             .trunc,
             => |air_tag| if (l.features.has(comptime .scalarize(air_tag))) {
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 if (ty_op.ty.toType().isVector(zcu)) {
                     continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .ty_op));
                 }
             },
             .abs => {
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 switch (l.wantScalarizeOrSoftFloat(.abs, ty_op.ty.toType())) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .ty_op)),
@@ -543,7 +543,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             .fptrunc => {
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 const src_ty = l.typeOf(ty_op.operand);
                 const dest_ty = ty_op.ty.toType();
                 if (src_ty.zigTypeTag(zcu) == .vector) {
@@ -558,7 +558,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             .fpext => {
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 const src_ty = l.typeOf(ty_op.operand);
                 const dest_ty = ty_op.ty.toType();
                 if (src_ty.zigTypeTag(zcu) == .vector) {
@@ -573,7 +573,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             inline .int_from_float, .int_from_float_optimized => |air_tag| {
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 switch (l.wantScalarizeOrSoftFloat(air_tag, l.typeOf(ty_op.operand))) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .ty_op)),
@@ -584,7 +584,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             .float_from_int => {
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 const dest_ty = ty_op.ty.toType();
                 switch (l.wantScalarizeOrSoftFloat(.float_from_int, dest_ty)) {
                     .none => {},
@@ -608,7 +608,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 if (try l.safeBitcastBlockPayload(inst)) |payload| {
                     continue :inst l.replaceInst(inst, .block, payload);
                 }
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 continue :inst l.replaceInst(inst, .bit_cast, .{ .ty_op = ty_op });
             } else if (l.features.hasAny(&.{
                 .scalarize_bit_cast_array,
@@ -624,10 +624,10 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 if (try l.safeIntcastBlockPayload(inst)) |payload| {
                     continue :inst l.replaceInst(inst, .block, payload);
                 }
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 continue :inst l.replaceInst(inst, .int_cast, .{ .ty_op = ty_op });
             } else if (l.features.has(.scalarize_int_cast_safe)) {
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 if (ty_op.ty.toType().isVector(zcu)) {
                     continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .ty_op));
                 }
@@ -643,7 +643,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                     assert(!l.features.has(.scalarize(air_tag))); // it doesn't make sense to do both
                     continue :inst l.replaceInst(inst, .block, try l.divCeilBlockPayload(inst, air_tag));
                 } else {
-                    const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                    const bin_op = l.air_instructions.items(.data)[@backingInt(inst)].bin_op;
                     switch (l.wantScalarizeOrSoftFloat(air_tag, l.typeOf(bin_op.lhs))) {
                         .none => {},
                         .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .bin_op)),
@@ -669,7 +669,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                     assert(!l.features.has(.scalarize(air_tag)));
                     continue :inst l.replaceInst(inst, .block, try l.safeIntFromFloatBlockPayload(inst, optimized));
                 }
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 switch (l.wantScalarizeOrSoftFloat(air_tag, l.typeOf(ty_op.operand))) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .ty_op)),
@@ -678,7 +678,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             .block, .loop => {
-                const ty_pl = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_pl;
+                const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
                 const extra = l.extraData(Air.Block, ty_pl.payload);
                 try l.legalizeBody(extra.end, extra.data.body_len);
             },
@@ -707,7 +707,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .round,
             .trunc_float,
             => |air_tag| {
-                const operand = l.air_instructions.items(.data)[@intFromEnum(inst)].un_op;
+                const operand = l.air_instructions.items(.data)[@backingInt(inst)].un_op;
                 const ty = l.typeOf(operand);
                 switch (l.wantScalarizeOrSoftFloat(air_tag, ty)) {
                     .none => {},
@@ -721,7 +721,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             inline .neg, .neg_optimized => |air_tag| {
-                const operand = l.air_instructions.items(.data)[@intFromEnum(inst)].un_op;
+                const operand = l.air_instructions.items(.data)[@backingInt(inst)].un_op;
                 switch (l.wantScalarizeOrSoftFloat(air_tag, l.typeOf(operand))) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .un_op)),
@@ -741,7 +741,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .cmp_neq,
             .cmp_neq_optimized,
             => |air_tag| {
-                const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                const bin_op = l.air_instructions.items(.data)[@backingInt(inst)].bin_op;
                 const ty = l.typeOf(bin_op.lhs);
                 if (l.wantSoftFloatScalar(ty)) {
                     continue :inst l.replaceInst(
@@ -752,7 +752,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             inline .cmp_vector, .cmp_vector_optimized => |air_tag| {
-                const ty_pl = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_pl;
+                const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
                 const payload = l.extraData(Air.VectorCmp, ty_pl.payload).data;
                 switch (l.wantScalarizeOrSoftFloat(air_tag, l.typeOf(payload.lhs))) {
                     .none => {},
@@ -761,13 +761,13 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             .cond_br => {
-                const pl_op = l.air_instructions.items(.data)[@intFromEnum(inst)].pl_op;
+                const pl_op = l.air_instructions.items(.data)[@backingInt(inst)].pl_op;
                 const extra = l.extraData(Air.CondBr, pl_op.payload);
                 try l.legalizeBody(extra.end, extra.data.then_body_len);
                 try l.legalizeBody(extra.end + extra.data.then_body_len, extra.data.else_body_len);
             },
             .switch_br, .loop_switch_br => {
-                const pl_op = l.air_instructions.items(.data)[@intFromEnum(inst)].pl_op;
+                const pl_op = l.air_instructions.items(.data)[@backingInt(inst)].pl_op;
                 const extra = l.extraData(Air.SwitchBr, pl_op.payload);
                 const hint_bag_count = @divCeil(extra.data.cases_len + 1, 10);
                 var extra_index = extra.end + hint_bag_count;
@@ -781,18 +781,18 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             },
             .switch_dispatch => {},
             .@"try", .try_cold => {
-                const pl_op = l.air_instructions.items(.data)[@intFromEnum(inst)].pl_op;
+                const pl_op = l.air_instructions.items(.data)[@backingInt(inst)].pl_op;
                 const extra = l.extraData(Air.Try, pl_op.payload);
                 try l.legalizeBody(extra.end, extra.data.body_len);
             },
             .try_ptr, .try_ptr_cold => {
-                const ty_pl = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_pl;
+                const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
                 const extra = l.extraData(Air.TryPtr, ty_pl.payload);
                 try l.legalizeBody(extra.end, extra.data.body_len);
             },
             .dbg_stmt, .dbg_empty_stmt => {},
             .dbg_inline_block => {
-                const ty_pl = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_pl;
+                const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
                 const extra = l.extraData(Air.DbgInlineBlock, ty_pl.payload);
                 try l.legalizeBody(extra.end, extra.data.body_len);
             },
@@ -809,7 +809,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .is_non_err_ptr,
             => {},
             .load => if (l.features.has(.expand_packed_load)) {
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 const ptr_info = l.typeOf(ty_op.operand).ptrInfo(zcu);
                 if (ptr_info.packed_offset.host_size > 0 and ptr_info.flags.vector_index == .none) {
                     continue :inst l.replaceInst(inst, .block, try l.packedLoadBlockPayload(inst));
@@ -817,7 +817,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             },
             .ret, .ret_safe, .ret_load => {},
             .store, .store_safe => if (l.features.has(.expand_packed_store)) {
-                const bin_op = l.air_instructions.items(.data)[@intFromEnum(inst)].bin_op;
+                const bin_op = l.air_instructions.items(.data)[@backingInt(inst)].bin_op;
                 const ptr_info = l.typeOf(bin_op.lhs).ptrInfo(zcu);
                 if (ptr_info.packed_offset.host_size > 0 and ptr_info.flags.vector_index == .none) {
                     continue :inst l.replaceInst(inst, .block, try l.packedStoreBlockPayload(inst));
@@ -842,7 +842,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .struct_field_ptr_index_3,
             => {},
             .agg_field_val => if (l.features.has(.expand_packed_agg_field_val)) {
-                const ty_pl = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_pl;
+                const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
                 const extra = l.extraData(Air.StructField, ty_pl.payload).data;
                 switch (l.typeOf(extra.struct_operand).containerLayout(zcu)) {
                     .auto, .@"extern" => {},
@@ -864,7 +864,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .array_to_slice,
             => {},
             inline .reduce, .reduce_optimized => |air_tag| {
-                const reduce = l.air_instructions.items(.data)[@intFromEnum(inst)].reduce;
+                const reduce = l.air_instructions.items(.data)[@backingInt(inst)].reduce;
                 const vector_ty = l.typeOf(reduce.operand);
                 if (l.features.has(.reduce_one_elem_to_bit_cast)) {
                     switch (vector_ty.vectorLen(zcu)) {
@@ -887,7 +887,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             .splat => if (l.features.has(.splat_one_elem_to_bit_cast)) {
-                const ty_op = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 switch (ty_op.ty.toType().vectorLen(zcu)) {
                     0 => unreachable,
                     1 => continue :inst l.replaceInst(inst, .bit_cast, .{ .ty_op = .{
@@ -898,7 +898,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             .shuffle_one => {
-                const ty_pl = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_pl;
+                const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
                 switch (l.wantScalarizeOrSoftFloat(.shuffle_one, ty_pl.ty.toType())) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeShuffleOneBlockPayload(inst)),
@@ -906,7 +906,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             .shuffle_two => {
-                const ty_pl = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_pl;
+                const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
                 switch (l.wantScalarizeOrSoftFloat(.shuffle_two, ty_pl.ty.toType())) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeShuffleTwoBlockPayload(inst)),
@@ -914,7 +914,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 }
             },
             .select => {
-                const pl_op = l.air_instructions.items(.data)[@intFromEnum(inst)].pl_op;
+                const pl_op = l.air_instructions.items(.data)[@backingInt(inst)].pl_op;
                 const bin = l.extraData(Air.Bin, pl_op.payload).data;
                 switch (l.wantScalarizeOrSoftFloat(.select, l.typeOf(bin.lhs))) {
                     .none => {},
@@ -940,7 +940,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .error_set_has_value,
             => {},
             .aggregate_init => if (l.features.has(.expand_packed_aggregate_init)) {
-                const ty_pl = l.air_instructions.items(.data)[@intFromEnum(inst)].ty_pl;
+                const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
                 const agg_ty = ty_pl.ty.toType();
                 switch (agg_ty.zigTypeTag(zcu)) {
                     else => {},
@@ -958,7 +958,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                                     // Just bitcast this field.
                                     continue :inst l.replaceInst(inst, .bit_cast, .{ .ty_op = .{
                                         .ty = .fromType(agg_ty),
-                                        .operand = @enumFromInt(l.air_extra.items[ty_pl.payload + field_index]),
+                                        .operand = @fromBackingInt(@intCast(l.air_extra.items[ty_pl.payload + field_index])),
                                     } });
                                 }
                             }
@@ -971,7 +971,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             },
             .union_init, .prefetch => {},
             .mul_add => {
-                const pl_op = l.air_instructions.items(.data)[@intFromEnum(inst)].pl_op;
+                const pl_op = l.air_instructions.items(.data)[@backingInt(inst)].pl_op;
                 const ty = l.typeOf(pl_op.operand);
                 switch (l.wantScalarizeOrSoftFloat(.mul_add, ty)) {
                     .none => {},
@@ -1017,7 +1017,7 @@ fn scalarizeBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, form: Scalariz
     const pt = l.pt;
     const zcu = pt.zcu;
 
-    const orig = l.air_instructions.get(@intFromEnum(orig_inst));
+    const orig = l.air_instructions.get(@backingInt(orig_inst));
     const res_ty = l.typeOfIndex(orig_inst);
     const result_is_array = switch (res_ty.zigTypeTag(zcu)) {
         .vector => false,
@@ -1167,7 +1167,7 @@ fn scalarizeBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, form: Scalariz
             try condbr.finish(l);
 
             const inst_data = l.air_instructions.items(.data);
-            inst_data[@intFromEnum(elem_block_inst)].ty_pl.payload = try l.addBlockBody(elem_block.body());
+            inst_data[@backingInt(elem_block_inst)].ty_pl.payload = try l.addBlockBody(elem_block.body());
 
             break :elem elem_block_inst.toRef();
         },
@@ -1519,13 +1519,13 @@ fn addScalarizedShuffle(
     try loop.finish(l);
 
     const inst_data = l.air_instructions.items(.data);
-    inst_data[@intFromEnum(main_block_inst)].ty_pl.payload = try l.addBlockBody(main_block.body());
+    inst_data[@backingInt(main_block_inst)].ty_pl.payload = try l.addBlockBody(main_block.body());
 }
 fn scalarizeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?Air.Inst.Data {
     const pt = l.pt;
     const zcu = pt.zcu;
 
-    const ty_op = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].ty_op;
+    const ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
 
     const dest_ty = ty_op.ty.toType();
     const operand_ty = l.typeOf(ty_op.operand);
@@ -1723,7 +1723,7 @@ fn scalarizeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?
         try loop.finish(l);
 
         const inst_data = l.air_instructions.items(.data);
-        inst_data[@intFromEnum(uint_block_inst)].ty_pl.payload = try l.addBlockBody(uint_block.body());
+        inst_data[@backingInt(uint_block_inst)].ty_pl.payload = try l.addBlockBody(uint_block.body());
 
         break :uint_val uint_block_inst.toRef();
     };
@@ -1736,7 +1736,7 @@ fn scalarizeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?
 
     if (int_to_dest_ok) {
         _ = main_block.stealCapacity(17);
-        const result = switch (l.air_instructions.items(.tag)[@intFromEnum(orig_inst)]) {
+        const result = switch (l.air_instructions.items(.tag)[@backingInt(orig_inst)]) {
             .bit_cast => main_block.addBitCast(l, dest_ty, uint_val),
             .bit_cast_safe => main_block.add(l, .{
                 .tag = .bit_cast_safe,
@@ -1752,7 +1752,7 @@ fn scalarizeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?
         _ = main_block.stealCapacity(16);
         const elem = main_block.addBitCast(l, dest_ty.childType(zcu), uint_val);
         const aggregate_init_payload_start = l.air_extra.items.len;
-        try l.air_extra.append(zcu.gpa, @intFromEnum(elem));
+        try l.air_extra.append(zcu.gpa, @backingInt(elem));
         const result = main_block.add(l, .{
             .tag = .aggregate_init,
             .data = .{ .ty_pl = .{
@@ -1863,7 +1863,7 @@ fn scalarizeOverflowBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!
     const pt = l.pt;
     const zcu = pt.zcu;
 
-    const orig = l.air_instructions.get(@intFromEnum(orig_inst));
+    const orig = l.air_instructions.get(@backingInt(orig_inst));
     const orig_operands = l.extraData(Air.Bin, orig.data.ty_pl.payload).data;
 
     const vec_tuple_ty = l.typeOfIndex(orig_inst);
@@ -2009,7 +2009,7 @@ fn scalarizeReduceBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, optimize
     const pt = l.pt;
     const zcu = pt.zcu;
 
-    const reduce = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].reduce;
+    const reduce = l.air_instructions.items(.data)[@backingInt(orig_inst)].reduce;
 
     const vector_ty = l.typeOf(reduce.operand);
     const scalar_ty = vector_ty.childType(zcu);
@@ -2136,7 +2136,7 @@ fn scalarizeReduceBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, optimize
 fn safeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?Air.Inst.Data {
     const pt = l.pt;
     const zcu = pt.zcu;
-    const ty_op = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].ty_op;
+    const ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
 
     const operand_ref = ty_op.operand;
     const dest_ty = ty_op.ty.toType();
@@ -2191,7 +2191,7 @@ fn safeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?Air.I
 fn safeIntcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?Air.Inst.Data {
     const pt = l.pt;
     const zcu = pt.zcu;
-    const ty_op = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].ty_op;
+    const ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
 
     const operand_ref = ty_op.operand;
     const operand_ty = l.typeOf(operand_ref);
@@ -2362,7 +2362,7 @@ fn safeIntFromFloatBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, optimiz
     const pt = l.pt;
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
-    const ty_op = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].ty_op;
+    const ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
 
     const operand_ref = ty_op.operand;
     const operand_ty = l.typeOf(operand_ref);
@@ -2470,7 +2470,7 @@ fn safeIntFromFloatBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, optimiz
 fn safeArithmeticBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, overflow_op_tag: Air.Inst.Tag) Error!Air.Inst.Data {
     const pt = l.pt;
     const zcu = pt.zcu;
-    const bin_op = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].bin_op;
+    const bin_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].bin_op;
 
     const operand_ty = l.typeOf(bin_op.lhs);
     assert(l.typeOf(bin_op.rhs).toIntern() == operand_ty.toIntern());
@@ -2567,7 +2567,7 @@ fn divCeilBlockPayload(
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
 
-    const bin_op = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].bin_op;
+    const bin_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].bin_op;
     const operand_ty = l.typeOf(bin_op.lhs);
     assert(l.typeOf(bin_op.rhs).toIntern() == operand_ty.toIntern());
 
@@ -2715,7 +2715,7 @@ fn packedLoadBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.Ins
     const pt = l.pt;
     const zcu = pt.zcu;
 
-    const orig_ty_op = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].ty_op;
+    const orig_ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
     const res_ty = orig_ty_op.ty.toType();
     const res_int_ty = try pt.intType(.unsigned, @intCast(res_ty.bitSize(zcu)));
     const ptr_ty = l.typeOf(orig_ty_op.operand);
@@ -2771,7 +2771,7 @@ fn packedStoreBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.In
     const pt = l.pt;
     const zcu = pt.zcu;
 
-    const orig_bin_op = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].bin_op;
+    const orig_bin_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].bin_op;
     const ptr_ty = l.typeOf(orig_bin_op.lhs);
     const ptr_info = ptr_ty.ptrInfo(zcu);
     const operand_ty = l.typeOf(orig_bin_op.rhs);
@@ -2869,7 +2869,7 @@ fn packedStructFieldValBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Err
     const pt = l.pt;
     const zcu = pt.zcu;
 
-    const orig_ty_pl = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].ty_pl;
+    const orig_ty_pl = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_pl;
     const orig_extra = l.extraData(Air.StructField, orig_ty_pl.payload).data;
     const field_ty = orig_ty_pl.ty.toType();
     const agg_ty = l.typeOf(orig_extra.struct_operand);
@@ -2903,7 +2903,7 @@ fn packedAggregateInitBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Erro
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
 
-    const orig_ty_pl = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].ty_pl;
+    const orig_ty_pl = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_pl;
     const agg_ty = orig_ty_pl.ty.toType();
     const agg_field_count = agg_ty.structFieldCount(zcu);
 
@@ -2930,7 +2930,7 @@ fn packedAggregateInitBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Erro
         assert(field_bits < num_bits);
         const field_uint_ty = try pt.intType(.unsigned, field_bits);
         const field_bit_size_ref: Air.Inst.Ref = .fromValue(try pt.intValue(shift_ty, field_bits));
-        const field_val: Air.Inst.Ref = @enumFromInt(l.air_extra.items[orig_ty_pl.payload + field_idx]);
+        const field_val: Air.Inst.Ref = @fromBackingInt(@intCast(l.air_extra.items[orig_ty_pl.payload + field_idx]));
 
         const shifted = main_block.addBinOp(l, .shl_exact, cur_uint, field_bit_size_ref).toRef();
         const field_as_uint = main_block.addBitCast(l, field_uint_ty, field_val);
@@ -3298,7 +3298,7 @@ const Loop = struct {
     }
 
     fn finish(loop: Loop, l: *Legalize) Error!void {
-        const data = &l.air_instructions.items(.data)[@intFromEnum(loop.inst)];
+        const data = &l.air_instructions.items(.data)[@backingInt(loop.inst)];
         data.ty_pl.payload = try l.addBlockBody(loop.block.body());
     }
 };
@@ -3331,7 +3331,7 @@ const CondBr = struct {
         const else_body = cond_br.else_block.body();
         try l.air_extra.ensureUnusedCapacity(l.pt.zcu.gpa, 3 + then_body.len + else_body.len);
 
-        const data = &l.air_instructions.items(.data)[@intFromEnum(cond_br.inst)];
+        const data = &l.air_instructions.items(.data)[@backingInt(cond_br.inst)];
         data.pl_op.payload = @intCast(l.air_extra.items.len);
         l.air_extra.appendSliceAssumeCapacity(&.{
             @intCast(then_body.len),
@@ -3345,7 +3345,7 @@ const CondBr = struct {
 
 fn addInstAssumeCapacity(l: *Legalize, inst: Air.Inst) Air.Inst.Index {
     defer l.air_instructions.appendAssumeCapacity(inst);
-    return @enumFromInt(l.air_instructions.len);
+    return @fromBackingInt(@intCast(l.air_instructions.len));
 }
 
 fn addExtra(l: *Legalize, comptime Extra: type, extra: Extra) Error!u32 {
@@ -3353,7 +3353,7 @@ fn addExtra(l: *Legalize, comptime Extra: type, extra: Extra) Error!u32 {
     try l.air_extra.ensureUnusedCapacity(l.pt.zcu.gpa, extra_info.field_names.len);
     defer inline for (extra_info.field_names, extra_info.field_types) |field_name, field_type| l.air_extra.appendAssumeCapacity(switch (field_type) {
         u32 => @field(extra, field_name),
-        Air.Inst.Ref => @intFromEnum(@field(extra, field_name)),
+        Air.Inst.Ref => @backingInt(@field(extra, field_name)),
         else => @compileError(@typeName(field_type)),
     });
     return @intCast(l.air_extra.items.len);
@@ -3372,7 +3372,7 @@ fn addBlockBody(l: *Legalize, body: []const Air.Inst.Index) Error!u32 {
 /// `inline` to propagate the comptime-known `tag` result.
 inline fn replaceInst(l: *Legalize, inst: Air.Inst.Index, comptime tag: Air.Inst.Tag, data: Air.Inst.Data) Air.Inst.Tag {
     const orig_ty = if (std.debug.runtime_safety) l.typeOfIndex(inst) else {};
-    l.air_instructions.set(@intFromEnum(inst), .{ .tag = tag, .data = data });
+    l.air_instructions.set(@backingInt(inst), .{ .tag = tag, .data = data });
     if (std.debug.runtime_safety) assert(l.typeOfIndex(inst).toIntern() == orig_ty.toIntern());
     return tag;
 }
@@ -3436,7 +3436,7 @@ fn softFptruncFunc(l: *const Legalize, src_ty: Type, dst_ty: Type) Air.CompilerR
         80 => 3,
         else => unreachable,
     };
-    return @enumFromInt(@intFromEnum(to_f16_func) + offset);
+    return @fromBackingInt(@intCast(@backingInt(to_f16_func) + offset));
 }
 fn softFpextFunc(l: *const Legalize, src_ty: Type, dst_ty: Type) Air.CompilerRtFunc {
     const target = l.pt.zcu.getTarget();
@@ -3457,7 +3457,7 @@ fn softFpextFunc(l: *const Legalize, src_ty: Type, dst_ty: Type) Air.CompilerRtF
         32 => 3,
         else => unreachable,
     };
-    return @enumFromInt(@intFromEnum(to_f128_func) + offset);
+    return @fromBackingInt(@intCast(@backingInt(to_f128_func) + offset));
 }
 fn softFloatFromInt(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
     call: Air.CompilerRtFunc,
@@ -3467,7 +3467,7 @@ fn softFloatFromInt(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
     const zcu = pt.zcu;
     const target = zcu.getTarget();
 
-    const ty_op = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].ty_op;
+    const ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
     const dest_ty = ty_op.ty.toType();
     const src_ty = l.typeOf(ty_op.operand);
 
@@ -3497,7 +3497,7 @@ fn softFloatFromInt(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
             break :fixed;
         }
 
-        const func: Air.CompilerRtFunc = @enumFromInt(@intFromEnum(base) + int_bits_off + float_off);
+        const func: Air.CompilerRtFunc = @fromBackingInt(@intCast(@backingInt(base) + int_bits_off + float_off));
         if (extended_int_bits == src_info.bits) return .{ .call = func };
 
         // We need to emit a block which first sign/zero-extends to the right type and *then* calls
@@ -3522,7 +3522,7 @@ fn softFloatFromInt(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
     // We need to emit a block which puts the integer into an `alloc` (possibly sign/zero-extended)
     // and calls an arbitrary-width conversion routine.
 
-    const func: Air.CompilerRtFunc = @enumFromInt(@intFromEnum(base) + 15 + float_off);
+    const func: Air.CompilerRtFunc = @fromBackingInt(@intCast(@backingInt(base) + 15 + float_off));
 
     // The extended integer routines expect the integer representation where the integer is
     // effectively zero- or sign-extended to its ABI size. We represent that by intcasting to
@@ -3560,7 +3560,7 @@ fn softIntFromFloat(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
     const zcu = pt.zcu;
     const target = zcu.getTarget();
 
-    const ty_op = l.air_instructions.items(.data)[@intFromEnum(orig_inst)].ty_op;
+    const ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
     const src_ty = l.typeOf(ty_op.operand);
     const dest_ty = ty_op.ty.toType();
 
@@ -3590,7 +3590,7 @@ fn softIntFromFloat(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
             break :fixed;
         }
 
-        const func: Air.CompilerRtFunc = @enumFromInt(@intFromEnum(base) + int_bits_off + float_off);
+        const func: Air.CompilerRtFunc = @fromBackingInt(@intCast(@backingInt(base) + int_bits_off + float_off));
         if (extended_int_bits == dest_info.bits) return .{ .call = func };
 
         // We need to emit a block which calls the routine and then casts to the required type.
@@ -3611,7 +3611,7 @@ fn softIntFromFloat(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
 
     // We need to emit a block which calls an arbitrary-width conversion routine, then loads the
     // integer from an `alloc` and possibly truncates it.
-    const func: Air.CompilerRtFunc = @enumFromInt(@intFromEnum(base) + 15 + float_off);
+    const func: Air.CompilerRtFunc = @fromBackingInt(@intCast(@backingInt(base) + 15 + float_off));
 
     const extended_ty = try pt.intType(dest_info.signedness, @intCast(dest_ty.abiSize(zcu) * 8));
     assert(extended_ty.abiSize(zcu) == dest_ty.abiSize(zcu));
@@ -3678,7 +3678,7 @@ fn softFloatFunc(op: Air.Inst.Tag, float_ty: Type, zcu: *const Zcu) Air.Compiler
         128 => 4,
         else => unreachable,
     };
-    return @enumFromInt(@intFromEnum(f16_func) + offset);
+    return @fromBackingInt(@intCast(@backingInt(f16_func) + offset));
 }
 
 fn softFloatNegBlockPayload(

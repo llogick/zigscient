@@ -195,7 +195,7 @@ pub const ScratchSpace = struct {
         _,
 
         fn ptr(index: FuncImportIndex, ss: *const ScratchSpace) *FunctionImport {
-            return &ss.func_imports.items[@intFromEnum(index)];
+            return &ss.func_imports.items[@backingInt(index)];
         }
     };
 
@@ -204,7 +204,7 @@ pub const ScratchSpace = struct {
         _,
 
         fn ptr(index: GlobalImportIndex, ss: *const ScratchSpace) *GlobalImport {
-            return &ss.global_imports.items[@intFromEnum(index)];
+            return &ss.global_imports.items[@backingInt(index)];
         }
     };
 
@@ -213,7 +213,7 @@ pub const ScratchSpace = struct {
         _,
 
         fn ptr(index: TableImportIndex, ss: *const ScratchSpace) *TableImport {
-            return &ss.table_imports.items[@intFromEnum(index)];
+            return &ss.table_imports.items[@backingInt(index)];
         }
     };
 
@@ -222,7 +222,7 @@ pub const ScratchSpace = struct {
         _,
 
         fn ptr(index: FuncTypeIndex, ss: *const ScratchSpace) *Wasm.FunctionType.Index {
-            return &ss.func_types.items[@intFromEnum(index)];
+            return &ss.func_types.items[@backingInt(index)];
         }
     };
 
@@ -285,7 +285,7 @@ pub fn parse(
     const table_imports_start: u32 = @intCast(wasm.object_table_imports.entries.len);
     const data_imports_start: u32 = @intCast(wasm.object_data_imports.entries.len);
     const local_section_index_base = wasm.object_total_sections;
-    const object_index: Wasm.ObjectIndex = @enumFromInt(wasm.objects.items.len);
+    const object_index: Wasm.ObjectIndex = @fromBackingInt(@intCast(wasm.objects.items.len));
     const source_location: Wasm.SourceLocation = .fromObject(object_index, wasm);
 
     ss.clear();
@@ -299,9 +299,9 @@ pub fn parse(
     var global_section_index: ?Wasm.ObjectSectionIndex = null;
     var data_section_index: ?Wasm.ObjectSectionIndex = null;
     while (pos < bytes.len) : (wasm.object_total_sections += 1) {
-        const section_index: Wasm.ObjectSectionIndex = @enumFromInt(wasm.object_total_sections);
+        const section_index: Wasm.ObjectSectionIndex = @fromBackingInt(@intCast(wasm.object_total_sections));
 
-        const section_tag: std.wasm.Section = @enumFromInt(bytes[pos]);
+        const section_tag: std.wasm.Section = @fromBackingInt(@intCast(bytes[pos]));
         pos += 1;
 
         const len, pos = readLeb(u32, bytes, pos);
@@ -316,13 +316,13 @@ pub fn parse(
                     if (section_version != 2) return error.UnsupportedVersion;
                     while (pos < section_end) {
                         const sub_type, pos = readLeb(u8, bytes, pos);
-                        log.debug("found subsection: {s}", .{@tagName(@as(SubsectionType, @enumFromInt(sub_type)))});
+                        log.debug("found subsection: {s}", .{@tagName(@as(SubsectionType, @fromBackingInt(@intCast(sub_type))))});
                         const payload_len, pos = readLeb(u32, bytes, pos);
                         if (payload_len == 0) break;
 
                         const count, pos = readLeb(u32, bytes, pos);
 
-                        switch (@as(SubsectionType, @enumFromInt(sub_type))) {
+                        switch (@as(SubsectionType, @fromBackingInt(@intCast(sub_type)))) {
                             .segment_info => {
                                 for (try ss.segment_info.addManyAsSlice(gpa, count)) |*segment| {
                                     const name, pos = readBytes(bytes, pos);
@@ -340,7 +340,7 @@ pub fn parse(
                                         .flags = .{
                                             .strings = flags.strings,
                                             .tls = tls,
-                                            .alignment = @enumFromInt(alignment),
+                                            .alignment = @fromBackingInt(@intCast(alignment)),
                                             .retain = flags.retain,
                                         },
                                     };
@@ -418,27 +418,27 @@ pub fn parse(
                                                 const segment_offset, pos = readLeb(u32, bytes, pos);
                                                 const size, pos = readLeb(u32, bytes, pos);
                                                 try wasm.object_datas.append(gpa, .{
-                                                    .segment = @enumFromInt(data_segment_start + segment_index),
+                                                    .segment = @fromBackingInt(@intCast(data_segment_start + segment_index)),
                                                     .offset = segment_offset,
                                                     .size = size,
                                                     .name = interned_name,
                                                     .flags = symbol.flags,
                                                 });
                                                 symbol.pointee = .{
-                                                    .data = @enumFromInt(wasm.object_datas.items.len - 1),
+                                                    .data = @fromBackingInt(@intCast(wasm.object_datas.items.len - 1)),
                                                 };
                                             }
                                         },
                                         .section => {
                                             const local_section, pos = readLeb(u32, bytes, pos);
-                                            const section: Wasm.ObjectSectionIndex = @enumFromInt(local_section_index_base + local_section);
+                                            const section: Wasm.ObjectSectionIndex = @fromBackingInt(@intCast(local_section_index_base + local_section));
                                             symbol.pointee = .{ .section = section };
                                         },
 
                                         .function => {
                                             const local_index, pos = readLeb(u32, bytes, pos);
                                             if (symbol.flags.undefined) {
-                                                const function_import: ScratchSpace.FuncImportIndex = @enumFromInt(local_index);
+                                                const function_import: ScratchSpace.FuncImportIndex = @fromBackingInt(@intCast(local_index));
                                                 symbol.pointee = .{ .function_import = function_import };
                                                 if (symbol.flags.explicit_name) {
                                                     const name, pos = readBytes(bytes, pos);
@@ -447,7 +447,7 @@ pub fn parse(
                                                     symbol.name = function_import.ptr(ss).name.toOptional();
                                                 }
                                             } else {
-                                                symbol.pointee = .{ .function = @enumFromInt(functions_start + (local_index - ss.func_imports.items.len)) };
+                                                symbol.pointee = .{ .function = @fromBackingInt(@intCast(functions_start + (local_index - ss.func_imports.items.len))) };
                                                 const name, pos = readBytes(bytes, pos);
                                                 symbol.name = (try wasm.internString(name)).toOptional();
                                             }
@@ -455,7 +455,7 @@ pub fn parse(
                                         .global => {
                                             const local_index, pos = readLeb(u32, bytes, pos);
                                             if (symbol.flags.undefined) {
-                                                const global_import: ScratchSpace.GlobalImportIndex = @enumFromInt(local_index);
+                                                const global_import: ScratchSpace.GlobalImportIndex = @fromBackingInt(@intCast(local_index));
                                                 symbol.pointee = .{ .global_import = global_import };
                                                 if (symbol.flags.explicit_name) {
                                                     const name, pos = readBytes(bytes, pos);
@@ -464,7 +464,7 @@ pub fn parse(
                                                     symbol.name = global_import.ptr(ss).name.toOptional();
                                                 }
                                             } else {
-                                                symbol.pointee = .{ .global = @enumFromInt(globals_start + (local_index - ss.global_imports.items.len)) };
+                                                symbol.pointee = .{ .global = @fromBackingInt(@intCast(globals_start + (local_index - ss.global_imports.items.len))) };
                                                 const name, pos = readBytes(bytes, pos);
                                                 symbol.name = (try wasm.internString(name)).toOptional();
                                             }
@@ -473,7 +473,7 @@ pub fn parse(
                                             const local_index, pos = readLeb(u32, bytes, pos);
                                             if (symbol.flags.undefined) {
                                                 table_import_symbol_count += 1;
-                                                const table_import: ScratchSpace.TableImportIndex = @enumFromInt(local_index);
+                                                const table_import: ScratchSpace.TableImportIndex = @fromBackingInt(@intCast(local_index));
                                                 symbol.pointee = .{ .table_import = table_import };
                                                 if (symbol.flags.explicit_name) {
                                                     const name, pos = readBytes(bytes, pos);
@@ -482,13 +482,13 @@ pub fn parse(
                                                     symbol.name = table_import.ptr(ss).name.toOptional();
                                                 }
                                             } else {
-                                                symbol.pointee = .{ .table = @enumFromInt(tables_start + (local_index - ss.table_imports.items.len)) };
+                                                symbol.pointee = .{ .table = @fromBackingInt(@intCast(tables_start + (local_index - ss.table_imports.items.len))) };
                                                 const name, pos = readBytes(bytes, pos);
                                                 symbol.name = (try wasm.internString(name)).toOptional();
                                             }
                                         },
                                         else => {
-                                            log.debug("unrecognized symbol type tag: {x}", .{@intFromEnum(tag)});
+                                            log.debug("unrecognized symbol type tag: {x}", .{@backingInt(tag)});
                                             return error.UnrecognizedSymbolType;
                                         },
                                     }
@@ -506,14 +506,14 @@ pub fn parse(
                     // "Relocation sections can only target code, data and custom sections."
                     const local_section, pos = readLeb(u32, bytes, pos);
                     const count, pos = readLeb(u32, bytes, pos);
-                    const section: Wasm.ObjectSectionIndex = @enumFromInt(local_section_index_base + local_section);
+                    const section: Wasm.ObjectSectionIndex = @fromBackingInt(@intCast(local_section_index_base + local_section));
 
                     log.debug("found {d} relocations for section={d}", .{ count, section });
 
                     var prev_offset: u32 = 0;
                     try wasm.object_relocations.ensureUnusedCapacity(gpa, count);
                     for (0..count) |_| {
-                        const tag: RelocationType = @enumFromInt(bytes[pos]);
+                        const tag: RelocationType = @fromBackingInt(@intCast(bytes[pos]));
                         pos += 1;
                         const offset, pos = readLeb(u32, bytes, pos);
                         const index, pos = readLeb(u32, bytes, pos);
@@ -668,7 +668,7 @@ pub fn parse(
 
                     try wasm.object_custom_segments.put(gpa, section_index, .{
                         .payload = .{
-                            .off = @enumFromInt(data_off),
+                            .off = @fromBackingInt(@intCast(data_off)),
                             .len = @intCast(debug_content.len),
                         },
                         .flags = .{},
@@ -706,7 +706,7 @@ pub fn parse(
                             try ss.func_imports.append(gpa, .{
                                 .module_name = interned_module_name,
                                 .name = interned_name,
-                                .function_index = @enumFromInt(function),
+                                .function_index = @fromBackingInt(@intCast(function)),
                             });
                         },
                         .memory => {
@@ -766,7 +766,7 @@ pub fn parse(
                 const functions_len, pos = readLeb(u32, bytes, pos);
                 for (try ss.func_type_indexes.addManyAsSlice(gpa, functions_len)) |*func_type_index| {
                     const i, pos = readLeb(u32, bytes, pos);
-                    func_type_index.* = @enumFromInt(i);
+                    func_type_index.* = @fromBackingInt(@intCast(i));
                 }
             },
             .table => {
@@ -837,23 +837,23 @@ pub fn parse(
                 // existing symbol table data if the name matches.
                 for (try ss.exports.addManyAsSlice(gpa, exports_len)) |*exp| {
                     const name, pos = readBytes(bytes, pos);
-                    const kind: std.wasm.ExternalKind = @enumFromInt(bytes[pos]);
+                    const kind: std.wasm.ExternalKind = @fromBackingInt(@intCast(bytes[pos]));
                     pos += 1;
                     const index, pos = readLeb(u32, bytes, pos);
                     exp.* = .{
                         .name = try wasm.internString(name),
                         .pointee = switch (kind) {
-                            .function => .{ .function = @enumFromInt(functions_start + (index - ss.func_imports.items.len)) },
-                            .table => .{ .table = @enumFromInt(tables_start + (index - ss.table_imports.items.len)) },
-                            .memory => .{ .memory = @enumFromInt(memories_start + index) },
-                            .global => .{ .global = @enumFromInt(globals_start + (index - ss.global_imports.items.len)) },
+                            .function => .{ .function = @fromBackingInt(@intCast(functions_start + (index - ss.func_imports.items.len))) },
+                            .table => .{ .table = @fromBackingInt(@intCast(tables_start + (index - ss.table_imports.items.len))) },
+                            .memory => .{ .memory = @fromBackingInt(@intCast(memories_start + index)) },
+                            .global => .{ .global = @fromBackingInt(@intCast(globals_start + (index - ss.global_imports.items.len))) },
                         },
                     };
                 }
             },
             .start => {
                 const index, pos = readLeb(u32, bytes, pos);
-                start_function = @enumFromInt(functions_start + index);
+                start_function = @fromBackingInt(@intCast(functions_start + index));
             },
             .element => {
                 log.warn("unimplemented: element section in {f} {?s}", .{ path, archive_member_name });
@@ -1000,7 +1000,7 @@ pub fn parse(
                 .no_strip = true,
             },
             .name = table_import_name.toOptional(),
-            .pointee = .{ .table_import = @enumFromInt(0) },
+            .pointee = .{ .table_import = @fromBackingInt(@intCast(0)) },
         });
     }
 
@@ -1482,7 +1482,7 @@ fn readBytes(bytes: []const u8, start_pos: usize) struct { []const u8, usize } {
 fn readEnum(comptime T: type, bytes: []const u8, pos: usize) struct { T, usize } {
     const Tag = @typeInfo(T).@"enum".tag_type;
     const int, const new_pos = readLeb(Tag, bytes, pos);
-    return .{ @enumFromInt(int), new_pos };
+    return .{ @fromBackingInt(@intCast(int)), new_pos };
 }
 
 fn readLimits(bytes: []const u8, start_pos: usize) struct { std.wasm.Limits, usize } {
@@ -1503,7 +1503,7 @@ fn readInit(wasm: *Wasm, bytes: []const u8, pos: usize) !struct { Wasm.Expr, usi
 
 pub fn exprEndPos(bytes: []const u8, pos: usize) error{InvalidInitOpcode}!usize {
     const opcode = bytes[pos];
-    return switch (@as(std.wasm.Opcode, @enumFromInt(opcode))) {
+    return switch (@as(std.wasm.Opcode, @fromBackingInt(@intCast(opcode)))) {
         .i32_const => readLeb(i32, bytes, pos + 1)[1],
         .i64_const => readLeb(i64, bytes, pos + 1)[1],
         .f32_const => pos + 5,

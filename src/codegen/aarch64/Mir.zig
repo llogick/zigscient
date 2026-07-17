@@ -122,11 +122,11 @@ pub fn emit(
         zcu,
         atom_index,
         if (lf.cast(.elf)) |ef|
-            @enumFromInt(ef.zigObjectPtr().?.getOrCreateMetadataForLazySymbol(ef, pt, lazy_reloc.symbol) catch |err|
-                return zcu.codegenFail(func.owner_nav, "{s} creating lazy symbol", .{@errorName(err)}))
+            @fromBackingInt(@intCast(ef.zigObjectPtr().?.getOrCreateMetadataForLazySymbol(ef, pt, lazy_reloc.symbol) catch |err|
+                return zcu.codegenFail(func.owner_nav, "{s} creating lazy symbol", .{@errorName(err)})))
         else if (lf.cast(.macho)) |mf|
-            @enumFromInt(mf.getZigObject().?.getOrCreateMetadataForLazySymbol(mf, pt, lazy_reloc.symbol) catch |err|
-                return zcu.codegenFail(func.owner_nav, "{s} creating lazy symbol", .{@errorName(err)}))
+            @fromBackingInt(@intCast(mf.getZigObject().?.getOrCreateMetadataForLazySymbol(mf, pt, lazy_reloc.symbol) catch |err|
+                return zcu.codegenFail(func.owner_nav, "{s} creating lazy symbol", .{@errorName(err)})))
         else
             return zcu.codegenFail(func.owner_nav, "external symbols unimplemented for {t}", .{lf.tag}),
         mir.body[lazy_reloc.reloc.label],
@@ -139,9 +139,9 @@ pub fn emit(
         zcu,
         atom_index,
         if (lf.cast(.elf)) |ef|
-            @enumFromInt(try ef.getGlobalSymbol(std.mem.span(global_reloc.name), null))
+            @fromBackingInt(@intCast(try ef.getGlobalSymbol(std.mem.span(global_reloc.name), null)))
         else if (lf.cast(.macho)) |mf|
-            @enumFromInt(try mf.getGlobalSymbol(std.mem.span(global_reloc.name), null))
+            @fromBackingInt(@intCast(try mf.getGlobalSymbol(std.mem.span(global_reloc.name), null)))
         else
             return zcu.codegenFail(func.owner_nav, "external symbols unimplemented for {t}", .{lf.tag}),
         mir.body[global_reloc.reloc.label],
@@ -189,7 +189,7 @@ fn emitReloc(
         else => unreachable,
         .data_processing_immediate => |decoded| if (lf.cast(.elf)) |ef| {
             const zo = ef.zigObjectPtr().?;
-            const atom = zo.symbol(@intFromEnum(atom_index)).atom(ef).?;
+            const atom = zo.symbol(@backingInt(atom_index)).atom(ef).?;
             const r_type: std.elf.R_AARCH64 = switch (decoded.decode()) {
                 else => unreachable,
                 .pc_relative_addressing => |pc_relative_addressing| switch (pc_relative_addressing.group.op) {
@@ -212,12 +212,12 @@ fn emitReloc(
             };
             try atom.addReloc(gpa, .{
                 .r_offset = offset,
-                .r_info = @as(u64, @intFromEnum(sym_index)) << 32 | @intFromEnum(r_type),
+                .r_info = @as(u64, @backingInt(sym_index)) << 32 | @backingInt(r_type),
                 .r_addend = @bitCast(addend),
             }, zo);
         } else if (lf.cast(.macho)) |mf| {
             const zo = mf.getZigObject().?;
-            const atom = zo.symbols.items[@intFromEnum(atom_index)].getAtom(mf).?;
+            const atom = zo.symbols.items[@backingInt(atom_index)].getAtom(mf).?;
             switch (decoded.decode()) {
                 else => unreachable,
                 .pc_relative_addressing => |pc_relative_addressing| switch (pc_relative_addressing.group.op) {
@@ -225,7 +225,7 @@ fn emitReloc(
                     .adrp => try atom.addReloc(mf, .{
                         .tag = .@"extern",
                         .offset = offset,
-                        .target = @intFromEnum(sym_index),
+                        .target = @backingInt(sym_index),
                         .addend = @bitCast(addend),
                         .type = switch (kind) {
                             .direct => .page,
@@ -235,7 +235,7 @@ fn emitReloc(
                             .pcrel = true,
                             .has_subtractor = false,
                             .length = 2,
-                            .symbolnum = @intCast(@intFromEnum(sym_index)),
+                            .symbolnum = @intCast(@backingInt(sym_index)),
                         },
                     }),
                 },
@@ -243,7 +243,7 @@ fn emitReloc(
                     .add => try atom.addReloc(mf, .{
                         .tag = .@"extern",
                         .offset = offset,
-                        .target = @intFromEnum(sym_index),
+                        .target = @backingInt(sym_index),
                         .addend = @bitCast(addend),
                         .type = switch (kind) {
                             .direct => .pageoff,
@@ -253,7 +253,7 @@ fn emitReloc(
                             .pcrel = false,
                             .has_subtractor = false,
                             .length = 2,
-                            .symbolnum = @intCast(@intFromEnum(sym_index)),
+                            .symbolnum = @intCast(@backingInt(sym_index)),
                         },
                     }),
                     .sub => unreachable,
@@ -262,36 +262,36 @@ fn emitReloc(
         },
         .branch_exception_generating_system => |decoded| if (lf.cast(.elf)) |ef| {
             const zo = ef.zigObjectPtr().?;
-            const atom = zo.symbol(@intFromEnum(atom_index)).atom(ef).?;
+            const atom = zo.symbol(@backingInt(atom_index)).atom(ef).?;
             const r_type: std.elf.R_AARCH64 = switch (decoded.decode().unconditional_branch_immediate.group.op) {
                 .b => .JUMP26,
                 .bl => .CALL26,
             };
             try atom.addReloc(gpa, .{
                 .r_offset = offset,
-                .r_info = @as(u64, @intFromEnum(sym_index)) << 32 | @intFromEnum(r_type),
+                .r_info = @as(u64, @backingInt(sym_index)) << 32 | @backingInt(r_type),
                 .r_addend = @bitCast(addend),
             }, zo);
         } else if (lf.cast(.macho)) |mf| {
             const zo = mf.getZigObject().?;
-            const atom = zo.symbols.items[@intFromEnum(atom_index)].getAtom(mf).?;
+            const atom = zo.symbols.items[@backingInt(atom_index)].getAtom(mf).?;
             try atom.addReloc(mf, .{
                 .tag = .@"extern",
                 .offset = offset,
-                .target = @intFromEnum(sym_index),
+                .target = @backingInt(sym_index),
                 .addend = @bitCast(addend),
                 .type = .branch,
                 .meta = .{
                     .pcrel = true,
                     .has_subtractor = false,
                     .length = 2,
-                    .symbolnum = @intCast(@intFromEnum(sym_index)),
+                    .symbolnum = @intCast(@backingInt(sym_index)),
                 },
             });
         },
         .load_store => |decoded| if (lf.cast(.elf)) |ef| {
             const zo = ef.zigObjectPtr().?;
-            const atom = zo.symbol(@intFromEnum(atom_index)).atom(ef).?;
+            const atom = zo.symbol(@backingInt(atom_index)).atom(ef).?;
             const r_type: std.elf.R_AARCH64 = switch (decoded.decode().register_unsigned_immediate.decode()) {
                 .integer => |integer| switch (integer.decode()) {
                     .unallocated, .prfm => unreachable,
@@ -332,16 +332,16 @@ fn emitReloc(
             };
             try atom.addReloc(gpa, .{
                 .r_offset = offset,
-                .r_info = @as(u64, @intFromEnum(sym_index)) << 32 | @intFromEnum(r_type),
+                .r_info = @as(u64, @backingInt(sym_index)) << 32 | @backingInt(r_type),
                 .r_addend = @bitCast(addend),
             }, zo);
         } else if (lf.cast(.macho)) |mf| {
             const zo = mf.getZigObject().?;
-            const atom = zo.symbols.items[@intFromEnum(atom_index)].getAtom(mf).?;
+            const atom = zo.symbols.items[@backingInt(atom_index)].getAtom(mf).?;
             try atom.addReloc(mf, .{
                 .tag = .@"extern",
                 .offset = offset,
-                .target = @intFromEnum(sym_index),
+                .target = @backingInt(sym_index),
                 .addend = @bitCast(addend),
                 .type = switch (kind) {
                     .direct => .pageoff,
@@ -351,7 +351,7 @@ fn emitReloc(
                     .pcrel = false,
                     .has_subtractor = false,
                     .length = 2,
-                    .symbolnum = @intCast(@intFromEnum(sym_index)),
+                    .symbolnum = @intCast(@backingInt(sym_index)),
                 },
             });
         },

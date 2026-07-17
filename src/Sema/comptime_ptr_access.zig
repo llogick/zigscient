@@ -40,7 +40,7 @@ pub fn loadComptimePtr(sema: *Sema, block: *Block, src: LazySrcLoc, ptr: Value) 
         const result_val: Value = try .readFromPackedMemory(elem_ty, pt, buf, ptr_info.packed_offset.bit_offset);
         return .{ .success = .{ .interned = result_val.toIntern() } };
     }
-    if (@intFromEnum(ptr_info.flags.vector_index) >= host_size) {
+    if (@backingInt(ptr_info.flags.vector_index) >= host_size) {
         return .exceeds_host_size;
     }
     const load_ty: Type = try pt.vectorType(.{
@@ -52,7 +52,7 @@ pub fn loadComptimePtr(sema: *Sema, block: *Block, src: LazySrcLoc, ptr: Value) 
         .success => |mv| mv,
     };
     const vector_val = try vector_mv.intern(pt, sema.arena);
-    const result_val = try vector_val.elemValue(pt, @intFromEnum(ptr_info.flags.vector_index));
+    const result_val = try vector_val.elemValue(pt, @backingInt(ptr_info.flags.vector_index));
     return .{ .success = .{ .interned = result_val.toIntern() } };
 }
 
@@ -115,7 +115,7 @@ pub fn storeComptimePtr(
         return storeComptimePtrInner(sema, block, src, ptr, new_backing_int_val);
     }
 
-    if (@intFromEnum(ptr_info.flags.vector_index) >= host_size) {
+    if (@backingInt(ptr_info.flags.vector_index) >= host_size) {
         return .exceeds_host_size;
     }
     const vec_ty: Type = try pt.vectorType(.{
@@ -133,7 +133,7 @@ pub fn storeComptimePtr(
         const elem_val = try old_vector_val.elemValue(pt, elem_index);
         elem.* = elem_val.toIntern();
     }
-    elems_buf[@intFromEnum(ptr_info.flags.vector_index)] = store_val.toIntern();
+    elems_buf[@backingInt(ptr_info.flags.vector_index)] = store_val.toIntern();
     const new_vector_val = try pt.aggregateValue(vec_ty, elems_buf);
     return storeComptimePtrInner(sema, block, src, ptr, new_vector_val);
 }
@@ -1076,7 +1076,7 @@ fn checkComptimeVarStore(
     alloc_index: ComptimeAllocIndex,
 ) !void {
     const runtime_index = sema.getComptimeAlloc(alloc_index).runtime_index;
-    if (@intFromEnum(runtime_index) < @intFromEnum(block.runtime_index)) {
+    if (@backingInt(runtime_index) < @backingInt(block.runtime_index)) {
         if (block.runtime_cond) |cond_src| {
             const msg = msg: {
                 const msg = try sema.errMsg(src, "store to comptime variable depends on runtime condition", .{});

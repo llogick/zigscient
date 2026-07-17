@@ -9,7 +9,7 @@ pub fn syscall0(
 ) u64 {
     return asm volatile ("ecall"
         : [ret] "={x10}" (-> u64),
-        : [number] "{x17}" (@intFromEnum(number)),
+        : [number] "{x17}" (@backingInt(number)),
         : .{ .memory = true });
 }
 
@@ -19,7 +19,7 @@ pub fn syscall1(
 ) u64 {
     return asm volatile ("ecall"
         : [ret] "={x10}" (-> u64),
-        : [number] "{x17}" (@intFromEnum(number)),
+        : [number] "{x17}" (@backingInt(number)),
           [arg1] "{x10}" (arg1),
         : .{ .memory = true });
 }
@@ -31,7 +31,7 @@ pub fn syscall2(
 ) u64 {
     return asm volatile ("ecall"
         : [ret] "={x10}" (-> u64),
-        : [number] "{x17}" (@intFromEnum(number)),
+        : [number] "{x17}" (@backingInt(number)),
           [arg1] "{x10}" (arg1),
           [arg2] "{x11}" (arg2),
         : .{ .memory = true });
@@ -45,7 +45,7 @@ pub fn syscall3(
 ) u64 {
     return asm volatile ("ecall"
         : [ret] "={x10}" (-> u64),
-        : [number] "{x17}" (@intFromEnum(number)),
+        : [number] "{x17}" (@backingInt(number)),
           [arg1] "{x10}" (arg1),
           [arg2] "{x11}" (arg2),
           [arg3] "{x12}" (arg3),
@@ -61,7 +61,7 @@ pub fn syscall4(
 ) u64 {
     return asm volatile ("ecall"
         : [ret] "={x10}" (-> u64),
-        : [number] "{x17}" (@intFromEnum(number)),
+        : [number] "{x17}" (@backingInt(number)),
           [arg1] "{x10}" (arg1),
           [arg2] "{x11}" (arg2),
           [arg3] "{x12}" (arg3),
@@ -79,7 +79,7 @@ pub fn syscall5(
 ) u64 {
     return asm volatile ("ecall"
         : [ret] "={x10}" (-> u64),
-        : [number] "{x17}" (@intFromEnum(number)),
+        : [number] "{x17}" (@backingInt(number)),
           [arg1] "{x10}" (arg1),
           [arg2] "{x11}" (arg2),
           [arg3] "{x12}" (arg3),
@@ -99,7 +99,7 @@ pub fn syscall6(
 ) u64 {
     return asm volatile ("ecall"
         : [ret] "={x10}" (-> u64),
-        : [number] "{x17}" (@intFromEnum(number)),
+        : [number] "{x17}" (@backingInt(number)),
           [arg1] "{x10}" (arg1),
           [arg2] "{x11}" (arg2),
           [arg3] "{x12}" (arg3),

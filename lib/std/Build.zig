@@ -145,7 +145,7 @@ pub const Graph = struct {
 
     pub fn addGeneratedFile(graph: *Graph, owner: *Step) Configuration.GeneratedFileIndex {
         graph.generated_files.append(graph.arena, owner) catch @panic("OOM");
-        return @enumFromInt(graph.generated_files.items.len - 1);
+        return @fromBackingInt(@intCast(graph.generated_files.items.len - 1));
     }
 
     pub fn dupeString(graph: *const Graph, bytes: []const u8) []const u8 {
@@ -2607,7 +2607,7 @@ pub const LazyPath = union(enum) {
             .src_path, .cwd_relative, .relative, .dependency => {},
             .generated => |gen| {
                 const graph = other_step.owner.graph;
-                const generated_owner_step = graph.generated_files.items[@intFromEnum(gen.index)];
+                const generated_owner_step = graph.generated_files.items[@backingInt(gen.index)];
                 other_step.dependOn(generated_owner_step);
             },
         }

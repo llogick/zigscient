@@ -359,12 +359,12 @@ const AllocFooter = struct {
 
         fn storedXor(m: Modify, ptr: *Modify) Modify {
             const addr_hash: u16 = @truncate(std.hash.int(@intFromPtr(ptr)));
-            return @enumFromInt(@intFromEnum(m) ^ addr_hash);
+            return @fromBackingInt(@intCast(@backingInt(m) ^ addr_hash));
         }
     };
 
     fn isExtended(f: *AllocFooter) bool {
-        return @intFromEnum(f.data.len) >= Data.Len.extended_start;
+        return @backingInt(f.data.len) >= Data.Len.extended_start;
     }
 
     fn extended(f: *AllocFooter) *Extended {
@@ -380,13 +380,13 @@ const AllocFooter = struct {
     }
 
     fn userLen(f: *AllocFooter) usize {
-        const len_int = @intFromEnum(f.data.len);
+        const len_int = @backingInt(f.data.len);
         return if (len_int < Data.Len.extended_start) len_int else f.extended().len;
     }
 
     fn userAlign(f: *AllocFooter) Alignment {
-        const high = (@intFromEnum(f.data.len) -| Data.Len.extended_start) << 2;
-        return @enumFromInt(high | f.data.alignment);
+        const high = (@backingInt(f.data.len) -| Data.Len.extended_start) << 2;
+        return @fromBackingInt(@intCast(high | f.data.alignment));
     }
 
     fn bucketPrev(f: *AllocFooter, b: *Bucket, s: *SafeAllocator) ?*AllocFooter {
@@ -439,7 +439,7 @@ const AllocFooter = struct {
     /// Assumes the footer is in a bucket allocation; all
     /// large allocations require an extended header.
     fn requiresExtended(len: usize, alignment: Alignment) bool {
-        return len >= Data.Len.extended_start or @intFromEnum(alignment) > math.maxInt(u2);
+        return len >= Data.Len.extended_start or @backingInt(alignment) > math.maxInt(u2);
     }
 
     fn lenBucket(s: *SafeAllocator, is_extended: bool) usize {
@@ -592,15 +592,15 @@ const AllocFooter = struct {
 
         if (!is_extended) {
             footer.data = .{
-                .len = @enumFromInt(len),
-                .alignment = @intCast(@intFromEnum(alignment)),
+                .len = @fromBackingInt(@intCast(len)),
+                .alignment = @intCast(@backingInt(alignment)),
                 .prev_extended = prev_extended,
             };
             assert(!footer.isExtended());
         } else {
             footer.data = .{
-                .len = @enumFromInt(Data.Len.extended_start + (@intFromEnum(alignment) >> 2)),
-                .alignment = @truncate(@intFromEnum(alignment)),
+                .len = @fromBackingInt(@intCast(Data.Len.extended_start + (@backingInt(alignment) >> 2))),
+                .alignment = @truncate(@backingInt(alignment)),
                 .prev_extended = prev_extended,
             };
             assert(footer.isExtended());
@@ -720,7 +720,7 @@ fn deinitLeakedBucket(s: *SafeAllocator, b: *Bucket, log: bool) usize {
 
         footer = footer.bucketPrev(b, s) orelse break;
     }
-    s.backing.rawFree(b.bytes(s), @enumFromInt(s.bucket_size_log2), 0);
+    s.backing.rawFree(b.bytes(s), @fromBackingInt(@intCast(s.bucket_size_log2)), 0);
 
     assert(leaks == expected.n);
     return leaks;
@@ -875,7 +875,7 @@ fn captureStackTrace(trace_buf: []usize, ra: usize) void {
     }
 
     const t = std.debug.captureCurrentStackTrace(.{ .first_address = ra }, trace_buf[1..]);
-    const skipped = @intFromEnum(t.skipped) *
+    const skipped = @backingInt(t.skipped) *
         @intFromBool(t.return_addresses.len == trace_buf[1..].len);
     trace_buf[0] = t.return_addresses.len +| skipped;
 }
@@ -888,7 +888,7 @@ fn formatStackTrace(trace_buf: []usize) std.debug.FormatStackTrace {
             break :trace .{
                 .return_addresses = addrs[0..@min(frames, addrs.len)],
                 .skipped = switch (frames) {
-                    else => @enumFromInt(frames -| addrs.len),
+                    else => @fromBackingInt(@intCast(frames -| addrs.len)),
                     0, math.maxInt(usize) => .unknown,
                 },
             };
@@ -937,7 +937,7 @@ fn allocBucket(
                 @branchHint(.unlikely);
                 freeAllocEntry(t, b.entry);
                 b.check(s);
-                s.backing.rawFree(b.bytes(s), @enumFromInt(s.bucket_size_log2), ra);
+                s.backing.rawFree(b.bytes(s), @fromBackingInt(@intCast(s.bucket_size_log2)), ra);
             }
 
             return null;
@@ -1096,7 +1096,7 @@ fn alloc(ctx: *anyopaque, len: usize, alignment: Alignment, ra: usize) ?[*]u8 {
     const entry = s.newAllocEntry(t, ra) catch return null;
     const bucket: *Bucket = @ptrCast(@alignCast(s.backing.rawAlloc(
         s.bucketSize(),
-        @enumFromInt(s.bucket_size_log2),
+        @fromBackingInt(@intCast(s.bucket_size_log2)),
         ra,
     ) orelse {
         freeAllocEntry(t, entry);
@@ -1171,7 +1171,7 @@ fn free(ctx: *anyopaque, memory: []u8, alignment: Alignment, ra: usize) void {
         freeAllocEntry(t, b.entry);
         t.mutex.unlock();
         b.check(s);
-        s.backing.rawFree(b.bytes(s), @enumFromInt(s.bucket_size_log2), ra);
+        s.backing.rawFree(b.bytes(s), @fromBackingInt(@intCast(s.bucket_size_log2)), ra);
     }
 }
 
@@ -1346,8 +1346,8 @@ const Smith = std.testing.Smith;
 const fuzz_probs = struct {
     const alignment: []const Smith.Weight = &.{
         .rangeAtMost(Alignment, .@"1", .@"16", 32), // ~75%
-        .rangeAtMost(Alignment, .@"16", @enumFromInt(@bitSizeOf(usize) - 1), 1),
-        .value(Alignment, @enumFromInt(@bitSizeOf(usize) - 1), 32), // More likely overflow cases
+        .rangeAtMost(Alignment, .@"16", @fromBackingInt(@intCast(@bitSizeOf(usize) - 1)), 1),
+        .value(Alignment, @fromBackingInt(@intCast(@bitSizeOf(usize) - 1)), 32), // More likely overflow cases
     };
 
     const eos: []const Smith.Weight = &.{

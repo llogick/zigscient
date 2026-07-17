@@ -433,7 +433,7 @@ const mnemonic_table: [inst_tags_len * inst_fixes_len]?Mnemonic = table: {
     @setEvalBranchQuota(80_000);
     var table: [inst_tags_len * inst_fixes_len]?Mnemonic = undefined;
     for (0..inst_fixes_len) |fixes_i| {
-        const fixes: Mir.Inst.Fixes = @enumFromInt(fixes_i);
+        const fixes: Mir.Inst.Fixes = @fromBackingInt(@intCast(fixes_i));
         const prefix, const suffix = affix: {
             const pattern = if (std.mem.indexOfScalar(u8, @tagName(fixes), ' ')) |i|
                 @tagName(fixes)[i + 1 ..]
@@ -443,7 +443,7 @@ const mnemonic_table: [inst_tags_len * inst_fixes_len]?Mnemonic = table: {
             break :affix .{ pattern[0..wildcard_idx], pattern[wildcard_idx + 1 ..] };
         };
         for (0..inst_tags_len) |inst_tag_i| {
-            const inst_tag: Mir.Inst.Tag = @enumFromInt(inst_tag_i);
+            const inst_tag: Mir.Inst.Tag = @fromBackingInt(@intCast(inst_tag_i));
             const name = prefix ++ @tagName(inst_tag) ++ suffix;
             const idx = inst_tag_i * inst_fixes_len + fixes_i;
             table[idx] = if (@hasField(Mnemonic, name)) @field(Mnemonic, name) else null;
@@ -482,7 +482,7 @@ fn generic(lower: *Lower, inst: Mir.Inst) Error!void {
         else
             .none,
     }, mnemonic: {
-        if (mnemonic_table[@intFromEnum(inst.tag) * inst_fixes_len + @intFromEnum(fixes)]) |mnemonic| {
+        if (mnemonic_table[@backingInt(inst.tag) * inst_fixes_len + @backingInt(fixes)]) |mnemonic| {
             break :mnemonic mnemonic;
         }
         // This combination is invalid; make the theoretical mnemonic name and emit an error with it.

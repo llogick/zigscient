@@ -138,7 +138,7 @@ fn stringToInteger(comptime T: type, noalias buf: [*:0]const u8, noalias maybe_e
             end.* = buf;
         }
 
-        std.c._errno().* = @intFromEnum(std.c.E.INVAL);
+        std.c._errno().* = @backingInt(std.c.E.INVAL);
         return 0;
     }
 
@@ -192,7 +192,7 @@ fn stringToInteger(comptime T: type, noalias buf: [*:0]const u8, noalias maybe_e
 
     if (@typeInfo(T).int.signedness == .unsigned) {
         const result = parseDigitsWithSignGenericCharacter(T, u8, digits, maybe_end, real_base, .pos) catch {
-            std.c._errno().* = @intFromEnum(std.c.E.RANGE);
+            std.c._errno().* = @backingInt(std.c.E.RANGE);
             return std.math.maxInt(T);
         };
 
@@ -200,12 +200,12 @@ fn stringToInteger(comptime T: type, noalias buf: [*:0]const u8, noalias maybe_e
     }
 
     if (negative) return parseDigitsWithSignGenericCharacter(T, u8, digits, maybe_end, real_base, .neg) catch blk: {
-        std.c._errno().* = @intFromEnum(std.c.E.RANGE);
+        std.c._errno().* = @backingInt(std.c.E.RANGE);
         break :blk std.math.minInt(T);
     };
 
     return parseDigitsWithSignGenericCharacter(T, u8, digits, maybe_end, real_base, .pos) catch blk: {
-        std.c._errno().* = @intFromEnum(std.c.E.RANGE);
+        std.c._errno().* = @backingInt(std.c.E.RANGE);
         break :blk std.math.maxInt(T);
     };
 }

@@ -74,7 +74,7 @@ test parseInt {
 pub fn tagToInt(tag: []const u8) error{InvalidLanguageTag}!u16 {
     const maybe_id = try tagToId(tag);
     if (maybe_id) |id| {
-        return @intFromEnum(id);
+        return @backingInt(id);
     } else {
         return LOCALE_CUSTOM_UNSPECIFIED;
     }

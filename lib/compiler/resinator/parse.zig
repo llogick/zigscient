@@ -151,7 +151,7 @@ pub const Parser = struct {
             };
             try self.nextToken(.normal);
 
-            const type_i = @intFromEnum(optional_statement_type);
+            const type_i = @backingInt(optional_statement_type);
             if (last_statement_per_type[type_i] != null) {
                 statement_type_has_duplicates[type_i] = true;
             }
@@ -300,13 +300,13 @@ pub const Parser = struct {
                         const slice = statement_identifier.slice(self.lexer.buffer);
                         const optional_statement_type = rc.OptionalStatements.map.get(slice) orelse
                             rc.OptionalStatements.dialog_map.get(slice).?;
-                        break :type_i @intFromEnum(optional_statement_type);
+                        break :type_i @backingInt(optional_statement_type);
                     },
                     .font_statement => {
-                        break :type_i @intFromEnum(rc.OptionalStatements.font);
+                        break :type_i @backingInt(rc.OptionalStatements.font);
                     },
                     .language_statement => {
-                        break :type_i @intFromEnum(rc.OptionalStatements.language);
+                        break :type_i @backingInt(rc.OptionalStatements.language);
                     },
                     else => unreachable,
                 }

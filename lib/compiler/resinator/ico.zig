@@ -123,7 +123,7 @@ pub const IconDir = struct {
 
     pub fn writeResData(self: IconDir, writer: *std.Io.Writer, first_image_id: u16) !void {
         try writer.writeInt(u16, 0, .little);
-        try writer.writeInt(u16, @intFromEnum(self.image_type), .little);
+        try writer.writeInt(u16, @backingInt(self.image_type), .little);
         // We know that entries.len must fit into a u16
         try writer.writeInt(u16, @as(u16, @intCast(self.entries.len)), .little);
 

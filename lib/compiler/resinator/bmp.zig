@@ -124,7 +124,7 @@ pub fn read(reader: *std.Io.Reader, max_size: u64) ReadError!BitmapInfo {
 
             bitmap_info.colors_in_palette = try dib_header.numColorsInTable();
             bitmap_info.bytes_per_color_palette_element = 4;
-            bitmap_info.compression = @enumFromInt(dib_header.biCompression);
+            bitmap_info.compression = @fromBackingInt(@intCast(dib_header.biCompression));
 
             if (bitmap_info.getByteLenBetweenHeadersAndPixels() < bitmap_info.getBitmasksByteLen()) {
                 return error.MissingBitfieldMasks;

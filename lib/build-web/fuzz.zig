@@ -94,11 +94,11 @@ const SourceLocationIndex = enum(u32) {
     _,
 
     fn haveCoverage(sli: SourceLocationIndex) bool {
-        return @intFromEnum(sli) < coverage_source_locations.items.len;
+        return @backingInt(sli) < coverage_source_locations.items.len;
     }
 
     fn ptr(sli: SourceLocationIndex) *Coverage.SourceLocation {
-        return &coverage_source_locations.items[@intFromEnum(sli)];
+        return &coverage_source_locations.items[@backingInt(sli)];
     }
 
     fn sourceLocationLinkHtml(
@@ -114,7 +114,7 @@ const SourceLocationIndex = enum(u32) {
         try out.print(gpa, ":{d}:{d} </code><button class=\"linkish\" onclick=\"wasm_exports.fuzzSelectSli({d});\">View</button>", .{
             sl.line,
             sl.column,
-            @intFromEnum(sli),
+            @backingInt(sli),
         });
     }
 
@@ -132,7 +132,7 @@ const SourceLocationIndex = enum(u32) {
         var buf: std.ArrayList(u8) = .empty;
         defer buf.deinit(gpa);
         sli.appendPath(&buf) catch @panic("OOM");
-        return @enumFromInt(Walk.files.getIndex(buf.items) orelse return null);
+        return @fromBackingInt(@intCast(Walk.files.getIndex(buf.items) orelse return null));
     }
 
     fn fileHtml(
@@ -166,7 +166,7 @@ fn computeSourceAnnotations(
 
     for (source_locations, 0..) |sl, sli_usize| {
         if (sl.file != cov_file_index) continue;
-        const sli: SourceLocationIndex = @enumFromInt(sli_usize);
+        const sli: SourceLocationIndex = @fromBackingInt(@intCast(sli_usize));
         try locs.append(gpa, sli);
     }
 
@@ -199,7 +199,7 @@ fn computeSourceAnnotations(
             if (next_sl.line > line or (next_sl.line == line and next_sl.column >= column)) break;
             try annotations.append(gpa, .{
                 .file_byte_offset = offset,
-                .dom_id = @intFromEnum(next_sli),
+                .dom_id = @backingInt(next_sli),
             });
             next_loc_index += 1;
         }
@@ -240,7 +240,7 @@ fn unpackSourcesInner(tar_bytes: []u8) !void {
                         break :p .{ "root", std.mem.endsWith(u8, file_name, "/root.zig") };
                     };
                     const gop = try Walk.modules.getOrPut(gpa, mod_name);
-                    const file: Walk.File.Index = @enumFromInt(Walk.files.entries.len);
+                    const file: Walk.File.Index = @fromBackingInt(@intCast(Walk.files.entries.len));
                     if (!gop.found_existing or is_module_root) gop.value_ptr.* = file;
                     const file_bytes = tar_reader.take(@intCast(tar_file.size)) catch unreachable;
                     it.unread_file_bytes = 0; // we have read the whole thing
@@ -323,7 +323,7 @@ fn updateCoverage() error{OutOfMemory}!void {
         u64,
         recent_coverage_update.items[@sizeOf(abi.fuzz.CoverageUpdateHeader)..][0 .. n_bitset_elems * @sizeOf(u64)],
     );
-    var sli: SourceLocationIndex = @enumFromInt(0);
+    var sli: SourceLocationIndex = @fromBackingInt(@intCast(0));
     for (covered_bits) |elem| {
         try covered.ensureUnusedCapacity(gpa, 64);
         for (0..@bitSizeOf(u64)) |i| {
@@ -332,7 +332,7 @@ fn updateCoverage() error{OutOfMemory}!void {
                     covered.appendAssumeCapacity(sli);
                 }
             }
-            sli = @enumFromInt(@intFromEnum(sli) + 1);
+            sli = @fromBackingInt(@intCast(@backingInt(sli) + 1));
         }
     }
 

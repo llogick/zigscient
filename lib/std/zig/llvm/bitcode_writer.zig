@@ -423,7 +423,7 @@ fn BufType(comptime T: type, comptime min_len: usize) type {
 fn bufValue(value: anytype, comptime min_len: usize) BufType(@TypeOf(value), min_len) {
     return switch (@typeInfo(@TypeOf(value))) {
         .comptime_int, .int => @intCast(value),
-        .@"enum" => @intFromEnum(value),
+        .@"enum" => @backingInt(value),
         .bool => @intFromBool(value),
         .@"struct" => @intCast(@as(@Int(.unsigned, @bitSizeOf(@TypeOf(value))), @bitCast(value))),
         else => unreachable,

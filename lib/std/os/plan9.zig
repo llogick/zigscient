@@ -100,7 +100,7 @@ pub const E = enum(u16) {
 pub fn errno(r: usize) E {
     const signed_r: isize = @bitCast(r);
     const int = if (signed_r > -4096 and signed_r < 0) -signed_r else 0;
-    return @enumFromInt(int);
+    return @fromBackingInt(@intCast(int));
 }
 
 // The max bytes that can be in the errstr buff

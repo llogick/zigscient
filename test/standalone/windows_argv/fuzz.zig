@@ -162,7 +162,7 @@ fn spawnVerify(verify_path: [:0]const u16, cmd_line: [:0]const u16) !windows.DWO
         @sizeOf(windows.PROCESS.BASIC_INFORMATION),
         null,
     )) {
-        .SUCCESS => return @intFromEnum(info.ExitStatus),
+        .SUCCESS => return @backingInt(info.ExitStatus),
         else => return error.UnableToGetExitCode,
     }
 }

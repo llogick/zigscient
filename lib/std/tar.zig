@@ -241,7 +241,7 @@ const Header = struct {
     }
 
     pub fn kind(header: Header) Kind {
-        const result: Kind = @enumFromInt(header.bytes[156]);
+        const result: Kind = @fromBackingInt(@intCast(header.bytes[156]));
         if (result == .normal_alias) return .normal;
         return result;
     }

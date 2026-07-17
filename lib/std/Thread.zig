@@ -67,7 +67,7 @@ pub fn setName(self: Thread, io: Io, name: []const u8) SetNameError!void {
                 return;
             } else {
                 const err = std.c.pthread_setname_np(self.getHandle(), name_with_terminator.ptr);
-                switch (@as(posix.E, @enumFromInt(err))) {
+                switch (@as(posix.E, @fromBackingInt(@intCast(err)))) {
                     .SUCCESS => return,
                     .RANGE => unreachable,
                     else => |e| return posix.unexpectedErrno(e),
@@ -101,14 +101,14 @@ pub fn setName(self: Thread, io: Io, name: []const u8) SetNameError!void {
             if (self.getHandle() != std.c.pthread_self()) return error.Unsupported;
 
             const err = std.c.pthread_setname_np(name_with_terminator.ptr);
-            switch (@as(posix.E, @enumFromInt(err))) {
+            switch (@as(posix.E, @fromBackingInt(@intCast(err)))) {
                 .SUCCESS => return,
                 else => |e| return posix.unexpectedErrno(e),
             }
         },
         .serenity => if (use_pthreads) {
             const err = std.c.pthread_setname_np(self.getHandle(), name_with_terminator.ptr);
-            switch (@as(posix.E, @enumFromInt(err))) {
+            switch (@as(posix.E, @fromBackingInt(@intCast(err)))) {
                 .SUCCESS => return,
                 .NAMETOOLONG => unreachable,
                 .SRCH => unreachable,
@@ -117,7 +117,7 @@ pub fn setName(self: Thread, io: Io, name: []const u8) SetNameError!void {
         },
         .netbsd, .illumos => if (use_pthreads) {
             const err = std.c.pthread_setname_np(self.getHandle(), name_with_terminator.ptr, null);
-            switch (@as(posix.E, @enumFromInt(err))) {
+            switch (@as(posix.E, @fromBackingInt(@intCast(err)))) {
                 .SUCCESS => return,
                 .INVAL => unreachable,
                 .SRCH => unreachable,
@@ -135,7 +135,7 @@ pub fn setName(self: Thread, io: Io, name: []const u8) SetNameError!void {
         },
         .dragonfly => if (use_pthreads) {
             const err = std.c.pthread_setname_np(self.getHandle(), name_with_terminator.ptr);
-            switch (@as(posix.E, @enumFromInt(err))) {
+            switch (@as(posix.E, @fromBackingInt(@intCast(err)))) {
                 .SUCCESS => return,
                 .INVAL => unreachable,
                 .FAULT => unreachable,
@@ -168,7 +168,7 @@ pub fn getName(self: Thread, buffer_ptr: *[max_name_len:0]u8) GetNameError!?[]co
                 return std.mem.sliceTo(buffer, 0);
             } else {
                 const err = std.c.pthread_getname_np(self.getHandle(), buffer.ptr, max_name_len + 1);
-                switch (@as(posix.E, @enumFromInt(err))) {
+                switch (@as(posix.E, @fromBackingInt(@intCast(err)))) {
                     .SUCCESS => return std.mem.sliceTo(buffer, 0),
                     .RANGE => unreachable,
                     else => |e| return posix.unexpectedErrno(e),
@@ -211,7 +211,7 @@ pub fn getName(self: Thread, buffer_ptr: *[max_name_len:0]u8) GetNameError!?[]co
         },
         .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => if (use_pthreads) {
             const err = std.c.pthread_getname_np(self.getHandle(), buffer.ptr, max_name_len + 1);
-            switch (@as(posix.E, @enumFromInt(err))) {
+            switch (@as(posix.E, @fromBackingInt(@intCast(err)))) {
                 .SUCCESS => return std.mem.sliceTo(buffer, 0),
                 .SRCH => unreachable,
                 else => |e| return posix.unexpectedErrno(e),
@@ -219,7 +219,7 @@ pub fn getName(self: Thread, buffer_ptr: *[max_name_len:0]u8) GetNameError!?[]co
         },
         .serenity => if (use_pthreads) {
             const err = std.c.pthread_getname_np(self.getHandle(), buffer.ptr, max_name_len + 1);
-            switch (@as(posix.E, @enumFromInt(err))) {
+            switch (@as(posix.E, @fromBackingInt(@intCast(err)))) {
                 .SUCCESS => return,
                 .NAMETOOLONG => unreachable,
                 .SRCH => unreachable,
@@ -229,7 +229,7 @@ pub fn getName(self: Thread, buffer_ptr: *[max_name_len:0]u8) GetNameError!?[]co
         },
         .netbsd, .illumos => if (use_pthreads) {
             const err = std.c.pthread_getname_np(self.getHandle(), buffer.ptr, max_name_len + 1);
-            switch (@as(posix.E, @enumFromInt(err))) {
+            switch (@as(posix.E, @fromBackingInt(@intCast(err)))) {
                 .SUCCESS => return std.mem.sliceTo(buffer, 0),
                 .INVAL => unreachable,
                 .SRCH => unreachable,
@@ -245,7 +245,7 @@ pub fn getName(self: Thread, buffer_ptr: *[max_name_len:0]u8) GetNameError!?[]co
         },
         .dragonfly => if (use_pthreads) {
             const err = std.c.pthread_getname_np(self.getHandle(), buffer.ptr, max_name_len + 1);
-            switch (@as(posix.E, @enumFromInt(err))) {
+            switch (@as(posix.E, @fromBackingInt(@intCast(err)))) {
                 .SUCCESS => return std.mem.sliceTo(buffer, 0),
                 .INVAL => unreachable,
                 .FAULT => unreachable,
@@ -429,7 +429,7 @@ fn callFn(comptime f: anytype, args: anytype) switch (Impl) {
 
             const status = @call(.auto, f, args);
             switch (Impl) {
-                WindowsThreadImpl => return @enumFromInt(status),
+                WindowsThreadImpl => return @fromBackingInt(@intCast(status)),
                 LinuxThreadImpl => return status,
                 // pthreads don't support exit status, ignore value
                 PosixThreadImpl => return default_value,
@@ -598,7 +598,7 @@ const WindowsThreadImpl = struct {
                 instance,
                 .{ .CREATE_SUSPENDED = true },
                 0,
-                @enumFromInt(stack_size),
+                @fromBackingInt(@intCast(stack_size)),
                 .default,
                 &attr_list,
             )) {
@@ -712,7 +712,7 @@ const PosixThreadImpl = struct {
                 // The "proper" way to get the cpu count would be to query
                 // /dev/kstat via ioctls, and traverse a linked list for each
                 // cpu. (illumos)
-                const rc = c.sysconf(@intFromEnum(std.c._SC.NPROCESSORS_ONLN));
+                const rc = c.sysconf(@backingInt(std.c._SC.NPROCESSORS_ONLN));
                 return switch (posix.errno(rc)) {
                     .SUCCESS => @as(usize, @intCast(rc)),
                     else => |err| posix.unexpectedErrno(err),

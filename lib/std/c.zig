@@ -74,7 +74,7 @@ pub inline fn versionCheck(comptime version: std.SemanticVersion) bool {
 
 /// Get the errno if rc is -1 and SUCCESS if rc is not -1.
 pub fn errno(rc: anytype) E {
-    return if (rc == -1) @enumFromInt(_errno().*) else .SUCCESS;
+    return if (rc == -1) @fromBackingInt(@intCast(_errno().*)) else .SUCCESS;
 }
 
 pub const ino_t = switch (native_os) {
@@ -3720,16 +3720,16 @@ pub const W = switch (native_os) {
             return @as(u8, @intCast(x >> 8));
         }
         pub fn TERMSIG(x: u32) SIG {
-            return @enumFromInt(status(x));
+            return @fromBackingInt(@intCast(status(x)));
         }
         pub fn STOPSIG(x: u32) SIG {
-            return @enumFromInt(x >> 8);
+            return @fromBackingInt(@intCast(x >> 8));
         }
         pub fn IFEXITED(x: u32) bool {
             return status(x) == 0;
         }
         pub fn IFSTOPPED(x: u32) bool {
-            return status(x) == stopped and @as(u32, @intFromEnum(STOPSIG(x))) != 0x13;
+            return status(x) == stopped and @as(u32, @backingInt(STOPSIG(x))) != 0x13;
         }
         pub fn IFSIGNALED(x: u32) bool {
             return status(x) != stopped and status(x) != 0;
@@ -3753,10 +3753,10 @@ pub const W = switch (native_os) {
             return @as(u8, @intCast((s & 0xff00) >> 8));
         }
         pub fn TERMSIG(s: u32) SIG {
-            return @enumFromInt(s & 0x7f);
+            return @fromBackingInt(@intCast(s & 0x7f));
         }
         pub fn STOPSIG(s: u32) SIG {
-            return @enumFromInt(EXITSTATUS(s));
+            return @fromBackingInt(@intCast(EXITSTATUS(s)));
         }
         pub fn IFEXITED(s: u32) bool {
             return (s & 0x7f) == 0;
@@ -3781,10 +3781,10 @@ pub const W = switch (native_os) {
             return @as(u8, @intCast((s >> 8) & 0xff));
         }
         pub fn TERMSIG(s: u32) SIG {
-            return @enumFromInt(s & 0x7f);
+            return @fromBackingInt(@intCast(s & 0x7f));
         }
         pub fn STOPSIG(s: u32) SIG {
-            return @enumFromInt(EXITSTATUS(s));
+            return @fromBackingInt(@intCast(EXITSTATUS(s)));
         }
         pub fn IFEXITED(s: u32) bool {
             return (s & 0x7f) == 0;
@@ -3815,10 +3815,10 @@ pub const W = switch (native_os) {
             return @as(u8, @intCast((s >> 8) & 0xff));
         }
         pub fn TERMSIG(s: u32) SIG {
-            return @enumFromInt(s & 0x7f);
+            return @fromBackingInt(@intCast(s & 0x7f));
         }
         pub fn STOPSIG(s: u32) SIG {
-            return @enumFromInt(EXITSTATUS(s));
+            return @fromBackingInt(@intCast(EXITSTATUS(s)));
         }
         pub fn IFEXITED(s: u32) bool {
             return (s & 0x7f) == 0;
@@ -3849,10 +3849,10 @@ pub const W = switch (native_os) {
             return @as(u8, @intCast((s & 0xff00) >> 8));
         }
         pub fn TERMSIG(s: u32) SIG {
-            return @enumFromInt(s & 0x7f);
+            return @fromBackingInt(@intCast(s & 0x7f));
         }
         pub fn STOPSIG(s: u32) SIG {
-            return @enumFromInt(EXITSTATUS(s));
+            return @fromBackingInt(@intCast(EXITSTATUS(s)));
         }
         pub fn IFEXITED(s: u32) bool {
             return (s & 0x7f) == 0;
@@ -3877,11 +3877,11 @@ pub const W = switch (native_os) {
         }
 
         pub fn TERMSIG(s: u32) SIG {
-            return @enumFromInt((s >> 8) & 0xff);
+            return @fromBackingInt(@intCast((s >> 8) & 0xff));
         }
 
         pub fn STOPSIG(s: u32) SIG {
-            return @enumFromInt((s >> 16) & 0xff);
+            return @fromBackingInt(@intCast((s >> 16) & 0xff));
         }
 
         pub fn IFEXITED(s: u32) bool {
@@ -3905,10 +3905,10 @@ pub const W = switch (native_os) {
             return @as(u8, @intCast((s >> 8) & 0xff));
         }
         pub fn TERMSIG(s: u32) SIG {
-            return @enumFromInt(s & 0x7f);
+            return @fromBackingInt(@intCast(s & 0x7f));
         }
         pub fn STOPSIG(s: u32) SIG {
-            return @enumFromInt(EXITSTATUS(s));
+            return @fromBackingInt(@intCast(EXITSTATUS(s)));
         }
         pub fn IFEXITED(s: u32) bool {
             return (s & 0x7f) == 0;
@@ -3940,11 +3940,11 @@ pub const W = switch (native_os) {
         }
 
         pub fn STOPSIG(s: u32) SIG {
-            return @enumFromInt(EXITSTATUS(s));
+            return @fromBackingInt(@intCast(EXITSTATUS(s)));
         }
 
         pub fn TERMSIG(s: u32) SIG {
-            return @enumFromInt(s & 0x7f);
+            return @fromBackingInt(@intCast(s & 0x7f));
         }
 
         pub fn IFEXITED(s: u32) bool {
@@ -10551,7 +10551,7 @@ const sigrt_private = struct {
         return switch (native_os) {
             .freebsd => 65,
             .netbsd => 33,
-            .illumos => @truncate(sysconf(@intFromEnum(_SC.SIGRT_MIN))),
+            .illumos => @truncate(sysconf(@backingInt(_SC.SIGRT_MIN))),
             .haiku => @truncate(@as(c_uint, @bitCast(private.__signal_get_sigrtmin()))),
             else => @truncate(@as(c_uint, @bitCast(private.__libc_current_sigrtmin()))),
         };
@@ -10561,7 +10561,7 @@ const sigrt_private = struct {
         return switch (native_os) {
             .freebsd => 126,
             .netbsd => 63,
-            .illumos => @truncate(sysconf(@intFromEnum(_SC.SIGRT_MAX))),
+            .illumos => @truncate(sysconf(@backingInt(_SC.SIGRT_MAX))),
             .haiku => @truncate(@as(c_uint, @bitCast(private.__signal_get_sigrtmax()))),
             else => @truncate(@as(c_uint, @bitCast(private.__libc_current_sigrtmax()))),
         };

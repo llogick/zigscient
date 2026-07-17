@@ -615,7 +615,7 @@ pub const io_uring_sqe = extern struct {
         options: u32,
         flags: u32,
     ) void {
-        sqe.prep_rw(.WAITID, id, 0, @intFromEnum(id_type), @intFromPtr(infop));
+        sqe.prep_rw(.WAITID, id, 0, @backingInt(id_type), @intFromPtr(infop));
         sqe.rw_flags = flags;
         sqe.splice_fd_in = @bitCast(options);
     }
@@ -652,7 +652,7 @@ pub const io_uring_sqe = extern struct {
     ) void {
         sqe.prep_rw(.URING_CMD, fd, 0, 0, 0);
         // off is overloaded with cmd_op, https://github.com/axboe/liburing/blob/e1003e496e66f9b0ae06674869795edf772d5500/src/include/liburing/io_uring.h#L39
-        sqe.off = @intFromEnum(cmd_op);
+        sqe.off = @backingInt(cmd_op);
         // addr is overloaded, https://github.com/axboe/liburing/blob/e1003e496e66f9b0ae06674869795edf772d5500/src/include/liburing/io_uring.h#L46
         sqe.addr = @bitCast(packed struct {
             level: u32,

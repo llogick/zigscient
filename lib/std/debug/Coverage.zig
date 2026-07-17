@@ -41,13 +41,13 @@ pub const String = enum(u32) {
 
         pub fn eql(self: @This(), a: String, b: String, b_index: usize) bool {
             _ = b_index;
-            const a_slice = span(self.string_bytes[@intFromEnum(a)..]);
-            const b_slice = span(self.string_bytes[@intFromEnum(b)..]);
+            const a_slice = span(self.string_bytes[@backingInt(a)..]);
+            const b_slice = span(self.string_bytes[@backingInt(b)..]);
             return std.mem.eql(u8, a_slice, b_slice);
         }
 
         pub fn hash(self: @This(), a: String) u32 {
-            return @truncate(Hash.hash(0, span(self.string_bytes[@intFromEnum(a)..])));
+            return @truncate(Hash.hash(0, span(self.string_bytes[@backingInt(a)..])));
         }
     };
 
@@ -56,7 +56,7 @@ pub const String = enum(u32) {
 
         pub fn eql(self: @This(), a_slice: []const u8, b: String, b_index: usize) bool {
             _ = b_index;
-            const b_slice = span(self.string_bytes[@intFromEnum(b)..]);
+            const b_slice = span(self.string_bytes[@backingInt(b)..]);
             return std.mem.eql(u8, a_slice, b_slice);
         }
         pub fn hash(self: @This(), a: []const u8) u32 {
@@ -91,15 +91,15 @@ pub const File = extern struct {
         string_bytes: []const u8,
 
         pub fn hash(self: MapContext, a: File) u32 {
-            const a_basename = span(self.string_bytes[@intFromEnum(a.basename)..]);
+            const a_basename = span(self.string_bytes[@backingInt(a.basename)..]);
             return @truncate(Hash.hash(a.directory_index, a_basename));
         }
 
         pub fn eql(self: MapContext, a: File, b: File, b_index: usize) bool {
             _ = b_index;
             if (a.directory_index != b.directory_index) return false;
-            const a_basename = span(self.string_bytes[@intFromEnum(a.basename)..]);
-            const b_basename = span(self.string_bytes[@intFromEnum(b.basename)..]);
+            const a_basename = span(self.string_bytes[@backingInt(a.basename)..]);
+            const b_basename = span(self.string_bytes[@backingInt(b.basename)..]);
             return std.mem.eql(u8, a_basename, b_basename);
         }
     };
@@ -120,7 +120,7 @@ pub const File = extern struct {
         pub fn eql(self: @This(), a: Entry, b: File, b_index: usize) bool {
             _ = b_index;
             if (a.directory_index != b.directory_index) return false;
-            const b_basename = span(self.string_bytes[@intFromEnum(b.basename)..]);
+            const b_basename = span(self.string_bytes[@backingInt(b.basename)..]);
             return std.mem.eql(u8, a.basename, b_basename);
         }
     };
@@ -134,11 +134,11 @@ pub fn deinit(cov: *Coverage, gpa: Allocator) void {
 }
 
 pub fn fileAt(cov: *Coverage, index: File.Index) *File {
-    return &cov.files.keys()[@intFromEnum(index)];
+    return &cov.files.keys()[@backingInt(index)];
 }
 
 pub fn stringAt(cov: *Coverage, index: String) [:0]const u8 {
-    return span(cov.string_bytes.items[@intFromEnum(index)..]);
+    return span(cov.string_bytes.items[@backingInt(index)..]);
 }
 
 pub const ResolveAddressesDwarfError = Dwarf.ScanError || Io.Cancelable;
@@ -232,7 +232,7 @@ pub fn resolveAddressesDwarf(
             .basename = addStringAssumeCapacity(cov, file_entry.path),
         };
         out.* = .{
-            .file = @enumFromInt(file_gop.index),
+            .file = @fromBackingInt(@intCast(file_gop.index)),
             .line = entry.line,
             .column = entry.column,
         };
@@ -240,7 +240,7 @@ pub fn resolveAddressesDwarf(
 }
 
 pub fn addStringAssumeCapacity(cov: *Coverage, s: []const u8) String {
-    const result: String = @enumFromInt(cov.string_bytes.items.len);
+    const result: String = @fromBackingInt(@intCast(cov.string_bytes.items.len));
     cov.string_bytes.appendSliceAssumeCapacity(s);
     cov.string_bytes.appendAssumeCapacity(0);
     return result;

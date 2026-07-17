@@ -137,8 +137,8 @@ pub fn log(
     // Hide debug messages unless:
     // * logging enabled with `-Dlog`.
     // * the --debug-log arg for the scope has been provided
-    if (@intFromEnum(level) > @intFromEnum(std.options.log_level) or
-        @intFromEnum(level) > @intFromEnum(std.log.Level.info))
+    if (@backingInt(level) > @backingInt(std.options.log_level) or
+        @backingInt(level) > @backingInt(std.log.Level.info))
     {
         if (!build_options.enable_logging) return;
 
@@ -4739,7 +4739,7 @@ fn serve(
                 }
             },
             else => {
-                fatal("unrecognized message from client: 0x{x}", .{@intFromEnum(hdr.tag)});
+                fatal("unrecognized message from client: 0x{x}", .{@backingInt(hdr.tag)});
             },
         }
     }
@@ -6073,8 +6073,8 @@ fn cmdChangelist(arena: Allocator, io: Io, args: []const []const u8, environ_map
         var it = inst_map.iterator();
         while (it.next()) |entry| {
             try stdout_bw.print(" %{d} => %{d}\n", .{
-                @intFromEnum(entry.key_ptr.*),
-                @intFromEnum(entry.value_ptr.*),
+                @backingInt(entry.key_ptr.*),
+                @backingInt(entry.value_ptr.*),
             });
         }
     }

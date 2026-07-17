@@ -73,7 +73,7 @@ pub const Id = if (InternPool.single_threaded) enum {
     pub fn allocate(arena: Allocator, n: usize) Allocator.Error!void {
         available_tids = .empty;
         try available_tids.ensureTotalCapacityPrecise(arena, n - 1);
-        for (1..n) |tid| available_tids.appendAssumeCapacity(@enumFromInt(tid));
+        for (1..n) |tid| available_tids.appendAssumeCapacity(@fromBackingInt(@intCast(tid)));
         switch (build_options.io_mode) {
             .threaded => {
                 // Called from the main thread, so mark ourselves as such.
@@ -194,7 +194,7 @@ pub fn update(
         // because `workerUpdateEmbedFile` can't invalidate it. The different here is that one
         // `@embedFile` can't trigger analysis of a new `@embedFile`!
         for (0.., zcu.embed_table.keys()) |ef_index_usize, ef| {
-            const ef_index: Zcu.EmbedFile.Index = @enumFromInt(ef_index_usize);
+            const ef_index: Zcu.EmbedFile.Index = @fromBackingInt(@intCast(ef_index_usize));
             astgen_group.async(io, workerUpdateEmbedFile, .{
                 comp, ef_index, ef,
             });
@@ -390,7 +390,7 @@ fn workerUpdateFile(
     // Discover all imports in the file. Imports of modules we ignore for now since we don't
     // know which module we're in, but imports of file paths might need us to queue up other
     // AstGen jobs.
-    const imports_index = file.zir.?.extra[@intFromEnum(Zir.ExtraIndex.imports)];
+    const imports_index = file.zir.?.extra[@backingInt(Zir.ExtraIndex.imports)];
     if (imports_index != 0) {
         const extra = file.zir.?.extraData(Zir.Inst.Imports, imports_index);
         var import_i: u32 = 0;
@@ -872,7 +872,7 @@ fn updateZirRefs(pt: Zcu.PerThread) (Io.Cancelable || Allocator.Error)!void {
 
             const old_inst = tracked_inst.inst.unwrap() orelse continue; // we can't continue tracking lost insts
             const tracked_inst_index = (InternPool.TrackedInst.Index.Unwrapped{
-                .tid = @enumFromInt(tid),
+                .tid = @fromBackingInt(@intCast(tid)),
                 .index = @intCast(tracked_inst_unwrapped_index),
             }).wrap(ip);
             const new_inst = updated_file.inst_map.get(old_inst) orelse {
@@ -887,8 +887,8 @@ fn updateZirRefs(pt: Zcu.PerThread) (Io.Cancelable || Allocator.Error)!void {
 
             const old_zir = file.prev_zir.?.*;
             const new_zir = file.zir.?;
-            const old_tag = old_zir.instructions.items(.tag)[@intFromEnum(old_inst)];
-            const old_data = old_zir.instructions.items(.data)[@intFromEnum(old_inst)];
+            const old_tag = old_zir.instructions.items(.tag)[@backingInt(old_inst)];
+            const old_data = old_zir.instructions.items(.data)[@backingInt(old_inst)];
 
             switch (old_tag) {
                 .declaration => {
@@ -1917,7 +1917,7 @@ fn analyzeNavVal(
     });
 
     if (zir_decl.linkage == .@"export") {
-        const export_src = block.src(.{ .token_offset = @enumFromInt(@intFromBool(zir_decl.is_pub)) });
+        const export_src = block.src(.{ .token_offset = @fromBackingInt(@intCast(@intFromBool(zir_decl.is_pub))) });
         const name_slice = zir.nullTerminatedString(zir_decl.name);
         const name_ip = try ip.getOrPutString(gpa, io, pt.tid, name_slice, .no_embedded_nulls);
         try sema.analyzeExportSelfNav(&block, export_src, name_ip);
@@ -2680,7 +2680,7 @@ fn computeAliveFiles(pt: Zcu.PerThread) Allocator.Error!bool {
         if (file.status != .success) continue; // ZIR not valid if there was a file failure
 
         const zir = file.zir.?;
-        const imports_index = zir.extra[@intFromEnum(Zir.ExtraIndex.imports)];
+        const imports_index = zir.extra[@backingInt(Zir.ExtraIndex.imports)];
         if (imports_index == 0) continue; // this Zig file has no imports
         const extra = zir.extraData(Zir.Inst.Imports, imports_index);
         var extra_index = extra.end;
@@ -2852,7 +2852,7 @@ pub fn updateBuiltinModule(pt: Zcu.PerThread, opts: Builtin) Allocator.Error!voi
     assert(!file.zir.?.hasCompileErrors());
     {
         // Check that it has only one import, which is 'std'.
-        const imports_idx = file.zir.?.extra[@intFromEnum(Zir.ExtraIndex.imports)];
+        const imports_idx = file.zir.?.extra[@backingInt(Zir.ExtraIndex.imports)];
         assert(imports_idx != 0); // there is an import
         const extra = file.zir.?.extraData(Zir.Inst.Imports, imports_idx);
         assert(extra.data.imports_len == 1); // there is exactly one import
@@ -2896,11 +2896,11 @@ pub fn embedFile(
         const gop = try zcu.embed_table.getOrPutAdapted(gpa, path, Zcu.EmbedTableAdapter{});
         if (gop.found_existing) {
             path.deinit(gpa); // we're not using this key
-            return @enumFromInt(gop.index);
+            return @fromBackingInt(@intCast(gop.index));
         }
         errdefer _ = zcu.embed_table.pop();
         gop.key_ptr.* = try pt.newEmbedFile(path);
-        return @enumFromInt(gop.index);
+        return @fromBackingInt(@intCast(gop.index));
     }
 
     const embed_file: *Zcu.EmbedFile, const embed_file_idx: Zcu.EmbedFile.Index = ef: {
@@ -2909,11 +2909,11 @@ pub fn embedFile(
         const gop = try zcu.embed_table.getOrPutAdapted(gpa, path, Zcu.EmbedTableAdapter{});
         if (gop.found_existing) {
             path.deinit(gpa); // we're not using this key
-            break :ef .{ gop.key_ptr.*, @enumFromInt(gop.index) };
+            break :ef .{ gop.key_ptr.*, @fromBackingInt(@intCast(gop.index)) };
         } else {
             errdefer _ = zcu.embed_table.pop();
             gop.key_ptr.* = try pt.newEmbedFile(path);
-            break :ef .{ gop.key_ptr.*, @enumFromInt(gop.index) };
+            break :ef .{ gop.key_ptr.*, @fromBackingInt(@intCast(gop.index)) };
         }
     };
 
@@ -3452,7 +3452,7 @@ fn analyzeFuncBodyInner(
             gop.value_ptr.* = .fromValue(opv);
             continue;
         }
-        const arg_index: Air.Inst.Index = @enumFromInt(sema.air_instructions.len);
+        const arg_index: Air.Inst.Index = @fromBackingInt(@intCast(sema.air_instructions.len));
         gop.value_ptr.* = arg_index.toRef();
         inner_block.instructions.appendAssumeCapacity(arg_index);
         sema.air_instructions.appendAssumeCapacity(.{
@@ -3499,7 +3499,7 @@ fn analyzeFuncBodyInner(
     for (sema.unresolved_inferred_allocs.keys()) |ptr_inst| {
         // The lack of a resolve_inferred_alloc means that this instruction
         // is unused so it just has to be a no-op.
-        sema.air_instructions.set(@intFromEnum(ptr_inst), .{
+        sema.air_instructions.set(@backingInt(ptr_inst), .{
             .tag = .alloc,
             .data = .{ .ty = .ptr_const_comptime_int },
         });
@@ -3524,7 +3524,7 @@ fn analyzeFuncBodyInner(
         .body_len = @intCast(inner_block.instructions.items.len),
     });
     sema.air_extra.appendSliceAssumeCapacity(@ptrCast(inner_block.instructions.items));
-    sema.air_extra.items[@intFromEnum(Air.ExtraIndex.main_block)] = main_block_index;
+    sema.air_extra.items[@backingInt(Air.ExtraIndex.main_block)] = main_block_index;
 
     // Resolving inferred error sets is done *before* setting the function
     // state to success, so that "unable to resolve inferred error set" errors
@@ -3698,7 +3698,7 @@ pub fn processExports(pt: Zcu.PerThread) !void {
                 },
             };
             if (!found_existing) value_ptr.* = .empty;
-            try value_ptr.append(gpa, @enumFromInt(export_idx));
+            try value_ptr.append(gpa, @fromBackingInt(@intCast(export_idx)));
         }
     }
 
@@ -4052,7 +4052,7 @@ pub fn ptrType(pt: Zcu.PerThread, info: InternPool.Key.PtrType) Allocator.Error!
                 canon_info.packed_offset.host_size = 0;
             }
         },
-        _ => assert(@intFromEnum(info.flags.vector_index) < info.packed_offset.host_size),
+        _ => assert(@backingInt(info.flags.vector_index) < info.packed_offset.host_size),
     }
 
     return .fromInterned(try pt.intern(.{ .ptr_type = canon_info }));

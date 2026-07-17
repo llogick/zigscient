@@ -381,7 +381,7 @@ const MockRegister1 = enum(u2) {
     r3,
 
     pub fn id(reg: MockRegister1) u2 {
-        return @intFromEnum(reg);
+        return @backingInt(reg);
     }
 
     const allocatable_registers = [_]MockRegister1{ .r2, .r3 };
@@ -409,7 +409,7 @@ const MockRegister2 = enum(u2) {
     r3,
 
     pub fn id(reg: MockRegister2) u2 {
-        return @intFromEnum(reg);
+        return @backingInt(reg);
     }
 
     const allocatable_registers = [_]MockRegister2{ .r0, .r1, .r2, .r3 };
@@ -441,14 +441,14 @@ const MockRegister3 = enum(u3) {
     x3,
 
     pub fn id(reg: MockRegister3) u3 {
-        return switch (@intFromEnum(reg)) {
-            0...3 => @as(u3, @as(u2, @truncate(@intFromEnum(reg)))),
-            4...7 => @intFromEnum(reg),
+        return switch (@backingInt(reg)) {
+            0...3 => @as(u3, @as(u2, @truncate(@backingInt(reg)))),
+            4...7 => @backingInt(reg),
         };
     }
 
     pub fn enc(reg: MockRegister3) u2 {
-        return @as(u2, @truncate(@intFromEnum(reg)));
+        return @as(u2, @truncate(@backingInt(reg)));
     }
 
     const gp_regs = [_]MockRegister3{ .r0, .r1, .r2, .r3 };

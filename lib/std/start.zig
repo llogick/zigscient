@@ -141,14 +141,14 @@ fn EfiMain(handle: uefi.Handle, system_table: *uefi.tables.SystemTable) callconv
             return 0;
         },
         uefi.Status => {
-            return @intFromEnum(root.main());
+            return @backingInt(root.main());
         },
         uefi.Error!void => {
             root.main() catch |err| switch (err) {
                 error.Unexpected => @panic("EfiMain: unexpected error"),
                 else => {
                     const status = uefi.Status.fromError(@errorCast(err));
-                    return @intFromEnum(status);
+                    return @backingInt(status);
                 },
             };
 

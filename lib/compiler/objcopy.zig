@@ -600,7 +600,7 @@ const HexWriter = struct {
             const parts = addressParts(self.address);
             sum +%= parts[0];
             sum +%= parts[1];
-            sum +%= @intFromEnum(self.payload);
+            sum +%= @backingInt(self.payload);
             for (payload_bytes) |byte| {
                 sum +%= byte;
             }
@@ -618,7 +618,7 @@ const HexWriter = struct {
             const line = try std.fmt.bufPrint(&outbuf, ":{0X:0>2}{1X:0>4}{2X:0>2}{3X}{4X:0>2}" ++ linesep, .{
                 @as(u8, @intCast(payload_bytes.len)),
                 self.address,
-                @intFromEnum(self.payload),
+                @backingInt(self.payload),
                 payload_bytes,
                 self.checksum(),
             });

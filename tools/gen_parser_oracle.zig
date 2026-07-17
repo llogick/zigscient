@@ -398,7 +398,7 @@ const Parser = struct {
             _,
 
             fn get(index: Index, p: *const Parser) Node {
-                return p.nodes.items[@intFromEnum(index)];
+                return p.nodes.items[@backingInt(index)];
             }
         };
 
@@ -750,7 +750,7 @@ const Parser = struct {
 
     fn addNode(p: *Parser, node: Node) !Node.Index {
         try p.nodes.append(p.gpa, node);
-        return @enumFromInt(p.nodes.items.len - 1);
+        return @fromBackingInt(@intCast(p.nodes.items.len - 1));
     }
 
     fn addExtra(p: *Parser, nodes: []const Node.Index) !Node.Slice {

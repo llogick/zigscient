@@ -327,14 +327,14 @@ fn expr(zg: *ZonGen, node: Ast.Node.Index, dest_node: Zoir.Node.Index) Allocator
             };
             zg.setNode(dest_node, .{
                 .tag = .enum_literal,
-                .data = @intFromEnum(str_index),
+                .data = @backingInt(str_index),
                 .ast_node = node,
             });
         },
         .string_literal, .multiline_string_literal => if (zg.strLitAsString(node)) |result| switch (result) {
             .nts => |nts| zg.setNode(dest_node, .{
                 .tag = .string_literal_null,
-                .data = @intFromEnum(nts),
+                .data = @backingInt(nts),
                 .ast_node = node,
             }),
             .slice => |slice| {
@@ -377,7 +377,7 @@ fn expr(zg: *ZonGen, node: Ast.Node.Index, dest_node: Zoir.Node.Index) Allocator
             });
 
             for (full.ast.elements, first_elem..) |elem_node, elem_dest_node| {
-                try zg.expr(elem_node, @enumFromInt(elem_dest_node));
+                try zg.expr(elem_node, @fromBackingInt(@intCast(elem_dest_node)));
             }
         },
 
@@ -429,7 +429,7 @@ fn expr(zg: *ZonGen, node: Ast.Node.Index, dest_node: Zoir.Node.Index) Allocator
             for (full.ast.fields, names_start.., first_elem..) |elem_node, extra_name_idx, elem_dest_node| {
                 const name_token = tree.firstToken(elem_node) - 2;
                 if (zg.identAsString(name_token)) |name_str| {
-                    zg.extra.items[extra_name_idx] = @intFromEnum(name_str);
+                    zg.extra.items[extra_name_idx] = @backingInt(name_str);
                     const gop = try field_names.getOrPut(bfa, name_str);
                     if (gop.found_existing and !reported_any_duplicate) {
                         reported_any_duplicate = true;
@@ -443,7 +443,7 @@ fn expr(zg: *ZonGen, node: Ast.Node.Index, dest_node: Zoir.Node.Index) Allocator
                     error.BadString => {}, // there's an error, so it's fine to not populate `zg.extra`
                     error.OutOfMemory => |e| return e,
                 }
-                try zg.expr(elem_node, @enumFromInt(elem_dest_node));
+                try zg.expr(elem_node, @fromBackingInt(@intCast(elem_dest_node)));
             }
         },
     }
@@ -590,11 +590,11 @@ fn strLitAsString(zg: *ZonGen, str_node: Ast.Node.Index) error{ OutOfMemory, Bad
     );
     if (gop.found_existing) {
         string_bytes.shrinkRetainingCapacity(str_index);
-        return .{ .nts = @enumFromInt(gop.key_ptr.*) };
+        return .{ .nts = @fromBackingInt(@intCast(gop.key_ptr.*)) };
     }
     gop.key_ptr.* = str_index;
     try string_bytes.append(gpa, 0);
-    return .{ .nts = @enumFromInt(str_index) };
+    return .{ .nts = @fromBackingInt(@intCast(str_index)) };
 }
 
 fn identAsString(zg: *ZonGen, ident_token: Ast.TokenIndex) !Zoir.NullTerminatedString {
@@ -610,11 +610,11 @@ fn identAsString(zg: *ZonGen, ident_token: Ast.TokenIndex) !Zoir.NullTerminatedS
     );
     if (gop.found_existing) {
         string_bytes.shrinkRetainingCapacity(str_index);
-        return @enumFromInt(gop.key_ptr.*);
+        return @fromBackingInt(@intCast(gop.key_ptr.*));
     }
     gop.key_ptr.* = str_index;
     try string_bytes.append(gpa, 0);
-    return @enumFromInt(str_index);
+    return @fromBackingInt(@intCast(str_index));
 }
 
 fn numberLiteral(zg: *ZonGen, num_node: Ast.Node.Index, src_node: Ast.Node.Index, dest_node: Zoir.Node.Index, sign: enum { negative, positive }) !void {
@@ -656,7 +656,7 @@ fn numberLiteral(zg: *ZonGen, num_node: Ast.Node.Index, src_node: Ast.Node.Index
             };
             var big_int: std.math.big.int.Managed = try .init(gpa);
             defer big_int.deinit();
-            big_int.setString(@intFromEnum(base), num_without_prefix) catch |err| switch (err) {
+            big_int.setString(@backingInt(base), num_without_prefix) catch |err| switch (err) {
                 error.InvalidCharacter => unreachable, // caught in `parseNumberLiteral`
                 error.InvalidBase => unreachable, // we only pass 16, 8, 2, see above
                 error.OutOfMemory => |e| return e,
@@ -763,7 +763,7 @@ fn identifier(zg: *ZonGen, node: Ast.Node.Index, dest_node: Zoir.Node.Index) !vo
 }
 
 fn setNode(zg: *ZonGen, dest: Zoir.Node.Index, repr: Zoir.Node.Repr) void {
-    zg.nodes.set(@intFromEnum(dest), repr);
+    zg.nodes.set(@backingInt(dest), repr);
 }
 
 fn lowerStrLitError(
@@ -812,9 +812,9 @@ fn errNoteNode(zg: *ZonGen, node: Ast.Node.Index, comptime format: []const u8, a
     const message_idx: u32 = @intCast(zg.string_bytes.items.len);
     try zg.string_bytes.print(zg.gpa, format ++ "\x00", args);
     return .{
-        .msg = @enumFromInt(message_idx),
+        .msg = @fromBackingInt(@intCast(message_idx)),
         .token = .none,
-        .node_or_offset = @intFromEnum(node),
+        .node_or_offset = @backingInt(node),
     };
 }
 
@@ -822,20 +822,20 @@ fn errNoteTok(zg: *ZonGen, tok: Ast.TokenIndex, comptime format: []const u8, arg
     const message_idx: u32 = @intCast(zg.string_bytes.items.len);
     try zg.string_bytes.print(zg.gpa, format ++ "\x00", args);
     return .{
-        .msg = @enumFromInt(message_idx),
+        .msg = @fromBackingInt(@intCast(message_idx)),
         .token = .fromToken(tok),
         .node_or_offset = 0,
     };
 }
 
 fn addErrorNode(zg: *ZonGen, node: Ast.Node.Index, comptime format: []const u8, args: anytype) Allocator.Error!void {
-    return zg.addErrorInner(.none, @intFromEnum(node), format, args, &.{});
+    return zg.addErrorInner(.none, @backingInt(node), format, args, &.{});
 }
 fn addErrorTok(zg: *ZonGen, tok: Ast.TokenIndex, comptime format: []const u8, args: anytype) Allocator.Error!void {
     return zg.addErrorInner(.fromToken(tok), 0, format, args, &.{});
 }
 fn addErrorNodeNotes(zg: *ZonGen, node: Ast.Node.Index, comptime format: []const u8, args: anytype, notes: []const Zoir.CompileError.Note) Allocator.Error!void {
-    return zg.addErrorInner(.none, @intFromEnum(node), format, args, notes);
+    return zg.addErrorInner(.none, @backingInt(node), format, args, notes);
 }
 fn addErrorTokNotes(zg: *ZonGen, tok: Ast.TokenIndex, comptime format: []const u8, args: anytype, notes: []const Zoir.CompileError.Note) Allocator.Error!void {
     return zg.addErrorInner(.fromToken(tok), 0, format, args, notes);
@@ -864,7 +864,7 @@ fn addErrorInner(
     try zg.string_bytes.print(gpa, format ++ "\x00", args);
 
     try zg.compile_errors.append(gpa, .{
-        .msg = @enumFromInt(message_idx),
+        .msg = @fromBackingInt(@intCast(message_idx)),
         .token = token,
         .node_or_offset = node_or_offset,
         .first_note = first_note,

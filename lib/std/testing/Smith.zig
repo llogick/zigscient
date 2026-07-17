@@ -169,7 +169,7 @@ test baselineWeights {
 fn valueFromInt(T: anytype, int: Backing(T)) T {
     @disableInstrumentation();
     return switch (@typeInfo(T)) {
-        .@"enum" => @enumFromInt(int),
+        .@"enum" => @fromBackingInt(@intCast(int)),
         else => @bitCast(int),
     };
 }
@@ -369,7 +369,7 @@ fn UnionTagWithoutUninitializable(T: type) type {
             else => {},
         }
         field_names[n_fields] = f_name;
-        field_values[n_fields] = @intFromEnum(@field(Tag, f_name));
+        field_values[n_fields] = @backingInt(@field(Tag, f_name));
         n_fields += 1;
     }
     return @Enum(e.tag_type, .exhaustive, field_names[0..n_fields], field_values[0..n_fields]);
@@ -400,8 +400,8 @@ pub fn valueWithHash(s: *Smith, T: type, hash: u32) T {
                 break :v s.valueWeightedWithHash(T, baselineWeights(T), hash);
             }
             break :v std.enums.fromInt(T, s.valueWithHash(e.tag_type, hash)) orelse
-                @enumFromInt(e.field_values[0]);
-        } else @enumFromInt(s.valueWithHash(e.tag_type, hash)),
+                @fromBackingInt(@intCast(e.field_values[0]));
+        } else @fromBackingInt(@intCast(s.valueWithHash(e.tag_type, hash))),
         .optional => |o| if (s.valueWithHash(bool, hash))
             null
         else
@@ -718,7 +718,7 @@ test value {
         io: u128 = (1 << 80) | (1 << 23),
         fd: f64 = std.math.pi,
         ft: f80 = std.math.e,
-        eh: enum(u16) { a, _ } = @enumFromInt(999),
+        eh: enum(u16) { a, _ } = @fromBackingInt(@intCast(999)),
         eo: enum(u128) { a, b, _ } = .b,
         aw: [3]u32 = .{ 1 << 30, 1 << 20, 1 << 10 },
         vw: @Vector(3, u32) = .{ 1 << 10, 1 << 20, 1 << 30 },
@@ -747,7 +747,7 @@ test value {
     };
     const s: S = .{};
     const ft_bits: u80 = @bitCast(s.ft);
-    const eo_bits = @intFromEnum(s.eo);
+    const eo_bits = @backingInt(s.eo);
 
     var smith: Smith = .{
         .in = constructInput(&.{
@@ -758,7 +758,7 @@ test value {
             .{ .int = @truncate(s.io) }, .{ .int = @intCast(s.io >> 64) }, // io
             .{ .int = @bitCast(s.fd) }, // fd
             .{ .int = @truncate(ft_bits) }, .{ .int = @intCast(ft_bits >> 64) }, // ft
-            .{ .int = @intFromEnum(s.eh) }, // eh
+            .{ .int = @backingInt(s.eh) }, // eh
             .{ .int = @truncate(eo_bits) }, .{ .int = @intCast(eo_bits >> 64) }, // eo
             .{ .int = s.aw[0] }, .{ .int = s.aw[1] }, .{ .int = s.aw[2] }, // aw
             .{ .int = s.vw[0] }, .{ .int = s.vw[1] }, .{ .int = s.vw[2] }, // vw
@@ -767,8 +767,8 @@ test value {
             .{ .int = s.s.q }, // s.q
             //sz
             .{ .int = @as(u8, @bitCast(s.sp)) }, // sp
-            .{ .int = s.si.a }, .{ .int = @intFromEnum(s.si.b) }, // si
-            .{ .int = @intFromEnum(s.u) }, .{ .int = s.u.b }, // u
+            .{ .int = s.si.a }, .{ .int = @backingInt(s.si.b) }, // si
+            .{ .int = @backingInt(s.u) }, .{ .int = s.u.b }, // u
             .{ .int = @as(u16, @bitCast(s.up)) }, // up
             // invalid values
             .{ .int = 555 }, // invalid.ib

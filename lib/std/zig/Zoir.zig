@@ -106,7 +106,7 @@ pub const Node = union(enum) {
         _,
 
         pub fn get(idx: Index, zoir: Zoir) Node {
-            const repr = zoir.nodes.get(@intFromEnum(idx));
+            const repr = zoir.nodes.get(@backingInt(idx));
             return switch (repr.tag) {
                 .true => .true,
                 .false => .false,
@@ -129,30 +129,30 @@ pub const Node = union(enum) {
                 .float_literal_small => .{ .float_literal = @as(f32, @bitCast(repr.data)) },
                 .float_literal => .{ .float_literal = @bitCast(zoir.extra[repr.data..][0..4].*) },
                 .char_literal => .{ .char_literal = @intCast(repr.data) },
-                .enum_literal => .{ .enum_literal = @enumFromInt(repr.data) },
+                .enum_literal => .{ .enum_literal = @fromBackingInt(@intCast(repr.data)) },
                 .string_literal => .{ .string_literal = s: {
                     const start, const len = zoir.extra[repr.data..][0..2].*;
                     break :s zoir.string_bytes[start..][0..len];
                 } },
-                .string_literal_null => .{ .string_literal = NullTerminatedString.get(@enumFromInt(repr.data), zoir) },
+                .string_literal_null => .{ .string_literal = NullTerminatedString.get(@fromBackingInt(@intCast(repr.data)), zoir) },
                 .empty_literal => .empty_literal,
                 .array_literal => .{ .array_literal = a: {
                     const elem_count, const first_elem = zoir.extra[repr.data..][0..2].*;
-                    break :a .{ .start = @enumFromInt(first_elem), .len = elem_count };
+                    break :a .{ .start = @fromBackingInt(@intCast(first_elem)), .len = elem_count };
                 } },
                 .struct_literal => .{ .struct_literal = s: {
                     const elem_count, const first_elem = zoir.extra[repr.data..][0..2].*;
                     const field_names = zoir.extra[repr.data + 2 ..][0..elem_count];
                     break :s .{
                         .names = @ptrCast(field_names),
-                        .vals = .{ .start = @enumFromInt(first_elem), .len = elem_count },
+                        .vals = .{ .start = @fromBackingInt(@intCast(first_elem)), .len = elem_count },
                     };
                 } },
             };
         }
 
         pub fn getAstNode(idx: Index, zoir: Zoir) std.zig.Ast.Node.Index {
-            return zoir.nodes.items(.ast_node)[@intFromEnum(idx)];
+            return zoir.nodes.items(.ast_node)[@backingInt(idx)];
         }
 
         pub const Range = struct {
@@ -161,7 +161,7 @@ pub const Node = union(enum) {
 
             pub fn at(r: Range, i: u32) Index {
                 assert(i < r.len);
-                return @enumFromInt(@intFromEnum(r.start) + i);
+                return @fromBackingInt(@intCast(@backingInt(r.start) + i));
             }
         };
     };
@@ -228,8 +228,8 @@ pub const Node = union(enum) {
 pub const NullTerminatedString = enum(u32) {
     _,
     pub fn get(nts: NullTerminatedString, zoir: Zoir) [:0]const u8 {
-        const idx = std.mem.findScalar(u8, zoir.string_bytes[@intFromEnum(nts)..], 0).?;
-        return zoir.string_bytes[@intFromEnum(nts)..][0..idx :0];
+        const idx = std.mem.findScalar(u8, zoir.string_bytes[@backingInt(nts)..], 0).?;
+        return zoir.string_bytes[@backingInt(nts)..][0..idx :0];
     }
 };
 

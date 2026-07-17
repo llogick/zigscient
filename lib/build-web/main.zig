@@ -80,7 +80,7 @@ export fn message_begin(len: usize) [*]u8 {
 export fn message_end() void {
     const msg_bytes = message_buffer.items;
 
-    const tag: abi.ToClientTag = @enumFromInt(msg_bytes[0]);
+    const tag: abi.ToClientTag = @fromBackingInt(@intCast(msg_bytes[0]));
     switch (tag) {
         _ => @panic("malformed message"),
 
@@ -151,7 +151,7 @@ fn helloMessage(msg_bytes: []align(4) u8) Allocator.Error!void {
     for (steps, step_name_lens, 0..) |*step_out, name_len, step_idx| {
         step_out.* = .{
             .name = duped_step_name_data[name_off..][0..name_len],
-            .status = @enumFromInt(@as(u2, @truncate(step_status_bits[step_idx / 4] >> @intCast((step_idx % 4) * 2)))),
+            .status = @fromBackingInt(@intCast(@as(u2, @truncate(step_status_bits[step_idx / 4] >> @intCast((step_idx % 4) * 2))))),
         };
         name_off += name_len;
     }
@@ -180,7 +180,7 @@ export fn stepName(idx: usize) String {
     return .init(step_list[idx].name);
 }
 export fn stepStatus(idx: usize) u8 {
-    return @intFromEnum(step_list[idx].status);
+    return @backingInt(step_list[idx].status);
 }
 
 export fn rebuild() void {

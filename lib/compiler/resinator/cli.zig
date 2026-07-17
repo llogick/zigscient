@@ -369,7 +369,7 @@ pub const Options = struct {
         try writer.print("Default language: {s} (id=0x{x})\n", .{ language_name, language_id });
 
         const code_page = self.default_code_page orelse .windows1252;
-        try writer.print("Default codepage: {s} (id={})\n", .{ @tagName(code_page), @intFromEnum(code_page) });
+        try writer.print("Default codepage: {s} (id={})\n", .{ @tagName(code_page), @backingInt(code_page) });
     }
 };
 

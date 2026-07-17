@@ -504,7 +504,7 @@ fn loadInner(
             @typeInfo(Section.Id).@"enum".field_values,
         ) |s_name, s_value| {
             if (std.mem.eql(u8, "." ++ s_name, name)) {
-                break @enumFromInt(s_value);
+                break @fromBackingInt(@intCast(s_value));
             }
         } else continue;
 

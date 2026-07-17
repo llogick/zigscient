@@ -124,15 +124,15 @@ const Fiber = struct {
             const shift = 1;
 
             fn subWrap(lhs: Awaiting, rhs: Awaiting) Awaiting {
-                return @enumFromInt(@intFromEnum(lhs) -% @intFromEnum(rhs));
+                return @fromBackingInt(@intCast(@backingInt(lhs) -% @backingInt(rhs)));
             }
 
             fn fromCancelable(cancelable: *Cancelable) Awaiting {
-                return @enumFromInt(@shrExact(@intFromPtr(cancelable), shift));
+                return @fromBackingInt(@intCast(@shrExact(@intFromPtr(cancelable), shift)));
             }
 
             fn toCancelable(awaiting: Awaiting) *Cancelable {
-                return @ptrFromInt(@shlExact(@as(usize, @intFromEnum(awaiting)), shift));
+                return @ptrFromInt(@shlExact(@as(usize, @backingInt(awaiting)), shift));
             }
         };
 
@@ -157,7 +157,7 @@ const Fiber = struct {
         const unblocked: CancelProtection = .{ .user = .unblocked, .acknowledged = false };
 
         fn check(cancel_protection: CancelProtection) Io.CancelProtection {
-            return @enumFromInt(@intFromBool(cancel_protection != unblocked));
+            return @fromBackingInt(@intCast(@intFromBool(cancel_protection != unblocked)));
         }
 
         fn acknowledge(cancel_protection: *CancelProtection) void {
@@ -1892,7 +1892,7 @@ fn deviceIoControl(o: *const Io.Operation.DeviceIoControl) Io.Cancelable!i32 {
         switch (c.errno(rc)) {
             .SUCCESS => return rc,
             .INTR => {},
-            else => |err| return -@as(i32, @intFromEnum(err)),
+            else => |err| return -@as(i32, @backingInt(err)),
         }
     }
 }
@@ -2805,7 +2805,7 @@ fn dirRealPathFile(
                 assert(redundant_pointer == out_buffer.ptr);
                 return std.mem.indexOfScalar(u8, out_buffer, 0) orelse out_buffer.len;
             }
-            const err: c.E = @enumFromInt(c._errno().*);
+            const err: c.E = @fromBackingInt(@intCast(c._errno().*));
             switch (err) {
                 .INTR => {},
                 .INVAL => return errnoBug(err),
@@ -3347,12 +3347,12 @@ fn fileWriteFileStreaming(
 ) File.Writer.WriteFileError!usize {
     const ev: *Evented = @ptrCast(@alignCast(userdata));
     const reader_buffered = file_reader.interface.buffered();
-    if (reader_buffered.len >= @intFromEnum(limit)) {
+    if (reader_buffered.len >= @backingInt(limit)) {
         const n = try fileWriteStreaming(ev, file, header, &.{limit.slice(reader_buffered)}, 1);
         file_reader.interface.toss(n -| header.len);
         return n;
     }
-    const file_limit = @intFromEnum(limit) - reader_buffered.len;
+    const file_limit = @backingInt(limit) - reader_buffered.len;
     const out_fd = file.handle;
     const in_fd = file_reader.file.handle;
 
@@ -3441,7 +3441,7 @@ fn fileWriteFilePositional(
 ) File.WriteFilePositionalError!usize {
     const ev: *Evented = @ptrCast(@alignCast(userdata));
     const reader_buffered = file_reader.interface.buffered();
-    if (reader_buffered.len >= @intFromEnum(limit)) {
+    if (reader_buffered.len >= @backingInt(limit)) {
         const n = try fileWritePositional(
             ev,
             file,
@@ -3866,7 +3866,7 @@ fn fileMemoryMapCreate(
     const contents = while (true) {
         const casted_offset = std.math.cast(i64, options.offset) orelse return error.Unseekable;
         const rc = c.mmap(null, options.len, prot, flags, file.handle, casted_offset);
-        const err: c.E = if (rc != c.MAP_FAILED) .SUCCESS else @enumFromInt(c._errno().*);
+        const err: c.E = if (rc != c.MAP_FAILED) .SUCCESS else @fromBackingInt(@intCast(c._errno().*));
         switch (err) {
             .SUCCESS => break @as([*]align(page_align) u8, @ptrCast(@alignCast(rc)))[0..options.len],
             .INTR => {},
@@ -4026,7 +4026,7 @@ fn unlockStderr(userdata: ?*anyopaque) void {
 fn processCurrentPath(userdata: ?*anyopaque, buffer: []u8) process.CurrentPathError!usize {
     const ev: *Evented = @ptrCast(@alignCast(userdata));
     _ = ev;
-    const err: c.E = if (c.getcwd(buffer.ptr, buffer.len)) |_| .SUCCESS else @enumFromInt(c._errno().*);
+    const err: c.E = if (c.getcwd(buffer.ptr, buffer.len)) |_| .SUCCESS else @fromBackingInt(@intCast(c._errno().*));
     switch (err) {
         .SUCCESS => return std.mem.findScalar(u8, buffer, 0).?,
         .NOENT => return error.CurrentDirUnlinked,

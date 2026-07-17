@@ -44,7 +44,7 @@ const Target = struct {
         return std.fmt.allocPrint(allocator, "{s}-{s}.{d}-{s}", .{
             @tagName(self.arch),
             @tagName(self.os),
-            @intFromEnum(self.os_ver),
+            @backingInt(self.os_ver),
             @tagName(self.abi),
         });
     }
@@ -97,7 +97,7 @@ pub fn main(init: std.process.Init) !void {
         fatal("don't know how to parse SDK version: {s}", .{
             parsed_json.value.DefaultProperties.MACOSX_DEPLOYMENT_TARGET,
         });
-    const os_ver: OsVer = @enumFromInt(version.major);
+    const os_ver: OsVer = @fromBackingInt(@intCast(version.major));
     info("found SDK deployment target macOS {f} aka '{t}'", .{ version, os_ver });
 
     const tmp_dir: Io.Dir = .cwd();

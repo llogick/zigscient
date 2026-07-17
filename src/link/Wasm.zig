@@ -332,7 +332,7 @@ pub const ObjectIndex = enum(u32) {
     _,
 
     pub fn ptr(index: ObjectIndex, wasm: *const Wasm) *Object {
-        return &wasm.objects.items[@intFromEnum(index)];
+        return &wasm.objects.items[@backingInt(index)];
     }
 };
 
@@ -341,7 +341,7 @@ pub const FunctionIndex = enum(u32) {
     _,
 
     pub fn ptr(index: FunctionIndex, wasm: *const Wasm) *FunctionImport.Resolution {
-        return &wasm.functions.keys()[@intFromEnum(index)];
+        return &wasm.functions.keys()[@backingInt(index)];
     }
 
     pub fn fromIpNav(wasm: *const Wasm, nav_index: InternPool.Nav.Index) ?FunctionIndex {
@@ -349,7 +349,7 @@ pub const FunctionIndex = enum(u32) {
     }
 
     pub fn fromTagIndexType(wasm: *const Wasm, tag_type: InternPool.Index) ?FunctionIndex {
-        const zcu_func: ZcuFunc.Index = @enumFromInt(wasm.zcu_funcs.getIndex(tag_type) orelse return null);
+        const zcu_func: ZcuFunc.Index = @fromBackingInt(@intCast(wasm.zcu_funcs.getIndex(tag_type) orelse return null));
         return fromResolution(wasm, .pack(wasm, .{ .zcu_func = zcu_func }));
     }
 
@@ -364,7 +364,7 @@ pub const FunctionIndex = enum(u32) {
 
     pub fn fromResolution(wasm: *const Wasm, resolution: FunctionImport.Resolution) ?FunctionIndex {
         const i = wasm.functions.getIndex(resolution) orelse return null;
-        return @enumFromInt(i);
+        return @fromBackingInt(@intCast(i));
     }
 };
 
@@ -386,7 +386,7 @@ pub const OutputFunctionIndex = enum(u32) {
     }
 
     pub fn fromFunctionIndex(wasm: *const Wasm, index: FunctionIndex) OutputFunctionIndex {
-        return @enumFromInt(wasm.flush_buffer.function_imports.entries.len + @intFromEnum(index));
+        return @fromBackingInt(@intCast(wasm.flush_buffer.function_imports.entries.len + @backingInt(index)));
     }
 
     pub fn fromObjectFunction(wasm: *const Wasm, index: ObjectFunctionIndex) OutputFunctionIndex {
@@ -428,7 +428,7 @@ pub const OutputFunctionIndex = enum(u32) {
     }
 
     pub fn fromSymbolName(wasm: *const Wasm, name: String) OutputFunctionIndex {
-        if (wasm.flush_buffer.function_imports.getIndex(name)) |i| return @enumFromInt(i);
+        if (wasm.flush_buffer.function_imports.getIndex(name)) |i| return @fromBackingInt(@intCast(i));
         return fromFunctionIndex(wasm, FunctionIndex.fromSymbolName(wasm, name) orelse {
             if (std.debug.runtime_safety) {
                 std.debug.panic("function index for symbol not found: {s}", .{name.slice(wasm)});
@@ -442,7 +442,7 @@ pub const GlobalIndex = enum(u32) {
     _,
 
     /// This is only accurate when not emitting an object and there is a Zcu.
-    pub const stack_pointer: GlobalIndex = @enumFromInt(0);
+    pub const stack_pointer: GlobalIndex = @fromBackingInt(@intCast(0));
 
     /// Same as `stack_pointer` but with a safety assertion.
     pub fn stackPointer(wasm: *const Wasm) ObjectGlobal.Index {
@@ -453,16 +453,16 @@ pub const GlobalIndex = enum(u32) {
     }
 
     pub fn ptr(index: GlobalIndex, f: *const Flush) *Wasm.GlobalImport.Resolution {
-        return &f.globals.items[@intFromEnum(index)];
+        return &f.globals.items[@backingInt(index)];
     }
 
     pub fn fromIpNav(wasm: *const Wasm, nav_index: InternPool.Nav.Index) ?GlobalIndex {
         const i = wasm.globals.getIndex(.fromIpNav(wasm, nav_index)) orelse return null;
-        return @enumFromInt(i);
+        return @fromBackingInt(@intCast(i));
     }
 
     pub fn fromObjectGlobal(wasm: *const Wasm, i: ObjectGlobalIndex) GlobalIndex {
-        return @enumFromInt(wasm.globals.getIndex(.fromObjectGlobal(wasm, i)).?);
+        return @fromBackingInt(@intCast(wasm.globals.getIndex(.fromObjectGlobal(wasm, i)).?));
     }
 
     pub fn fromObjectGlobalHandlingWeak(wasm: *const Wasm, index: ObjectGlobalIndex) GlobalIndex {
@@ -475,7 +475,7 @@ pub const GlobalIndex = enum(u32) {
 
     pub fn fromSymbolName(wasm: *const Wasm, name: String) GlobalIndex {
         const import = wasm.object_global_imports.getPtr(name).?;
-        return @enumFromInt(wasm.globals.getIndex(import.resolution).?);
+        return @fromBackingInt(@intCast(wasm.globals.getIndex(import.resolution).?));
     }
 };
 
@@ -484,16 +484,16 @@ pub const TableIndex = enum(u32) {
     _,
 
     pub fn ptr(index: TableIndex, f: *const Flush) *Wasm.TableImport.Resolution {
-        return &f.tables.items[@intFromEnum(index)];
+        return &f.tables.items[@backingInt(index)];
     }
 
     pub fn fromObjectTable(wasm: *const Wasm, i: ObjectTableIndex) TableIndex {
-        return @enumFromInt(wasm.tables.getIndex(.fromObjectTable(i)).?);
+        return @fromBackingInt(@intCast(wasm.tables.getIndex(.fromObjectTable(i)).?));
     }
 
     pub fn fromSymbolName(wasm: *const Wasm, name: String) TableIndex {
         const import = wasm.object_table_imports.getPtr(name).?;
-        return @enumFromInt(wasm.tables.getIndex(import.resolution).?);
+        return @fromBackingInt(@intCast(wasm.tables.getIndex(import.resolution).?));
     }
 };
 
@@ -524,7 +524,7 @@ pub const SourceLocation = enum(u32) {
         return switch (unpacked) {
             .zig_object_nofile => .zig_object_nofile,
             .none => .none,
-            .object_index => |object_index| @enumFromInt(@intFromEnum(object_index)),
+            .object_index => |object_index| @fromBackingInt(@intCast(@backingInt(object_index))),
             .source_location_index => @panic("TODO"),
         };
     }
@@ -534,8 +534,8 @@ pub const SourceLocation = enum(u32) {
             .zig_object_nofile => .zig_object_nofile,
             .none => .none,
             _ => {
-                const i = @intFromEnum(sl);
-                if (i < wasm.objects.items.len) return .{ .object_index = @enumFromInt(i) };
+                const i = @backingInt(sl);
+                if (i < wasm.objects.items.len) return .{ .object_index = @fromBackingInt(@intCast(i)) };
                 const sl_index = i - wasm.objects.items.len;
                 _ = sl_index;
                 @panic("TODO");
@@ -748,11 +748,11 @@ pub const NavsObjIndex = enum(u32) {
     _,
 
     pub fn key(i: @This(), wasm: *const Wasm) *InternPool.Nav.Index {
-        return &wasm.navs_obj.keys()[@intFromEnum(i)];
+        return &wasm.navs_obj.keys()[@backingInt(i)];
     }
 
     pub fn value(i: @This(), wasm: *const Wasm) *ZcuDataObj {
-        return &wasm.navs_obj.values()[@intFromEnum(i)];
+        return &wasm.navs_obj.values()[@backingInt(i)];
     }
 
     pub fn name(i: @This(), wasm: *const Wasm) [:0]const u8 {
@@ -768,11 +768,11 @@ pub const NavsExeIndex = enum(u32) {
     _,
 
     pub fn key(i: @This(), wasm: *const Wasm) *InternPool.Nav.Index {
-        return &wasm.navs_exe.keys()[@intFromEnum(i)];
+        return &wasm.navs_exe.keys()[@backingInt(i)];
     }
 
     pub fn value(i: @This(), wasm: *const Wasm) *ZcuDataExe {
-        return &wasm.navs_exe.values()[@intFromEnum(i)];
+        return &wasm.navs_exe.values()[@backingInt(i)];
     }
 
     pub fn name(i: @This(), wasm: *const Wasm) [:0]const u8 {
@@ -788,11 +788,11 @@ pub const UavsObjIndex = enum(u32) {
     _,
 
     pub fn key(i: @This(), wasm: *const Wasm) *InternPool.Index {
-        return &wasm.uavs_obj.keys()[@intFromEnum(i)];
+        return &wasm.uavs_obj.keys()[@backingInt(i)];
     }
 
     pub fn value(i: @This(), wasm: *const Wasm) *ZcuDataObj {
-        return &wasm.uavs_obj.values()[@intFromEnum(i)];
+        return &wasm.uavs_obj.values()[@backingInt(i)];
     }
 };
 
@@ -801,11 +801,11 @@ pub const UavsExeIndex = enum(u32) {
     _,
 
     pub fn key(i: @This(), wasm: *const Wasm) *InternPool.Index {
-        return &wasm.uavs_exe.keys()[@intFromEnum(i)];
+        return &wasm.uavs_exe.keys()[@backingInt(i)];
     }
 
     pub fn value(i: @This(), wasm: *const Wasm) *ZcuDataExe {
-        return &wasm.uavs_exe.values()[@intFromEnum(i)];
+        return &wasm.uavs_exe.values()[@backingInt(i)];
     }
 };
 
@@ -899,11 +899,11 @@ pub const ZcuFunc = union {
         _,
 
         pub fn key(i: @This(), wasm: *const Wasm) *InternPool.Index {
-            return &wasm.zcu_funcs.keys()[@intFromEnum(i)];
+            return &wasm.zcu_funcs.keys()[@backingInt(i)];
         }
 
         pub fn value(i: @This(), wasm: *const Wasm) *ZcuFunc {
-            return &wasm.zcu_funcs.values()[@intFromEnum(i)];
+            return &wasm.zcu_funcs.values()[@backingInt(i)];
         }
 
         pub fn name(i: @This(), wasm: *const Wasm) [:0]const u8 {
@@ -972,7 +972,7 @@ pub const FunctionImport = extern struct {
         // Next, index into `zcu_funcs`.
         _,
 
-        const first_object_function = @intFromEnum(Resolution.__wasm_init_tls) + 1;
+        const first_object_function = @backingInt(Resolution.__wasm_init_tls) + 1;
 
         pub const Unpacked = union(enum) {
             unresolved,
@@ -992,14 +992,14 @@ pub const FunctionImport = extern struct {
                 .__wasm_init_memory => .__wasm_init_memory,
                 .__wasm_init_tls => .__wasm_init_tls,
                 _ => {
-                    const object_function_index = @intFromEnum(r) - first_object_function;
+                    const object_function_index = @backingInt(r) - first_object_function;
 
                     const zcu_func_index = if (object_function_index < wasm.object_functions.items.len)
-                        return .{ .object_function = @enumFromInt(object_function_index) }
+                        return .{ .object_function = @fromBackingInt(@intCast(object_function_index)) }
                     else
                         object_function_index - wasm.object_functions.items.len;
 
-                    return .{ .zcu_func = @enumFromInt(zcu_func_index) };
+                    return .{ .zcu_func = @fromBackingInt(@intCast(zcu_func_index)) };
                 },
             };
         }
@@ -1011,8 +1011,8 @@ pub const FunctionImport = extern struct {
                 .__wasm_call_ctors => .__wasm_call_ctors,
                 .__wasm_init_memory => .__wasm_init_memory,
                 .__wasm_init_tls => .__wasm_init_tls,
-                .object_function => |i| @enumFromInt(first_object_function + @intFromEnum(i)),
-                .zcu_func => |i| @enumFromInt(first_object_function + wasm.object_functions.items.len + @intFromEnum(i)),
+                .object_function => |i| @fromBackingInt(@intCast(first_object_function + @backingInt(i))),
+                .zcu_func => |i| @fromBackingInt(@intCast(first_object_function + wasm.object_functions.items.len + @backingInt(i))),
             };
         }
 
@@ -1027,7 +1027,7 @@ pub const FunctionImport = extern struct {
         }
 
         pub fn fromIpIndex(wasm: *const Wasm, ip_index: InternPool.Index) Resolution {
-            return fromZcuFunc(wasm, @enumFromInt(wasm.zcu_funcs.getIndex(ip_index).?));
+            return fromZcuFunc(wasm, @fromBackingInt(@intCast(wasm.zcu_funcs.getIndex(ip_index).?)));
         }
 
         pub fn fromObjectFunction(wasm: *const Wasm, object_function: ObjectFunctionIndex) Resolution {
@@ -1072,11 +1072,11 @@ pub const FunctionImport = extern struct {
         _,
 
         pub fn key(index: Index, wasm: *const Wasm) *String {
-            return &wasm.object_function_imports.keys()[@intFromEnum(index)];
+            return &wasm.object_function_imports.keys()[@backingInt(index)];
         }
 
         pub fn value(index: Index, wasm: *const Wasm) *FunctionImport {
-            return &wasm.object_function_imports.values()[@intFromEnum(index)];
+            return &wasm.object_function_imports.values()[@backingInt(index)];
         }
 
         pub fn symbolName(index: Index, wasm: *const Wasm) String {
@@ -1139,7 +1139,7 @@ pub const GlobalImport = extern struct {
         // Next, index into `navs_obj` or `navs_exe` depending on whether emitting an object.
         _,
 
-        const first_object_global = @intFromEnum(Resolution.__tls_size) + 1;
+        const first_object_global = @backingInt(Resolution.__tls_size) + 1;
 
         pub const Unpacked = union(enum) {
             unresolved,
@@ -1164,17 +1164,17 @@ pub const GlobalImport = extern struct {
                 .__tls_base => .__tls_base,
                 .__tls_size => .__tls_size,
                 _ => {
-                    const i: u32 = @intFromEnum(r);
+                    const i: u32 = @backingInt(r);
                     const object_global_index = i - first_object_global;
                     if (object_global_index < wasm.object_globals.items.len)
-                        return .{ .object_global = @enumFromInt(object_global_index) };
+                        return .{ .object_global = @fromBackingInt(@intCast(object_global_index)) };
                     const comp = wasm.base.comp;
                     const is_obj = comp.config.output_mode == .Obj;
                     const nav_index = object_global_index - wasm.object_globals.items.len;
                     return if (is_obj) .{
-                        .nav_obj = @enumFromInt(nav_index),
+                        .nav_obj = @fromBackingInt(@intCast(nav_index)),
                     } else .{
-                        .nav_exe = @enumFromInt(nav_index),
+                        .nav_exe = @fromBackingInt(@intCast(nav_index)),
                     };
                 },
             };
@@ -1189,9 +1189,9 @@ pub const GlobalImport = extern struct {
                 .__tls_align => .__tls_align,
                 .__tls_base => .__tls_base,
                 .__tls_size => .__tls_size,
-                .object_global => |i| @enumFromInt(first_object_global + @intFromEnum(i)),
-                .nav_obj => |i| @enumFromInt(first_object_global + wasm.object_globals.items.len + @intFromEnum(i)),
-                .nav_exe => |i| @enumFromInt(first_object_global + wasm.object_globals.items.len + @intFromEnum(i)),
+                .object_global => |i| @fromBackingInt(@intCast(first_object_global + @backingInt(i))),
+                .nav_obj => |i| @fromBackingInt(@intCast(first_object_global + wasm.object_globals.items.len + @backingInt(i))),
+                .nav_exe => |i| @fromBackingInt(@intCast(first_object_global + wasm.object_globals.items.len + @backingInt(i))),
             };
         }
 
@@ -1199,9 +1199,9 @@ pub const GlobalImport = extern struct {
             const comp = wasm.base.comp;
             const is_obj = comp.config.output_mode == .Obj;
             return pack(wasm, if (is_obj) .{
-                .nav_obj = @enumFromInt(wasm.navs_obj.getIndex(ip_nav).?),
+                .nav_obj = @fromBackingInt(@intCast(wasm.navs_obj.getIndex(ip_nav).?)),
             } else .{
-                .nav_exe = @enumFromInt(wasm.navs_exe.getIndex(ip_nav).?),
+                .nav_exe = @fromBackingInt(@intCast(wasm.navs_exe.getIndex(ip_nav).?)),
             });
         }
 
@@ -1230,11 +1230,11 @@ pub const GlobalImport = extern struct {
         _,
 
         pub fn key(index: Index, wasm: *const Wasm) *String {
-            return &wasm.object_global_imports.keys()[@intFromEnum(index)];
+            return &wasm.object_global_imports.keys()[@backingInt(index)];
         }
 
         pub fn value(index: Index, wasm: *const Wasm) *GlobalImport {
-            return &wasm.object_global_imports.values()[@intFromEnum(index)];
+            return &wasm.object_global_imports.values()[@backingInt(index)];
         }
 
         pub fn symbolName(index: Index, wasm: *const Wasm) String {
@@ -1321,7 +1321,7 @@ pub const TableImport = extern struct {
         // Next, index into `object_tables`.
         _,
 
-        const first_object_table = @intFromEnum(Resolution.__indirect_function_table) + 1;
+        const first_object_table = @backingInt(Resolution.__indirect_function_table) + 1;
 
         pub const Unpacked = union(enum) {
             unresolved,
@@ -1333,7 +1333,7 @@ pub const TableImport = extern struct {
             return switch (r) {
                 .unresolved => .unresolved,
                 .__indirect_function_table => .__indirect_function_table,
-                _ => .{ .object_table = @enumFromInt(@intFromEnum(r) - first_object_table) },
+                _ => .{ .object_table = @fromBackingInt(@intCast(@backingInt(r) - first_object_table)) },
             };
         }
 
@@ -1341,7 +1341,7 @@ pub const TableImport = extern struct {
             return switch (unpacked) {
                 .unresolved => .unresolved,
                 .__indirect_function_table => .__indirect_function_table,
-                .object_table => |i| @enumFromInt(first_object_table + @intFromEnum(i)),
+                .object_table => |i| @fromBackingInt(@intCast(first_object_table + @backingInt(i))),
             };
         }
 
@@ -1375,11 +1375,11 @@ pub const TableImport = extern struct {
         _,
 
         pub fn key(index: Index, wasm: *const Wasm) *String {
-            return &wasm.object_table_imports.keys()[@intFromEnum(index)];
+            return &wasm.object_table_imports.keys()[@backingInt(index)];
         }
 
         pub fn value(index: Index, wasm: *const Wasm) *TableImport {
-            return &wasm.object_table_imports.values()[@intFromEnum(index)];
+            return &wasm.object_table_imports.values()[@backingInt(index)];
         }
 
         pub fn name(index: Index, wasm: *const Wasm) String {
@@ -1434,7 +1434,7 @@ pub const ObjectTableIndex = enum(u32) {
     _,
 
     pub fn ptr(index: ObjectTableIndex, wasm: *const Wasm) *Table {
-        return &wasm.object_tables.items[@intFromEnum(index)];
+        return &wasm.object_tables.items[@backingInt(index)];
     }
 
     pub fn chaseWeak(i: ObjectTableIndex, wasm: *const Wasm) ObjectTableIndex {
@@ -1452,7 +1452,7 @@ pub const ObjectGlobalIndex = enum(u32) {
     _,
 
     pub fn ptr(index: ObjectGlobalIndex, wasm: *const Wasm) *ObjectGlobal {
-        return &wasm.object_globals.items[@intFromEnum(index)];
+        return &wasm.object_globals.items[@backingInt(index)];
     }
 
     pub fn name(index: ObjectGlobalIndex, wasm: *const Wasm) OptionalString {
@@ -1480,7 +1480,7 @@ pub const ObjectMemory = extern struct {
         _,
 
         pub fn ptr(index: Index, wasm: *const Wasm) *ObjectMemory {
-            return &wasm.object_memories.items[@intFromEnum(index)];
+            return &wasm.object_memories.items[@backingInt(index)];
         }
     };
 
@@ -1501,11 +1501,11 @@ pub const ObjectFunctionIndex = enum(u32) {
     _,
 
     pub fn ptr(index: ObjectFunctionIndex, wasm: *const Wasm) *ObjectFunction {
-        return &wasm.object_functions.items[@intFromEnum(index)];
+        return &wasm.object_functions.items[@backingInt(index)];
     }
 
     pub fn toOptional(i: ObjectFunctionIndex) OptionalObjectFunctionIndex {
-        const result: OptionalObjectFunctionIndex = @enumFromInt(@intFromEnum(i));
+        const result: OptionalObjectFunctionIndex = @fromBackingInt(@intCast(@backingInt(i)));
         assert(result != .none);
         return result;
     }
@@ -1527,7 +1527,7 @@ pub const OptionalObjectFunctionIndex = enum(u32) {
 
     pub fn unwrap(i: OptionalObjectFunctionIndex) ?ObjectFunctionIndex {
         if (i == .none) return null;
-        return @enumFromInt(@intFromEnum(i));
+        return @fromBackingInt(@intCast(@backingInt(i)));
     }
 };
 
@@ -1562,7 +1562,7 @@ pub const ObjectDataSegment = extern struct {
         _,
 
         pub fn ptr(i: Index, wasm: *const Wasm) *ObjectDataSegment {
-            return &wasm.object_data_segments.items[@intFromEnum(i)];
+            return &wasm.object_data_segments.items[@backingInt(i)];
         }
     };
 
@@ -1588,7 +1588,7 @@ pub const ObjectData = extern struct {
         _,
 
         pub fn ptr(i: Index, wasm: *const Wasm) *ObjectData {
-            return &wasm.object_datas.items[@intFromEnum(i)];
+            return &wasm.object_datas.items[@backingInt(i)];
         }
     };
 };
@@ -1609,7 +1609,7 @@ pub const ObjectDataImport = extern struct {
         /// Next, index into `navs_obj` or `navs_exe` depending on whether emitting an object.
         _,
 
-        const first_object = @intFromEnum(Resolution.__heap_end) + 1;
+        const first_object = @backingInt(Resolution.__heap_end) + 1;
 
         pub const Unpacked = union(enum) {
             unresolved,
@@ -1632,10 +1632,10 @@ pub const ObjectDataImport = extern struct {
                 .__heap_base => .__heap_base,
                 .__heap_end => .__heap_end,
                 _ => {
-                    const object_index = @intFromEnum(r) - first_object;
+                    const object_index = @backingInt(r) - first_object;
 
                     const uav_index = if (object_index < wasm.object_datas.items.len)
-                        return .{ .object = @enumFromInt(object_index) }
+                        return .{ .object = @fromBackingInt(@intCast(object_index)) }
                     else
                         object_index - wasm.object_datas.items.len;
 
@@ -1643,18 +1643,18 @@ pub const ObjectDataImport = extern struct {
                     const is_obj = comp.config.output_mode == .Obj;
                     if (is_obj) {
                         const nav_index = if (uav_index < wasm.uavs_obj.entries.len)
-                            return .{ .uav_obj = @enumFromInt(uav_index) }
+                            return .{ .uav_obj = @fromBackingInt(@intCast(uav_index)) }
                         else
                             uav_index - wasm.uavs_obj.entries.len;
 
-                        return .{ .nav_obj = @enumFromInt(nav_index) };
+                        return .{ .nav_obj = @fromBackingInt(@intCast(nav_index)) };
                     } else {
                         const nav_index = if (uav_index < wasm.uavs_exe.entries.len)
-                            return .{ .uav_exe = @enumFromInt(uav_index) }
+                            return .{ .uav_exe = @fromBackingInt(@intCast(uav_index)) }
                         else
                             uav_index - wasm.uavs_exe.entries.len;
 
-                        return .{ .nav_exe = @enumFromInt(nav_index) };
+                        return .{ .nav_exe = @fromBackingInt(@intCast(nav_index)) };
                     }
                 },
             };
@@ -1667,10 +1667,10 @@ pub const ObjectDataImport = extern struct {
                 .__zig_error_name_table => .__zig_error_name_table,
                 .__heap_base => .__heap_base,
                 .__heap_end => .__heap_end,
-                .object => |i| @enumFromInt(first_object + @intFromEnum(i)),
-                inline .uav_exe, .uav_obj => |i| @enumFromInt(first_object + wasm.object_datas.items.len + @intFromEnum(i)),
-                .nav_exe => |i| @enumFromInt(first_object + wasm.object_datas.items.len + wasm.uavs_exe.entries.len + @intFromEnum(i)),
-                .nav_obj => |i| @enumFromInt(first_object + wasm.object_datas.items.len + wasm.uavs_obj.entries.len + @intFromEnum(i)),
+                .object => |i| @fromBackingInt(@intCast(first_object + @backingInt(i))),
+                inline .uav_exe, .uav_obj => |i| @fromBackingInt(@intCast(first_object + wasm.object_datas.items.len + @backingInt(i))),
+                .nav_exe => |i| @fromBackingInt(@intCast(first_object + wasm.object_datas.items.len + wasm.uavs_exe.entries.len + @backingInt(i))),
+                .nav_obj => |i| @fromBackingInt(@intCast(first_object + wasm.object_datas.items.len + wasm.uavs_obj.entries.len + @backingInt(i))),
             };
         }
 
@@ -1721,11 +1721,11 @@ pub const ObjectDataImport = extern struct {
         _,
 
         pub fn value(i: @This(), wasm: *const Wasm) *ObjectDataImport {
-            return &wasm.object_data_imports.values()[@intFromEnum(i)];
+            return &wasm.object_data_imports.values()[@backingInt(i)];
         }
 
         pub fn fromSymbolName(wasm: *const Wasm, name: String) ?Index {
-            return @enumFromInt(wasm.object_data_imports.getIndex(name) orelse return null);
+            return @fromBackingInt(@intCast(wasm.object_data_imports.getIndex(name) orelse return null));
         }
     };
 };
@@ -1742,7 +1742,7 @@ pub const DataPayload = extern struct {
         _,
 
         pub fn unwrap(off: Off) ?u32 {
-            return if (off == .none) null else @intFromEnum(off);
+            return if (off == .none) null else @backingInt(off);
         }
     };
 
@@ -1769,7 +1769,7 @@ pub const DataSegmentId = enum(u32) {
     /// Next, index into `navs_obj` or `navs_exe` depending on whether emitting an object.
     _,
 
-    const first_object = @intFromEnum(DataSegmentId.__heap_end) + 1;
+    const first_object = @backingInt(DataSegmentId.__heap_end) + 1;
 
     pub const Category = enum {
         /// Thread-local variables.
@@ -1803,10 +1803,10 @@ pub const DataSegmentId = enum(u32) {
             .__zig_tag_name_table => .__zig_tag_name_table,
             .__heap_base => .__heap_base,
             .__heap_end => .__heap_end,
-            .object => |i| @enumFromInt(first_object + @intFromEnum(i)),
-            inline .uav_exe, .uav_obj => |i| @enumFromInt(first_object + wasm.object_data_segments.items.len + @intFromEnum(i)),
-            .nav_exe => |i| @enumFromInt(first_object + wasm.object_data_segments.items.len + wasm.uavs_exe.entries.len + @intFromEnum(i)),
-            .nav_obj => |i| @enumFromInt(first_object + wasm.object_data_segments.items.len + wasm.uavs_obj.entries.len + @intFromEnum(i)),
+            .object => |i| @fromBackingInt(@intCast(first_object + @backingInt(i))),
+            inline .uav_exe, .uav_obj => |i| @fromBackingInt(@intCast(first_object + wasm.object_data_segments.items.len + @backingInt(i))),
+            .nav_exe => |i| @fromBackingInt(@intCast(first_object + wasm.object_data_segments.items.len + wasm.uavs_exe.entries.len + @backingInt(i))),
+            .nav_obj => |i| @fromBackingInt(@intCast(first_object + wasm.object_data_segments.items.len + wasm.uavs_obj.entries.len + @backingInt(i))),
         };
     }
 
@@ -1819,10 +1819,10 @@ pub const DataSegmentId = enum(u32) {
             .__heap_base => .__heap_base,
             .__heap_end => .__heap_end,
             _ => {
-                const object_index = @intFromEnum(id) - first_object;
+                const object_index = @backingInt(id) - first_object;
 
                 const uav_index = if (object_index < wasm.object_data_segments.items.len)
-                    return .{ .object = @enumFromInt(object_index) }
+                    return .{ .object = @fromBackingInt(@intCast(object_index)) }
                 else
                     object_index - wasm.object_data_segments.items.len;
 
@@ -1830,18 +1830,18 @@ pub const DataSegmentId = enum(u32) {
                 const is_obj = comp.config.output_mode == .Obj;
                 if (is_obj) {
                     const nav_index = if (uav_index < wasm.uavs_obj.entries.len)
-                        return .{ .uav_obj = @enumFromInt(uav_index) }
+                        return .{ .uav_obj = @fromBackingInt(@intCast(uav_index)) }
                     else
                         uav_index - wasm.uavs_obj.entries.len;
 
-                    return .{ .nav_obj = @enumFromInt(nav_index) };
+                    return .{ .nav_obj = @fromBackingInt(@intCast(nav_index)) };
                 } else {
                     const nav_index = if (uav_index < wasm.uavs_exe.entries.len)
-                        return .{ .uav_exe = @enumFromInt(uav_index) }
+                        return .{ .uav_exe = @fromBackingInt(@intCast(uav_index)) }
                     else
                         uav_index - wasm.uavs_exe.entries.len;
 
-                    return .{ .nav_exe = @enumFromInt(nav_index) };
+                    return .{ .nav_exe = @fromBackingInt(@intCast(nav_index)) };
                 }
             },
         };
@@ -1851,9 +1851,9 @@ pub const DataSegmentId = enum(u32) {
         const comp = wasm.base.comp;
         const is_obj = comp.config.output_mode == .Obj;
         return pack(wasm, if (is_obj) .{
-            .nav_obj = @enumFromInt(wasm.navs_obj.getIndex(nav_index).?),
+            .nav_obj = @fromBackingInt(@intCast(wasm.navs_obj.getIndex(nav_index).?)),
         } else .{
-            .nav_exe = @enumFromInt(wasm.navs_exe.getIndex(nav_index).?),
+            .nav_exe = @fromBackingInt(@intCast(wasm.navs_exe.getIndex(nav_index).?)),
         });
     }
 
@@ -2086,10 +2086,10 @@ pub const CustomSegment = extern struct {
 pub const Expr = enum(u32) {
     _,
 
-    pub const end = @intFromEnum(std.wasm.Opcode.end);
+    pub const end = @backingInt(std.wasm.Opcode.end);
 
     pub fn slice(index: Expr, wasm: *const Wasm) [:end]const u8 {
-        const start_slice = wasm.string_bytes.items[@intFromEnum(index)..];
+        const start_slice = wasm.string_bytes.items[@backingInt(index)..];
         const end_pos = Object.exprEndPos(start_slice, 0) catch |err| switch (err) {
             error.InvalidInitOpcode => unreachable,
         };
@@ -2106,7 +2106,7 @@ pub const FunctionType = extern struct {
         _,
 
         pub fn ptr(i: Index, wasm: *const Wasm) *FunctionType {
-            return &wasm.func_types.keys()[@intFromEnum(i)];
+            return &wasm.func_types.keys()[@backingInt(i)];
         }
 
         pub fn fmt(i: Index, wasm: *const Wasm) Formatter {
@@ -2197,7 +2197,7 @@ pub const String = enum(u32) {
         }
 
         pub fn hash(ctx: @This(), key: String) u64 {
-            return std.hash_map.hashString(mem.sliceTo(ctx.bytes[@intFromEnum(key)..], 0));
+            return std.hash_map.hashString(mem.sliceTo(ctx.bytes[@backingInt(key)..], 0));
         }
     };
 
@@ -2205,7 +2205,7 @@ pub const String = enum(u32) {
         bytes: []const u8,
 
         pub fn eql(ctx: @This(), a: []const u8, b: String) bool {
-            return mem.eql(u8, a, mem.sliceTo(ctx.bytes[@intFromEnum(b)..], 0));
+            return mem.eql(u8, a, mem.sliceTo(ctx.bytes[@backingInt(b)..], 0));
         }
 
         pub fn hash(_: @This(), adapted_key: []const u8) u64 {
@@ -2215,12 +2215,12 @@ pub const String = enum(u32) {
     };
 
     pub fn slice(index: String, wasm: *const Wasm) [:0]const u8 {
-        const start_slice = wasm.string_bytes.items[@intFromEnum(index)..];
+        const start_slice = wasm.string_bytes.items[@backingInt(index)..];
         return start_slice[0..mem.indexOfScalar(u8, start_slice, 0).? :0];
     }
 
     pub fn toOptional(i: String) OptionalString {
-        const result: OptionalString = @enumFromInt(@intFromEnum(i));
+        const result: OptionalString = @fromBackingInt(@intCast(@backingInt(i)));
         assert(result != .none);
         return result;
     }
@@ -2232,7 +2232,7 @@ pub const OptionalString = enum(u32) {
 
     pub fn unwrap(i: OptionalString) ?String {
         if (i == .none) return null;
-        return @enumFromInt(@intFromEnum(i));
+        return @fromBackingInt(@intCast(@backingInt(i)));
     }
 
     pub fn slice(index: OptionalString, wasm: *const Wasm) ?[:0]const u8 {
@@ -2246,11 +2246,11 @@ pub const ValtypeList = enum(u32) {
     _,
 
     pub fn fromString(s: String) ValtypeList {
-        return @enumFromInt(@intFromEnum(s));
+        return @fromBackingInt(@intCast(@backingInt(s)));
     }
 
     pub fn slice(index: ValtypeList, wasm: *const Wasm) []const std.wasm.Valtype {
-        return @ptrCast(String.slice(@enumFromInt(@intFromEnum(index)), wasm));
+        return @ptrCast(String.slice(@fromBackingInt(@intCast(@backingInt(index))), wasm));
     }
 };
 
@@ -2259,7 +2259,7 @@ pub const ZcuImportIndex = enum(u32) {
     _,
 
     pub fn ptr(index: ZcuImportIndex, wasm: *const Wasm) *InternPool.Nav.Index {
-        return &wasm.imports.keys()[@intFromEnum(index)];
+        return &wasm.imports.keys()[@backingInt(index)];
     }
 
     pub fn importName(index: ZcuImportIndex, wasm: *const Wasm) String {
@@ -2310,16 +2310,16 @@ pub const FunctionImportId = enum(u32) {
 
     pub fn pack(unpacked: Unpacked, wasm: *const Wasm) FunctionImportId {
         return switch (unpacked) {
-            .object_function_import => |i| @enumFromInt(@intFromEnum(i)),
-            .zcu_import => |i| @enumFromInt(@intFromEnum(i) + wasm.object_function_imports.entries.len),
+            .object_function_import => |i| @fromBackingInt(@intCast(@backingInt(i))),
+            .zcu_import => |i| @fromBackingInt(@intCast(@backingInt(i) + wasm.object_function_imports.entries.len)),
         };
     }
 
     pub fn unpack(id: FunctionImportId, wasm: *const Wasm) Unpacked {
-        const i = @intFromEnum(id);
-        if (i < wasm.object_function_imports.entries.len) return .{ .object_function_import = @enumFromInt(i) };
+        const i = @backingInt(id);
+        if (i < wasm.object_function_imports.entries.len) return .{ .object_function_import = @fromBackingInt(@intCast(i)) };
         const zcu_import_i = i - wasm.object_function_imports.entries.len;
-        return .{ .zcu_import = @enumFromInt(zcu_import_i) };
+        return .{ .zcu_import = @fromBackingInt(@intCast(zcu_import_i)) };
     }
 
     pub fn fromObject(function_import_index: FunctionImport.Index, wasm: *const Wasm) FunctionImportId {
@@ -2337,10 +2337,10 @@ pub const FunctionImportId = enum(u32) {
             .object_function_import => |obj_func_index| {
                 // TODO binary search
                 for (wasm.objects.items, 0..) |o, i| {
-                    if (o.function_imports.off <= @intFromEnum(obj_func_index) and
-                        o.function_imports.off + o.function_imports.len > @intFromEnum(obj_func_index))
+                    if (o.function_imports.off <= @backingInt(obj_func_index) and
+                        o.function_imports.off + o.function_imports.len > @backingInt(obj_func_index))
                     {
-                        return .pack(.{ .object_index = @enumFromInt(i) }, wasm);
+                        return .pack(.{ .object_index = @fromBackingInt(@intCast(i)) }, wasm);
                     }
                 } else unreachable;
             },
@@ -2397,16 +2397,16 @@ pub const GlobalImportId = enum(u32) {
 
     pub fn pack(unpacked: Unpacked, wasm: *const Wasm) GlobalImportId {
         return switch (unpacked) {
-            .object_global_import => |i| @enumFromInt(@intFromEnum(i)),
-            .zcu_import => |i| @enumFromInt(@intFromEnum(i) + wasm.object_global_imports.entries.len),
+            .object_global_import => |i| @fromBackingInt(@intCast(@backingInt(i))),
+            .zcu_import => |i| @fromBackingInt(@intCast(@backingInt(i) + wasm.object_global_imports.entries.len)),
         };
     }
 
     pub fn unpack(id: GlobalImportId, wasm: *const Wasm) Unpacked {
-        const i = @intFromEnum(id);
-        if (i < wasm.object_global_imports.entries.len) return .{ .object_global_import = @enumFromInt(i) };
+        const i = @backingInt(id);
+        if (i < wasm.object_global_imports.entries.len) return .{ .object_global_import = @fromBackingInt(@intCast(i)) };
         const zcu_import_i = i - wasm.object_global_imports.entries.len;
-        return .{ .zcu_import = @enumFromInt(zcu_import_i) };
+        return .{ .zcu_import = @fromBackingInt(@intCast(zcu_import_i)) };
     }
 
     pub fn fromObject(object_global_import: GlobalImport.Index, wasm: *const Wasm) GlobalImportId {
@@ -2420,10 +2420,10 @@ pub const GlobalImportId = enum(u32) {
             .object_global_import => |obj_global_index| {
                 // TODO binary search
                 for (wasm.objects.items, 0..) |o, i| {
-                    if (o.global_imports.off <= @intFromEnum(obj_global_index) and
-                        o.global_imports.off + o.global_imports.len > @intFromEnum(obj_global_index))
+                    if (o.global_imports.off <= @backingInt(obj_global_index) and
+                        o.global_imports.off + o.global_imports.len > @backingInt(obj_global_index))
                     {
-                        return .pack(.{ .object_index = @enumFromInt(i) }, wasm);
+                        return .pack(.{ .object_index = @fromBackingInt(@intCast(i)) }, wasm);
                     }
                 } else unreachable;
             },
@@ -2462,16 +2462,16 @@ pub const DataImportId = enum(u32) {
 
     pub fn pack(unpacked: Unpacked, wasm: *const Wasm) DataImportId {
         return switch (unpacked) {
-            .object_data_import => |i| @enumFromInt(@intFromEnum(i)),
-            .zcu_import => |i| @enumFromInt(@intFromEnum(i) + wasm.object_data_imports.entries.len),
+            .object_data_import => |i| @fromBackingInt(@intCast(@backingInt(i))),
+            .zcu_import => |i| @fromBackingInt(@intCast(@backingInt(i) + wasm.object_data_imports.entries.len)),
         };
     }
 
     pub fn unpack(id: DataImportId, wasm: *const Wasm) Unpacked {
-        const i = @intFromEnum(id);
-        if (i < wasm.object_data_imports.entries.len) return .{ .object_data_import = @enumFromInt(i) };
+        const i = @backingInt(id);
+        if (i < wasm.object_data_imports.entries.len) return .{ .object_data_import = @fromBackingInt(@intCast(i)) };
         const zcu_import_i = i - wasm.object_data_imports.entries.len;
-        return .{ .zcu_import = @enumFromInt(zcu_import_i) };
+        return .{ .zcu_import = @fromBackingInt(@intCast(zcu_import_i)) };
     }
 
     pub fn fromZcuImport(zcu_import: ZcuImportIndex, wasm: *const Wasm) DataImportId {
@@ -2487,10 +2487,10 @@ pub const DataImportId = enum(u32) {
             .object_data_import => |obj_data_index| {
                 // TODO binary search
                 for (wasm.objects.items, 0..) |o, i| {
-                    if (o.data_imports.off <= @intFromEnum(obj_data_index) and
-                        o.data_imports.off + o.data_imports.len > @intFromEnum(obj_data_index))
+                    if (o.data_imports.off <= @backingInt(obj_data_index) and
+                        o.data_imports.off + o.data_imports.len > @backingInt(obj_data_index))
                     {
-                        return .pack(.{ .object_index = @enumFromInt(i) }, wasm);
+                        return .pack(.{ .object_index = @fromBackingInt(@intCast(i)) }, wasm);
                     }
                 } else unreachable;
             },
@@ -2504,7 +2504,7 @@ pub const SymbolTableIndex = enum(u32) {
     _,
 
     pub fn key(i: @This(), wasm: *const Wasm) *String {
-        return &wasm.symbol_table.keys()[@intFromEnum(i)];
+        return &wasm.symbol_table.keys()[@backingInt(i)];
     }
 };
 
@@ -2755,7 +2755,7 @@ pub const InitFunc = extern struct {
     pub fn lessThan(ctx: void, lhs: InitFunc, rhs: InitFunc) bool {
         _ = ctx;
         if (lhs.priority == rhs.priority) {
-            return @intFromEnum(lhs.function_index) < @intFromEnum(rhs.function_index);
+            return @backingInt(lhs.function_index) < @backingInt(rhs.function_index);
         } else {
             return lhs.priority < rhs.priority;
         }
@@ -2805,11 +2805,11 @@ pub const Feature = packed struct(u8) {
         _,
 
         pub fn fromString(s: String) Set {
-            return @enumFromInt(@intFromEnum(s));
+            return @fromBackingInt(@intCast(@backingInt(s)));
         }
 
         pub fn string(s: Set) String {
-            return @enumFromInt(@intFromEnum(s));
+            return @fromBackingInt(@intCast(@backingInt(s)));
         }
 
         pub fn slice(s: Set, wasm: *const Wasm) [:sentinel]const Feature {
@@ -3246,7 +3246,7 @@ pub fn updateFunc(
         .locals_len = @intCast(mir.locals.len),
         .prologue = mir.prologue,
     } });
-    wasm.functions.putAssumeCapacity(.pack(wasm, .{ .zcu_func = @enumFromInt(wasm.zcu_funcs.entries.len - 1) }), {});
+    wasm.functions.putAssumeCapacity(.pack(wasm, .{ .zcu_func = @fromBackingInt(@intCast(wasm.zcu_funcs.entries.len - 1)) }), {});
 }
 
 // Generate code for the "Nav", storing it in memory to be later written to
@@ -3335,7 +3335,7 @@ pub fn deleteExport(
     const export_name = wasm.getExistingString(name_slice).?;
     switch (exported) {
         .nav => |nav_index| {
-            log.debug("deleteExport '{s}' nav={d}", .{ name_slice, @intFromEnum(nav_index) });
+            log.debug("deleteExport '{s}' nav={d}", .{ name_slice, @backingInt(nav_index) });
             assert(wasm.nav_exports.swapRemove(.{ .nav_index = nav_index, .name = export_name }));
         },
         .uav => |uav_index| assert(wasm.uav_exports.swapRemove(.{ .uav_index = uav_index, .name = export_name })),
@@ -3357,7 +3357,7 @@ pub fn updateExports(
         const name = try wasm.internString(name_slice);
         switch (exported) {
             .nav => |nav_index| {
-                log.debug("updateExports '{s}' nav={d}", .{ name_slice, @intFromEnum(nav_index) });
+                log.debug("updateExports '{s}' nav={d}", .{ name_slice, @backingInt(nav_index) });
                 try wasm.nav_exports.put(gpa, .{ .nav_index = nav_index, .name = name }, export_idx);
             },
             .uav => |uav_index| try wasm.uav_exports.put(gpa, .{ .uav_index = uav_index, .name = name }, export_idx),
@@ -3446,7 +3446,7 @@ pub fn prelink(wasm: *Wasm, prog_node: std.Progress.Node) link.Error!void {
             @panic("TODO");
         } else {
             try wasm.globals.put(gpa, .__stack_pointer, {});
-            assert(wasm.globals.entries.len - 1 == @intFromEnum(GlobalIndex.stack_pointer));
+            assert(wasm.globals.entries.len - 1 == @backingInt(GlobalIndex.stack_pointer));
         }
     }
 
@@ -3454,7 +3454,7 @@ pub fn prelink(wasm: *Wasm, prog_node: std.Progress.Node) link.Error!void {
     // At the end, output functions and globals will be populated.
     for (wasm.object_function_imports.keys(), wasm.object_function_imports.values(), 0..) |name, *import, i| {
         if (import.flags.isIncluded(rdynamic)) {
-            try markFunctionImport(wasm, name, import, @enumFromInt(i));
+            try markFunctionImport(wasm, name, import, @fromBackingInt(@intCast(i)));
         }
     }
     // Also treat init functions as roots.
@@ -3468,7 +3468,7 @@ pub fn prelink(wasm: *Wasm, prog_node: std.Progress.Node) link.Error!void {
 
     for (wasm.object_global_imports.keys(), wasm.object_global_imports.values(), 0..) |name, *import, i| {
         if (import.flags.isIncluded(rdynamic)) {
-            try markGlobalImport(wasm, name, import, @enumFromInt(i));
+            try markGlobalImport(wasm, name, import, @fromBackingInt(@intCast(i)));
         }
     }
     wasm.globals_end_prelink = @intCast(wasm.globals.entries.len);
@@ -3476,13 +3476,13 @@ pub fn prelink(wasm: *Wasm, prog_node: std.Progress.Node) link.Error!void {
 
     for (wasm.object_table_imports.keys(), wasm.object_table_imports.values(), 0..) |name, *import, i| {
         if (import.flags.isIncluded(rdynamic)) {
-            try markTableImport(wasm, name, import, @enumFromInt(i));
+            try markTableImport(wasm, name, import, @fromBackingInt(@intCast(i)));
         }
     }
 
     for (wasm.object_data_imports.keys(), wasm.object_data_imports.values(), 0..) |name, *import, i| {
         if (import.flags.isIncluded(rdynamic)) {
-            try markDataImport(wasm, name, import, @enumFromInt(i));
+            try markDataImport(wasm, name, import, @fromBackingInt(@intCast(i)));
         }
     }
 
@@ -3548,9 +3548,9 @@ fn markFunction(wasm: *Wasm, i: ObjectFunctionIndex, override_export: bool) link
     if (!is_obj and (override_export or function.flags.isExported(rdynamic))) {
         const symbol_name = function.name.unwrap().?;
         if (!override_export and function.flags.visibility_hidden) {
-            try wasm.hidden_function_exports.put(gpa, symbol_name, @enumFromInt(gop.index));
+            try wasm.hidden_function_exports.put(gpa, symbol_name, @fromBackingInt(@intCast(gop.index)));
         } else {
-            try wasm.function_exports.put(gpa, symbol_name, @enumFromInt(gop.index));
+            try wasm.function_exports.put(gpa, symbol_name, @fromBackingInt(@intCast(gop.index)));
         }
     }
 
@@ -3619,7 +3619,7 @@ fn markGlobal(wasm: *Wasm, i: ObjectGlobalIndex, override_export: bool) link.Err
 
     if (!is_obj and (override_export or global.flags.isExported(rdynamic))) try wasm.global_exports.append(gpa, .{
         .name = global.name.unwrap().?,
-        .global_index = @enumFromInt(gop.index),
+        .global_index = @fromBackingInt(@intCast(gop.index)),
     });
 
     try wasm.markRelocations(global.relocations(wasm));
@@ -3703,7 +3703,7 @@ fn markRelocations(wasm: *Wasm, relocs: ObjectRelocation.IterableSlice) link.Err
             .function_import_offset_i64,
             => {
                 const name = pointee.symbol_name;
-                const i: FunctionImport.Index = @enumFromInt(wasm.object_function_imports.getIndex(name).?);
+                const i: FunctionImport.Index = @fromBackingInt(@intCast(wasm.object_function_imports.getIndex(name).?));
                 try markFunctionImport(wasm, name, i.value(wasm), i);
             },
             .table_import_index_sleb,
@@ -3715,17 +3715,17 @@ fn markRelocations(wasm: *Wasm, relocs: ObjectRelocation.IterableSlice) link.Err
             => {
                 const name = pointee.symbol_name;
                 try wasm.object_indirect_function_import_set.put(gpa, name, {});
-                const i: FunctionImport.Index = @enumFromInt(wasm.object_function_imports.getIndex(name).?);
+                const i: FunctionImport.Index = @fromBackingInt(@intCast(wasm.object_function_imports.getIndex(name).?));
                 try markFunctionImport(wasm, name, i.value(wasm), i);
             },
             .global_import_index_leb, .global_import_index_i32 => {
                 const name = pointee.symbol_name;
-                const i: GlobalImport.Index = @enumFromInt(wasm.object_global_imports.getIndex(name).?);
+                const i: GlobalImport.Index = @fromBackingInt(@intCast(wasm.object_global_imports.getIndex(name).?));
                 try markGlobalImport(wasm, name, i.value(wasm), i);
             },
             .table_import_number_leb => {
                 const name = pointee.symbol_name;
-                const i: TableImport.Index = @enumFromInt(wasm.object_table_imports.getIndex(name).?);
+                const i: TableImport.Index = @fromBackingInt(@intCast(wasm.object_table_imports.getIndex(name).?));
                 try markTableImport(wasm, name, i.value(wasm), i);
             },
             .memory_addr_import_leb,
@@ -3871,7 +3871,7 @@ pub fn internString(wasm: *Wasm, bytes: []const u8) Allocator.Error!String {
     if (gop.found_existing) return gop.key_ptr.*;
 
     try wasm.string_bytes.ensureUnusedCapacity(gpa, bytes.len + 1);
-    const new_off: String = @enumFromInt(wasm.string_bytes.items.len);
+    const new_off: String = @fromBackingInt(@intCast(wasm.string_bytes.items.len));
 
     wasm.string_bytes.appendSliceAssumeCapacity(bytes);
     wasm.string_bytes.appendAssumeCapacity(0);
@@ -3906,12 +3906,12 @@ pub fn getExistingValtypeList(wasm: *const Wasm, valtype_list: []const std.wasm.
 pub fn addFuncType(wasm: *Wasm, ft: FunctionType) Allocator.Error!FunctionType.Index {
     const gpa = wasm.base.comp.gpa;
     const gop = try wasm.func_types.getOrPut(gpa, ft);
-    return @enumFromInt(gop.index);
+    return @fromBackingInt(@intCast(gop.index));
 }
 
 pub fn getExistingFuncType(wasm: *const Wasm, ft: FunctionType) ?FunctionType.Index {
     const index = wasm.func_types.getIndex(ft) orelse return null;
-    return @enumFromInt(index);
+    return @fromBackingInt(@intCast(index));
 }
 
 pub fn getExistingFuncType2(wasm: *const Wasm, params: []const std.wasm.Valtype, returns: []const std.wasm.Valtype) FunctionType.Index {
@@ -3960,14 +3960,14 @@ pub fn addExpr(wasm: *Wasm, bytes: []const u8) Allocator.Error!Expr {
     // it is likely for globals to share initialization values. Then again
     // there may not be very many globals in total.
     try wasm.string_bytes.appendSlice(gpa, bytes);
-    return @enumFromInt(wasm.string_bytes.items.len - bytes.len);
+    return @fromBackingInt(@intCast(wasm.string_bytes.items.len - bytes.len));
 }
 
 pub fn addRelocatableDataPayload(wasm: *Wasm, bytes: []const u8) Allocator.Error!DataPayload {
     const gpa = wasm.base.comp.gpa;
     try wasm.string_bytes.appendSlice(gpa, bytes);
     return .{
-        .off = @enumFromInt(wasm.string_bytes.items.len - bytes.len),
+        .off = @fromBackingInt(@intCast(wasm.string_bytes.items.len - bytes.len)),
         .len = @intCast(bytes.len),
     };
 }
@@ -3976,10 +3976,10 @@ pub fn uavSymbolIndex(wasm: *Wasm, ip_index: InternPool.Index) Allocator.Error!S
     const comp = wasm.base.comp;
     assert(comp.config.output_mode == .Obj);
     const gpa = comp.gpa;
-    const name = try wasm.internStringFmt("__anon_{d}", .{@intFromEnum(ip_index)});
+    const name = try wasm.internStringFmt("__anon_{d}", .{@backingInt(ip_index)});
     const gop = try wasm.symbol_table.getOrPut(gpa, name);
     gop.value_ptr.* = {};
-    return @enumFromInt(gop.index);
+    return @fromBackingInt(@intCast(gop.index));
 }
 
 pub fn navSymbolIndex(wasm: *Wasm, nav_index: InternPool.Nav.Index) Allocator.Error!SymbolTableIndex {
@@ -3992,7 +3992,7 @@ pub fn navSymbolIndex(wasm: *Wasm, nav_index: InternPool.Nav.Index) Allocator.Er
     const name = try wasm.internString(nav.fqn.toSlice(ip));
     const gop = try wasm.symbol_table.getOrPut(gpa, name);
     gop.value_ptr.* = {};
-    return @enumFromInt(gop.index);
+    return @fromBackingInt(@intCast(gop.index));
 }
 
 pub fn errorNameTableSymbolIndex(wasm: *Wasm) Allocator.Error!SymbolTableIndex {
@@ -4001,7 +4001,7 @@ pub fn errorNameTableSymbolIndex(wasm: *Wasm) Allocator.Error!SymbolTableIndex {
     const gpa = comp.gpa;
     const gop = try wasm.symbol_table.getOrPut(gpa, wasm.preloaded_strings.__zig_error_name_table);
     gop.value_ptr.* = {};
-    return @enumFromInt(gop.index);
+    return @fromBackingInt(@intCast(gop.index));
 }
 
 pub fn stackPointerSymbolIndex(wasm: *Wasm) Allocator.Error!SymbolTableIndex {
@@ -4010,7 +4010,7 @@ pub fn stackPointerSymbolIndex(wasm: *Wasm) Allocator.Error!SymbolTableIndex {
     const gpa = comp.gpa;
     const gop = try wasm.symbol_table.getOrPut(gpa, wasm.preloaded_strings.__stack_pointer);
     gop.value_ptr.* = {};
-    return @enumFromInt(gop.index);
+    return @fromBackingInt(@intCast(gop.index));
 }
 
 pub fn tagTableIndexSymbolIndex(wasm: *Wasm, ip_index: InternPool.Index) Allocator.Error!SymbolTableIndex {
@@ -4020,7 +4020,7 @@ pub fn tagTableIndexSymbolIndex(wasm: *Wasm, ip_index: InternPool.Index) Allocat
     const name = try wasm.internStringFmt("__zig_tag_name_{d}", .{ip_index});
     const gop = try wasm.symbol_table.getOrPut(gpa, name);
     gop.value_ptr.* = {};
-    return @enumFromInt(gop.index);
+    return @fromBackingInt(@intCast(gop.index));
 }
 
 pub fn symbolNameIndex(wasm: *Wasm, name: String) Allocator.Error!SymbolTableIndex {
@@ -4029,7 +4029,7 @@ pub fn symbolNameIndex(wasm: *Wasm, name: String) Allocator.Error!SymbolTableInd
     const gpa = comp.gpa;
     const gop = try wasm.symbol_table.getOrPut(gpa, name);
     gop.value_ptr.* = {};
-    return @enumFromInt(gop.index);
+    return @fromBackingInt(@intCast(gop.index));
 }
 
 pub fn addUavReloc(
@@ -4075,7 +4075,7 @@ pub fn addUavReloc(
         };
         gop.value_ptr.count += 1;
         try wasm.uav_fixups.append(gpa, .{
-            .uavs_exe_index = @enumFromInt(gop.index),
+            .uavs_exe_index = @fromBackingInt(@intCast(gop.index)),
             .offset = @intCast(reloc_offset),
             .addend = addend,
         });
@@ -4092,7 +4092,7 @@ pub fn refNavObj(wasm: *Wasm, nav_index: InternPool.Nav.Index) !NavsObjIndex {
         .code = undefined,
         .relocs = undefined,
     };
-    return @enumFromInt(gop.index);
+    return @fromBackingInt(@intCast(gop.index));
 }
 
 pub fn refNavExe(wasm: *Wasm, nav_index: InternPool.Nav.Index) !NavsExeIndex {
@@ -4109,7 +4109,7 @@ pub fn refNavExe(wasm: *Wasm, nav_index: InternPool.Nav.Index) !NavsExeIndex {
             .count = 0,
         };
     }
-    return @enumFromInt(gop.index);
+    return @fromBackingInt(@intCast(gop.index));
 }
 
 /// Asserts it is called after `Flush.data_segments` is fully populated and sorted.
@@ -4117,7 +4117,7 @@ pub fn uavAddr(wasm: *Wasm, ip_index: InternPool.Index) u32 {
     assert(wasm.flush_buffer.memory_layout_finished);
     const comp = wasm.base.comp;
     assert(comp.config.output_mode != .Obj);
-    const uav_index: UavsExeIndex = @enumFromInt(wasm.uavs_exe.getIndex(ip_index).?);
+    const uav_index: UavsExeIndex = @fromBackingInt(@intCast(wasm.uavs_exe.getIndex(ip_index).?));
     const ds_id: DataSegmentId = .pack(wasm, .{ .uav_exe = uav_index });
     return wasm.flush_buffer.data_segments.get(ds_id).?;
 }
@@ -4128,7 +4128,7 @@ pub fn navAddr(wasm: *Wasm, nav_index: InternPool.Nav.Index) u32 {
     const comp = wasm.base.comp;
     assert(comp.config.output_mode != .Obj);
     if (wasm.navs_exe.getIndex(nav_index)) |i| {
-        const navs_exe_index: NavsExeIndex = @enumFromInt(i);
+        const navs_exe_index: NavsExeIndex = @fromBackingInt(@intCast(i));
         log.debug("navAddr {s} {}", .{ navs_exe_index.name(wasm), nav_index });
         const ds_id: DataSegmentId = .pack(wasm, .{ .nav_exe = navs_exe_index });
         return wasm.flush_buffer.data_segments.get(ds_id).?;
@@ -4279,7 +4279,7 @@ fn lowerZcuData(wasm: *Wasm, pt: Zcu.PerThread, ip_index: InternPool.Index) !Zcu
     wasm.string_bytes_lock.unlock();
 
     const naive_code: DataPayload = .{
-        .off = @enumFromInt(code_start),
+        .off = @fromBackingInt(@intCast(code_start)),
         .len = code_len,
     };
 
@@ -4329,7 +4329,7 @@ fn pointerSize(wasm: *const Wasm) u32 {
 fn addZcuImportReserved(wasm: *Wasm, nav_index: InternPool.Nav.Index) ZcuImportIndex {
     const gop = wasm.imports.getOrPutAssumeCapacity(nav_index);
     gop.value_ptr.* = {};
-    return @enumFromInt(gop.index);
+    return @fromBackingInt(@intCast(gop.index));
 }
 
 fn resolveFunctionSynthetic(

@@ -252,7 +252,7 @@ pub const Node = extern union {
         root_ref,
 
         pub const last_no_payload_tag = Tag.@"break";
-        pub const no_payload_count = @intFromEnum(last_no_payload_tag) + 1;
+        pub const no_payload_count = @backingInt(last_no_payload_tag) + 1;
 
         pub fn Type(comptime t: Tag) type {
             return switch (t) {
@@ -416,8 +416,8 @@ pub const Node = extern union {
         }
 
         pub fn init(comptime t: Tag) Node {
-            comptime std.debug.assert(@intFromEnum(t) < Tag.no_payload_count);
-            return .{ .tag_if_small_enough = @intFromEnum(t) };
+            comptime std.debug.assert(@backingInt(t) < Tag.no_payload_count);
+            return .{ .tag_if_small_enough = @backingInt(t) };
         }
 
         pub fn create(comptime t: Tag, ally: Allocator, data: Data(t)) error{OutOfMemory}!Node {
@@ -436,7 +436,7 @@ pub const Node = extern union {
 
     pub fn tag(self: Node) Tag {
         if (self.tag_if_small_enough < Tag.no_payload_count) {
-            return @enumFromInt(@as(std.meta.Tag(Tag), @intCast(self.tag_if_small_enough)));
+            return @fromBackingInt(@intCast(@as(std.meta.Tag(Tag), @intCast(self.tag_if_small_enough))));
         } else {
             return self.ptr_otherwise.tag;
         }
@@ -453,7 +453,7 @@ pub const Node = extern union {
     }
 
     pub fn initPayload(payload: *Payload) Node {
-        std.debug.assert(@intFromEnum(payload.tag) >= Tag.no_payload_count);
+        std.debug.assert(@backingInt(payload.tag) >= Tag.no_payload_count);
         return .{ .ptr_otherwise = payload };
     }
 
@@ -913,13 +913,13 @@ const Context = struct {
     fn listToSpan(c: *Context, list: []const NodeIndex) Allocator.Error!NodeSubRange {
         try c.extra_data.appendSlice(c.gpa, @ptrCast(list));
         return .{
-            .start = @enumFromInt(c.extra_data.items.len - list.len),
-            .end = @enumFromInt(c.extra_data.items.len),
+            .start = @fromBackingInt(@intCast(c.extra_data.items.len - list.len)),
+            .end = @fromBackingInt(@intCast(c.extra_data.items.len)),
         };
     }
 
     fn addNode(c: *Context, elem: std.zig.Ast.Node) Allocator.Error!NodeIndex {
-        const result: NodeIndex = @enumFromInt(c.nodes.len);
+        const result: NodeIndex = @fromBackingInt(@intCast(c.nodes.len));
         try c.nodes.append(c.gpa, elem);
         return result;
     }
@@ -927,14 +927,14 @@ const Context = struct {
     fn addExtra(c: *Context, extra: anytype) Allocator.Error!std.zig.Ast.ExtraIndex {
         const info = @typeInfo(@TypeOf(extra)).@"struct";
         try c.extra_data.ensureUnusedCapacity(c.gpa, info.field_names.len);
-        const result: std.zig.Ast.ExtraIndex = @enumFromInt(c.extra_data.items.len);
+        const result: std.zig.Ast.ExtraIndex = @fromBackingInt(@intCast(c.extra_data.items.len));
         inline for (info.field_names, info.field_types) |field_name, field_type| {
             const data: u32 = switch (field_type) {
                 NodeIndex,
                 std.zig.Ast.Node.OptionalIndex,
                 std.zig.Ast.OptionalTokenIndex,
                 std.zig.Ast.ExtraIndex,
-                => @intFromEnum(@field(extra, field_name)),
+                => @backingInt(@field(extra, field_name)),
                 TokenIndex,
                 => @field(extra, field_name),
                 else => @compileError("unexpected field type"),

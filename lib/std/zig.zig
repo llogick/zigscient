@@ -1766,12 +1766,12 @@ pub fn buildExeSubprocess(
                 received_fs_inputs = true;
                 var it = mem.splitScalar(u8, body, 0);
                 while (it.next()) |prefixed_path| {
-                    const prefix: Server.Message.PathPrefix = @enumFromInt(prefixed_path[0] - 1);
+                    const prefix: Server.Message.PathPrefix = @fromBackingInt(@intCast(prefixed_path[0] - 1));
                     const sub_path = try gpa.dupe(u8, prefixed_path[1..]);
                     var keep = false;
                     defer if (!keep) gpa.free(sub_path);
                     keep = man.addPrefixedPathPost(.{
-                        .prefix = @intFromEnum(prefix),
+                        .prefix = @backingInt(prefix),
                         .sub_path = sub_path,
                     }) catch |err| switch (err) {
                         error.Canceled, error.OutOfMemory => |e| return e,

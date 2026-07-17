@@ -216,7 +216,7 @@ fn free(context: *anyopaque, memory: []u8, alignment: Alignment, ra: usize) void
 }
 
 fn sizeClassIndex(len: usize, alignment: Alignment) usize {
-    return @max(@bitSizeOf(usize) - @clz(len - 1), @intFromEnum(alignment), min_class) - min_class;
+    return @max(@bitSizeOf(usize) - @clz(len - 1), @backingInt(alignment), min_class) - min_class;
 }
 
 fn slotSize(class: usize) usize {

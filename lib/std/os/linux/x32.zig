@@ -9,7 +9,7 @@ pub fn syscall0(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={rax}" (-> u32),
-        : [number] "{rax}" (@intFromEnum(number)),
+        : [number] "{rax}" (@backingInt(number)),
         : .{ .rcx = true, .r11 = true, .memory = true });
 }
 
@@ -19,7 +19,7 @@ pub fn syscall1(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={rax}" (-> u32),
-        : [number] "{rax}" (@intFromEnum(number)),
+        : [number] "{rax}" (@backingInt(number)),
           [arg1] "{rdi}" (arg1),
         : .{ .rcx = true, .r11 = true, .memory = true });
 }
@@ -31,7 +31,7 @@ pub fn syscall2(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={rax}" (-> u32),
-        : [number] "{rax}" (@intFromEnum(number)),
+        : [number] "{rax}" (@backingInt(number)),
           [arg1] "{rdi}" (arg1),
           [arg2] "{rsi}" (arg2),
         : .{ .rcx = true, .r11 = true, .memory = true });
@@ -45,7 +45,7 @@ pub fn syscall3(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={rax}" (-> u32),
-        : [number] "{rax}" (@intFromEnum(number)),
+        : [number] "{rax}" (@backingInt(number)),
           [arg1] "{rdi}" (arg1),
           [arg2] "{rsi}" (arg2),
           [arg3] "{rdx}" (arg3),
@@ -61,7 +61,7 @@ pub fn syscall4(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={rax}" (-> u32),
-        : [number] "{rax}" (@intFromEnum(number)),
+        : [number] "{rax}" (@backingInt(number)),
           [arg1] "{rdi}" (arg1),
           [arg2] "{rsi}" (arg2),
           [arg3] "{rdx}" (arg3),
@@ -79,7 +79,7 @@ pub fn syscall5(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={rax}" (-> u32),
-        : [number] "{rax}" (@intFromEnum(number)),
+        : [number] "{rax}" (@backingInt(number)),
           [arg1] "{rdi}" (arg1),
           [arg2] "{rsi}" (arg2),
           [arg3] "{rdx}" (arg3),
@@ -99,7 +99,7 @@ pub fn syscall6(
 ) u32 {
     return asm volatile ("syscall"
         : [ret] "={rax}" (-> u32),
-        : [number] "{rax}" (@intFromEnum(number)),
+        : [number] "{rax}" (@backingInt(number)),
           [arg1] "{rdi}" (arg1),
           [arg2] "{rsi}" (arg2),
           [arg3] "{rdx}" (arg3),
@@ -116,7 +116,7 @@ pub fn syscall_lseek(
 ) u64 {
     return asm volatile ("syscall"
         : [ret] "={rax}" (-> u64),
-        : [number] "{rax}" (@intFromEnum(SYS.lseek)),
+        : [number] "{rax}" (@backingInt(SYS.lseek)),
           [fd] "{rdi}" (@as(u32, @bitCast(fd))),
           [offset] "{rsi}" (@as(u64, @bitCast(offset))),
           [whence] "{rdx}" (whence),
@@ -165,12 +165,12 @@ pub fn restore_rt() callconv(.naked) noreturn {
             \\ movl %[number], %%eax
             \\ syscall
             :
-            : [number] "i" (@intFromEnum(SYS.rt_sigreturn)),
+            : [number] "i" (@backingInt(SYS.rt_sigreturn)),
         ),
         else => asm volatile (
             \\ syscall
             :
-            : [number] "{rax}" (@intFromEnum(SYS.rt_sigreturn)),
+            : [number] "{rax}" (@backingInt(SYS.rt_sigreturn)),
         ),
     }
 }

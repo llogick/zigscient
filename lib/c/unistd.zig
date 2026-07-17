@@ -105,26 +105,26 @@ fn dupLinux(fd: c_int) callconv(.c) c_int {
 }
 
 fn dup2Linux(old: c_int, new: c_int) callconv(.c) c_int {
-    const busy: usize = @bitCast(-@as(isize, @intFromEnum(linux.E.BUSY)));
+    const busy: usize = @bitCast(-@as(isize, @backingInt(linux.E.BUSY)));
     var res = busy;
     while (res == busy) res = linux.dup2(old, new);
     return errno(res);
 }
 
 fn dup3Linux(old: c_int, new: c_int, flags: c_int) callconv(.c) c_int {
-    const busy: usize = @bitCast(-@as(isize, @intFromEnum(linux.E.BUSY)));
+    const busy: usize = @bitCast(-@as(isize, @backingInt(linux.E.BUSY)));
     var res = busy;
 
     if (@hasField(linux.SYS, "dup3")) {
         while (res == busy) res = linux.dup3(old, new, @intCast(flags));
     } else if (@hasField(linux.SYS, "dup2")) {
         const cloexec: c_int = @bitCast(linux.O{ .CLOEXEC = true });
-        const inval: usize = @bitCast(-@as(isize, @intFromEnum(linux.E.INVAL)));
+        const inval: usize = @bitCast(-@as(isize, @backingInt(linux.E.INVAL)));
         if (old == new or (flags & ~cloexec != 0)) return errno(inval);
         while (res == busy) res = linux.dup2(old, new);
         _ = if (res >= 0 and (flags & cloexec == cloexec)) linux.fcntl(new, linux.F.SETFD, linux.FD_CLOEXEC);
     } else {
-        return errno(@bitCast(-@as(isize, @intFromEnum(linux.E.NOSYS))));
+        return errno(@bitCast(-@as(isize, @backingInt(linux.E.NOSYS))));
     }
     return errno(res);
 }
@@ -238,7 +238,7 @@ fn close(fd: std.c.fd_t) callconv(.c) c_int {
     const signed: isize = @bitCast(linux.close(fd));
     if (signed < 0) {
         @branchHint(.unlikely);
-        if (-signed == @intFromEnum(linux.E.INTR)) return 0;
+        if (-signed == @backingInt(linux.E.INTR)) return 0;
         std.c._errno().* = @intCast(-signed);
         return -1;
     }
@@ -253,7 +253,7 @@ fn closeWasi(fd: std.c.fd_t) callconv(.c) c_int {
     switch (std.os.wasi.fd_close(fd)) {
         .SUCCESS => return 0,
         else => |e| {
-            std.c._errno().* = @intFromEnum(e);
+            std.c._errno().* = @backingInt(e);
             return -1;
         },
     }

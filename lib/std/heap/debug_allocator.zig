@@ -230,8 +230,8 @@ pub fn DebugAllocator(comptime config: Config) type {
             }
 
             fn getStackTrace(self: *LargeAlloc, trace_kind: TraceKind) std.debug.StackTrace {
-                assert(@intFromEnum(trace_kind) < trace_n);
-                const stack_addresses = &self.stack_addresses[@intFromEnum(trace_kind)];
+                assert(@backingInt(trace_kind) < trace_n);
+                const stack_addresses = &self.stack_addresses[@backingInt(trace_kind)];
                 var len: usize = 0;
                 while (len < stack_n and stack_addresses[len] != 0) {
                     len += 1;
@@ -243,8 +243,8 @@ pub fn DebugAllocator(comptime config: Config) type {
             }
 
             fn captureStackTrace(self: *LargeAlloc, ret_addr: usize, trace_kind: TraceKind) void {
-                assert(@intFromEnum(trace_kind) < trace_n);
-                const stack_addresses = &self.stack_addresses[@intFromEnum(trace_kind)];
+                assert(@backingInt(trace_kind) < trace_n);
+                const stack_addresses = &self.stack_addresses[@backingInt(trace_kind)];
                 collectStackTrace(ret_addr, stack_addresses);
             }
         };
@@ -297,7 +297,7 @@ pub fn DebugAllocator(comptime config: Config) type {
             ) *[stack_n]usize {
                 const start_ptr = @as([*]u8, @ptrCast(bucket)) + bucketStackFramesStart(slot_count);
                 const addr = start_ptr + one_trace_size * traces_per_slot * slot_index +
-                    @intFromEnum(trace_kind) * @as(usize, one_trace_size);
+                    @backingInt(trace_kind) * @as(usize, one_trace_size);
                 return @ptrCast(@alignCast(addr));
             }
 
@@ -586,7 +586,7 @@ pub fn DebugAllocator(comptime config: Config) type {
             // If this would move the allocation into a small size class,
             // refuse the request, because it would require creating small
             // allocation metadata.
-            const new_size_class_index: usize = @max(@bitSizeOf(usize) - @clz(new_size - 1), @intFromEnum(alignment));
+            const new_size_class_index: usize = @max(@bitSizeOf(usize) - @clz(new_size - 1), @backingInt(alignment));
             if (new_size_class_index < self.buckets.len) return null;
 
             // Do memory limit accounting with requested sizes rather than what
@@ -727,7 +727,7 @@ pub fn DebugAllocator(comptime config: Config) type {
                 self.total_requested_bytes = new_req_bytes;
             }
 
-            const size_class_index: usize = @max(@bitSizeOf(usize) - @clz(len - 1), @intFromEnum(alignment));
+            const size_class_index: usize = @max(@bitSizeOf(usize) - @clz(len - 1), @backingInt(alignment));
             if (size_class_index >= self.buckets.len) {
                 @branchHint(.unlikely);
                 self.large_allocations.ensureUnusedCapacity(self.backing_allocator, 1) catch return null;
@@ -834,7 +834,7 @@ pub fn DebugAllocator(comptime config: Config) type {
             if (have_mutex) std.Io.Threaded.mutexLock(&self.mutex);
             defer if (have_mutex) std.Io.Threaded.mutexUnlock(&self.mutex);
 
-            const size_class_index: usize = @max(@bitSizeOf(usize) - @clz(memory.len - 1), @intFromEnum(alignment));
+            const size_class_index: usize = @max(@bitSizeOf(usize) - @clz(memory.len - 1), @backingInt(alignment));
             if (size_class_index >= self.buckets.len) {
                 return self.resizeLarge(memory, alignment, new_len, return_address, false) != null;
             } else {
@@ -853,7 +853,7 @@ pub fn DebugAllocator(comptime config: Config) type {
             if (have_mutex) std.Io.Threaded.mutexLock(&self.mutex);
             defer if (have_mutex) std.Io.Threaded.mutexUnlock(&self.mutex);
 
-            const size_class_index: usize = @max(@bitSizeOf(usize) - @clz(memory.len - 1), @intFromEnum(alignment));
+            const size_class_index: usize = @max(@bitSizeOf(usize) - @clz(memory.len - 1), @backingInt(alignment));
             if (size_class_index >= self.buckets.len) {
                 return self.resizeLarge(memory, alignment, new_len, return_address, true);
             } else {
@@ -871,7 +871,7 @@ pub fn DebugAllocator(comptime config: Config) type {
             if (have_mutex) std.Io.Threaded.mutexLock(&self.mutex);
             defer if (have_mutex) std.Io.Threaded.mutexUnlock(&self.mutex);
 
-            const size_class_index: usize = @max(@bitSizeOf(usize) - @clz(old_memory.len - 1), @intFromEnum(alignment));
+            const size_class_index: usize = @max(@bitSizeOf(usize) - @clz(old_memory.len - 1), @backingInt(alignment));
             if (size_class_index >= self.buckets.len) {
                 @branchHint(.unlikely);
                 self.freeLarge(old_memory, alignment, return_address);
@@ -990,7 +990,7 @@ pub fn DebugAllocator(comptime config: Config) type {
             return_address: usize,
             size_class_index: usize,
         ) bool {
-            const new_size_class_index: usize = @max(@bitSizeOf(usize) - @clz(new_len - 1), @intFromEnum(alignment));
+            const new_size_class_index: usize = @max(@bitSizeOf(usize) - @clz(new_len - 1), @backingInt(alignment));
             if (!config.safety) {
                 if (new_size_class_index != size_class_index) return false;
                 // Still account for total even if safety is off

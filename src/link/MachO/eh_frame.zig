@@ -464,8 +464,8 @@ pub fn writeRelocs(macho_file: *MachO, code: []u8, relocs: []macho.relocation_in
                     .r_extern = 1,
                     .r_pcrel = 1,
                     .r_type = switch (cpu_arch) {
-                        .aarch64 => @intFromEnum(macho.reloc_type_arm64.ARM64_RELOC_POINTER_TO_GOT),
-                        .x86_64 => @intFromEnum(macho.reloc_type_x86_64.X86_64_RELOC_GOT),
+                        .aarch64 => @backingInt(macho.reloc_type_arm64.ARM64_RELOC_POINTER_TO_GOT),
+                        .x86_64 => @backingInt(macho.reloc_type_x86_64.X86_64_RELOC_GOT),
                         else => unreachable,
                     },
                 };

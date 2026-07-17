@@ -226,7 +226,7 @@ pub const Node = struct {
         fn unwrap(i: @This()) ?Index {
             return switch (i) {
                 .unused, .none => return null,
-                else => @enumFromInt(@intFromEnum(i)),
+                else => @fromBackingInt(@intCast(@backingInt(i))),
             };
         }
     };
@@ -238,12 +238,12 @@ pub const Node = struct {
 
         pub fn unwrap(i: @This()) ?Index {
             if (i == .none) return null;
-            return @enumFromInt(@intFromEnum(i));
+            return @fromBackingInt(@intCast(@backingInt(i)));
         }
 
         fn toParent(i: @This()) Parent {
-            assert(@intFromEnum(i) != @intFromEnum(Parent.unused));
-            return @enumFromInt(@intFromEnum(i));
+            assert(@backingInt(i) != @backingInt(Parent.unused));
+            return @fromBackingInt(@intCast(@backingInt(i)));
         }
     };
 
@@ -252,13 +252,13 @@ pub const Node = struct {
         _,
 
         fn toParent(i: @This()) Parent {
-            assert(@intFromEnum(i) != @intFromEnum(Parent.unused));
-            assert(@intFromEnum(i) != @intFromEnum(Parent.none));
-            return @enumFromInt(@intFromEnum(i));
+            assert(@backingInt(i) != @backingInt(Parent.unused));
+            assert(@backingInt(i) != @backingInt(Parent.none));
+            return @fromBackingInt(@intCast(@backingInt(i)));
         }
 
         pub fn toOptional(i: @This()) OptionalIndex {
-            return @enumFromInt(@intFromEnum(i));
+            return @fromBackingInt(@intCast(@backingInt(i)));
         }
     };
 
@@ -303,7 +303,7 @@ pub const Node = struct {
             return Node.none;
         }
 
-        return init(@enumFromInt(free_index), parent, name, estimated_total_items);
+        return init(@fromBackingInt(@intCast(free_index)), parent, name, estimated_total_items);
     }
 
     pub fn startFmt(node: Node, estimated_total_items: usize, comptime format: []const u8, args: anytype) Node {
@@ -458,19 +458,19 @@ pub const Node = struct {
     }
 
     fn storageByIndex(index: Node.Index) *Node.Storage {
-        return &global_progress.node_storage[@intFromEnum(index)];
+        return &global_progress.node_storage[@backingInt(index)];
     }
 
     fn parentByIndex(index: Node.Index) *Node.Parent {
-        return &global_progress.node_parents[@intFromEnum(index)];
+        return &global_progress.node_parents[@backingInt(index)];
     }
 
     fn freelistNextByIndex(index: Node.Index) *Node.OptionalIndex {
-        return &global_progress.node_freelist_next[@intFromEnum(index)];
+        return &global_progress.node_freelist_next[@backingInt(index)];
     }
 
     fn init(free_index: Index, parent: Parent, name: []const u8, estimated_total_items: usize) Node {
-        assert(parent == .none or @intFromEnum(parent) < node_storage_buffer_len);
+        assert(parent == .none or @backingInt(parent) < node_storage_buffer_len);
 
         const storage = storageByIndex(free_index);
         @atomicStore(u32, &storage.completed_count, 0, .monotonic);
@@ -595,7 +595,7 @@ pub fn start(io: Io, options: Options) Node {
 
     @memset(&global_progress.node_parents, .unused);
     @memset(&global_progress.ipc, .{ .locked = false, .valid = false, .generation = 0 });
-    const root_node = Node.init(@enumFromInt(0), .none, options.root_name, options.estimated_total_items);
+    const root_node = Node.init(@fromBackingInt(@intCast(0)), .none, options.root_name, options.estimated_total_items);
     global_progress.node_end_index = 1;
 
     assert(options.draw_buffer.len >= 200);
@@ -1063,7 +1063,7 @@ fn serialize(io: Io, serialized_buffer: *Serialized.Buffer) !Serialized {
         dest_storage.completed_count = @atomicLoad(u32, &storage_ptr.completed_count, .monotonic);
 
         serialized_buffer.parents[serialized_len] = parent;
-        map_entry.* = @enumFromInt(serialized_len);
+        map_entry.* = @fromBackingInt(@intCast(serialized_len));
         if (maybe_ipc_start == null and dest_storage.getIpcIndex() != null) maybe_ipc_start = serialized_len;
         serialized_len += 1;
     }
@@ -1073,7 +1073,7 @@ fn serialize(io: Io, serialized_buffer: *Serialized.Buffer) !Serialized {
         parent.* = switch (parent.*) {
             .unused => unreachable,
             .none => .none,
-            _ => |p| map[@intFromEnum(p)].toParent(),
+            _ => |p| map[@backingInt(p)].toParent(),
         };
     }
 
@@ -1173,11 +1173,11 @@ fn serialize(io: Io, serialized_buffer: *Serialized.Buffer) !Serialized {
                     prev_parents[serialized_len..][0..nodes_len],
                 ) |*parent, prev_parent| parent.* = switch (prev_parent) {
                     .none, .unused => .none,
-                    _ => if (@intFromEnum(prev_parent) == ipc_data.main_index)
-                        @enumFromInt(main_index)
-                    else if (@intFromEnum(prev_parent) >= start_index and
-                        @intFromEnum(prev_parent) < start_index + nodes_len)
-                        @enumFromInt(@intFromEnum(prev_parent) - start_index + serialized_len)
+                    _ => if (@backingInt(prev_parent) == ipc_data.main_index)
+                        @fromBackingInt(@intCast(main_index))
+                    else if (@backingInt(prev_parent) >= start_index and
+                        @backingInt(prev_parent) < start_index + nodes_len)
+                        @fromBackingInt(@intCast(@backingInt(prev_parent) - start_index + serialized_len))
                     else
                         .none,
                 };
@@ -1228,12 +1228,12 @@ fn serialize(io: Io, serialized_buffer: *Serialized.Buffer) !Serialized {
                         // Fix bad data so the rest of the code does not see `unused`.
                         .none, .unused => .none,
                         // Root node is being mounted here.
-                        @as(Node.Parent, @enumFromInt(0)) => @enumFromInt(main_index),
+                        @as(Node.Parent, @fromBackingInt(@intCast(0))) => @fromBackingInt(@intCast(main_index)),
                         // Other nodes mounted at the end.
                         // Don't trust child data; if the data is outside the expected range,
                         // ignore the data. This also handles the case when data was truncated.
-                        _ => if (@intFromEnum(prev_parent) <= nodes_len)
-                            @enumFromInt(@intFromEnum(prev_parent) - 1 + serialized_len)
+                        _ => if (@backingInt(prev_parent) <= nodes_len)
+                            @fromBackingInt(@intCast(@backingInt(prev_parent) - 1 + serialized_len))
                         else
                             .none,
                     };
@@ -1290,13 +1290,13 @@ fn computeRedraw(io: Io, serialized_buffer: *Serialized.Buffer) !struct { []u8, 
     @memset(children, .{ .child = .none, .sibling = .none });
 
     for (serialized.parents, 0..) |parent, child_index_usize| {
-        const child_index: Node.Index = @enumFromInt(child_index_usize);
+        const child_index: Node.Index = @fromBackingInt(@intCast(child_index_usize));
         assert(parent != .unused);
         const parent_index = parent.unwrap() orelse continue;
-        const children_node = &children[@intFromEnum(parent_index)];
+        const children_node = &children[@backingInt(parent_index)];
         if (children_node.child.unwrap()) |existing_child_index| {
-            const existing_child = &children[@intFromEnum(existing_child_index)];
-            children[@intFromEnum(child_index)].sibling = existing_child.sibling;
+            const existing_child = &children[@backingInt(existing_child_index)];
+            children[@backingInt(child_index)].sibling = existing_child.sibling;
             existing_child.sibling = child_index.toOptional();
         } else {
             children_node.child = child_index.toOptional();
@@ -1325,14 +1325,14 @@ fn computeRedraw(io: Io, serialized_buffer: *Serialized.Buffer) !struct { []u8, 
         .windows_api => {},
     }
 
-    const root_node_index: Node.Index = @enumFromInt(0);
+    const root_node_index: Node.Index = @fromBackingInt(@intCast(0));
     i, const nl_n = computeNode(buf, i, 0, serialized, children, root_node_index);
 
     if (global_progress.terminal_mode == .ansi_escape_codes) {
         {
             // Set progress state https://conemu.github.io/en/AnsiEscapeCodes.html#ConEmu_specific_OSC
             const root_storage = &serialized.storage[0];
-            const storage = if (root_storage.name[0] != 0 or children[0].child == .none) root_storage else &serialized.storage[@intFromEnum(children[0].child)];
+            const storage = if (root_storage.name[0] != 0 or children[0].child == .none) root_storage else &serialized.storage[@backingInt(children[0].child)];
             const estimated_total = storage.estimated_total_count;
             const completed_items = storage.completed_count;
             const status = @atomicLoad(Status, &global_progress.status, .monotonic);
@@ -1395,15 +1395,15 @@ fn computePrefix(
     node_index: Node.Index,
 ) usize {
     var i = start_i;
-    const parent_index = serialized.parents[@intFromEnum(node_index)].unwrap() orelse return i;
-    if (serialized.parents[@intFromEnum(parent_index)] == .none) return i;
-    if (@intFromEnum(serialized.parents[@intFromEnum(parent_index)]) == 0 and
+    const parent_index = serialized.parents[@backingInt(node_index)].unwrap() orelse return i;
+    if (serialized.parents[@backingInt(parent_index)] == .none) return i;
+    if (@backingInt(serialized.parents[@backingInt(parent_index)]) == 0 and
         serialized.storage[0].name[0] == 0)
     {
         return i;
     }
     i = computePrefix(buf, i, nl_n, serialized, children, parent_index);
-    if (children[@intFromEnum(parent_index)].sibling == .none) {
+    if (children[@backingInt(parent_index)].sibling == .none) {
         const prefix = "   ";
         const upper_bound_len = prefix.len + lineUpperBoundLen(nl_n);
         if (i + upper_bound_len > buf.len) return buf.len;
@@ -1442,24 +1442,24 @@ fn computeNode(
     if (i + lineUpperBoundLen(nl_n) > buf.len)
         return .{ start_i, start_nl_n };
 
-    const storage = &serialized.storage[@intFromEnum(node_index)];
+    const storage = &serialized.storage[@backingInt(node_index)];
     const estimated_total = storage.estimated_total_count;
     const completed_items = storage.completed_count;
     const name = if (std.mem.findScalar(u8, &storage.name, 0)) |end| storage.name[0..end] else &storage.name;
-    const parent = serialized.parents[@intFromEnum(node_index)];
+    const parent = serialized.parents[@backingInt(node_index)];
 
     if (parent != .none) p: {
-        if (@intFromEnum(parent) == 0 and serialized.storage[0].name[0] == 0) {
+        if (@backingInt(parent) == 0 and serialized.storage[0].name[0] == 0) {
             break :p;
         }
-        if (children[@intFromEnum(node_index)].sibling == .none) {
+        if (children[@backingInt(node_index)].sibling == .none) {
             i = appendTreeSymbol(.langle, buf, i);
         } else {
             i = appendTreeSymbol(.tee, buf, i);
         }
     }
 
-    const is_empty_root = @intFromEnum(node_index) == 0 and serialized.storage[0].name[0] == 0;
+    const is_empty_root = @backingInt(node_index) == 0 and serialized.storage[0].name[0] == 0;
     if (!is_empty_root) {
         if (name.len != 0 or estimated_total > 0) {
             if (estimated_total > 0) {
@@ -1492,13 +1492,13 @@ fn computeNode(
     }
 
     if (global_progress.withinRowLimit(nl_n)) {
-        if (children[@intFromEnum(node_index)].child.unwrap()) |child| {
+        if (children[@backingInt(node_index)].child.unwrap()) |child| {
             i, nl_n = computeNode(buf, i, nl_n, serialized, children, child);
         }
     }
 
     if (global_progress.withinRowLimit(nl_n)) {
-        if (children[@intFromEnum(node_index)].sibling.unwrap()) |sibling| {
+        if (children[@backingInt(node_index)].sibling.unwrap()) |sibling| {
             i, nl_n = computeNode(buf, i, nl_n, serialized, children, sibling);
         }
     }

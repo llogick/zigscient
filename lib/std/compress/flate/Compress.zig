@@ -1679,7 +1679,7 @@ pub const Raw = struct {
                 const is_pattern = rem_splat != splat and vec.len == pattern.len;
                 if (is_pattern) assert(pattern.len != 0); // exceeded countSplat
 
-                if (!is_pattern or rem_splat == 0 or pattern.len > @intFromEnum(block_limit) / 2) {
+                if (!is_pattern or rem_splat == 0 or pattern.len > @backingInt(block_limit) / 2) {
                     rem_data_elem = rem_data_elem[vec.len..];
                     block_limit = block_limit.subtract(vec.len).?;
 
@@ -1701,7 +1701,7 @@ pub const Raw = struct {
                     }
                     if (block_limit == .nothing) break;
                 } else {
-                    const out_splat = @intFromEnum(block_limit) / pattern.len;
+                    const out_splat = @backingInt(block_limit) / pattern.len;
                     assert(out_splat >= 2);
 
                     try r.output.writeSplatAll(vecs[0..vecs_n], out_splat);
@@ -2155,7 +2155,7 @@ pub const Huffman = struct {
                 const bytes = block_limit.sliceConst(rem_data_elem);
                 const is_pattern = rem_splat != splat and bytes.len == pattern.len;
 
-                const mul = if (!is_pattern) 1 else @intFromEnum(block_limit) / pattern.len;
+                const mul = if (!is_pattern) 1 else @backingInt(block_limit) / pattern.len;
                 assert(mul != 0);
                 if (is_pattern) assert(mul <= rem_splat + 1); // one more for `rem_data`
 
@@ -2231,11 +2231,11 @@ pub const Huffman = struct {
                     @subWithOverflow(data.len - (rem_data.len - @intFromBool(in_pattern)), 1);
                 const is_elem = in_data == 0 and data[vec_elem_i].len == rem_data_elem.len;
 
-                if (!is_elem or rem_data_elem.len > @intFromEnum(block_limit)) {
+                if (!is_elem or rem_data_elem.len > @backingInt(block_limit)) {
                     block_limit = block_limit.subtract(rem_data_elem.len) orelse {
-                        try h.bit_writer.output.writeAll(rem_data_elem[0..@intFromEnum(block_limit)]);
-                        h.hasher.update(rem_data_elem[0..@intFromEnum(block_limit)]);
-                        rem_data_elem = rem_data_elem[@intFromEnum(block_limit)..];
+                        try h.bit_writer.output.writeAll(rem_data_elem[0..@backingInt(block_limit)]);
+                        h.hasher.update(rem_data_elem[0..@backingInt(block_limit)]);
+                        rem_data_elem = rem_data_elem[@backingInt(block_limit)..];
                         assert(rem_data_elem.len != 0);
                         break;
                     };
@@ -2259,7 +2259,7 @@ pub const Huffman = struct {
                     vec_n += 1;
                 } else vec_splat: {
                     // For `pattern.len == 0`, the value of `vec_splat` does not matter.
-                    const vec_splat = @intFromEnum(vlimit) / @max(1, pattern.len);
+                    const vec_splat = @backingInt(vlimit) / @max(1, pattern.len);
                     if (pattern.len != 0) assert(vec_splat <= rem_splat + 1);
                     vlimit = vlimit.subtract(pattern.len * vec_splat).?;
                     vec_n += 1;
@@ -2267,7 +2267,7 @@ pub const Huffman = struct {
                 };
 
                 const n = if (vec_n != 0) n: {
-                    assert(@intFromEnum(block_limit) - @intFromEnum(vlimit) ==
+                    assert(@backingInt(block_limit) - @backingInt(vlimit) ==
                         Writer.countSplat(rem_data[0..vec_n], vec_splat));
                     break :n try h.bit_writer.output.writeSplat(rem_data[0..vec_n], vec_splat);
                 } else 0; // Still go into the case below to advance the vector
@@ -2278,8 +2278,8 @@ pub const Huffman = struct {
                     const elem = rem_data[0];
                     rem_data = rem_data[1..];
                     consumed = consumed.subtract(elem.len) orelse {
-                        h.hasher.update(elem[0..@intFromEnum(consumed)]);
-                        rem_data_elem = elem[@intFromEnum(consumed)..];
+                        h.hasher.update(elem[0..@backingInt(consumed)]);
+                        rem_data_elem = elem[@backingInt(consumed)..];
                         break;
                     };
                     h.hasher.update(elem);
@@ -2297,8 +2297,8 @@ pub const Huffman = struct {
                         break;
                     }
 
-                    const splatted = @intFromEnum(consumed) / pattern.len;
-                    const partial = @intFromEnum(consumed) % pattern.len;
+                    const splatted = @backingInt(consumed) / pattern.len;
+                    const partial = @backingInt(consumed) % pattern.len;
                     for (0..splatted) |_| h.hasher.update(pattern);
                     h.hasher.update(pattern[0..partial]);
 

@@ -181,7 +181,7 @@ pub const Node = extern struct {
         pub const root: Node.Index = .none;
 
         fn get(ni: Node.Index, mf: *const MappedFile) *Node {
-            return &mf.nodes.items[@intFromEnum(ni)];
+            return &mf.nodes.items[@backingInt(ni)];
         }
 
         pub fn parent(ni: Node.Index, mf: *const MappedFile) Node.Index {
@@ -561,7 +561,7 @@ fn addNode(mf: *MappedFile, gpa: std.mem.Allocator, opts: struct {
         break :location .{ .large, .{ .large = .{ .index = mf.large.items.len } } };
     };
     const free_ni: Node.Index, const free_node = free: switch (mf.free_ni) {
-        .none => .{ @enumFromInt(mf.nodes.items.len), mf.nodes.addOneAssumeCapacity() },
+        .none => .{ @fromBackingInt(@intCast(mf.nodes.items.len)), mf.nodes.addOneAssumeCapacity() },
         else => |free_ni| {
             const free_node = free_ni.get(mf);
             mf.free_ni = free_node.next;

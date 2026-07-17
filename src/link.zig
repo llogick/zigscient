@@ -386,7 +386,7 @@ pub const Diags = struct {
             });
             const notes_start = try bundle.reserveNotes(@intCast(link_err.notes.len));
             for (link_err.notes, 0..) |note, i| {
-                bundle.extra.items[notes_start + i] = @intFromEnum(try bundle.addErrorMessage(.{
+                bundle.extra.items[notes_start + i] = @backingInt(try bundle.addErrorMessage(.{
                     .msg = try note.string(bundle, base),
                 }));
             }
@@ -860,7 +860,7 @@ pub const File = struct {
         {
             const ti = ti_id.resolveFull(&pt.zcu.intern_pool).?;
             const file = pt.zcu.fileByIndex(ti.file);
-            const inst = file.zir.?.instructions.get(@intFromEnum(ti.inst));
+            const inst = file.zir.?.instructions.get(@backingInt(ti.inst));
             assert(inst.tag == .declaration);
         }
 

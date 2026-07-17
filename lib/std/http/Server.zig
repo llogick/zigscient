@@ -353,7 +353,7 @@ pub const Request = struct {
 
         const out = request.server.out;
         try out.print("{s} {d} {s}\r\n", .{
-            @tagName(options.version), @intFromEnum(options.status), phrase,
+            @tagName(options.version), @backingInt(options.status), phrase,
         });
 
         switch (options.version) {
@@ -424,7 +424,7 @@ pub const Request = struct {
         const out = request.server.out;
 
         try out.print("{s} {d} {s}\r\n", .{
-            @tagName(o.version), @intFromEnum(o.status), phrase,
+            @tagName(o.version), @backingInt(o.status), phrase,
         });
 
         switch (o.version) {
@@ -544,7 +544,7 @@ pub const Request = struct {
         sha1.update("258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
         var digest: [std.crypto.hash.Sha1.digest_length]u8 = undefined;
         sha1.final(&digest);
-        try out.print("{s} {d} {s}\r\n", .{ @tagName(version), @intFromEnum(status), phrase });
+        try out.print("{s} {d} {s}\r\n", .{ @tagName(version), @backingInt(status), phrase });
         try out.writeAll("connection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: ");
         const base64_digest = try out.writableArray(28);
         assert(std.base64.standard.Encoder.encode(base64_digest, &digest).len == base64_digest.len);
@@ -723,7 +723,7 @@ pub const WebSocket = struct {
             const len: usize = switch (h1.payload_len) {
                 .len16 => try in.takeInt(u16, .big),
                 .len64 => std.math.cast(usize, try in.takeInt(u64, .big)) orelse return error.MessageOversize,
-                else => @intFromEnum(h1.payload_len),
+                else => @backingInt(h1.payload_len),
             };
             if (len > in.buffer.len) return error.MessageOversize;
             const mask: [4]u8 = (try in.takeArray(4)).*;
@@ -781,7 +781,7 @@ pub const WebSocket = struct {
         })));
         switch (total_len) {
             0...125 => try out.writeByte(@bitCast(@as(Header1, .{
-                .payload_len = @enumFromInt(total_len),
+                .payload_len = @fromBackingInt(@intCast(total_len)),
                 .mask = false,
             }))),
             126...0xffff => {

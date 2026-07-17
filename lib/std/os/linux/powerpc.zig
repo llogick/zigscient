@@ -19,7 +19,7 @@ pub fn syscall0(
         \\ 1:
         : [ret] "={r3}" (-> u32),
           [r0_out] "={r0}" (r0_out),
-        : [number] "{r0}" (@intFromEnum(number)),
+        : [number] "{r0}" (@backingInt(number)),
         : .{ .memory = true, .cr0 = true, .r4 = true, .r5 = true, .r6 = true, .r7 = true, .r8 = true, .r9 = true, .r10 = true, .r11 = true, .r12 = true, .ctr = true, .xer = true });
 }
 
@@ -36,7 +36,7 @@ pub fn syscall1(
         \\ 1:
         : [ret] "={r3}" (-> u32),
           [r0_out] "={r0}" (r0_out),
-        : [number] "{r0}" (@intFromEnum(number)),
+        : [number] "{r0}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
         : .{ .memory = true, .cr0 = true, .r4 = true, .r5 = true, .r6 = true, .r7 = true, .r8 = true, .r9 = true, .r10 = true, .r11 = true, .r12 = true, .ctr = true, .xer = true });
 }
@@ -57,7 +57,7 @@ pub fn syscall2(
         : [ret] "={r3}" (-> u32),
           [r0_out] "={r0}" (r0_out),
           [r4_out] "={r4}" (r4_out),
-        : [number] "{r0}" (@intFromEnum(number)),
+        : [number] "{r0}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
           [arg2] "{r4}" (arg2),
         : .{ .memory = true, .cr0 = true, .r5 = true, .r6 = true, .r7 = true, .r8 = true, .r9 = true, .r10 = true, .r11 = true, .r12 = true, .ctr = true, .xer = true });
@@ -82,7 +82,7 @@ pub fn syscall3(
           [r0_out] "={r0}" (r0_out),
           [r4_out] "={r4}" (r4_out),
           [r5_out] "={r5}" (r5_out),
-        : [number] "{r0}" (@intFromEnum(number)),
+        : [number] "{r0}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
           [arg2] "{r4}" (arg2),
           [arg3] "{r5}" (arg3),
@@ -111,7 +111,7 @@ pub fn syscall4(
           [r4_out] "={r4}" (r4_out),
           [r5_out] "={r5}" (r5_out),
           [r6_out] "={r6}" (r6_out),
-        : [number] "{r0}" (@intFromEnum(number)),
+        : [number] "{r0}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
           [arg2] "{r4}" (arg2),
           [arg3] "{r5}" (arg3),
@@ -144,7 +144,7 @@ pub fn syscall5(
           [r5_out] "={r5}" (r5_out),
           [r6_out] "={r6}" (r6_out),
           [r7_out] "={r7}" (r7_out),
-        : [number] "{r0}" (@intFromEnum(number)),
+        : [number] "{r0}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
           [arg2] "{r4}" (arg2),
           [arg3] "{r5}" (arg3),
@@ -181,7 +181,7 @@ pub fn syscall6(
           [r6_out] "={r6}" (r6_out),
           [r7_out] "={r7}" (r7_out),
           [r8_out] "={r8}" (r8_out),
-        : [number] "{r0}" (@intFromEnum(number)),
+        : [number] "{r0}" (@backingInt(number)),
           [arg1] "{r3}" (arg1),
           [arg2] "{r4}" (arg2),
           [arg3] "{r5}" (arg3),
@@ -267,12 +267,12 @@ pub fn restore() callconv(.naked) noreturn {
             \\ li 0, %[number]
             \\ sc
             :
-            : [number] "i" (@intFromEnum(SYS.sigreturn)),
+            : [number] "i" (@backingInt(SYS.sigreturn)),
         ),
         else => asm volatile (
             \\ sc
             :
-            : [number] "{r0}" (@intFromEnum(SYS.sigreturn)),
+            : [number] "{r0}" (@backingInt(SYS.sigreturn)),
         ),
     }
 }
@@ -283,12 +283,12 @@ pub fn restore_rt() callconv(.naked) noreturn {
             \\ li 0, %[number]
             \\ sc
             :
-            : [number] "i" (@intFromEnum(SYS.rt_sigreturn)),
+            : [number] "i" (@backingInt(SYS.rt_sigreturn)),
         ),
         else => asm volatile (
             \\ sc
             :
-            : [number] "{r0}" (@intFromEnum(SYS.rt_sigreturn)),
+            : [number] "{r0}" (@backingInt(SYS.rt_sigreturn)),
         ),
     }
 }

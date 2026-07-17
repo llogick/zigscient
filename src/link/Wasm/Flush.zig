@@ -51,7 +51,7 @@ pub const FuncTypeIndex = enum(u32) {
     _,
 
     pub fn fromTypeIndex(i: Wasm.FunctionType.Index, f: *const Flush) FuncTypeIndex {
-        return @enumFromInt(f.func_types.getIndex(i).?);
+        return @fromBackingInt(@intCast(f.func_types.getIndex(i).?));
     }
 };
 
@@ -68,16 +68,16 @@ const IndirectFunctionTableIndex = enum(u32) {
     }
 
     fn fromOutputFunctionIndex(f: *const Flush, i: Wasm.OutputFunctionIndex) IndirectFunctionTableIndex {
-        return @enumFromInt(f.indirect_function_table.getIndex(i).?);
+        return @fromBackingInt(@intCast(f.indirect_function_table.getIndex(i).?));
     }
 
     fn fromZcuIndirectFunctionSetIndex(i: Wasm.ZcuIndirectFunctionSetIndex) IndirectFunctionTableIndex {
         // These are the same since those are added to the table first.
-        return @enumFromInt(@intFromEnum(i));
+        return @fromBackingInt(@intCast(@backingInt(i)));
     }
 
     fn toAbi(i: IndirectFunctionTableIndex) u32 {
-        return @intFromEnum(i) + 1;
+        return @backingInt(i) + 1;
     }
 };
 
@@ -139,11 +139,11 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
         for (wasm.mir_instructions.items(.tag), wasm.mir_instructions.items(.data)) |tag, *data| switch (tag) {
             .call_intrinsic => {
                 const symbol_name = try wasm.internString(@tagName(data.intrinsic));
-                const i: Wasm.FunctionImport.Index = @enumFromInt(wasm.object_function_imports.getIndex(symbol_name) orelse {
+                const i: Wasm.FunctionImport.Index = @fromBackingInt(@intCast(wasm.object_function_imports.getIndex(symbol_name) orelse {
                     return diags.fail("missing compiler runtime intrinsic '{t}' (undefined linker symbol)", .{
                         data.intrinsic,
                     });
-                });
+                }));
                 try wasm.markFunctionImport(symbol_name, i.value(wasm), i);
                 log.debug("markFunctionImport intrinsic {d}={t}", .{ i, data.intrinsic });
             },
@@ -157,7 +157,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
                         .type_index = try wasm.internFunctionType(.auto, &.{int_tag_ty.ip_index}, .u32, false, target),
                     } };
                 }
-                try wasm.functions.put(gpa, .fromZcuFunc(wasm, @enumFromInt(gop.index)), {});
+                try wasm.functions.put(gpa, .fromZcuFunc(wasm, @fromBackingInt(@intCast(gop.index))), {});
             },
             .enum_tag_name_table_ref => {
                 assert(ip.indexToKey(data.ip_index) == .enum_type);
@@ -181,7 +181,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
             while (i < f.function_imports.entries.len) {
                 const symbol_name = f.function_imports.keys()[i];
                 if (wasm.object_function_imports.getIndex(symbol_name)) |import_index_usize| {
-                    const import_index: Wasm.FunctionImport.Index = @enumFromInt(import_index_usize);
+                    const import_index: Wasm.FunctionImport.Index = @fromBackingInt(@intCast(import_index_usize));
                     try wasm.markFunctionImport(symbol_name, import_index.value(wasm), import_index);
                     f.function_imports.swapRemoveAt(i);
                     continue;
@@ -195,7 +195,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
             while (i < f.data_imports.entries.len) {
                 const symbol_name = f.data_imports.keys()[i];
                 if (wasm.object_data_imports.getIndex(symbol_name)) |import_index_usize| {
-                    const import_index: Wasm.ObjectDataImport.Index = @enumFromInt(import_index_usize);
+                    const import_index: Wasm.ObjectDataImport.Index = @fromBackingInt(@intCast(import_index_usize));
                     try wasm.markDataImport(symbol_name, import_index.value(wasm), import_index);
                     f.data_imports.swapRemoveAt(i);
                     continue;
@@ -313,16 +313,16 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
     if (!is_obj) assert(wasm.uavs_obj.entries.len == 0);
     if (!is_obj) assert(wasm.navs_obj.entries.len == 0);
     for (0..wasm.uavs_obj.entries.len) |uavs_index| f.data_segments.putAssumeCapacityNoClobber(.pack(wasm, .{
-        .uav_obj = @enumFromInt(uavs_index),
+        .uav_obj = @fromBackingInt(@intCast(uavs_index)),
     }), @as(u32, undefined));
     for (0..wasm.navs_obj.entries.len) |navs_index| f.data_segments.putAssumeCapacityNoClobber(.pack(wasm, .{
-        .nav_obj = @enumFromInt(navs_index),
+        .nav_obj = @fromBackingInt(@intCast(navs_index)),
     }), @as(u32, undefined));
     for (0..wasm.uavs_exe.entries.len) |uavs_index| f.data_segments.putAssumeCapacityNoClobber(.pack(wasm, .{
-        .uav_exe = @enumFromInt(uavs_index),
+        .uav_exe = @fromBackingInt(@intCast(uavs_index)),
     }), @as(u32, undefined));
     for (0..wasm.navs_exe.entries.len) |navs_index| f.data_segments.putAssumeCapacityNoClobber(.pack(wasm, .{
-        .nav_exe = @enumFromInt(navs_index),
+        .nav_exe = @fromBackingInt(@intCast(navs_index)),
     }), @as(u32, undefined));
     if (wasm.error_name_table_ref_count > 0) {
         f.data_segments.putAssumeCapacity(.__zig_error_names, @as(u32, undefined));
@@ -371,8 +371,8 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
         pub fn lessThan(ctx: @This(), lhs: usize, rhs: usize) bool {
             const lhs_segment = ctx.segments[lhs];
             const rhs_segment = ctx.segments[rhs];
-            const lhs_category = @intFromEnum(lhs_segment.category(ctx.wasm));
-            const rhs_category = @intFromEnum(rhs_segment.category(ctx.wasm));
+            const lhs_category = @backingInt(lhs_segment.category(ctx.wasm));
+            const rhs_category = @backingInt(rhs_segment.category(ctx.wasm));
             switch (std.math.order(lhs_category, rhs_category)) {
                 .lt => return true,
                 .gt => return false,
@@ -404,7 +404,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
                 .gt => return false,
                 .eq => {},
             }
-            return @intFromEnum(lhs_segment) < @intFromEnum(rhs_segment);
+            return @backingInt(lhs_segment) < @backingInt(rhs_segment);
         }
     };
     f.data_segments.sortUnstable(@as(Sort, .{
@@ -486,7 +486,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
 
             const size = segment_id.size(wasm);
             segment_vaddr.* = @intCast(start_addr);
-            log.debug("0x{x} {d} {s}", .{ start_addr, @intFromEnum(segment_id), segment_id.name(wasm) });
+            log.debug("0x{x} {d} {s}", .{ start_addr, @backingInt(segment_id), segment_id.name(wasm) });
             memory_ptr = start_addr + size;
         }
         if (category != .zero) try f.data_segment_groups.append(gpa, .{
@@ -593,12 +593,12 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
             const params = func_type.params.slice(wasm);
             try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(params.len)));
             for (params) |param_ty| {
-                try appendLeb128(gpa, binary_bytes, @intFromEnum(param_ty));
+                try appendLeb128(gpa, binary_bytes, @backingInt(param_ty));
             }
             const returns = func_type.returns.slice(wasm);
             try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(returns.len)));
             for (returns) |ret_ty| {
-                try appendLeb128(gpa, binary_bytes, @intFromEnum(ret_ty));
+                try appendLeb128(gpa, binary_bytes, @backingInt(ret_ty));
             }
         }
         replaceVecSectionHeader(binary_bytes, header_offset, .type, @intCast(f.func_types.entries.len));
@@ -625,9 +625,9 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
             try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(name.len)));
             try binary_bytes.appendSlice(gpa, name);
 
-            try binary_bytes.append(gpa, @intFromEnum(std.wasm.ExternalKind.function));
+            try binary_bytes.append(gpa, @backingInt(std.wasm.ExternalKind.function));
             const type_index: FuncTypeIndex = .fromTypeIndex(id.functionType(wasm), f);
-            try appendLeb128(gpa, binary_bytes, @intFromEnum(type_index));
+            try appendLeb128(gpa, binary_bytes, @backingInt(type_index));
         }
         total_imports += f.function_imports.entries.len;
 
@@ -641,8 +641,8 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
             try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(name.len)));
             try binary_bytes.appendSlice(gpa, name);
 
-            try binary_bytes.append(gpa, @intFromEnum(std.wasm.ExternalKind.table));
-            try appendLeb128(gpa, binary_bytes, @intFromEnum(@as(std.wasm.RefType, table_import.flags.ref_type.to())));
+            try binary_bytes.append(gpa, @backingInt(std.wasm.ExternalKind.table));
+            try appendLeb128(gpa, binary_bytes, @backingInt(@as(std.wasm.RefType, table_import.flags.ref_type.to())));
             try emitLimits(gpa, binary_bytes, table_import.limits());
         }
         total_imports += wasm.table_imports.entries.len;
@@ -670,9 +670,9 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
             try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(name.len)));
             try binary_bytes.appendSlice(gpa, name);
 
-            try binary_bytes.append(gpa, @intFromEnum(std.wasm.ExternalKind.global));
+            try binary_bytes.append(gpa, @backingInt(std.wasm.ExternalKind.global));
             const global_type = id.globalType(wasm);
-            try appendLeb128(gpa, binary_bytes, @intFromEnum(@as(std.wasm.Valtype, global_type.valtype)));
+            try appendLeb128(gpa, binary_bytes, @backingInt(@as(std.wasm.Valtype, global_type.valtype)));
             try binary_bytes.append(gpa, @intFromBool(global_type.mutable));
         }
         total_imports += f.global_imports.entries.len;
@@ -690,7 +690,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
         const header_offset = try reserveVecSectionHeader(gpa, binary_bytes);
         for (wasm.functions.keys()) |function| {
             const index: FuncTypeIndex = .fromTypeIndex(function.typeIndex(wasm), f);
-            try appendLeb128(gpa, binary_bytes, @intFromEnum(index));
+            try appendLeb128(gpa, binary_bytes, @backingInt(index));
         }
 
         replaceVecSectionHeader(binary_bytes, header_offset, .function, @intCast(wasm.functions.count()));
@@ -702,7 +702,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
         const header_offset = try reserveVecSectionHeader(gpa, binary_bytes);
 
         for (wasm.tables.keys()) |table| {
-            try appendLeb128(gpa, binary_bytes, @intFromEnum(@as(std.wasm.RefType, table.refType(wasm))));
+            try appendLeb128(gpa, binary_bytes, @backingInt(@as(std.wasm.RefType, table.refType(wasm))));
             try emitLimits(gpa, binary_bytes, table.limits(wasm));
         }
 
@@ -735,7 +735,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
                 .object_global => |i| {
                     const global = i.ptr(wasm);
                     try binary_bytes.appendSlice(gpa, &.{
-                        @intFromEnum(@as(std.wasm.Valtype, global.flags.global_type.valtype.to())),
+                        @backingInt(@as(std.wasm.Valtype, global.flags.global_type.valtype.to())),
                         @intFromBool(global.flags.global_type.mutable),
                     });
                     try emitExpr(wasm, binary_bytes, global.expr);
@@ -758,9 +758,9 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
             const name = exp_name.slice(wasm);
             try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(name.len)));
             try binary_bytes.appendSlice(gpa, name);
-            try binary_bytes.append(gpa, @intFromEnum(std.wasm.ExternalKind.function));
+            try binary_bytes.append(gpa, @backingInt(std.wasm.ExternalKind.function));
             const func_index = Wasm.OutputFunctionIndex.fromFunctionIndex(wasm, function_index);
-            try appendLeb128(gpa, binary_bytes, @intFromEnum(func_index));
+            try appendLeb128(gpa, binary_bytes, @backingInt(func_index));
         }
         exports_len += wasm.function_exports.entries.len;
 
@@ -769,7 +769,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
             const index: u32 = @intCast(wasm.tables.getIndex(.__indirect_function_table).?);
             try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(name.len)));
             try binary_bytes.appendSlice(gpa, name);
-            try binary_bytes.append(gpa, @intFromEnum(std.wasm.ExternalKind.table));
+            try binary_bytes.append(gpa, @backingInt(std.wasm.ExternalKind.table));
             try appendLeb128(gpa, binary_bytes, index);
             exports_len += 1;
         }
@@ -778,7 +778,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
             const name = "memory";
             try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(name.len)));
             try binary_bytes.appendSlice(gpa, name);
-            try binary_bytes.append(gpa, @intFromEnum(std.wasm.ExternalKind.memory));
+            try binary_bytes.append(gpa, @backingInt(std.wasm.ExternalKind.memory));
             try appendLeb128(gpa, binary_bytes, @as(u32, 0));
             exports_len += 1;
         }
@@ -787,8 +787,8 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
             const name = exp.name.slice(wasm);
             try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(name.len)));
             try binary_bytes.appendSlice(gpa, name);
-            try binary_bytes.append(gpa, @intFromEnum(std.wasm.ExternalKind.global));
-            try appendLeb128(gpa, binary_bytes, @intFromEnum(exp.global_index));
+            try binary_bytes.append(gpa, @backingInt(std.wasm.ExternalKind.global));
+            try appendLeb128(gpa, binary_bytes, @backingInt(exp.global_index));
         }
         exports_len += wasm.global_exports.items.len;
 
@@ -802,7 +802,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
 
     // start section
     if (wasm.functions.getIndex(.__wasm_init_memory)) |func_index| {
-        try emitStartSection(gpa, binary_bytes, .fromFunctionIndex(wasm, @enumFromInt(func_index)));
+        try emitStartSection(gpa, binary_bytes, .fromFunctionIndex(wasm, @fromBackingInt(@intCast(func_index))));
     } else if (Wasm.OutputFunctionIndex.fromResolution(wasm, wasm.entry_resolution)) |func_index| {
         try emitStartSection(gpa, binary_bytes, func_index);
     }
@@ -830,7 +830,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
         }
         try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(f.indirect_function_table.entries.len)));
         for (f.indirect_function_table.keys()) |func_index| {
-            try appendLeb128(gpa, binary_bytes, @intFromEnum(func_index));
+            try appendLeb128(gpa, binary_bytes, @backingInt(func_index));
         }
 
         replaceVecSectionHeader(binary_bytes, header_offset, .element, 1);
@@ -966,7 +966,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
                 const group_size = group_end_addr - group_start_addr;
                 log.debug("emit data section group, {d} bytes", .{group_size});
                 const flags: Object.DataSegmentFlags = if (segment_id.isPassive(wasm)) .passive else .active;
-                try appendLeb128(gpa, binary_bytes, @intFromEnum(flags));
+                try appendLeb128(gpa, binary_bytes, @backingInt(flags));
                 // Passive segments are initialized at runtime.
                 if (flags != .passive) {
                     var aw: std.Io.Writer.Allocating = .fromArrayList(gpa, binary_bytes);
@@ -1119,7 +1119,7 @@ fn emitNameSection(
 
     {
         const sub_offset = try reserveCustomSectionHeader(gpa, binary_bytes);
-        defer replaceHeader(binary_bytes, sub_offset, @intFromEnum(std.wasm.NameSubsection.function));
+        defer replaceHeader(binary_bytes, sub_offset, @backingInt(std.wasm.NameSubsection.function));
 
         const total_functions: u32 = @intCast(f.function_imports.entries.len + wasm.functions.entries.len);
         try appendLeb128(gpa, binary_bytes, total_functions);
@@ -1140,7 +1140,7 @@ fn emitNameSection(
 
     {
         const sub_offset = try reserveCustomSectionHeader(gpa, binary_bytes);
-        defer replaceHeader(binary_bytes, sub_offset, @intFromEnum(std.wasm.NameSubsection.global));
+        defer replaceHeader(binary_bytes, sub_offset, @backingInt(std.wasm.NameSubsection.global));
 
         const total_globals: u32 = @intCast(f.global_imports.entries.len + wasm.globals.entries.len);
         try appendLeb128(gpa, binary_bytes, total_globals);
@@ -1161,7 +1161,7 @@ fn emitNameSection(
 
     {
         const sub_offset = try reserveCustomSectionHeader(gpa, binary_bytes);
-        defer replaceHeader(binary_bytes, sub_offset, @intFromEnum(std.wasm.NameSubsection.data_segment));
+        defer replaceHeader(binary_bytes, sub_offset, @backingInt(std.wasm.NameSubsection.data_segment));
 
         const total_data_segments: u32 = @intCast(data_segment_groups.len);
         try appendLeb128(gpa, binary_bytes, total_data_segments);
@@ -1194,7 +1194,7 @@ fn emitFeaturesSection(
 
     var safety_count = feature_count;
     for (target.cpu.arch.allFeaturesList(), 0..) |*feature, i| {
-        if (!target.cpu.has(.wasm, @as(std.Target.wasm.Feature, @enumFromInt(i)))) continue;
+        if (!target.cpu.has(.wasm, @as(std.Target.wasm.Feature, @fromBackingInt(@intCast(i))))) continue;
         safety_count -= 1;
 
         try appendLeb128(gpa, binary_bytes, @as(u32, '+'));
@@ -1318,7 +1318,7 @@ fn replaceVecSectionHeader(
     const size: u32 = @intCast(bytes.items.len - offset - section_header_reserve_size + uleb128size(n_items));
     var buf: [section_header_reserve_size]u8 = undefined;
     var w: std.Io.Writer = .fixed(&buf);
-    w.writeByte(@intFromEnum(section)) catch unreachable;
+    w.writeByte(@backingInt(section)) catch unreachable;
     w.writeUleb128(size) catch unreachable;
     w.writeUleb128(n_items) catch unreachable;
     bytes.replaceRangeAssumeCapacity(offset, section_header_reserve_size, w.buffered());
@@ -1382,34 +1382,34 @@ fn emitMemoryImport(
     try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(name.len)));
     try binary_bytes.appendSlice(gpa, name);
 
-    try binary_bytes.append(gpa, @intFromEnum(std.wasm.ExternalKind.memory));
+    try binary_bytes.append(gpa, @backingInt(std.wasm.ExternalKind.memory));
     try emitLimits(gpa, binary_bytes, memory_import.limits());
 }
 
 fn emitInit(writer: *std.Io.Writer, init_expr: std.wasm.InitExpression) !void {
     switch (init_expr) {
         .i32_const => |val| {
-            try writer.writeByte(@intFromEnum(std.wasm.Opcode.i32_const));
+            try writer.writeByte(@backingInt(std.wasm.Opcode.i32_const));
             try writer.writeSleb128(val);
         },
         .i64_const => |val| {
-            try writer.writeByte(@intFromEnum(std.wasm.Opcode.i64_const));
+            try writer.writeByte(@backingInt(std.wasm.Opcode.i64_const));
             try writer.writeSleb128(val);
         },
         .f32_const => |val| {
-            try writer.writeByte(@intFromEnum(std.wasm.Opcode.f32_const));
+            try writer.writeByte(@backingInt(std.wasm.Opcode.f32_const));
             try writer.writeInt(u32, @bitCast(val), .little);
         },
         .f64_const => |val| {
-            try writer.writeByte(@intFromEnum(std.wasm.Opcode.f64_const));
+            try writer.writeByte(@backingInt(std.wasm.Opcode.f64_const));
             try writer.writeInt(u64, @bitCast(val), .little);
         },
         .global_get => |val| {
-            try writer.writeByte(@intFromEnum(std.wasm.Opcode.global_get));
+            try writer.writeByte(@backingInt(std.wasm.Opcode.global_get));
             try writer.writeUleb128(val);
         },
     }
-    try writer.writeByte(@intFromEnum(std.wasm.Opcode.end));
+    try writer.writeByte(@backingInt(std.wasm.Opcode.end));
 }
 
 pub fn emitExpr(wasm: *const Wasm, binary_bytes: *ArrayList(u8), expr: Wasm.Expr) Allocator.Error!void {
@@ -1420,7 +1420,7 @@ pub fn emitExpr(wasm: *const Wasm, binary_bytes: *ArrayList(u8), expr: Wasm.Expr
 
 fn emitSegmentInfo(wasm: *Wasm, binary_bytes: *std.array_list.Managed(u8)) !void {
     const gpa = wasm.base.comp.gpa;
-    try appendLeb128(gpa, binary_bytes, @intFromEnum(Wasm.SubsectionType.segment_info));
+    try appendLeb128(gpa, binary_bytes, @backingInt(Wasm.SubsectionType.segment_info));
     const segment_offset = binary_bytes.items.len;
 
     try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(wasm.segment_info.count())));
@@ -1554,19 +1554,19 @@ fn reloc_sleb64_table_index(code: []u8, i: IndirectFunctionTableIndex) void {
 }
 
 fn reloc_u32_function(code: []u8, function: Wasm.OutputFunctionIndex) void {
-    mem.writeInt(u32, code[0..4], @intFromEnum(function), .little);
+    mem.writeInt(u32, code[0..4], @backingInt(function), .little);
 }
 
 fn reloc_leb_function(code: []u8, function: Wasm.OutputFunctionIndex) void {
-    leb.writeUnsignedFixed(5, code[0..5], @intFromEnum(function));
+    leb.writeUnsignedFixed(5, code[0..5], @backingInt(function));
 }
 
 fn reloc_u32_global(code: []u8, global: Wasm.GlobalIndex) void {
-    mem.writeInt(u32, code[0..4], @intFromEnum(global), .little);
+    mem.writeInt(u32, code[0..4], @backingInt(global), .little);
 }
 
 fn reloc_leb_global(code: []u8, global: Wasm.GlobalIndex) void {
-    leb.writeUnsignedFixed(5, code[0..5], @intFromEnum(global));
+    leb.writeUnsignedFixed(5, code[0..5], @backingInt(global));
 }
 
 const RelocAddr = struct {
@@ -1618,11 +1618,11 @@ fn reloc_sleb64_addr(code: []u8, ra: RelocAddr) void {
 }
 
 fn reloc_leb_table(code: []u8, table: Wasm.TableIndex) void {
-    leb.writeUnsignedFixed(5, code[0..5], @intFromEnum(table));
+    leb.writeUnsignedFixed(5, code[0..5], @backingInt(table));
 }
 
 fn reloc_leb_type(code: []u8, index: FuncTypeIndex) void {
-    leb.writeUnsignedFixed(5, code[0..5], @intFromEnum(index));
+    leb.writeUnsignedFixed(5, code[0..5], @backingInt(index));
 }
 
 fn emitCallCtorsFunction(wasm: *const Wasm, binary_bytes: *ArrayList(u8)) Allocator.Error!void {
@@ -1640,14 +1640,14 @@ fn emitCallCtorsFunction(wasm: *const Wasm, binary_bytes: *ArrayList(u8)) Alloca
         // Call function by its function index
         try binary_bytes.ensureUnusedCapacity(gpa, 1 + 5 + n_returns + 1);
         const call_index: Wasm.OutputFunctionIndex = .fromObjectFunction(wasm, init_func.function_index);
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.call));
-        appendReservedUleb32(binary_bytes, @intFromEnum(call_index));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.call));
+        appendReservedUleb32(binary_bytes, @backingInt(call_index));
 
         // drop all returned values from the stack as __wasm_call_ctors has no return value
-        binary_bytes.appendNTimesAssumeCapacity(@intFromEnum(std.wasm.Opcode.drop), n_returns);
+        binary_bytes.appendNTimesAssumeCapacity(@backingInt(std.wasm.Opcode.drop), n_returns);
     }
 
-    binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.end)); // end function body
+    binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end)); // end function body
 }
 
 fn emitInitMemoryFunction(
@@ -1674,31 +1674,31 @@ fn emitInitMemoryFunction(
         try binary_bytes.ensureUnusedCapacity(gpa, 2 * 3 + 6 * 3 + 1 + 6 * 3 + 1 + 5 * 4 + 1 + 1);
         // destination blocks
         // based on values we jump to corresponding label
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.block)); // $drop
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.BlockType.empty));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.block)); // $drop
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.BlockType.empty));
 
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.block)); // $wait
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.BlockType.empty));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.block)); // $wait
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.BlockType.empty));
 
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.block)); // $init
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.BlockType.empty));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.block)); // $init
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.BlockType.empty));
 
         // atomically check
         appendReservedI32Const(binary_bytes, flag_address);
         appendReservedI32Const(binary_bytes, 0);
         appendReservedI32Const(binary_bytes, 1);
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.atomics_prefix));
-        appendReservedUleb32(binary_bytes, @intFromEnum(std.wasm.AtomicsOpcode.i32_atomic_rmw_cmpxchg));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.atomics_prefix));
+        appendReservedUleb32(binary_bytes, @backingInt(std.wasm.AtomicsOpcode.i32_atomic_rmw_cmpxchg));
         appendReservedUleb32(binary_bytes, 2); // alignment
         appendReservedUleb32(binary_bytes, 0); // offset
 
         // based on the value from the atomic check, jump to the label.
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.br_table));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.br_table));
         appendReservedUleb32(binary_bytes, 2); // length of the table (we have 3 blocks but because of the mandatory default the length is 2).
         appendReservedUleb32(binary_bytes, 0); // $init
         appendReservedUleb32(binary_bytes, 1); // $wait
         appendReservedUleb32(binary_bytes, 2); // $drop
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.end));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end));
     }
 
     const segment_groups = wasm.flush_buffer.data_segment_groups.items;
@@ -1723,19 +1723,19 @@ fn emitInitMemoryFunction(
             // global.  This allows the runtime to use this static copy of the
             // TLS data for the first/main thread.
             appendReservedI32Const(binary_bytes, start_addr);
-            binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.global_set));
+            binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.global_set));
             appendReservedUleb32(binary_bytes, virtual_addrs.tls_base.?);
         }
 
         appendReservedI32Const(binary_bytes, 0);
         appendReservedI32Const(binary_bytes, segment_size);
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.misc_prefix));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.misc_prefix));
         if (segment.isBss(wasm)) {
             // fill bss segment with zeroes
-            appendReservedUleb32(binary_bytes, @intFromEnum(std.wasm.MiscOpcode.memory_fill));
+            appendReservedUleb32(binary_bytes, @backingInt(std.wasm.MiscOpcode.memory_fill));
         } else {
             // initialize the segment
-            appendReservedUleb32(binary_bytes, @intFromEnum(std.wasm.MiscOpcode.memory_init));
+            appendReservedUleb32(binary_bytes, @backingInt(std.wasm.MiscOpcode.memory_init));
             appendReservedUleb32(binary_bytes, @intCast(segment_index));
         }
         binary_bytes.appendAssumeCapacity(0); // memory index immediate
@@ -1747,38 +1747,38 @@ fn emitInitMemoryFunction(
         // we set the init memory flag to value '2'
         appendReservedI32Const(binary_bytes, flag_address);
         appendReservedI32Const(binary_bytes, 2);
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.atomics_prefix));
-        appendReservedUleb32(binary_bytes, @intFromEnum(std.wasm.AtomicsOpcode.i32_atomic_store));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.atomics_prefix));
+        appendReservedUleb32(binary_bytes, @backingInt(std.wasm.AtomicsOpcode.i32_atomic_store));
         appendReservedUleb32(binary_bytes, @as(u32, 2)); // alignment
         appendReservedUleb32(binary_bytes, @as(u32, 0)); // offset
 
         // notify any waiters for segment initialization completion
         appendReservedI32Const(binary_bytes, flag_address);
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i32_const));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_const));
         appendReservedLeb128(binary_bytes, @as(i32, -1)); // number of waiters
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.atomics_prefix));
-        appendReservedUleb32(binary_bytes, @intFromEnum(std.wasm.AtomicsOpcode.memory_atomic_notify));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.atomics_prefix));
+        appendReservedUleb32(binary_bytes, @backingInt(std.wasm.AtomicsOpcode.memory_atomic_notify));
         appendReservedUleb32(binary_bytes, @as(u32, 2)); // alignment
         appendReservedUleb32(binary_bytes, @as(u32, 0)); // offset
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.drop));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.drop));
 
         // branch and drop segments
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.br));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.br));
         appendReservedUleb32(binary_bytes, @as(u32, 1));
 
         // wait for thread to initialize memory segments
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.end)); // end $wait
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end)); // end $wait
         appendReservedI32Const(binary_bytes, flag_address);
         appendReservedI32Const(binary_bytes, 1); // expected flag value
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i64_const));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i64_const));
         appendReservedLeb128(binary_bytes, @as(i64, -1)); // timeout
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.atomics_prefix));
-        appendReservedUleb32(binary_bytes, @intFromEnum(std.wasm.AtomicsOpcode.memory_atomic_wait32));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.atomics_prefix));
+        appendReservedUleb32(binary_bytes, @backingInt(std.wasm.AtomicsOpcode.memory_atomic_wait32));
         appendReservedUleb32(binary_bytes, @as(u32, 2)); // alignment
         appendReservedUleb32(binary_bytes, @as(u32, 0)); // offset
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.drop));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.drop));
 
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.end)); // end $drop
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end)); // end $drop
     }
 
     for (segment_groups, 0..) |group, segment_index| {
@@ -1791,13 +1791,13 @@ fn emitInitMemoryFunction(
 
         try binary_bytes.ensureUnusedCapacity(gpa, 1 + 5 + 5 + 1);
 
-        binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.misc_prefix));
-        appendReservedUleb32(binary_bytes, @intFromEnum(std.wasm.MiscOpcode.data_drop));
+        binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.misc_prefix));
+        appendReservedUleb32(binary_bytes, @backingInt(std.wasm.MiscOpcode.data_drop));
         appendReservedUleb32(binary_bytes, @intCast(segment_index));
     }
 
     // End of the function body
-    binary_bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.end));
+    binary_bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end));
 }
 
 fn emitInitTlsFunction(wasm: *const Wasm, bytes: *ArrayList(u8)) Allocator.Error!void {
@@ -1821,28 +1821,28 @@ fn emitInitTlsFunction(wasm: *const Wasm, bytes: *ArrayList(u8)) Allocator.Error
 
         const param_local: u32 = 0;
 
-        bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.local_get));
+        bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.local_get));
         appendReservedUleb32(bytes, param_local);
 
-        const tls_base_global_index: Wasm.GlobalIndex = @enumFromInt(wasm.globals.getIndex(.__tls_base).?);
-        bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.global_set));
-        appendReservedUleb32(bytes, @intFromEnum(tls_base_global_index));
+        const tls_base_global_index: Wasm.GlobalIndex = @fromBackingInt(@intCast(wasm.globals.getIndex(.__tls_base).?));
+        bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.global_set));
+        appendReservedUleb32(bytes, @backingInt(tls_base_global_index));
 
         // load stack values for the bulk-memory operation
         {
-            bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.local_get));
+            bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.local_get));
             appendReservedUleb32(bytes, param_local);
 
-            bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i32_const));
+            bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_const));
             appendReservedUleb32(bytes, 0); //segment offset
 
-            bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i32_const));
+            bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_const));
             appendReservedUleb32(bytes, group_size); //segment offset
         }
 
         // perform the bulk-memory operation to initialize the data segment
-        bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.misc_prefix));
-        appendReservedUleb32(bytes, @intFromEnum(std.wasm.MiscOpcode.memory_init));
+        bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.misc_prefix));
+        appendReservedUleb32(bytes, @backingInt(std.wasm.MiscOpcode.memory_init));
         // segment immediate
         appendReservedUleb32(bytes, data_segment_index);
         // memory index immediate (always 0)
@@ -1853,17 +1853,17 @@ fn emitInitTlsFunction(wasm: *const Wasm, bytes: *ArrayList(u8)) Allocator.Error
     // which performs all runtime TLS relocations. This is a synthetic function,
     // generated by the linker.
     if (wasm.functions.getIndex(.__wasm_apply_global_tls_relocs)) |function_index| {
-        const output_function_index: Wasm.OutputFunctionIndex = .fromFunctionIndex(wasm, @enumFromInt(function_index));
-        bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.call));
-        appendReservedUleb32(bytes, @intFromEnum(output_function_index));
+        const output_function_index: Wasm.OutputFunctionIndex = .fromFunctionIndex(wasm, @fromBackingInt(@intCast(function_index)));
+        bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.call));
+        appendReservedUleb32(bytes, @backingInt(output_function_index));
     }
 
-    bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.end));
+    bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end));
 }
 
 fn emitStartSection(gpa: Allocator, bytes: *ArrayList(u8), i: Wasm.OutputFunctionIndex) !void {
     const header_offset = try reserveVecSectionHeader(gpa, bytes);
-    replaceVecSectionHeader(bytes, header_offset, .start, @intFromEnum(i));
+    replaceVecSectionHeader(bytes, header_offset, .start, @backingInt(i));
 }
 
 fn emitTagIndexFunction(
@@ -1887,31 +1887,31 @@ fn emitTagIndexFunction(
 
         appendReservedUleb32(code, 0); // no locals
 
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.block));
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.BlockType.empty));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.block));
+        code.appendAssumeCapacity(@backingInt(std.wasm.BlockType.empty));
 
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.local_get));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.local_get));
         appendReservedUleb32(code, 0);
 
         appendReservedI32Const(code, len);
 
         // if < len -> break out of block
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i32_lt_u));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_lt_u));
 
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.br_if));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.br_if));
         appendReservedUleb32(code, 0);
 
         // invalid -> return -1
         appendReservedI32Const(code, ~@as(u32, 0));
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.@"return"));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.@"return"));
 
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.end));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end));
 
         // valid -> return input
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.local_get));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.local_get));
         appendReservedUleb32(code, 0);
 
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.end));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end));
 
         return;
     }
@@ -1931,8 +1931,8 @@ fn emitTagIndexFunction(
 
     for (tag_values, 0..) |tag_value, tag_index| {
         // block for this if case
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.block));
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.BlockType.empty));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.block));
+        code.appendAssumeCapacity(@backingInt(std.wasm.BlockType.empty));
 
         const val: Zcu.Value = .fromInterned(tag_value);
         if (is_big_int) {
@@ -1947,21 +1947,21 @@ fn emitTagIndexFunction(
             try code.ensureUnusedCapacity(gpa, 35 * num_limbs);
 
             for (0..num_limbs) |limb_index| {
-                code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.local_get));
+                code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.local_get));
                 appendReservedUleb32(code, 0);
 
-                code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i64_load));
+                code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i64_load));
                 appendReservedUleb32(code, @ctz(@as(u32, 8)));
                 appendReservedUleb32(code, @intCast(limb_index * 8));
 
                 appendReservedI64Const(code, limbs[limb_index]);
-                code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i64_ne));
+                code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i64_ne));
 
-                code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.br_if));
+                code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.br_if));
                 appendReservedUleb32(code, 0);
             }
         } else {
-            code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.local_get));
+            code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.local_get));
             appendReservedUleb32(code, 0);
 
             switch (int_info.bits) {
@@ -1971,7 +1971,7 @@ fn emitTagIndexFunction(
                         .unsigned => @intCast(val.toUnsignedInt(zcu)),
                     };
                     appendReservedI32Const(code, x);
-                    code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i32_ne));
+                    code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_ne));
                 },
                 33...64 => {
                     const x: u64 = switch (int_info.signedness) {
@@ -1979,30 +1979,30 @@ fn emitTagIndexFunction(
                         .unsigned => val.toUnsignedInt(zcu),
                     };
                     appendReservedI64Const(code, x);
-                    code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i64_ne));
+                    code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i64_ne));
                 },
                 else => unreachable,
             }
 
-            code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.br_if));
+            code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.br_if));
             appendReservedUleb32(code, 0);
         }
 
         appendReservedI32Const(code, @intCast(tag_index));
 
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.@"return"));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.@"return"));
         // end the block for this case
-        code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.end));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end));
     }
 
     appendReservedI32Const(code, ~@as(u32, 0));
 
-    code.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.end));
+    code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end));
 }
 
 /// Writes an unsigned 32-bit integer as a LEB128-encoded 'i32.const' value.
 fn appendReservedI32Const(bytes: *ArrayList(u8), val: u32) void {
-    bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i32_const));
+    bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_const));
     var w: std.Io.Writer = .fromArrayList(bytes);
     defer bytes.* = w.toArrayList();
     return w.writeSleb128(@as(i32, @bitCast(val))) catch |err| switch (err) {
@@ -2012,7 +2012,7 @@ fn appendReservedI32Const(bytes: *ArrayList(u8), val: u32) void {
 
 /// Writes an unsigned 64-bit integer as a LEB128-encoded 'i64.const' value.
 fn appendReservedI64Const(bytes: *ArrayList(u8), val: u64) void {
-    bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i64_const));
+    bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i64_const));
     var w: std.Io.Writer = .fromArrayList(bytes);
     defer bytes.* = w.toArrayList();
     return w.writeSleb128(@as(i64, @bitCast(val))) catch |err| switch (err) {
@@ -2030,11 +2030,11 @@ fn appendReservedUleb32(bytes: *ArrayList(u8), val: u32) void {
 
 fn appendGlobal(gpa: Allocator, bytes: *ArrayList(u8), mutable: u8, val: u32) Allocator.Error!void {
     try bytes.ensureUnusedCapacity(gpa, 9);
-    bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Valtype.i32));
+    bytes.appendAssumeCapacity(@backingInt(std.wasm.Valtype.i32));
     bytes.appendAssumeCapacity(mutable);
-    bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.i32_const));
+    bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_const));
     appendReservedUleb32(bytes, val);
-    bytes.appendAssumeCapacity(@intFromEnum(std.wasm.Opcode.end));
+    bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end));
 }
 
 fn appendLeb128(gpa: Allocator, bytes: *ArrayList(u8), value: anytype) Allocator.Error!void {

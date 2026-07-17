@@ -117,7 +117,7 @@ fn uefi_alloc(
 ) ?[*]u8 {
     _ = ret_addr;
 
-    std.debug.assert(@intFromEnum(alignment) <= 3);
+    std.debug.assert(@backingInt(alignment) <= 3);
 
     const slice = uefi.system_table.boot_services.?.allocatePool(
         uefi.efi_pool_memory_type,
@@ -136,7 +136,7 @@ fn uefi_resize(
 ) bool {
     _ = ret_addr;
 
-    std.debug.assert(@intFromEnum(alignment) <= 3);
+    std.debug.assert(@backingInt(alignment) <= 3);
 
     if (new_len > buf.len) return false;
     return true;
@@ -151,7 +151,7 @@ fn uefi_remap(
 ) ?[*]u8 {
     _ = ret_addr;
 
-    std.debug.assert(@intFromEnum(alignment) <= 3);
+    std.debug.assert(@backingInt(alignment) <= 3);
 
     if (new_len > buf.len) return null;
     return buf.ptr;

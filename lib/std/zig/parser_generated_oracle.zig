@@ -292,7 +292,7 @@ const Parser = struct {
     i: usize,
     depths: [272]u8,
     pub fn parseRoot(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defRoot);
+        const def_index = @backingInt(Def.defRoot);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -304,7 +304,7 @@ const Parser = struct {
         };
     }
     pub fn parseContainerMembers(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defContainerMembers);
+        const def_index = @backingInt(Def.defContainerMembers);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -323,7 +323,7 @@ const Parser = struct {
         };
     }
     pub fn parseContainerMembersRest(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defContainerMembersRest);
+        const def_index = @backingInt(Def.defContainerMembersRest);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -354,7 +354,7 @@ const Parser = struct {
         };
     }
     pub fn parseContainerDecl(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defContainerDecl);
+        const def_index = @backingInt(Def.defContainerDecl);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -370,7 +370,7 @@ const Parser = struct {
         };
     }
     pub fn parseContainerDeclPrefix(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defContainerDeclPrefix);
+        const def_index = @backingInt(Def.defContainerDeclPrefix);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -386,7 +386,7 @@ const Parser = struct {
         };
     }
     pub fn parseTestDecl(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defTestDecl);
+        const def_index = @backingInt(Def.defTestDecl);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -405,7 +405,7 @@ const Parser = struct {
         };
     }
     pub fn parseComptimeDecl(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defComptimeDecl);
+        const def_index = @backingInt(Def.defComptimeDecl);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -417,7 +417,7 @@ const Parser = struct {
         };
     }
     pub fn parseDecl(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defDecl);
+        const def_index = @backingInt(Def.defDecl);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -456,7 +456,7 @@ const Parser = struct {
         };
     }
     pub fn parseDeclPrefix(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defDeclPrefix);
+        const def_index = @backingInt(Def.defDeclPrefix);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -495,7 +495,7 @@ const Parser = struct {
         };
     }
     pub fn parseFnProto(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defFnProto);
+        const def_index = @backingInt(Def.defFnProto);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -507,7 +507,7 @@ const Parser = struct {
         };
     }
     pub fn parseVarDeclProto(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defVarDeclProto);
+        const def_index = @backingInt(Def.defVarDeclProto);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -531,7 +531,7 @@ const Parser = struct {
         };
     }
     pub fn parseGlobalVarDecl(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defGlobalVarDecl);
+        const def_index = @backingInt(Def.defGlobalVarDecl);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -548,7 +548,7 @@ const Parser = struct {
         };
     }
     pub fn parseContainerField(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defContainerField);
+        const def_index = @backingInt(Def.defContainerField);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -570,7 +570,7 @@ const Parser = struct {
         };
     }
     pub fn parseBlockStatement(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBlockStatement);
+        const def_index = @backingInt(Def.defBlockStatement);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -593,7 +593,7 @@ const Parser = struct {
         };
     }
     pub fn parseStatement(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defStatement);
+        const def_index = @backingInt(Def.defStatement);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -620,7 +620,7 @@ const Parser = struct {
         };
     }
     pub fn parseStatementPrefix(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defStatementPrefix);
+        const def_index = @backingInt(Def.defStatementPrefix);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -654,7 +654,7 @@ const Parser = struct {
         };
     }
     pub fn parseIfStatement(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defIfStatement);
+        const def_index = @backingInt(Def.defIfStatement);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -692,7 +692,7 @@ const Parser = struct {
         };
     }
     pub fn parseLabeledStatement(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLabeledStatement);
+        const def_index = @backingInt(Def.defLabeledStatement);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -713,7 +713,7 @@ const Parser = struct {
         };
     }
     pub fn parseLoopStatement(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLoopStatement);
+        const def_index = @backingInt(Def.defLoopStatement);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -732,7 +732,7 @@ const Parser = struct {
         };
     }
     pub fn parseForStatement(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defForStatement);
+        const def_index = @backingInt(Def.defForStatement);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -770,7 +770,7 @@ const Parser = struct {
         };
     }
     pub fn parseWhileStatement(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defWhileStatement);
+        const def_index = @backingInt(Def.defWhileStatement);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -808,7 +808,7 @@ const Parser = struct {
         };
     }
     pub fn parseBlockExprStatement(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBlockExprStatement);
+        const def_index = @backingInt(Def.defBlockExprStatement);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -827,7 +827,7 @@ const Parser = struct {
         };
     }
     pub fn parseBlockExprPrefix(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBlockExprPrefix);
+        const def_index = @backingInt(Def.defBlockExprPrefix);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -839,7 +839,7 @@ const Parser = struct {
         };
     }
     pub fn parseBlockExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBlockExpr);
+        const def_index = @backingInt(Def.defBlockExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -851,7 +851,7 @@ const Parser = struct {
         };
     }
     pub fn parseVarAssignStatement(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defVarAssignStatement);
+        const def_index = @backingInt(Def.defVarAssignStatement);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -889,7 +889,7 @@ const Parser = struct {
         };
     }
     pub fn parseAssignExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAssignExpr);
+        const def_index = @backingInt(Def.defAssignExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -934,7 +934,7 @@ const Parser = struct {
         };
     }
     pub fn parseSingleAssignExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSingleAssignExpr);
+        const def_index = @backingInt(Def.defSingleAssignExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -958,7 +958,7 @@ const Parser = struct {
         };
     }
     pub fn parseExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defExpr);
+        const def_index = @backingInt(Def.defExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -970,7 +970,7 @@ const Parser = struct {
         };
     }
     pub fn parseBoolOrExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBoolOrExpr);
+        const def_index = @backingInt(Def.defBoolOrExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -999,7 +999,7 @@ const Parser = struct {
         };
     }
     pub fn parseBoolAndExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBoolAndExpr);
+        const def_index = @backingInt(Def.defBoolAndExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1028,7 +1028,7 @@ const Parser = struct {
         };
     }
     pub fn parseCompareExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defCompareExpr);
+        const def_index = @backingInt(Def.defCompareExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1050,7 +1050,7 @@ const Parser = struct {
         };
     }
     pub fn parseBitwiseExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBitwiseExpr);
+        const def_index = @backingInt(Def.defBitwiseExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1079,7 +1079,7 @@ const Parser = struct {
         };
     }
     pub fn parseBitShiftExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBitShiftExpr);
+        const def_index = @backingInt(Def.defBitShiftExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1108,7 +1108,7 @@ const Parser = struct {
         };
     }
     pub fn parseAdditionExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAdditionExpr);
+        const def_index = @backingInt(Def.defAdditionExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1137,7 +1137,7 @@ const Parser = struct {
         };
     }
     pub fn parseMultiplyExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defMultiplyExpr);
+        const def_index = @backingInt(Def.defMultiplyExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1166,7 +1166,7 @@ const Parser = struct {
         };
     }
     pub fn parsePrefixExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPrefixExpr);
+        const def_index = @backingInt(Def.defPrefixExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1190,7 +1190,7 @@ const Parser = struct {
         };
     }
     pub fn parsePrimaryExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPrimaryExpr);
+        const def_index = @backingInt(Def.defPrimaryExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1258,7 +1258,7 @@ const Parser = struct {
         };
     }
     pub fn parseIfExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defIfExpr);
+        const def_index = @backingInt(Def.defIfExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1282,7 +1282,7 @@ const Parser = struct {
         };
     }
     pub fn parseBlock(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBlock);
+        const def_index = @backingInt(Def.defBlock);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1301,7 +1301,7 @@ const Parser = struct {
         };
     }
     pub fn parseLoopExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLoopExpr);
+        const def_index = @backingInt(Def.defLoopExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1320,7 +1320,7 @@ const Parser = struct {
         };
     }
     pub fn parseForExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defForExpr);
+        const def_index = @backingInt(Def.defForExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1344,7 +1344,7 @@ const Parser = struct {
         };
     }
     pub fn parseWhileExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defWhileExpr);
+        const def_index = @backingInt(Def.defWhileExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1361,7 +1361,7 @@ const Parser = struct {
         };
     }
     pub fn parseCurlySuffixExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defCurlySuffixExpr);
+        const def_index = @backingInt(Def.defCurlySuffixExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1385,7 +1385,7 @@ const Parser = struct {
         };
     }
     pub fn parseInitList(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defInitList);
+        const def_index = @backingInt(Def.defInitList);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1425,7 +1425,7 @@ const Parser = struct {
         };
     }
     pub fn parseTypeExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defTypeExpr);
+        const def_index = @backingInt(Def.defTypeExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1449,7 +1449,7 @@ const Parser = struct {
         };
     }
     pub fn parseErrorUnionExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defErrorUnionExpr);
+        const def_index = @backingInt(Def.defErrorUnionExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1473,7 +1473,7 @@ const Parser = struct {
         };
     }
     pub fn parseSuffixExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSuffixExpr);
+        const def_index = @backingInt(Def.defSuffixExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1497,7 +1497,7 @@ const Parser = struct {
         };
     }
     pub fn parsePrimaryTypeExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPrimaryTypeExpr);
+        const def_index = @backingInt(Def.defPrimaryTypeExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1541,7 +1541,7 @@ const Parser = struct {
         };
     }
     pub fn parseContainerType(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defContainerType);
+        const def_index = @backingInt(Def.defContainerType);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1560,7 +1560,7 @@ const Parser = struct {
         };
     }
     pub fn parseErrorSetDecl(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defErrorSetDecl);
+        const def_index = @backingInt(Def.defErrorSetDecl);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1572,7 +1572,7 @@ const Parser = struct {
         };
     }
     pub fn parseGroupedExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defGroupedExpr);
+        const def_index = @backingInt(Def.defGroupedExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1584,7 +1584,7 @@ const Parser = struct {
         };
     }
     pub fn parseIfTypeExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defIfTypeExpr);
+        const def_index = @backingInt(Def.defIfTypeExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1608,7 +1608,7 @@ const Parser = struct {
         };
     }
     pub fn parseLabeledTypeExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLabeledTypeExpr);
+        const def_index = @backingInt(Def.defLabeledTypeExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1624,7 +1624,7 @@ const Parser = struct {
         };
     }
     pub fn parseLoopTypeExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLoopTypeExpr);
+        const def_index = @backingInt(Def.defLoopTypeExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1643,7 +1643,7 @@ const Parser = struct {
         };
     }
     pub fn parseForTypeExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defForTypeExpr);
+        const def_index = @backingInt(Def.defForTypeExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1667,7 +1667,7 @@ const Parser = struct {
         };
     }
     pub fn parseWhileTypeExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defWhileTypeExpr);
+        const def_index = @backingInt(Def.defWhileTypeExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1691,7 +1691,7 @@ const Parser = struct {
         };
     }
     pub fn parseSwitchExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSwitchExpr);
+        const def_index = @backingInt(Def.defSwitchExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1703,7 +1703,7 @@ const Parser = struct {
         };
     }
     pub fn parseAsmExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAsmExpr);
+        const def_index = @backingInt(Def.defAsmExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1715,7 +1715,7 @@ const Parser = struct {
         };
     }
     pub fn parseAsmOutput(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAsmOutput);
+        const def_index = @backingInt(Def.defAsmOutput);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1727,7 +1727,7 @@ const Parser = struct {
         };
     }
     pub fn parseAsmOutputItem(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAsmOutputItem);
+        const def_index = @backingInt(Def.defAsmOutputItem);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1746,7 +1746,7 @@ const Parser = struct {
         };
     }
     pub fn parseAsmInput(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAsmInput);
+        const def_index = @backingInt(Def.defAsmInput);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1758,7 +1758,7 @@ const Parser = struct {
         };
     }
     pub fn parseAsmInputItem(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAsmInputItem);
+        const def_index = @backingInt(Def.defAsmInputItem);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1770,7 +1770,7 @@ const Parser = struct {
         };
     }
     pub fn parseAsmClobbers(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAsmClobbers);
+        const def_index = @backingInt(Def.defAsmClobbers);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1782,7 +1782,7 @@ const Parser = struct {
         };
     }
     pub fn parseBreakLabel(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBreakLabel);
+        const def_index = @backingInt(Def.defBreakLabel);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1794,7 +1794,7 @@ const Parser = struct {
         };
     }
     pub fn parseBlockLabel(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBlockLabel);
+        const def_index = @backingInt(Def.defBlockLabel);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1806,7 +1806,7 @@ const Parser = struct {
         };
     }
     pub fn parseFieldInit(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defFieldInit);
+        const def_index = @backingInt(Def.defFieldInit);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1818,7 +1818,7 @@ const Parser = struct {
         };
     }
     pub fn parseWhileContinueExpr(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defWhileContinueExpr);
+        const def_index = @backingInt(Def.defWhileContinueExpr);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1830,7 +1830,7 @@ const Parser = struct {
         };
     }
     pub fn parseLinkSection(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLinkSection);
+        const def_index = @backingInt(Def.defLinkSection);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1842,7 +1842,7 @@ const Parser = struct {
         };
     }
     pub fn parseAddrSpace(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAddrSpace);
+        const def_index = @backingInt(Def.defAddrSpace);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1854,7 +1854,7 @@ const Parser = struct {
         };
     }
     pub fn parseCallConv(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defCallConv);
+        const def_index = @backingInt(Def.defCallConv);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1866,7 +1866,7 @@ const Parser = struct {
         };
     }
     pub fn parseParamDecl(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defParamDecl);
+        const def_index = @backingInt(Def.defParamDecl);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1890,7 +1890,7 @@ const Parser = struct {
         };
     }
     pub fn parseParamType(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defParamType);
+        const def_index = @backingInt(Def.defParamType);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1904,7 +1904,7 @@ const Parser = struct {
         };
     }
     pub fn parseIfPrefix(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defIfPrefix);
+        const def_index = @backingInt(Def.defIfPrefix);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1916,7 +1916,7 @@ const Parser = struct {
         };
     }
     pub fn parseWhilePrefix(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defWhilePrefix);
+        const def_index = @backingInt(Def.defWhilePrefix);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1928,7 +1928,7 @@ const Parser = struct {
         };
     }
     pub fn parseForPrefix(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defForPrefix);
+        const def_index = @backingInt(Def.defForPrefix);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1940,7 +1940,7 @@ const Parser = struct {
         };
     }
     pub fn parsePayload(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPayload);
+        const def_index = @backingInt(Def.defPayload);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1952,7 +1952,7 @@ const Parser = struct {
         };
     }
     pub fn parsePtrPayload(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPtrPayload);
+        const def_index = @backingInt(Def.defPtrPayload);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1964,7 +1964,7 @@ const Parser = struct {
         };
     }
     pub fn parsePtrIndexPayload(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPtrIndexPayload);
+        const def_index = @backingInt(Def.defPtrIndexPayload);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -1981,7 +1981,7 @@ const Parser = struct {
         };
     }
     pub fn parsePtrListPayload(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPtrListPayload);
+        const def_index = @backingInt(Def.defPtrListPayload);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2005,7 +2005,7 @@ const Parser = struct {
         };
     }
     pub fn parseSwitchProng(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSwitchProng);
+        const def_index = @backingInt(Def.defSwitchProng);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2017,7 +2017,7 @@ const Parser = struct {
         };
     }
     pub fn parseSwitchCase(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSwitchCase);
+        const def_index = @backingInt(Def.defSwitchCase);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2043,7 +2043,7 @@ const Parser = struct {
         };
     }
     pub fn parseSwitchItem(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSwitchItem);
+        const def_index = @backingInt(Def.defSwitchItem);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2060,7 +2060,7 @@ const Parser = struct {
         };
     }
     pub fn parseForArgumentsList(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defForArgumentsList);
+        const def_index = @backingInt(Def.defForArgumentsList);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2084,7 +2084,7 @@ const Parser = struct {
         };
     }
     pub fn parseForItem(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defForItem);
+        const def_index = @backingInt(Def.defForItem);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2120,7 +2120,7 @@ const Parser = struct {
         };
     }
     pub fn parseAssignOp(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAssignOp);
+        const def_index = @backingInt(Def.defAssignOp);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2166,7 +2166,7 @@ const Parser = struct {
         };
     }
     pub fn parseOrOp(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defOrOp);
+        const def_index = @backingInt(Def.defOrOp);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2190,7 +2190,7 @@ const Parser = struct {
         };
     }
     pub fn parseAndOp(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAndOp);
+        const def_index = @backingInt(Def.defAndOp);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2214,7 +2214,7 @@ const Parser = struct {
         };
     }
     pub fn parseCompareOp(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defCompareOp);
+        const def_index = @backingInt(Def.defCompareOp);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2238,7 +2238,7 @@ const Parser = struct {
         };
     }
     pub fn parseCompareOpTok(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defCompareOpTok);
+        const def_index = @backingInt(Def.defCompareOpTok);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2260,7 +2260,7 @@ const Parser = struct {
         };
     }
     pub fn parseBitwiseOp(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBitwiseOp);
+        const def_index = @backingInt(Def.defBitwiseOp);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2298,7 +2298,7 @@ const Parser = struct {
         };
     }
     pub fn parseBitwiseOpTok(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBitwiseOpTok);
+        const def_index = @backingInt(Def.defBitwiseOpTok);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2328,7 +2328,7 @@ const Parser = struct {
         };
     }
     pub fn parseBitShiftOp(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBitShiftOp);
+        const def_index = @backingInt(Def.defBitShiftOp);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2352,7 +2352,7 @@ const Parser = struct {
         };
     }
     pub fn parseBitShiftOpTok(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBitShiftOpTok);
+        const def_index = @backingInt(Def.defBitShiftOpTok);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2368,7 +2368,7 @@ const Parser = struct {
         };
     }
     pub fn parseAdditionOp(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAdditionOp);
+        const def_index = @backingInt(Def.defAdditionOp);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2392,7 +2392,7 @@ const Parser = struct {
         };
     }
     pub fn parseAdditionOpTok(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAdditionOpTok);
+        const def_index = @backingInt(Def.defAdditionOpTok);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2416,7 +2416,7 @@ const Parser = struct {
         };
     }
     pub fn parseMultiplyOp(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defMultiplyOp);
+        const def_index = @backingInt(Def.defMultiplyOp);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2440,7 +2440,7 @@ const Parser = struct {
         };
     }
     pub fn parseMultiplyOpTok(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defMultiplyOpTok);
+        const def_index = @backingInt(Def.defMultiplyOpTok);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2462,7 +2462,7 @@ const Parser = struct {
         };
     }
     pub fn parsePrefixOp(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPrefixOp);
+        const def_index = @backingInt(Def.defPrefixOp);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2484,7 +2484,7 @@ const Parser = struct {
         };
     }
     pub fn parsePrefixTypeOp(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPrefixTypeOp);
+        const def_index = @backingInt(Def.defPrefixTypeOp);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2511,7 +2511,7 @@ const Parser = struct {
         };
     }
     pub fn parsePtrMods(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPtrMods);
+        const def_index = @backingInt(Def.defPtrMods);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2577,7 +2577,7 @@ const Parser = struct {
         };
     }
     pub fn parseSinglePtrMods(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSinglePtrMods);
+        const def_index = @backingInt(Def.defSinglePtrMods);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2643,7 +2643,7 @@ const Parser = struct {
         };
     }
     pub fn parsePtrMod(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPtrMod);
+        const def_index = @backingInt(Def.defPtrMod);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2659,7 +2659,7 @@ const Parser = struct {
         };
     }
     pub fn parsePrefixTypeOpPrefix(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPrefixTypeOpPrefix);
+        const def_index = @backingInt(Def.defPrefixTypeOpPrefix);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2677,7 +2677,7 @@ const Parser = struct {
         };
     }
     pub fn parseSuffixOp(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSuffixOp);
+        const def_index = @backingInt(Def.defSuffixOp);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2719,7 +2719,7 @@ const Parser = struct {
         };
     }
     pub fn parseSuffixOpPrefix(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSuffixOpPrefix);
+        const def_index = @backingInt(Def.defSuffixOpPrefix);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2739,7 +2739,7 @@ const Parser = struct {
         };
     }
     pub fn parseFnCallArguments(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defFnCallArguments);
+        const def_index = @backingInt(Def.defFnCallArguments);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2751,7 +2751,7 @@ const Parser = struct {
         };
     }
     pub fn parseSliceTypeStart(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSliceTypeStart);
+        const def_index = @backingInt(Def.defSliceTypeStart);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2768,7 +2768,7 @@ const Parser = struct {
         };
     }
     pub fn parseSinglePtrTypeStart(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSinglePtrTypeStart);
+        const def_index = @backingInt(Def.defSinglePtrTypeStart);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2780,7 +2780,7 @@ const Parser = struct {
         };
     }
     pub fn parseManyPtrTypeStart(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defManyPtrTypeStart);
+        const def_index = @backingInt(Def.defManyPtrTypeStart);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2799,7 +2799,7 @@ const Parser = struct {
         };
     }
     pub fn parseArrayTypeStart(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defArrayTypeStart);
+        const def_index = @backingInt(Def.defArrayTypeStart);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2821,7 +2821,7 @@ const Parser = struct {
         };
     }
     pub fn parseContainerTypeAuto(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defContainerTypeAuto);
+        const def_index = @backingInt(Def.defContainerTypeAuto);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2833,7 +2833,7 @@ const Parser = struct {
         };
     }
     pub fn parseContainerTypeKind(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defContainerTypeKind);
+        const def_index = @backingInt(Def.defContainerTypeKind);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2878,7 +2878,7 @@ const Parser = struct {
         };
     }
     pub fn parseByteAlign(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defByteAlign);
+        const def_index = @backingInt(Def.defByteAlign);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2890,7 +2890,7 @@ const Parser = struct {
         };
     }
     pub fn parseBitAlign(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBitAlign);
+        const def_index = @backingInt(Def.defBitAlign);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2907,7 +2907,7 @@ const Parser = struct {
         };
     }
     pub fn parseIdentifierList(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defIdentifierList);
+        const def_index = @backingInt(Def.defIdentifierList);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2929,7 +2929,7 @@ const Parser = struct {
         };
     }
     pub fn parseSwitchProngList(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSwitchProngList);
+        const def_index = @backingInt(Def.defSwitchProngList);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2951,7 +2951,7 @@ const Parser = struct {
         };
     }
     pub fn parseAsmOutputList(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAsmOutputList);
+        const def_index = @backingInt(Def.defAsmOutputList);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2973,7 +2973,7 @@ const Parser = struct {
         };
     }
     pub fn parseAsmInputList(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAsmInputList);
+        const def_index = @backingInt(Def.defAsmInputList);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -2995,7 +2995,7 @@ const Parser = struct {
         };
     }
     pub fn parseParamDeclList(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defParamDeclList);
+        const def_index = @backingInt(Def.defParamDeclList);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3007,7 +3007,7 @@ const Parser = struct {
         };
     }
     pub fn parseParamDeclListRest(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defParamDeclListRest);
+        const def_index = @backingInt(Def.defParamDeclListRest);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3030,7 +3030,7 @@ const Parser = struct {
         };
     }
     pub fn parseExprList(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defExprList);
+        const def_index = @backingInt(Def.defExprList);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3054,7 +3054,7 @@ const Parser = struct {
         };
     }
     pub fn parseExprPrefix(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defExprPrefix);
+        const def_index = @backingInt(Def.defExprPrefix);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3066,7 +3066,7 @@ const Parser = struct {
         };
     }
     pub fn parsebyte_order_mark(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defbyte_order_mark);
+        const def_index = @backingInt(Def.defbyte_order_mark);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3084,7 +3084,7 @@ const Parser = struct {
         };
     }
     pub fn parsesof(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defsof);
+        const def_index = @backingInt(Def.defsof);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3096,7 +3096,7 @@ const Parser = struct {
         };
     }
     pub fn parseeof(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defeof);
+        const def_index = @backingInt(Def.defeof);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3119,7 +3119,7 @@ const Parser = struct {
         };
     }
     pub fn parseox80_oxBF(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defox80_oxBF);
+        const def_index = @backingInt(Def.defox80_oxBF);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3138,7 +3138,7 @@ const Parser = struct {
         };
     }
     pub fn parseoxF4(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defoxF4);
+        const def_index = @backingInt(Def.defoxF4);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3156,7 +3156,7 @@ const Parser = struct {
         };
     }
     pub fn parseox80_ox8F(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defox80_ox8F);
+        const def_index = @backingInt(Def.defox80_ox8F);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3175,7 +3175,7 @@ const Parser = struct {
         };
     }
     pub fn parseoxF1_oxF3(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defoxF1_oxF3);
+        const def_index = @backingInt(Def.defoxF1_oxF3);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3194,7 +3194,7 @@ const Parser = struct {
         };
     }
     pub fn parseoxF0(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defoxF0);
+        const def_index = @backingInt(Def.defoxF0);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3212,7 +3212,7 @@ const Parser = struct {
         };
     }
     pub fn parseox90_0xBF(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defox90_0xBF);
+        const def_index = @backingInt(Def.defox90_0xBF);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3231,7 +3231,7 @@ const Parser = struct {
         };
     }
     pub fn parseoxEE_oxEF(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defoxEE_oxEF);
+        const def_index = @backingInt(Def.defoxEE_oxEF);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3250,7 +3250,7 @@ const Parser = struct {
         };
     }
     pub fn parseoxED(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defoxED);
+        const def_index = @backingInt(Def.defoxED);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3268,7 +3268,7 @@ const Parser = struct {
         };
     }
     pub fn parseox80_ox9F(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defox80_ox9F);
+        const def_index = @backingInt(Def.defox80_ox9F);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3287,7 +3287,7 @@ const Parser = struct {
         };
     }
     pub fn parseoxE1_oxEC(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defoxE1_oxEC);
+        const def_index = @backingInt(Def.defoxE1_oxEC);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3306,7 +3306,7 @@ const Parser = struct {
         };
     }
     pub fn parseoxE0(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defoxE0);
+        const def_index = @backingInt(Def.defoxE0);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3324,7 +3324,7 @@ const Parser = struct {
         };
     }
     pub fn parseoxA0_oxBF(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defoxA0_oxBF);
+        const def_index = @backingInt(Def.defoxA0_oxBF);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3343,7 +3343,7 @@ const Parser = struct {
         };
     }
     pub fn parseoxC2_oxDF(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defoxC2_oxDF);
+        const def_index = @backingInt(Def.defoxC2_oxDF);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3362,7 +3362,7 @@ const Parser = struct {
         };
     }
     pub fn parsemultibyte_utf8(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defmultibyte_utf8);
+        const def_index = @backingInt(Def.defmultibyte_utf8);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3388,7 +3388,7 @@ const Parser = struct {
         };
     }
     pub fn parsenon_control_ascii(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defnon_control_ascii);
+        const def_index = @backingInt(Def.defnon_control_ascii);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3407,7 +3407,7 @@ const Parser = struct {
         };
     }
     pub fn parsenon_control_utf8(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defnon_control_utf8);
+        const def_index = @backingInt(Def.defnon_control_utf8);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3427,7 +3427,7 @@ const Parser = struct {
         };
     }
     pub fn parsechar_char(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defchar_char);
+        const def_index = @backingInt(Def.defchar_char);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3467,7 +3467,7 @@ const Parser = struct {
         };
     }
     pub fn parsestring_char(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defstring_char);
+        const def_index = @backingInt(Def.defstring_char);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3507,7 +3507,7 @@ const Parser = struct {
         };
     }
     pub fn parsecontainer_doc_comment(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defcontainer_doc_comment);
+        const def_index = @backingInt(Def.defcontainer_doc_comment);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3546,7 +3546,7 @@ const Parser = struct {
         };
     }
     pub fn parsedoc_comment(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defdoc_comment);
+        const def_index = @backingInt(Def.defdoc_comment);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3592,7 +3592,7 @@ const Parser = struct {
         };
     }
     pub fn parseline_comment(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defline_comment);
+        const def_index = @backingInt(Def.defline_comment);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3645,7 +3645,7 @@ const Parser = struct {
         };
     }
     pub fn parseline_string(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defline_string);
+        const def_index = @backingInt(Def.defline_string);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3670,7 +3670,7 @@ const Parser = struct {
         };
     }
     pub fn parsenewline(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defnewline);
+        const def_index = @backingInt(Def.defnewline);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3708,7 +3708,7 @@ const Parser = struct {
         };
     }
     pub fn parseskip(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defskip);
+        const def_index = @backingInt(Def.defskip);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3744,7 +3744,7 @@ const Parser = struct {
         };
     }
     pub fn parseskip_require_newline(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defskip_require_newline);
+        const def_index = @backingInt(Def.defskip_require_newline);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3786,7 +3786,7 @@ const Parser = struct {
         };
     }
     pub fn parsepre_op_white(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defpre_op_white);
+        const def_index = @backingInt(Def.defpre_op_white);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3824,7 +3824,7 @@ const Parser = struct {
         };
     }
     pub fn parsepost_op_white(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defpost_op_white);
+        const def_index = @backingInt(Def.defpost_op_white);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3846,7 +3846,7 @@ const Parser = struct {
         };
     }
     pub fn parseCHAR_LITERAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defCHAR_LITERAL);
+        const def_index = @backingInt(Def.defCHAR_LITERAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3879,7 +3879,7 @@ const Parser = struct {
         };
     }
     pub fn parsedigit(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defdigit);
+        const def_index = @backingInt(Def.defdigit);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3905,7 +3905,7 @@ const Parser = struct {
         };
     }
     pub fn parsedigit_int(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defdigit_int);
+        const def_index = @backingInt(Def.defdigit_int);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3929,7 +3929,7 @@ const Parser = struct {
         };
     }
     pub fn parsedigit_float(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defdigit_float);
+        const def_index = @backingInt(Def.defdigit_float);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -3961,7 +3961,7 @@ const Parser = struct {
         };
     }
     pub fn parseNUMBERLITERAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defNUMBERLITERAL);
+        const def_index = @backingInt(Def.defNUMBERLITERAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4018,7 +4018,7 @@ const Parser = struct {
         };
     }
     pub fn parsestring(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defstring);
+        const def_index = @backingInt(Def.defstring);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4051,7 +4051,7 @@ const Parser = struct {
         };
     }
     pub fn parseSTRINGLITERALSINGLE(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSTRINGLITERALSINGLE);
+        const def_index = @backingInt(Def.defSTRINGLITERALSINGLE);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4063,7 +4063,7 @@ const Parser = struct {
         };
     }
     pub fn parseSTRINGLITERAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSTRINGLITERAL);
+        const def_index = @backingInt(Def.defSTRINGLITERAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4091,7 +4091,7 @@ const Parser = struct {
         };
     }
     pub fn parseIDENTIFIER(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defIDENTIFIER);
+        const def_index = @backingInt(Def.defIDENTIFIER);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4142,7 +4142,7 @@ const Parser = struct {
         };
     }
     pub fn parseBUILTINIDENTIFIER(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defBUILTINIDENTIFIER);
+        const def_index = @backingInt(Def.defBUILTINIDENTIFIER);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4186,7 +4186,7 @@ const Parser = struct {
         };
     }
     pub fn parseAMPERSAND(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAMPERSAND);
+        const def_index = @backingInt(Def.defAMPERSAND);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4216,7 +4216,7 @@ const Parser = struct {
         };
     }
     pub fn parseAMPERSANDEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defAMPERSANDEQUAL);
+        const def_index = @backingInt(Def.defAMPERSANDEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4234,7 +4234,7 @@ const Parser = struct {
         };
     }
     pub fn parseASTERISK(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defASTERISK);
+        const def_index = @backingInt(Def.defASTERISK);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4266,7 +4266,7 @@ const Parser = struct {
         };
     }
     pub fn parseASTERISKEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defASTERISKEQUAL);
+        const def_index = @backingInt(Def.defASTERISKEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4284,7 +4284,7 @@ const Parser = struct {
         };
     }
     pub fn parseASTERISKPERCENT(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defASTERISKPERCENT);
+        const def_index = @backingInt(Def.defASTERISKPERCENT);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4314,7 +4314,7 @@ const Parser = struct {
         };
     }
     pub fn parseASTERISKPERCENTEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defASTERISKPERCENTEQUAL);
+        const def_index = @backingInt(Def.defASTERISKPERCENTEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4332,7 +4332,7 @@ const Parser = struct {
         };
     }
     pub fn parseASTERISKPIPE(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defASTERISKPIPE);
+        const def_index = @backingInt(Def.defASTERISKPIPE);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4362,7 +4362,7 @@ const Parser = struct {
         };
     }
     pub fn parseASTERISKPIPEEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defASTERISKPIPEEQUAL);
+        const def_index = @backingInt(Def.defASTERISKPIPEEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4380,7 +4380,7 @@ const Parser = struct {
         };
     }
     pub fn parseCARET(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defCARET);
+        const def_index = @backingInt(Def.defCARET);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4410,7 +4410,7 @@ const Parser = struct {
         };
     }
     pub fn parseCARETEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defCARETEQUAL);
+        const def_index = @backingInt(Def.defCARETEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4428,7 +4428,7 @@ const Parser = struct {
         };
     }
     pub fn parseCOLON(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defCOLON);
+        const def_index = @backingInt(Def.defCOLON);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4446,7 +4446,7 @@ const Parser = struct {
         };
     }
     pub fn parseCOMMA(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defCOMMA);
+        const def_index = @backingInt(Def.defCOMMA);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4464,7 +4464,7 @@ const Parser = struct {
         };
     }
     pub fn parseDOT(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defDOT);
+        const def_index = @backingInt(Def.defDOT);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4495,7 +4495,7 @@ const Parser = struct {
         };
     }
     pub fn parseDOT2(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defDOT2);
+        const def_index = @backingInt(Def.defDOT2);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4525,7 +4525,7 @@ const Parser = struct {
         };
     }
     pub fn parseDOT3(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defDOT3);
+        const def_index = @backingInt(Def.defDOT3);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4543,7 +4543,7 @@ const Parser = struct {
         };
     }
     pub fn parseDOTASTERISK(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defDOTASTERISK);
+        const def_index = @backingInt(Def.defDOTASTERISK);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4561,7 +4561,7 @@ const Parser = struct {
         };
     }
     pub fn parseEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defEQUAL);
+        const def_index = @backingInt(Def.defEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4592,7 +4592,7 @@ const Parser = struct {
         };
     }
     pub fn parseEQUALEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defEQUALEQUAL);
+        const def_index = @backingInt(Def.defEQUALEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4610,7 +4610,7 @@ const Parser = struct {
         };
     }
     pub fn parseEQUALRARROW(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defEQUALRARROW);
+        const def_index = @backingInt(Def.defEQUALRARROW);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4628,7 +4628,7 @@ const Parser = struct {
         };
     }
     pub fn parseEXCLAMATIONMARK(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defEXCLAMATIONMARK);
+        const def_index = @backingInt(Def.defEXCLAMATIONMARK);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4658,7 +4658,7 @@ const Parser = struct {
         };
     }
     pub fn parseEXCLAMATIONMARKEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defEXCLAMATIONMARKEQUAL);
+        const def_index = @backingInt(Def.defEXCLAMATIONMARKEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4676,7 +4676,7 @@ const Parser = struct {
         };
     }
     pub fn parseLARROW(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLARROW);
+        const def_index = @backingInt(Def.defLARROW);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4707,7 +4707,7 @@ const Parser = struct {
         };
     }
     pub fn parseLARROW2(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLARROW2);
+        const def_index = @backingInt(Def.defLARROW2);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4738,7 +4738,7 @@ const Parser = struct {
         };
     }
     pub fn parseLARROW2EQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLARROW2EQUAL);
+        const def_index = @backingInt(Def.defLARROW2EQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4756,7 +4756,7 @@ const Parser = struct {
         };
     }
     pub fn parseLARROW2PIPE(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLARROW2PIPE);
+        const def_index = @backingInt(Def.defLARROW2PIPE);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4786,7 +4786,7 @@ const Parser = struct {
         };
     }
     pub fn parseLARROW2PIPEEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLARROW2PIPEEQUAL);
+        const def_index = @backingInt(Def.defLARROW2PIPEEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4804,7 +4804,7 @@ const Parser = struct {
         };
     }
     pub fn parseLARROWEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLARROWEQUAL);
+        const def_index = @backingInt(Def.defLARROWEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4822,7 +4822,7 @@ const Parser = struct {
         };
     }
     pub fn parseLBRACE(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLBRACE);
+        const def_index = @backingInt(Def.defLBRACE);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4840,7 +4840,7 @@ const Parser = struct {
         };
     }
     pub fn parseLBRACKET(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLBRACKET);
+        const def_index = @backingInt(Def.defLBRACKET);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4858,7 +4858,7 @@ const Parser = struct {
         };
     }
     pub fn parseLPAREN(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLPAREN);
+        const def_index = @backingInt(Def.defLPAREN);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4876,7 +4876,7 @@ const Parser = struct {
         };
     }
     pub fn parseMINUS(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defMINUS);
+        const def_index = @backingInt(Def.defMINUS);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4909,7 +4909,7 @@ const Parser = struct {
         };
     }
     pub fn parseMINUSEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defMINUSEQUAL);
+        const def_index = @backingInt(Def.defMINUSEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4927,7 +4927,7 @@ const Parser = struct {
         };
     }
     pub fn parseMINUSPERCENT(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defMINUSPERCENT);
+        const def_index = @backingInt(Def.defMINUSPERCENT);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4957,7 +4957,7 @@ const Parser = struct {
         };
     }
     pub fn parseMINUSPERCENTEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defMINUSPERCENTEQUAL);
+        const def_index = @backingInt(Def.defMINUSPERCENTEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -4975,7 +4975,7 @@ const Parser = struct {
         };
     }
     pub fn parseMINUSPIPE(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defMINUSPIPE);
+        const def_index = @backingInt(Def.defMINUSPIPE);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5005,7 +5005,7 @@ const Parser = struct {
         };
     }
     pub fn parseMINUSPIPEEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defMINUSPIPEEQUAL);
+        const def_index = @backingInt(Def.defMINUSPIPEEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5023,7 +5023,7 @@ const Parser = struct {
         };
     }
     pub fn parseMINUSRARROW(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defMINUSRARROW);
+        const def_index = @backingInt(Def.defMINUSRARROW);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5041,7 +5041,7 @@ const Parser = struct {
         };
     }
     pub fn parsePERCENT(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPERCENT);
+        const def_index = @backingInt(Def.defPERCENT);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5071,7 +5071,7 @@ const Parser = struct {
         };
     }
     pub fn parsePERCENTEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPERCENTEQUAL);
+        const def_index = @backingInt(Def.defPERCENTEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5089,7 +5089,7 @@ const Parser = struct {
         };
     }
     pub fn parsePIPE(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPIPE);
+        const def_index = @backingInt(Def.defPIPE);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5120,7 +5120,7 @@ const Parser = struct {
         };
     }
     pub fn parsePIPE2(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPIPE2);
+        const def_index = @backingInt(Def.defPIPE2);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5138,7 +5138,7 @@ const Parser = struct {
         };
     }
     pub fn parsePIPEEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPIPEEQUAL);
+        const def_index = @backingInt(Def.defPIPEEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5156,7 +5156,7 @@ const Parser = struct {
         };
     }
     pub fn parsePLUS(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPLUS);
+        const def_index = @backingInt(Def.defPLUS);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5189,7 +5189,7 @@ const Parser = struct {
         };
     }
     pub fn parsePLUS2(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPLUS2);
+        const def_index = @backingInt(Def.defPLUS2);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5207,7 +5207,7 @@ const Parser = struct {
         };
     }
     pub fn parsePLUSEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPLUSEQUAL);
+        const def_index = @backingInt(Def.defPLUSEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5225,7 +5225,7 @@ const Parser = struct {
         };
     }
     pub fn parsePLUSPERCENT(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPLUSPERCENT);
+        const def_index = @backingInt(Def.defPLUSPERCENT);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5255,7 +5255,7 @@ const Parser = struct {
         };
     }
     pub fn parsePLUSPERCENTEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPLUSPERCENTEQUAL);
+        const def_index = @backingInt(Def.defPLUSPERCENTEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5273,7 +5273,7 @@ const Parser = struct {
         };
     }
     pub fn parsePLUSPIPE(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPLUSPIPE);
+        const def_index = @backingInt(Def.defPLUSPIPE);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5303,7 +5303,7 @@ const Parser = struct {
         };
     }
     pub fn parsePLUSPIPEEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defPLUSPIPEEQUAL);
+        const def_index = @backingInt(Def.defPLUSPIPEEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5321,7 +5321,7 @@ const Parser = struct {
         };
     }
     pub fn parseLETTERC(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defLETTERC);
+        const def_index = @backingInt(Def.defLETTERC);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5339,7 +5339,7 @@ const Parser = struct {
         };
     }
     pub fn parseQUESTIONMARK(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defQUESTIONMARK);
+        const def_index = @backingInt(Def.defQUESTIONMARK);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5357,7 +5357,7 @@ const Parser = struct {
         };
     }
     pub fn parseRARROW(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defRARROW);
+        const def_index = @backingInt(Def.defRARROW);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5388,7 +5388,7 @@ const Parser = struct {
         };
     }
     pub fn parseRARROW2(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defRARROW2);
+        const def_index = @backingInt(Def.defRARROW2);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5418,7 +5418,7 @@ const Parser = struct {
         };
     }
     pub fn parseRARROW2EQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defRARROW2EQUAL);
+        const def_index = @backingInt(Def.defRARROW2EQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5436,7 +5436,7 @@ const Parser = struct {
         };
     }
     pub fn parseRARROWEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defRARROWEQUAL);
+        const def_index = @backingInt(Def.defRARROWEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5454,7 +5454,7 @@ const Parser = struct {
         };
     }
     pub fn parseRBRACE(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defRBRACE);
+        const def_index = @backingInt(Def.defRBRACE);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5472,7 +5472,7 @@ const Parser = struct {
         };
     }
     pub fn parseRBRACKET(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defRBRACKET);
+        const def_index = @backingInt(Def.defRBRACKET);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5490,7 +5490,7 @@ const Parser = struct {
         };
     }
     pub fn parseRPAREN(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defRPAREN);
+        const def_index = @backingInt(Def.defRPAREN);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5508,7 +5508,7 @@ const Parser = struct {
         };
     }
     pub fn parseSEMICOLON(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSEMICOLON);
+        const def_index = @backingInt(Def.defSEMICOLON);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5526,7 +5526,7 @@ const Parser = struct {
         };
     }
     pub fn parseSLASH(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSLASH);
+        const def_index = @backingInt(Def.defSLASH);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5557,7 +5557,7 @@ const Parser = struct {
         };
     }
     pub fn parseSLASHEQUAL(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defSLASHEQUAL);
+        const def_index = @backingInt(Def.defSLASHEQUAL);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5575,7 +5575,7 @@ const Parser = struct {
         };
     }
     pub fn parseTILDE(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defTILDE);
+        const def_index = @backingInt(Def.defTILDE);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5593,7 +5593,7 @@ const Parser = struct {
         };
     }
     pub fn parseend_of_word(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defend_of_word);
+        const def_index = @backingInt(Def.defend_of_word);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5620,7 +5620,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_addrspace(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_addrspace);
+        const def_index = @backingInt(Def.defKEYWORD_addrspace);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5638,7 +5638,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_align(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_align);
+        const def_index = @backingInt(Def.defKEYWORD_align);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5656,7 +5656,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_allowzero(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_allowzero);
+        const def_index = @backingInt(Def.defKEYWORD_allowzero);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5674,7 +5674,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_and(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_and);
+        const def_index = @backingInt(Def.defKEYWORD_and);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5692,7 +5692,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_anyframe(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_anyframe);
+        const def_index = @backingInt(Def.defKEYWORD_anyframe);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5710,7 +5710,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_anytype(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_anytype);
+        const def_index = @backingInt(Def.defKEYWORD_anytype);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5728,7 +5728,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_asm(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_asm);
+        const def_index = @backingInt(Def.defKEYWORD_asm);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5746,7 +5746,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_break(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_break);
+        const def_index = @backingInt(Def.defKEYWORD_break);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5764,7 +5764,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_callconv(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_callconv);
+        const def_index = @backingInt(Def.defKEYWORD_callconv);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5782,7 +5782,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_catch(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_catch);
+        const def_index = @backingInt(Def.defKEYWORD_catch);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5800,7 +5800,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_comptime(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_comptime);
+        const def_index = @backingInt(Def.defKEYWORD_comptime);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5818,7 +5818,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_const(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_const);
+        const def_index = @backingInt(Def.defKEYWORD_const);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5836,7 +5836,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_continue(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_continue);
+        const def_index = @backingInt(Def.defKEYWORD_continue);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5854,7 +5854,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_defer(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_defer);
+        const def_index = @backingInt(Def.defKEYWORD_defer);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5872,7 +5872,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_else(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_else);
+        const def_index = @backingInt(Def.defKEYWORD_else);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5890,7 +5890,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_enum(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_enum);
+        const def_index = @backingInt(Def.defKEYWORD_enum);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5908,7 +5908,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_errdefer(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_errdefer);
+        const def_index = @backingInt(Def.defKEYWORD_errdefer);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5926,7 +5926,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_error(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_error);
+        const def_index = @backingInt(Def.defKEYWORD_error);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5944,7 +5944,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_export(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_export);
+        const def_index = @backingInt(Def.defKEYWORD_export);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5962,7 +5962,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_extern(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_extern);
+        const def_index = @backingInt(Def.defKEYWORD_extern);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5980,7 +5980,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_fn(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_fn);
+        const def_index = @backingInt(Def.defKEYWORD_fn);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -5998,7 +5998,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_for(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_for);
+        const def_index = @backingInt(Def.defKEYWORD_for);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6016,7 +6016,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_if(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_if);
+        const def_index = @backingInt(Def.defKEYWORD_if);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6034,7 +6034,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_inline(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_inline);
+        const def_index = @backingInt(Def.defKEYWORD_inline);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6052,7 +6052,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_noalias(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_noalias);
+        const def_index = @backingInt(Def.defKEYWORD_noalias);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6070,7 +6070,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_nosuspend(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_nosuspend);
+        const def_index = @backingInt(Def.defKEYWORD_nosuspend);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6088,7 +6088,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_noinline(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_noinline);
+        const def_index = @backingInt(Def.defKEYWORD_noinline);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6106,7 +6106,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_opaque(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_opaque);
+        const def_index = @backingInt(Def.defKEYWORD_opaque);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6124,7 +6124,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_or(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_or);
+        const def_index = @backingInt(Def.defKEYWORD_or);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6142,7 +6142,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_orelse(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_orelse);
+        const def_index = @backingInt(Def.defKEYWORD_orelse);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6160,7 +6160,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_packed(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_packed);
+        const def_index = @backingInt(Def.defKEYWORD_packed);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6178,7 +6178,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_pub(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_pub);
+        const def_index = @backingInt(Def.defKEYWORD_pub);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6196,7 +6196,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_resume(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_resume);
+        const def_index = @backingInt(Def.defKEYWORD_resume);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6214,7 +6214,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_return(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_return);
+        const def_index = @backingInt(Def.defKEYWORD_return);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6232,7 +6232,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_linksection(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_linksection);
+        const def_index = @backingInt(Def.defKEYWORD_linksection);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6250,7 +6250,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_struct(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_struct);
+        const def_index = @backingInt(Def.defKEYWORD_struct);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6268,7 +6268,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_suspend(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_suspend);
+        const def_index = @backingInt(Def.defKEYWORD_suspend);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6286,7 +6286,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_switch(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_switch);
+        const def_index = @backingInt(Def.defKEYWORD_switch);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6304,7 +6304,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_test(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_test);
+        const def_index = @backingInt(Def.defKEYWORD_test);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6322,7 +6322,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_threadlocal(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_threadlocal);
+        const def_index = @backingInt(Def.defKEYWORD_threadlocal);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6340,7 +6340,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_try(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_try);
+        const def_index = @backingInt(Def.defKEYWORD_try);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6358,7 +6358,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_union(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_union);
+        const def_index = @backingInt(Def.defKEYWORD_union);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6376,7 +6376,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_unreachable(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_unreachable);
+        const def_index = @backingInt(Def.defKEYWORD_unreachable);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6394,7 +6394,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_var(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_var);
+        const def_index = @backingInt(Def.defKEYWORD_var);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6412,7 +6412,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_volatile(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_volatile);
+        const def_index = @backingInt(Def.defKEYWORD_volatile);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6430,7 +6430,7 @@ const Parser = struct {
         };
     }
     pub fn parseKEYWORD_while(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defKEYWORD_while);
+        const def_index = @backingInt(Def.defKEYWORD_while);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;
@@ -6448,7 +6448,7 @@ const Parser = struct {
         };
     }
     pub fn parsekeyword(p: *Parser) Error!bool {
-        const def_index = @intFromEnum(Def.defkeyword);
+        const def_index = @backingInt(Def.defkeyword);
         if (p.depths[def_index] > max_depth) return error.MaxDepth;
         p.depths[def_index] += 1;
         defer p.depths[def_index] -= 1;

@@ -523,7 +523,7 @@ pub const Instruction = union(Lir.Format) {
     }
 
     pub fn fromLir(lir: Lir, ops: []const Operand) Instruction {
-        const opcode: u7 = @intFromEnum(lir.opcode);
+        const opcode: u7 = @backingInt(lir.opcode);
 
         switch (lir.format) {
             .R => {
@@ -545,26 +545,26 @@ pub const Instruction = union(Lir.Format) {
 
                             .opcode = opcode,
                             .funct3 = fmt.rm,
-                            .funct7 = (@as(u7, fmt.funct5) << 2) | @intFromEnum(fmt.fmt),
+                            .funct7 = (@as(u7, fmt.funct5) << 2) | @backingInt(fmt.fmt),
                         },
                         .fcvt => |fcvt| .{
                             .rd = ops[0].reg.encodeId(),
                             .rs1 = ops[1].reg.encodeId(),
-                            .rs2 = @intFromEnum(fcvt.width),
+                            .rs2 = @backingInt(fcvt.width),
 
                             .opcode = opcode,
                             .funct3 = fcvt.rm,
-                            .funct7 = (@as(u7, fcvt.funct5) << 2) | @intFromEnum(fcvt.fmt),
+                            .funct7 = (@as(u7, fcvt.funct5) << 2) | @backingInt(fcvt.fmt),
                         },
                         .vecls => |vec| .{
                             .rd = ops[0].reg.encodeId(),
                             .rs1 = ops[1].reg.encodeId(),
 
-                            .rs2 = @intFromEnum(vec.umop),
+                            .rs2 = @backingInt(vec.umop),
 
                             .opcode = opcode,
-                            .funct3 = @intFromEnum(vec.width),
-                            .funct7 = (@as(u7, vec.nf) << 4) | (@as(u7, @intFromBool(vec.mew)) << 3) | (@as(u7, @intFromEnum(vec.mop)) << 1) | @intFromBool(vec.vm),
+                            .funct3 = @backingInt(vec.width),
+                            .funct7 = (@as(u7, vec.nf) << 4) | (@as(u7, @intFromBool(vec.mew)) << 3) | (@as(u7, @backingInt(vec.mop)) << 1) | @intFromBool(vec.vm),
                         },
                         .vecmath => |vec| .{
                             .rd = ops[0].reg.encodeId(),
@@ -572,7 +572,7 @@ pub const Instruction = union(Lir.Format) {
                             .rs2 = ops[2].reg.encodeId(),
 
                             .opcode = opcode,
-                            .funct3 = @intFromEnum(vec.funct3),
+                            .funct3 = @backingInt(vec.funct3),
                             .funct7 = (@as(u7, vec.funct6) << 1) | @intFromBool(vec.vm),
                         },
                         .amo => |amo| .{
@@ -581,7 +581,7 @@ pub const Instruction = union(Lir.Format) {
                             .rs2 = ops[2].reg.encodeId(),
 
                             .opcode = opcode,
-                            .funct3 = @intFromEnum(amo.width),
+                            .funct3 = @backingInt(amo.width),
                             .funct7 = @as(u7, amo.funct5) << 2 |
                                 @as(u7, @intFromBool(ops[3].barrier == .rl)) << 1 |
                                 @as(u7, @intFromBool(ops[4].barrier == .aq)),
@@ -629,9 +629,9 @@ pub const Instruction = union(Lir.Format) {
                             .rd = 0,
                             .rs1 = 0,
                             .funct3 = 0,
-                            .imm0_11 = (@as(u12, @intFromEnum(fence.fm)) << 8) |
-                                (@as(u12, @intFromEnum(ops[1].barrier)) << 4) |
-                                @as(u12, @intFromEnum(ops[0].barrier)),
+                            .imm0_11 = (@as(u12, @backingInt(fence.fm)) << 8) |
+                                (@as(u12, @backingInt(ops[1].barrier)) << 4) |
+                                @as(u12, @backingInt(ops[0].barrier)),
                             .opcode = opcode,
                         },
                         else => unreachable,

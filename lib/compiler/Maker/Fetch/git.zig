@@ -1107,7 +1107,7 @@ pub const Session = struct {
                         return error.ReadFailed;
                     }) {
                         .flush => return error.EndOfStream,
-                        .data => |data| switch (@as(StreamCode, @enumFromInt(data[0]))) {
+                        .data => |data| switch (@as(StreamCode, @fromBackingInt(@intCast(data[0])))) {
                             .pack_data => {
                                 input.toss(1);
                                 fs.remaining_len = data.len - 1;

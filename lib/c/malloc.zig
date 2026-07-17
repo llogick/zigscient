@@ -183,8 +183,8 @@ fn memalign(alloc_alignment: usize, n: usize) callconv(.c) ?[*]align(alignment_b
 }
 
 fn posix_memalign(result: *?[*]align(alignment_bytes) u8, alloc_alignment: usize, n: usize) callconv(.c) c_int {
-    if (alloc_alignment < @sizeOf(*anyopaque)) return @intFromEnum(std.c.E.INVAL);
-    result.* = aligned_alloc_inner(alloc_alignment, n) orelse return @intFromEnum(std.c.E.NOMEM);
+    if (alloc_alignment < @sizeOf(*anyopaque)) return @backingInt(std.c.E.INVAL);
+    result.* = aligned_alloc_inner(alloc_alignment, n) orelse return @backingInt(std.c.E.NOMEM);
     return 0;
 }
 
@@ -192,6 +192,6 @@ fn posix_memalign(result: *?[*]align(alignment_bytes) u8, alloc_alignment: usize
 /// `null`.
 fn nomem() ?[*]align(alignment_bytes) u8 {
     @branchHint(.cold);
-    std.c._errno().* = @intFromEnum(std.c.E.NOMEM);
+    std.c._errno().* = @backingInt(std.c.E.NOMEM);
     return null;
 }

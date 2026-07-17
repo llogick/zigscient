@@ -1873,7 +1873,7 @@ test "runtime call in nested initializer" {
         B,
 
         fn letter(e: @This()) u8 {
-            return @intFromEnum(e);
+            return @backingInt(e);
         }
     };
 

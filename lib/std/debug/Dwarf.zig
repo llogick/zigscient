@@ -323,7 +323,7 @@ const Func = struct {
 };
 
 pub fn section(di: Dwarf, dwarf_section: Section.Id) ?[]const u8 {
-    return if (di.sections[@intFromEnum(dwarf_section)]) |s| s.data else null;
+    return if (di.sections[@backingInt(dwarf_section)]) |s| s.data else null;
 }
 
 pub fn deinit(di: *Dwarf, gpa: Allocator) void {

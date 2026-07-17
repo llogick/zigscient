@@ -52,7 +52,7 @@ pub fn __unordtf2(a: f128, b: f128) callconv(.c) i32 {
 /// Note that this matches the definition of `__lesf2`, `__eqsf2`, `__nesf2`, `__cmpsf2`,
 /// and `__ltsf2`.
 fn __cmpsf2(a: f32, b: f32) callconv(.c) i32 {
-    return @intFromEnum(cmpf2(f32, LE, a, b));
+    return @backingInt(cmpf2(f32, LE, a, b));
 }
 
 /// "These functions return a value less than or equal to zero if neither argument is NaN,
@@ -100,7 +100,7 @@ fn __aeabi_fcmple(a: f32, b: f32) callconv(.{ .arm_aapcs = .{} }) i32 {
 /// Note that this matches the definition of `__lehf2`, `__eqhf2`, `__nehf2`, `__cmphf2`,
 /// and `__lthf2`.
 fn __cmphf2(a: f16, b: f16) callconv(.c) i32 {
-    return @intFromEnum(cmpf2(f16, LE, a, b));
+    return @backingInt(cmpf2(f16, LE, a, b));
 }
 
 /// "These functions return a value less than or equal to zero if neither argument is NaN,

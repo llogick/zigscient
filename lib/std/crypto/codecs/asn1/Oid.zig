@@ -191,7 +191,7 @@ pub fn StaticMap(comptime Enum: type) type {
                     @compileError("Field '" ++ f_name ++ "' missing Oid.StaticMap entry");
                 }
                 const encoded = &encodeComptime(@field(key_pairs, f_name));
-                const tag: Enum = @enumFromInt(f_value);
+                const tag: Enum = @fromBackingInt(@intCast(f_value));
                 static_key_pairs[i] = .{ encoded, tag };
                 enum_to_oid.set(tag, encoded);
             };

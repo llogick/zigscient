@@ -421,7 +421,7 @@ pub const Path = struct {
     /// The added data is relocatable across any compiler process using the same lib and cache
     /// directories; it does not depend on cwd.
     pub fn addToHasher(p: Path, h: *Cache.Hasher) void {
-        h.update(&.{@intFromEnum(p.root)});
+        h.update(&.{@backingInt(p.root)});
         h.update(p.sub_path);
     }
 
@@ -846,7 +846,7 @@ pub const CObject = struct {
 
         pub fn addToErrorBundle(diag: *const Diag, io: Io, eb: *ErrorBundle.Wip, bundle: Bundle, note: *u32) !void {
             const err_msg = try eb.addErrorMessage(try diag.toErrorMessage(io, eb, bundle, 0));
-            eb.extra.items[note.*] = @intFromEnum(err_msg);
+            eb.extra.items[note.*] = @backingInt(err_msg);
             note.* += 1;
             for (diag.sub_diags) |sub_diag| try sub_diag.addToErrorBundle(io, eb, bundle, note);
         }
@@ -979,12 +979,12 @@ pub const CObject = struct {
 
                 try bc.checkMagic("DIAG");
                 while (try bc.next()) |item| switch (item) {
-                    .start_block => |block| switch (@as(BlockId, @enumFromInt(block.id))) {
+                    .start_block => |block| switch (@as(BlockId, @fromBackingInt(@intCast(block.id)))) {
                         .Meta => if (stack.items.len > 0) try bc.skipBlock(block),
                         .Diag => try stack.append(gpa, .{}),
                         _ => try bc.skipBlock(block),
                     },
-                    .record => |record| switch (@as(RecordId, @enumFromInt(record.id))) {
+                    .record => |record| switch (@as(RecordId, @fromBackingInt(@intCast(record.id)))) {
                         .Version => if (record.operands[0] != 2) return error.InvalidVersion,
                         .DiagInfo => {
                             const top = &stack.items[stack.items.len - 1];
@@ -1030,7 +1030,7 @@ pub const CObject = struct {
                         .FixIt => {},
                         _ => {},
                     },
-                    .end_block => |block| switch (@as(BlockId, @enumFromInt(block.id))) {
+                    .end_block => |block| switch (@as(BlockId, @fromBackingInt(@intCast(block.id)))) {
                         .Meta => {},
                         .Diag => {
                             try stack.items[stack.items.len - 2].sub_diags.ensureUnusedCapacity(gpa, 1);
@@ -2407,26 +2407,26 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                     if (!std.zig.target.canBuildLibC(target)) return diag.fail(.cross_libc_unavailable);
 
                     if (musl.needsCrt0(comp.config.output_mode, comp.config.link_mode, comp.config.pie)) |f| {
-                        comp.queued_jobs.musl_crt_file[@intFromEnum(f)] = true;
+                        comp.queued_jobs.musl_crt_file[@backingInt(f)] = true;
                     }
                     switch (comp.config.link_mode) {
-                        .static => comp.queued_jobs.musl_crt_file[@intFromEnum(musl.CrtFile.libc_a)] = true,
-                        .dynamic => comp.queued_jobs.musl_crt_file[@intFromEnum(musl.CrtFile.libc_so)] = true,
+                        .static => comp.queued_jobs.musl_crt_file[@backingInt(musl.CrtFile.libc_a)] = true,
+                        .dynamic => comp.queued_jobs.musl_crt_file[@backingInt(musl.CrtFile.libc_so)] = true,
                     }
                 } else if (target.isGnuLibC()) {
                     if (!std.zig.target.canBuildLibC(target)) return diag.fail(.cross_libc_unavailable);
 
                     if (glibc.needsCrt0(comp.config.output_mode)) |f| {
-                        comp.queued_jobs.glibc_crt_file[@intFromEnum(f)] = true;
+                        comp.queued_jobs.glibc_crt_file[@backingInt(f)] = true;
                     }
                     comp.queued_jobs.glibc_shared_objects = true;
 
-                    comp.queued_jobs.glibc_crt_file[@intFromEnum(glibc.CrtFile.libc_nonshared_a)] = true;
+                    comp.queued_jobs.glibc_crt_file[@backingInt(glibc.CrtFile.libc_nonshared_a)] = true;
                 } else if (target.isFreeBSDLibC()) {
                     if (!std.zig.target.canBuildLibC(target)) return diag.fail(.cross_libc_unavailable);
 
                     if (freebsd.needsCrt0(comp.config.output_mode)) |f| {
-                        comp.queued_jobs.freebsd_crt_file[@intFromEnum(f)] = true;
+                        comp.queued_jobs.freebsd_crt_file[@backingInt(f)] = true;
                     }
 
                     comp.queued_jobs.freebsd_shared_objects = true;
@@ -2434,7 +2434,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                     if (!std.zig.target.canBuildLibC(target)) return diag.fail(.cross_libc_unavailable);
 
                     if (netbsd.needsCrt0(comp.config.output_mode)) |f| {
-                        comp.queued_jobs.netbsd_crt_file[@intFromEnum(f)] = true;
+                        comp.queued_jobs.netbsd_crt_file[@backingInt(f)] = true;
                     }
 
                     comp.queued_jobs.netbsd_shared_objects = true;
@@ -2442,21 +2442,21 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                     if (!std.zig.target.canBuildLibC(target)) return diag.fail(.cross_libc_unavailable);
 
                     if (openbsd.needsCrt0(comp.config.output_mode)) |f| {
-                        comp.queued_jobs.openbsd_crt_file[@intFromEnum(f)] = true;
+                        comp.queued_jobs.openbsd_crt_file[@backingInt(f)] = true;
                     }
 
                     comp.queued_jobs.openbsd_shared_objects = true;
                 } else if (target.isWasiLibC()) {
                     if (!std.zig.target.canBuildLibC(target)) return diag.fail(.cross_libc_unavailable);
 
-                    comp.queued_jobs.wasi_libc_crt_file[@intFromEnum(wasi_libc.execModelCrtFile(comp.config.wasi_exec_model))] = true;
-                    comp.queued_jobs.wasi_libc_crt_file[@intFromEnum(wasi_libc.CrtFile.libc_a)] = true;
+                    comp.queued_jobs.wasi_libc_crt_file[@backingInt(wasi_libc.execModelCrtFile(comp.config.wasi_exec_model))] = true;
+                    comp.queued_jobs.wasi_libc_crt_file[@backingInt(wasi_libc.CrtFile.libc_a)] = true;
                 } else if (target.isMinGW()) {
                     if (!std.zig.target.canBuildLibC(target)) return diag.fail(.cross_libc_unavailable);
 
                     const main_crt_file: mingw.CrtFile = if (is_dyn_lib) .dllcrt2_o else .crt2_o;
-                    comp.queued_jobs.mingw_crt_file[@intFromEnum(main_crt_file)] = true;
-                    comp.queued_jobs.mingw_crt_file[@intFromEnum(mingw.CrtFile.libmingw32_lib)] = true;
+                    comp.queued_jobs.mingw_crt_file[@backingInt(main_crt_file)] = true;
+                    comp.queued_jobs.mingw_crt_file[@backingInt(mingw.CrtFile.libmingw32_lib)] = true;
 
                     // When linking mingw-w64 there are some import libs we always need.
                     try comp.windows_libs.ensureUnusedCapacity(gpa, mingw.always_link_libs.len);
@@ -3789,7 +3789,7 @@ pub fn getAllErrorsAlloc(comp: *Compilation) error{OutOfMemory}!ErrorBundle {
         });
         const notes_start = try bundle.reserveNotes(notes_len);
         for (notes_start.., lld_error.context_lines) |note, context_line| {
-            bundle.extra.items[note] = @intFromEnum(bundle.addErrorMessageAssumeCapacity(.{
+            bundle.extra.items[note] = @backingInt(bundle.addErrorMessageAssumeCapacity(.{
                 .msg = try bundle.addString(context_line),
             }));
         }
@@ -3851,7 +3851,7 @@ pub fn getAllErrorsAlloc(comp: *Compilation) error{OutOfMemory}!ErrorBundle {
             pub fn lessThan(ctx: @This(), lhs_index: usize, rhs_index: usize) bool {
                 const lhs_path = ctx.zcu.fileByIndex(ctx.failed_files_keys[lhs_index]).path;
                 const rhs_path = ctx.zcu.fileByIndex(ctx.failed_files_keys[rhs_index]).path;
-                if (lhs_path.root != rhs_path.root) return @intFromEnum(lhs_path.root) < @intFromEnum(rhs_path.root);
+                if (lhs_path.root != rhs_path.root) return @backingInt(lhs_path.root) < @backingInt(rhs_path.root);
                 return std.mem.order(u8, lhs_path.sub_path, rhs_path.sub_path).compare(.lt);
             }
         };
@@ -3952,7 +3952,7 @@ pub fn getAllErrorsAlloc(comp: *Compilation) error{OutOfMemory}!ErrorBundle {
                 .notes_len = 1,
             });
             const notes_start = try bundle.reserveNotes(1);
-            bundle.extra.items[notes_start] = @intFromEnum(bundle.addErrorMessageAssumeCapacity(.{
+            bundle.extra.items[notes_start] = @backingInt(bundle.addErrorMessageAssumeCapacity(.{
                 .msg = try bundle.printString("use '--error-limit {d}' to increase limit", .{
                     actual_error_count,
                 }),
@@ -3974,10 +3974,10 @@ pub fn getAllErrorsAlloc(comp: *Compilation) error{OutOfMemory}!ErrorBundle {
             .notes_len = 2,
         });
         const notes_start = try bundle.reserveNotes(2);
-        bundle.extra.items[notes_start + 0] = @intFromEnum(bundle.addErrorMessageAssumeCapacity(.{
+        bundle.extra.items[notes_start + 0] = @backingInt(bundle.addErrorMessageAssumeCapacity(.{
             .msg = try bundle.addString("run 'zig libc -h' to learn about libc installations"),
         }));
-        bundle.extra.items[notes_start + 1] = @intFromEnum(bundle.addErrorMessageAssumeCapacity(.{
+        bundle.extra.items[notes_start + 1] = @backingInt(bundle.addErrorMessageAssumeCapacity(.{
             .msg = try bundle.addString("run 'zig targets' to see the targets for which zig can always provide libc"),
         }));
     }
@@ -4235,7 +4235,7 @@ pub fn addModuleErrorMsg(
     const notes_start = try eb.reserveNotes(notes_len);
 
     for (notes_start.., notes.keys()) |i, note| {
-        eb.extra.items[i] = @intFromEnum(eb.addErrorMessageAssumeCapacity(note));
+        eb.extra.items[i] = @backingInt(eb.addErrorMessageAssumeCapacity(note));
     }
 }
 
@@ -4268,7 +4268,7 @@ fn addWholeFileError(
     });
     if (imported_note) |n| {
         const note_idx = try eb.reserveNotes(1);
-        eb.extra.items[note_idx] = @intFromEnum(n);
+        eb.extra.items[note_idx] = @backingInt(n);
     }
 }
 
@@ -4491,49 +4491,49 @@ fn dispatchPrelinkWork(comp: *Compilation, main_progress_node: std.Progress.Node
 
     for (0..@typeInfo(musl.CrtFile).@"enum".field_names.len) |i| {
         if (comp.queued_jobs.musl_crt_file[i]) {
-            const tag: musl.CrtFile = @enumFromInt(i);
+            const tag: musl.CrtFile = @fromBackingInt(@intCast(i));
             prelink_group.async(io, buildMuslCrtFile, .{ comp, tag, main_progress_node });
         }
     }
 
     for (0..@typeInfo(glibc.CrtFile).@"enum".field_names.len) |i| {
         if (comp.queued_jobs.glibc_crt_file[i]) {
-            const tag: glibc.CrtFile = @enumFromInt(i);
+            const tag: glibc.CrtFile = @fromBackingInt(@intCast(i));
             prelink_group.async(io, buildGlibcCrtFile, .{ comp, tag, main_progress_node });
         }
     }
 
     for (0..@typeInfo(freebsd.CrtFile).@"enum".field_names.len) |i| {
         if (comp.queued_jobs.freebsd_crt_file[i]) {
-            const tag: freebsd.CrtFile = @enumFromInt(i);
+            const tag: freebsd.CrtFile = @fromBackingInt(@intCast(i));
             prelink_group.async(io, buildFreeBSDCrtFile, .{ comp, tag, main_progress_node });
         }
     }
 
     for (0..@typeInfo(netbsd.CrtFile).@"enum".field_names.len) |i| {
         if (comp.queued_jobs.netbsd_crt_file[i]) {
-            const tag: netbsd.CrtFile = @enumFromInt(i);
+            const tag: netbsd.CrtFile = @fromBackingInt(@intCast(i));
             prelink_group.async(io, buildNetBSDCrtFile, .{ comp, tag, main_progress_node });
         }
     }
 
     for (0..@typeInfo(openbsd.CrtFile).@"enum".field_names.len) |i| {
         if (comp.queued_jobs.openbsd_crt_file[i]) {
-            const tag: openbsd.CrtFile = @enumFromInt(i);
+            const tag: openbsd.CrtFile = @fromBackingInt(@intCast(i));
             prelink_group.async(io, buildOpenBSDCrtFile, .{ comp, tag, main_progress_node });
         }
     }
 
     for (0..@typeInfo(wasi_libc.CrtFile).@"enum".field_names.len) |i| {
         if (comp.queued_jobs.wasi_libc_crt_file[i]) {
-            const tag: wasi_libc.CrtFile = @enumFromInt(i);
+            const tag: wasi_libc.CrtFile = @fromBackingInt(@intCast(i));
             prelink_group.async(io, buildWasiLibcCrtFile, .{ comp, tag, main_progress_node });
         }
     }
 
     for (0..@typeInfo(mingw.CrtFile).@"enum".field_names.len) |i| {
         if (comp.queued_jobs.mingw_crt_file[i]) {
-            const tag: mingw.CrtFile = @enumFromInt(i);
+            const tag: mingw.CrtFile = @fromBackingInt(@intCast(i));
             prelink_group.async(io, buildMingwCrtFile, .{ comp, tag, main_progress_node });
         }
     }
@@ -5136,7 +5136,7 @@ fn buildRt(
 
 fn buildMuslCrtFile(comp: *Compilation, crt_file: musl.CrtFile, prog_node: std.Progress.Node) void {
     if (musl.buildCrtFile(comp, crt_file, prog_node)) |_| {
-        comp.queued_jobs.musl_crt_file[@intFromEnum(crt_file)] = false;
+        comp.queued_jobs.musl_crt_file[@backingInt(crt_file)] = false;
     } else |err| switch (err) {
         error.AlreadyReported => return,
         else => comp.lockAndSetMiscFailure(.musl_crt_file, "unable to build musl {s}: {s}", .{
@@ -5147,7 +5147,7 @@ fn buildMuslCrtFile(comp: *Compilation, crt_file: musl.CrtFile, prog_node: std.P
 
 fn buildGlibcCrtFile(comp: *Compilation, crt_file: glibc.CrtFile, prog_node: std.Progress.Node) void {
     if (glibc.buildCrtFile(comp, crt_file, prog_node)) |_| {
-        comp.queued_jobs.glibc_crt_file[@intFromEnum(crt_file)] = false;
+        comp.queued_jobs.glibc_crt_file[@backingInt(crt_file)] = false;
     } else |err| switch (err) {
         error.AlreadyReported => return,
         else => comp.lockAndSetMiscFailure(.glibc_crt_file, "unable to build glibc {s}: {s}", .{
@@ -5168,7 +5168,7 @@ fn buildGlibcSharedObjects(comp: *Compilation, prog_node: std.Progress.Node) voi
 
 fn buildFreeBSDCrtFile(comp: *Compilation, crt_file: freebsd.CrtFile, prog_node: std.Progress.Node) void {
     if (freebsd.buildCrtFile(comp, crt_file, prog_node)) |_| {
-        comp.queued_jobs.freebsd_crt_file[@intFromEnum(crt_file)] = false;
+        comp.queued_jobs.freebsd_crt_file[@backingInt(crt_file)] = false;
     } else |err| switch (err) {
         error.AlreadyReported => return,
         else => comp.lockAndSetMiscFailure(.freebsd_crt_file, "unable to build FreeBSD {s}: {s}", .{
@@ -5191,7 +5191,7 @@ fn buildFreeBSDSharedObjects(comp: *Compilation, prog_node: std.Progress.Node) v
 
 fn buildNetBSDCrtFile(comp: *Compilation, crt_file: netbsd.CrtFile, prog_node: std.Progress.Node) void {
     if (netbsd.buildCrtFile(comp, crt_file, prog_node)) |_| {
-        comp.queued_jobs.netbsd_crt_file[@intFromEnum(crt_file)] = false;
+        comp.queued_jobs.netbsd_crt_file[@backingInt(crt_file)] = false;
     } else |err| switch (err) {
         error.AlreadyReported => return,
         else => comp.lockAndSetMiscFailure(.netbsd_crt_file, "unable to build NetBSD {s}: {s}", .{
@@ -5214,7 +5214,7 @@ fn buildNetBSDSharedObjects(comp: *Compilation, prog_node: std.Progress.Node) vo
 
 fn buildOpenBSDCrtFile(comp: *Compilation, crt_file: openbsd.CrtFile, prog_node: std.Progress.Node) void {
     if (openbsd.buildCrtFile(comp, crt_file, prog_node)) |_| {
-        comp.queued_jobs.openbsd_crt_file[@intFromEnum(crt_file)] = false;
+        comp.queued_jobs.openbsd_crt_file[@backingInt(crt_file)] = false;
     } else |err| switch (err) {
         error.AlreadyReported => return,
         else => comp.lockAndSetMiscFailure(.openbsd_crt_file, "unable to build OpenBSD {s}: {s}", .{
@@ -5237,7 +5237,7 @@ fn buildOpenBSDSharedObjects(comp: *Compilation, prog_node: std.Progress.Node) v
 
 fn buildMingwCrtFile(comp: *Compilation, crt_file: mingw.CrtFile, prog_node: std.Progress.Node) void {
     if (mingw.buildCrtFile(comp, crt_file, prog_node)) |_| {
-        comp.queued_jobs.mingw_crt_file[@intFromEnum(crt_file)] = false;
+        comp.queued_jobs.mingw_crt_file[@backingInt(crt_file)] = false;
     } else |err| switch (err) {
         error.AlreadyReported => return,
         else => comp.lockAndSetMiscFailure(.mingw_crt_file, "unable to build mingw-w64 {s}: {s}", .{
@@ -5282,7 +5282,7 @@ fn buildMingwImportLib(comp: *Compilation, lib_name: []const u8, is_prelink: boo
 
 fn buildWasiLibcCrtFile(comp: *Compilation, crt_file: wasi_libc.CrtFile, prog_node: std.Progress.Node) void {
     if (wasi_libc.buildCrtFile(comp, crt_file, prog_node)) |_| {
-        comp.queued_jobs.wasi_libc_crt_file[@intFromEnum(crt_file)] = false;
+        comp.queued_jobs.wasi_libc_crt_file[@backingInt(crt_file)] = false;
     } else |err| switch (err) {
         error.AlreadyReported => return,
         else => comp.lockAndSetMiscFailure(.wasi_libc_crt_file, "unable to build WASI libc {s}: {s}", .{
@@ -6223,7 +6223,7 @@ fn addCommonCCArgs(
                 } else if (target.isMinGW()) {
                     try argv.append("-D__MSVCRT_VERSION__=0xE00"); // use ucrt
 
-                    const minver: u16 = @truncate(@intFromEnum(target.os.versionRange().windows.min) >> 16);
+                    const minver: u16 = @truncate(@backingInt(target.os.versionRange().windows.min) >> 16);
                     try argv.append(
                         try std.fmt.allocPrint(arena, "-D_WIN32_WINNT=0x{x:0>4}", .{minver}),
                     );

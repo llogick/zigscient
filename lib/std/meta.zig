@@ -253,7 +253,7 @@ pub fn fieldInfo(comptime T: type, comptime field: FieldEnum(T)) switch (@typeIn
     .error_set => struct { name: [:0]const u8 },
     else => @compileError("Expected struct, union, error set or enum type, found '" ++ @typeName(T) ++ "'"),
 } {
-    const idx = @intFromEnum(field);
+    const idx = @backingInt(field);
     return switch (@typeInfo(T)) {
         .@"struct" => |info| .{
             .name = info.field_names[idx],
@@ -399,7 +399,7 @@ pub fn FieldEnum(comptime T: type) type {
     switch (@typeInfo(T)) {
         .@"union" => |@"union"| if (@"union".tag_type) |EnumTag| {
             for (std.enums.values(EnumTag), 0..) |v, i| {
-                if (@intFromEnum(v) != i) break; // enum values not consecutive
+                if (@backingInt(v) != i) break; // enum values not consecutive
                 if (!std.mem.eql(u8, @tagName(v), field_names[i])) break; // fields out of order
             } else {
                 return EnumTag;

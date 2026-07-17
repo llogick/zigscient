@@ -117,7 +117,7 @@ pub fn StaticStringMapWithEql(
 
                 var sorted_keys: [field_names.len][]const u8 = field_names[0..field_names.len].*;
                 var sorted_vals: [field_names.len]V = undefined;
-                for (&sorted_vals, @typeInfo(V).@"enum".field_values) |*x, i| x.* = @enumFromInt(i);
+                for (&sorted_vals, @typeInfo(V).@"enum".field_values) |*x, i| x.* = @fromBackingInt(@intCast(i));
 
                 for (field_names) |field_name| {
                     self.min_len = @min(self.min_len, field_name.len);

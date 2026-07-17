@@ -793,7 +793,7 @@ fn lowerNavRef(
                     @panic("TODO add out_reloc for this");
                 } else {
                     try wasm.func_table_fixups.append(gpa, .{
-                        .table_index = @enumFromInt(gop.index),
+                        .table_index = @fromBackingInt(@intCast(gop.index)),
                         .offset = @intCast(w.end),
                     });
                 }
@@ -855,7 +855,7 @@ pub fn genNavRef(
             .internal => {
                 const sym_index = try zo.getOrCreateMetadataForNav(zcu, nav_index);
                 if (is_threadlocal) zo.symbol(sym_index).flags.is_tls = true;
-                return @enumFromInt(sym_index);
+                return @fromBackingInt(@intCast(sym_index));
             },
             .strong, .weak => {
                 const sym_index = try elf_file.getGlobalSymbol(nav.name.toSlice(ip), lib_name.toSlice(ip));
@@ -866,7 +866,7 @@ pub fn genNavRef(
                     .link_once => unreachable,
                 }
                 if (is_threadlocal) zo.symbol(sym_index).flags.is_tls = true;
-                return @enumFromInt(sym_index);
+                return @fromBackingInt(@intCast(sym_index));
             },
             .link_once => unreachable,
         }
@@ -878,7 +878,7 @@ pub fn genNavRef(
             .internal => {
                 const sym_index = try zo.getOrCreateMetadataForNav(macho_file, nav_index);
                 if (is_threadlocal) zo.symbols.items[sym_index].flags.tlv = true;
-                return @enumFromInt(sym_index);
+                return @fromBackingInt(@intCast(sym_index));
             },
             .strong, .weak => {
                 const sym_index = try macho_file.getGlobalSymbol(nav.name.toSlice(ip), lib_name.toSlice(ip));
@@ -889,12 +889,12 @@ pub fn genNavRef(
                     .link_once => unreachable,
                 }
                 if (is_threadlocal) zo.symbols.items[sym_index].flags.tlv = true;
-                return @enumFromInt(sym_index);
+                return @fromBackingInt(@intCast(sym_index));
             },
             .link_once => unreachable,
         }
     } else if (lf.cast(.coff2)) |coff| {
-        return @enumFromInt(@intFromEnum(try coff.navSymbol(zcu, nav_index)));
+        return @fromBackingInt(@intCast(@backingInt(try coff.navSymbol(zcu, nav_index))));
     } else {
         std.debug.panic("TODO genNavRef for '{t}'", .{lf.tag});
     }

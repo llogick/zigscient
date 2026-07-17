@@ -826,7 +826,7 @@ fn runResource(
             .notes_len = notes_len,
         });
         const notes_start = try eb.reserveNotes(notes_len);
-        eb.extra.items[notes_start] = @intFromEnum(try eb.addErrorMessage(.{
+        eb.extra.items[notes_start] = @backingInt(try eb.addErrorMessage(.{
             .msg = try eb.printString("expected .hash = {q},", .{computed_package_hash.toSlice()}),
         }));
         return error.FetchFailed;
@@ -1297,7 +1297,7 @@ fn initResource(f: *Fetch, uri: std.Uri, resource: *Resource, reader_buffer: []u
                 .notes_len = notes_len,
             });
             const notes_start = try eb.reserveNotes(notes_len);
-            eb.extra.items[notes_start] = @intFromEnum(try eb.addErrorMessage(.{
+            eb.extra.items[notes_start] = @backingInt(try eb.addErrorMessage(.{
                 .msg = try eb.printString("try .url = \"{f}#{f}\",", .{
                     uri.fmt(.{ .scheme = true, .authority = true, .path = true }),
                     want_oid,
@@ -1472,7 +1472,7 @@ fn unpackTarball(f: *Fetch, out_dir: Io.Dir, reader: *Io.Reader) RunError!Unpack
             switch (item) {
                 .unable_to_create_file => |i| res.unableToCreateFile(stripRoot(i.file_name, res.root_dir), i.code),
                 .unable_to_create_sym_link => |i| res.unableToCreateSymLink(stripRoot(i.file_name, res.root_dir), i.link_name, i.code),
-                .unsupported_file_type => |i| res.unsupportedFileType(stripRoot(i.file_name, res.root_dir), @intFromEnum(i.file_type)),
+                .unsupported_file_type => |i| res.unsupportedFileType(stripRoot(i.file_name, res.root_dir), @backingInt(i.file_type)),
                 .components_outside_stripped_prefix => unreachable, // unreachable with strip_components = 0
             }
         }
@@ -2205,21 +2205,21 @@ const UnpackResult = struct {
             if (item.excluded(filter)) continue;
             switch (item) {
                 .unable_to_create_sym_link => |info| {
-                    eb.extra.items[note_i] = @intFromEnum(try eb.addErrorMessage(.{
+                    eb.extra.items[note_i] = @backingInt(try eb.addErrorMessage(.{
                         .msg = try eb.printString("unable to create symlink from '{s}' to '{s}': {s}", .{
                             info.file_name, info.link_name, @errorName(info.code),
                         }),
                     }));
                 },
                 .unable_to_create_file => |info| {
-                    eb.extra.items[note_i] = @intFromEnum(try eb.addErrorMessage(.{
+                    eb.extra.items[note_i] = @backingInt(try eb.addErrorMessage(.{
                         .msg = try eb.printString("unable to create file '{s}': {s}", .{
                             info.file_name, @errorName(info.code),
                         }),
                     }));
                 },
                 .unsupported_file_type => |info| {
-                    eb.extra.items[note_i] = @intFromEnum(try eb.addErrorMessage(.{
+                    eb.extra.items[note_i] = @backingInt(try eb.addErrorMessage(.{
                         .msg = try eb.printString("file '{s}' has unsupported type '{c}'", .{
                             info.file_name, info.file_type,
                         }),

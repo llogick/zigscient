@@ -248,8 +248,8 @@ pub fn list(t: *TokenSmith) TokenList.Slice {
         .capacity = t.tags_len,
     };
     comptime std.debug.assert(slice.ptrs.len == 2);
-    slice.ptrs[@intFromEnum(TokenList.Field.tag)] = @ptrCast(&t.tag_buf);
-    slice.ptrs[@intFromEnum(TokenList.Field.start)] = @ptrCast(&t.start_buf);
+    slice.ptrs[@backingInt(TokenList.Field.tag)] = @ptrCast(&t.tag_buf);
+    slice.ptrs[@backingInt(TokenList.Field.start)] = @ptrCast(&t.start_buf);
     return slice;
 }
 

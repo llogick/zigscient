@@ -32,12 +32,12 @@ pub const Alignment = enum(math.Log2Int(usize)) {
     _,
 
     pub fn toByteUnits(a: Alignment) usize {
-        return @as(usize, 1) << @intFromEnum(a);
+        return @as(usize, 1) << @backingInt(a);
     }
 
     pub fn fromByteUnits(n: usize) Alignment {
         assert(std.math.isPowerOfTwo(n));
-        return @enumFromInt(@ctz(n));
+        return @fromBackingInt(@intCast(@ctz(n)));
     }
 
     pub fn fromByteUnitsOptional(maybe_n: ?usize) ?Alignment {
@@ -49,36 +49,36 @@ pub const Alignment = enum(math.Log2Int(usize)) {
     }
 
     pub fn order(lhs: Alignment, rhs: Alignment) std.math.Order {
-        return std.math.order(@intFromEnum(lhs), @intFromEnum(rhs));
+        return std.math.order(@backingInt(lhs), @backingInt(rhs));
     }
 
     pub fn compare(lhs: Alignment, op: std.math.CompareOperator, rhs: Alignment) bool {
-        return std.math.compare(@intFromEnum(lhs), op, @intFromEnum(rhs));
+        return std.math.compare(@backingInt(lhs), op, @backingInt(rhs));
     }
 
     pub fn max(lhs: Alignment, rhs: Alignment) Alignment {
-        return @enumFromInt(@max(@intFromEnum(lhs), @intFromEnum(rhs)));
+        return @fromBackingInt(@intCast(@max(@backingInt(lhs), @backingInt(rhs))));
     }
 
     pub fn min(lhs: Alignment, rhs: Alignment) Alignment {
-        return @enumFromInt(@min(@intFromEnum(lhs), @intFromEnum(rhs)));
+        return @fromBackingInt(@intCast(@min(@backingInt(lhs), @backingInt(rhs))));
     }
 
     /// Return next address with this alignment.
     pub fn forward(a: Alignment, address: usize) usize {
-        const x = (@as(usize, 1) << @intFromEnum(a)) - 1;
+        const x = (@as(usize, 1) << @backingInt(a)) - 1;
         return (address + x) & ~x;
     }
 
     /// Return previous address with this alignment.
     pub fn backward(a: Alignment, address: usize) usize {
-        const x = (@as(usize, 1) << @intFromEnum(a)) - 1;
+        const x = (@as(usize, 1) << @backingInt(a)) - 1;
         return address & ~x;
     }
 
     /// Return whether address is aligned to this amount.
     pub fn check(a: Alignment, address: usize) bool {
-        return @ctz(address) >= @intFromEnum(a);
+        return @ctz(address) >= @backingInt(a);
     }
 };
 
@@ -280,7 +280,7 @@ pub fn zeroes(comptime T: type) T {
             return @as(T, 0);
         },
         .@"enum" => {
-            return @as(T, @enumFromInt(0));
+            return @as(T, @fromBackingInt(@intCast(0)));
         },
         .void => {
             return {};
@@ -2233,7 +2233,7 @@ pub fn byteSwapAllFieldsAligned(comptime S: type, comptime a: Alignment, ptr: *a
                     .@"struct" => byteSwapAllFieldsAligned(f_type, .fromByteUnits(f_attr.@"align" orelse @alignOf(f_type)), &@field(ptr, f_name)),
                     .@"union", .array => byteSwapAllFieldsAligned(f_type, .fromByteUnits(f_attr.@"align" orelse @alignOf(f_type)), &@field(ptr, f_name)),
                     .@"enum" => {
-                        @field(ptr, f_name) = @enumFromInt(@byteSwap(@intFromEnum(@field(ptr, f_name))));
+                        @field(ptr, f_name) = @fromBackingInt(@intCast(@byteSwap(@backingInt(@field(ptr, f_name)))));
                     },
                     .bool => {},
                     .float => |float| {
@@ -2364,7 +2364,7 @@ pub fn byteSwapAllElements(comptime Elem: type, slice: []Elem) void {
         switch (@typeInfo(@TypeOf(elem.*))) {
             .@"struct", .@"union", .array => byteSwapAllFields(@TypeOf(elem.*), elem),
             .@"enum" => {
-                elem.* = @enumFromInt(@byteSwap(@intFromEnum(elem.*)));
+                elem.* = @fromBackingInt(@intCast(@byteSwap(@backingInt(elem.*))));
             },
             .bool => {},
             .float => |float| {
@@ -4784,7 +4784,7 @@ pub fn doNotOptimizeAway(val: anytype) void {
     const t = @typeInfo(@TypeOf(val));
     switch (t) {
         .void, .null, .comptime_int, .comptime_float => return,
-        .@"enum" => doNotOptimizeAway(@intFromEnum(val)),
+        .@"enum" => doNotOptimizeAway(@backingInt(val)),
         .bool => doNotOptimizeAway(@intFromBool(val)),
         .int => {
             const bits = t.int.bits;

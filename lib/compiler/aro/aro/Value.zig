@@ -21,7 +21,7 @@ pub const @"null" = Value{ .opt_ref = .null };
 
 pub fn intern(comp: *Compilation, k: Interner.Key) !Value {
     const r = try comp.interner.put(comp.gpa, k);
-    return .{ .opt_ref = @enumFromInt(@intFromEnum(r)) };
+    return .{ .opt_ref = @fromBackingInt(@intCast(@backingInt(r))) };
 }
 
 pub fn int(i: anytype, comp: *Compilation) !Value {
@@ -39,11 +39,11 @@ pub fn pointer(r: Interner.Key.Pointer, comp: *Compilation) !Value {
 
 pub fn ref(v: Value) Interner.Ref {
     std.debug.assert(v.opt_ref != .none);
-    return @enumFromInt(@intFromEnum(v.opt_ref));
+    return @fromBackingInt(@intCast(@backingInt(v.opt_ref)));
 }
 
 pub fn fromRef(r: Interner.Ref) Value {
-    return .{ .opt_ref = @enumFromInt(@intFromEnum(r)) };
+    return .{ .opt_ref = @fromBackingInt(@intCast(@backingInt(r))) };
 }
 
 pub fn is(v: Value, tag: std.meta.Tag(Interner.Key), comp: *const Compilation) bool {
@@ -1114,8 +1114,8 @@ pub fn print(v: Value, qt: QualType, comp: *const Compilation, w: *std.Io.Writer
 }
 
 pub fn printString(bytes: []const u8, qt: QualType, comp: *const Compilation, w: *std.Io.Writer) std.Io.Writer.Error!void {
-    const size: Compilation.CharUnitSize = @enumFromInt(qt.childType(comp).sizeof(comp));
-    const without_null = bytes[0 .. bytes.len - @intFromEnum(size)];
+    const size: Compilation.CharUnitSize = @fromBackingInt(@intCast(qt.childType(comp).sizeof(comp)));
+    const without_null = bytes[0 .. bytes.len - @backingInt(size)];
     try w.writeByte('"');
     switch (size) {
         .@"1" => try std.zig.stringEscape(without_null, w),
