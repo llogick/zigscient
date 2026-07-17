@@ -144,29 +144,6 @@ jobs:
         run: sh ci/powerpc64le-linux-release.sh
         timeout-minutes: 240
 
-  riscv64-linux-debug:
-    if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, riscv64-linux]
-    steps:
-      - name: Checkout
-        uses: https://codeberg.org/ziglang/checkout@19af6bac491e2534a4687a50ee84fa7f13258d28
-        with:
-          fetch-depth: 0
-      - name: Build and Test
-        run: sh ci/riscv64-linux-debug.sh
-        timeout-minutes: 900
-  riscv64-linux-release:
-    if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, riscv64-linux]
-    steps:
-      - name: Checkout
-        uses: https://codeberg.org/ziglang/checkout@19af6bac491e2534a4687a50ee84fa7f13258d28
-        with:
-          fetch-depth: 0
-      - name: Build and Test
-        run: sh ci/riscv64-linux-release.sh
-        timeout-minutes: 600
-
   s390x-linux-debug:
     runs-on: [self-hosted, s390x-linux]
     steps:
