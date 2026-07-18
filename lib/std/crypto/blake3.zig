@@ -1004,7 +1004,10 @@ pub const Blake3 = struct {
             return hash(b, out, options);
         }
 
-        const cvs = try allocator.alloc([8]u32, num_full_chunks);
+        const remaining_bytes = b.len % chunk_length;
+        const num_leaves = @divCeil(b.len, chunk_length);
+
+        const cvs = try allocator.alloc([8]u32, num_leaves);
         defer allocator.free(cvs);
 
         // Process chunks in parallel
@@ -1028,8 +1031,16 @@ pub const Blake3 = struct {
         }
         try group.await(io);
 
+        if (remaining_bytes > 0) {
+            var chunk_state = ChunkState.init(key_words, flags);
+            chunk_state.chunk_counter = num_full_chunks;
+            chunk_state.update(b[num_full_chunks * chunk_length ..]);
+            const output = chunk_state.output();
+            cvs[num_full_chunks] = output.chainingValue();
+        }
+
         // Build Merkle tree in parallel layers using ping-pong buffers
-        const max_intermediate_size = (num_full_chunks + 1) / 2;
+        const max_intermediate_size = @divCeil(num_leaves, 2);
         const buffer0 = try allocator.alloc([8]u32, max_intermediate_size);
         defer allocator.free(buffer0);
         const buffer1 = try allocator.alloc([8]u32, max_intermediate_size);
@@ -1064,14 +1075,6 @@ pub const Blake3 = struct {
         // Finalize remaining small tree sequentially
         var hasher = init_internal(key_words, flags);
         for (current_level, 0..) |cv, i| hasher.pushCv(cv, i);
-
-        hasher.chunk.chunk_counter = num_full_chunks;
-        const remaining_bytes = b.len % chunk_length;
-        if (remaining_bytes > 0) {
-            hasher.chunk.update(b[num_full_chunks * chunk_length ..]);
-            hasher.mergeCvStack(hasher.chunk.chunk_counter);
-        }
-
         hasher.final(out);
     }
 
@@ -1451,5 +1454,36 @@ test "BLAKE3 parallel vs sequential" {
         try Blake3.hashParallel(input, &actual_keyed, .{ .key = key }, allocator, io);
 
         try std.testing.expectEqualSlices(u8, &expected_keyed, &actual_keyed);
+    }
+}
+
+test "BLAKE3 parallel with partial trailing chunk" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+
+    const test_sizes = [_]usize{
+        3072 * 1024,
+        3072 * 1024 + 1,
+        3073 * 1024 + 1,
+        3074 * 1024 + 1,
+        3075 * 1024,
+        3075 * 1024 + 1,
+        3075 * 1024 + 1023,
+        3077 * 1024 + 1,
+        4095 * 1024 + 1,
+    };
+
+    for (test_sizes) |size| {
+        const input = try allocator.alloc(u8, size);
+        defer allocator.free(input);
+        for (input, 0..) |*byte, i| byte.* = @truncate(i);
+
+        var expected: [32]u8 = undefined;
+        Blake3.hash(input, &expected, .{});
+
+        var actual: [32]u8 = undefined;
+        try Blake3.hashParallel(input, &actual, .{}, allocator, io);
+
+        try std.testing.expectEqualSlices(u8, &expected, &actual);
     }
 }
