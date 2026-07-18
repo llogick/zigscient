@@ -471,6 +471,18 @@ fn indexAlpha(
     return ref_lane * lanes + @as(u32, @intCast(((s + m - (p + 1)) % lanes)));
 }
 
+fn blockCount(params: Params) u32 {
+    return @max(
+        params.m / (sync_points * params.p) * (sync_points * params.p),
+        2 * sync_points * params.p,
+    );
+}
+
+/// Compute the number of bytes of scratch memory `kdf` needs for `params`.
+pub fn calcSize(params: Params) usize {
+    return blockCount(params) * @sizeOf([block_length]u64);
+}
+
 /// Derives a key from the password, salt, and argon2 parameters.
 ///
 /// Derived key has to be at least 4 bytes length.
@@ -494,10 +506,7 @@ pub fn kdf(
     if (params.m / 8 < params.p) return KdfError.WeakParameters;
 
     var h0 = initHash(password, salt, params, derived_key.len, mode);
-    const memory = @max(
-        params.m / (sync_points * params.p) * (sync_points * params.p),
-        2 * sync_points * params.p,
-    );
+    const memory = blockCount(params);
 
     var blocks = try Blocks.initCapacity(allocator, memory);
     defer blocks.deinit();
