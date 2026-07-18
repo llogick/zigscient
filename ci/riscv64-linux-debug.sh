@@ -11,8 +11,6 @@ CACHE_BASENAME="zig+llvm+lld+clang-$TARGET-0.17.0-dev.203+073889523"
 PREFIX="$HOME/deps/$CACHE_BASENAME"
 ZIG="$PREFIX/bin/zig"
 
-export PATH="$HOME/local/bin:$PATH"
-
 # Override the cache directories because they won't actually help other CI runs
 # which will be testing alternate versions of zig, and ultimately would just
 # fill up space on the hard drive for no reason.
@@ -46,11 +44,20 @@ ninja install
 export ZIG_LIB_DIR="$PWD/../lib"
 
 # No -fqemu and -fwasmtime here as they're covered by the x86_64-linux scripts.
-stage3-debug/bin/zig build test-modules test-c-abi \
+stage3-debug/bin/zig build test docs \
   --maxrss ${ZSF_MAX_RSS:-0} \
   -Dstatic-llvm \
   -Dskip-non-native \
-  -Dskip-single-threaded \
   -Dtarget=native-native-musl \
   --search-prefix "$PREFIX" \
   --test-timeout 4m
+
+stage3-debug/bin/zig build \
+  --prefix stage4-debug \
+  -Denable-llvm \
+  -Dno-lib \
+  -Dtarget=$TARGET \
+  -Duse-zig-libcxx \
+  -Dversion-string="$(stage3-debug/bin/zig version)"
+
+stage4-debug/bin/zig test ../test/behavior.zig
