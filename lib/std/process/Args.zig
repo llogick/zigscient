@@ -752,7 +752,7 @@ pub fn IteratorGeneral(comptime options: IteratorGeneralOptions) type {
         start: usize = 0,
         end: usize = 0,
 
-        pub const Self = @This();
+        const Self = @This();
 
         pub const InitError = error{OutOfMemory};
 

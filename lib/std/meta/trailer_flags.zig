@@ -39,7 +39,7 @@ pub fn TrailerFlags(comptime Fields: type) type {
             break :blk @Struct(.auto, null, &field_names, &field_types, &field_attrs);
         };
 
-        pub const Self = @This();
+        const Self = @This();
 
         pub fn has(self: Self, comptime field: FieldEnum) bool {
             const field_index = @backingInt(field);
