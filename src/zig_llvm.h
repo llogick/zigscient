@@ -121,7 +121,12 @@ ZIG_EXTERN_C bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_earl
 ZIG_EXTERN_C bool ZigLLDLinkELF(int argc, const char **argv, bool can_exit_early, bool disable_output);
 ZIG_EXTERN_C bool ZigLLDLinkWasm(int argc, const char **argv, bool can_exit_early, bool disable_output);
 
+// On error, populates `*err_file_index_out` and `*err_msg_out` and returns `true`. The caller is
+// responsible for freeing `*err_msg_out` using `free`.
+//
+// If an error occurs reading an input file, `*err_file_index_out` is set to the index of that input
+// file in `file_names`. Otherwise, `*err_file_index_out` is set to `file_name_count`.
 ZIG_EXTERN_C bool ZigLLVMWriteArchive(const char *archive_name, const char **file_names, size_t file_name_count,
-    ZigLLVMArchiveKind archive_kind);
+    ZigLLVMArchiveKind archive_kind, size_t *err_file_index_out, char **err_msg_out);
 
 #endif

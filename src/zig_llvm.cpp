@@ -473,19 +473,32 @@ void ZigLLVMParseCommandLineOptions(size_t argc, const char *const *argv) {
 }
 
 bool ZigLLVMWriteArchive(const char *archive_name, const char **file_names, size_t file_name_count,
-    ZigLLVMArchiveKind archive_kind)
+    ZigLLVMArchiveKind archive_kind, size_t *err_file_index_out, char **err_msg_out)
 {
     SmallVector<NewArchiveMember, 4> new_members;
     for (size_t i = 0; i < file_name_count; i += 1) {
         Expected<NewArchiveMember> new_member = NewArchiveMember::getFile(file_names[i], true);
         Error err = new_member.takeError();
-        if (err) return true;
+        if (err) {
+            *err_file_index_out = i;
+            const std::string msg = toString(std::move(err));
+            *err_msg_out = (char *)malloc(msg.length() + 1);
+            strcpy(*err_msg_out, msg.c_str());
+            return true;
+        }
         new_members.push_back(std::move(*new_member));
     }
     Error err = writeArchive(archive_name, new_members,
         SymtabWritingMode::NormalSymtab, static_cast<object::Archive::Kind>(archive_kind), true, false, nullptr);
 
-    if (err) return true;
+    if (err) {
+        *err_file_index_out = file_name_count;
+        const std::string msg = toString(std::move(err));
+        *err_msg_out = (char *)malloc(msg.length() + 1);
+        strcpy(*err_msg_out, msg.c_str());
+        return true;
+    }
+
     return false;
 }
 

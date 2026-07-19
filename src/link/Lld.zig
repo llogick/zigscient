@@ -269,12 +269,12 @@ pub fn flush(
         .wasm => wasmLink(lld, arena),
     };
     result catch |err| switch (err) {
-        error.OutOfMemory, error.AlreadyReported => |e| return e,
+        error.OutOfMemory, error.AlreadyReported, error.Canceled => |e| return e,
         else => |e| return lld.base.comp.link_diags.fail("failed to link with LLD: {t}", .{e}),
     };
 }
 
-fn linkAsArchive(lld: *Lld, arena: Allocator) !void {
+fn linkAsArchive(lld: *Lld, arena: Allocator) link.Error!void {
     const base = &lld.base;
     const comp = base.comp;
     const directory = base.emit.root_dir; // Just an alias to make it shorter to type.
@@ -338,7 +338,9 @@ fn linkAsArchive(lld: *Lld, arena: Allocator) !void {
     const llvm = @import("../codegen/llvm.zig");
     const target = &comp.root_mod.resolved_target.result;
     llvm.initializeLLVMTarget(target.cpu.arch);
-    const bad = llvm_bindings.WriteArchive(
+    var err_file_index: usize = undefined;
+    var err_msg: [*:0]u8 = undefined;
+    if (llvm_bindings.WriteArchive(
         full_out_path_z,
         object_files.items.ptr,
         object_files.items.len,
@@ -346,8 +348,19 @@ fn linkAsArchive(lld: *Lld, arena: Allocator) !void {
             .windows => .COFF,
             else => if (target.os.tag.isDarwin()) .DARWIN else .GNU,
         },
-    );
-    if (bad) return error.UnableToWriteArchive;
+        &err_file_index,
+        &err_msg,
+    )) {
+        defer std.c.free(err_msg);
+        if (err_file_index < object_files.items.len) {
+            return comp.link_diags.fail("LLD failed to open input file '{s}': {s}", .{
+                object_files.items[err_file_index],
+                err_msg,
+            });
+        } else {
+            return comp.link_diags.fail("LLD failed to write archive: {s}", .{err_msg});
+        }
+    }
 }
 
 fn addCommonArgs(argv: *std.array_list.Managed([]const u8), coff: bool) !void {
