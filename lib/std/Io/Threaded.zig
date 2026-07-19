@@ -5053,7 +5053,7 @@ pub fn dirOpenFileWtf16(
             .VALID_FLAGS,
             .OPEN,
             .{
-                .IO = if (flags.follow_symlinks) .SYNCHRONOUS_NONALERT else .ASYNCHRONOUS,
+                .IO = .SYNCHRONOUS_NONALERT,
                 .NON_DIRECTORY_FILE = !allow_directory,
                 .OPEN_REPARSE_POINT = !flags.follow_symlinks,
             },
@@ -8136,7 +8136,7 @@ fn dirReadLinkWindows(dir: Dir, sub_path: []const u8, buffer: []u8) Dir.ReadLink
         .{
             .DIRECTORY_FILE = false,
             .NON_DIRECTORY_FILE = false,
-            .IO = .ASYNCHRONOUS,
+            .IO = .SYNCHRONOUS_NONALERT,
             .OPEN_REPARSE_POINT = true,
         },
         null,
@@ -8202,7 +8202,7 @@ fn dirReadLinkWindows(dir: Dir, sub_path: []const u8, buffer: []u8) Dir.ReadLink
 
     var reparse_buf: [windows.MAXIMUM_REPARSE_DATA_BUFFER_SIZE]u8 align(@alignOf(windows.REPARSE_DATA_BUFFER)) = undefined;
     switch ((try deviceIoControl(&.{
-        .file = .{ .handle = result_handle, .flags = .{ .nonblocking = true } },
+        .file = .{ .handle = result_handle, .flags = .{ .nonblocking = false } },
         .code = .GET_REPARSE_POINT,
         .out = &reparse_buf,
     })).u.Status) {
@@ -18995,7 +18995,7 @@ fn OpenFile(sub_path_w: []const u16, options: OpenFileOptions) OpenError!windows
             .{
                 .DIRECTORY_FILE = options.filter == .dir_only,
                 .NON_DIRECTORY_FILE = options.filter == .non_directory_only,
-                .IO = if (options.follow_symlinks) .SYNCHRONOUS_NONALERT else .ASYNCHRONOUS,
+                .IO = .SYNCHRONOUS_NONALERT,
                 .OPEN_REPARSE_POINT = !options.follow_symlinks,
             },
             null,
