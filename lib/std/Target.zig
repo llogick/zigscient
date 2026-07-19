@@ -1194,9 +1194,6 @@ pub fn toCoffMachine(target: *const Target) std.coff.IMAGE.FILE.MACHINE {
     };
 }
 
-/// Deprecated; use 'std.zig.Subsystem' instead. To be removed after 0.16.0 is tagged.
-pub const SubSystem = std.zig.Subsystem;
-
 pub const Cpu = struct {
     /// Architecture
     arch: Arch,

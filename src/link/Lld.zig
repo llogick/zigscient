@@ -99,8 +99,6 @@ pub const Elf = struct {
     bind_global_refs_locally: bool,
     pub const HashStyle = enum { sysv, gnu, both };
     pub const SortSection = enum { name, alignment };
-    /// Deprecated; use 'std.zig.CompressDebugSections' instead. To be removed after 0.16.0 is tagged.
-    pub const CompressDebugSections = std.zig.CompressDebugSections;
 
     fn init(comp: *Compilation, options: link.File.OpenOptions) !Elf {
         const PtrWidth = enum { p32, p64 };
