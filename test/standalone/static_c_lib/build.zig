@@ -46,6 +46,7 @@ pub fn build(b: *std.Build) void {
         if (no_llvm and target.result.cpu.arch == .aarch64) continue; // TODO
         if (no_llvm and target.result.cpu.arch == .loongarch64) continue; // TODO
         if (no_llvm and target.result.cpu.arch == .powerpc64le) continue; // TODO
+        if (no_llvm and target.result.cpu.arch == .riscv64) continue; // TODO
         if (no_llvm and target.result.cpu.arch == .s390x) continue; // TODO
 
         const foo = b.addLibrary(.{
