@@ -97,7 +97,7 @@ pub fn specConst(T: type, comptime default_value: T, comptime spec_id: u32) T {
         },
         .int, .float => return asm (
             \\%ret = OpSpecConstant %ty $default_value
-            \\       OpDecorate %ret SpecId $spec_id"
+            \\       OpDecorate %ret SpecId $spec_id
             : [ret] "" (-> T),
             : [ty] "t" (T),
               [default_value] "c" (default_value),
