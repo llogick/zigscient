@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) void {
     const skip_release_fast = b.option(bool, "skip_release_fast", "Skip release-fast builds") orelse false;
     const skip_release_small = b.option(bool, "skip_release_small", "Skip release-small builds") orelse false;
 
-    var optimize_modes_buf: [4]std.builtin.OptimizeMode = undefined;
+    var optimize_modes_buf: [4]std.builtin.Optimize = undefined;
     var optimize_modes_len: usize = 0;
     if (!skip_debug) {
         optimize_modes_buf[optimize_modes_len] = .debug;

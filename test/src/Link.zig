@@ -1,6 +1,6 @@
 b: *Build,
 step: *Step,
-optimize: std.builtin.OptimizeMode,
+optimize: std.builtin.Optimize,
 target: std.Build.ResolvedTarget,
 target_desc: []const u8,
 use_llvm: bool,

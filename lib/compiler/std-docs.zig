@@ -259,7 +259,7 @@ fn serveSourcesTar(request: *std.http.Server.Request, context: *Context) !void {
 fn serveWasm(
     request: *std.http.Server.Request,
     context: *Context,
-    optimize_mode: std.builtin.OptimizeMode,
+    optimize_mode: std.builtin.Optimize,
 ) !void {
     const gpa = context.gpa;
     const io = context.io;
@@ -302,7 +302,7 @@ const autodoc_cpu_features = "baseline+atomics+bulk_memory+multivalue+mutable_gl
 fn buildWasmBinary(
     arena: Allocator,
     context: *Context,
-    optimize_mode: std.builtin.OptimizeMode,
+    optimize_mode: std.builtin.Optimize,
 ) !Cache.Path {
     const gpa = context.gpa;
     const io = context.io;

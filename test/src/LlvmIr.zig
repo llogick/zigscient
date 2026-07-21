@@ -27,7 +27,7 @@ const TestCase = struct {
         // For most cases, we want to test the LLVM IR that we output; we don't want to be in the
         // business of testing LLVM's optimization passes. `Debug` gets us the closest to that as it
         // disables the vast majority of passes in LLVM.
-        optimize: std.builtin.OptimizeMode = .Debug,
+        optimize: std.builtin.Optimize = .debug,
         pic: ?bool = null,
         pie: ?bool = null,
         red_zone: ?bool = null,

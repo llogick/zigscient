@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
         .abi = .gnueabihf,
     });
 
-    const optimize: std.builtin.OptimizeMode = .Debug;
+    const optimize: std.builtin.Optimize = .debug;
 
     const elf = b.addExecutable(.{
         .name = "zig-nrf52-blink.elf",

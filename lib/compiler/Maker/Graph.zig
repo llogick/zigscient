@@ -18,7 +18,7 @@ local_cache_root: Directory,
 zig_lib_directory: Directory,
 build_root_directory: Directory,
 
-debug_compiler_runtime_libs: ?std.builtin.OptimizeMode = null,
+debug_compiler_runtime_libs: ?std.builtin.Optimize = null,
 incremental: ?bool = null,
 random_seed: u32 = 0,
 allow_so_scripts: ?bool = null,

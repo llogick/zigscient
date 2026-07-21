@@ -7,7 +7,7 @@ libc_test_src_path: std.Build.LazyPath,
 test_cases: std.ArrayList(TestCase) = .empty,
 
 pub const Options = struct {
-    optimize_modes: []const std.builtin.OptimizeMode,
+    optimize_modes: []const std.builtin.Optimize,
     test_filters: []const []const u8,
     test_target_filters: []const []const u8,
     skip_wasm: bool,

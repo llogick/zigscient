@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
         .name = "touch",
         .root_module = b.createModule(.{
             .root_source_file = touch_src,
-            .optimize = .Debug,
+            .optimize = .debug,
             .target = target,
         }),
     });
@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
         .name = "exists_in",
         .root_module = b.createModule(.{
             .root_source_file = b.path("exists_in.zig"),
-            .optimize = .Debug,
+            .optimize = .debug,
             .target = target,
         }),
     });

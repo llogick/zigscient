@@ -32,7 +32,7 @@ fn addOne(
     const mod = b.createModule(.{
         .root_source_file = b.path("hello.zig"),
         .target = target,
-        .optimize = .Debug,
+        .optimize = .debug,
         .link_libc = link_mode == .dynamic,
     });
     const exe = b.addExecutable(.{

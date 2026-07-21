@@ -1661,7 +1661,7 @@ pub const Module = struct {
         small,
         default,
 
-        pub fn init(o: ?std.builtin.OptimizeMode) Optimize {
+        pub fn init(o: ?std.builtin.Optimize) Optimize {
             return switch (o orelse return .default) {
                 .debug => .debug,
                 .safe => .safe,

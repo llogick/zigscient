@@ -12,14 +12,14 @@ pub fn build(b: *std.Build) void {
                 .cpu_arch = .x86,
                 .os_tag = .freestanding,
             }),
-            .optimize = .ReleaseSmall,
+            .optimize = .small,
         }),
     });
 
     const exe = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("main.zig"),
         .target = b.graph.host,
-        .optimize = .Debug,
+        .optimize = .debug,
     }) });
     exe.root_module.addAnonymousImport("bootloader.elf", .{
         .root_source_file = bootloader.getEmittedBin(),

@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) !void {
 
     const none_specified_mod = none_specified.module("dummy");
     if (!none_specified_mod.resolved_target.?.query.eql(b.graph.host.query)) return error.TestFailed;
-    const expected_optimize: std.builtin.OptimizeMode = switch (b.graph.release_mode) {
+    const expected_optimize: std.builtin.Optimize = switch (b.graph.release_mode) {
         .off => .debug,
         .any => unreachable,
         .fast => .fast,
@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) !void {
 
     const all_specified = b.dependency("other", .{
         .target = b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu }),
-        .optimize = @as(std.builtin.OptimizeMode, .safe),
+        .optimize = @as(std.builtin.Optimize, .safe),
         .bool = @as(bool, true),
         .int = @as(i64, 123),
         .float = @as(f64, 0.5),
@@ -70,7 +70,7 @@ pub fn build(b: *std.Build) !void {
 
     const all_specified_optional = b.dependency("other", .{
         .target = @as(?std.Build.ResolvedTarget, b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu })),
-        .optimize = @as(?std.builtin.OptimizeMode, .safe),
+        .optimize = @as(?std.builtin.Optimize, .safe),
         .bool = @as(?bool, true),
         .int = @as(?i64, 123),
         .float = @as(?f64, 0.5),

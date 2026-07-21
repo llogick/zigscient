@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) !void {
         .target = b.resolveTargetQuery(try .parse(.{
             .arch_os_abi = "x86_64-linux",
         })),
-        .optimize = .ReleaseFast, // non-Debug build for reproducible output
+        .optimize = .fast, // non-Debug build for reproducible output
         .root_source_file = b.path("main.zig"),
     });
 
@@ -29,7 +29,7 @@ pub fn build(b: *std.Build) !void {
         .name = "check_differ",
         .root_module = b.createModule(.{
             .target = b.graph.host,
-            .optimize = .Debug,
+            .optimize = .debug,
             .root_source_file = b.path("check_differ.zig"),
         }),
     });

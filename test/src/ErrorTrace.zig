@@ -33,7 +33,7 @@ pub const Options = struct {
 
 pub const CaseParameters = struct {
     target: std.Target.Query = .{},
-    optimize: std.builtin.OptimizeMode = .debug,
+    optimize: OptimizeMode = .debug,
     use_llvm: ?bool = null,
     use_lld: ?bool = null,
 

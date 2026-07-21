@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = null,
             .target = b.resolveTargetQuery(.{}),
-            .optimize = .Debug,
+            .optimize = .debug,
         }),
     });
     libfoo.root_module.addCSourceFile(.{ .file = empty_c });
@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = null,
             .target = b.resolveTargetQuery(.{}),
-            .optimize = .Debug,
+            .optimize = .debug,
             .link_libc = true,
         }),
     });
@@ -68,7 +68,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = null,
             .target = b.resolveTargetQuery(.{}),
-            .optimize = .Debug,
+            .optimize = .debug,
         }),
     });
     libbar.root_module.addCSourceFile(.{ .file = empty_c });
@@ -93,7 +93,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("check_exists.zig"),
             .target = b.resolveTargetQuery(.{}),
-            .optimize = .Debug,
+            .optimize = .debug,
         }),
     });
     const run_check_exists = b.addRunArtifact(check_exists);

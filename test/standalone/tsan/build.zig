@@ -29,7 +29,7 @@ pub fn build(b: *std.Build) !void {
                     .root_module = b.createModule(.{
                         .root_source_file = b.path("main.zig"),
                         .target = target,
-                        .optimize = .Debug,
+                        .optimize = .debug,
                         .sanitize_thread = true,
                     }),
                 });
@@ -46,7 +46,7 @@ pub fn build(b: *std.Build) !void {
                     .root_module = b.createModule(.{
                         .root_source_file = b.path("main.zig"),
                         .target = target,
-                        .optimize = .Debug,
+                        .optimize = .debug,
                         .sanitize_thread = true,
                     }),
                 });

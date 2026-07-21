@@ -3,7 +3,7 @@ pub fn build(b: *Build) void {
         .name = "check_file_exists",
         .root_module = b.createModule(.{
             .target = b.graph.host,
-            .optimize = .Debug,
+            .optimize = .debug,
             .root_source_file = b.path("check_file_exists.zig"),
         }),
     });

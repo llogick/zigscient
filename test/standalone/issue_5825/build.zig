@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) void {
         .os_tag = .windows,
         .abi = .msvc,
     });
-    const optimize: std.builtin.OptimizeMode = .Debug;
+    const optimize: std.builtin.Optimize = .debug;
     const obj = b.addObject(.{
         .name = "issue_5825",
         .root_module = b.createModule(.{

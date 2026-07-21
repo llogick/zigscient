@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) void {
         .name = "main",
         .root_module = b.createModule(.{
             .root_source_file = b.path("panic.zig"),
-            .optimize = .Debug,
+            .optimize = .debug,
             .target = target,
             .link_libc = true,
         }),

@@ -49,7 +49,7 @@ pub const Case = struct {
     /// In order to be able to run e.g. Execution updates, this must be set
     /// to Executable.
     output_mode: std.builtin.OutputMode,
-    optimize_mode: std.builtin.OptimizeMode = .Debug,
+    optimize_mode: std.builtin.Optimize = .debug,
 
     files: std.array_list.Managed(File),
     case: ?union(enum) {

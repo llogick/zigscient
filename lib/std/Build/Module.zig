@@ -15,7 +15,7 @@ root_source_file: ?LazyPath,
 import_table: std.array_hash_map.String(*Module),
 
 resolved_target: ?std.Build.ResolvedTarget = null,
-optimize: ?std.builtin.OptimizeMode = null,
+optimize: ?std.builtin.Optimize = null,
 dwarf_format: ?std.dwarf.Format,
 
 c_macros: ArrayList([]const u8),
@@ -200,7 +200,7 @@ pub const CreateOptions = struct {
     imports: []const Import = &.{},
 
     target: ?std.Build.ResolvedTarget = null,
-    optimize: ?std.builtin.OptimizeMode = null,
+    optimize: ?std.builtin.Optimize = null,
 
     /// `true` requires a compilation that includes this Module to link libc.
     /// `false` causes a build failure if a compilation that includes this Module would link libc.

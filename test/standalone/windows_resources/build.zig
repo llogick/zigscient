@@ -31,7 +31,7 @@ fn add(
         .root_module = b.createModule(.{
             .root_source_file = b.path("main.zig"),
             .target = target,
-            .optimize = .Debug,
+            .optimize = .debug,
         }),
     });
     exe.root_module.addWin32ResourceFile(.{

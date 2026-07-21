@@ -8341,7 +8341,7 @@ fn resolveCallingConventionValues(
 
 fn wantSafety(func: *Func) bool {
     return switch (func.mod.optimize_mode) {
-        .Debug => true,
+        .debug => true,
         .safe => true,
         .fast => false,
         .small => false,

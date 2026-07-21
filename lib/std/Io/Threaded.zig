@@ -16972,7 +16972,7 @@ test argvToCommandLineWindows {
         ,
         \\-O
         ,
-        \\ReleaseSafe
+        \\safe
         ,
         \\--
         ,
@@ -16981,7 +16981,7 @@ test argvToCommandLineWindows {
         \\--eval=new Regex("Dwayne \"The Rock\" Johnson")
         ,
     },
-        \\"C:\Program Files\zig\zig.exe" run .\src\main.zig -target x86_64-windows-gnu -O ReleaseSafe -- --emoji=🗿 "--eval=new Regex(\"Dwayne \\\"The Rock\\\" Johnson\")"
+        \\"C:\Program Files\zig\zig.exe" run .\src\main.zig -target x86_64-windows-gnu -O safe -- --emoji=🗿 "--eval=new Regex(\"Dwayne \\\"The Rock\\\" Johnson\")"
     );
 
     try t(&.{}, "");

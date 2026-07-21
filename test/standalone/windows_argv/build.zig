@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) !void {
 
     if (builtin.os.tag != .windows) return;
 
-    const optimize: std.builtin.OptimizeMode = .Debug;
+    const optimize: std.builtin.Optimize = .debug;
 
     const lib_gnu = b.addLibrary(.{
         .linkage = .static,

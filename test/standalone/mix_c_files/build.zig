@@ -9,13 +9,13 @@ pub fn build(b: *std.Build) void {
         return;
     }
 
-    add(b, test_step, .Debug);
-    add(b, test_step, .ReleaseFast);
-    add(b, test_step, .ReleaseSmall);
-    add(b, test_step, .ReleaseSafe);
+    add(b, test_step, .debug);
+    add(b, test_step, .fast);
+    add(b, test_step, .small);
+    add(b, test_step, .safe);
 }
 
-fn add(b: *std.Build, test_step: *std.Build.Step, optimize: std.builtin.OptimizeMode) void {
+fn add(b: *std.Build, test_step: *std.Build.Step, optimize: std.builtin.Optimize) void {
     const exe = b.addExecutable(.{
         .name = "test",
         .root_module = b.createModule(.{

@@ -691,7 +691,7 @@ pub const AssemblyOptions = struct {
     /// To choose the same computer as the one building the package, pass the
     /// `host` field of the package's `Build` instance.
     target: ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.builtin.Optimize,
     max_rss: u64 = 0,
     zig_lib_dir: ?LazyPath = null,
 };
@@ -1188,22 +1188,22 @@ pub fn step(b: *Build, name: []const u8, description: []const u8) *Step {
 }
 
 pub const StandardOptimizeOptionOptions = struct {
-    preferred_optimize_mode: ?std.builtin.OptimizeMode = null,
+    preferred_optimize_mode: ?std.builtin.Optimize = null,
 };
 
-pub fn standardOptimizeOption(b: *Build, options: StandardOptimizeOptionOptions) std.builtin.OptimizeMode {
+pub fn standardOptimizeOption(b: *Build, options: StandardOptimizeOptionOptions) std.builtin.Optimize {
     const graph = b.graph;
 
     if (options.preferred_optimize_mode) |mode| {
         if (b.option(bool, "release", "optimize for end users") orelse (graph.release_mode != .off)) {
             return mode;
         } else {
-            return .Debug;
+            return .debug;
         }
     }
 
     if (b.option(
-        std.builtin.OptimizeMode,
+        std.builtin.Optimize,
         "optimize",
         "Prioritize performance, safety, or binary size",
     )) |mode| {

@@ -122,19 +122,19 @@ pub fn build(b: *std.Build) void {
         const malloc_translation = b.addTranslateC(.{
             .root_source_file = b.path("include_malloc.h"),
             .target = target,
-            .optimize = .Debug,
+            .optimize = .debug,
             .link_libc = true,
         });
         const stdlib_translation = b.addTranslateC(.{
             .root_source_file = b.path("include_stdlib.h"),
             .target = target,
-            .optimize = .Debug,
+            .optimize = .debug,
             .link_libc = true,
         });
         const string_translation = b.addTranslateC(.{
             .root_source_file = b.path("include_string.h"),
             .target = target,
-            .optimize = .Debug,
+            .optimize = .debug,
             .link_libc = true,
         });
         const exe = b.addExecutable(.{

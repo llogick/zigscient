@@ -7,14 +7,14 @@ pub const Options = struct {
     test_target_filters: []const []const u8,
     gdb: ?[]const u8,
     lldb: ?[]const u8,
-    optimize_modes: []const std.builtin.OptimizeMode,
+    optimize_modes: []const std.builtin.Optimize,
     skip_single_threaded: bool,
     skip_libc: bool,
 };
 
 pub const Target = struct {
     resolved: std.Build.ResolvedTarget,
-    optimize_mode: std.builtin.OptimizeMode = .Debug,
+    optimize_mode: std.builtin.Optimize = .debug,
     link_libc: ?bool = null,
     single_threaded: ?bool = null,
     pic: ?bool = null,

@@ -4766,7 +4766,7 @@ fn truncRegister(
 /// TODO support scope overrides. Also note this logic is duplicated with `Zcu.wantSafety`.
 fn wantSafety(self: *Self) bool {
     return switch (self.bin_file.comp.root_mod.optimize_mode) {
-        .Debug => true,
+        .debug => true,
         .safe => true,
         .fast => false,
         .small => false,

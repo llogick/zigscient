@@ -4,7 +4,7 @@ const std = @import("std");
 const Io = std.Io;
 const Configuration = std.Build.Configuration;
 const assert = std.debug.assert;
-const OptimizeMode = std.lang.OptimizeMode;
+const OptimizeMode = std.lang.Optimize;
 
 const Step = @import("../Step.zig");
 const Maker = @import("../../Maker.zig");

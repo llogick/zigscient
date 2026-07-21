@@ -54,7 +54,7 @@ pub fn build(b: *std.Build) void {
     }
 }
 
-fn run_exe(b: *std.Build, optimize: std.builtin.OptimizeMode, case: *const Case, target: std.Build.ResolvedTarget, link_libc: bool) *std.Build.Step.Run {
+fn run_exe(b: *std.Build, optimize: std.builtin.Optimize, case: *const Case, target: std.Build.ResolvedTarget, link_libc: bool) *std.Build.Step.Run {
     const exe_name = b.fmt("test-posix-{s}{s}{s}", .{
         std.fs.path.stem(case.src_path),
         if (link_libc) "-libc" else "",

@@ -105,7 +105,7 @@ const Log2USize = std.math.Log2Int(usize);
 
 const default_sys_stack_trace_frames: usize = if (std.debug.sys_can_stack_trace) 6 else 0;
 const default_stack_trace_frames: usize = switch (builtin.mode) {
-    .Debug => default_sys_stack_trace_frames,
+    .debug => default_sys_stack_trace_frames,
     else => 0,
 };
 

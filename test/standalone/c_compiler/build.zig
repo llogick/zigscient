@@ -5,10 +5,10 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Test it");
     b.default_step = test_step;
 
-    add(b, test_step, "test_c_Debug", "test_cpp_Debug", .Debug);
-    add(b, test_step, "test_c_ReleaseFast", "test_cpp_ReleaseFast", .ReleaseFast);
-    add(b, test_step, "test_c_ReleaseSmall", "test_cpp_ReleaseSmall", .ReleaseSmall);
-    add(b, test_step, "test_c_ReleaseSafe", "test_cpp_ReleaseSafe", .ReleaseSafe);
+    add(b, test_step, "test_c_debug", "test_cpp_debug", .debug);
+    add(b, test_step, "test_c_fast", "test_cpp_fast", .fast);
+    add(b, test_step, "test_c_small", "test_cpp_small", .small);
+    add(b, test_step, "test_c_safe", "test_cpp_safe", .safe);
 }
 
 fn add(
@@ -16,7 +16,7 @@ fn add(
     test_step: *std.Build.Step,
     c_name: []const u8,
     cpp_name: []const u8,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.builtin.Optimize,
 ) void {
     const target = b.graph.host;
 

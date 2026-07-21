@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const assert = std.debug.assert;
 const mem = std.mem;
-const OptimizeMode = std.builtin.OptimizeMode;
+const OptimizeMode = std.builtin.Optimize;
 const Step = std.Build.Step;
 
 // Cases
@@ -21,7 +21,7 @@ pub const LinkContext = @import("src/Link.zig");
 const ModuleTestTarget = struct {
     linkage: ?std.builtin.LinkMode = null,
     target: std.Target.Query = .{},
-    optimize_mode: std.builtin.OptimizeMode = .debug,
+    optimize_mode: std.builtin.Optimize = .debug,
     link_libc: ?bool = null,
     single_threaded: ?bool = null,
     use_llvm: ?bool = null,
@@ -2162,7 +2162,7 @@ const c_abi_targets = blk: {
 
 const LinkTarget = struct {
     target: std.Target.Query = .{},
-    optimize_mode: std.builtin.OptimizeMode = .debug,
+    optimize_mode: std.builtin.Optimize = .debug,
     link_libc: bool = false,
     use_llvm: bool = false,
     use_lld: bool = false,
@@ -2573,7 +2573,7 @@ pub fn addCliTests(b: *std.Build) *Step {
         // This is intended to be the exact CLI usage used by godbolt.org.
         const run = b.addSystemCommand(&.{ b.graph.zig_exe, "build-obj", "--cache-dir" });
         run.addDirectoryArg(tmp_path);
-        run.addArgs(&.{ "--name", "example", "-fno-emit-bin", "-fno-emit-h", "-fstrip", "-OReleaseFast" });
+        run.addArgs(&.{ "--name", "example", "-fno-emit-bin", "-fno-emit-h", "-fstrip", "-Ofast" });
         run.addFileArg(example_zig);
         const example_s = run.addPrefixedOutputFileArg("-femit-asm=", "example.s");
 

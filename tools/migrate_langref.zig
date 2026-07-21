@@ -243,7 +243,7 @@ const Code = struct {
     name: []const u8,
     source_token: Token,
     just_check_syntax: bool,
-    mode: std.builtin.OptimizeMode,
+    mode: std.builtin.Optimize,
     link_objects: []const []const u8,
     target_str: ?[]const u8,
     link_libc: bool,
@@ -319,7 +319,7 @@ fn walk(arena: Allocator, io: Io, tokenizer: *Tokenizer, out_dir: Dir, w: anytyp
                         return parseError(tokenizer, code_kind_tok, "unrecognized code kind: {s}", .{code_kind_str});
                     }
 
-                    var mode: std.builtin.OptimizeMode = .debug;
+                    var mode: std.builtin.Optimize = .debug;
                     var link_objects = std.array_list.Managed([]const u8).init(arena);
                     var target_str: ?[]const u8 = null;
                     var link_libc = false;
@@ -333,9 +333,9 @@ fn walk(arena: Allocator, io: Io, tokenizer: *Tokenizer, out_dir: Dir, w: anytyp
                         const end_code_tag = try eatToken(tokenizer, .tag_content);
                         const end_tag_name = tokenizer.buffer[end_code_tag.start..end_code_tag.end];
                         if (mem.eql(u8, end_tag_name, "code_release_fast")) {
-                            mode = .ReleaseFast;
+                            mode = .fast;
                         } else if (mem.eql(u8, end_tag_name, "code_release_safe")) {
-                            mode = .ReleaseSafe;
+                            mode = .safe;
                         } else if (mem.eql(u8, end_tag_name, "code_disable_cache")) {
                             disable_cache = true;
                         } else if (mem.eql(u8, end_tag_name, "code_link_object")) {

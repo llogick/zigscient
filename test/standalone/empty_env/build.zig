@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Test it");
     b.default_step = test_step;
 
-    const optimize: std.builtin.OptimizeMode = .Debug;
+    const optimize: std.builtin.Optimize = .debug;
 
     if (builtin.os.tag == .windows and b.graph.environ_map.contains("ConEmuHWND")) {
         // ConEmu injects environment variables into processes before they are executed
