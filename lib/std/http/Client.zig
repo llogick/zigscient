@@ -731,7 +731,7 @@ pub const Response = struct {
     pub fn reader(response: *Response, transfer_buffer: []u8) *Reader {
         response.head.invalidateStrings();
         const req = response.request;
-        if (!req.method.responseHasBody()) return .ending;
+        if (req.method == .HEAD) return .ending;
         const head = &response.head;
         return req.reader.bodyReader(transfer_buffer, head.transfer_encoding, head.content_length);
     }
@@ -807,11 +807,14 @@ pub const Request = struct {
     headers: Headers,
 
     /// Populated in `receiveHead`; used in `deinit` to determine whether to
-    /// discard the body to reuse the connection.
+    /// discard the response body to reuse the connection.
     response_content_length: ?u64 = null,
     /// Populated in `receiveHead`; used in `deinit` to determine whether to
-    /// discard the body to reuse the connection.
+    /// discard the response body to reuse the connection.
     response_transfer_encoding: http.TransferEncoding = .none,
+    /// Used in `deinit` to determine whether the payload has been sent, making
+    /// it safe to reuse the connection.
+    payload_pending: bool = false,
 
     /// These headers are kept including when following a redirect to a
     /// different domain.
@@ -888,8 +891,9 @@ pub const Request = struct {
             connection.closing = connection.closing or switch (r.reader.state) {
                 .ready => false,
                 .received_head => c: {
-                    if (r.method.requestHasBody()) break :c true;
-                    if (!r.method.responseHasBody()) break :c false;
+                    if (r.payload_pending) break :c true;
+                    if (r.method == .HEAD) break :c false;
+
                     const reader = r.reader.bodyReader(&.{}, r.response_transfer_encoding, r.response_content_length);
                     _ = reader.discardRemaining() catch |err| switch (err) {
                         error.ReadFailed => break :c true,
@@ -912,7 +916,6 @@ pub const Request = struct {
     /// Sends but does not flush a complete request as only HTTP head, no body.
     pub fn sendBodilessUnflushed(r: *Request) Writer.Error!void {
         assert(r.transfer_encoding == .none);
-        assert(!r.method.requestHasBody());
         try sendHead(r);
     }
 
@@ -941,13 +944,14 @@ pub const Request = struct {
     /// See also:
     /// * `sendBody`
     pub fn sendBodyUnflushed(r: *Request, buffer: []u8) Writer.Error!http.BodyWriter {
-        assert(r.method.requestHasBody());
+        r.payload_pending = true;
         try sendHead(r);
         const http_protocol_output = r.connection.?.writer();
         return switch (r.transfer_encoding) {
             .chunked => .{
                 .http_protocol_output = http_protocol_output,
                 .state = .init_chunked,
+                .client_request = r,
                 .writer = .{
                     .buffer = buffer,
                     .vtable = &.{
@@ -959,6 +963,7 @@ pub const Request = struct {
             .content_length => |len| .{
                 .http_protocol_output = http_protocol_output,
                 .state = .{ .content_length = len },
+                .client_request = r,
                 .writer = .{
                     .buffer = buffer,
                     .vtable = &.{
@@ -970,6 +975,7 @@ pub const Request = struct {
             .none => .{
                 .http_protocol_output = http_protocol_output,
                 .state = .none,
+                .client_request = r,
                 .writer = .{
                     .buffer = buffer,
                     .vtable = &.{
@@ -1273,6 +1279,7 @@ pub const Request = struct {
             // Populated when `http.Reader.bodyReader` is called.
             .interface = undefined,
             .max_head_len = r.client.read_buffer_size,
+            .side = .response,
         };
         r.redirect_behavior.subtractOne();
     }
@@ -1744,6 +1751,7 @@ pub fn request(
             // Populated when `http.Reader.bodyReader` is called.
             .interface = undefined,
             .max_head_len = client.read_buffer_size,
+            .side = .response,
         },
         .keep_alive = options.keep_alive,
         .method = method,

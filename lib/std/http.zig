@@ -310,6 +310,11 @@ pub const Connection = enum {
     close,
 };
 
+pub const Side = enum {
+    request,
+    response,
+};
+
 pub const Header = struct {
     name: []const u8,
     value: []const u8,
@@ -333,6 +338,8 @@ pub const Reader = struct {
     trailers: []const u8 = &.{},
     body_err: ?BodyError = null,
     max_head_len: usize,
+    /// Whether this is a reader over a request, sent by a client; or a response, sent by a server.
+    side: Side,
 
     pub const RemainingChunkLen = enum(u64) {
         head = 0,
@@ -458,8 +465,17 @@ pub const Reader = struct {
                     };
                     return &reader.interface;
                 } else {
-                    reader.state = .body_none;
-                    return reader.in;
+                    return switch (reader.side) {
+                        .response => resp: {
+                            reader.state = .body_none;
+                            break :resp reader.in;
+                        },
+                        .request => req: {
+                            // RFC7230: If a request has no Content-Length and no Transfer-Encoding, it has no message body.
+                            reader.state = .ready;
+                            break :req .ending;
+                        },
+                    };
                 }
             },
         }
@@ -746,6 +762,9 @@ pub const BodyWriter = struct {
     http_protocol_output: *Writer,
     state: State,
     writer: Writer,
+    /// Associated `Client.Request`, if applicable, used to tell the request
+    /// that the body has been written and the connection is safe to reuse.
+    client_request: ?*Client.Request = null,
 
     pub const Error = Writer.Error;
 
@@ -824,8 +843,13 @@ pub const BodyWriter = struct {
                 assert(len == 0); // Trips when end() called before all bytes written.
                 w.state = .end;
             },
-            .none => {},
             .chunk_len => return endChunkedUnflushed(w, .{}),
+            // Don't clear payload_pending to prevent an unframed request from
+            // returning to the pool
+            .none => return,
+        }
+        if (w.client_request) |request| {
+            request.payload_pending = false;
         }
     }
 
@@ -861,26 +885,27 @@ pub const BodyWriter = struct {
     /// * `endUnflushed`
     /// * `end`
     pub fn endChunkedUnflushed(w: *BodyWriter, options: EndChunkedOptions) Error!void {
-        if (w.isEliding()) {
-            w.state = .end;
-            return;
-        }
-        const bw = w.http_protocol_output;
-        switch (w.state.chunk_len) {
-            0 => {},
-            1 => unreachable, // Wrote more data than specified in chunk header.
-            2 => try bw.writeAll("\r\n"),
-            else => unreachable, // An earlier write call indicated more data would follow.
-        }
-        try bw.writeAll("0\r\n");
-        for (options.trailers) |trailer| {
-            try bw.writeAll(trailer.name);
-            try bw.writeAll(": ");
-            try bw.writeAll(trailer.value);
+        if (!w.isEliding()) {
+            const bw = w.http_protocol_output;
+            switch (w.state.chunk_len) {
+                0 => {},
+                1 => unreachable, // Wrote more data than specified in chunk header.
+                2 => try bw.writeAll("\r\n"),
+                else => unreachable, // An earlier write call indicated more data would follow.
+            }
+            try bw.writeAll("0\r\n");
+            for (options.trailers) |trailer| {
+                try bw.writeAll(trailer.name);
+                try bw.writeAll(": ");
+                try bw.writeAll(trailer.value);
+                try bw.writeAll("\r\n");
+            }
             try bw.writeAll("\r\n");
         }
-        try bw.writeAll("\r\n");
         w.state = .end;
+        if (w.client_request) |request| {
+            request.payload_pending = false;
+        }
     }
 
     pub fn contentLengthDrain(w: *Writer, data: []const []const u8, splat: usize) Error!usize {

@@ -30,6 +30,7 @@ pub fn init(in: *Reader, out: *Writer) Server {
             // Populated when `http.Reader.bodyReader` is called.
             .interface = undefined,
             .max_head_len = in.buffer.len,
+            .side = .request,
         },
         .out = out,
     };
@@ -253,6 +254,7 @@ pub const Request = struct {
                 .state = .received_head,
                 .interface = undefined,
                 .max_head_len = 4096,
+                .side = .request,
             },
             .out = undefined,
         };
@@ -592,7 +594,7 @@ pub const Request = struct {
         assert(request.server.reader.state == .received_head);
         assert(request.head.expect == null);
         request.head.invalidateStrings();
-        if (!request.head.method.requestHasBody()) return .ending;
+        if (request.head.method == .HEAD) return .ending;
         return request.server.reader.bodyReader(buffer, request.head.transfer_encoding, request.head.content_length);
     }
 
@@ -627,8 +629,7 @@ pub const Request = struct {
         const r = &request.server.reader;
         if (keep_alive and request.head.keep_alive) switch (r.state) {
             .received_head => {
-                if (request.head.method.requestHasBody()) {
-                    assert(request.head.transfer_encoding != .none or request.head.content_length != null);
+                if (request.head.transfer_encoding != .none or request.head.content_length != null) {
                     const reader_interface = request.readerExpectContinue(&.{}) catch return false;
                     _ = reader_interface.discardRemaining() catch return false;
                     assert(r.state == .ready);
