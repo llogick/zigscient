@@ -7,8 +7,8 @@ const NotSquareError = crypto.errors.NotSquareError;
 
 // Inline conditionally, when it can result in large code generation.
 const bloaty_inline: std.builtin.CallingConvention = switch (builtin.mode) {
-    .ReleaseSafe, .ReleaseFast => .@"inline",
-    .Debug, .ReleaseSmall => .auto,
+    .safe, .fast => .@"inline",
+    .debug, .small => .auto,
 };
 
 pub const Fe = struct {

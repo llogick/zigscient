@@ -103,7 +103,7 @@ pub fn block(
     context: anytype,
     comptime lessThanFn: fn (@TypeOf(context), lhs: T, rhs: T) bool,
 ) void {
-    const lessThan = if (builtin.mode == .Debug) struct {
+    const lessThan = if (builtin.mode == .debug) struct {
         fn lessThan(ctx: @TypeOf(context), lhs: T, rhs: T) bool {
             const lt = lessThanFn(ctx, lhs, rhs);
             const gt = lessThanFn(ctx, rhs, lhs);

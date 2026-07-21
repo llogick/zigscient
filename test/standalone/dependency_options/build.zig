@@ -11,11 +11,11 @@ pub fn build(b: *std.Build) !void {
     const none_specified_mod = none_specified.module("dummy");
     if (!none_specified_mod.resolved_target.?.query.eql(b.graph.host.query)) return error.TestFailed;
     const expected_optimize: std.builtin.OptimizeMode = switch (b.graph.release_mode) {
-        .off => .Debug,
+        .off => .debug,
         .any => unreachable,
-        .fast => .ReleaseFast,
-        .safe => .ReleaseSafe,
-        .small => .ReleaseSmall,
+        .fast => .fast,
+        .safe => .safe,
+        .small => .small,
     };
     if (none_specified_mod.optimize.? != expected_optimize) return error.TestFailed;
 
@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) !void {
 
     const all_specified = b.dependency("other", .{
         .target = b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu }),
-        .optimize = @as(std.builtin.OptimizeMode, .ReleaseSafe),
+        .optimize = @as(std.builtin.OptimizeMode, .safe),
         .bool = @as(bool, true),
         .int = @as(i64, 123),
         .float = @as(f64, 0.5),
@@ -66,11 +66,11 @@ pub fn build(b: *std.Build) !void {
     if (all_specified_mod.resolved_target.?.result.cpu.arch != .x86_64) return error.TestFailed;
     if (all_specified_mod.resolved_target.?.result.os.tag != .windows) return error.TestFailed;
     if (all_specified_mod.resolved_target.?.result.abi != .gnu) return error.TestFailed;
-    if (all_specified_mod.optimize.? != .ReleaseSafe) return error.TestFailed;
+    if (all_specified_mod.optimize.? != .safe) return error.TestFailed;
 
     const all_specified_optional = b.dependency("other", .{
         .target = @as(?std.Build.ResolvedTarget, b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu })),
-        .optimize = @as(?std.builtin.OptimizeMode, .ReleaseSafe),
+        .optimize = @as(?std.builtin.OptimizeMode, .safe),
         .bool = @as(?bool, true),
         .int = @as(?i64, 123),
         .float = @as(?f64, 0.5),
@@ -92,7 +92,7 @@ pub fn build(b: *std.Build) !void {
 
     const all_specified_literal = b.dependency("other", .{
         .target = b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu }),
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .bool = true,
         .int = 123,
         .float = 0.5,
@@ -130,7 +130,7 @@ pub fn build(b: *std.Build) !void {
     // to the same cached dependency instance.
     const all_specified_alt = b.dependency("other", .{
         .target = @as(std.Target.Query, .{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu }),
-        .optimize = "ReleaseSafe",
+        .optimize = "safe",
         .bool = .true,
         .int = "123",
         .float = @as(f16, 0.5),

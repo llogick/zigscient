@@ -108,7 +108,7 @@ pub const Node = struct {
             // In Debug and ReleaseSafe builds, there may be hidden extra fields
             // included for safety checks. Without such safety checks enabled,
             // we always want this union to be 8 bytes.
-            if (builtin.mode != .Debug and builtin.mode != .ReleaseSafe) {
+            if (builtin.mode != .debug and builtin.mode != .safe) {
                 assert(@sizeOf(Data) == 8);
             }
         }

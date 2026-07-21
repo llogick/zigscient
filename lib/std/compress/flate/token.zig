@@ -57,9 +57,9 @@ const fixed_dist = blk: {
 };
 
 // All paramters of codes can be derived matchematically, however some are faster to
-// do via lookup table. For ReleaseSmall, we do all mathematically to save space.
-pub const LenCode = if (builtin.mode != .ReleaseSmall) LookupLenCode else ShortLenCode;
-pub const DistCode = if (builtin.mode != .ReleaseSmall) LookupDistCode else ShortDistCode;
+// do via lookup table. For -Osmall, we do all mathematically to save space.
+pub const LenCode = if (builtin.mode != .small) LookupLenCode else ShortLenCode;
+pub const DistCode = if (builtin.mode != .small) LookupDistCode else ShortDistCode;
 const ShortLenCode = ShortCode(u8, u2, u3, true);
 const ShortDistCode = ShortCode(u15, u1, u4, false);
 /// For length and distance codes, they having this format.

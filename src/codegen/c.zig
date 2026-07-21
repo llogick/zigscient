@@ -453,8 +453,8 @@ pub const Function = struct {
 
     fn wantSafety(f: *Function) bool {
         return switch (f.dg.mod.optimize_mode) {
-            .Debug, .ReleaseSafe => true,
-            .ReleaseFast, .ReleaseSmall => false,
+            .debug, .safe => true,
+            .fast, .small => false,
         };
     }
 
@@ -1306,8 +1306,8 @@ pub const DeclGen = struct {
         };
 
         const safety_on = switch (dg.mod.optimize_mode) {
-            .Debug, .ReleaseSafe => true,
-            .ReleaseFast, .ReleaseSmall => false,
+            .debug, .safe => true,
+            .fast, .small => false,
         };
 
         switch (ty.toIntern()) {

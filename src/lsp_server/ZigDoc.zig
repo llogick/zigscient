@@ -222,7 +222,7 @@ pub fn getDocumentScope(self: *ZigDoc) error{OutOfMemory}!DocumentScope {
 
 /// Asserts that `getDocumentScope` has been previously called on `zig_doc`.
 pub fn getDocumentScopeCached(self: *ZigDoc) DocumentScope {
-    if (builtin.mode == .Debug) {
+    if (builtin.mode == .debug) {
         std.debug.assert(self.getStatus().has_document_scope);
     }
     return self.impl.document_scope;

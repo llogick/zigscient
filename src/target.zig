@@ -357,12 +357,12 @@ pub fn libcProvidesStackProtector(target: *const std.Target) bool {
 
 /// Returns true if `@returnAddress()` is supported by the target and has a
 /// reasonably performant implementation for the requested optimization mode.
-pub fn supportsReturnAddress(target: *const std.Target, optimize: std.lang.OptimizeMode) bool {
+pub fn supportsReturnAddress(target: *const std.Target, optimize: std.lang.Optimize) bool {
     return switch (target.cpu.arch) {
         // Emscripten currently implements `emscripten_return_address()` by calling
         // out into JavaScript and parsing a stack trace, which introduces significant
         // overhead that we would prefer to avoid in release builds.
-        .wasm32, .wasm64 => target.os.tag == .emscripten and optimize == .Debug,
+        .wasm32, .wasm64 => target.os.tag == .emscripten and optimize == .debug,
         .bpfel, .bpfeb => false,
         .spirv32, .spirv64 => false,
         else => true,
@@ -417,11 +417,11 @@ pub fn hasDebugInfo(target: *const std.Target) bool {
     };
 }
 
-pub fn defaultCompilerRtOptimizeMode(target: *const std.Target) std.lang.OptimizeMode {
+pub fn defaultCompilerRtOptimizeMode(target: *const std.Target) std.lang.Optimize {
     if (target.cpu.arch.isWasm() and target.os.tag == .freestanding) {
-        return .ReleaseSmall;
+        return .small;
     } else {
-        return .ReleaseFast;
+        return .fast;
     }
 }
 

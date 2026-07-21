@@ -11,7 +11,7 @@ comptime {
             .visibility = compiler_rt.visibility,
         };
 
-        if (builtin.mode == .ReleaseSmall or builtin.zig_backend == .stage2_aarch64)
+        if (builtin.mode == .small or builtin.zig_backend == .stage2_aarch64)
             @export(&memcpySmall, export_options)
         else
             @export(&memcpyFast, export_options);

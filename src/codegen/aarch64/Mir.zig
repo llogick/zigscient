@@ -70,8 +70,8 @@ pub fn emit(
 
     const func_align = switch (nav.resolved.?.@"align") {
         .none => switch (mod.optimize_mode) {
-            .Debug, .ReleaseSafe, .ReleaseFast => target_util.defaultFunctionAlignment(target),
-            .ReleaseSmall => target_util.minFunctionAlignment(target),
+            .debug, .safe, .fast => target_util.defaultFunctionAlignment(target),
+            .small => target_util.minFunctionAlignment(target),
         },
         else => |a| a.maxStrict(target_util.minFunctionAlignment(target)),
     };

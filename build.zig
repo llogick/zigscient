@@ -207,8 +207,8 @@ pub fn build(b: *std.Build) !void {
 
     const mem_leak_frames: u32 = b.option(u32, "mem-leak-frames", "How many stack frames to print when a memory leak occurs. Tests get 2x this amount.") orelse blk: {
         if (strip == true) break :blk @as(u32, 0);
-        if (optimize != .Debug) break :blk 0;
-        break :blk 12;
+        if (optimize != .debug) break :blk 0;
+        break :blk 4;
     };
 
     const exe_options = b.addOptions();
@@ -263,7 +263,7 @@ pub fn build(b: *std.Build) !void {
         exe.root_module.link_libc = true;
     }
 
-    const is_debug = optimize == .Debug;
+    const is_debug = optimize == .debug;
     const enable_debug_extensions = b.option(bool, "debug-extensions", "Enable commands and options useful for debugging the compiler") orelse is_debug;
     const enable_logging = b.option(bool, "log", "Enable debug logging with --debug-log") orelse is_debug;
 
@@ -334,8 +334,8 @@ pub fn build(b: *std.Build) !void {
     if (tracy) |tracy_dir| {
         const tracy_mod = b.createModule(.{
             .target = target,
-            // Always build Tracy in ReleaseFast so that it doesn't make Debug compiler builds unusable.
-            .optimize = .ReleaseFast,
+            // Always build Tracy in ReleaseFast so that it doesn't make -Odebug compiler builds unusable.
+            .optimize = .fast,
             .root_source_file = null,
             .link_libc = true,
             .link_libcpp = true,
@@ -377,19 +377,19 @@ pub fn build(b: *std.Build) !void {
     var chosen_opt_modes_buf: [4]std.lang.OptimizeMode = undefined;
     var chosen_mode_index: usize = 0;
     if (!skip_debug) {
-        chosen_opt_modes_buf[chosen_mode_index] = .Debug;
+        chosen_opt_modes_buf[chosen_mode_index] = .debug;
         chosen_mode_index += 1;
     }
     if (!skip_release_safe) {
-        chosen_opt_modes_buf[chosen_mode_index] = .ReleaseSafe;
+        chosen_opt_modes_buf[chosen_mode_index] = .safe;
         chosen_mode_index += 1;
     }
     if (!skip_release_fast) {
-        chosen_opt_modes_buf[chosen_mode_index] = .ReleaseFast;
+        chosen_opt_modes_buf[chosen_mode_index] = .fast;
         chosen_mode_index += 1;
     }
     if (!skip_release_small) {
-        chosen_opt_modes_buf[chosen_mode_index] = .ReleaseSmall;
+        chosen_opt_modes_buf[chosen_mode_index] = .small;
         chosen_mode_index += 1;
     }
     const optimize_modes = chosen_opt_modes_buf[0..chosen_mode_index];

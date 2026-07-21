@@ -60,9 +60,9 @@ fn addCaseConfig(
     const b = self.b;
 
     const error_tracing: bool = tracing: {
-        if (optimize == .Debug) break :tracing true;
+        if (optimize == .debug) break :tracing true;
         if (backend != .llvm) break :tracing true;
-        if (optimize == .ReleaseSmall) break :tracing false;
+        if (optimize == .small) break :tracing false;
         for (case.disable_trace_optimized) |disable| {
             const d_arch, const d_os = disable;
             if (target.result.cpu.arch == d_arch and target.result.os.tag == d_os) {

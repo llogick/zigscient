@@ -49,9 +49,9 @@ pub fn make(
 
     const opt: ?OptimizeMode = switch (conf_tc.flags.optimize) {
         .debug, .default => null, // Skip since it's the default
-        .safe => .ReleaseSafe,
-        .fast => .ReleaseFast,
-        .small => .ReleaseSmall,
+        .safe => .safe,
+        .fast => .fast,
+        .small => .small,
     };
     if (opt) |o| argv.appendAssumeCapacity(try arena.print("-O{t}", .{o}));
 

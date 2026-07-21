@@ -6,5 +6,5 @@ export fn entry() void {
 
 // error
 //
-// :3:35: error: enum 'lang.OptimizeMode' has no member named 'x86'
+// :3:35: error: enum 'lang.Optimize' has no member named 'x86'
 // : note: enum declared here

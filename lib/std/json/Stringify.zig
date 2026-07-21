@@ -54,8 +54,8 @@ else
     void = if (build_mode_has_safety) .none else {},
 
 const build_mode_has_safety = switch (@import("builtin").mode) {
-    .Debug, .ReleaseSafe => true,
-    .ReleaseFast, .ReleaseSmall => false,
+    .debug, .safe => true,
+    .fast, .small => false,
 };
 
 /// The `safety_checks_hint` parameter determines how much memory is used to enable assertions that the above grammar is being followed,
@@ -66,7 +66,7 @@ const build_mode_has_safety = switch (@import("builtin").mode) {
 /// If `.checked_to_fixed_depth` is used, there is additionally an assertion that the nesting depth never exceeds the given limit.
 /// `.checked_to_fixed_depth` embeds the storage required in the `Stringify` struct.
 /// `.assumed_correct` requires no space and performs none of these assertions.
-/// In `ReleaseFast` and `ReleaseSmall` mode, the given `safety_checks_hint` is ignored and is always treated as `.assumed_correct`.
+/// In fast and small optimization modes, the given `safety_checks_hint` is ignored and is always treated as `.assumed_correct`.
 const safety_checks_hint: union(enum) {
     /// Rounded up to the nearest multiple of 8.
     checked_to_fixed_depth: usize,

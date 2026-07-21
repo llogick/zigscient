@@ -44,8 +44,8 @@ pub const once_t = enum(isize) {
             once_f(predicate, context, function);
         } else asm volatile ("" ::: .{ .memory = true });
         switch (builtin.mode) {
-            .Debug, .ReleaseSafe => {},
-            .ReleaseFast, .ReleaseSmall => if (predicate.* != .done) unreachable,
+            .debug, .safe => {},
+            .fast, .small => if (predicate.* != .done) unreachable,
         }
     }
 };

@@ -16,8 +16,8 @@
     .langref_version = "master",
     .dependencies = .{
         .known_folders = .{
-            .url = "https://github.com/LamplightWorks/known-folders/archive/207c34a16e4365edc20d92c7892f962b3bed46e8.tar.gz",
-            .hash = "known_folders-0.0.0-Fy-PJsbKAACbDh9bBxR0MMThxZSS6A9RH4apWphNHY70",
+            .url = "https://github.com/LamplightWorks/known-folders/archive/6da0d0c41b78b9ed2d34fa364fcb81b5ebece6c4.tar.gz",
+            .hash = "known_folders-0.0.0-Fy-PJiDLAAB98m3uYUzatrTb2mO2fpvwx2zpSroEtfbO",
         },
         .diffz = .{
             .url = "https://github.com/LamplightWorks/diffz/archive/aac8aa99c436ab8277b0711922aad062c0167b12.tar.gz",

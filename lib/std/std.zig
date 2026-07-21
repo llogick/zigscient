@@ -162,7 +162,7 @@ pub const Options = struct {
     /// This enables `std.http.Client` to log ssl secrets to the file specified by the SSLKEYLOGFILE
     /// env var.  Creating such a log file allows other programs with access to that file to decrypt
     /// all `std.http.Client` traffic made by this program.
-    http_enable_ssl_key_log_file: bool = @import("builtin").mode == .Debug,
+    http_enable_ssl_key_log_file: bool = @import("builtin").mode == .debug,
 
     side_channels_mitigations: crypto.SideChannelsMitigations = crypto.default_side_channels_mitigations,
 
@@ -192,7 +192,7 @@ pub const Options = struct {
     /// If this happens the fix is to add the error code to the corresponding
     /// switch expression, possibly introduce a new error in the error set, and
     /// send a patch to Zig.
-    unexpected_error_tracing: bool = @import("builtin").mode == .Debug and switch (@import("builtin").zig_backend) {
+    unexpected_error_tracing: bool = @import("builtin").mode == .debug and switch (@import("builtin").zig_backend) {
         .stage2_llvm, .stage2_x86_64 => true,
         else => false,
     },

@@ -696,7 +696,7 @@ fn genBodyDebugScope(
             .{
                 .di_flags = .{ .StaticMember = true },
                 .sp_flags = .{
-                    .Optimized = mod.optimize_mode != .Debug,
+                    .Optimized = mod.optimize_mode != .debug,
                     .Definition = true,
                     .LocalToUnit = true, // inline functions cannot be exported
                 },
@@ -2516,7 +2516,7 @@ fn airDbgVarVal(self: *FuncGen, inst: Air.Inst.Index, is_arg: bool) Allocator.Er
             },
             "",
         );
-    } else if (owner_mod.optimize_mode == .Debug and !self.is_naked) {
+    } else if (owner_mod.optimize_mode == .debug and !self.is_naked) {
         // We avoid taking this path for naked functions because there's no guarantee that such
         // functions even have a valid stack pointer, making the `alloca` + `store` unsafe.
 
@@ -4689,7 +4689,7 @@ fn airArg(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value {
             },
             "",
         );
-    } else if (mod.optimize_mode == .Debug) {
+    } else if (mod.optimize_mode == .debug) {
         const alloca = try self.buildZigAlloca(inst_ty, .none);
         try self.store(alloca, .none, arg_val, inst_ty, .normal);
         _ = try self.wip.callIntrinsic(
@@ -4820,7 +4820,7 @@ fn airStore(fg: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error!Bu
         // unexpected call in the user's code. This is problematic if the code in question is
         // not ready to correctly make calls yet, such as in our early PIE startup code, or in
         // the early stages of a dynamic linker, etc.
-        if (!safety and owner_mod.optimize_mode == .Debug) {
+        if (!safety and owner_mod.optimize_mode == .debug) {
             return .none;
         }
 

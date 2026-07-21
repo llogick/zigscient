@@ -1210,13 +1210,16 @@ pub fn option(b: *Build, comptime T: type, name_raw: []const u8, description_raw
                 return null;
             },
             .scalar => |s| {
-                if (std.meta.stringToEnum(T, s)) |enum_lit| {
-                    return enum_lit;
-                } else {
-                    log.err("expected -D{s} to be of type {s}", .{ name, @typeName(T) });
-                    b.markInvalidUserInput();
-                    return null;
+                if (T == std.lang.Optimize) {
+                    if (std.lang.Optimize.fromString(s)) |tag| {
+                        return tag;
+                    }
+                } else if (std.meta.stringToEnum(T, s)) |tag| {
+                    return tag;
                 }
+                log.err("expected -D{s} to be of type {q}", .{ name, @typeName(T) });
+                b.markInvalidUserInput();
+                return null;
             },
         },
         .string => switch (option_ptr.value) {
@@ -1262,23 +1265,36 @@ pub fn option(b: *Build, comptime T: type, name_raw: []const u8, description_raw
             },
             .scalar => |s| {
                 const Child = @typeInfo(T).pointer.child;
-                const value = std.meta.stringToEnum(Child, s) orelse {
-                    log.err("expected -D{s} to be of type {s}", .{ name, @typeName(Child) });
-                    b.markInvalidUserInput();
-                    return null;
-                };
-                return arena.dupe(Child, &[_]Child{value}) catch @panic("OOM");
+                if (Child == std.lang.Optimize) {
+                    if (std.lang.Optimize.fromString(s)) |tag| {
+                        return arena.dupe(Child, &.{tag}) catch @panic("OOM");
+                    }
+                } else {
+                    if (std.meta.stringToEnum(Child, s)) |tag| {
+                        return arena.dupe(Child, &.{tag}) catch @panic("OOM");
+                    }
+                }
+                log.err("expected -D{s} to be of type {q}", .{ name, @typeName(Child) });
+                b.markInvalidUserInput();
+                return null;
             },
             .list => |lst| {
                 const Child = @typeInfo(T).pointer.child;
                 const new_list = graph.alloc(Child, lst.items.len);
                 for (new_list, lst.items) |*new_item, str| {
-                    new_item.* = std.meta.stringToEnum(Child, str) orelse {
-                        log.err("expected -D{s} to be of type {s}", .{ name, @typeName(Child) });
-                        b.markInvalidUserInput();
-                        arena.free(new_list);
-                        return null;
-                    };
+                    if (Child == std.lang.Optimize) {
+                        if (std.lang.Optimize.fromString(str)) |tag| {
+                            new_item.* = tag;
+                            continue;
+                        }
+                    }
+                    if (std.meta.stringToEnum(Child, str)) |tag| {
+                        new_item.* = tag;
+                        continue;
+                    }
+                    log.err("expected -D{s} to be of type {q}", .{ name, @typeName(Child) });
+                    b.markInvalidUserInput();
+                    return null;
                 }
                 return new_list;
             },
@@ -1359,14 +1375,14 @@ pub fn standardOptimizeOption(b: *Build, options: StandardOptimizeOptionOptions)
     }
 
     return switch (graph.release_mode) {
-        .off => .Debug,
+        .off => .debug,
         .any => {
             std.debug.print("the project does not declare a preferred optimization mode. choose: --release=fast, --release=safe, or --release=small\n", .{});
             process.exit(1);
         },
-        .fast => .ReleaseFast,
-        .safe => .ReleaseSafe,
-        .small => .ReleaseSmall,
+        .fast => .fast,
+        .safe => .safe,
+        .small => .small,
     };
 }
 

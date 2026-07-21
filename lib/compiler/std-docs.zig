@@ -142,9 +142,9 @@ fn serveRequest(request: *std.http.Server.Request, context: *Context) !void {
     {
         try serveDocsFile(request, context, "docs/main.js", "application/javascript");
     } else if (std.mem.eql(u8, request.head.target, "/main.wasm")) {
-        try serveWasm(request, context, .ReleaseFast);
+        try serveWasm(request, context, .fast);
     } else if (std.mem.eql(u8, request.head.target, "/debug/main.wasm")) {
-        try serveWasm(request, context, .Debug);
+        try serveWasm(request, context, .debug);
     } else if (std.mem.eql(u8, request.head.target, "/sources.tar") or
         std.mem.eql(u8, request.head.target, "/debug/sources.tar"))
     {

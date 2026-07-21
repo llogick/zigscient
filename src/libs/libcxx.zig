@@ -539,15 +539,15 @@ pub fn addCxxArgs(
     // is simple and works everywhere.
     try cflags.append("-D_LIBCPP_PSTL_BACKEND_SERIAL");
     switch (optimize_mode) {
-        .Debug => {
+        .debug => {
             try cflags.append("-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG");
             try cflags.append("-D_LIBCPP_ASSERTION_SEMANTIC_DEFAULT=_LIBCPP_ASSERTION_SEMANTIC_ENFORCE");
         },
-        .ReleaseFast, .ReleaseSmall => {
+        .fast, .small => {
             try cflags.append("-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_NONE");
             try cflags.append("-D_LIBCPP_ASSERTION_SEMANTIC_DEFAULT=_LIBCPP_ASSERTION_SEMANTIC_IGNORE");
         },
-        .ReleaseSafe => {
+        .safe => {
             try cflags.append("-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST");
             try cflags.append("-D_LIBCPP_ASSERTION_SEMANTIC_DEFAULT=_LIBCPP_ASSERTION_SEMANTIC_ENFORCE");
         },

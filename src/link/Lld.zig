@@ -206,8 +206,8 @@ pub fn createEmpty(
     const optimize_mode = comp.root_mod.optimize_mode;
 
     const gc_sections: bool = options.gc_sections orelse switch (target.ofmt) {
-        .coff => optimize_mode != .Debug,
-        .elf => optimize_mode != .Debug and output_mode != .Obj,
+        .coff => optimize_mode != .debug,
+        .elf => optimize_mode != .debug and output_mode != .Obj,
         .wasm => output_mode != .Obj,
         else => unreachable,
     };
@@ -454,9 +454,9 @@ fn coffLink(lld: *Lld, arena: Allocator) !void {
 
         if (comp.config.lto != .none) {
             switch (optimize_mode) {
-                .Debug => {},
-                .ReleaseSmall => try argv.append("-OPT:lldlto=2"),
-                .ReleaseFast, .ReleaseSafe => try argv.append("-OPT:lldlto=3"),
+                .debug => {},
+                .small => try argv.append("-OPT:lldlto=2"),
+                .fast, .safe => try argv.append("-OPT:lldlto=3"),
             }
         }
         if (comp.config.output_mode == .Exe) {
@@ -863,15 +863,15 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
 
         if (comp.config.lto != .none) {
             switch (comp.root_mod.optimize_mode) {
-                .Debug => {},
-                .ReleaseSmall => try argv.append("--lto-O2"),
-                .ReleaseFast, .ReleaseSafe => try argv.append("--lto-O3"),
+                .debug => {},
+                .small => try argv.append("--lto-O2"),
+                .fast, .safe => try argv.append("--lto-O3"),
             }
         }
         switch (comp.root_mod.optimize_mode) {
-            .Debug => {},
-            .ReleaseSmall => try argv.append("-O2"),
-            .ReleaseFast, .ReleaseSafe => try argv.append("-O3"),
+            .debug => {},
+            .small => try argv.append("-O2"),
+            .fast, .safe => try argv.append("-O3"),
         }
 
         if (elf.entry_name) |name| {
@@ -1414,9 +1414,9 @@ fn wasmLink(lld: *Lld, arena: Allocator) !void {
 
         if (comp.config.lto != .none) {
             switch (comp.root_mod.optimize_mode) {
-                .Debug => {},
-                .ReleaseSmall => try argv.append("-O2"),
-                .ReleaseFast, .ReleaseSafe => try argv.append("-O3"),
+                .debug => {},
+                .small => try argv.append("-O2"),
+                .fast, .safe => try argv.append("-O3"),
             }
         }
 

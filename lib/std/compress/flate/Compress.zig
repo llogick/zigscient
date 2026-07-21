@@ -738,7 +738,7 @@ fn matchAndAddHash(c: *Compress, i: usize, h: Hash, gt: u16, max_chain: u16, goo
 
 fn clenHlen(freqs: [19]u16) u4 {
     // Note that the first four codes (16, 17, 18, and 0) are always present.
-    if (builtin.mode != .ReleaseSmall and (std.simd.suggestVectorLength(u16) orelse 1) >= 8) {
+    if (builtin.mode != .small and (std.simd.suggestVectorLength(u16) orelse 1) >= 8) {
         const V = @Vector(16, u16);
         const hlen_mul: V = comptime m: {
             var hlen_mul: [16]u16 = undefined;

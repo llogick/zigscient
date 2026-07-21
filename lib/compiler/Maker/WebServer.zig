@@ -501,7 +501,7 @@ fn serveRequest(ws: *WebServer, req: *http.Server.Request) !void {
     if (mem.eql(u8, target, "/main.js")) return serveLibFile(ws, req, "build-web/main.js", "application/javascript");
     if (mem.eql(u8, target, "/style.css")) return serveLibFile(ws, req, "build-web/style.css", "text/css");
     if (mem.eql(u8, target, "/time_report.css")) return serveLibFile(ws, req, "build-web/time_report.css", "text/css");
-    if (mem.eql(u8, target, "/main.wasm")) return serveClientWasm(ws, req, if (debug) .Debug else .ReleaseFast);
+    if (mem.eql(u8, target, "/main.wasm")) return serveClientWasm(ws, req, if (debug) .debug else .fast);
 
     if (ws.fuzz) |*fuzz| {
         if (mem.eql(u8, target, "/sources.tar")) return fuzz.serveSourcesTar(req);

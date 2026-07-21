@@ -661,8 +661,8 @@ pub const Inst = struct {
 
         comptime {
             switch (builtin.mode) {
-                .Debug, .ReleaseSafe => {},
-                .ReleaseFast, .ReleaseSmall => assert(@sizeOf(Data) == 4),
+                .debug, .safe => {},
+                .fast, .small => assert(@sizeOf(Data) == 4),
             }
         }
     };

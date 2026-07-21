@@ -23,7 +23,7 @@ pub const LinkContext = @import("src/Link.zig");
 const ModuleTestTarget = struct {
     linkage: ?std.builtin.LinkMode = null,
     target: std.Target.Query = .{},
-    optimize_mode: std.builtin.OptimizeMode = .Debug,
+    optimize_mode: std.builtin.OptimizeMode = .debug,
     link_libc: ?bool = null,
     single_threaded: ?bool = null,
     use_llvm: ?bool = null,
@@ -57,38 +57,38 @@ const module_test_targets = blk: {
         },
 
         .{
-            .optimize_mode = .ReleaseFast,
+            .optimize_mode = .fast,
         },
         .{
             .link_libc = true,
-            .optimize_mode = .ReleaseFast,
+            .optimize_mode = .fast,
         },
         .{
-            .optimize_mode = .ReleaseFast,
+            .optimize_mode = .fast,
             .single_threaded = true,
         },
 
         .{
-            .optimize_mode = .ReleaseSafe,
+            .optimize_mode = .safe,
         },
         .{
             .link_libc = true,
-            .optimize_mode = .ReleaseSafe,
+            .optimize_mode = .safe,
         },
         .{
-            .optimize_mode = .ReleaseSafe,
+            .optimize_mode = .safe,
             .single_threaded = true,
         },
 
         .{
-            .optimize_mode = .ReleaseSmall,
+            .optimize_mode = .small,
         },
         .{
             .link_libc = true,
-            .optimize_mode = .ReleaseSmall,
+            .optimize_mode = .small,
         },
         .{
-            .optimize_mode = .ReleaseSmall,
+            .optimize_mode = .small,
             .single_threaded = true,
         },
 
@@ -200,7 +200,7 @@ const module_test_targets = blk: {
         //    },
         //    .use_llvm = false,
         //    .use_lld = false,
-        //    .optimize_mode = .ReleaseFast,
+        //    .optimize_mode = .fast,
         //    .strip = true,
         //    .skip_modules = &.{"std"}, // TODO get these passing
         //},
@@ -213,7 +213,7 @@ const module_test_targets = blk: {
         //    },
         //    .use_llvm = false,
         //    .use_lld = false,
-        //    .optimize_mode = .ReleaseFast,
+        //    .optimize_mode = .fast,
         //    .strip = true,
         //    .skip_modules = &.{"std"}, // TODO get these passing
         //},
@@ -1257,7 +1257,7 @@ const module_test_targets = blk: {
         //    },
         //    .use_llvm = false,
         //    .use_lld = false,
-        //    .optimize_mode = .ReleaseFast,
+        //    .optimize_mode = .fast,
         //    .strip = true,
         //},
 
@@ -2063,7 +2063,7 @@ const c_abi_targets = blk: {
 
 const LinkTarget = struct {
     target: std.Target.Query = .{},
-    optimize_mode: std.builtin.OptimizeMode = .Debug,
+    optimize_mode: std.builtin.OptimizeMode = .debug,
     link_libc: bool = false,
     use_llvm: bool = false,
     use_lld: bool = false,
@@ -2368,7 +2368,7 @@ pub fn addStackTraceTests(
         .root_module = b.createModule(.{
             .root_source_file = b.path("test/src/convert-stack-trace.zig"),
             .target = b.graph.host,
-            .optimize = .Debug,
+            .optimize = .debug,
         }),
     });
 
@@ -2422,7 +2422,7 @@ pub fn addErrorTraceTests(
         .root_module = b.createModule(.{
             .root_source_file = b.path("test/src/convert-stack-trace.zig"),
             .target = b.graph.host,
-            .optimize = .Debug,
+            .optimize = .debug,
         }),
     });
 
@@ -2486,10 +2486,10 @@ pub fn addStandaloneTests(
             .enable_ios_sdk = enable_ios_sdk,
             .enable_macos_sdk = enable_macos_sdk,
             .enable_symlinks_windows = enable_symlinks_windows,
-            .simple_skip_debug = mem.indexOfScalar(OptimizeMode, optimize_modes, .Debug) == null,
-            .simple_skip_release_safe = mem.indexOfScalar(OptimizeMode, optimize_modes, .ReleaseSafe) == null,
-            .simple_skip_release_fast = mem.indexOfScalar(OptimizeMode, optimize_modes, .ReleaseFast) == null,
-            .simple_skip_release_small = mem.indexOfScalar(OptimizeMode, optimize_modes, .ReleaseSmall) == null,
+            .simple_skip_debug = mem.indexOfScalar(OptimizeMode, optimize_modes, .debug) == null,
+            .simple_skip_release_safe = mem.indexOfScalar(OptimizeMode, optimize_modes, .safe) == null,
+            .simple_skip_release_fast = mem.indexOfScalar(OptimizeMode, optimize_modes, .fast) == null,
+            .simple_skip_release_small = mem.indexOfScalar(OptimizeMode, optimize_modes, .small) == null,
         });
         const test_cases_dep_step = test_cases_dep.builder.default_step;
         test_cases_dep_step.name = b.dupe(test_cases_dep_name);
@@ -3057,7 +3057,7 @@ pub fn wouldUseLlvm(use_llvm: ?bool, query: std.Target.Query, optimize_mode: Opt
     if (use_llvm) |x| return x;
     if (query.ofmt == .c) return false;
     switch (optimize_mode) {
-        .Debug => {},
+        .debug => {},
         else => return true,
     }
     const cpu_arch = query.cpu_arch orelse builtin.cpu.arch;
@@ -3314,7 +3314,7 @@ pub fn addIncrementalTests(b: *std.Build, test_step: *Step, test_filters: []cons
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/incr-check.zig"),
             .target = b.graph.host,
-            .optimize = .Debug,
+            .optimize = .debug,
         }),
     });
 

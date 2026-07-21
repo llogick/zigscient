@@ -16754,7 +16754,7 @@ test "CFF: Zig returns to C" {
 }
 test "CFF: C passes to Zig" {
     if (builtin.target.cpu.arch == .x86) return error.SkipZigTest;
-    if (builtin.cpu.arch.isRISCV() and builtin.mode != .Debug) return error.SkipZigTest;
+    if (builtin.cpu.arch.isRISCV() and builtin.mode != .debug) return error.SkipZigTest;
     if (builtin.cpu.arch.isMIPS64()) return error.SkipZigTest;
     if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
     if (builtin.cpu.arch.isLoongArch()) return error.SkipZigTest;
@@ -16764,7 +16764,7 @@ test "CFF: C passes to Zig" {
     try expectOk(c_send_CFF());
 }
 test "CFF: C returns to Zig" {
-    if (builtin.cpu.arch.isRISCV() and builtin.mode != .Debug) return error.SkipZigTest;
+    if (builtin.cpu.arch.isRISCV() and builtin.mode != .debug) return error.SkipZigTest;
     if (builtin.cpu.arch.isMIPS64()) return error.SkipZigTest;
     if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
     if (builtin.cpu.arch.isLoongArch()) return error.SkipZigTest;
@@ -16920,7 +16920,7 @@ extern fn c_f16_struct(f16_struct) f16_struct;
 test "f16 struct" {
     if (builtin.target.cpu.arch.isMIPS64()) return error.SkipZigTest;
     if (builtin.target.cpu.arch.isPowerPC32()) return error.SkipZigTest;
-    if (builtin.cpu.arch.isArm() and builtin.mode != .Debug) return error.SkipZigTest;
+    if (builtin.cpu.arch.isArm() and builtin.mode != .debug) return error.SkipZigTest;
     if (builtin.cpu.arch == .s390x) return error.SkipZigTest;
     if (builtin.cpu.arch == .x86 and builtin.os.tag == .windows) return error.SkipZigTest;
 

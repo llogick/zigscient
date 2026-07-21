@@ -261,7 +261,7 @@ test printInt {
 
 /// Converts values in the range [0, 100) to a base 10 string.
 pub fn digits2(value: u8) [2]u8 {
-    if (builtin.mode == .ReleaseSmall) {
+    if (builtin.mode == .small) {
         return .{ @intCast('0' + value / 10), @intCast('0' + value % 10) };
     } else {
         return "00010203040506070809101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899"[value * 2 ..][0..2].*;
@@ -924,7 +924,7 @@ test "enum" {
 
     // test very large enum to verify ct branch quota is large enough
     // TODO: https://github.com/ziglang/zig/issues/15609
-    if (!((builtin.cpu.arch == .wasm32) and builtin.mode == .Debug)) {
+    if (!((builtin.cpu.arch == .wasm32) and builtin.mode == .debug)) {
         try expectFmt("enum: .INVALID_FUNCTION\n", "enum: {}\n", .{std.os.windows.Win32Error.INVALID_FUNCTION});
     }
 

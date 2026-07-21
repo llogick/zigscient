@@ -26,7 +26,7 @@ fully_qualified_name: []const u8,
 deps: Deps = .{},
 
 resolved_target: ResolvedTarget,
-optimize_mode: std.lang.OptimizeMode,
+optimize_mode: std.lang.Optimize,
 code_model: std.lang.CodeModel,
 single_threaded: bool,
 error_tracing: bool,
@@ -67,7 +67,7 @@ pub const CreateOptions = struct {
     pub const Inherited = struct {
         /// If this is null then `parent` must be non-null.
         resolved_target: ?ResolvedTarget = null,
-        optimize_mode: ?std.lang.OptimizeMode = null,
+        optimize_mode: ?std.lang.Optimize = null,
         code_model: ?std.lang.CodeModel = null,
         single_threaded: ?bool = null,
         error_tracing: ?bool = null,
@@ -144,7 +144,7 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Module {
         if (options.inherited.valgrind) |x| break :b x;
         if (options.parent) |p| break :b p.valgrind;
         if (strip) break :b false;
-        break :b optimize_mode == .Debug;
+        break :b optimize_mode == .debug;
     };
 
     const single_threaded = b: {
@@ -212,7 +212,7 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Module {
     const omit_frame_pointer = b: {
         if (options.inherited.omit_frame_pointer) |x| break :b x;
         if (options.parent) |p| break :b p.omit_frame_pointer;
-        if (optimize_mode == .ReleaseSmall) {
+        if (optimize_mode == .small) {
             // On x86, in most cases, keeping the frame pointer usually results in smaller binary size.
             // This has to do with how instructions for memory access via the stack base pointer register (when keeping the frame pointer)
             // are smaller than instructions for memory access via the stack pointer register (when omitting the frame pointer).
@@ -251,21 +251,21 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Module {
     };
 
     const is_safe_mode = switch (optimize_mode) {
-        .Debug, .ReleaseSafe => true,
-        .ReleaseFast, .ReleaseSmall => false,
+        .debug, .safe => true,
+        .fast, .small => false,
     };
 
     const sanitize_c: std.zig.SanitizeC = b: {
         if (options.inherited.sanitize_c) |x| break :b x;
         if (options.parent) |p| break :b p.sanitize_c;
         break :b switch (optimize_mode) {
-            .Debug => .full,
+            .debug => .full,
             // It's recommended to use the minimal runtime in production
             // environments due to the security implications of the full runtime.
             // The minimal runtime doesn't provide much benefit over simply
             // trapping, however, so we do that instead.
-            .ReleaseSafe => .trap,
-            .ReleaseFast, .ReleaseSmall => .off,
+            .safe => .trap,
+            .fast, .small => .off,
         };
     };
 

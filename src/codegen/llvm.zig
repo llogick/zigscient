@@ -653,7 +653,7 @@ pub const Object = struct {
                     }),
                     debug_enums_fwd_ref,
                     debug_globals_fwd_ref,
-                    .{ .optimized = comp.root_mod.optimize_mode != .Debug },
+                    .{ .optimized = comp.root_mod.optimize_mode != .debug },
                 );
 
                 try builder.addNamedMetadata(try builder.string("llvm.dbg.cu"), &.{debug_compile_unit});
@@ -1028,7 +1028,7 @@ pub const Object = struct {
 
         const optimize_mode = comp.root_mod.optimize_mode;
 
-        const opt_level: bindings.CodeGenOptLevel = if (optimize_mode == .Debug)
+        const opt_level: bindings.CodeGenOptLevel = if (optimize_mode == .debug)
             .None
         else
             .Aggressive;
@@ -1299,7 +1299,7 @@ pub const Object = struct {
                         .NoReturn = fn_info.return_type == .noreturn_type,
                     },
                     .sp_flags = .{
-                        .Optimized = owner_mod.optimize_mode != .Debug,
+                        .Optimized = owner_mod.optimize_mode != .debug,
                         .Definition = true,
                         .LocalToUnit = is_internal_linkage,
                     },
@@ -2798,7 +2798,7 @@ pub const Object = struct {
                 &o.builder,
             );
         }
-        if (owner_mod.optimize_mode == .ReleaseSmall) {
+        if (owner_mod.optimize_mode == .small) {
             try attributes.addFnAttr(.minsize, &o.builder);
             try attributes.addFnAttr(.optsize, &o.builder);
         }

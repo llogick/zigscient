@@ -7,7 +7,7 @@ is_test: bool,
 single_threaded: bool,
 link_libc: bool,
 link_libcpp: bool,
-optimize_mode: std.lang.OptimizeMode,
+optimize_mode: std.lang.Optimize,
 error_tracing: bool,
 valgrind: bool,
 sanitize_thread: bool,
@@ -239,7 +239,9 @@ pub fn append(opts: @This(), buffer: *std.array_list.Managed(u8)) Allocator.Erro
 
     try buffer.print(
         \\pub const object_format: std.Target.ObjectFormat = .{f};
-        \\pub const mode: std.lang.OptimizeMode = .{f};
+        \\/// Deprecated, to be removed after 0.18.0
+        \\pub const mode = optimize;
+        \\pub const optimize: std.lang.Optimize = .{f};
         \\pub const link_libc = {};
         \\pub const link_libcpp = {};
         \\pub const have_error_return_tracing = {};

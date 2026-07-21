@@ -5598,11 +5598,11 @@ fn updateFuncInner(
                 const ni = try coff.mf.addLastChildNode(gpa, sec_si.node(coff), .{
                     .alignment = switch (nav.resolved.?.@"align") {
                         .none => switch (mod.optimize_mode) {
-                            .Debug,
-                            .ReleaseSafe,
-                            .ReleaseFast,
+                            .debug,
+                            .safe,
+                            .fast,
                             => target_util.defaultFunctionAlignment(target),
-                            .ReleaseSmall => target_util.minFunctionAlignment(target),
+                            .small => target_util.minFunctionAlignment(target),
                         },
                         else => |a| a.maxStrict(target_util.minFunctionAlignment(target)),
                     }.toStdMem(),
@@ -6649,11 +6649,11 @@ fn flushGlobal(coff: *Coff, gmi: Node.GlobalMapIndex) !bool {
 
             const target = &comp.root_mod.resolved_target.result;
             const alignment = switch (comp.root_mod.optimize_mode) {
-                .Debug,
-                .ReleaseSafe,
-                .ReleaseFast,
+                .debug,
+                .safe,
+                .fast,
                 => target_util.defaultFunctionAlignment(target),
-                .ReleaseSmall => target_util.minFunctionAlignment(target),
+                .small => target_util.minFunctionAlignment(target),
             }.toStdMem();
             const parent_si = (try coff.pseudoSectionMapIndex(
                 .@".thunks",

@@ -498,7 +498,7 @@ test "array coercion to undefined at runtime" {
 
     @setRuntimeSafety(true);
 
-    if (builtin.mode != .Debug and builtin.mode != .ReleaseSafe) {
+    if (builtin.mode != .debug and builtin.mode != .safe) {
         return error.SkipZigTest;
     }
 

@@ -4,7 +4,7 @@ const lsp_server = @import("lsp-server");
 
 const Logger = @This();
 
-level: std.log.Level = if (builtin.mode == .Debug) .debug else .info,
+level: std.log.Level = if (builtin.mode == .debug) .debug else .info,
 
 /// Log messages with the LSP 'window/logMessage' message.
 lsp_transport: ?*lsp_server.lsp.Transport = null,

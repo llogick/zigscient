@@ -319,7 +319,7 @@ fn walk(arena: Allocator, io: Io, tokenizer: *Tokenizer, out_dir: Dir, w: anytyp
                         return parseError(tokenizer, code_kind_tok, "unrecognized code kind: {s}", .{code_kind_str});
                     }
 
-                    var mode: std.builtin.OptimizeMode = .Debug;
+                    var mode: std.builtin.OptimizeMode = .debug;
                     var link_objects = std.array_list.Managed([]const u8).init(arena);
                     var target_str: ?[]const u8 = null;
                     var link_libc = false;
@@ -403,7 +403,7 @@ fn walk(arena: Allocator, io: Io, tokenizer: *Tokenizer, out_dir: Dir, w: anytyp
                         },
                     }
 
-                    if (mode != .Debug)
+                    if (mode != .debug)
                         try code.print("// optimize={s}\n", .{@tagName(mode)});
 
                     for (link_objects.items) |link_object| {

@@ -135,8 +135,8 @@ pub fn buildCrtFile(comp: *Compilation, crt_file: CrtFile, prog_node: std.Progre
                 });
 
                 switch (comp.compilerRtOptMode()) {
-                    .Debug, .ReleaseSafe => try winpthreads_args.append("-DWINPTHREAD_DBG"),
-                    .ReleaseFast, .ReleaseSmall => {},
+                    .debug, .safe => try winpthreads_args.append("-DWINPTHREAD_DBG"),
+                    .fast, .small => {},
                 }
 
                 for (mingw32_winpthreads_src) |dep| {

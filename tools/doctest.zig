@@ -915,11 +915,11 @@ fn parseManifest(arena: Allocator, source_bytes: []const u8) !Code {
     while (it.next()) |prefixed_line| {
         const line = skipPrefix(prefixed_line);
         if (mem.startsWith(u8, line, "optimize=")) {
-            mode = std.meta.stringToEnum(std.builtin.OptimizeMode, line["optimize=".len..]) orelse
-                fatal("bad optimization mode line: '{s}'", .{line});
+            mode = std.builtin.Optimize.fromString(line["optimize=".len..]) orelse
+                fatal("bad optimization mode line: {q}", .{line});
         } else if (mem.startsWith(u8, line, "link_mode=")) {
             link_mode = std.meta.stringToEnum(std.builtin.LinkMode, line["link_mode=".len..]) orelse
-                fatal("bad link mode line: '{s}'", .{line});
+                fatal("bad link mode line: {q}", .{line});
         } else if (mem.startsWith(u8, line, "link_object=")) {
             try link_objects.append(arena, line["link_object=".len..]);
         } else if (mem.startsWith(u8, line, "additional_option=")) {

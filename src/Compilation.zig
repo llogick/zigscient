@@ -173,7 +173,7 @@ verbose_link: bool,
 link_depfile: ?[]const u8,
 disable_c_depfile: bool,
 stack_report: bool,
-debug_compiler_runtime_libs: ?std.lang.OptimizeMode,
+debug_compiler_runtime_libs: ?std.lang.Optimize,
 debug_compile_errors: bool,
 /// Do not check this field directly. Instead, use the `debugIncremental` wrapper function.
 debug_incremental: bool,
@@ -1509,7 +1509,7 @@ pub const CreateOptions = struct {
     verbose_llvm_bc: ?[]const u8 = null,
     link_depfile: ?[]const u8 = null,
     verbose_llvm_cpu_features: bool = false,
-    debug_compiler_runtime_libs: ?std.lang.OptimizeMode = null,
+    debug_compiler_runtime_libs: ?std.lang.Optimize = null,
     debug_compile_errors: bool = false,
     debug_incremental: bool = false,
     /// Normally when you create a `Compilation`, Zig will automatically build
@@ -2166,7 +2166,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
             .framework_dirs = options.framework_dirs,
             .rpath_list = options.rpath_list,
             .symbol_wrap_set = options.symbol_wrap_set,
-            .repro = options.linker_repro orelse (options.root_mod.optimize_mode != .Debug),
+            .repro = options.linker_repro orelse (options.root_mod.optimize_mode != .debug),
             .allow_shlib_undefined = options.linker_allow_shlib_undefined,
             .bind_global_refs_locally = options.linker_bind_global_refs_locally orelse false,
             .compress_debug_sections = options.linker_compress_debug_sections orelse .none,
@@ -3195,8 +3195,8 @@ fn flush(comp: *Compilation, arena: Allocator) (Io.Cancelable || Allocator.Error
                     break :p try p.toStringZ(arena);
                 },
 
-                .is_debug = comp.root_mod.optimize_mode == .Debug,
-                .is_small = comp.root_mod.optimize_mode == .ReleaseSmall,
+                .is_debug = comp.root_mod.optimize_mode == .debug,
+                .is_small = comp.root_mod.optimize_mode == .small,
                 .time_report = if (comp.time_report) |*p| p else null,
                 .sanitize_thread = comp.config.any_sanitize_thread,
                 .fuzz = comp.config.any_fuzz,
@@ -4752,7 +4752,7 @@ fn workerDocsWasmFallible(comp: *Compilation, prog_node: std.Progress.Node) SubU
     defer arena_allocator.deinit();
     const arena = arena_allocator.allocator();
 
-    const optimize_mode = std.lang.OptimizeMode.ReleaseSmall;
+    const optimize_mode: std.lang.Optimize = .small;
     const output_mode = std.lang.OutputMode.Exe;
     const resolved_target: Module.ResolvedTarget = .{
         .result = std.zig.system.resolveTargetQuery(io, .{
@@ -5920,8 +5920,8 @@ fn updateWin32Resource(comp: *Compilation, win32_resource: *Win32Resource, win32
         // them being defined matches the behavior of how MSVC calls rc.exe which is the more
         // relevant behavior in this case.
         switch (rc_src.owner.optimize_mode) {
-            .Debug, .ReleaseSafe => {},
-            .ReleaseFast, .ReleaseSmall => try argv.append("-DNDEBUG"),
+            .debug, .safe => {},
+            .fast, .small => try argv.append("-DNDEBUG"),
         }
         try argv.appendSlice(rc_src.extra_flags);
         try argv.appendSlice(&.{ "--", rc_src.src_path, out_res_path });
@@ -6188,11 +6188,11 @@ fn addCommonCCArgs(
         // LLVM IR files don't support these flags.
         if (ext != .ll and ext != .bc) {
             switch (mod.optimize_mode) {
-                .Debug => {},
-                .ReleaseSafe => {
+                .debug => {},
+                .safe => {
                     try argv.append("-D_FORTIFY_SOURCE=2");
                 },
-                .ReleaseFast, .ReleaseSmall => {
+                .fast, .small => {
                     try argv.append("-DNDEBUG");
                 },
             }
@@ -6343,7 +6343,7 @@ fn addCommonCCArgs(
                 }
             }
 
-            if (mod.optimize_mode != .Debug) {
+            if (mod.optimize_mode != .debug) {
                 try argv.append("-Werror=date-time");
             }
         },
@@ -6422,18 +6422,18 @@ fn addCommonCCArgs(
             }
 
             switch (mod.optimize_mode) {
-                .Debug => {
+                .debug => {
                     // Clang has -Og for compatibility with GCC, but currently it is just equivalent
                     // to -O1. Besides potentially impairing debugging, -O1/-Og significantly
                     // increases compile times.
                     try argv.append("-O0");
                 },
-                .ReleaseSafe => {
+                .safe => {
                     // See the comment in the BuildModeFastRelease case for why we pass -O2 rather
                     // than -O3 here.
                     try argv.append("-O2");
                 },
-                .ReleaseFast => {
+                .fast => {
                     // Here we pass -O2 rather than -O3 because, although we do the equivalent of
                     // -O3 in Zig code, the justification for the difference here is that Zig
                     // has better detection and prevention of undefined behavior, so -O3 is safer for
@@ -6441,7 +6441,7 @@ fn addCommonCCArgs(
                     // running in -O2 and thus the -O3 path has been tested less.
                     try argv.append("-O2");
                 },
-                .ReleaseSmall => {
+                .small => {
                     try argv.append("-Os");
                 },
             }
@@ -7567,15 +7567,15 @@ pub fn addLinkLib(comp: *Compilation, lib_name: []const u8) !void {
 
 /// This decides the optimization mode for all zig-provided libraries, including
 /// compiler-rt, libcxx, libc, libunwind, etc.
-pub fn compilerRtOptMode(comp: Compilation) std.lang.OptimizeMode {
+pub fn compilerRtOptMode(comp: Compilation) std.lang.Optimize {
     if (comp.debug_compiler_runtime_libs) |mode| {
         return mode;
     }
     const target = &comp.root_mod.resolved_target.result;
     switch (comp.root_mod.optimize_mode) {
-        .Debug, .ReleaseSafe => return target_util.defaultCompilerRtOptimizeMode(target),
-        .ReleaseFast => return .ReleaseFast,
-        .ReleaseSmall => return .ReleaseSmall,
+        .debug, .safe => return target_util.defaultCompilerRtOptimizeMode(target),
+        .fast => return .fast,
+        .small => return .small,
     }
 }
 

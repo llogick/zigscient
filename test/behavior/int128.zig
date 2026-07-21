@@ -31,7 +31,7 @@ test "undefined 128 bit int" {
     @setRuntimeSafety(true);
 
     // TODO implement @setRuntimeSafety
-    if (builtin.mode != .Debug and builtin.mode != .ReleaseSafe) {
+    if (builtin.mode != .debug and builtin.mode != .safe) {
         return error.SkipZigTest;
     }
 

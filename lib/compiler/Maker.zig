@@ -83,10 +83,10 @@ var debug_maker_leaks: bool = false;
 
 const AvoidableWebServer = if (builtin.single_threaded) void else WebServer;
 
-const is_debug_mode = builtin.mode == .Debug;
+const is_debug_mode = builtin.mode == .debug;
 const use_safe_allocator = switch (builtin.mode) {
-    .Debug, .ReleaseSafe => true,
-    .ReleaseFast, .ReleaseSmall => false,
+    .debug, .safe => true,
+    .fast, .small => false,
 };
 
 const InstallPaths = struct {

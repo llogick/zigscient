@@ -4782,11 +4782,11 @@ fn navMapIndex(elf: *Elf, zcu: *Zcu, nav_index: InternPool.Nav.Index) Error!Node
                 break :a switch (nav.resolved.?.@"align") {
                     else => |a| a.maxStrict(min),
                     .none => switch (mod.optimize_mode) {
-                        .Debug,
-                        .ReleaseSafe,
-                        .ReleaseFast,
+                        .debug,
+                        .safe,
+                        .fast,
                         => target_util.defaultFunctionAlignment(target),
-                        .ReleaseSmall => min,
+                        .small => min,
                     }.maxStrict(Type.fromInterned(nav.resolved.?.type).abiAlignment(zcu)),
                 };
             },

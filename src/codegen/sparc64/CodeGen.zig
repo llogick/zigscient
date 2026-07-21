@@ -4764,9 +4764,9 @@ fn truncRegister(
 fn wantSafety(self: *Self) bool {
     return switch (self.bin_file.comp.root_mod.optimize_mode) {
         .Debug => true,
-        .ReleaseSafe => true,
-        .ReleaseFast => false,
-        .ReleaseSmall => false,
+        .safe => true,
+        .fast => false,
+        .small => false,
     };
 }
 

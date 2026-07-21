@@ -1655,10 +1655,10 @@ pub const Module = struct {
 
         pub fn init(o: ?std.builtin.OptimizeMode) Optimize {
             return switch (o orelse return .default) {
-                .Debug => .debug,
-                .ReleaseSafe => .safe,
-                .ReleaseFast => .fast,
-                .ReleaseSmall => .small,
+                .debug => .debug,
+                .safe => .safe,
+                .fast => .fast,
+                .small => .small,
             };
         }
     };

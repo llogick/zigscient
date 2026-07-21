@@ -1299,7 +1299,7 @@ fn getNavShdrIndex(
     }
     if (nav_val.isUndef(zcu))
         return switch (zcu.navFileScope(nav_index).mod.?.optimize_mode) {
-            .Debug, .ReleaseSafe => {
+            .debug, .safe => {
                 if (self.data_index) |symbol_index|
                     return self.symbol(symbol_index).outputShndx(elf_file).?;
                 const osec = try elf_file.addSection(.{
@@ -1311,7 +1311,7 @@ fn getNavShdrIndex(
                 self.data_index = try self.addSectionSymbol(gpa, try self.addString(gpa, ".data"), osec);
                 return osec;
             },
-            .ReleaseFast, .ReleaseSmall => {
+            .fast, .small => {
                 if (self.bss_index) |symbol_index|
                     return self.symbol(symbol_index).outputShndx(elf_file).?;
                 const osec = try elf_file.addSection(.{
@@ -1374,8 +1374,8 @@ fn updateNavCode(
     const target = &mod.resolved_target.result;
     const required_alignment = switch (nav.resolved.?.@"align") {
         .none => switch (mod.optimize_mode) {
-            .Debug, .ReleaseSafe, .ReleaseFast => target_util.defaultFunctionAlignment(target),
-            .ReleaseSmall => target_util.minFunctionAlignment(target),
+            .debug, .safe, .fast => target_util.defaultFunctionAlignment(target),
+            .small => target_util.minFunctionAlignment(target),
         }.maxStrict(Type.fromInterned(nav.resolved.?.type).abiAlignment(zcu)),
         else => |a| a.maxStrict(target_util.minFunctionAlignment(target)),
     };

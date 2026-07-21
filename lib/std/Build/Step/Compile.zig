@@ -390,7 +390,7 @@ pub fn create(owner: *std.Build, options: Options) *Compile {
             @tagName(options.kind)
         else
             owner.fmt("{t} {s}", .{ options.kind, name }),
-        @tagName(options.root_module.optimize orelse .Debug),
+        @tagName(options.root_module.optimize orelse .debug),
         resolved_target.query.zigTriple(arena) catch @panic("OOM"),
     });
 
@@ -645,7 +645,7 @@ pub fn producesPdbFile(compile: *Compile) bool {
     if (target.ofmt == .c) return false;
     if (compile.use_llvm == false) return false;
     if (compile.root_module.strip == true or
-        (compile.root_module.strip == null and compile.root_module.optimize == .ReleaseSmall))
+        (compile.root_module.strip == null and compile.root_module.optimize == .small))
     {
         return false;
     }

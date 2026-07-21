@@ -946,8 +946,8 @@ fn updateNavCode(
     const target = &mod.resolved_target.result;
     const required_alignment = switch (nav.resolved.?.@"align") {
         .none => switch (mod.optimize_mode) {
-            .Debug, .ReleaseSafe, .ReleaseFast => target_util.defaultFunctionAlignment(target),
-            .ReleaseSmall => target_util.minFunctionAlignment(target),
+            .debug, .safe, .fast => target_util.defaultFunctionAlignment(target),
+            .small => target_util.minFunctionAlignment(target),
         },
         else => |a| a.maxStrict(target_util.minFunctionAlignment(target)),
     };
@@ -1172,8 +1172,8 @@ fn getNavOutputSection(
     if (nav.resolved.?.@"const") return macho_file.zig_const_sect_index.?;
     if (nav_val.isUndef(zcu))
         return switch (zcu.navFileScope(nav_index).mod.?.optimize_mode) {
-            .Debug, .ReleaseSafe => macho_file.zig_data_sect_index.?,
-            .ReleaseFast, .ReleaseSmall => macho_file.zig_bss_sect_index.?,
+            .debug, .safe => macho_file.zig_data_sect_index.?,
+            .fast, .small => macho_file.zig_bss_sect_index.?,
         };
     for (code) |byte| {
         if (byte != 0) break;

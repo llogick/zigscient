@@ -644,7 +644,7 @@ pub fn totalSystemMemory() TotalSystemMemoryError!u64 {
 /// leaks can be accurate. In release builds, this calls `exit` with code zero,
 /// and does not return.
 pub fn cleanExit(io: Io) void {
-    if (builtin.mode == .Debug) return;
+    if (builtin.mode == .debug) return;
     _ = io.lockStderr(&.{}, .no_color) catch {};
     exit(0);
 }
@@ -809,7 +809,7 @@ pub fn abort() noreturn {
     // even when linking libc on Windows we use our own abort implementation.
     // See https://github.com/ziglang/zig/issues/2071 for more details.
     if (native_os == .windows) {
-        if (builtin.mode == .Debug and windows.peb().BeingDebugged.toBool()) {
+        if (builtin.mode == .debug and windows.peb().BeingDebugged.toBool()) {
             @breakpoint();
         }
         windows.ntdll.RtlExitUserProcess(3);

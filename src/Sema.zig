@@ -532,20 +532,20 @@ pub const Block = struct {
 
     fn wantSafeTypes(block: *const Block) bool {
         return block.want_safety orelse switch (block.ownerModule().optimize_mode) {
-            .Debug => true,
-            .ReleaseSafe => true,
-            .ReleaseFast => false,
-            .ReleaseSmall => false,
+            .debug => true,
+            .safe => true,
+            .fast => false,
+            .small => false,
         };
     }
 
     fn wantSafety(block: *const Block) bool {
         if (block.isComptime()) return false; // runtime safety checks are pointless in comptime blocks
         return block.want_safety orelse switch (block.ownerModule().optimize_mode) {
-            .Debug => true,
-            .ReleaseSafe => true,
-            .ReleaseFast => false,
-            .ReleaseSmall => false,
+            .debug => true,
+            .safe => true,
+            .fast => false,
+            .small => false,
         };
     }
 
@@ -2247,7 +2247,7 @@ fn resolveValue(sema: *Sema, inst: Air.Inst.Ref) ?Value {
         .inferred_alloc_comptime => unreachable, // assertion failure
         else => {},
     }
-    // LLVM fails to eliminate this `classify` call in ReleaseFast, which hurts performance, so
+    // LLVM fails to eliminate this `classify` call in -Ofast, which hurts performance, so
     // we must explicitly check for `std.debug.runtime_safety`.
     if (std.debug.runtime_safety) switch (sema.typeOf(inst).classify(zcu)) {
         .no_possible_value => unreachable, // values of this type do not exist

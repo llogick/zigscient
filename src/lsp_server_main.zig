@@ -39,8 +39,8 @@ const log = std.log.scoped(.lspc_main);
 
 const use_safe_allocator = build_options.debug_gpa or
     (native_os != .wasi and !builtin.link_libc and switch (builtin.mode) {
-        .Debug, .ReleaseSafe => true,
-        .ReleaseFast, .ReleaseSmall => false,
+        .debug, .safe => true,
+        .fast, .small => false,
     });
 
 var safe_allocator: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{

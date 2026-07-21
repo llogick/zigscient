@@ -182502,8 +182502,8 @@ fn hasFeature(cg: *CodeGen, feature: std.Target.x86.Feature) bool {
         .slow_unaligned_mem_16,
         .slow_unaligned_mem_32,
         => switch (cg.mod.optimize_mode) {
-            .Debug, .ReleaseSafe, .ReleaseFast => null,
-            .ReleaseSmall => false,
+            .debug, .safe, .fast => null,
+            .small => false,
         },
         .fast_11bytenop,
         .fast_15bytenop,
@@ -182523,8 +182523,8 @@ fn hasFeature(cg: *CodeGen, feature: std.Target.x86.Feature) bool {
         .fast_vector_fsqrt,
         .fast_vector_shift_masks,
         => switch (cg.mod.optimize_mode) {
-            .Debug, .ReleaseSafe, .ReleaseFast => null,
-            .ReleaseSmall => true,
+            .debug, .safe, .fast => null,
+            .small => true,
         },
         .mmx => false,
         .sahf => switch (cg.target.cpu.arch) {

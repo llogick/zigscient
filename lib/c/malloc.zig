@@ -59,8 +59,8 @@ const Header = packed struct(u64) {
     }
 
     const safety = switch (builtin.mode) {
-        .Debug, .ReleaseSafe => true,
-        .ReleaseFast, .ReleaseSmall => false,
+        .debug, .safe => true,
+        .fast, .small => false,
     };
     const max_addr_bits = switch (safety) {
         true => 48, // Ensures space for Canary bits.

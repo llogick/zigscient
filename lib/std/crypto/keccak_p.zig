@@ -202,7 +202,7 @@ pub fn State(comptime f: u11, comptime capacity: u11, comptime rounds: u5) type 
 
     // In debug mode, track transitions to prevent insecure ones.
     const Op = enum { uninitialized, initialized, updated, absorb, squeeze };
-    const TransitionTracker = if (mode == .Debug) struct {
+    const TransitionTracker = if (mode == .debug) struct {
         op: Op = .uninitialized,
 
         fn to(tracker: *@This(), next_op: Op) void {
@@ -294,7 +294,7 @@ pub fn State(comptime f: u11, comptime capacity: u11, comptime rounds: u5) type 
 
         /// Permute the state
         pub fn permute(self: *Self) void {
-            if (mode == .Debug) {
+            if (mode == .debug) {
                 if (self.transition.op == .absorb and self.offset > 0) {
                     @panic("cannot permute with pending input - call fillBlock() or pad() instead");
                 }
