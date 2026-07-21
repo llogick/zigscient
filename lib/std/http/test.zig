@@ -17,6 +17,7 @@ test "content length reader state update" {
         .interface = undefined,
         .state = .ready,
         .max_head_len = 1024,
+        .side = .request,
     };
 
     _ = try reader.receiveHead();
@@ -1123,6 +1124,27 @@ fn echoTests(client: *http.Client, port: u16) !void {
         try expectEqual(.expectation_failed, response.head.status);
         _ = try response.reader(&.{}).discardRemaining();
     }
+
+    { // Send GET with body
+        const location = try std.fmt.allocPrint(gpa, "http://127.0.0.1:{d}/echo-content#get-with-body", .{port});
+        defer gpa.free(location);
+
+        var body: std.Io.Writer.Allocating = .init(gpa);
+        defer body.deinit();
+        try body.ensureUnusedCapacity(64);
+
+        const res = try client.fetch(.{
+            .location = .{ .url = location },
+            .method = .GET,
+            .payload = "Hello, World!\n",
+            .extra_headers = &.{
+                .{ .name = "content-type", .value = "text/plain" },
+            },
+            .response_writer = &body.writer,
+        });
+        try expectEqual(.ok, res.status);
+        try expectEqualStrings("Hello, World!\n", body.written());
+    }
 }
 
 const TestServer = struct {
@@ -1319,4 +1341,119 @@ test "boot failed connections from the pool" {
     {
         try expectError(error.HttpConnectionClosing, client.fetch(.{ .location = .{ .uri = uri } }));
     }
+}
+
+test "send and discard or echo empty bodies" {
+    if (builtin.cpu.arch.isPowerPC64() and builtin.mode != .debug) return error.SkipZigTest; // https://github.com/llvm/llvm-project/issues/194257
+    if (builtin.os.tag == .openbsd) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/30806
+
+    const io = std.testing.io;
+    const test_server = try createTestServer(io, struct {
+        fn run(test_server: *TestServer) anyerror!void {
+            const net_server = &test_server.net_server;
+            var recv_buffer: [0x100]u8 = undefined;
+            var send_buffer: [0x100]u8 = undefined;
+
+            accept: while (!test_server.shutting_down) {
+                var stream = try net_server.accept(io);
+                defer stream.close(io);
+
+                var connection_br = stream.reader(io, &recv_buffer);
+                var connection_bw = stream.writer(io, &send_buffer);
+                var http_server = http.Server.init(&connection_br.interface, &connection_bw.interface);
+
+                while (http_server.reader.state == .ready) {
+                    var request = http_server.receiveHead() catch |err| switch (err) {
+                        error.HttpConnectionClosing => continue :accept,
+                        else => |e| return e,
+                    };
+                    if (mem.eql(u8, request.head.target, "/discard")) {
+                        try request.respond("ignored", .{});
+                    } else if (mem.eql(u8, request.head.target, "/echo")) {
+                        const body = try (try request.readerExpectContinue(&.{})).allocRemaining(std.testing.allocator, .unlimited);
+                        try request.respond(body, .{});
+                    }
+                }
+            }
+        }
+    });
+    defer test_server.destroy();
+
+    const gpa = std.testing.allocator;
+    var client: http.Client = .{ .allocator = gpa, .io = io };
+    defer client.deinit();
+
+    const port = test_server.port();
+
+    const location_discard = try std.fmt.allocPrint(gpa, "http://127.0.0.1:{d}/discard", .{port});
+    defer gpa.free(location_discard);
+    const uri_discard = try std.Uri.parse(location_discard);
+
+    const location_echo = try std.fmt.allocPrint(gpa, "http://127.0.0.1:{d}/echo", .{port});
+    defer gpa.free(location_echo);
+    const uri_echo = try std.Uri.parse(location_echo);
+
+    { // Echo POST with sendBodiless
+        var response_buffer: [0x100]u8 = undefined;
+
+        var request = try client.request(.POST, uri_echo, .{});
+        defer request.deinit();
+        try request.sendBodiless();
+        var response = try request.receiveHead(&response_buffer);
+        const body = try response.reader(&.{}).allocRemaining(gpa, .unlimited);
+        defer gpa.free(body);
+
+        try expectEqualStrings("", body);
+    }
+
+    // connection has been kept alive
+    try expect(client.http_proxy != null or client.connection_pool.free_len == 1);
+
+    { // Discard POST with sendBodiless
+        var response_buffer: [0x100]u8 = undefined;
+
+        var request = try client.request(.POST, uri_discard, .{});
+        defer request.deinit();
+        try request.sendBodiless();
+        var response = try request.receiveHead(&response_buffer);
+        const body = try response.reader(&.{}).allocRemaining(gpa, .unlimited);
+        defer gpa.free(body);
+
+        try expectEqualStrings("ignored", body);
+    }
+
+    // connection has been kept alive
+    try expect(client.http_proxy != null or client.connection_pool.free_len == 1);
+
+    { // Discard POST with empty fetch payload
+        var body: std.Io.Writer.Allocating = .init(gpa);
+        defer body.deinit();
+
+        _ = try client.fetch(.{
+            .method = .POST,
+            .location = .{ .uri = uri_discard },
+            .response_writer = &body.writer,
+            .payload = "",
+        });
+        try expectEqualStrings("ignored", body.written());
+    }
+
+    // connection has been kept alive
+    try expect(client.http_proxy != null or client.connection_pool.free_len == 1);
+
+    { // Echo POST with empty fetch payload
+        var body: std.Io.Writer.Allocating = .init(gpa);
+        defer body.deinit();
+
+        _ = try client.fetch(.{
+            .method = .POST,
+            .location = .{ .uri = uri_echo },
+            .response_writer = &body.writer,
+            .payload = "",
+        });
+        try expectEqualStrings("", body.written());
+    }
+
+    // connection has been kept alive
+    try expect(client.http_proxy != null or client.connection_pool.free_len == 1);
 }
