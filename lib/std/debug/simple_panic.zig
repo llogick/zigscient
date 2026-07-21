@@ -126,3 +126,7 @@ pub fn memcpyAlias() noreturn {
 pub fn noreturnReturned() noreturn {
     call("'noreturn' function returned", null);
 }
+
+pub fn loadUninstantiableType() noreturn {
+    call("attempt to load uninstantiable type", null);
+}

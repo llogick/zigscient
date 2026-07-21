@@ -31042,7 +31042,18 @@ fn analyzeLoad(
     const comptime_only = switch (elem_ty.classify(zcu)) {
         .no_possible_value => switch (elem_ty.zigTypeTag(zcu)) {
             .@"opaque" => return sema.fail(block, src, "cannot load opaque type '{f}'", .{elem_ty.fmt(pt)}),
-            else => return sema.fail(block, src, "cannot load uninstantiable type '{f}'", .{elem_ty.fmt(pt)}),
+            else => {
+                // Loading an uninstantiable type always invokes Illegal Behavior.
+                if (block.isComptime()) {
+                    return sema.fail(block, src, "cannot load uninstantiable type '{f}'", .{elem_ty.fmt(pt)});
+                } else if (block.wantSafety()) {
+                    try sema.safetyPanic(block, src, .load_uninstantiable_type);
+                    return .unreachable_value;
+                } else {
+                    _ = try block.addNoOp(.unreach);
+                    return .unreachable_value;
+                }
+            },
         },
         .one_possible_value => return .fromValue((try elem_ty.onePossibleValue(pt)).?),
         .runtime => false,
@@ -35061,12 +35072,60 @@ fn getExpectedBuiltinFnType(sema: *Sema, decl: Zcu.StdLangDecl) CompileError!Typ
         .@"panic.copyLenMismatch",
         .@"panic.memcpyAlias",
         .@"panic.noreturnReturned",
+        .@"panic.loadUninstantiableType",
         => try pt.funcType(.{
             .param_types = &.{},
             .return_type = .noreturn_type,
         }),
 
-        else => unreachable,
+        .StackTrace,
+        .CallingConvention,
+        .SourceLocation,
+        .Signedness,
+        .AddressSpace,
+        .VaList,
+        .CallModifier,
+        .AtomicOrder,
+        .AtomicRmwOp,
+        .ReduceOp,
+        .FloatMode,
+        .PrefetchOptions,
+        .ExportOptions,
+        .ExternOptions,
+        .BranchHint,
+        .assembly,
+        .@"assembly.Clobbers",
+        .Type,
+        .@"Type.Fn",
+        .@"Type.Fn.ParamAttributes",
+        .@"Type.Fn.Attributes",
+        .@"Type.Int",
+        .@"Type.Float",
+        .@"Type.Pointer",
+        .@"Type.Pointer.Size",
+        .@"Type.Pointer.Attributes",
+        .@"Type.Array",
+        .@"Type.Vector",
+        .@"Type.Optional",
+        .@"Type.ErrorUnion",
+        .@"Type.ErrorSet",
+        .@"Type.Enum",
+        .@"Type.Enum.Mode",
+        .@"Type.Union",
+        .@"Type.Union.FieldAttributes",
+        .@"Type.Struct",
+        .@"Type.Struct.FieldAttributes",
+        .@"Type.ContainerLayout",
+        .@"Type.Opaque",
+        .@"Type.Spirv",
+        .@"Type.Spirv.Image",
+        .@"Type.Spirv.Image.Usage",
+        .@"Type.Spirv.Image.Format",
+        .@"Type.Spirv.Image.Dimensionality",
+        .@"Type.Spirv.Image.Depth",
+        .@"Type.Spirv.Image.Access",
+        .panic,
+        => unreachable, // not a function (`decl.kind() != .func`)
     };
 }
 

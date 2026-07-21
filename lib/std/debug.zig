@@ -207,6 +207,10 @@ pub fn FullPanic(comptime panicFn: fn ([]const u8, ?usize) noreturn) type {
             @branchHint(.cold);
             call("'noreturn' function returned", @returnAddress());
         }
+        pub fn loadUninstantiableType() noreturn {
+            @branchHint(.cold);
+            call("attempt to load uninstantiable type", @returnAddress());
+        }
     };
 }
 
