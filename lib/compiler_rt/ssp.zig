@@ -17,7 +17,7 @@ const compiler_rt = @import("../compiler_rt.zig");
 const symbol = compiler_rt.symbol;
 const builtin = @import("builtin");
 
-extern fn memset(dest: ?[*]u8, c: u8, n: usize) callconv(.c) ?[*]u8;
+extern fn memset(dest: ?[*]u8, c: c_int, n: usize) callconv(.c) ?[*]u8;
 extern fn memcpy(noalias dest: ?[*]u8, noalias src: ?[*]const u8, n: usize) callconv(.c) ?[*]u8;
 extern fn memmove(dest: ?[*]u8, src: ?[*]const u8, n: usize) callconv(.c) ?[*]u8;
 
@@ -138,7 +138,7 @@ fn __memmove_chk(dest: ?[*]u8, src: ?[*]const u8, n: usize, dest_n: usize) callc
     return memmove(dest, src, n);
 }
 
-fn __memset_chk(dest: ?[*]u8, c: u8, n: usize, dest_n: usize) callconv(.c) ?[*]u8 {
+fn __memset_chk(dest: ?[*]u8, c: c_int, n: usize, dest_n: usize) callconv(.c) ?[*]u8 {
     if (dest_n < n) __chk_fail();
     return memset(dest, c, n);
 }
