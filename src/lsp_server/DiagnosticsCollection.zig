@@ -229,7 +229,7 @@ pub fn collectNotVisibleErrMessages(
         const location = errbExtraData(
             eb,
             ErrorBundle.SourceLocation,
-            @intFromEnum(message.src_loc),
+            @backingInt(message.src_loc),
         );
 
         // Surface
@@ -728,8 +728,8 @@ test DiagnosticsCollection {
     }
 
     {
-        try collection.pushErrorBundle(@enumFromInt(16), 4, null, eb2);
-        try collection.pushErrorBundle(@enumFromInt(17), 4, null, eb3);
+        try collection.pushErrorBundle(@fromBackingInt(@intCast(16)), 4, null, eb2);
+        try collection.pushErrorBundle(@fromBackingInt(@intCast(17)), 4, null, eb3);
 
         var diagnostics: std.ArrayList(lsp.types.Diagnostic) = .empty;
         try collection.collectLspDiagnosticsForDocument(uri, .@"utf-8", arena, &diagnostics);
@@ -837,8 +837,8 @@ fn errbExtraData(eb: ErrorBundle, comptime T: type, index: usize) struct { data:
     inline for (field_names, field_types) |field_name, field_type| {
         @field(result, field_name) = switch (field_type) {
             u32 => eb.extra[i],
-            MessageIndex => @as(MessageIndex, @enumFromInt(eb.extra[i])),
-            SourceLocationIndex => @as(SourceLocationIndex, @enumFromInt(eb.extra[i])),
+            MessageIndex => @as(MessageIndex, @fromBackingInt(@intCast(eb.extra[i]))),
+            SourceLocationIndex => @as(SourceLocationIndex, @fromBackingInt(@intCast(eb.extra[i]))),
             else => @compileError("bad field type"),
         };
         i += 1;
@@ -861,7 +861,7 @@ fn addOtherSourceLocation(
     defer ref_traces.deinit(wip.gpa);
 
     if (other_sl.reference_trace_len > 0) {
-        var ref_index = errbExtraData(other, ErrorBundle.SourceLocation, @intFromEnum(index)).end;
+        var ref_index = errbExtraData(other, ErrorBundle.SourceLocation, @backingInt(index)).end;
         for (0..other_sl.reference_trace_len) |_| {
             const other_ref_trace_ed = errbExtraData(other, ErrorBundle.ReferenceTrace, ref_index);
             const other_ref_trace = other_ref_trace_ed.data;

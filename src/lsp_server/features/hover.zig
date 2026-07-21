@@ -656,7 +656,7 @@ fn lookupNav(
     const Zcu = DocumentStore.Compilation.Zcu;
 
     for (ip.locals, 0..) |_, tid| {
-        const navs = ip.getLocalShared(@enumFromInt(tid)).navs.acquire();
+        const navs = ip.getLocalShared(@fromBackingInt(@intCast(tid))).navs.acquire();
         const nav_reprs = navs.view();
         if (nav_reprs.len == 0) continue;
         for (
@@ -676,7 +676,7 @@ fn lookupNav(
             const zir = file.zir orelse continue;
             // std.log.err("got zir", .{});
             if (zir.instructions.ptrs.len == 0 or zir.instructions.capacity == 0) continue;
-            if (zir.instructions.items(.tag)[@intFromEnum(resolved.inst)] != .declaration) continue;
+            if (zir.instructions.items(.tag)[@backingInt(resolved.inst)] != .declaration) continue;
             const zir_decl = zir.getDeclaration(resolved.inst);
             const src_node = zir_decl.src_node;
             // std.log.err("src_node {} vs nodes[0] {}", .{ src_node, nodes[0] });
@@ -693,7 +693,7 @@ fn lookupNav(
                         try output.print(arena, "```zig\n\n", .{});
                     }
 
-                    const pt: Zcu.PerThread = .activate(zcu, @enumFromInt(tid));
+                    const pt: Zcu.PerThread = .activate(zcu, @fromBackingInt(@intCast(tid)));
                     defer pt.deactivate();
                     const v = Zcu.Value.fromInterned(r.val);
                     try output.print(arena, "fqn: {f}\n", .{nav.fqn.fmt(&ip)});

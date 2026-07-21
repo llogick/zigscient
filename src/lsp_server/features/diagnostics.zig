@@ -174,7 +174,7 @@ fn collectWarnStyleDiagnostics(
     defer tracy_zone.end();
 
     for (0..tree.nodes.len) |i| {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
         if (ast.isBuiltinCall(tree, node)) {
             const builtin_token = tree.nodeMainToken(node);
             const call_name = tree.tokenSlice(builtin_token);
@@ -719,7 +719,7 @@ pub const BuildOnSave = struct {
         hasher.update(workspace_path);
         std.hash.autoHash(&hasher, header.step_id);
 
-        const diagnostic_tag: DiagnosticsCollection.Tag = @enumFromInt(@as(u32, @truncate(hasher.final())));
+        const diagnostic_tag: DiagnosticsCollection.Tag = @fromBackingInt(@intCast(@as(u32, @truncate(hasher.final()))));
 
         try diagnostic_tags.put(allocator, diagnostic_tag, {});
 

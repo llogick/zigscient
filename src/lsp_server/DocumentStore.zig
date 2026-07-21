@@ -349,7 +349,7 @@ pub fn notifyProgressStart(
     if (self.config.disable_notifications) return null;
 
     const transport = self.transport orelse return null;
-    const pn = self.progress_notifications[@intFromEnum(progress_notification_id)];
+    const pn = self.progress_notifications[@backingInt(progress_notification_id)];
 
     const global = struct {
         var work_done_progress_token_count: std.atomic.Value(i32) = .init(0);
@@ -672,7 +672,7 @@ fn loadBuildConfiguration(
     const diagnostic_tag: DiagnosticsCollection.Tag = tag: {
         var hasher: std.hash.Wyhash = .init(47); // Chosen by the following prompt: Pwease give a wandom nyumbew
         hasher.update(build_file.flat_uri);
-        break :tag @enumFromInt(@as(u32, @truncate(hasher.final())));
+        break :tag @fromBackingInt(@intCast(@as(u32, @truncate(hasher.final()))));
     };
 
     if (!is_ok) {
@@ -741,7 +741,7 @@ fn loadBuildConfiguration(
         if (conf_step.owner != .root) continue;
         if (conf_step.flags(c).tag != .top_level) continue;
 
-        try stack.append(.{ .step = @enumFromInt(step_index_usize), .dep_index = 0, .depth = 0 });
+        try stack.append(.{ .step = @fromBackingInt(@intCast(step_index_usize)), .dep_index = 0, .depth = 0 });
 
         // Process the graph using the stack
         while (stack.items.len > 0) {
@@ -785,7 +785,7 @@ fn loadBuildConfiguration(
                             compile.flags3.kind,
                         });
                         const root_index = roots.map.count();
-                        const gop = try roots.map.getOrPut(self.allocator, @intFromEnum(current.step));
+                        const gop = try roots.map.getOrPut(self.allocator, @backingInt(current.step));
                         try roots_info.print(arena, "{s}ID [{}]\n", .{ sub_indent, if (gop.found_existing) gop.index else root_index });
                         var mods: std.ArrayList(BldDoc.CompileStep.NamePathPair) = .empty;
                         if (!gop.found_existing)

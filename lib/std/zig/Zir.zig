@@ -5700,7 +5700,7 @@ pub const UnwrappedOpaqueDecl = struct {
 
 // Flesh out and move to a proper location, eg extended-zccs..
 pub fn getTypeDeclSrcNode(zir: Zir, type_decl: Zir.Inst.Index) ?std.zig.Ast.Node.Index {
-    const inst = zir.instructions.get(@intFromEnum(type_decl));
+    const inst = zir.instructions.get(@backingInt(type_decl));
     if (inst.tag != .extended) return null;
     switch (inst.data.extended.opcode) {
         .struct_decl => {

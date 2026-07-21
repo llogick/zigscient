@@ -262,7 +262,7 @@ pub fn runTailor(build_file: *BldDoc, ds: *DocumentStore) !void {
     defer json.deinit();
 
     for (json.value.compile_steps_info) |csi| {
-        const cs = config.roots.map.getPtr(@intFromEnum(csi.index)) orelse {
+        const cs = config.roots.map.getPtr(@backingInt(csi.index)) orelse {
             log.debug("runTailor: received data for an inactive compile step index: {}", .{csi.index});
             continue;
         };
@@ -396,7 +396,7 @@ fn initCompilation(self: *BldDoc, ds: *DocumentStore) error{ Canceled, OutOfMemo
     var hasher: std.hash.Wyhash = .init(@intFromPtr(cs_ptr));
     hasher.update(proj_path);
     std.hash.autoHash(&hasher, cs_ptr);
-    cs_ptr.*.diag_tag = @enumFromInt(@as(u32, @truncate(hasher.final())));
+    cs_ptr.*.diag_tag = @fromBackingInt(@intCast(@as(u32, @truncate(hasher.final()))));
 
     const gpa = switch (build_options.io_mode) {
         .threaded => compiler.globals.root_gpa,

@@ -42,7 +42,7 @@ pub fn log(
         };
     }
 
-    if (@intFromEnum(level) > @intFromEnum(self.level)) return;
+    if (@backingInt(level) > @backingInt(self.level)) return;
     if (!self.dump_to_stderr) return;
 
     const level_txt: []const u8 = switch (level) {

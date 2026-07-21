@@ -2312,7 +2312,7 @@ fn analyzeFuncBody(
         const file = zcu.fileByIndex(inst_info.file);
         const uri = file.uri_slice orelse break :blk;
         const zir = file.zir orelse break :blk;
-        if (zir.instructions.get(@intFromEnum(inst_info.inst)).tag != .declaration) break :blk;
+        if (zir.instructions.get(@backingInt(inst_info.inst)).tag != .declaration) break :blk;
         const zir_decl = zir.getDeclaration(inst_info.inst);
         const src_node = zir_decl.src_node;
         const lsp_doc = lsp_doc_store.getHandle(uri) orelse break :blk;

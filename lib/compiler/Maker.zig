@@ -2092,7 +2092,7 @@ fn prepare(maker: *Maker, step_names: []const []const u8) !void {
                 };
                 if (!(cs_idx < maker.scanned_config.configuration.steps.len))
                     fatal("step index: {s} in not a valid Index. OutOfBounds {}", .{ step_name, maker.scanned_config.configuration.steps.len });
-                break :cs @enumFromInt(cs_idx);
+                break :cs @fromBackingInt(@intCast(cs_idx));
             } else maker.scanned_config.top_level_steps.get(step_name) orelse {
                 log.info("to list available steps: zig build -l", .{});
                 fatal("no such step: {s}", .{step_name});

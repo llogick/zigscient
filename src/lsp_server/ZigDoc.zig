@@ -539,7 +539,7 @@ pub fn applyContentChanges(
             if (!std.mem.eql(u8, self.uri, uri)) continue;
             if (last_full_text_index) |_| {
                 // clear the error by setting it's src_loc to .none/0
-                @constCast(entry.error_bundle.extra)[@intFromEnum(message.src_loc)] = 0;
+                @constCast(entry.error_bundle.extra)[@backingInt(message.src_loc)] = 0;
                 continue;
             }
             for (changes) |change| {
@@ -554,7 +554,7 @@ pub fn applyContentChanges(
                         (num_new_lines - num_affected_lines)
                     else
                         (num_affected_lines - num_new_lines);
-                    setExtra(&entry.error_bundle, @intFromEnum(message.src_loc), new_loc);
+                    setExtra(&entry.error_bundle, @backingInt(message.src_loc), new_loc);
                 }
             }
         }
@@ -641,8 +641,8 @@ fn setExtra(wip: *const std.zig.ErrorBundle, index: usize, extra: anytype) void 
     inline for (field_names, field_types) |field_name, field_type| {
         @constCast(wip.extra)[i] = switch (field_type) {
             u32 => @field(extra, field_name),
-            std.zig.ErrorBundle.MessageIndex => @intFromEnum(@field(extra, field_name)),
-            std.zig.ErrorBundle.SourceLocationIndex => @intFromEnum(@field(extra, field_name)),
+            std.zig.ErrorBundle.MessageIndex => @backingInt(@field(extra, field_name)),
+            std.zig.ErrorBundle.SourceLocationIndex => @backingInt(@field(extra, field_name)),
             else => @compileError("bad field type"),
         };
         i += 1;

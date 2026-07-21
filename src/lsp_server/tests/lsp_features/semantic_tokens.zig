@@ -2135,7 +2135,7 @@ const TokenIterator = struct {
         const delta_line = token_data[0];
         const delta_start = token_data[1];
         const length = token_data[2];
-        const token_type: lsp_server.semantic_tokens.TokenType = @enumFromInt(token_data[3]);
+        const token_type: lsp_server.semantic_tokens.TokenType = @fromBackingInt(@intCast(token_data[3]));
         const token_modifiers: lsp_server.semantic_tokens.TokenModifiers = @bitCast(@as(u16, @intCast(token_data[4])));
 
         self.position.line += delta_line;
