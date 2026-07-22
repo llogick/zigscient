@@ -726,12 +726,14 @@ comptime {
         // function for the GD and LD models. This function is unlikely to actually be used, since
         // the linker should be able to relax every TLS access to the LE model and therefore
         // eliminate all calls to this function, but that isn't guaranteed.
-        _ = struct {
+        const Fns = struct {
             const TlsIndex = switch (native_arch) {
                 .x86_64 => extern struct { module: u64, offset: u64 }, // Even for x32...
                 else => extern struct { module: usize, offset: usize }, // ...but not MIPS N32!
             };
-            export fn __tls_get_addr(ti: *const TlsIndex) *anyopaque {
+            fn __tls_get_addr(ti: *const TlsIndex) callconv(.c) *anyopaque {
+                comptime assert(native_arch != .s390x);
+
                 assert(ti.module == 1); // The executable's module ID is always 1
                 const tp = getThreadPointer();
                 const block: [*]u8 = switch (current_variant) {
@@ -743,6 +745,25 @@ comptime {
                 };
                 return block[@intCast(ti.offset)..];
             }
+            fn __tls_get_offset() callconv(.naked) noreturn {
+                comptime assert(native_arch == .s390x);
+
+                // We receive the module's GOT pointer in r12 and the GOT offset in r2.
+                asm volatile (
+                    \\ la %%r1, 0(%%r12, %%r2)
+                    \\ lg %%r2, 8(%%r1)
+                    \\ lgrl %%r0, %[block_size]
+                    \\ sgr %%r2, %%r0
+                    \\ br %%r14
+                    :
+                    : [block_size] "s" (&area_desc.block.size),
+                );
+            }
         };
+
+        if (native_arch == .s390x)
+            @export(&Fns.__tls_get_offset, .{ .name = "__tls_get_offset" })
+        else
+            @export(&Fns.__tls_get_addr, .{ .name = "__tls_get_addr" });
     }
 }
