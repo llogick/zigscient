@@ -49,8 +49,9 @@ pub fn emitRaw(
     operand_words: usize,
 ) !void {
     const word_count = 1 + operand_words;
+    if (word_count > std.math.maxInt(u16)) return error.OutOfMemory;
     try section.instructions.ensureUnusedCapacity(allocator, word_count);
-    section.writeWord((@as(Word, @intCast(word_count << 16))) | @backingInt(opcode));
+    section.writeWord((@as(Word, @intCast(word_count)) << 16) | @backingInt(opcode));
 }
 
 /// Write an entire instruction, including all operands
@@ -70,7 +71,8 @@ pub fn emitAssumeCapacity(
     operands: opcode.Operands(),
 ) !void {
     const word_count = instructionSize(opcode, operands);
-    section.writeWord(@as(Word, @intCast(word_count << 16)) | @backingInt(opcode));
+    if (word_count > std.math.maxInt(u16)) return error.OutOfMemory;
+    section.writeWord((@as(Word, @intCast(word_count)) << 16) | @backingInt(opcode));
     section.writeOperands(opcode.Operands(), operands);
 }
 
@@ -81,8 +83,9 @@ pub fn emit(
     operands: opcode.Operands(),
 ) !void {
     const word_count = instructionSize(opcode, operands);
+    if (word_count > std.math.maxInt(u16)) return error.OutOfMemory;
     try section.instructions.ensureUnusedCapacity(allocator, word_count);
-    section.writeWord(@as(Word, @intCast(word_count << 16)) | @backingInt(opcode));
+    section.writeWord((@as(Word, @intCast(word_count)) << 16) | @backingInt(opcode));
     section.writeOperands(opcode.Operands(), operands);
 }
 
