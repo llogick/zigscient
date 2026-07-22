@@ -1661,7 +1661,7 @@ pub const Object = struct {
                     const alias = try o.builder.addAlias(
                         exp_name,
                         llvm_global_ty,
-                        .default,
+                        global_index.ptrConst(&o.builder).addr_space,
                         global_index.toConst(),
                     );
                     break :global alias.ptrConst(&o.builder).global;
@@ -1673,6 +1673,10 @@ pub const Object = struct {
                         // We can just repurpose the existing alias.
                         alias.setAliasee(global_index.toConst(), &o.builder);
                         alias.ptrConst(&o.builder).global.ptr(&o.builder).type = global_index.typeOf(&o.builder);
+                        // If the type the alias is pointing to can change, then
+                        // it makes sense that we should update the address
+                        // space too.
+                        alias.ptrConst(&o.builder).global.ptr(&o.builder).addr_space = global_index.ptrConst(&o.builder).addr_space;
                         break :global existing_global;
                     },
                     .variable, .function => {
@@ -1687,7 +1691,7 @@ pub const Object = struct {
                         const alias = try o.builder.addAlias(
                             exp_name,
                             llvm_global_ty,
-                            .default,
+                            global_index.ptrConst(&o.builder).addr_space,
                             global_index.toConst(),
                         );
                         break :global alias.ptrConst(&o.builder).global;
