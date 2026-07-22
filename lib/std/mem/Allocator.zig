@@ -587,4 +587,7 @@ fn unreachableFree(
 test failing {
     const f: Allocator = .failing;
     try std.testing.expectError(error.OutOfMemory, f.alloc(u8, 123));
+    // Expect very large allocations to fail at the implementation level and not in the interface
+    try std.testing.expectError(error.OutOfMemory, f.alloc(u8, std.math.maxInt(usize)));
+    try std.testing.expectError(error.OutOfMemory, f.allocSentinel(u8, std.math.maxInt(usize) - 1, 0));
 }
