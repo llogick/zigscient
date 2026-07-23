@@ -5267,7 +5267,7 @@ fn loadObject(
                     .first_symbol_reloc = .none,
                     .first_got_reloc = .none,
                 };
-                elf.synth_prog_node.increaseEstimatedTotalItems(1);
+                elf.input_prog_node.increaseEstimatedTotalItems(1);
             }
             var symmap: std.ArrayList(Symbol.Id) = .empty;
             defer symmap.deinit(gpa);
@@ -5812,7 +5812,9 @@ fn updateInitFiniArraySectionSize(
 }
 
 pub fn prelink(elf: *Elf, prog_node: std.Progress.Node) link.Error!void {
-    _ = prog_node;
+    const sub_prog_node = prog_node.start("ELF Prelink", 0);
+    defer sub_prog_node.end();
+
     const diags = &elf.base.comp.link_diags;
     elf.prelinkInner() catch |err| switch (err) {
         error.MappedFileIo => return diags.fail("failed to write output file: {t}", .{elf.mf.io_err.?}),
@@ -7055,8 +7057,10 @@ pub fn flush(
 ) link.Error!void {
     const comp = elf.base.comp;
     const diags = &comp.link_diags;
-    _ = prog_node;
     _ = arena;
+
+    const sub_prog_node = prog_node.start("ELF Flush", 0);
+    defer sub_prog_node.end();
 
     if (comp.config.output_mode == .Exe) {
         var any_undef = false;

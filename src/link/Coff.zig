@@ -5370,7 +5370,9 @@ fn loadDll(coff: *Coff, path: std.Build.Cache.Path, fr: *Io.File.Reader) LoadInp
 }
 
 pub fn prelink(coff: *Coff, prog_node: std.Progress.Node) link.Error!void {
-    _ = prog_node;
+    const sub_prog_node = prog_node.start("COFF Prelink", 0);
+    defer sub_prog_node.end();
+
     const base = coff.base;
     const comp = base.comp;
 
@@ -5886,7 +5888,9 @@ pub fn flush(
     prog_node: std.Progress.Node,
 ) link.Error!void {
     _ = arena;
-    _ = prog_node;
+    const sub_prog_node = prog_node.start("COFF Flush", 0);
+    defer sub_prog_node.end();
+
     const comp = coff.base.comp;
 
     // TODO: When https://github.com/ziglang/zig/issues/23617 is in,

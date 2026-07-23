@@ -895,6 +895,7 @@ fn updateZirRefs(pt: Zcu.PerThread) (Io.Cancelable || Allocator.Error)!void {
                     const old_line = old_zir.getDeclaration(old_inst).src_line;
                     const new_line = new_zir.getDeclaration(new_inst).src_line;
                     if (old_line != new_line) {
+                        comp.link_prog_node.increaseEstimatedTotalItems(1);
                         try comp.link_queue.enqueueZcu(comp, pt.tid, .{ .debug_update_line_number = tracked_inst_index });
                     }
                 },
