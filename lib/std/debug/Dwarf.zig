@@ -450,6 +450,7 @@ fn scanAllFunctions(di: *Dwarf, gpa: Allocator, endian: Endian) ScanError!void {
                 unit_header.format,
                 endian,
                 address_size,
+                version,
             )) orelse continue;
 
             switch (die_obj.tag_id) {
@@ -485,6 +486,7 @@ fn scanAllFunctions(di: *Dwarf, gpa: Allocator, endian: Endian) ScanError!void {
                                     unit_header.format,
                                     endian,
                                     address_size,
+                                    version,
                                 )) orelse return bad();
                             } else if (this_die_obj.getAttr(AT.specification)) |_| {
                                 const after_die_offset = fr.seek;
@@ -500,6 +502,7 @@ fn scanAllFunctions(di: *Dwarf, gpa: Allocator, endian: Endian) ScanError!void {
                                     unit_header.format,
                                     endian,
                                     address_size,
+                                    version,
                                 )) orelse return bad();
                             } else {
                                 break :x null;
@@ -611,6 +614,7 @@ fn scanAllCompileUnits(di: *Dwarf, gpa: Allocator, endian: Endian) ScanError!voi
             unit_header.format,
             endian,
             address_size,
+            version,
         )) orelse return bad();
 
         if (compile_unit_die.tag_id != DW.TAG.compile_unit) return bad();
@@ -931,6 +935,7 @@ fn parseDie(
     format: Format,
     endian: Endian,
     addr_size_bytes: u8,
+    version: u16,
 ) ScanError!?Die {
     const abbrev_code = try fr.takeLeb128(u64);
     if (abbrev_code == 0) return null;
@@ -939,7 +944,7 @@ fn parseDie(
     const attrs = attrs_buf[0..table_entry.attrs.len];
     for (attrs, table_entry.attrs) |*result_attr, attr| result_attr.* = .{
         .id = attr.id,
-        .value = try parseFormValue(fr, attr.form_id, format, endian, addr_size_bytes, attr.payload),
+        .value = try parseFormValue(fr, attr.form_id, format, endian, addr_size_bytes, attr.payload, version),
     };
     return .{
         .tag_id = table_entry.tag_id,
@@ -1042,7 +1047,7 @@ fn runLineNumberProgram(d: *Dwarf, gpa: Allocator, endian: Endian, compile_unit:
             for (try directories.addManyAsSlice(gpa, directories_count)) |*e| {
                 e.* = .{ .path = &.{} };
                 for (dir_ent_fmt_buf[0..directory_entry_format_count]) |ent_fmt| {
-                    const form_value = try parseFormValue(&fr, ent_fmt.form_code, unit_header.format, endian, addr_size_bytes, null);
+                    const form_value = try parseFormValue(&fr, ent_fmt.form_code, unit_header.format, endian, addr_size_bytes, null, version);
                     switch (ent_fmt.content_type_code) {
                         DW.LNCT.path => e.path = try form_value.getString(d.*),
                         DW.LNCT.directory_index => e.dir_index = try form_value.getUInt(u32),
@@ -1074,7 +1079,7 @@ fn runLineNumberProgram(d: *Dwarf, gpa: Allocator, endian: Endian, compile_unit:
         for (try file_entries.addManyAsSlice(gpa, file_names_count)) |*e| {
             e.* = .{ .path = &.{} };
             for (file_ent_fmt_buf[0..file_name_entry_format_count]) |ent_fmt| {
-                const form_value = try parseFormValue(&fr, ent_fmt.form_code, unit_header.format, endian, addr_size_bytes, null);
+                const form_value = try parseFormValue(&fr, ent_fmt.form_code, unit_header.format, endian, addr_size_bytes, null, version);
                 switch (ent_fmt.content_type_code) {
                     DW.LNCT.path => e.path = try form_value.getString(d.*),
                     DW.LNCT.directory_index => e.dir_index = try form_value.getUInt(u32),
@@ -1285,6 +1290,7 @@ fn parseFormValue(
     endian: Endian,
     addr_size_bytes: u8,
     implicit_const: ?i64,
+    version: u16,
 ) ScanError!FormValue {
     return switch (form_id) {
         // DWARF5.pdf page 213: the size of this value is encoded in the
@@ -1319,7 +1325,12 @@ fn parseFormValue(
         FORM.ref8 => .{ .ref = try r.takeInt(u64, endian) },
         FORM.ref_udata => .{ .ref = try r.takeLeb128(u64) },
 
-        FORM.ref_addr => .{ .ref_addr = try readFormatSizedInt(r, format, endian) },
+        FORM.ref_addr => .{
+            .ref_addr = switch (version) {
+                2 => try readAddress(r, endian, addr_size_bytes),
+                else => try readFormatSizedInt(r, format, endian),
+            },
+        },
         FORM.ref_sig8 => .{ .ref = try r.takeInt(u64, endian) },
 
         FORM.string => .{ .string = try r.takeSentinel(0) },
@@ -1330,7 +1341,7 @@ fn parseFormValue(
         FORM.strx4 => .{ .strx = try r.takeInt(u32, endian) },
         FORM.strx => .{ .strx = try r.takeLeb128(usize) },
         FORM.line_strp => .{ .line_strp = try readFormatSizedInt(r, format, endian) },
-        FORM.indirect => parseFormValue(r, try r.takeLeb128(u64), format, endian, addr_size_bytes, implicit_const),
+        FORM.indirect => parseFormValue(r, try r.takeLeb128(u64), format, endian, addr_size_bytes, implicit_const, version),
         FORM.implicit_const => .{ .sdata = implicit_const orelse return bad() },
         FORM.loclistx => .{ .loclistx = try r.takeLeb128(u64) },
         FORM.rnglistx => .{ .rnglistx = try r.takeLeb128(u64) },
