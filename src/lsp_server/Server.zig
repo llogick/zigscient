@@ -43,7 +43,7 @@ pub const Workspace = @import("Workspace.zig");
 
 const compiler = @import("compiler");
 
-const log = std.log.scoped(.lspc_server);
+const log = std.log.scoped(.ls_server);
 
 // public fields
 io: std.Io,

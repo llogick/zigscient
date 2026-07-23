@@ -127,4 +127,4 @@ const build_runner_shared = @import("build_runner/shared.zig");
 const BuildOnSave = diagnostics_gen.BuildOnSave;
 const BuildOnSaveSupport = build_runner_shared.BuildOnSaveSupport;
 
-const log = std.log.scoped(.lspc_workspace);
+const log = std.log.scoped(.ls_workspace);

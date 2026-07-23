@@ -3,13 +3,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const zig_info = @import("zig_info.zig");
+const zig_util = @import("zig_util.zig");
 const Settings = @import("Settings.zig");
 
 const known_folders = @import("known-folders");
 const tracy = @import("tracy");
 
-const log = std.log.scoped(.lspc_config);
+const log = std.log.scoped(.ls_sett);
 
 pub const Manager = struct {
     io: std.Io,
@@ -21,7 +21,7 @@ pub const Manager = struct {
         /// Same as `Manager.config.zig_exe_path.?`
         path: []const u8,
         version: std.SemanticVersion,
-        env: zig_info.ZigEnv,
+        env: zig_util.ZigEnv,
     },
     zig_lib_dir: ?std.Build.Cache.Directory,
     global_cache_dir: ?std.Build.Cache.Directory,
@@ -179,7 +179,7 @@ pub const Manager = struct {
 
         if (config.zig_exe_path == null) blk: {
             if (!std.process.can_spawn) break :blk;
-            const zig_exe_path = try zig_info.findZig(io, manager.allocator, manager.environ_map) orelse break :blk;
+            const zig_exe_path = try zig_util.findZig(io, manager.allocator, manager.environ_map) orelse break :blk;
             defer manager.allocator.free(zig_exe_path);
             config.zig_exe_path = try arena.dupe(u8, zig_exe_path);
         }
@@ -187,7 +187,7 @@ pub const Manager = struct {
         if (config.zig_exe_path) |exe_path| unresolved_zig: {
             if (!std.process.can_spawn) break :unresolved_zig;
 
-            const zig_env = try zig_info.getZigEnv(io, manager.allocator, arena, exe_path) orelse break :unresolved_zig;
+            const zig_env = try zig_util.getZigEnv(io, manager.allocator, arena, exe_path) orelse break :unresolved_zig;
 
             const zig_version = std.SemanticVersion.parse(zig_env.version) catch |err| {
                 log.err("zig env returned a zig version that is an invalid semantic version: {}", .{err});

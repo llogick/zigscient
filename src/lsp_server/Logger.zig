@@ -19,7 +19,7 @@ pub fn log(
     args: anytype,
 ) void {
     const scope_txt: []const u8 = comptime @tagName(scope);
-    if (!std.mem.startsWith(u8, scope_txt, "lspc_") and level != .err) return;
+    if (!std.mem.startsWith(u8, scope_txt, "ls_") and level != .err) return;
 
     const io = std.Options.debug_io;
     const prev = io.swapCancelProtection(.blocked);

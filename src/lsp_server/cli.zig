@@ -1,21 +1,22 @@
+const builtin = @import("builtin");
+const ls_kit = @import("lsp-server");
+const known_folders = @import("known-folders");
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const log = std.log.scoped(.lspc_cli);
 
-const builtin = @import("builtin");
-const lsp_server = @import("lsp-server");
-const known_folders = @import("known-folders");
+const log = std.log.scoped(.ls_cli);
 
 const usage =
     \\Zigscient - A Zig Language Server
     \\
     \\Commands:
     \\  help, --help,             Print this help and exit
-    \\  version, --version        Print version number and exit
-    \\  env                       Print config path, log path and version
+    \\  version, --version        Print version and exit
+    \\  env
     \\
     \\General Options:
-    \\  --config-path [path]      Set path to the 'zls.json' configuration file
+    \\  --config-path [path]      Set path to the 'zls.json' settings file
     \\  --log-level [enum]        The Log Level to be used.
     \\                              Supported Values:
     \\                                err
@@ -31,14 +32,14 @@ const usage =
 
 pub const Options = struct {
     argv0: []const u8 = undefined,
-    config_path: ?[]const u8 = null,
+    settings_file_path: ?[]const u8 = null,
+    enable_logging_to_stderr: bool = false,
+    disable_logging_to_jsonio: bool = false,
     log_level: ?std.log.Level = null,
-    enable_stderr_logs: bool = false,
-    disable_lsp_logs: bool = false,
 
     pub fn deinit(self: Options, allocator: std.mem.Allocator) void {
         allocator.free(self.argv0);
-        if (self.config_path) |path| allocator.free(path);
+        if (self.settings_file_path) |path| allocator.free(path);
     }
 
     const ErrSet = std.mem.Allocator.Error || std.Io.File.Writer.Error;
@@ -68,10 +69,10 @@ pub const Options = struct {
                     try std.Io.File.stderr().writeStreamingAll(io, usage);
                     std.process.exit(0);
                 } else if ((std.mem.eql(u8, arg, "version")) or std.mem.eql(u8, arg, "--version")) {
-                    try std.Io.File.stdout().writeStreamingAll(io, lsp_server.build_options.version_string ++ "\n");
+                    try std.Io.File.stdout().writeStreamingAll(io, ls_kit.build_options.version_string ++ "\n");
                     std.process.exit(0);
                 } else if (std.mem.eql(u8, arg, "env")) {
-                    try cmdEnv(io, allocator, environ_map);
+                    try cmdEnv(io, allocator, environ_map, argv0);
                 }
             }
 
@@ -80,8 +81,8 @@ pub const Options = struct {
                     log.err("Expected configuration file path after --config-path argument.", .{});
                     std.process.exit(1);
                 };
-                if (options.config_path) |old_config_path| allocator.free(old_config_path);
-                options.config_path = try allocator.dupe(u8, path);
+                if (options.settings_file_path) |prev_fp| allocator.free(prev_fp);
+                options.settings_file_path = try allocator.dupe(u8, path);
             } else if (std.mem.eql(u8, arg, "--log-level")) {
                 const log_level_name = args_it.next() orelse {
                     log.err("Expected argument after --log-level", .{});
@@ -92,9 +93,9 @@ pub const Options = struct {
                     std.process.exit(1);
                 };
             } else if (std.mem.eql(u8, arg, "--enable-stderr-logs")) {
-                options.enable_stderr_logs = true;
+                options.enable_logging_to_stderr = true;
             } else if (std.mem.eql(u8, arg, "--disable-lsp-logs")) {
-                options.disable_lsp_logs = true;
+                options.disable_logging_to_jsonio = true;
             } else {
                 log.err("Unrecognized argument: '{s}'", .{arg});
                 std.process.exit(1);
@@ -109,8 +110,8 @@ pub const Options = struct {
                 \\Should be used via an editor plugin rather than invoked directly.
                 \\
             , .{});
-            options.disable_lsp_logs = true;
-            options.enable_stderr_logs = true;
+            options.disable_logging_to_jsonio = true;
+            options.enable_logging_to_stderr = true;
         }
 
         return options;
@@ -119,6 +120,7 @@ pub const Options = struct {
 
 /// Output format of the `env` subcmd
 const Env = struct {
+    argv0: []const u8,
     /// Project version. Guaranteed to be a [semantic version](https://semver.org/).
     ///
     /// The semantic version can have one of the following formats:
@@ -127,22 +129,24 @@ const Env = struct {
     /// - `MAJOR.MINOR.PATCH-dev` is a development build where the exact version could not be resolved.
     ///
     version: []const u8,
-    global_cache_dir: ?[]const u8,
+    minimum_runtime_zig_version: []const u8,
+    /// Path to a `zls.json` config file. Will be resolved by looking in the local configuration directory and then falling back to the global directory.
+    /// Can be null if no `zls.json` was found in the global/local config directory.
+    settings_file_path: ?[]const u8,
     /// Path to a global configuration directory relative to which configuration files will be searched.
     /// Not `null` unless [known-folders](https://github.com/ziglibs/known-folders) was unable to find a global configuration directory.
     global_config_dir: ?[]const u8,
     /// Path to a user specific configuration directory relative to which configuration files will be searched.
     /// Not `null` unless [known-folders](https://github.com/ziglibs/known-folders) was unable to find a local configuration directory.
     local_config_dir: ?[]const u8,
-    /// Path to a `zls.json` config file. Will be resolved by looking in the local configuration directory and then falling back to the global directory.
-    /// Can be null if no `zls.json` was found in the global/local config directory.
-    config_file: ?[]const u8,
+    global_cache_dir: ?[]const u8,
 };
 
 fn cmdEnv(
     io: std.Io,
     allocator: std.mem.Allocator,
     environ_map: *const std.process.Environ.Map,
+    argv0: []const u8,
 ) (std.mem.Allocator.Error || std.Io.File.Writer.Error)!noreturn {
     const global_cache_dir = known_folders.getPath(io, allocator, environ_map, .cache) catch |err| switch (err) {
         error.Canceled, error.OutOfMemory => |e| return e,
@@ -159,10 +163,10 @@ fn cmdEnv(
     };
     defer if (local_config_dir) |path| allocator.free(path);
 
-    var config_result = try lsp_server.settings_handler.loadConfigFromSystem(io, allocator, environ_map);
+    var config_result = try ls_kit.settings_handler.loadConfigFromSystem(io, allocator, environ_map);
     defer config_result.deinit(allocator);
 
-    const config_file_path: ?[]const u8 = switch (config_result) {
+    const settings_file_path: ?[]const u8 = switch (config_result) {
         .success => |config_with_path| config_with_path.path,
         .failure => |payload| blk: {
             const message = try payload.toMessage(allocator) orelse break :blk null;
@@ -174,18 +178,20 @@ fn cmdEnv(
         .not_found => null,
     };
 
-    var buffer: [512]u8 = undefined;
+    var buffer: [1024 * 4]u8 = undefined;
     var file_writer = std.Io.File.stdout().writer(io, &buffer);
     const writer = &file_writer.interface;
 
     const env: Env = .{
-        .version = lsp_server.build_options.version_string,
-        .global_cache_dir = global_cache_dir,
+        .argv0 = argv0,
+        .version = ls_kit.build_options.version_string,
+        .minimum_runtime_zig_version = ls_kit.build_options.minimum_runtime_zig_version_string,
+        .settings_file_path = settings_file_path,
         .global_config_dir = global_config_dir,
         .local_config_dir = local_config_dir,
-        .config_file = config_file_path,
+        .global_cache_dir = global_cache_dir,
     };
-    std.json.Stringify.value(env, .{ .whitespace = .indent_1 }, writer) catch return file_writer.err.?;
+    std.json.Stringify.value(env, .{ .whitespace = .indent_2 }, writer) catch return file_writer.err.?;
     writer.writeAll("\n") catch return file_writer.err.?;
     writer.flush() catch return file_writer.err.?;
 

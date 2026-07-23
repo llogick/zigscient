@@ -5,8 +5,8 @@ const builtin = @import("builtin");
 const native_os = builtin.os.tag;
 
 const build_options = @import("build_options");
-const lsp_server = @import("lsp-server");
 const compiler = @import("compiler");
+const ls_kit = @import("lsp-server");
 
 const std = @import("std");
 const mem = std.mem;
@@ -14,9 +14,16 @@ const process = std.process;
 const fatal = process.fatal;
 const Allocator = mem.Allocator;
 
-const Logger = lsp_server.Logger;
-const cli = lsp_server.cli;
-const lsp = lsp_server.lsp;
+const Logger = ls_kit.Logger;
+const cli = ls_kit.cli;
+const lsp = ls_kit.lsp;
+
+pub const std_options: std.Options = .{
+    // Always set this to debug to make std.log call into our handler,
+    // then observe the runtime `level` value in the `logger`
+    .log_level = .debug,
+    .logFn = logFn,
+};
 
 var logger: Logger = .{};
 fn logFn(
@@ -28,83 +35,19 @@ fn logFn(
     Logger.log(&logger, level, scope, format, args);
 }
 
-pub const std_options: std.Options = .{
-    // Always set this to debug to make std.log call into our handler,
-    // then observe the runtime `level` value in the `logger`
-    .log_level = .debug,
-    .logFn = logFn,
-};
-
-const log = std.log.scoped(.lspc_main);
-
-const use_safe_allocator = build_options.debug_gpa or
-    (native_os != .wasi and !builtin.link_libc and switch (builtin.mode) {
-        .debug, .safe => true,
-        .fast, .small => false,
-    });
-
-var safe_allocator: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{
-    .stack_trace_frames = build_options.mem_leak_frames,
-});
+const log = std.log.scoped(.ls_main);
 
 pub fn main(init: std.process.Init.Minimal) anyerror!u8 {
-    var allocator_name: []const u8 = "Undefined";
-    var root_gpa: Allocator = undefined;
-    if (use_safe_allocator) {
-        root_gpa = safe_allocator.allocator();
-        allocator_name = "safe";
-    } else if (native_os == .wasi) {
-        root_gpa = std.heap.wasm_allocator;
-        allocator_name = "wasm";
-    } else if (builtin.link_libc) {
-        root_gpa = std.heap.c_allocator;
-        allocator_name = "libc";
-    } else {
-        root_gpa = std.heap.smp_allocator;
-        allocator_name = "smp";
-    }
-    defer if (use_safe_allocator) {
-        _ = safe_allocator.deinit();
-    };
+    var bscs: *Basics = try .init(init);
+    defer bscs.deinit();
 
-    compiler.globals.init = init;
-    compiler.globals.root_gpa = root_gpa;
+    var environ_map = init.environ.createMap(bscs.arena) catch |err| fatal("failed to parse environment: {t}", .{err});
 
-    var io_impl: compiler.IoImpl = switch (build_options.io_mode) {
-        .threaded => .init(root_gpa, .{
-            .stack_size = compiler.thread_stack_size,
-
-            .argv0 = .init(init.args),
-            .environ = init.environ,
-        }),
-        .evented => try .init(root_gpa, .{
-            .argv0 = .init(init.args),
-            .environ = init.environ,
-
-            .backing_allocator_needs_mutex = false,
-        }),
-    };
-    defer io_impl.deinit();
-    const io = io_impl.io();
-
-    const gpa = switch (build_options.io_mode) {
-        .threaded => root_gpa,
-        .evented => io_impl.allocator(),
-    };
-
-    var arena_instance = std.heap.ArenaAllocator.init(gpa);
-    defer arena_instance.deinit();
-    const arena = arena_instance.allocator();
-
-    const args = try init.args.toSlice(arena);
-
+    const args = try init.args.toSlice(bscs.arena);
     if (args.len > 0) compiler.crash_report.zig_argv0 = args[0];
-
-    var environ_map = init.environ.createMap(arena) catch |err| fatal("failed to parse environment: {t}", .{err});
-
     if (args.len > 1) {
         if (mem.eql(u8, args[1], "maker")) {
-            try lsp_server.Maker.main(init);
+            try ls_kit.Maker.main(init);
             return 0;
         }
         if (mem.eql(u8, args[1], "zig")) {
@@ -122,13 +65,13 @@ pub fn main(init: std.process.Init.Minimal) anyerror!u8 {
             }
 
             var compiler_io_impl: compiler.IoImpl = switch (build_options.io_mode) {
-                .threaded => .init(root_gpa, .{
+                .threaded => .init(bscs.root_gpa, .{
                     .stack_size = compiler.thread_stack_size,
 
                     .argv0 = .init(init.args),
                     .environ = init.environ,
                 }),
-                .evented => try .init(root_gpa, .{
+                .evented => try .init(bscs.root_gpa, .{
                     .argv0 = .init(init.args),
                     .environ = init.environ,
 
@@ -140,37 +83,32 @@ pub fn main(init: std.process.Init.Minimal) anyerror!u8 {
             const compiler_io = compiler_io_impl.io();
 
             if (compiler.tracy.enable_allocation) {
-                var tracy_allocator: compiler.tracy.Allocator = .{ .parent_allocator = gpa };
-                try compiler.mainArgs(tracy_allocator.interface(), arena, compiler_io, args, &environ_map);
+                var tracy_allocator: compiler.tracy.Allocator = .{ .parent_allocator = bscs.gpa };
+                try compiler.mainArgs(tracy_allocator.interface(), bscs.arena, compiler_io, args, &environ_map);
                 return 0;
             }
 
             if (native_os == .wasi) {
-                compiler.preopens = try .init(arena);
+                compiler.preopens = try .init(bscs.arena);
             }
 
-            try compiler.mainArgs(gpa, arena, compiler_io, args, &environ_map);
+            try compiler.mainArgs(bscs.gpa, bscs.arena, compiler_io, args, &environ_map);
             return 0;
         }
     }
 
-    const cli_opts: cli.Options = try .parseArgs(io, gpa, &environ_map, init.args);
-    defer cli_opts.deinit(gpa);
+    const cli_opts: cli.Options = try .parseArgs(bscs.io, bscs.arena, &environ_map, init.args);
 
-    const read_buffer = try gpa.alloc(u8, 4096);
-    defer gpa.free(read_buffer);
-
-    var stdio_transport: lsp.Transport.Stdio = .init(read_buffer, .stdin(), .stdout());
-
-    var thread_safe_transport: lsp.ThreadSafeTransport(.{
+    const read_buffer = try bscs.arena.alloc(u8, 1024 * 4);
+    var stdio: lsp.Transport.Stdio = .init(read_buffer, .stdin(), .stdout());
+    var thread_safe_stdio: lsp.ThreadSafeTransport(.{
         .thread_safe_read = false,
         .thread_safe_write = true,
-    }) = .init(&stdio_transport.transport);
+    }) = .init(&stdio.transport);
+    const jsonio: *lsp.Transport = &thread_safe_stdio.transport;
 
-    const transport: *lsp.Transport = &thread_safe_transport.transport;
-
-    logger.lsp_transport = if (cli_opts.disable_lsp_logs) null else transport;
-    logger.dump_to_stderr = cli_opts.enable_stderr_logs;
+    logger.lsp_transport = if (cli_opts.disable_logging_to_jsonio) null else jsonio;
+    logger.dump_to_stderr = cli_opts.enable_logging_to_stderr;
     logger.level = cli_opts.log_level orelse logger.level;
     defer {
         logger.lsp_transport = null;
@@ -179,8 +117,8 @@ pub fn main(init: std.process.Init.Minimal) anyerror!u8 {
 
     const self_file_path = sp: {
         if (std.fs.path.isAbsolute(cli_opts.argv0)) break :sp cli_opts.argv0;
-        const cur_path = std.process.currentPathAlloc(io, arena) catch break :sp null;
-        break :sp std.fs.path.resolve(arena, &.{ cur_path, cli_opts.argv0 }) catch null;
+        const cur_path = std.process.currentPathAlloc(bscs.io, bscs.arena) catch break :sp null;
+        break :sp std.fs.path.resolve(bscs.arena, &.{ cur_path, cli_opts.argv0 }) catch null;
     };
 
     log.info("Hello/", .{});
@@ -188,7 +126,7 @@ pub fn main(init: std.process.Init.Minimal) anyerror!u8 {
     log.info("Zigscient {s} ({t}) [gpa: {s}, io: {t}] @", .{
         build_options.version_string,
         builtin.mode,
-        allocator_name,
+        bscs.gpa_name,
         build_options.io_mode,
     });
     log.info("{q}", .{cli_opts.argv0});
@@ -196,19 +134,19 @@ pub fn main(init: std.process.Init.Minimal) anyerror!u8 {
 
     if (self_file_path == null) log.warn("Could not determine path to self; Only minimal Build System support available.", .{});
 
-    var config_manager: lsp_server.settings_handler.Manager = try .init(io, gpa, &environ_map, self_file_path);
+    var config_manager: ls_kit.settings_handler.Manager = try .init(bscs.io, bscs.gpa, &environ_map, self_file_path);
     defer config_manager.deinit();
 
-    const server: *lsp_server.Server = try .create(.{
-        .io = io,
-        .allocator = gpa,
-        .transport = transport,
+    const server: *ls_kit.Server = try .create(.{
+        .io = bscs.io,
+        .allocator = bscs.gpa,
+        .transport = jsonio,
         .config_manager = &config_manager,
     });
     defer server.destroy();
 
-    try lsp_server.settings_handler.loadConfiguration(io, gpa, &environ_map, server, cli_opts.config_path);
-    try lsp_server.settings_handler.resolveConfiguration(server);
+    try ls_kit.settings_handler.loadConfiguration(bscs.io, bscs.gpa, &environ_map, server, cli_opts.settings_file_path);
+    try ls_kit.settings_handler.resolveConfiguration(server);
 
     try server.loop();
 
@@ -218,3 +156,94 @@ pub fn main(init: std.process.Init.Minimal) anyerror!u8 {
         else => fatal("unexpected server.status {t}", .{server.status}),
     };
 }
+
+const Basics = struct {
+    gpa_name: []const u8,
+    root_gpa: Allocator,
+    gpa: Allocator,
+
+    arena_instance: std.heap.ArenaAllocator,
+    arena: Allocator,
+
+    io_impl: compiler.IoImpl,
+    io: std.Io,
+
+    pub fn init(min_init: process.Init.Minimal) anyerror!*@This() {
+        const root_gpa, //
+        const gpa_name =
+            if (safe_allocator.do_use) .{
+                safe_allocator.instance.allocator(),
+                "safe",
+            } else if (native_os == .wasi) .{
+                std.heap.wasm_allocator,
+                "wasm",
+            } else if (builtin.link_libc) .{
+                std.heap.c_allocator,
+                "libc",
+            } else .{
+                std.heap.smp_allocator,
+                "smp",
+            };
+
+        compiler.globals.init = min_init;
+        compiler.globals.root_gpa = root_gpa;
+
+        var io_impl: compiler.IoImpl = switch (build_options.io_mode) {
+            .threaded => .init(root_gpa, .{
+                .stack_size = compiler.thread_stack_size,
+
+                .argv0 = .init(min_init.args),
+                .environ = min_init.environ,
+            }),
+            .evented => try .init(root_gpa, .{
+                .argv0 = .init(min_init.args),
+                .environ = min_init.environ,
+
+                .backing_allocator_needs_mutex = false,
+            }),
+        };
+        errdefer io_impl.deinit();
+
+        const gpa = switch (build_options.io_mode) {
+            .threaded => root_gpa,
+            .evented => io_impl.allocator(),
+        };
+
+        var arena_instance = std.heap.ArenaAllocator.init(gpa);
+        errdefer arena_instance.deinit();
+        const arena = arena_instance.allocator();
+
+        var bscs = try arena.create(@This());
+
+        bscs.gpa_name = gpa_name;
+        bscs.root_gpa = root_gpa;
+        bscs.gpa = gpa;
+
+        bscs.arena_instance = arena_instance;
+        bscs.arena = bscs.arena_instance.allocator();
+
+        bscs.io_impl = io_impl;
+        bscs.io = bscs.io_impl.io();
+
+        return bscs;
+    }
+
+    pub fn deinit(bscs: *@This()) void {
+        bscs.io_impl.deinit();
+        bscs.arena_instance.deinit();
+        if (safe_allocator.do_use) {
+            _ = safe_allocator.instance.deinit();
+        }
+    }
+};
+
+const safe_allocator = struct {
+    var instance: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{
+        .stack_trace_frames = build_options.mem_leak_frames,
+    });
+    const do_use = build_options.debug_gpa or
+        (native_os != .wasi and !builtin.link_libc and switch (builtin.mode) {
+            .debug, .safe => true,
+            .fast, .small => false,
+        });
+};

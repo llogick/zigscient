@@ -1,7 +1,7 @@
 const builtin = @import("builtin");
 
 const std = @import("std");
-const log = std.log.scoped(.lspc_zig_info);
+const log = std.log.scoped(.ls_zig_util);
 
 pub const ZigEnv = struct {
     zig_exe: []const u8,

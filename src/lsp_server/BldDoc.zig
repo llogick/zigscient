@@ -459,7 +459,7 @@ const DocumentStore = @import("DocumentStore.zig");
 const DiagnosticsCollection = @import("DiagnosticsCollection.zig");
 const tracy = @import("tracy");
 
-const log = std.log.scoped(.lspc_store);
+const log = std.log.scoped(.ls_bdoc);
 
 pub const FlatUri = []const u8;
 
