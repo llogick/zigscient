@@ -26,7 +26,7 @@ inst: struct {
     string_bytes: std.ArrayList(u8) = .empty,
     inst_offset: u32 = 0,
 
-    fn result(ass: @This()) ?AsmValue.Ref {
+    fn result(ass: *const @This()) ?AsmValue.Ref {
         for (ass.operands.items[0..@min(ass.operands.items.len, 2)]) |op| {
             switch (op) {
                 .result_id => |index| return index,
@@ -179,19 +179,19 @@ fn processInstruction(ass: *Assembler) !void {
     const cg = ass.cg;
     const result: AsmValue = switch (ass.inst.opcode) {
         .OpEntryPoint => {
-            return ass.fail(ass.currentToken().start, "cannot export entry points in assembly", .{});
+            return ass.fail(ass.inst.inst_offset, "cannot export entry points in assembly", .{});
         },
         .OpExecutionMode, .OpExecutionModeId => {
-            return ass.fail(ass.currentToken().start, "cannot set execution mode in assembly", .{});
+            return ass.fail(ass.inst.inst_offset, "cannot set execution mode in assembly", .{});
         },
         .OpCapability, .OpExtension => {
-            return ass.fail(ass.currentToken().start, "cannot declare capabilities or extensions in assembly; use -mcpu instead", .{});
+            return ass.fail(ass.inst.inst_offset, "cannot declare capabilities or extensions in assembly; use -mcpu instead", .{});
         },
         .OpExtInstImport => blk: {
             const set_name_offset = ass.inst.operands.items[1].string;
             const set_name = std.mem.sliceTo(ass.inst.string_bytes.items[set_name_offset..], 0);
             const set_tag = std.meta.stringToEnum(spec.InstructionSet, set_name) orelse {
-                return ass.fail(set_name_offset, "unknown instruction set: {s}", .{set_name});
+                return ass.fail(ass.inst.inst_offset, "unknown instruction set: {s}", .{set_name});
             };
             break :blk .{ .value = try cg.importInstructionSet(set_tag) };
         },
@@ -366,38 +366,40 @@ fn processGenericInstruction(ass: *Assembler) !?AsmValue {
 
     var maybe_result_id: ?Id = null;
     const first_word = section.instructions.items.len;
-    // At this point we're not quite sure how many operands this instruction is
-    // going to have, so insert 0 and patch up the actual opcode word later.
-    try section.ensureUnusedCapacity(cg.gpa, 1);
+
+    // Pre-calculate exact instruction size to avoid per-operand capacity checks.
+    var total_words: usize = 1; // 1 word for the opcode itself
+    for (operands) |operand| {
+        total_words += switch (operand) {
+            .value, .literal32, .result_id, .ref_id => 1,
+            .literal64 => 2,
+            .string => |offset| blk: {
+                const text = std.mem.sliceTo(ass.inst.string_bytes.items[offset..], 0);
+                break :blk @divCeil(text.len + 1, @sizeOf(Word));
+            },
+        };
+    }
+
+    try section.ensureUnusedCapacity(cg.gpa, total_words);
     section.writeWord(0);
 
     for (operands) |operand| {
         switch (operand) {
-            .value, .literal32 => |word| {
-                try section.ensureUnusedCapacity(cg.gpa, 1);
-                section.writeWord(word);
-            },
-            .literal64 => |dword| {
-                try section.ensureUnusedCapacity(cg.gpa, 2);
-                section.writeDoubleWord(dword);
-            },
+            .value, .literal32 => |word| section.writeWord(word),
+            .literal64 => |dword| section.writeDoubleWord(dword),
             .result_id => {
                 maybe_result_id = if (maybe_spv_decl_index) |spv_decl_index|
                     cg.declPtr(spv_decl_index).result_id
                 else
                     cg.allocId();
-                try section.ensureUnusedCapacity(cg.gpa, 1);
                 section.writeOperand(Id, maybe_result_id.?);
             },
             .ref_id => |index| {
                 const result = try ass.resolveRef(index);
-                try section.ensureUnusedCapacity(cg.gpa, 1);
                 section.writeOperand(spec.Id, result.resultId());
             },
             .string => |offset| {
                 const text = std.mem.sliceTo(ass.inst.string_bytes.items[offset..], 0);
-                const size = @divCeil(text.len + 1, @sizeOf(Word));
-                try section.ensureUnusedCapacity(cg.gpa, size);
                 section.writeOperand(spec.LiteralString, text);
             },
         }
