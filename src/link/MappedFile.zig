@@ -23,6 +23,7 @@ nodes: std.ArrayList(Node),
 free_ni: Node.Index,
 large: std.ArrayList(u64),
 updates: std.ArrayList(Node.Index),
+/// This progress node's estimated total items is increased once for each node appended to `updates`.
 update_prog_node: std.Progress.Node,
 writers: std.SinglyLinkedList,
 io_err: ?IoError,
@@ -61,7 +62,7 @@ pub const Error = Allocator.Error || Io.Cancelable || error{
     MappedFileIo,
 };
 
-pub fn init(file: Io.File, gpa: std.mem.Allocator, io: Io) (Allocator.Error || Io.Cancelable || IoError)!MappedFile {
+pub fn init(file: Io.File, gpa: Allocator, io: Io) (Allocator.Error || Io.Cancelable || IoError)!MappedFile {
     var mf: MappedFile = .{
         .io = io,
         .flags = undefined,
@@ -105,7 +106,7 @@ pub fn init(file: Io.File, gpa: std.mem.Allocator, io: Io) (Allocator.Error || I
     return mf;
 }
 
-pub fn deinit(mf: *MappedFile, gpa: std.mem.Allocator) void {
+pub fn deinit(mf: *MappedFile, gpa: Allocator) void {
     mf.unmap();
     mf.nodes.deinit(gpa);
     mf.large.deinit(gpa);
@@ -133,11 +134,15 @@ pub const Node = extern struct {
         moved: bool,
         /// Whether this node has been resized.
         resized: bool,
+        /// Whether the next sibling has moved or is a different node.
+        next_moved: bool,
         /// Whether this node might contain non-zero bytes.
         has_content: bool,
-        /// Whether a moved event on this node bubbles down to children.
+        /// Whether `moved` events on this node bubble down to children.
         bubbles_moved: bool,
-        unused: @Int(.unsigned, 32 - @bitSizeOf(std.mem.Alignment) - 6) = 0,
+        /// Whether `next_moved` events are reported in `updates`.
+        enable_next_moved: bool,
+        unused: @Int(.unsigned, 32 - @bitSizeOf(std.mem.Alignment) - 8) = 0,
     };
 
     pub const Location = union(enum(u1)) {
@@ -191,6 +196,22 @@ pub const Node = extern struct {
         pub fn next(ni: Node.Index, mf: *const MappedFile) Node.Index {
             return ni.get(mf).next;
         }
+        fn setNext(
+            prev_ni: Node.Index,
+            gpa: Allocator,
+            next_ni: Node.Index,
+            mf: *MappedFile,
+        ) Allocator.Error!void {
+            assert(prev_ni != .none);
+            const prev_next = &prev_ni.get(mf).next;
+            if (prev_next.* == next_ni) return;
+            prev_next.* = next_ni;
+            try prev_ni.nextMoved(gpa, mf);
+        }
+
+        pub fn prev(ni: Node.Index, mf: *const MappedFile) Node.Index {
+            return ni.get(mf).prev;
+        }
 
         pub fn ChildIterator(comptime direction: enum { prev, next }) type {
             return struct {
@@ -211,7 +232,7 @@ pub const Node = extern struct {
             return .{ .mf = mf, .ni = ni.get(mf).last };
         }
 
-        pub fn childrenMoved(ni: Node.Index, gpa: std.mem.Allocator, mf: *MappedFile) Allocator.Error!void {
+        pub fn childrenMoved(ni: Node.Index, gpa: Allocator, mf: *MappedFile) Allocator.Error!void {
             var child_ni = ni.get(mf).last;
             while (child_ni != .none) {
                 try child_ni.moved(gpa, mf);
@@ -229,11 +250,11 @@ pub const Node = extern struct {
             }
             return false;
         }
-        pub fn moved(ni: Node.Index, gpa: std.mem.Allocator, mf: *MappedFile) Allocator.Error!void {
-            try mf.updates.ensureUnusedCapacity(gpa, 1);
+        pub fn moved(ni: Node.Index, gpa: Allocator, mf: *MappedFile) Allocator.Error!void {
+            try mf.updates.ensureUnusedCapacity(gpa, 2);
             ni.movedAssumeCapacity(mf);
         }
-        pub fn cleanMoved(ni: Node.Index, mf: *const MappedFile) bool {
+        pub fn cleanMoved(ni: Node.Index, mf: *MappedFile) bool {
             const node_moved = &ni.get(mf).flags.moved;
             defer node_moved.* = false;
             return node_moved.*;
@@ -242,7 +263,11 @@ pub const Node = extern struct {
             if (ni.hasMoved(mf)) return;
             const node = ni.get(mf);
             node.flags.moved = true;
-            if (node.flags.resized) return;
+            switch (node.prev) {
+                .none => {},
+                else => |prev_ni| prev_ni.nextMovedAssumeCapacity(mf),
+            }
+            if (node.flags.resized or node.flags.next_moved) return;
             mf.updates.appendAssumeCapacity(ni);
             mf.update_prog_node.increaseEstimatedTotalItems(1);
         }
@@ -250,11 +275,11 @@ pub const Node = extern struct {
         pub fn hasResized(ni: Node.Index, mf: *const MappedFile) bool {
             return ni.get(mf).flags.resized;
         }
-        pub fn resized(ni: Node.Index, gpa: std.mem.Allocator, mf: *MappedFile) Allocator.Error!void {
+        pub fn resized(ni: Node.Index, gpa: Allocator, mf: *MappedFile) Allocator.Error!void {
             try mf.updates.ensureUnusedCapacity(gpa, 1);
             ni.resizedAssumeCapacity(mf);
         }
-        pub fn cleanResized(ni: Node.Index, mf: *const MappedFile) bool {
+        pub fn cleanResized(ni: Node.Index, mf: *MappedFile) bool {
             const node_resized = &ni.get(mf).flags.resized;
             defer node_resized.* = false;
             return node_resized.*;
@@ -263,7 +288,28 @@ pub const Node = extern struct {
             const node = ni.get(mf);
             if (node.flags.resized) return;
             node.flags.resized = true;
-            if (node.flags.moved) return;
+            if (node.flags.moved or node.flags.next_moved) return;
+            mf.updates.appendAssumeCapacity(ni);
+            mf.update_prog_node.increaseEstimatedTotalItems(1);
+        }
+
+        pub fn hasNextMoved(ni: Node.Index, mf: *const MappedFile) bool {
+            return ni.get(mf).flags.next_moved;
+        }
+        pub fn nextMoved(ni: Node.Index, gpa: Allocator, mf: *MappedFile) Allocator.Error!void {
+            try mf.updates.ensureUnusedCapacity(gpa, 1);
+            ni.nextMovedAssumeCapacity(mf);
+        }
+        pub fn cleanNextMoved(ni: Node.Index, mf: *MappedFile) bool {
+            const node_next_moved = &ni.get(mf).flags.next_moved;
+            defer node_next_moved.* = false;
+            return node_next_moved.*;
+        }
+        pub fn nextMovedAssumeCapacity(ni: Node.Index, mf: *MappedFile) void {
+            const node = ni.get(mf);
+            if (!node.flags.enable_next_moved or node.flags.next_moved) return;
+            node.flags.next_moved = true;
+            if (node.flags.moved or node.flags.resized) return;
             mf.updates.appendAssumeCapacity(ni);
             mf.update_prog_node.increaseEstimatedTotalItems(1);
         }
@@ -333,7 +379,7 @@ pub const Node = extern struct {
             return mf.memory_map.memory[@intCast(file_loc.offset)..][0..@intCast(file_loc.size)];
         }
 
-        pub fn resize(ni: Node.Index, mf: *MappedFile, gpa: std.mem.Allocator, size: u64) Error!void {
+        pub fn resize(ni: Node.Index, mf: *MappedFile, gpa: Allocator, size: u64) Error!void {
             mf.resizeNode(gpa, ni, size) catch |err| switch (err) {
                 error.OutOfMemory,
                 error.Canceled,
@@ -360,7 +406,7 @@ pub const Node = extern struct {
         pub fn realign(
             ni: Node.Index,
             mf: *MappedFile,
-            gpa: std.mem.Allocator,
+            gpa: Allocator,
             new_alignment: std.mem.Alignment,
             opts: RealignNodeOptions,
         ) Error!void {
@@ -384,7 +430,7 @@ pub const Node = extern struct {
         pub fn shrink(
             ni: Node.Index,
             mf: *MappedFile,
-            gpa: std.mem.Allocator,
+            gpa: Allocator,
             size: u64,
             shift_next: bool,
         ) Error!void {
@@ -392,7 +438,7 @@ pub const Node = extern struct {
             mf.updateWriters();
         }
 
-        pub fn writer(ni: Node.Index, mf: *MappedFile, gpa: std.mem.Allocator, w: *Writer) void {
+        pub fn writer(ni: Node.Index, mf: *MappedFile, gpa: Allocator, w: *Writer) void {
             w.* = .{
                 .gpa = gpa,
                 .mf = mf,
@@ -419,7 +465,7 @@ pub const Node = extern struct {
     }
 
     pub const Writer = struct {
-        gpa: std.mem.Allocator,
+        gpa: Allocator,
         mf: *MappedFile,
         writer_node: std.SinglyLinkedList.Node,
         ni: Node.Index,
@@ -543,14 +589,13 @@ pub const Node = extern struct {
     }
 };
 
-fn addNode(mf: *MappedFile, gpa: std.mem.Allocator, opts: struct {
+fn addNode(mf: *MappedFile, gpa: Allocator, opts: struct {
     parent: Node.Index = .none,
     prev: Node.Index = .none,
     next: Node.Index = .none,
     offset: u64 = 0,
     add_node: AddNodeOptions,
 }) (Allocator.Error || Io.Cancelable || IoError)!Node.Index {
-    if (opts.add_node.moved or opts.add_node.resized) try mf.updates.ensureUnusedCapacity(gpa, 1);
     mf.nodes_lock.assertUnlocked();
     const location_tag: Node.Location.Tag, const location_payload: Node.Location.Payload = location: {
         if (std.math.cast(u32, opts.offset)) |small_offset| break :location .{ .small, .{
@@ -570,7 +615,7 @@ fn addNode(mf: *MappedFile, gpa: std.mem.Allocator, opts: struct {
     };
     switch (opts.prev) {
         .none => opts.parent.get(mf).first = free_ni,
-        else => |prev_ni| prev_ni.get(mf).next = free_ni,
+        else => |prev_ni| try prev_ni.setNext(gpa, free_ni, mf),
     }
     switch (opts.next) {
         .none => opts.parent.get(mf).last = free_ni,
@@ -588,22 +633,27 @@ fn addNode(mf: *MappedFile, gpa: std.mem.Allocator, opts: struct {
             .fixed = opts.add_node.fixed,
             .moved = true,
             .resized = true,
+            .next_moved = true,
             .has_content = false,
             .bubbles_moved = opts.add_node.bubbles_moved,
+            .enable_next_moved = opts.add_node.enable_next_moved,
         },
         .location_payload = location_payload,
     };
 
     {
+        defer {
+            free_node.flags.moved = false;
+            free_node.flags.resized = false;
+            free_node.flags.next_moved = false;
+        }
         try mf.realignNode(gpa, free_ni, opts.add_node.alignment, .{});
         try mf.resizeNode(gpa, free_ni, opts.add_node.size);
-        if (opts.add_node.moved or opts.add_node.resized) try mf.updates.ensureUnusedCapacity(gpa, 1);
-        free_node.flags.moved = false;
-        free_node.flags.resized = false;
     }
-    if (opts.add_node.moved) free_ni.movedAssumeCapacity(mf);
-    if (opts.add_node.resized) free_ni.resizedAssumeCapacity(mf);
     mf.updateWriters();
+    if (opts.add_node.moved) try free_ni.moved(gpa, mf);
+    if (opts.add_node.resized) try free_ni.resized(gpa, mf);
+    if (opts.add_node.next_moved) try free_ni.nextMoved(gpa, mf);
     return free_ni;
 }
 
@@ -613,12 +663,14 @@ pub const AddNodeOptions = struct {
     fixed: bool = false,
     moved: bool = false,
     resized: bool = false,
+    next_moved: bool = false,
     bubbles_moved: bool = true,
+    enable_next_moved: bool = false,
 };
 
 pub fn addOnlyChildNode(
     mf: *MappedFile,
-    gpa: std.mem.Allocator,
+    gpa: Allocator,
     parent_ni: Node.Index,
     opts: AddNodeOptions,
 ) Error!Node.Index {
@@ -641,7 +693,7 @@ pub fn addOnlyChildNode(
 
 pub fn addFirstChildNode(
     mf: *MappedFile,
-    gpa: std.mem.Allocator,
+    gpa: Allocator,
     parent_ni: Node.Index,
     opts: AddNodeOptions,
 ) Error!Node.Index {
@@ -664,7 +716,7 @@ pub fn addFirstChildNode(
 
 pub fn addLastChildNode(
     mf: *MappedFile,
-    gpa: std.mem.Allocator,
+    gpa: Allocator,
     parent_ni: Node.Index,
     opts: AddNodeOptions,
 ) Error!Node.Index {
@@ -694,7 +746,7 @@ pub fn addLastChildNode(
 
 pub fn addNodeAfter(
     mf: *MappedFile,
-    gpa: std.mem.Allocator,
+    gpa: Allocator,
     prev_ni: Node.Index,
     opts: AddNodeOptions,
 ) Error!Node.Index {
@@ -721,7 +773,7 @@ pub fn addNodeAfter(
 
 fn shrinkNode(
     mf: *MappedFile,
-    gpa: std.mem.Allocator,
+    gpa: Allocator,
     ni: Node.Index,
     size: u64,
     shift_next: bool,
@@ -740,7 +792,7 @@ fn shrinkNode(
     }
 
     try mf.large.ensureUnusedCapacity(gpa, 4);
-    try mf.updates.ensureUnusedCapacity(gpa, 2);
+    try mf.updates.ensureUnusedCapacity(gpa, 4);
 
     ni.setLocationAssumeCapacity(mf, old_offset, size);
     if (!shift_next or node.next == .none) return;
@@ -765,7 +817,7 @@ fn shrinkNode(
 
 fn resizeNode(
     mf: *MappedFile,
-    gpa: std.mem.Allocator,
+    gpa: Allocator,
     ni: Node.Index,
     requested_size: u64,
 ) (Allocator.Error || Io.Cancelable || IoError)!void {
@@ -904,11 +956,11 @@ fn resizeNode(
         next_ni.get(mf).prev = node.prev;
         switch (node.prev) {
             .none => parent.first = next_ni,
-            else => |prev_ni| prev_ni.get(mf).next = next_ni,
+            else => |prev_ni| try prev_ni.setNext(gpa, next_ni, mf),
         }
-        last.next = ni;
+        try parent.last.setNext(gpa, ni, mf);
         node.prev = parent.last;
-        node.next = .none;
+        try ni.setNext(gpa, .none, mf);
         parent.last = ni;
         if (node.flags.has_content) {
             const parent_file_offset = node.parent.fileLocation(mf, false).offset;
@@ -972,13 +1024,13 @@ fn resizeNode(
                 if (parent.last != first_floating_ni) {
                     first_floating.prev = parent.last;
                     parent.last = first_floating_ni;
-                    last.next = first_floating_ni;
-                    last_fixed.next = first_floating.next;
+                    try parent.last.setNext(gpa, first_floating_ni, mf);
+                    try last_fixed_ni.setNext(gpa, first_floating.next, mf);
                     switch (first_floating.next) {
                         .none => {},
                         else => |next_ni| next_ni.get(mf).prev = last_fixed_ni,
                     }
-                    first_floating.next = .none;
+                    try first_floating_ni.setNext(gpa, .none, mf);
                 }
                 if (first_floating.flags.has_content) {
                     const parent_file_offset =
@@ -1040,7 +1092,7 @@ fn resizeNode(
 
 fn realignNode(
     mf: *MappedFile,
-    gpa: std.mem.Allocator,
+    gpa: Allocator,
     ni: Node.Index,
     new_alignment: std.mem.Alignment,
     opts: Node.Index.RealignNodeOptions,
@@ -1241,9 +1293,9 @@ fn copyFileRange(
     return size - remaining_size;
 }
 
-fn ensureCapacityForSetLocation(mf: *MappedFile, gpa: std.mem.Allocator) Allocator.Error!void {
+fn ensureCapacityForSetLocation(mf: *MappedFile, gpa: Allocator) Allocator.Error!void {
     try mf.large.ensureUnusedCapacity(gpa, 2);
-    try mf.updates.ensureUnusedCapacity(gpa, 1);
+    try mf.updates.ensureUnusedCapacity(gpa, 2);
 }
 
 pub fn ensureTotalCapacity(mf: *MappedFile, new_capacity: usize) Error!void {
