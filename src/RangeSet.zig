@@ -1,6 +1,6 @@
 const RangeSet = @This();
 
-ranges: std.MultiArrayList(Range),
+list: std.MultiArrayList(Range),
 
 pub const Range = struct {
     first: Value,
@@ -8,39 +8,34 @@ pub const Range = struct {
     src: LazySrcLoc,
 };
 
-pub const empty: RangeSet = .{ .ranges = .empty };
+pub const empty: RangeSet = .{ .list = .empty };
 
 pub fn deinit(self: *RangeSet, allocator: Allocator) void {
-    self.ranges.deinit(allocator);
+    self.list.deinit(allocator);
     self.* = undefined;
 }
 
-pub fn ensureUnusedCapacity(self: *RangeSet, allocator: Allocator, additional_count: usize) Allocator.Error!void {
-    return self.ranges.ensureUnusedCapacity(allocator, additional_count);
+pub fn ensureUnusedCapacity(set: *RangeSet, allocator: Allocator, additional_count: usize) Allocator.Error!void {
+    return set.list.ensureUnusedCapacity(allocator, additional_count);
 }
 
-pub fn addAssumeCapacity(set: *RangeSet, new: Range, ty: Type, zcu: *Zcu) ?LazySrcLoc {
+pub fn addAssumeCapacity(set: *RangeSet, new: Range, ty: Type, zcu: *Zcu) ?Range {
     assert(new.first.typeOf(zcu).eql(ty));
     assert(new.last.typeOf(zcu).eql(ty));
     assert(new.first.compareScalar(.lte, new.last, ty, zcu));
 
-    const idx = std.sort.lowerBound(Value, set.ranges.items(.last), @as(SearchCtx, .{
+    const idx = std.sort.lowerBound(Value, set.list.items(.last), @as(SearchCtx, .{
         .val = new.first,
         .zcu = zcu,
     }), compare);
 
-    if (idx != set.ranges.len and // `new.first` is *not* greater than all `old.last`
-        new.last.compareScalar(.gte, set.ranges.items(.first)[idx], ty, zcu))
+    if (idx != set.list.len and // `new.first` is *not* greater than all `old.last`
+        new.last.compareScalar(.gte, set.list.items(.first)[idx], ty, zcu))
     {
-        return set.ranges.items(.src)[idx]; // `new` overlaps with existing range.
+        return set.list.get(idx); // `new` overlaps with existing range.
     }
-    set.ranges.insertAssumeCapacity(idx, new);
+    set.list.insertAssumeCapacity(idx, new);
     return null;
-}
-
-pub fn add(set: *RangeSet, allocator: Allocator, new: Range, ty: Type, zcu: *Zcu) Allocator.Error!?LazySrcLoc {
-    try set.ensureUnusedCapacity(allocator, 1);
-    return set.addAssumeCapacity(new, ty, zcu);
 }
 
 pub fn spans(
@@ -53,13 +48,13 @@ pub fn spans(
 ) Allocator.Error!bool {
     assert(first.typeOf(zcu).eql(ty));
     assert(last.typeOf(zcu).eql(ty));
-    if (set.ranges.len == 0) return false;
+    if (set.list.len == 0) return false;
 
-    assert(std.sort.isSorted(Value, set.ranges.items(.first), @as(SortCtx, .{ .ty = ty, .zcu = zcu }), lessThan));
-    assert(std.sort.isSorted(Value, set.ranges.items(.last), @as(SortCtx, .{ .ty = ty, .zcu = zcu }), lessThan));
+    assert(std.sort.isSorted(Value, set.list.items(.first), @as(SortCtx, .{ .ty = ty, .zcu = zcu }), lessThan));
+    assert(std.sort.isSorted(Value, set.list.items(.last), @as(SortCtx, .{ .ty = ty, .zcu = zcu }), lessThan));
 
-    if (!set.ranges.items(.first)[0].eql(first, ty, zcu) or
-        !set.ranges.items(.last)[set.ranges.len - 1].eql(last, ty, zcu))
+    if (!set.list.items(.first)[0].eql(first, ty, zcu) or
+        !set.list.items(.last)[set.list.len - 1].eql(last, ty, zcu))
     {
         return false;
     }
@@ -75,8 +70,8 @@ pub fn spans(
 
     // look for gaps
     for (
-        set.ranges.items(.first)[1..],
-        set.ranges.items(.last)[0 .. set.ranges.len - 1],
+        set.list.items(.first)[1..],
+        set.list.items(.last)[0 .. set.list.len - 1],
     ) |cur_first, prev_last| {
         // prev_last + 1 == cur_first
         counter.copy(prev_last.toBigInt(&space, zcu));

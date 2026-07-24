@@ -17,5 +17,6 @@ export fn entry() usize {
 
 // error
 //
-// :10:9: error: duplicate switch value
+// :10:9: error: duplicate switch value 'tmp.Test'
 // :8:9: note: previous value here
+// :1:14: note: struct declared here

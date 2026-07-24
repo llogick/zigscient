@@ -16,5 +16,5 @@ fn foo(x: i32) !void {
 
 // error
 //
-// :5:9: error: duplicate switch value
+// :5:9: error: duplicate switch value 'error.Foo'
 // :3:9: note: previous value here

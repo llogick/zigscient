@@ -10,7 +10,7 @@
     .minimum_runtime_zig_version = "0.17.0-dev.1435+69a26976e",
     // Would like to be accurate even during a dev cycle,
     // but there isn't an easy way to automate this based on the last cherry-picked commit
-    .compiler_internals_version = "0.17.0-dev.1436+134a2c666",
+    .compiler_internals_version = "0.17.0-dev.1470+783ad7965",
     // The integrated langref version. A valid Zig release version or "master"
     // Used in links to documentation, ie https://ziglang.org/documentation/0.16.0/
     .langref_version = "master",
@@ -30,8 +30,8 @@
             // .path = "../../../lws-lsp-kit",
         },
         .extended_zccs = .{
-            .url = "https://github.com/llogick/extended-zccs/archive/2bbd0af49c2afbfca663828de9113d3ddf540c15.tar.gz",
-            .hash = "extended_zccs-0.17.0-dev-zEaUNsRqDgAjA3BCDNhY6Hp67ZNo14R5cAeBW5cX_P_M",
+            .url = "https://github.com/llogick/extended-zccs/archive/57e678454516f1dfed18aaf31f84904c247f6db7.tar.gz",
+            .hash = "extended_zccs-0.17.0-dev-zEaUNk1rDgCq4pTlf0wd8yq_v7dCQd68OBpLH8-vS1Gh",
             // .path = "../../../extended-zccs",
         },
         .tracy = .{

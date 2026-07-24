@@ -25,7 +25,7 @@ export fn entry() usize {
 
 // error
 //
-// :8:9: error: duplicate switch value
+// :8:9: error: duplicate switch value 'error.Foo'
 // :5:9: note: previous value here
-// :16:9: error: duplicate switch value
+// :16:9: error: duplicate switch value 'error.Foo'
 // :13:9: note: previous value here

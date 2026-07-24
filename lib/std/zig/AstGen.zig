@@ -7453,6 +7453,7 @@ fn switchExpr(
                         const ident_name = try astgen.identAsString(ident_token);
                         const ident_name_str = tree.tokenSlice(ident_token);
                         if (mem.eql(u8, "_", ident_name_str)) {
+                            if (non_err_is_ref != .no) return astgen.failTok(payload_token, "pointer modifier invalid on discard", .{});
                             break :scope &scratch_scope.base;
                         }
                         non_err_capture = if (non_err_is_ref != .no) .by_ref else .by_val;

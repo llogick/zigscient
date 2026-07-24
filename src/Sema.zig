@@ -10762,7 +10762,7 @@ fn finishSwitchBr(
                     .@"enum" => if (else_is_named_only or
                         !item_ty.isNonexhaustiveEnum(zcu) or tagged_union_originally)
                     {
-                        try branch_hints.ensureUnusedCapacity(gpa, @intCast(validated_switch.seen_enum_fields.len));
+                        try branch_hints.ensureUnusedCapacity(gpa, @intCast(validated_switch.seen.enum_fields.len));
                         break :check_enumerable .{ undefined, undefined };
                     },
                     .error_set => if (!operand_ty.isAnyError(zcu)) {
@@ -10883,13 +10883,13 @@ fn finishSwitchBr(
             try branch_hints.append(gpa, prong_hint);
 
             try cases_extra.ensureUnusedCapacity(gpa, @typeInfo(Air.SwitchBr.Case).@"struct".field_names.len +
-                (validated_switch.seen_enum_fields.len + 1 - zir_switch.totalItemsLen()) + // +1 because totalItemsLen includes the _
+                (validated_switch.seen.enum_fields.len + 1 - zir_switch.totalItemsLen()) + // +1 because totalItemsLen includes the _
                 case_block.instructions.items.len);
             const extra_case = cases_extra.addManyAsArrayAssumeCapacity(
                 @typeInfo(Air.SwitchBr.Case).@"struct".field_names.len,
             );
             var items_len: u32 = 0;
-            for (validated_switch.seen_enum_fields, 0..) |seen_field, field_i| {
+            for (validated_switch.seen.enum_fields, 0..) |seen_field, field_i| {
                 if (seen_field != null) continue;
                 const item_val = try pt.enumValueFieldIndex(item_ty, @intCast(field_i));
                 const item_ref: Air.Inst.Ref = .fromValue(item_val);
@@ -10922,7 +10922,7 @@ fn finishSwitchBr(
             }
             if (tagged_union_originally) {
                 const union_obj = zcu.typeToUnion(operand_ty).?;
-                for (validated_switch.seen_enum_fields, 0..) |seen_field, field_i| {
+                for (validated_switch.seen.enum_fields, 0..) |seen_field, field_i| {
                     if (seen_field != null) continue;
                     const field_ty: Type = .fromInterned(union_obj.field_types.get(ip)[field_i]);
                     if (!field_ty.isNoReturn(zcu)) break :analyze_body true;
@@ -11006,16 +11006,20 @@ fn finishSwitchBr(
 }
 
 const ValidatedSwitchBlock = struct {
-    seen_enum_fields: []const ?LazySrcLoc,
-    seen_errors: std.AutoHashMapUnmanaged(InternPool.NullTerminatedString, LazySrcLoc),
-    seen_ranges: std.MultiArrayList(RangeSet.Range).Slice,
-    true_src: ?LazySrcLoc,
-    false_src: ?LazySrcLoc,
-    void_src: ?LazySrcLoc,
-
+    seen: Seen,
     case_vals: []const Air.Inst.Ref,
     else_case: Zir.UnwrappedSwitchBlock.Case.Else,
     else_err_ty: ?Type,
+
+    const Seen = struct {
+        enum_fields: []?LazySrcLoc,
+        errors: std.AutoHashMapUnmanaged(InternPool.NullTerminatedString, LazySrcLoc),
+        sparse_values: std.AutoHashMapUnmanaged(InternPool.Index, LazySrcLoc),
+        ranges: RangeSet,
+        true_src: ?LazySrcLoc,
+        false_src: ?LazySrcLoc,
+        void_src: ?LazySrcLoc,
+    };
 
     fn iterateUnhandledItems(
         validated_switch: *const ValidatedSwitchBlock,
@@ -11025,28 +11029,26 @@ const ValidatedSwitchBlock = struct {
         min_int: Value,
     ) UnhandledIterator {
         return .{
+            .error_names = error_names,
+            .seen = &validated_switch.seen,
+
             .next_idx = 0,
             .next_val = min_int,
-            .error_names = error_names,
-            .seen_enum_fields = validated_switch.seen_enum_fields,
-            .seen_errors = &validated_switch.seen_errors,
-            .seen_ranges = validated_switch.seen_ranges,
-            .seen_true = validated_switch.true_src != null,
-            .seen_false = validated_switch.false_src != null,
-            .seen_void = validated_switch.void_src != null,
+            .handled_true = validated_switch.seen.true_src != null,
+            .handled_false = validated_switch.seen.false_src != null,
+            .handled_void = validated_switch.seen.void_src != null,
         };
     }
 
     const UnhandledIterator = struct {
+        error_names: InternPool.NullTerminatedString.Slice,
+        seen: *const Seen,
+
         next_idx: u32,
         next_val: ?Value,
-        error_names: InternPool.NullTerminatedString.Slice,
-        seen_enum_fields: []const ?LazySrcLoc,
-        seen_errors: *const std.AutoHashMapUnmanaged(InternPool.NullTerminatedString, LazySrcLoc),
-        seen_ranges: std.MultiArrayList(RangeSet.Range).Slice,
-        seen_true: bool,
-        seen_false: bool,
-        seen_void: bool,
+        handled_true: bool,
+        handled_false: bool,
+        handled_void: bool,
 
         fn next(it: *UnhandledIterator, sema: *Sema, item_ty: Type) CompileError!?Value {
             const pt = sema.pt;
@@ -11054,7 +11056,7 @@ const ValidatedSwitchBlock = struct {
             const ip = &zcu.intern_pool;
             switch (item_ty.zigTypeTag(zcu)) {
                 .@"enum" => {
-                    for (it.seen_enum_fields[it.next_idx..], it.next_idx..) |seen_field, field_i| {
+                    for (it.seen.enum_fields[it.next_idx..], it.next_idx..) |seen_field, field_i| {
                         if (seen_field != null) continue;
                         it.next_idx = @intCast(field_i + 1);
                         return try pt.enumValueFieldIndex(item_ty, @intCast(field_i));
@@ -11063,7 +11065,7 @@ const ValidatedSwitchBlock = struct {
                 },
                 .error_set => {
                     for (it.error_names.get(ip)[it.next_idx..], it.next_idx..) |err_name, name_i| {
-                        if (it.seen_errors.contains(err_name)) continue;
+                        if (it.seen.errors.contains(err_name)) continue;
                         it.next_idx = @intCast(name_i + 1);
                         return .fromInterned(try pt.intern(.{ .err = .{
                             .ty = item_ty.toIntern(),
@@ -11079,14 +11081,14 @@ const ValidatedSwitchBlock = struct {
                         .@"union", .@"struct" => item_ty.backingIntType(zcu),
                         else => unreachable,
                     };
-                    while (it.next_idx < it.seen_ranges.len and
-                        cur_val.eql(it.seen_ranges.items(.first)[it.next_idx], int_ty, zcu))
+                    while (it.next_idx < it.seen.ranges.list.len and
+                        cur_val.eql(it.seen.ranges.list.items(.first)[it.next_idx], int_ty, zcu))
                     {
                         defer it.next_idx += 1;
                         const incr = try arith.incrementDefinedInt(
                             sema,
                             int_ty,
-                            it.seen_ranges.items(.last)[it.next_idx],
+                            it.seen.ranges.list.items(.last)[it.next_idx],
                         );
                         if (incr.overflow) {
                             it.next_val = null;
@@ -11103,19 +11105,19 @@ const ValidatedSwitchBlock = struct {
                     };
                 },
                 .bool => {
-                    if (!it.seen_true) {
-                        it.seen_true = true;
+                    if (!it.handled_true) {
+                        it.handled_true = true;
                         return .true;
                     }
-                    if (!it.seen_false) {
-                        it.seen_false = true;
+                    if (!it.handled_false) {
+                        it.handled_false = true;
                         return .false;
                     }
                     return null;
                 },
                 .void => {
-                    if (!it.seen_void) {
-                        it.seen_void = true;
+                    if (!it.handled_void) {
+                        it.handled_void = true;
                         return .void;
                     }
                     return null;
@@ -11188,14 +11190,8 @@ fn validateSwitchBlock(
                 operand_ty.assertHasLayout(zcu);
                 const union_obj = ip.loadUnionType(operand_ty.toIntern());
                 switch (union_obj.tag_usage) {
-                    .tagged => {
-                        break :item_ty .fromInterned(union_obj.enum_tag_type);
-                    },
-                    .none => {
-                        if (union_obj.layout == .@"packed") {
-                            break :item_ty operand_ty;
-                        }
-                    },
+                    .tagged => break :item_ty .fromInterned(union_obj.enum_tag_type),
+                    .none => if (union_obj.layout == .@"packed") break :item_ty operand_ty,
                     .safety => {},
                 }
                 return sema.failWithOwnedErrorMsg(block, msg: {
@@ -11210,27 +11206,47 @@ fn validateSwitchBlock(
 
             .@"struct" => {
                 operand_ty.assertHasLayout(zcu);
-                const layout = operand_ty.containerLayout(zcu);
-                if (layout == .@"packed") {
-                    break :item_ty operand_ty;
-                }
+                if (operand_ty.containerLayout(zcu) == .@"packed") break :item_ty operand_ty;
                 return sema.failWithOwnedErrorMsg(block, msg: {
-                    const msg = try sema.errMsg(operand_src, "switch on struct with {t} layout", .{layout});
+                    const msg = try sema.errMsg(operand_src, "switch on non-packed struct", .{});
                     errdefer msg.destroy(sema.gpa);
-                    if (operand_ty.srcLocOrNull(zcu)) |struct_src| {
-                        try sema.errNote(struct_src, msg, "consider 'packed struct' here", .{});
-                    }
+                    try sema.addDeclaredHereNote(msg, operand_ty);
                     break :msg msg;
                 });
             },
 
-            .pointer => {
-                if (!operand_ty.isSlice(zcu)) {
-                    break :item_ty operand_ty;
-                }
-            },
+            .pointer => if (!operand_ty.isSlice(zcu)) break :item_ty operand_ty,
 
-            else => {},
+            .optional => return sema.failWithOwnedErrorMsg(block, msg: {
+                const msg = try sema.errMsg(operand_src, "switch on optional type '{f}'", .{
+                    operand_ty.fmt(pt),
+                });
+                errdefer msg.destroy(gpa);
+                try sema.errNote(operand_src, msg, "consider using '.?', 'orelse', or 'if'", .{});
+                break :msg msg;
+            }),
+
+            .error_union => return sema.failWithOwnedErrorMsg(block, msg: {
+                const msg = try sema.errMsg(operand_src, "switch on error union type '{f}'", .{
+                    operand_ty.fmt(pt),
+                });
+                errdefer msg.destroy(gpa);
+                try sema.errNote(operand_src, msg, "consider using 'try', 'catch', or 'if'", .{});
+                break :msg msg;
+            }),
+
+            .noreturn,
+            .float,
+            .comptime_float,
+            .array,
+            .vector,
+            .undefined,
+            .null,
+            .@"opaque",
+            .frame,
+            .@"anyframe",
+            .spirv,
+            => {},
         }
         return sema.fail(block, operand_src, "switch on type '{f}'", .{operand_ty.fmt(pt)});
     };
@@ -11255,13 +11271,15 @@ fn validateSwitchBlock(
     var case_vals: std.ArrayList(Air.Inst.Ref) = try .initCapacity(arena, zir_switch.item_infos.len);
 
     // Duplicate checking variables later also used for `inline else`.
-    var seen_enum_fields: []?LazySrcLoc = &.{};
-    var seen_errors: std.AutoHashMapUnmanaged(InternPool.NullTerminatedString, LazySrcLoc) = .empty;
-    var seen_sparse_values: std.AutoHashMapUnmanaged(InternPool.Index, LazySrcLoc) = .empty;
-    var range_set: RangeSet = .empty;
-    var true_src: ?LazySrcLoc = null;
-    var false_src: ?LazySrcLoc = null;
-    var void_src: ?LazySrcLoc = null;
+    var seen: ValidatedSwitchBlock.Seen = .{
+        .enum_fields = &.{},
+        .errors = .empty,
+        .sparse_values = .empty,
+        .ranges = .empty,
+        .true_src = null,
+        .false_src = null,
+        .void_src = null,
+    };
 
     var else_err_ty: ?Type = null;
 
@@ -11269,20 +11287,20 @@ fn validateSwitchBlock(
 
     switch (item_ty.zigTypeTag(zcu)) {
         .@"enum" => {
-            seen_enum_fields = try arena.alloc(?LazySrcLoc, item_ty.enumFieldCount(zcu));
-            @memset(seen_enum_fields, null);
-            // `range_set` is used for non-exhaustive enum values that do not
+            seen.enum_fields = try arena.alloc(?LazySrcLoc, item_ty.enumFieldCount(zcu));
+            @memset(seen.enum_fields, null);
+            // `seen.ranges` is used for non-exhaustive enum values that do not
             // correspond to any tags. Since this is rare, we only allocate on
             // demand in `validateSwitchItem`.
         },
         .error_set => {
-            try seen_errors.ensureUnusedCapacity(arena, zir_switch.totalItemsLen());
+            try seen.errors.ensureUnusedCapacity(arena, zir_switch.totalItemsLen());
         },
         .int, .comptime_int, .@"union", .@"struct" => {
-            try range_set.ensureUnusedCapacity(arena, zir_switch.totalItemsLen());
+            try seen.ranges.ensureUnusedCapacity(arena, zir_switch.totalItemsLen());
         },
         .enum_literal, .@"fn", .pointer, .type => {
-            try seen_sparse_values.ensureUnusedCapacity(arena, zir_switch.totalItemsLen());
+            try seen.sparse_values.ensureUnusedCapacity(arena, zir_switch.totalItemsLen());
         },
         .bool, .void => {},
 
@@ -11325,7 +11343,7 @@ fn validateSwitchBlock(
                 case_vals.appendAssumeCapacity(.none);
             } else {
                 const item, extra_index = try sema.resolveSwitchItem(block, item_src, item_ty, item_info, extra_index, switch_inst, prong_info.is_comptime_unreach);
-                try sema.validateSwitchItemOrRange(block, item_src, item.val, null, item_ty, seen_enum_fields, &seen_errors, &seen_sparse_values, &range_set, &true_src, &false_src, &void_src);
+                try sema.validateSwitchItemOrRange(block, item_src, item.val, null, item_ty, &seen);
                 case_vals.appendAssumeCapacity(item.ref);
             }
         }
@@ -11340,7 +11358,7 @@ fn validateSwitchBlock(
             const last_src = block.src(.{ .switch_case_item_range_last = range_offset });
             const first_item, extra_index = try sema.resolveSwitchItem(block, first_src, item_ty, range_info[0], extra_index, switch_inst, prong_info.is_comptime_unreach);
             const last_item, extra_index = try sema.resolveSwitchItem(block, last_src, item_ty, range_info[1], extra_index, switch_inst, prong_info.is_comptime_unreach);
-            try sema.validateSwitchItemOrRange(block, range_src, first_item.val, last_item.val, item_ty, seen_enum_fields, &seen_errors, &seen_sparse_values, &range_set, &true_src, &false_src, &void_src);
+            try sema.validateSwitchItemOrRange(block, range_src, first_item.val, last_item.val, item_ty, &seen);
             case_vals.appendSliceAssumeCapacity(&.{ first_item.ref, last_item.ref });
         }
     }
@@ -11371,13 +11389,13 @@ fn validateSwitchBlock(
     // Validate for missing special prongs.
     switch (item_ty.zigTypeTag(zcu)) {
         .@"enum" => {
-            const all_tags_handled = for (seen_enum_fields) |seen_src| {
+            const all_tags_handled = for (seen.enum_fields) |seen_src| {
                 if (seen_src == null) break false;
             } else true;
 
             if (has_else) {
                 if (all_tags_handled) {
-                    if (item_ty.isNonexhaustiveEnum(zcu)) {
+                    if (operand_ty.isNonexhaustiveEnum(zcu)) {
                         if (has_under) return sema.fail(
                             block,
                             else_prong_src,
@@ -11399,7 +11417,7 @@ fn validateSwitchBlock(
                         .{},
                     );
                     errdefer msg.destroy(sema.gpa);
-                    for (seen_enum_fields, 0..) |seen_src, i| {
+                    for (seen.enum_fields, 0..) |seen_src, i| {
                         if (seen_src != null) continue;
 
                         const field_name = item_ty.enumFieldName(i, zcu);
@@ -11451,7 +11469,7 @@ fn validateSwitchBlock(
 
                     var seen_errors_from_set: u32 = 0;
                     for (error_names.get(ip)) |error_name| {
-                        if (seen_errors.contains(error_name)) {
+                        if (seen.errors.contains(error_name)) {
                             seen_errors_from_set += 1;
                         } else if (!has_else) {
                             const msg = maybe_msg orelse blk: {
@@ -11493,7 +11511,7 @@ fn validateSwitchBlock(
                     var names: InferredErrorSet.NameMap = .{};
                     try names.ensureUnusedCapacity(sema.arena, error_names.len);
                     for (error_names.get(ip)) |error_name| {
-                        if (seen_errors.contains(error_name)) continue;
+                        if (seen.errors.contains(error_name)) continue;
                         names.putAssumeCapacityNoClobber(error_name, {});
                     }
                     // No need to keep the hash map metadata correct; here we
@@ -11511,7 +11529,7 @@ fn validateSwitchBlock(
                 };
                 const min_int = try int_ty.minInt(pt, int_ty);
                 const max_int = try int_ty.maxInt(pt, int_ty);
-                if (try range_set.spans(arena, min_int, max_int, int_ty, zcu)) {
+                if (try seen.ranges.spans(arena, min_int, max_int, int_ty, zcu)) {
                     if (has_else) {
                         return sema.fail(
                             block,
@@ -11544,8 +11562,8 @@ fn validateSwitchBlock(
         },
         .bool, .void => |type_tag| {
             const all_values_handled = switch (type_tag) {
-                .bool => true_src != null and false_src != null,
-                .void => void_src != null,
+                .bool => seen.true_src != null and seen.false_src != null,
+                .void => seen.void_src != null,
                 else => unreachable,
             };
             if (has_else) {
@@ -11572,13 +11590,7 @@ fn validateSwitchBlock(
     }
 
     return .{
-        .seen_enum_fields = seen_enum_fields,
-        .seen_errors = seen_errors,
-        .seen_ranges = range_set.ranges.slice(),
-        .true_src = true_src,
-        .false_src = false_src,
-        .void_src = void_src,
-
+        .seen = seen,
         .case_vals = case_vals.items,
         .else_case = else_case,
         .else_err_ty = else_err_ty,
@@ -11756,7 +11768,7 @@ fn resolveSwitchBlock(
         .{ else_case.index, else_case.body, else_case.capture, else_case.has_tag_capture, else_case.is_inline };
     if (err_set) try sema.maybeErrorUnwrapComptime(child_block, body, cond_ref);
     if (tagged_union_originally) {
-        for (validated_switch.seen_enum_fields, 0..) |maybe_seen, field_i| {
+        for (validated_switch.seen.enum_fields, 0..) |maybe_seen, field_i| {
             if (maybe_seen != null) continue;
             if (!operand_ty.unionFieldTypeByIndex(field_i, zcu).isNoReturn(zcu)) break;
         } else {
@@ -12561,13 +12573,7 @@ fn validateSwitchItemOrRange(
     item_val: Value,
     opt_last_val: ?Value,
     item_ty: Type,
-    seen_enum_fields: []?LazySrcLoc,
-    seen_errors: *std.AutoHashMapUnmanaged(InternPool.NullTerminatedString, LazySrcLoc),
-    seen_sparse_values: *std.AutoHashMapUnmanaged(InternPool.Index, LazySrcLoc),
-    range_set: *RangeSet,
-    true_src: *?LazySrcLoc,
-    false_src: *?LazySrcLoc,
-    void_src: *?LazySrcLoc,
+    seen: *ValidatedSwitchBlock.Seen,
 ) CompileError!void {
     const pt = sema.pt;
     const zcu = pt.zcu;
@@ -12576,88 +12582,117 @@ fn validateSwitchItemOrRange(
         .@"enum" => {
             const int = ip.indexToKey(item_val.toIntern()).enum_tag.int;
             if (ip.loadEnumType(item_ty.toIntern()).tagValueIndex(ip, int)) |field_index| {
-                const maybe_prev_src = seen_enum_fields[field_index];
-                seen_enum_fields[field_index] = item_src;
+                const maybe_prev_src = seen.enum_fields[field_index];
+                seen.enum_fields[field_index] = item_src;
                 break :maybe_prev_src maybe_prev_src;
             } else {
-                break :maybe_prev_src try range_set.add(sema.arena, .{
+                try seen.ranges.ensureUnusedCapacity(sema.arena, 1);
+                break :maybe_prev_src if (seen.ranges.addAssumeCapacity(.{
                     .first = .fromInterned(int),
                     .last = .fromInterned(int),
                     .src = item_src,
-                }, .fromInterned(ip.typeOf(int)), zcu);
+                }, .fromInterned(ip.typeOf(int)), zcu)) |prev| prev.src else null;
             }
         },
         .error_set => {
             const error_name = ip.indexToKey(item_val.toIntern()).err.name;
-            break :maybe_prev_src if (seen_errors.fetchPutAssumeCapacity(error_name, item_src)) |prev|
+            break :maybe_prev_src if (seen.errors.fetchPutAssumeCapacity(error_name, item_src)) |prev|
                 prev.value
             else
                 null;
         },
         .int, .comptime_int => {
-            if (opt_last_val) |last_val| {
-                const first_val = item_val;
+            const first_val = item_val;
+            const last_val: Value = last_val: {
+                const last_val = opt_last_val orelse break :last_val item_val;
                 if (try first_val.compareAll(.gt, last_val, item_ty, pt)) {
                     return sema.fail(block, item_src, "range start value is greater than the end value", .{});
                 }
-                break :maybe_prev_src range_set.addAssumeCapacity(.{
-                    .first = first_val,
-                    .last = last_val,
-                    .src = item_src,
-                }, item_ty, zcu);
-            } else {
-                break :maybe_prev_src range_set.addAssumeCapacity(.{
-                    .first = item_val,
-                    .last = item_val,
-                    .src = item_src,
-                }, item_ty, zcu);
+                break :last_val last_val;
+            };
+            if (seen.ranges.addAssumeCapacity(.{
+                .first = first_val,
+                .last = last_val,
+                .src = item_src,
+            }, item_ty, zcu)) |prev_range| {
+                const overlap_start = first_val.numberMax(prev_range.first, zcu);
+                const overlap_end = last_val.numberMin(prev_range.last, zcu);
+                if (overlap_start.eql(overlap_end, item_ty, zcu)) {
+                    return sema.failWithOwnedErrorMsg(block, msg: {
+                        const msg = try sema.errMsg(item_src, "duplicate switch value '{f}'", .{
+                            overlap_start.fmtValueSema(pt, sema),
+                        });
+                        errdefer msg.destroy(sema.gpa);
+                        if (prev_range.first.eql(prev_range.last, item_ty, zcu)) {
+                            try sema.errNote(prev_range.src, msg, "previous value here", .{});
+                        } else {
+                            try sema.errNote(prev_range.src, msg, "previous value inside range here", .{});
+                        }
+                        break :msg msg;
+                    });
+                }
+                assert(!prev_range.first.eql(prev_range.last, item_ty, zcu));
+                return sema.failWithOwnedErrorMsg(block, msg: {
+                    const msg = try sema.errMsg(item_src, "duplicate switch ranges", .{});
+                    errdefer msg.destroy(sema.gpa);
+                    if (first_val.eql(prev_range.first, item_ty, zcu) and
+                        last_val.eql(prev_range.last, item_ty, zcu))
+                    {
+                        try sema.errNote(prev_range.src, msg, "previous range here", .{});
+                    } else {
+                        try sema.errNote(prev_range.src, msg, "overlaps with previous range here", .{});
+                        try sema.errNote(prev_range.src, msg, "ranges overlap from '{f}' to '{f}'", .{
+                            overlap_start.fmtValueSema(pt, sema), overlap_end.fmtValueSema(pt, sema),
+                        });
+                    }
+                    break :msg msg;
+                });
             }
+            break :maybe_prev_src null;
         },
         .@"union", .@"struct" => {
             const backing_int_val = ip.indexToKey(item_val.toIntern()).bitpack.backing_int_val;
-            break :maybe_prev_src range_set.addAssumeCapacity(.{
+            break :maybe_prev_src if (seen.ranges.addAssumeCapacity(.{
                 .first = .fromInterned(backing_int_val),
                 .last = .fromInterned(backing_int_val),
                 .src = item_src,
-            }, item_ty.backingIntType(zcu), zcu);
+            }, item_ty.backingIntType(zcu), zcu)) |prev| prev.src else null;
         },
         .enum_literal, .@"fn", .pointer, .type => {
-            break :maybe_prev_src if (seen_sparse_values.fetchPutAssumeCapacity(item_val.toIntern(), item_src)) |prev|
+            break :maybe_prev_src if (seen.sparse_values.fetchPutAssumeCapacity(item_val.toIntern(), item_src)) |prev|
                 prev.value
             else
                 null;
         },
         .bool => {
             if (item_val.toBool()) {
-                if (true_src.*) |prev_src| break :maybe_prev_src prev_src;
-                true_src.* = item_src;
+                if (seen.true_src) |prev_src| break :maybe_prev_src prev_src;
+                seen.true_src = item_src;
             } else {
-                if (false_src.*) |prev_src| break :maybe_prev_src prev_src;
-                false_src.* = item_src;
+                if (seen.false_src) |prev_src| break :maybe_prev_src prev_src;
+                seen.false_src = item_src;
             }
             break :maybe_prev_src null;
         },
         .void => {
-            if (void_src.*) |prev_src| break :maybe_prev_src prev_src;
-            void_src.* = item_src;
+            if (seen.void_src) |prev_src| break :maybe_prev_src prev_src;
+            seen.void_src = item_src;
             break :maybe_prev_src null;
         },
         else => unreachable, // should have already checked for invalid types
     };
     if (maybe_prev_src) |prev_src| {
         return sema.failWithOwnedErrorMsg(block, msg: {
-            const msg = try sema.errMsg(
-                item_src,
-                "duplicate switch value",
-                .{},
-            );
+            const msg = try sema.errMsg(item_src, "duplicate switch value '{f}'", .{
+                item_val.fmtValueSema(pt, sema),
+            });
             errdefer msg.destroy(sema.gpa);
-            try sema.errNote(
-                prev_src,
-                msg,
-                "previous value here",
-                .{},
-            );
+            try sema.errNote(prev_src, msg, "previous value here", .{});
+            if (item_ty.zigTypeTag(zcu) == .type) {
+                try sema.addDeclaredHereNote(msg, item_val.toType());
+            } else {
+                try sema.addDeclaredHereNote(msg, item_ty);
+            }
             break :msg msg;
         });
     }
