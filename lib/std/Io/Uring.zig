@@ -5298,6 +5298,7 @@ fn bind(
         switch (cancel_region.errno()) {
             .SUCCESS => return,
             .INTR, .CANCELED => {},
+            .ACCES => return error.AccessDenied,
             .ADDRINUSE => return error.AddressInUse,
             .BADF => |err| return errnoBug(err), // File descriptor used after closed.
             .INVAL => |err| return errnoBug(err), // invalid parameters

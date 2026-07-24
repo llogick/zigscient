@@ -198,6 +198,8 @@ pub const IpAddress = union(enum) {
     }
 
     pub const ListenError = error{
+        /// The address is protected and the current user does not have permission to bind it.
+        AccessDenied,
         /// The address is already taken. Can occur when bound port is 0 but
         /// all ephemeral ports are already in use.
         AddressInUse,
@@ -254,6 +256,8 @@ pub const IpAddress = union(enum) {
     }
 
     pub const BindError = error{
+        /// The address is protected and the current user does not have permission to bind it.
+        AccessDenied,
         /// The address is already taken. Can occur when bound port is 0 but
         /// all ephemeral ports are already in use.
         AddressInUse,

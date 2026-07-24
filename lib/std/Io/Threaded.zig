@@ -12086,6 +12086,7 @@ fn posixBind(
             else => |e| {
                 syscall.finish();
                 switch (e) {
+                    .ACCES => return error.AccessDenied,
                     .ADDRINUSE => return error.AddressInUse,
                     .BADF => |err| return errnoBug(err), // File descriptor used after closed.
                     .INVAL => |err| return errnoBug(err), // invalid parameters
