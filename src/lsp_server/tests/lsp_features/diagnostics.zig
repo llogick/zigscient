@@ -25,7 +25,7 @@ test "ast error" {
             },
             .severity = .Error,
             .source = "zigscient",
-            .message = "expected ';' after declaration",
+            .message = .{ .string = "expected ';' after declaration" },
         },
     }, .{});
 }
@@ -44,7 +44,7 @@ test "ast-check" {
             .severity = .Error,
             .tags = &.{.Unnecessary},
             .source = "zigscient",
-            .message = "unused local constant",
+            .message = .{ .string = "unused local constant" },
         },
     }, .{});
 
@@ -61,7 +61,7 @@ test "ast-check" {
             .severity = .Error,
             .tags = &.{.Unnecessary},
             .source = "zigscient",
-            .message = "unused local variable",
+            .message = .{ .string = "unused local variable" },
         },
     }, .{});
 }
@@ -78,7 +78,7 @@ test "warn style" {
             .code = .{ .string = "dot_slash_import" },
             .severity = .Hint,
             .source = "zigscient",
-            .message = "A ./ is not needed in imports",
+            .message = .{ .string = "A ./ is not needed in imports" },
         },
     }, .{ .warn_style = true });
     try testDiagnostics(
@@ -93,7 +93,7 @@ test "warn style" {
             .code = .{ .string = "naming style" },
             .severity = .Hint,
             .source = "zigscient",
-            .message = "Functions should be camelCase",
+            .message = .{ .string = "Functions should be camelCase" },
         },
         .{
             .range = .{
@@ -103,7 +103,7 @@ test "warn style" {
             .code = .{ .string = "naming style" },
             .severity = .Hint,
             .source = "zigscient",
-            .message = "Type functions should be PascalCase",
+            .message = .{ .string = "Type functions should be PascalCase" },
         },
     }, .{ .warn_style = true });
 }
@@ -120,7 +120,7 @@ test "highlight global var decls" {
             .code = .{ .string = "highlight_global_var_declarations" },
             .severity = .Hint,
             .source = "zigscient",
-            .message = "Global var declaration",
+            .message = .{ .string = "Global var declaration" },
         },
     }, .{ .highlight_global_var_declarations = true });
 }
@@ -139,7 +139,7 @@ test "autofix comment" {
             },
             .severity = .Information,
             .source = "zigscient",
-            .message = "auto discard for unused variable",
+            .message = .{ .string = "auto discard for unused variable" },
             .relatedInformation = &.{
                 .{
                     .location = .{

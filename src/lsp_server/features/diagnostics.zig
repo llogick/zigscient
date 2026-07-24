@@ -195,7 +195,7 @@ fn collectWarnStyleDiagnostics(
                     .severity = .Hint,
                     .code = .{ .string = "dot_slash_import" },
                     .source = "zigscient",
-                    .message = "A ./ is not needed in imports",
+                    .message = .{ .string = "A ./ is not needed in imports" },
                 });
             }
         }
@@ -226,7 +226,7 @@ fn collectWarnStyleDiagnostics(
                                 .severity = .Hint,
                                 .code = .{ .string = "naming style" },
                                 .source = "zigscient",
-                                .message = "Functions should be camelCase",
+                                .message = .{ .string = "Functions should be camelCase" },
                             });
                         } else if (is_type_function and !Analyser.isPascalCase(func_name)) {
                             try diagnostics.append(arena, .{
@@ -234,7 +234,7 @@ fn collectWarnStyleDiagnostics(
                                 .severity = .Hint,
                                 .code = .{ .string = "naming style" },
                                 .source = "zigscient",
-                                .message = "Type functions should be PascalCase",
+                                .message = .{ .string = "Type functions should be PascalCase" },
                             });
                         }
                     }
@@ -272,7 +272,7 @@ fn collectGlobalVarDiagnostics(
                     .severity = .Hint,
                     .code = .{ .string = "highlight_global_var_declarations" },
                     .source = "zigscient",
-                    .message = "Global var declaration",
+                    .message = .{ .string = "Global var declaration" },
                 });
             },
             else => {},

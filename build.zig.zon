@@ -25,8 +25,8 @@
             // .path = "../../../diffz",
         },
         .lsp_kit = .{
-            .url = "https://github.com/LamplightWorks/lsp-kit/archive/69fbe39d481e4598575a04057009e7fe56b1aa68.tar.gz",
-            .hash = "lsp_kit-0.1.0-bi_PL2QzDAAfCwxq8fn2PZWUo4pmlJ0IktPpEnKLRreM",
+            .url = "https://github.com/LamplightWorks/lsp-kit/archive/d148676ace1eaecf3c703ce7d350d0e94e502ed7.tar.gz",
+            .hash = "lsp_kit-0.1.0-bi_PLwc2DACoR7VTz_qKFXUvtx7veHvWcTQvP9pDFLpk",
             // .path = "../../../lws-lsp-kit",
         },
         .extended_zccs = .{
