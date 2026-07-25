@@ -978,7 +978,7 @@ fn uavRefExe(wasm: *Wasm, code: *ArrayList(u8), value: InternPool.Index, offset:
     code.appendAssumeCapacity(@backingInt(opcode));
 
     const addr = wasm.uavAddr(value);
-    writeUleb128(code, @as(u32, @intCast(@as(i64, addr) + offset)));
+    writeSleb128(code, @as(u32, @intCast(@as(i64, addr) + offset)));
 }
 
 fn navRefOff(wasm: *Wasm, code: *ArrayList(u8), data: Mir.NavRefOff, is_wasm32: bool) !void {
@@ -1004,7 +1004,7 @@ fn navRefOff(wasm: *Wasm, code: *ArrayList(u8), data: Mir.NavRefOff, is_wasm32: 
         code.appendNTimesAssumeCapacity(0, if (is_wasm32) 5 else 10);
     } else {
         const addr = wasm.navAddr(data.nav_index);
-        writeUleb128(code, @as(u32, @intCast(@as(i64, addr) + data.offset)));
+        writeSleb128(code, @as(u32, @intCast(@as(i64, addr) + data.offset)));
     }
 }
 

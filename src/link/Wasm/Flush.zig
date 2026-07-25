@@ -2032,8 +2032,7 @@ fn appendGlobal(gpa: Allocator, bytes: *ArrayList(u8), mutable: u8, val: u32) Al
     try bytes.ensureUnusedCapacity(gpa, 9);
     bytes.appendAssumeCapacity(@backingInt(std.wasm.Valtype.i32));
     bytes.appendAssumeCapacity(mutable);
-    bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_const));
-    appendReservedUleb32(bytes, val);
+    appendReservedI32Const(bytes, val);
     bytes.appendAssumeCapacity(@backingInt(std.wasm.Opcode.end));
 }
 
