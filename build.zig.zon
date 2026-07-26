@@ -4,13 +4,13 @@
     .version = "0.17.0-dev",
     // The minimum Zig version that is required to compile and test this project.
     // Must be a Zig version that is downloadable from https://ziglang.org/download/ or a mirror.
-    .minimum_zig_version = "0.17.0-dev.1502+b52057f05",
+    .minimum_zig_version = "0.17.0-dev.1509+bb296ab9b",
     // The minimum Zig version that the server's build_runner can handle:
     // A breaking change to the Zig Build System should be handled by updating the server's build runner (see src/build_runner)
-    .minimum_runtime_zig_version = "0.17.0-dev.1502+b52057f05",
+    .minimum_runtime_zig_version = "0.17.0-dev.1509+bb296ab9b",
     // Would like to be accurate even during a dev cycle,
     // but there isn't an easy way to automate this based on the last cherry-picked commit
-    .compiler_internals_version = "0.17.0-dev.1502+b52057f05",
+    .compiler_internals_version = "0.17.0-dev.1509+bb296ab9b",
     // The integrated langref version. A valid Zig release version or "master"
     // Used in links to documentation, ie https://ziglang.org/documentation/0.16.0/
     .langref_version = "master",

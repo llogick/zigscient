@@ -17798,3 +17798,25 @@ test "win64 varargs" {
         @as(Opv, .{}),
     );
 }
+
+const preserve_none_cc: ?std.lang.CallingConvention = if (builtin.zig_backend != .stage2_llvm)
+    null
+else switch (builtin.cpu.arch) {
+    .x86_64 => .{ .x86_64_preserve_none = .{} },
+    .aarch64, .aarch64_be => .{ .aarch64_preserve_none = .{} },
+    else => null,
+};
+
+export fn zig_preserve_none(x: i32) callconv(preserve_none_cc orelse .c) i32 {
+    return x + 1;
+}
+
+test "preserve_none calling convention" {
+    if (preserve_none_cc == null) return error.SkipZigTest;
+    const static = struct {
+        extern fn c_preserve_none(x: i32) callconv(preserve_none_cc.?) i32;
+        extern fn c_preserve_none_check() void;
+    };
+    try expect(static.c_preserve_none(41) == 42);
+    static.c_preserve_none_check();
+}

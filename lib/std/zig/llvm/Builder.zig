@@ -2749,6 +2749,7 @@ pub const CallConv = enum(u10) {
     tailcc,
     cfguard_checkcc,
     swifttailcc,
+    preserve_nonecc,
 
     x86_stdcallcc = 64,
     x86_fastcallcc,
@@ -2817,6 +2818,7 @@ pub const CallConv = enum(u10) {
             .tailcc,
             .cfguard_checkcc,
             .swifttailcc,
+            .preserve_nonecc,
             .x86_stdcallcc,
             .x86_fastcallcc,
             .arm_apcscc,

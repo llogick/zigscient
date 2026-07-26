@@ -62,6 +62,8 @@ pub const CType = union(enum) {
 
         regcall,
 
+        preserve_none,
+
         aarch64_vector_pcs,
         aarch64_sve_pcs,
 
@@ -137,6 +139,10 @@ pub const CType = union(enum) {
                 .x86_regcall_v3,
                 .x86_regcall_v4_win,
                 => .regcall,
+
+                .x86_64_preserve_none,
+                .aarch64_preserve_none,
+                => .preserve_none,
 
                 .aarch64_vfabi => .aarch64_vector_pcs,
                 .aarch64_vfabi_sve => .aarch64_sve_pcs,

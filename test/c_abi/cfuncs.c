@@ -16488,6 +16488,16 @@ struct ByRef __attribute__((sysv_abi)) c_explict_sys_v(struct ByRef in) {
 }
 #endif
 
+#if defined __x86_64__ || defined __aarch64__
+int __attribute__((preserve_none)) c_preserve_none(int x) {
+    return x + 1;
+}
+int __attribute__((preserve_none)) zig_preserve_none(int);
+void c_preserve_none_check(void) {
+    assert_or_panic(zig_preserve_none(41) == 42);
+}
+#endif
+
 struct byval_tail_callsite_attr_Point {
     double x;
     double y;
