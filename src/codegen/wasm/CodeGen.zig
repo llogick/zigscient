@@ -4923,7 +4923,8 @@ fn lowerPtr(cg: *CodeGen, ptr_val: InternPool.Index, prev_offset: u64) InnerErro
     const ptr = zcu.intern_pool.indexToKey(ptr_val).ptr;
     const offset: u64 = prev_offset + ptr.byte_offset;
     return switch (ptr.base_addr) {
-        .nav => |nav| return if (Type.fromInterned(ip.getNav(nav).resolved.?.type).isRuntimeFnOrHasRuntimeBits(zcu))
+        .nav => |nav| return if (ip.getNav(nav).getExtern(ip) != null or
+            Type.fromInterned(ip.getNav(nav).resolved.?.type).isRuntimeFnOrHasRuntimeBits(zcu))
             .{ .nav_ref = .{ .nav_index = nav, .offset = @intCast(offset) } }
         else
             .{ .imm32 = @intCast(zcu.navAlignment(nav).forward(@as(u32, 0xaaaaaaaa))) },
@@ -5607,6 +5608,8 @@ fn bitcastClass(cg: *CodeGen, ty: Type) BitcastClass {
 }
 
 fn bitcast(cg: *CodeGen, dest_ty: Type, src_ty: Type, operand: WValue) InnerError!?WValue {
+    if (dest_ty.eql(src_ty)) return null;
+
     const zcu = cg.pt.zcu;
     const src_class = cg.bitcastClass(src_ty);
     const dest_class = cg.bitcastClass(dest_ty);

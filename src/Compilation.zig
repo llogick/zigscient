@@ -3681,11 +3681,11 @@ pub fn saveState(comp: *Compilation) !void {
             addBuf(&bufs, @ptrCast(wasm.object_relocations_table.values()));
             addBuf(&bufs, @ptrCast(wasm.object_comdat_symbols.items(.kind)));
             addBuf(&bufs, @ptrCast(wasm.object_comdat_symbols.items(.index)));
-            addBuf(&bufs, @ptrCast(wasm.out_relocs.items(.tag)));
-            addBuf(&bufs, @ptrCast(wasm.out_relocs.items(.offset)));
+            addBuf(&bufs, @ptrCast(wasm.zcu_relocations.items(.tag)));
+            addBuf(&bufs, @ptrCast(wasm.zcu_relocations.items(.offset)));
             // TODO handle the union safety field
-            //addBuf(&bufs, @ptrCast(wasm.out_relocs.items(.pointee)));
-            addBuf(&bufs, @ptrCast(wasm.out_relocs.items(.addend)));
+            //addBuf(&bufs, @ptrCast(wasm.zcu_relocations.items(.pointee)));
+            addBuf(&bufs, @ptrCast(wasm.zcu_relocations.items(.addend)));
             addBuf(&bufs, @ptrCast(wasm.uav_fixups.items));
             addBuf(&bufs, @ptrCast(wasm.nav_fixups.items));
             addBuf(&bufs, @ptrCast(wasm.func_table_fixups.items));

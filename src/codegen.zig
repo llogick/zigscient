@@ -767,11 +767,9 @@ fn lowerNavRef(
     offset: u64,
 ) (Error || std.Io.Writer.Error)!void {
     const zcu = pt.zcu;
-    const gpa = zcu.gpa;
     const ip = &zcu.intern_pool;
     const target = &zcu.navFileScope(nav_index).mod.?.resolved_target.result;
     const ptr_width_bytes = @divExact(target.ptrBitWidth(), 8);
-    const is_obj = lf.comp.config.output_mode == .Obj;
     const nav_ty = Type.fromInterned(ip.getNav(nav_index).resolved.?.type);
 
     if (!nav_ty.isRuntimeFnOrHasRuntimeBits(zcu) and ip.getNav(nav_index).getExtern(ip) == null) {
@@ -786,34 +784,7 @@ fn lowerNavRef(
             dev.check(link.File.Tag.wasm.devFeature());
             const wasm = lf.cast(.wasm).?;
             assert(reloc_parent == .none);
-            if (nav_ty.zigTypeTag(zcu) == .@"fn") {
-                const gop = try wasm.zcu_indirect_function_set.getOrPut(gpa, nav_index);
-                if (!gop.found_existing) gop.value_ptr.* = {};
-                if (is_obj) {
-                    @panic("TODO add out_reloc for this");
-                } else {
-                    try wasm.func_table_fixups.append(gpa, .{
-                        .table_index = @fromBackingInt(@intCast(gop.index)),
-                        .offset = @intCast(w.end),
-                    });
-                }
-            } else {
-                if (is_obj) {
-                    try wasm.out_relocs.append(gpa, .{
-                        .offset = @intCast(w.end),
-                        .pointee = .{ .symbol_index = try wasm.navSymbolIndex(nav_index) },
-                        .tag = if (ptr_width_bytes == 4) .memory_addr_i32 else .memory_addr_i64,
-                        .addend = @intCast(offset),
-                    });
-                } else {
-                    try wasm.nav_fixups.ensureUnusedCapacity(gpa, 1);
-                    wasm.nav_fixups.appendAssumeCapacity(.{
-                        .navs_exe_index = try wasm.refNavExe(nav_index),
-                        .offset = @intCast(w.end),
-                        .addend = @intCast(offset),
-                    });
-                }
-            }
+            try wasm.addNavReloc(w.end, nav_index, nav_ty, @intCast(offset));
             try w.splatByteAll(0, ptr_width_bytes);
             return;
         },

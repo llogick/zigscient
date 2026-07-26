@@ -114,7 +114,7 @@ pub const Inst = struct {
         ///
         /// Uses `payload` pointing to a `NavRefOff`.
         nav_ref_off,
-        /// Lowers to an i32_const which is the index of the function in the
+        /// Lowers to an iNN_const which is the index of the function in the
         /// table section.
         ///
         /// Uses `nav_index`.
@@ -679,60 +679,12 @@ pub fn deinit(mir: *Mir, gpa: std.mem.Allocator) void {
 }
 
 pub fn lower(mir: *const Mir, wasm: *Wasm, code: *std.ArrayList(u8)) std.mem.Allocator.Error!void {
-    const gpa = wasm.base.comp.gpa;
-
-    // Write the locals in the prologue of the function body.
-    try code.ensureUnusedCapacity(gpa, 5 + mir.locals.len * 6 + 38);
-
-    var w: std.Io.Writer = .fixed(code.unusedCapacitySlice());
-
-    w.writeLeb128(@as(u32, @intCast(mir.locals.len))) catch unreachable;
-
-    for (mir.locals) |local| {
-        w.writeLeb128(@as(u32, 1)) catch unreachable;
-        w.writeByte(@backingInt(local)) catch unreachable;
-    }
-
-    // Stack management section of function prologue.
-    const stack_alignment = mir.prologue.flags.stack_alignment;
-    if (stack_alignment.toByteUnits()) |align_bytes| {
-        const sp_global: Wasm.GlobalIndex = .stack_pointer;
-        // load stack pointer
-        w.writeByte(@backingInt(std.wasm.Opcode.global_get)) catch unreachable;
-        w.writeUleb128(@backingInt(sp_global)) catch unreachable;
-        // store stack pointer so we can restore it when we return from the function
-        w.writeByte(@backingInt(std.wasm.Opcode.local_tee)) catch unreachable;
-        w.writeUleb128(mir.prologue.sp_local) catch unreachable;
-        // get the total stack size
-        const aligned_stack: i32 = @intCast(stack_alignment.forward(mir.prologue.stack_size));
-        w.writeByte(@backingInt(std.wasm.Opcode.i32_const)) catch unreachable;
-        w.writeSleb128(aligned_stack) catch unreachable;
-        // subtract it from the current stack pointer
-        w.writeByte(@backingInt(std.wasm.Opcode.i32_sub)) catch unreachable;
-        // Get negative stack alignment
-        const neg_stack_align = @as(i32, @intCast(align_bytes)) * -1;
-        w.writeByte(@backingInt(std.wasm.Opcode.i32_const)) catch unreachable;
-        w.writeSleb128(neg_stack_align) catch unreachable;
-        // Bitwise-and the value to get the new stack pointer to ensure the
-        // pointers are aligned with the abi alignment.
-        w.writeByte(@backingInt(std.wasm.Opcode.i32_and)) catch unreachable;
-        // The bottom will be used to calculate all stack pointer offsets.
-        w.writeByte(@backingInt(std.wasm.Opcode.local_tee)) catch unreachable;
-        w.writeUleb128(mir.prologue.bottom_stack_local) catch unreachable;
-        // Store the current stack pointer value into the global stack pointer so other function calls will
-        // start from this value instead and not overwrite the current stack.
-        w.writeByte(@backingInt(std.wasm.Opcode.global_set)) catch unreachable;
-        w.writeUleb128(@backingInt(sp_global)) catch unreachable;
-    }
-
-    code.items.len += w.end;
-
     var emit: Emit = .{
         .mir = mir.*,
         .wasm = wasm,
         .code = code,
     };
-    try emit.lowerToCode();
+    try emit.lower();
 }
 
 pub fn extraData(self: *const Mir, comptime T: type, index: usize) struct { data: T, end: usize } {

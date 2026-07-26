@@ -21,7 +21,7 @@ pub const Error = error{
     OutOfMemory,
 };
 
-pub fn lowerToCode(emit: *Emit) Error!void {
+pub fn lower(emit: *Emit) Error!void {
     const mir = &emit.mir;
     const code = emit.code;
     const wasm = emit.wasm;
@@ -30,6 +30,47 @@ pub fn lowerToCode(emit: *Emit) Error!void {
     const is_obj = comp.config.output_mode == .Obj;
     const target = &comp.root_mod.resolved_target.result;
     const is_wasm32 = target.cpu.arch == .wasm32;
+
+    // Write the locals in the prologue of the function body.
+    try code.ensureUnusedCapacity(gpa, 5 + mir.locals.len * 6 + 38);
+
+    writeUleb128(code, @as(u32, @intCast(mir.locals.len)));
+
+    for (mir.locals) |local| {
+        writeUleb128(code, @as(u32, 1));
+        code.appendAssumeCapacity(@backingInt(local));
+    }
+
+    // Stack management section of function prologue.
+    const stack_alignment = mir.prologue.flags.stack_alignment;
+    if (stack_alignment.toByteUnits()) |align_bytes| {
+        // load stack pointer
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.global_get));
+        try appendStackPointerGlobalIndex(wasm, code, is_obj);
+        // store stack pointer so we can restore it when we return from the function
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.local_tee));
+        writeUleb128(code, mir.prologue.sp_local);
+        // get the total stack size
+        const aligned_stack: i32 = @intCast(stack_alignment.forward(mir.prologue.stack_size));
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_const));
+        writeSleb128(code, aligned_stack);
+        // subtract it from the current stack pointer
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_sub));
+        // Get negative stack alignment
+        const neg_stack_align = @as(i32, @intCast(align_bytes)) * -1;
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_const));
+        writeSleb128(code, neg_stack_align);
+        // Bitwise-and the value to get the new stack pointer to ensure the
+        // pointers are aligned with the abi alignment.
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_and));
+        // The bottom will be used to calculate all stack pointer offsets.
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.local_tee));
+        writeUleb128(code, mir.prologue.bottom_stack_local);
+        // Store the current stack pointer value into the global stack pointer so other function calls will
+        // start from this value instead and not overwrite the current stack.
+        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.global_set));
+        try appendStackPointerGlobalIndex(wasm, code, is_obj);
+    }
 
     const tags = mir.instructions.items(.tag);
     const datas = mir.instructions.items(.data);
@@ -78,14 +119,21 @@ pub fn lowerToCode(emit: *Emit) Error!void {
             continue :loop tags[inst];
         },
         .func_ref => {
-            const indirect_func_idx: Wasm.ZcuIndirectFunctionSetIndex = @fromBackingInt(@intCast(
-                wasm.zcu_indirect_function_set.getIndex(datas[inst].nav_index).?,
-            ));
-            code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_const));
+            try code.ensureUnusedCapacity(gpa, 11);
+            const opcode: std.wasm.Opcode = if (is_wasm32) .i32_const else .i64_const;
+            code.appendAssumeCapacity(@backingInt(opcode));
             if (is_obj) {
-                @panic("TODO");
+                try wasm.zcu_relocations.append(gpa, .{
+                    .offset = @intCast(code.items.len),
+                    .pointee = .{ .function_nav = datas[inst].nav_index },
+                    .tag = if (is_wasm32) .table_index_sleb else .table_index_sleb64,
+                    .addend = 0,
+                });
+                appendSlebRelocPlaceholder(code, is_wasm32);
             } else {
-                writeSleb128(code, 1 + @backingInt(indirect_func_idx));
+                const function_index = Wasm.OutputFunctionIndex.fromIpNav(wasm, datas[inst].nav_index);
+                const table_index = wasm.flush_buffer.indirect_function_table.getIndex(function_index).? + 1;
+                writeSleb128(code, table_index);
             }
             inst += 1;
             continue :loop tags[inst];
@@ -105,18 +153,17 @@ pub fn lowerToCode(emit: *Emit) Error!void {
             continue :loop tags[inst];
         },
         .error_name_table_ref => {
-            wasm.error_name_table_ref_count += 1;
             try code.ensureUnusedCapacity(gpa, 11);
             const opcode: std.wasm.Opcode = if (is_wasm32) .i32_const else .i64_const;
             code.appendAssumeCapacity(@backingInt(opcode));
             if (is_obj) {
-                try wasm.out_relocs.append(gpa, .{
+                try wasm.zcu_relocations.append(gpa, .{
                     .offset = @intCast(code.items.len),
-                    .pointee = .{ .symbol_index = try wasm.errorNameTableSymbolIndex() },
-                    .tag = if (is_wasm32) .memory_addr_leb else .memory_addr_leb64,
+                    .pointee = .{ .data_resolution = .__zig_error_name_table },
+                    .tag = if (is_wasm32) .memory_addr_sleb else .memory_addr_sleb64,
                     .addend = 0,
                 });
-                code.appendNTimesAssumeCapacity(0, if (is_wasm32) 5 else 10);
+                appendSlebRelocPlaceholder(code, is_wasm32);
 
                 inst += 1;
                 continue :loop tags[inst];
@@ -164,13 +211,13 @@ pub fn lowerToCode(emit: *Emit) Error!void {
             try code.ensureUnusedCapacity(gpa, 6);
             code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.call));
             if (is_obj) {
-                try wasm.out_relocs.append(gpa, .{
+                try wasm.zcu_relocations.append(gpa, .{
                     .offset = @intCast(code.items.len),
-                    .pointee = .{ .symbol_index = try wasm.navSymbolIndex(datas[inst].nav_index) },
+                    .pointee = .{ .function_nav = datas[inst].nav_index },
                     .tag = .function_index_leb,
                     .addend = 0,
                 });
-                code.appendNTimesAssumeCapacity(0, 5);
+                appendUlebRelocPlaceholder(code);
             } else {
                 appendOutputFunctionIndex(code, .fromIpNav(wasm, datas[inst].nav_index));
             }
@@ -191,13 +238,13 @@ pub fn lowerToCode(emit: *Emit) Error!void {
             ).?;
             if (is_obj) {
                 code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.call_indirect));
-                try wasm.out_relocs.append(gpa, .{
+                try wasm.zcu_relocations.append(gpa, .{
                     .offset = @intCast(code.items.len),
                     .pointee = .{ .type_index = func_ty_index },
                     .tag = .type_index_leb,
                     .addend = 0,
                 });
-                code.appendNTimesAssumeCapacity(0, 5);
+                appendUlebRelocPlaceholder(code);
             } else {
                 const index: Wasm.Flush.FuncTypeIndex = @fromBackingInt(@intCast(wasm.flush_buffer.func_types.getIndex(func_ty_index) orelse {
                     // In this case we tried to call a function pointer for
@@ -224,13 +271,13 @@ pub fn lowerToCode(emit: *Emit) Error!void {
             try code.ensureUnusedCapacity(gpa, 6);
             code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.call));
             if (is_obj) {
-                try wasm.out_relocs.append(gpa, .{
+                try wasm.zcu_relocations.append(gpa, .{
                     .offset = @intCast(code.items.len),
-                    .pointee = .{ .symbol_index = try wasm.tagTableIndexSymbolIndex(datas[inst].ip_index) },
+                    .pointee = .{ .tag_function = datas[inst].ip_index },
                     .tag = .function_index_leb,
                     .addend = 0,
                 });
-                code.appendNTimesAssumeCapacity(0, 5);
+                appendUlebRelocPlaceholder(code);
             } else {
                 appendOutputFunctionIndex(code, .fromTagIndexType(wasm, datas[inst].ip_index));
             }
@@ -244,14 +291,20 @@ pub fn lowerToCode(emit: *Emit) Error!void {
             const opcode: std.wasm.Opcode = if (is_wasm32) .i32_const else .i64_const;
             code.appendAssumeCapacity(@backingInt(opcode));
             if (is_obj) {
-                @panic("TODO");
+                try wasm.zcu_relocations.append(gpa, .{
+                    .offset = @intCast(code.items.len),
+                    .pointee = .{ .data_resolution = .__zig_tag_name_table },
+                    .tag = if (is_wasm32) .memory_addr_sleb else .memory_addr_sleb64,
+                    .addend = @intCast(wasm.tagIndexTableOffset(datas[inst].ip_index)),
+                });
+                appendSlebRelocPlaceholder(code, is_wasm32);
             } else {
                 const addr: u32 = wasm.tagIndexTableAddr(datas[inst].ip_index);
                 writeSleb128(code, addr);
-
-                inst += 1;
-                continue :loop tags[inst];
             }
+
+            inst += 1;
+            continue :loop tags[inst];
         },
 
         .call_intrinsic => {
@@ -263,13 +316,13 @@ pub fn lowerToCode(emit: *Emit) Error!void {
             try code.ensureUnusedCapacity(gpa, 6);
             code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.call));
             if (is_obj) {
-                try wasm.out_relocs.append(gpa, .{
+                try wasm.zcu_relocations.append(gpa, .{
                     .offset = @intCast(code.items.len),
-                    .pointee = .{ .symbol_index = try wasm.symbolNameIndex(symbol_name) },
+                    .pointee = .{ .function_name = symbol_name },
                     .tag = .function_index_leb,
                     .addend = 0,
                 });
-                code.appendNTimesAssumeCapacity(0, 5);
+                appendUlebRelocPlaceholder(code);
             } else {
                 appendOutputFunctionIndex(code, .fromSymbolName(wasm, symbol_name));
             }
@@ -281,18 +334,7 @@ pub fn lowerToCode(emit: *Emit) Error!void {
         .global_set_sp => {
             try code.ensureUnusedCapacity(gpa, 6);
             code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.global_set));
-            if (is_obj) {
-                try wasm.out_relocs.append(gpa, .{
-                    .offset = @intCast(code.items.len),
-                    .pointee = .{ .symbol_index = try wasm.stackPointerSymbolIndex() },
-                    .tag = .global_index_leb,
-                    .addend = 0,
-                });
-                code.appendNTimesAssumeCapacity(0, 5);
-            } else {
-                const sp_global: Wasm.GlobalIndex = .stack_pointer;
-                writeUleb128(code, @backingInt(sp_global));
-            }
+            try appendStackPointerGlobalIndex(wasm, code, is_obj);
 
             inst += 1;
             continue :loop tags[inst];
@@ -960,13 +1002,13 @@ fn uavRefObj(wasm: *Wasm, code: *ArrayList(u8), value: InternPool.Index, offset:
     try code.ensureUnusedCapacity(gpa, 11);
     code.appendAssumeCapacity(@backingInt(opcode));
 
-    try wasm.out_relocs.append(gpa, .{
+    try wasm.zcu_relocations.append(gpa, .{
         .offset = @intCast(code.items.len),
-        .pointee = .{ .symbol_index = try wasm.uavSymbolIndex(value) },
-        .tag = if (is_wasm32) .memory_addr_leb else .memory_addr_leb64,
+        .pointee = .{ .data_uav = value },
+        .tag = if (is_wasm32) .memory_addr_sleb else .memory_addr_sleb64,
         .addend = offset,
     });
-    code.appendNTimesAssumeCapacity(0, if (is_wasm32) 5 else 10);
+    appendSlebRelocPlaceholder(code, is_wasm32);
 }
 
 fn uavRefExe(wasm: *Wasm, code: *ArrayList(u8), value: InternPool.Index, offset: i32, is_wasm32: bool) !void {
@@ -995,13 +1037,13 @@ fn navRefOff(wasm: *Wasm, code: *ArrayList(u8), data: Mir.NavRefOff, is_wasm32: 
     const opcode: std.wasm.Opcode = if (is_wasm32) .i32_const else .i64_const;
     code.appendAssumeCapacity(@backingInt(opcode));
     if (is_obj) {
-        try wasm.out_relocs.append(gpa, .{
+        try wasm.zcu_relocations.append(gpa, .{
             .offset = @intCast(code.items.len),
-            .pointee = .{ .symbol_index = try wasm.navSymbolIndex(data.nav_index) },
-            .tag = if (is_wasm32) .memory_addr_leb else .memory_addr_leb64,
+            .pointee = .{ .data_nav = data.nav_index },
+            .tag = if (is_wasm32) .memory_addr_sleb else .memory_addr_sleb64,
             .addend = data.offset,
         });
-        code.appendNTimesAssumeCapacity(0, if (is_wasm32) 5 else 10);
+        appendSlebRelocPlaceholder(code, is_wasm32);
     } else {
         const addr = wasm.navAddr(data.nav_index);
         writeSleb128(code, @as(u32, @intCast(@as(i64, addr) + data.offset)));
@@ -1010,6 +1052,40 @@ fn navRefOff(wasm: *Wasm, code: *ArrayList(u8), data: Mir.NavRefOff, is_wasm32: 
 
 fn appendOutputFunctionIndex(code: *ArrayList(u8), i: Wasm.OutputFunctionIndex) void {
     writeUleb128(code, @backingInt(i));
+}
+
+fn appendStackPointerGlobalIndex(
+    wasm: *Wasm,
+    code: *ArrayList(u8),
+    is_obj: bool,
+) Error!void {
+    if (is_obj) {
+        try wasm.zcu_relocations.append(wasm.base.comp.gpa, .{
+            .offset = @intCast(code.items.len),
+            .pointee = .stack_pointer,
+            .tag = .global_index_leb,
+            .addend = 0,
+        });
+        appendUlebRelocPlaceholder(code);
+    } else {
+        const sp_global: Wasm.GlobalIndex = .stack_pointer;
+        writeUleb128(code, @backingInt(sp_global));
+    }
+}
+
+fn appendUlebRelocPlaceholder(code: *ArrayList(u8)) void {
+    code.appendSliceAssumeCapacity(&.{ 0x80, 0x80, 0x80, 0x80, 0x00 });
+}
+
+fn appendSlebRelocPlaceholder(code: *ArrayList(u8), is_wasm32: bool) void {
+    if (is_wasm32) {
+        code.appendSliceAssumeCapacity(&.{ 0x80, 0x80, 0x80, 0x80, 0x00 });
+    } else {
+        code.appendSliceAssumeCapacity(&.{
+            0x80, 0x80, 0x80, 0x80, 0x80,
+            0x80, 0x80, 0x80, 0x80, 0x00,
+        });
+    }
 }
 
 fn writeUleb128(code: *ArrayList(u8), arg: anytype) void {
