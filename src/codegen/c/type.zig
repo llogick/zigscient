@@ -44,7 +44,174 @@ pub const CType = union(enum) {
         param_tys: []const CType,
         ret_ty: *const CType,
         varargs: bool,
+        cc: CallingConvention,
     },
+
+    pub const CallingConvention = enum {
+        c,
+
+        cdecl,
+        regparmcall,
+        sysv_abi,
+        ms_abi,
+        stdcall,
+        fastcall,
+        thiscall,
+
+        vectorcall,
+
+        regcall,
+
+        aarch64_vector_pcs,
+        aarch64_sve_pcs,
+
+        @"pcs(\"aapcs\")",
+        @"pcs(\"aapcs-vfp\")",
+
+        @"interrupt(\"ilink1\")",
+        @"interrupt(\"ilink2\")",
+        @"interrupt(\"ilink\")",
+        @"interrupt(\"firq\")",
+
+        interrupt,
+        @"interrupt(\"IRQ\")",
+        @"interrupt(\"FIQ\")",
+        @"interrupt(\"SWI\")",
+        @"interrupt(\"ABORT\")",
+        @"interrupt(\"UNDEF\")",
+
+        signal,
+
+        save_volatiles,
+        interrupt_handler,
+        fast_interrupt,
+        break_handler,
+
+        @"interrupt(\"eic\")",
+        @"interrupt(\"sw0\")",
+        @"interrupt(\"sw1\")",
+        @"interrupt(\"hw0\")",
+        @"interrupt(\"hw1\")",
+        @"interrupt(\"hw2\")",
+        @"interrupt(\"hw3\")",
+        @"interrupt(\"hw4\")",
+        @"interrupt(\"hw5\")",
+
+        riscv_vector_cc,
+        @"interrupt(\"supervisor\")",
+        @"interrupt(\"machine\")",
+
+        renesas,
+        /// Implies `interrupt_handler`.
+        trapa_handler,
+        @"interrupt_handler, nosave_low_regs",
+        @"interrupt_handler, resbank",
+
+        m68k_rtd,
+
+        tiflags,
+
+        pub fn fromLang(cc: std.lang.CallingConvention, target: *const std.Target) CallingConvention {
+            if (target.cCallingConvention()) |ccc| {
+                if (cc.eql(ccc)) {
+                    return .c;
+                }
+            }
+            return switch (cc) {
+                .auto, .naked => .c,
+
+                .x86_16_cdecl => .cdecl,
+                .x86_16_regparmcall => .regparmcall,
+                .x86_64_sysv, .x86_sysv => .sysv_abi,
+                .x86_64_win, .x86_win, .x86_mingw => .ms_abi,
+                .x86_16_stdcall, .x86_stdcall => .stdcall,
+                .x86_fastcall => .fastcall,
+                .x86_thiscall => .thiscall,
+
+                .x86_vectorcall,
+                .x86_64_vectorcall,
+                => .vectorcall,
+
+                .x86_64_regcall_v3_sysv,
+                .x86_64_regcall_v4_win,
+                .x86_regcall_v3,
+                .x86_regcall_v4_win,
+                => .regcall,
+
+                .aarch64_vfabi => .aarch64_vector_pcs,
+                .aarch64_vfabi_sve => .aarch64_sve_pcs,
+
+                .arm_aapcs => .@"pcs(\"aapcs\")",
+                .arm_aapcs_vfp => .@"pcs(\"aapcs-vfp\")",
+
+                .arc_interrupt => |opts| switch (opts.type) {
+                    .ilink1 => .@"interrupt(\"ilink1\")",
+                    .ilink2 => .@"interrupt(\"ilink2\")",
+                    .ilink => .@"interrupt(\"ilink\")",
+                    .firq => .@"interrupt(\"firq\")",
+                },
+
+                .arm_interrupt => |opts| switch (opts.type) {
+                    .generic => .interrupt,
+                    .irq => .@"interrupt(\"IRQ\")",
+                    .fiq => .@"interrupt(\"FIQ\")",
+                    .swi => .@"interrupt(\"SWI\")",
+                    .abort => .@"interrupt(\"ABORT\")",
+                    .undef => .@"interrupt(\"UNDEF\")",
+                },
+
+                .avr_signal => .signal,
+
+                .microblaze_interrupt => |opts| switch (opts.type) {
+                    .user => .save_volatiles,
+                    .regular => .interrupt_handler,
+                    .fast => .fast_interrupt,
+                    .breakpoint => .break_handler,
+                },
+
+                .mips_interrupt, .mips64_interrupt => |opts| switch (opts.mode) {
+                    .eic => .@"interrupt(\"eic\")",
+                    .sw0 => .@"interrupt(\"sw0\")",
+                    .sw1 => .@"interrupt(\"sw1\")",
+                    .hw0 => .@"interrupt(\"hw0\")",
+                    .hw1 => .@"interrupt(\"hw1\")",
+                    .hw2 => .@"interrupt(\"hw2\")",
+                    .hw3 => .@"interrupt(\"hw3\")",
+                    .hw4 => .@"interrupt(\"hw4\")",
+                    .hw5 => .@"interrupt(\"hw5\")",
+                },
+
+                .riscv64_lp64_v, .riscv32_ilp32_v => .riscv_vector_cc,
+                .riscv32_interrupt, .riscv64_interrupt => |opts| switch (opts.mode) {
+                    .supervisor => .@"interrupt(\"supervisor\")",
+                    .machine => .@"interrupt(\"machine\")",
+                },
+
+                .sh_renesas => .renesas,
+                .sh_interrupt => |opts| switch (opts.save) {
+                    .fpscr => .trapa_handler,
+                    .high => .@"interrupt_handler, nosave_low_regs",
+                    .full => .interrupt_handler,
+                    .bank => .@"interrupt_handler, resbank",
+                },
+
+                .m68k_rtd => .m68k_rtd,
+
+                .avr_interrupt,
+                .csky_interrupt,
+                .m68k_interrupt,
+                .msp430_interrupt,
+                .x86_16_interrupt,
+                .x86_interrupt,
+                .x86_64_interrupt,
+                => .interrupt,
+
+                .ez80_tiflags => .tiflags,
+
+                else => unreachable, // `Zcu.callconvSupported`
+            };
+        }
+    };
 
     /// Returns `true` if this node has a postfix operator, meaning an `[...]` or `(...)` appears
     /// after the identifier in a declarator with this type. In this case, if this node is wrapped
@@ -130,28 +297,28 @@ pub const CType = union(enum) {
         pub fn bits(int: Int, target: *const std.Target) u16 {
             return switch (int) {
                 // zig fmt: off
-            .char => target.cTypeBitSize(.char),
+                .char => target.cTypeBitSize(.char).?,
 
-            .@"unsigned short"     => target.cTypeBitSize(.ushort),
-            .@"unsigned int"       => target.cTypeBitSize(.uint),
-            .@"unsigned long"      => target.cTypeBitSize(.ulong),
-            .@"unsigned long long" => target.cTypeBitSize(.ulonglong),
+                .@"unsigned short"     => target.cTypeBitSize(.ushort).?,
+                .@"unsigned int"       => target.cTypeBitSize(.uint).?,
+                .@"unsigned long"      => target.cTypeBitSize(.ulong).?,
+                .@"unsigned long long" => target.cTypeBitSize(.ulonglong).?,
 
-            .@"signed short"     => target.cTypeBitSize(.short),
-            .@"signed int"       => target.cTypeBitSize(.int),
-            .@"signed long"      => target.cTypeBitSize(.long),
-            .@"signed long long" => target.cTypeBitSize(.longlong),
+                .@"signed short"     => target.cTypeBitSize(.short).?,
+                .@"signed int"       => target.cTypeBitSize(.int).?,
+                .@"signed long"      => target.cTypeBitSize(.long).?,
+                .@"signed long long" => target.cTypeBitSize(.longlong).?,
 
-            .uintptr_t, .intptr_t => target.ptrBitWidth(),
+                .uintptr_t, .intptr_t => target.ptrBitWidth(),
 
-            .uint8_t,  .int8_t   => 8,
-            .uint16_t, .int16_t  => 16,
-            .uint24_t, .int24_t  => 24,
-            .uint32_t, .int32_t  => 32,
-            .uint48_t, .int48_t  => 48,
-            .uint64_t, .int64_t  => 64,
-            .zig_u128, .zig_i128 => 128,
-            // zig fmt: on
+                .uint8_t,  .int8_t   => 8,
+                .uint16_t, .int16_t  => 16,
+                .uint24_t, .int24_t  => 24,
+                .uint32_t, .int32_t  => 32,
+                .uint48_t, .int48_t  => 48,
+                .uint64_t, .int64_t  => 64,
+                .zig_u128, .zig_i128 => 128,
+                // zig fmt: on
             };
         }
     };
@@ -376,6 +543,7 @@ pub const CType = union(enum) {
                             .ret_ty = ret_cty_buf,
                             .param_tys = param_cty_buf,
                             .varargs = func_type.is_var_args,
+                            .cc = .fromLang(func_type.cc, zcu.getTarget()),
                         } };
                     }
                     try deps.addType(gpa, cur_ty, allow_incomplete);
@@ -763,6 +931,13 @@ pub const CType = union(enum) {
                         try w.writeByte('(');
                     },
                 }
+                switch (ptr.elem_ty.*) {
+                    else => {},
+                    .function => |function| switch (function.cc) {
+                        .c => {},
+                        else => |cc| try w.print("zig_callconv({t}) ", .{cc}),
+                    },
+                }
                 try w.writeByte('*');
             },
 
@@ -812,7 +987,7 @@ pub const CType = union(enum) {
             => {},
 
             .pointer => |ptr| {
-                // Match opening paren "(" write `writeTypePrefix`.
+                // Match opening paren "(" in `writeTypePrefix`.
                 switch (ptr.elem_ty.kind()) {
                     .specifier, .pointer => {},
                     .postfix_op => try w.writeByte(')'),

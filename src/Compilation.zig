@@ -2140,6 +2140,9 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
         comp.config.any_fuzz = any_fuzz;
 
         if (opt_zcu) |zcu| {
+            // Finish initializing the `zcu` after the fields on `comp` have been initialized.
+            zcu.initAfterCompilation();
+
             // Populate `zcu.module_roots`.
             const active = zcu.acquire();
             defer active.release();

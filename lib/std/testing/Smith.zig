@@ -708,7 +708,7 @@ fn constructInput(comptime values: []const union(enum) {
 }
 
 test value {
-    if (@import("builtin").zig_backend == .stage2_c) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
 
     const S = struct {
         v: void = {},

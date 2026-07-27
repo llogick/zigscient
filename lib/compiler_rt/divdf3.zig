@@ -17,15 +17,15 @@ comptime {
     }
 }
 
-pub fn __divdf3(a: f64, b: f64) callconv(.c) f64 {
-    return div(a, b);
+fn __divdf3(a: compiler_rt.f64.Abi, b: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(div_f64(compiler_rt.f64.fromAbi(a), compiler_rt.f64.fromAbi(b)));
 }
 
 fn __aeabi_ddiv(a: f64, b: f64) callconv(.{ .arm_aapcs = .{} }) f64 {
-    return div(a, b);
+    return div_f64(a, b);
 }
 
-inline fn div(a: f64, b: f64) f64 {
+pub fn div_f64(a: f64, b: f64) f64 {
     const Z = @Int(.unsigned, 64);
     const SignedZ = @Int(.signed, 64);
 

@@ -8501,6 +8501,7 @@ const calling_conventions_supporting_var_args = [_]std.lang.CallingConvention.Ta
     .x86_64_win,
     .x86_sysv,
     .x86_win,
+    .x86_mingw,
     .aarch64_aapcs,
     .aarch64_aapcs_darwin,
     .aarch64_aapcs_win,
@@ -25677,7 +25678,6 @@ pub fn explainWhyTypeIsNotExtern(
 
         .@"opaque",
         .bool,
-        .float,
         .@"anyframe",
         => unreachable, // these *are* allowed
 
@@ -25686,6 +25686,7 @@ pub fn explainWhyTypeIsNotExtern(
             try sema.errNote(src_loc, msg, "SPIR-V runtime arrays must be the last field of an extern struct", .{});
         },
 
+        .float => try sema.errNote(src_loc, msg, "'{f}' is not extern compatible on this target", .{ty.fmt(pt)}),
         .pointer => if (ty.isSlice(zcu)) {
             try sema.errNote(src_loc, msg, "slices have no guaranteed in-memory representation", .{});
         } else {
@@ -29659,7 +29660,7 @@ fn coerceVarArgParam(
         .array => return sema.fail(block, inst_src, "arrays must be passed by reference to variadic function", .{}),
         .float => float: {
             const target = zcu.getTarget();
-            const double_bits = target.cTypeBitSize(.double);
+            const double_bits = target.cTypeBitSize(.double) orelse break :float inst;
             const inst_bits = uncasted_ty.floatBits(target);
             if (inst_bits >= double_bits) break :float inst;
             switch (double_bits) {
@@ -29675,21 +29676,21 @@ fn coerceVarArgParam(
             if (uncasted_info.bits <= target.cTypeBitSize(switch (uncasted_info.signedness) {
                 .signed => .int,
                 .unsigned => .uint,
-            })) break :int try sema.coerce(block, switch (uncasted_info.signedness) {
+            }) orelse break :int inst) break :int try sema.coerce(block, switch (uncasted_info.signedness) {
                 .signed => .c_int,
                 .unsigned => .c_uint,
             }, inst, inst_src);
             if (uncasted_info.bits <= target.cTypeBitSize(switch (uncasted_info.signedness) {
                 .signed => .long,
                 .unsigned => .ulong,
-            })) break :int try sema.coerce(block, switch (uncasted_info.signedness) {
+            }).?) break :int try sema.coerce(block, switch (uncasted_info.signedness) {
                 .signed => .c_long,
                 .unsigned => .c_ulong,
             }, inst, inst_src);
             if (uncasted_info.bits <= target.cTypeBitSize(switch (uncasted_info.signedness) {
                 .signed => .longlong,
                 .unsigned => .ulonglong,
-            })) break :int try sema.coerce(block, switch (uncasted_info.signedness) {
+            }).?) break :int try sema.coerce(block, switch (uncasted_info.signedness) {
                 .signed => .c_longlong,
                 .unsigned => .c_ulonglong,
             }, inst, inst_src);

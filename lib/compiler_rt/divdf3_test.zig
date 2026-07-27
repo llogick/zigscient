@@ -6,7 +6,7 @@ const std = @import("std");
 const math = std.math;
 const testing = std.testing;
 
-const __divdf3 = @import("divdf3.zig").__divdf3;
+const div_f64 = @import("divdf3.zig").div_f64;
 
 const nanRep: u64 = @as(u64, @bitCast(math.nan(f64)));
 const infRep: u64 = @as(u64, @bitCast(math.inf(f64)));
@@ -30,7 +30,7 @@ fn compareResultD(result: f64, expected: u64) bool {
 }
 
 fn test__divdf3(a: f64, b: f64, expected: u64) !void {
-    const x = __divdf3(a, b);
+    const x = div_f64(a, b);
     const ret = compareResultD(x, expected);
     try testing.expect(ret == true);
 }

@@ -10,7 +10,7 @@ pub fn __subvsi3(a: i32, b: i32) callconv(.c) i32 {
     const sum = a -% b;
     // Overflow occurred iff the operands have opposite signs, and the sign of the
     // sum is the opposite of the lhs sign.
-    if (((a ^ b) & (sum ^ a)) < 0) @panic("compiler-rt: integer overflow");
+    if (((a ^ b) & (sum ^ a)) < 0) @panic("integer overflow");
     return sum;
 }
 

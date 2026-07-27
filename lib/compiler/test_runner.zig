@@ -91,24 +91,23 @@ fn mainServer(init: std.process.Init.Minimal) !void {
                 return std.process.exit(0);
             },
             .query_test_metadata => {
-                testing.allocator_instance = .init(std.heap.page_allocator, .{});
-                defer if (testing.allocator_instance.deinit() != 0) {
-                    @panic("internal test runner memory leak");
-                };
+                var sa: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
+                defer if (sa.deinit() != 0) @panic("internal test runner memory leak");
+                const gpa = sa.allocator();
 
                 var string_bytes: std.ArrayList(u8) = .empty;
-                defer string_bytes.deinit(testing.allocator);
-                try string_bytes.append(testing.allocator, 0); // Reserve 0 for null.
+                defer string_bytes.deinit(gpa);
+                try string_bytes.append(gpa, 0); // Reserve 0 for null.
 
                 const test_fns = builtin.test_functions;
-                const names = try testing.allocator.alloc(u32, test_fns.len);
-                defer testing.allocator.free(names);
-                const expected_panic_msgs = try testing.allocator.alloc(u32, test_fns.len);
-                defer testing.allocator.free(expected_panic_msgs);
+                const names = try gpa.alloc(u32, test_fns.len);
+                defer gpa.free(names);
+                const expected_panic_msgs = try gpa.alloc(u32, test_fns.len);
+                defer gpa.free(expected_panic_msgs);
 
                 for (test_fns, names, expected_panic_msgs) |test_fn, *name, *expected_panic_msg| {
                     name.* = @intCast(string_bytes.items.len);
-                    try string_bytes.ensureUnusedCapacity(testing.allocator, test_fn.name.len + 1);
+                    try string_bytes.ensureUnusedCapacity(gpa, test_fn.name.len + 1);
                     string_bytes.appendSliceAssumeCapacity(test_fn.name);
                     string_bytes.appendAssumeCapacity(0);
                     expected_panic_msg.* = 0;
@@ -377,6 +376,7 @@ pub fn mainSimple() anyerror!void {
         else => false,
     };
 
+    testing.allocator_instance = .init(std.heap.page_allocator, .{});
     testing.io_instance = .init(testing.allocator, .{});
 
     var passed: u64 = 0;

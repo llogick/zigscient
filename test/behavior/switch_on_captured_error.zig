@@ -243,7 +243,7 @@ test "switch on error union catch capture" {
                 var a: error{}!u64 = 0;
                 _ = &a;
                 const b = a catch |err| switch (err) {
-                    undefined => @compileError("unreachable"),
+                    undefined => comptime unreachable,
                 };
                 try expectEqual(@as(u64, 0), b);
             }
@@ -829,7 +829,7 @@ test "switch on error union if else capture" {
                 var a: error{}!u64 = 0;
                 _ = &a;
                 const b = if (a) |x| x else |err| switch (err) {
-                    undefined => @compileError("unreachable"),
+                    undefined => comptime unreachable,
                 };
                 try expectEqual(@as(u64, 0), b);
             }
@@ -840,7 +840,7 @@ test "switch on error union if else capture" {
                 var a: error{}!u64 = 0;
                 _ = &a;
                 const b = if (a) |*x| x.* else |err| switch (err) {
-                    undefined => @compileError("unreachable"),
+                    undefined => comptime unreachable,
                 };
                 try expectEqual(@as(u64, 0), b);
             }

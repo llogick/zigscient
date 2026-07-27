@@ -6,7 +6,7 @@ const std = @import("std");
 const math = std.math;
 const testing = std.testing;
 
-const __divsf3 = @import("divsf3.zig").__divsf3;
+const div_f32 = @import("divsf3.zig").div_f32;
 
 const nanRep: u32 = @as(u32, @bitCast(math.nan(f32)));
 const infRep: u32 = @as(u32, @bitCast(math.inf(f32)));
@@ -30,7 +30,7 @@ fn compareResultF(result: f32, expected: u32) bool {
 }
 
 fn test__divsf3(a: f32, b: f32, expected: u32) !void {
-    const x = __divsf3(a, b);
+    const x = div_f32(a, b);
     const ret = compareResultF(x, expected);
     try testing.expect(ret == true);
 }

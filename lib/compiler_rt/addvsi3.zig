@@ -10,7 +10,7 @@ pub fn __addvsi3(a: i32, b: i32) callconv(.c) i32 {
     const sum = a +% b;
     // Overflow occurred iff both operands have the same sign, and the sign of the sum does
     // not match it. In other words, iff the sum sign is not the sign of either operand.
-    if (((sum ^ a) & (sum ^ b)) < 0) @panic("compiler-rt: integer overflow");
+    if (((sum ^ a) & (sum ^ b)) < 0) @panic("integer overflow");
     return sum;
 }
 

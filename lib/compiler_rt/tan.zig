@@ -21,26 +21,29 @@ const rem_pio2l = @import("rem_pio2l.zig").rem_pio2l;
 
 const arch = builtin.cpu.arch;
 const compiler_rt = @import("../compiler_rt.zig");
-const symbol = @import("../compiler_rt.zig").symbol;
+const symbol = compiler_rt.symbol;
 
 comptime {
-    symbol(&tanh, "__tanh");
+    symbol(&__tanh, "__tanh");
     symbol(&tanf, "tanf");
     symbol(&tan, "tan");
-    symbol(&tanx, "__tanx");
-    if (compiler_rt.want_ppc_abi) {
-        symbol(&tanq, "tanf128");
-    }
-    symbol(&tanq, "tanq");
+    symbol(&__tanx, "__tanx");
+    symbol(&tanq, "tanf128");
     symbol(&tanl, "tanl");
 }
 
-pub fn tanh(x: f16) callconv(.c) f16 {
+fn __tanh(x: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(tan_f16(compiler_rt.f16.fromAbi(x)));
+}
+pub fn tan_f16(x: f16) f16 {
     // TODO: more efficient implementation
-    return @floatCast(tanf(x));
+    return @floatCast(tan_f32(x));
 }
 
-pub fn tanf(x: f32) callconv(.c) f32 {
+fn tanf(x: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(tan_f32(compiler_rt.f32.fromAbi(x)));
+}
+pub fn tan_f32(x: f32) f32 {
     // Small multiples of pi/2 rounded to double precision.
     const t1pio2: f64 = 1.0 * math.pi / 2.0; // 0x3FF921FB, 0x54442D18
     const t2pio2: f64 = 2.0 * math.pi / 2.0; // 0x400921FB, 0x54442D18
@@ -90,7 +93,10 @@ pub fn tanf(x: f32) callconv(.c) f32 {
     return kernel.tandf(y, n & 1 != 0);
 }
 
-pub fn tan(x: f64) callconv(.c) f64 {
+fn tan(x: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(tan_f64(compiler_rt.f64.fromAbi(x)));
+}
+pub fn tan_f64(x: f64) f64 {
     var ix = @as(u64, @bitCast(x)) >> 32;
     ix &= 0x7fffffff;
 
@@ -120,7 +126,10 @@ pub fn tan(x: f64) callconv(.c) f64 {
     return kernel.tan(y[0], y[1], n & 1 != 0);
 }
 
-pub fn tanx(x: f80) callconv(.c) f80 {
+fn __tanx(x: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(tan_f80(compiler_rt.f80.fromAbi(x)));
+}
+pub fn tan_f80(x: f80) f80 {
     const se = ld.signExponent(x) & 0x7fff;
     if (se == 0x7fff) {
         return x - x;
@@ -141,7 +150,10 @@ pub fn tanx(x: f80) callconv(.c) f80 {
     return kernel.tanx(y[0], y[1], n & 1);
 }
 
-pub fn tanq(x: f128) callconv(.c) f128 {
+fn tanq(x: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(tan_f128(compiler_rt.f128.fromAbi(x)));
+}
+pub fn tan_f128(x: f128) f128 {
     const se = ld.signExponent(x) & 0x7fff;
     if (se == 0x7fff) {
         return x - x;
@@ -164,18 +176,21 @@ pub fn tanq(x: f128) callconv(.c) f128 {
 
 pub fn tanl(x: c_longdouble) callconv(.c) c_longdouble {
     switch (@typeInfo(c_longdouble).float.bits) {
-        64 => return tan(x),
-        80 => return tanx(x),
-        128 => return tanq(x),
-        else => @compileError("unreachable"),
+        64 => return tan_f64(x),
+        80 => return tan_f80(x),
+        128 => return tan_f128(x),
+        else => comptime unreachable,
     }
 }
 
 fn testTanNormal(comptime T: type) !void {
     const f = switch (T) {
-        f32 => tanf,
-        f64 => tan,
-        else => @compileError("unimplemented"),
+        f16 => tan_f16,
+        f32 => tan_f32,
+        f64 => tan_f64,
+        f80 => tan_f80,
+        f128 => tan_f128,
+        else => comptime unreachable,
     };
     const epsilon = 0.00001;
 
@@ -189,11 +204,12 @@ fn testTanNormal(comptime T: type) !void {
 
 fn testTanSpecial(comptime T: type) !void {
     const f = switch (T) {
-        f32 => tanf,
-        f64 => tan,
-        f80 => tanx,
-        f128 => tanq,
-        else => @compileError("unimplemented"),
+        f16 => tan_f16,
+        f32 => tan_f32,
+        f64 => tan_f64,
+        f80 => tan_f80,
+        f128 => tan_f128,
+        else => comptime unreachable,
     };
 
     try expect(math.isPositiveZero(f(0.0)));
@@ -214,23 +230,23 @@ test "tan64.normal" {
 test "tan80.normal" {
     const epsilon = math.floatEps(f80);
 
-    try expectApproxEqAbs(@as(f80, 0.0), tanx(0.0), epsilon);
-    try expectApproxEqAbs(@as(f80, 0.2027100355086724833213582716475345), tanx(0.2), epsilon);
-    try expectApproxEqAbs(@as(f80, 1.2404217445497097995561220131857544), tanx(0.8923), epsilon);
-    try expectApproxEqAbs(@as(f80, 14.10141994717171938764), tanx(1.5), epsilon);
-    try expectApproxEqAbs(@as(f80, -0.25439607116885656232), tanx(37.45), epsilon);
-    try expectApproxEqAbs(@as(f80, 2.2858376251355320963), tanx(89.123), epsilon);
+    try expectApproxEqAbs(@as(f80, 0.0), tan_f80(0.0), epsilon);
+    try expectApproxEqAbs(@as(f80, 0.2027100355086724833213582716475345), tan_f80(0.2), epsilon);
+    try expectApproxEqAbs(@as(f80, 1.2404217445497097995561220131857544), tan_f80(0.8923), epsilon);
+    try expectApproxEqAbs(@as(f80, 14.10141994717171938764), tan_f80(1.5), epsilon);
+    try expectApproxEqAbs(@as(f80, -0.25439607116885656232), tan_f80(37.45), epsilon);
+    try expectApproxEqAbs(@as(f80, 2.2858376251355320963), tan_f80(89.123), epsilon);
 }
 
 test "tan128.normal" {
     const epsilon = math.floatEps(f128);
 
-    try expectApproxEqAbs(@as(f128, 0.0), tanq(0.0), epsilon);
-    try expectApproxEqAbs(@as(f128, 0.2027100355086724833213582716475345), tanq(0.2), epsilon);
-    try expectApproxEqAbs(@as(f128, 1.2404217445497097995561220131857544), tanq(0.8923), epsilon);
-    try expectApproxEqAbs(@as(f128, 14.101419947171719387646083651987755), tanq(1.5), epsilon);
-    try expectApproxEqAbs(@as(f128, -0.2543960711688565630469573224504774), tanq(37.45), epsilon);
-    try expectApproxEqAbs(@as(f128, 2.2858376251355321074066028114094292), tanq(89.123), epsilon);
+    try expectApproxEqAbs(@as(f128, 0.0), tan_f128(0.0), epsilon);
+    try expectApproxEqAbs(@as(f128, 0.2027100355086724833213582716475345), tan_f128(0.2), epsilon);
+    try expectApproxEqAbs(@as(f128, 1.2404217445497097995561220131857544), tan_f128(0.8923), epsilon);
+    try expectApproxEqAbs(@as(f128, 14.101419947171719387646083651987755), tan_f128(1.5), epsilon);
+    try expectApproxEqAbs(@as(f128, -0.2543960711688565630469573224504774), tan_f128(37.45), epsilon);
+    try expectApproxEqAbs(@as(f128, 2.2858376251355321074066028114094292), tan_f128(89.123), epsilon);
 }
 
 test "tan32.special" {

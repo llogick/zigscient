@@ -154,7 +154,7 @@ pub const restore = restore_rt;
 pub fn restore_rt() callconv(.naked) noreturn {
     switch (builtin.zig_backend) {
         .stage2_c => asm volatile (
-            \\ mov x8, %[number]
+            \\ mov w8, %[number]
             \\ svc #0
             :
             : [number] "i" (@backingInt(SYS.rt_sigreturn)),

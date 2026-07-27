@@ -876,18 +876,18 @@ pub fn libcFloatSuffix(float_bits: u16) []const u8 {
         32 => "f",
         64 => "",
         80 => "x", // Non-standard
-        128 => "q", // Non-standard (mimics convention in GCC libquadmath)
+        128 => "f128",
         else => unreachable,
     };
 }
 
-pub fn compilerRtFloatAbbrev(float_bits: u16) []const u8 {
+pub fn compilerRtFloatAbbrev(target: *const std.Target, float_bits: u16) []const u8 {
     return switch (float_bits) {
         16 => "h",
         32 => "s",
         64 => "d",
         80 => "x",
-        128 => "t",
+        128 => if (target.cpu.arch.isPowerPC()) "k" else "t",
         else => unreachable,
     };
 }

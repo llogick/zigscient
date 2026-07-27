@@ -1,7 +1,8 @@
 const testing = @import("std").testing;
 
 const mulv = @import("mulo.zig");
-const symbol = @import("../compiler_rt.zig").symbol;
+const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
 
 comptime {
     symbol(&__mulvsi3, "__mulvsi3");
@@ -10,7 +11,7 @@ comptime {
 pub fn __mulvsi3(a: i32, b: i32) callconv(.c) i32 {
     var overflow: c_int = 0;
     const sum = mulv.__mulosi4(a, b, &overflow);
-    if (overflow != 0) @panic("compiler-rt: integer overflow");
+    if (overflow != 0) @panic("integer overflow");
     return sum;
 }
 

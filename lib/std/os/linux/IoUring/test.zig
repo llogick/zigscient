@@ -1836,8 +1836,6 @@ test "accept/connect/send_zc/recv" {
 }
 
 test "accept_direct" {
-    if (builtin.cpu.arch.isRISCV()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/30854
-
     try skipKernelLessThan(.{ .major = 5, .minor = 19, .patch = 0 });
 
     var ring = IoUring.init(1, 0) catch |err| switch (err) {
@@ -1924,11 +1922,6 @@ test "accept_direct" {
 
 test "accept_multishot_direct" {
     try skipKernelLessThan(.{ .major = 5, .minor = 19, .patch = 0 });
-
-    if (builtin.cpu.arch == .riscv64) {
-        // https://github.com/ziglang/zig/issues/25734
-        return error.SkipZigTest;
-    }
 
     var ring = IoUring.init(1, 0) catch |err| switch (err) {
         error.SystemOutdated => return error.SkipZigTest,

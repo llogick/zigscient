@@ -337,8 +337,6 @@ fn acosBinary128(x: f128) f128 {
 }
 
 test "acosBinary16.special" {
-    if (builtin.target.cpu.arch == .x86_64 and builtin.target.os.tag == .macos) return error.SkipZigTest;
-
     try testing.expectApproxEqAbs(0x1.92p0, acosBinary16(0x0p+0), math.floatEpsAt(f16, 0x1.92p0));
     try testing.expectApproxEqAbs(0x1.92p1, acosBinary16(-0x1p+0), math.floatEpsAt(f16, 0x1.92p1));
     try testing.expectEqual(0x0p+0, acosBinary16(0x1p+0));
@@ -350,8 +348,6 @@ test "acosBinary16.special" {
 }
 
 test "acosBinary16" {
-    if (builtin.target.cpu.arch == .x86_64 and builtin.target.os.tag == .macos) return error.SkipZigTest;
-
     try testing.expectApproxEqAbs(0x1.834p0, acosBinary16(0x1.db4p-5), math.floatEpsAt(f16, 0x1.834p0));
     try testing.expectApproxEqAbs(0x1.d48p0, acosBinary16(-0x1.068p-2), math.floatEpsAt(f16, 0x1.d48p0));
     try testing.expectApproxEqAbs(0x1.b7cp0, acosBinary16(-0x1.2c4p-3), math.floatEpsAt(f16, 0x1.b7cp0));

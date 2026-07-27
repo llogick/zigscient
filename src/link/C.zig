@@ -43,6 +43,8 @@ type_dependencies: std.ArrayList(link.ConstPool.Index),
 /// one array.
 align_dependency_masks: std.ArrayList(u64),
 
+/// Emitted at the top of the file. This can be cached since it only depends on the target.
+header: String,
 /// All NAVs, regardless of whether they are functions or simple constants, are put in this map.
 navs: std.array_hash_map.Auto(InternPool.Nav.Index, RenderedDecl),
 /// All UAVs which may be referenced are in this map. The UAV alignment is not included in the
@@ -404,9 +406,8 @@ pub fn createEmpty(
     emit: Path,
     options: link.File.OpenOptions,
 ) !*C {
+    assert(comp.root_mod.resolved_target.result.ofmt == .c);
     const io = comp.io;
-    const target = &comp.root_mod.resolved_target.result;
-    assert(target.ofmt == .c);
     const optimize_mode = comp.root_mod.optimize_mode;
     const use_lld = build_options.have_llvm and comp.config.use_lld;
     const use_llvm = comp.config.use_llvm;
@@ -422,9 +423,8 @@ pub fn createEmpty(
     });
     errdefer file.close(io);
 
-    const c_file = try arena.create(C);
-
-    c_file.* = .{
+    const c = try arena.create(C);
+    c.* = .{
         .base = .{
             .tag = .c,
             .comp = comp,
@@ -439,6 +439,7 @@ pub fn createEmpty(
         .string_bytes = .empty,
         .type_dependencies = .empty,
         .align_dependency_masks = .empty,
+        .header = .empty,
         .navs = .empty,
         .uavs = .empty,
         .type_pool = .empty,
@@ -447,8 +448,7 @@ pub fn createEmpty(
         .exported_navs = .empty,
         .exported_uavs = .empty,
     };
-
-    return c_file;
+    return c;
 }
 
 pub fn deinit(c: *C) void {
@@ -467,6 +467,21 @@ pub fn deinit(c: *C) void {
     c.bigint_types.deinit(gpa);
     c.exported_navs.deinit(gpa);
     c.exported_uavs.deinit(gpa);
+}
+
+pub fn prelink(c: *C, prog_node: std.Progress.Node) !void {
+    const comp = c.base.comp;
+
+    const sub_prog_node = prog_node.start("Generate Header", 0);
+    defer sub_prog_node.end();
+
+    var header_aw: std.Io.Writer.Allocating = .init(comp.gpa);
+    defer header_aw.deinit();
+    codegen.genHeader(comp.zcu.?, &header_aw.writer) catch |err| switch (err) {
+        error.WriteFailed => return error.OutOfMemory,
+        else => |e| return e,
+    };
+    c.header = try c.addString(&.{header_aw.written()});
 }
 
 pub fn updateContainerType(
@@ -727,7 +742,6 @@ pub fn flush(c: *C, arena: Allocator, tid: Zcu.PerThread.Id, prog_node: std.Prog
     const io = comp.io;
     const zcu = c.base.comp.zcu.?;
     const ip = &zcu.intern_pool;
-    const target = zcu.getTarget();
     const active = zcu.activate(tid);
     defer active.deactivate();
     const pt = active.pt;
@@ -943,7 +957,7 @@ pub fn flush(c: *C, arena: Allocator, tid: Zcu.PerThread.Id, prog_node: std.Prog
     // We have discovered the full set of NAVs, UAVs, and types we need to emit, and will now begin
     // to build the output buffer. Our strategy is to emit the C source in this order:
     //
-    // * ABI defines and `#include "zig.h"`
+    // * Header
     // * Big-int type definitions
     // * Other CType definitions (traversing the dependency graph to sort topologically)
     // * Global assembly
@@ -968,7 +982,7 @@ pub fn flush(c: *C, arena: Allocator, tid: Zcu.PerThread.Id, prog_node: std.Prog
 
     // We know exactly what we'll be emitting, so can reserve capacity for all of our buffers!
 
-    try f.all_buffers.ensureUnusedCapacity(gpa, 3 + // ABI defines and `#include "zig.h"`
+    try f.all_buffers.ensureUnusedCapacity(gpa, 1 + // Header
         1 + // Big-int type definitions
         need_types.count() + // `RenderedType.fwd_decl` (worst-case)
         need_types.count() + // `RenderedType.definition`
@@ -984,20 +998,7 @@ pub fn flush(c: *C, arena: Allocator, tid: Zcu.PerThread.Id, prog_node: std.Prog
         need_uavs.count() * 3 + // UAV definitions ("static ", "zig_align(4)", "<definition body>")
         need_navs.count() * 2); // NAV definitions ("static ", "<definition body>")
 
-    // ABI defines and `#include "zig.h"`
-    switch (target.abi) {
-        .msvc, .itanium => f.appendBufAssumeCapacity("#define ZIG_TARGET_ABI_MSVC\n"),
-        else => {},
-    }
-    f.appendBufAssumeCapacity(try std.fmt.allocPrint(
-        arena,
-        "#define ZIG_TARGET_MAX_INT_ALIGNMENT {d}\n",
-        .{target.cMaxIntAlignment()},
-    ));
-    f.appendBufAssumeCapacity(
-        \\#include "zig.h"
-        \\
-    );
+    f.appendBufAssumeCapacity(c.header.get(c));
 
     // Big-int type definitions
     var bigint_aw: std.Io.Writer.Allocating = .init(gpa);

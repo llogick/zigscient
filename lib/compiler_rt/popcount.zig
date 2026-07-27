@@ -6,7 +6,8 @@
 //! TAOCP: Combinational Algorithms, Bitwise Tricks And Techniques,
 //!   subsubsection "Working with the rightmost bits" and "Sideways addition".
 
-const symbol = @import("../compiler_rt.zig").symbol;
+const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
 
 comptime {
     symbol(&__popcountsi2, "__popcountsi2");

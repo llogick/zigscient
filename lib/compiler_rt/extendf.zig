@@ -1,10 +1,175 @@
 const std = @import("std");
 
-pub inline fn extendf(
-    comptime dst_t: type,
-    comptime src_t: type,
-    a: @Int(.unsigned, @typeInfo(src_t).float.bits),
-) dst_t {
+const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
+
+comptime {
+    if (compiler_rt.want_aeabi) {
+        if (compiler_rt.gnu_f16_abi) {
+            symbol(&__aeabi_h2f, "__gnu_h2f_ieee");
+        } else {
+            symbol(&__aeabi_h2f, "__aeabi_h2f");
+        }
+    } else if (compiler_rt.gnu_f16_abi) {
+        symbol(&__extendhfsf2, "__gnu_h2f_ieee");
+    }
+    symbol(&__extendhfsf2, "__extendhfsf2");
+    symbol(&__extendhfdf2, "__extendhfdf2");
+    symbol(&__extendhfxf2, "__extendhfxf2");
+    if (compiler_rt.want_ppc_abi) {
+        symbol(&__extendhftf2, "__extendhfkf2");
+    } else {
+        symbol(&__extendhftf2, "__extendhftf2");
+    }
+
+    if (compiler_rt.want_aeabi) {
+        symbol(&__aeabi_f2d, "__aeabi_f2d");
+    } else {
+        symbol(&__extendsfdf2, "__extendsfdf2");
+    }
+    symbol(&__extendsfxf2, "__extendsfxf2");
+    if (compiler_rt.want_ppc_abi) {
+        symbol(&__extendsftf2, "__extendsfkf2");
+    } else if (compiler_rt.want_sparc64_abi) {
+        symbol(&_Qp_stoq, "_Qp_stoq");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__extendsftf2, "_Q_stoq");
+    } else {
+        symbol(&__extendsftf2, "__extendsftf2");
+    }
+
+    symbol(&__extenddfxf2, "__extenddfxf2");
+    if (compiler_rt.want_ppc_abi) {
+        symbol(&__extenddftf2, "__extenddfkf2");
+    } else if (compiler_rt.want_sparc64_abi) {
+        symbol(&_Qp_dtoq, "_Qp_dtoq");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__extenddftf2, "_Q_dtoq");
+    } else {
+        symbol(&__extenddftf2, "__extenddftf2");
+    }
+
+    if (compiler_rt.want_ppc_abi) {
+        symbol(&__extendxftf2, "__extendxfkf2");
+    } else {
+        symbol(&__extendxftf2, "__extendxftf2");
+    }
+}
+
+fn __extendhfsf2(a: compiler_rt.f16Conv(f32).Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(f32_floatCast_f16(compiler_rt.f16Conv(f32).fromAbi(a)));
+}
+fn __aeabi_h2f(a: u16) callconv(.{ .arm_aapcs = .{} }) u32 {
+    return @bitCast(f32_floatCast_f16(@bitCast(a)));
+}
+pub fn f32_floatCast_f16(a: f16) f32 {
+    return extendf(f32, f16, a);
+}
+
+fn __extendhfdf2(a: compiler_rt.f16Conv(f64).Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(f64_floatCast_f16(compiler_rt.f16Conv(f64).fromAbi(a)));
+}
+pub fn f64_floatCast_f16(a: f16) f64 {
+    return extendf(f64, f16, a);
+}
+
+fn __extendhfxf2(a: compiler_rt.f16Conv(f80).Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(f80_floatCast_f16(compiler_rt.f16Conv(f80).fromAbi(a)));
+}
+pub fn f80_floatCast_f16(a: f16) f80 {
+    return extend_f80(f16, a);
+}
+
+fn __extendhftf2(a: compiler_rt.f16Conv(f128).Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(f128_floatCast_f16(compiler_rt.f16Conv(f128).fromAbi(a)));
+}
+pub fn f128_floatCast_f16(a: f16) f128 {
+    return extendf(f128, f16, a);
+}
+
+fn __extendsfdf2(a: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(f64_floatCast_f32(compiler_rt.f32.fromAbi(a)));
+}
+fn __aeabi_f2d(a: f32) callconv(.{ .arm_aapcs = .{} }) f64 {
+    return f64_floatCast_f32(a);
+}
+pub fn f64_floatCast_f32(a: f32) f64 {
+    return extendf(f64, f32, a);
+}
+
+fn __extendsfxf2(a: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(f80_floatCast_f32(compiler_rt.f32.fromAbi(a)));
+}
+pub fn f80_floatCast_f32(a: f32) f80 {
+    return extend_f80(f32, a);
+}
+
+pub fn __extendsftf2(a: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(f128_floatCast_f32(compiler_rt.f32.fromAbi(a)));
+}
+fn _Qp_stoq(c: *f128, a: f32) callconv(.c) void {
+    c.* = f128_floatCast_f32(a);
+}
+pub fn f128_floatCast_f32(a: f32) f128 {
+    return extendf(f128, f32, a);
+}
+
+fn __extenddfxf2(a: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(f80_floatCast_f64(compiler_rt.f64.fromAbi(a)));
+}
+pub fn f80_floatCast_f64(a: f64) f80 {
+    return extend_f80(f64, a);
+}
+
+fn __extenddftf2(a: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(f128_floatCast_f64(compiler_rt.f64.fromAbi(a)));
+}
+fn _Qp_dtoq(c: *f128, a: f64) callconv(.c) void {
+    c.* = f128_floatCast_f64(a);
+}
+pub fn f128_floatCast_f64(a: f64) f128 {
+    return extendf(f128, f64, a);
+}
+
+fn __extendxftf2(a: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(f128_floatCast_f80(compiler_rt.f80.fromAbi(a)));
+}
+pub fn f128_floatCast_f80(a: f80) f128 {
+    const src_int_bit: u64 = 0x8000000000000000;
+    const src_sig_mask = ~src_int_bit;
+    const src_sig_bits = std.math.floatMantissaBits(f80) - 1; // -1 for the integer bit
+    const dst_sig_bits = std.math.floatMantissaBits(f128);
+
+    const dst_bits = @bitSizeOf(f128);
+
+    // Break a into a sign and representation of the absolute value
+    var a_rep: std.math.F80 = .fromFloat(a);
+    const sign = a_rep.exp & 0x8000;
+    a_rep.exp &= 0x7FFF;
+    var abs_result: u128 = undefined;
+
+    if (a_rep.exp == 0 and a_rep.fraction == 0) {
+        // zero
+        abs_result = 0;
+    } else if (a_rep.exp == 0x7FFF) {
+        // a is nan or infinite
+        abs_result = @as(u128, a_rep.fraction) << (dst_sig_bits - src_sig_bits);
+        abs_result |= @as(u128, a_rep.exp) << dst_sig_bits;
+    } else if (a_rep.fraction & src_int_bit != 0) {
+        // a is a normal value
+        abs_result = @as(u128, a_rep.fraction & src_sig_mask) << (dst_sig_bits - src_sig_bits);
+        abs_result |= @as(u128, a_rep.exp) << dst_sig_bits;
+    } else {
+        // a is denormal
+        abs_result = @as(u128, a_rep.fraction) << (dst_sig_bits - src_sig_bits);
+    }
+
+    // Apply the signbit to (dst_t)abs(a).
+    const result: u128 = abs_result | @as(u128, sign) << (dst_bits - 16);
+    return @bitCast(result);
+}
+
+inline fn extendf(comptime dst_t: type, comptime src_t: type, f: src_t) dst_t {
     const src_rep_t = @Int(.unsigned, @typeInfo(src_t).float.bits);
     const dst_rep_t = @Int(.unsigned, @typeInfo(dst_t).float.bits);
     const srcSigBits = std.math.floatMantissaBits(src_t);
@@ -31,6 +196,7 @@ pub inline fn extendf(
 
     const dstMinNormal: dst_rep_t = @as(dst_rep_t, 1) << dstSigBits;
 
+    const a: src_rep_t = @bitCast(f);
     // Break a into a sign and representation of the absolute value
     const aRep: src_rep_t = @bitCast(a);
     const aAbs: src_rep_t = aRep & srcAbsMask;
@@ -66,11 +232,11 @@ pub inline fn extendf(
     }
 
     // Apply the signbit to (dst_t)abs(a).
-    const result: dst_rep_t align(@alignOf(dst_t)) = absResult | @as(dst_rep_t, sign) << (dstBits - srcBits);
+    const result: dst_rep_t = absResult | @as(dst_rep_t, sign) << (dstBits - srcBits);
     return @bitCast(result);
 }
 
-pub inline fn extend_f80(comptime src_t: type, a: @Int(.unsigned, @typeInfo(src_t).float.bits)) f80 {
+inline fn extend_f80(comptime src_t: type, f: src_t) f80 {
     const src_rep_t = @Int(.unsigned, @typeInfo(src_t).float.bits);
     const src_sig_bits = std.math.floatMantissaBits(src_t);
     const dst_int_bit = 0x8000000000000000;
@@ -92,6 +258,7 @@ pub inline fn extend_f80(comptime src_t: type, a: @Int(.unsigned, @typeInfo(src_
 
     var dst: std.math.F80 = undefined;
 
+    const a: src_rep_t = @bitCast(f);
     // Break a into a sign and representation of the absolute value
     const a_abs = a & src_abs_mask;
     const sign: u16 = if (a & src_sign_mask != 0) 0x8000 else 0;

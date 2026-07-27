@@ -13,19 +13,20 @@ comptime {
         symbol(&_Qp_div, "_Qp_div");
     } else if (compiler_rt.want_sparc32_abi) {
         symbol(&__divtf3, "_Q_div");
+    } else {
+        symbol(&__divtf3, "__divtf3");
     }
-    symbol(&__divtf3, "__divtf3");
 }
 
-pub fn __divtf3(a: f128, b: f128) callconv(.c) f128 {
-    return div(a, b);
+fn __divtf3(a: compiler_rt.f128.Abi, b: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(div_f128(compiler_rt.f128.fromAbi(a), compiler_rt.f128.fromAbi(b)));
 }
 
 fn _Qp_div(c: *f128, a: *const f128, b: *const f128) callconv(.c) void {
-    c.* = div(a.*, b.*);
+    c.* = div_f128(a.*, b.*);
 }
 
-inline fn div(a: f128, b: f128) f128 {
+pub fn div_f128(a: f128, b: f128) f128 {
     const Z = @Int(.unsigned, 128);
 
     const significandBits = std.math.floatMantissaBits(f128);

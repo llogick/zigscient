@@ -1437,7 +1437,6 @@ test "coerce enum literal to union in result loc" {
 }
 
 test "defined-layout union field pointer has correct alignment" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
@@ -1472,7 +1471,6 @@ test "defined-layout union field pointer has correct alignment" {
 }
 
 test "undefined-layout union field pointer has correct alignment" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
@@ -1611,6 +1609,10 @@ fn littleToNativeEndian(comptime T: type, v: T) T {
 }
 
 test "reinterpret extern union" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch == .hexagon) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch.isRiscv32() and builtin.link_libc) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch.isWasm()) return error.SkipZigTest;
+
     if (true) {
         // https://github.com/ziglang/zig/issues/19389
         return error.SkipZigTest;
@@ -1678,8 +1680,6 @@ test "reinterpret extern union" {
     };
 
     try comptime S.doTheTest();
-
-    if (builtin.zig_backend == .stage2_llvm) return error.SkipZigTest; // TODO
     try S.doTheTest();
 }
 
@@ -1758,8 +1758,6 @@ test "reinterpret packed union" {
     };
 
     try comptime S.doTheTest();
-
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
     try S.doTheTest();
 }
 
@@ -1800,8 +1798,6 @@ test "reinterpret packed union inside packed struct" {
     };
 
     try comptime S.doTheTest();
-
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
     try S.doTheTest();
 }
 

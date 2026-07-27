@@ -1,7 +1,7 @@
 const builtin = @import("builtin");
 
 const compiler_rt = @import("../compiler_rt.zig");
-const symbol = @import("../compiler_rt.zig").symbol;
+const symbol = compiler_rt.symbol;
 
 comptime {
     if (compiler_rt.want_windows_x86_msvc_abi) {

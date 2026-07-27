@@ -39,7 +39,7 @@ pub fn classifyType(ty: Type, zcu: *Zcu, ctx: Context) Class {
             const float_count = countFloats(ty, zcu, &maybe_float_bits);
             if (float_count <= byval_float_count) return .byval;
 
-            if (ty.abiAlignment(zcu).compare(.gt, .@"32")) {
+            if (ty.abiAlignment(zcu).compare(.gt, .@"4")) {
                 return Class.arrSize(bit_size, 64);
             }
 
@@ -62,7 +62,7 @@ pub fn classifyType(ty: Type, zcu: *Zcu, ctx: Context) Class {
             const float_count = countFloats(ty, zcu, &maybe_float_bits);
             if (float_count <= byval_float_count) return .byval;
 
-            if (union_obj.alignment.compareStrict(.gt, .@"32")) {
+            if (union_obj.alignment.compareStrict(.gt, .@"4")) {
                 return Class.arrSize(bit_size, 64);
             }
 
@@ -73,13 +73,15 @@ pub fn classifyType(ty: Type, zcu: *Zcu, ctx: Context) Class {
             }
             return Class.arrSize(bit_size, 32);
         },
-        .bool, .float => return .byval,
+        .bool => return .byval,
         .int => {
-            // TODO this is incorrect for _BitInt(128) but implementing
-            // this correctly makes implementing compiler-rt impossible.
-            // const bit_size = ty.bitSize(zcu);
-            // if (bit_size > 64) return .memory;
+            if (ctx == .ret and ty.intInfo(zcu).bits > 64) return .memory;
             return .byval;
+        },
+        .float => return switch (ty.floatBits(zcu.getTarget())) {
+            else => unreachable,
+            16, 32, 64 => .byval,
+            80, 128 => .{ .i64_array = 2 },
         },
         .@"enum", .error_set => {
             const bit_size = ty.bitSize(zcu);

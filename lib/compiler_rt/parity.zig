@@ -1,6 +1,7 @@
 //! parity - if number of bits set is even => 0, else => 1
 //! - pariytXi2_generic for big and little endian
-const symbol = @import("../compiler_rt.zig").symbol;
+const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
 
 comptime {
     symbol(&__paritysi2, "__paritysi2");

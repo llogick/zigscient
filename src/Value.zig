@@ -611,12 +611,7 @@ pub fn toFloat(val: Value, comptime T: type, zcu: *const Zcu) T {
     return switch (zcu.intern_pool.indexToKey(val.toIntern())) {
         .int => |int| switch (int.storage) {
             .big_int => |big_int| big_int.toFloat(T, .nearest_even)[0],
-            inline .u64, .i64 => |x| {
-                if (T == f80) {
-                    @panic("TODO we can't lower this properly on non-x86 llvm backend yet");
-                }
-                return @floatFromInt(x);
-            },
+            inline .u64, .i64 => |x| @floatFromInt(x),
         },
         .float => |float| switch (float.storage) {
             inline else => |x| @floatCast(x),

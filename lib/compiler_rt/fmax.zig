@@ -10,39 +10,51 @@ comptime {
     symbol(&fmaxf, "fmaxf");
     symbol(&fmax, "fmax");
     symbol(&__fmaxx, "__fmaxx");
-    if (compiler_rt.want_ppc_abi) {
-        symbol(&fmaxq, "fmaxf128");
-    }
-    symbol(&fmaxq, "fmaxq");
+    symbol(&fmaxq, "fmaxf128");
     symbol(&fmaxl, "fmaxl");
 }
 
-pub fn __fmaxh(x: f16, y: f16) callconv(.c) f16 {
+fn __fmaxh(x: compiler_rt.f16.Abi, y: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(fmax_f16(compiler_rt.f16.fromAbi(x), compiler_rt.f16.fromAbi(y)));
+}
+pub fn fmax_f16(x: f16, y: f16) f16 {
     return generic_fmax(f16, x, y);
 }
 
-pub fn fmaxf(x: f32, y: f32) callconv(.c) f32 {
+fn fmaxf(x: compiler_rt.f32.Abi, y: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(fmax_f32(compiler_rt.f32.fromAbi(x), compiler_rt.f32.fromAbi(y)));
+}
+pub fn fmax_f32(x: f32, y: f32) f32 {
     return generic_fmax(f32, x, y);
 }
 
-pub fn fmax(x: f64, y: f64) callconv(.c) f64 {
+fn fmax(x: compiler_rt.f64.Abi, y: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(fmax_f64(compiler_rt.f64.fromAbi(x), compiler_rt.f64.fromAbi(y)));
+}
+pub fn fmax_f64(x: f64, y: f64) f64 {
     return generic_fmax(f64, x, y);
 }
 
-pub fn __fmaxx(x: f80, y: f80) callconv(.c) f80 {
+fn __fmaxx(x: compiler_rt.f80.Abi, y: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(fmax_f80(compiler_rt.f80.fromAbi(x), compiler_rt.f80.fromAbi(y)));
+}
+pub fn fmax_f80(x: f80, y: f80) f80 {
     return generic_fmax(f80, x, y);
 }
 
-pub fn fmaxq(x: f128, y: f128) callconv(.c) f128 {
+fn fmaxq(x: compiler_rt.f128.Abi, y: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(fmax_f128(compiler_rt.f128.fromAbi(x), compiler_rt.f128.fromAbi(y)));
+}
+pub fn fmax_f128(x: f128, y: f128) f128 {
     return generic_fmax(f128, x, y);
 }
 
 pub fn fmaxl(x: c_longdouble, y: c_longdouble) callconv(.c) c_longdouble {
     switch (@typeInfo(c_longdouble).float.bits) {
-        64 => return fmax(x, y),
-        80 => return __fmaxx(x, y),
-        128 => return fmaxq(x, y),
-        else => @compileError("unreachable"),
+        64 => return fmax_f64(x, y),
+        80 => return fmax_f80(x, y),
+        128 => return fmax_f128(x, y),
+        else => comptime unreachable,
     }
 }
 

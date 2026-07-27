@@ -1277,7 +1277,7 @@ pub const Parser = struct {
             },
             else => unreachable,
         }
-        @compileError("unreachable");
+        comptime unreachable;
     }
 
     pub const OptionalParamParser = struct {

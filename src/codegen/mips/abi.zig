@@ -38,7 +38,14 @@ pub fn classifyType(ty: Type, zcu: *Zcu, ctx: Context) Class {
             return .byval;
         },
         .bool => return .byval,
-        .float => return .byval,
+        .float => return switch (ty.floatBits(target)) {
+            else => unreachable,
+            16, 32, 64 => .byval,
+            80, 128 => switch (max_direct_size) {
+                else => unreachable,
+                64 => .memory,
+            },
+        },
         .int, .@"enum", .error_set => {
             return .byval;
         },

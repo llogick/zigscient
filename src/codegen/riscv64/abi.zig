@@ -56,11 +56,19 @@ pub fn classifyType(ty: Type, zcu: *Zcu) Class {
             return .integer;
         },
         .bool => return .integer,
-        .float => return .byval,
         .int, .@"enum", .error_set => {
             const bit_size = ty.bitSize(zcu);
             if (bit_size > max_byval_size) return .memory;
             return .byval;
+        },
+        .float => return switch (ty.floatBits(target)) {
+            else => unreachable,
+            16, 32, 64, 128 => .byval,
+            80 => switch (max_byval_size) {
+                else => unreachable,
+                64 => .memory,
+                128 => .double_integer,
+            },
         },
         .vector => {
             const bit_size = ty.bitSize(zcu);
@@ -190,7 +198,7 @@ pub fn classifySystem(ty: Type, zcu: *Zcu) [8]SystemClass {
         },
         .vector => {
             // we pass vectors through integer registers if they are small enough to fit.
-            const vec_bits = ty.totalVectorBits(zcu);
+            const vec_bits = ty.bitSize(zcu);
             if (vec_bits <= 64) {
                 result[0] = .integer;
                 return result;

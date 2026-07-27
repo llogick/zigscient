@@ -223,7 +223,6 @@ test "unanalyzed continue with operand" {
 
 test "switch loop on larger than pointer integer" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     var entry: @Int(.unsigned, @bitSizeOf(usize) + 1) = undefined;
@@ -268,7 +267,7 @@ test "switch loop on non-exhaustive enum" {
 
 test "switch loop with discarded tag capture" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
+
     const S = struct {
         const U = union(enum) {
             a: u32,

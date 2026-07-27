@@ -3,7 +3,6 @@ const testing = std.testing;
 const builtin = @import("builtin");
 const compiler_rt = @import("../compiler_rt.zig");
 const symbol = compiler_rt.symbol;
-const panic = @import("../compiler_rt.zig").panic;
 
 const have_availability_version_check = builtin.os.tag.isDarwin() and
     builtin.os.version_range.semver.min.order(.{ .major = 10, .minor = 15, .patch = 0 }).compare(.gte);

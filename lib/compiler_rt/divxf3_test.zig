@@ -2,7 +2,7 @@ const std = @import("std");
 const math = std.math;
 const testing = std.testing;
 
-const __divxf3 = @import("divxf3.zig").__divxf3;
+const div_f80 = @import("divxf3.zig").div_f80;
 
 const nanRep: u80 = @as(u80, @bitCast(math.nan(f80)));
 const infRep: u80 = @as(u80, @bitCast(math.inf(f80)));
@@ -19,14 +19,14 @@ fn compareResult(result: f80, expected: u80) bool {
 }
 
 fn expect__divxf3_result(a: f80, b: f80, expected: u80) !void {
-    const x = __divxf3(a, b);
+    const x = div_f80(a, b);
     const ret = compareResult(x, expected);
     try testing.expect(ret == true);
 }
 
 fn test__divxf3(a: f80, b: f80) !void {
     const integerBit = 1 << math.floatFractionalBits(f80);
-    const x = __divxf3(a, b);
+    const x = div_f80(a, b);
 
     // Next float (assuming normal, non-zero result)
     const x_plus_eps: f80 = @bitCast((@as(u80, @bitCast(x)) + 1) | integerBit);

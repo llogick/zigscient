@@ -15,7 +15,7 @@ const mem = std.mem;
 const expect = std.testing.expect;
 
 const compiler_rt = @import("../compiler_rt.zig");
-const symbol = @import("../compiler_rt.zig").symbol;
+const symbol = compiler_rt.symbol;
 
 comptime {
     // floor
@@ -23,10 +23,7 @@ comptime {
     symbol(&floorf, "floorf");
     symbol(&floor, "floor");
     symbol(&__floorx, "__floorx");
-    if (compiler_rt.want_ppc_abi) {
-        symbol(&floorq, "floorf128");
-    }
-    symbol(&floorq, "floorq");
+    symbol(&floorq, "floorf128");
     symbol(&floorl, "floorl");
 
     // ceil
@@ -34,59 +31,96 @@ comptime {
     symbol(&ceilf, "ceilf");
     symbol(&ceil, "ceil");
     symbol(&__ceilx, "__ceilx");
-    if (compiler_rt.want_ppc_abi) {
-        symbol(&ceilq, "ceilf128");
-    }
-    symbol(&ceilq, "ceilq");
+    symbol(&ceilq, "ceilf128");
     symbol(&ceill, "ceill");
 }
 
-pub fn __floorh(x: f16) callconv(.c) f16 {
+fn __floorh(x: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(floor_f16(compiler_rt.f16.fromAbi(x)));
+}
+pub fn floor_f16(x: f16) f16 {
     return impl(f16, .floor, x);
 }
 
-pub fn floorf(x: f32) callconv(.c) f32 {
+fn floorf(x: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(floor_f32(compiler_rt.f32.fromAbi(x)));
+}
+pub fn floor_f32(x: f32) f32 {
     return impl(f32, .floor, x);
 }
 
-pub fn floor(x: f64) callconv(.c) f64 {
+fn floor(x: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(floor_f64(compiler_rt.f64.fromAbi(x)));
+}
+pub fn floor_f64(x: f64) f64 {
     return impl(f64, .floor, x);
 }
 
-pub fn __floorx(x: f80) callconv(.c) f80 {
+fn __floorx(x: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(floor_f80(compiler_rt.f80.fromAbi(x)));
+}
+pub fn floor_f80(x: f80) f80 {
     return impl(f80, .floor, x);
 }
 
-pub fn floorq(x: f128) callconv(.c) f128 {
+fn floorq(x: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(floor_f128(compiler_rt.f128.fromAbi(x)));
+}
+pub fn floor_f128(x: f128) f128 {
     return impl(f128, .floor, x);
 }
 
 pub fn floorl(x: c_longdouble) callconv(.c) c_longdouble {
-    return impl(std.meta.Float(@bitSizeOf(c_longdouble)), .floor, x);
+    switch (@typeInfo(c_longdouble).float.bits) {
+        64 => return floor_f64(x),
+        80 => return floor_f80(x),
+        128 => return floor_f128(x),
+        else => comptime unreachable,
+    }
 }
 
-pub fn __ceilh(x: f16) callconv(.c) f16 {
+fn __ceilh(x: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(ceil_f16(compiler_rt.f16.fromAbi(x)));
+}
+pub fn ceil_f16(x: f16) f16 {
     return impl(f16, .ceil, x);
 }
 
-pub fn ceilf(x: f32) callconv(.c) f32 {
+fn ceilf(x: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(ceil_f32(compiler_rt.f32.fromAbi(x)));
+}
+pub fn ceil_f32(x: f32) f32 {
     return impl(f32, .ceil, x);
 }
 
-pub fn ceil(x: f64) callconv(.c) f64 {
+fn ceil(x: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(ceil_f64(compiler_rt.f64.fromAbi(x)));
+}
+pub fn ceil_f64(x: f64) f64 {
     return impl(f64, .ceil, x);
 }
 
-pub fn __ceilx(x: f80) callconv(.c) f80 {
+fn __ceilx(x: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(ceil_f80(compiler_rt.f80.fromAbi(x)));
+}
+pub fn ceil_f80(x: f80) f80 {
     return impl(f80, .ceil, x);
 }
 
-pub fn ceilq(x: f128) callconv(.c) f128 {
+fn ceilq(x: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(ceil_f128(compiler_rt.f128.fromAbi(x)));
+}
+pub fn ceil_f128(x: f128) f128 {
     return impl(f128, .ceil, x);
 }
 
 pub fn ceill(x: c_longdouble) callconv(.c) c_longdouble {
-    return impl(std.meta.Float(@bitSizeOf(c_longdouble)), .ceil, x);
+    switch (@typeInfo(c_longdouble).float.bits) {
+        64 => return ceil_f64(x),
+        80 => return ceil_f80(x),
+        128 => return ceil_f128(x),
+        else => comptime unreachable,
+    }
 }
 
 inline fn impl(comptime T: type, comptime op: enum { floor, ceil }, x: T) T {
@@ -144,142 +178,122 @@ inline fn impl(comptime T: type, comptime op: enum { floor, ceil }, x: T) T {
     }
 }
 
-test "floor16" {
-    try expect(__floorh(1.3) == 1.0);
-    try expect(__floorh(-1.3) == -2.0);
-    try expect(__floorh(0.2) == 0.0);
+test floor_f16 {
+    try expect(floor_f16(1.3) == 1.0);
+    try expect(floor_f16(-1.3) == -2.0);
+    try expect(floor_f16(-0.2) == -1.0);
+    try expect(math.isPositiveZero(floor_f16(0.2)));
+    try expect(math.isPositiveZero(floor_f16(0.0)));
+    try expect(math.isNegativeZero(floor_f16(-0.0)));
+    try expect(math.isPositiveInf(floor_f16(math.inf(f16))));
+    try expect(math.isNegativeInf(floor_f16(-math.inf(f16))));
+    try expect(math.isNan(floor_f16(math.nan(f16))));
 }
 
-test "floor32" {
-    try expect(floorf(1.3) == 1.0);
-    try expect(floorf(-1.3) == -2.0);
-    try expect(floorf(0.2) == 0.0);
+test floor_f32 {
+    try expect(floor_f32(1.3) == 1.0);
+    try expect(floor_f32(-1.3) == -2.0);
+    try expect(floor_f32(-0.2) == -1.0);
+    try expect(math.isPositiveZero(floor_f32(0.2)));
+    try expect(math.isPositiveZero(floor_f32(0.0)));
+    try expect(math.isNegativeZero(floor_f32(-0.0)));
+    try expect(math.isPositiveInf(floor_f32(math.inf(f32))));
+    try expect(math.isNegativeInf(floor_f32(-math.inf(f32))));
+    try expect(math.isNan(floor_f32(math.nan(f32))));
 }
 
-test "floor64" {
-    try expect(floor(1.3) == 1.0);
-    try expect(floor(-1.3) == -2.0);
-    try expect(floor(0.2) == 0.0);
+test floor_f64 {
+    try expect(floor_f64(1.3) == 1.0);
+    try expect(floor_f64(-1.3) == -2.0);
+    try expect(floor_f64(-0.2) == -1.0);
+    try expect(math.isPositiveZero(floor_f64(0.2)));
+    try expect(math.isPositiveZero(floor_f64(0.0)));
+    try expect(math.isNegativeZero(floor_f64(-0.0)));
+    try expect(math.isPositiveInf(floor_f64(math.inf(f64))));
+    try expect(math.isNegativeInf(floor_f64(-math.inf(f64))));
+    try expect(math.isNan(floor_f64(math.nan(f64))));
 }
 
-test "floor80" {
-    try expect(__floorx(1.3) == 1.0);
-    try expect(__floorx(-1.3) == -2.0);
-    try expect(__floorx(0.2) == 0.0);
+test floor_f80 {
+    try expect(floor_f80(1.3) == 1.0);
+    try expect(floor_f80(-1.3) == -2.0);
+    try expect(floor_f80(-0.2) == -1.0);
+    try expect(math.isPositiveZero(floor_f80(0.2)));
+    try expect(math.isPositiveZero(floor_f80(0.0)));
+    try expect(math.isNegativeZero(floor_f80(-0.0)));
+    try expect(math.isPositiveInf(floor_f80(math.inf(f80))));
+    try expect(math.isNegativeInf(floor_f80(-math.inf(f80))));
+    try expect(math.isNan(floor_f80(math.nan(f80))));
 }
 
-test "floor128" {
-    try expect(floorq(1.3) == 1.0);
-    try expect(floorq(-1.3) == -2.0);
-    try expect(floorq(0.2) == 0.0);
+test floor_f128 {
+    try expect(floor_f128(1.3) == 1.0);
+    try expect(floor_f128(-1.3) == -2.0);
+    try expect(floor_f128(-0.2) == -1.0);
+    try expect(math.isPositiveZero(floor_f128(0.2)));
+    try expect(math.isPositiveZero(floor_f128(0.0)));
+    try expect(math.isNegativeZero(floor_f128(-0.0)));
+    try expect(math.isPositiveInf(floor_f128(math.inf(f128))));
+    try expect(math.isNegativeInf(floor_f128(-math.inf(f128))));
+    try expect(math.isNan(floor_f128(math.nan(f128))));
 }
 
-test "floor16.special" {
-    try expect(__floorh(0.0) == 0.0);
-    try expect(__floorh(-0.0) == -0.0);
-    try expect(math.isPositiveInf(__floorh(math.inf(f16))));
-    try expect(math.isNegativeInf(__floorh(-math.inf(f16))));
-    try expect(math.isNan(__floorh(math.nan(f16))));
+test ceil_f16 {
+    try expect(ceil_f16(1.3) == 2.0);
+    try expect(ceil_f16(-1.3) == -1.0);
+    try expect(ceil_f16(0.2) == 1.0);
+    try expect(math.isNegativeZero(ceil_f16(-0.2)));
+    try expect(math.isPositiveZero(ceil_f16(0.0)));
+    try expect(math.isNegativeZero(ceil_f16(-0.0)));
+    try expect(math.isPositiveInf(ceil_f16(math.inf(f16))));
+    try expect(math.isNegativeInf(ceil_f16(-math.inf(f16))));
+    try expect(math.isNan(ceil_f16(math.nan(f16))));
 }
 
-test "floor32.special" {
-    try expect(floorf(0.0) == 0.0);
-    try expect(floorf(-0.0) == -0.0);
-    try expect(math.isPositiveInf(floorf(math.inf(f32))));
-    try expect(math.isNegativeInf(floorf(-math.inf(f32))));
-    try expect(math.isNan(floorf(math.nan(f32))));
+test ceil_f32 {
+    try expect(ceil_f32(1.3) == 2.0);
+    try expect(ceil_f32(-1.3) == -1.0);
+    try expect(ceil_f32(0.2) == 1.0);
+    try expect(math.isNegativeZero(ceil_f32(-0.2)));
+    try expect(math.isPositiveZero(ceil_f32(0.0)));
+    try expect(math.isNegativeZero(ceil_f32(-0.0)));
+    try expect(math.isPositiveInf(ceil_f32(math.inf(f32))));
+    try expect(math.isNegativeInf(ceil_f32(-math.inf(f32))));
+    try expect(math.isNan(ceil_f32(math.nan(f32))));
 }
 
-test "floor64.special" {
-    try expect(floor(0.0) == 0.0);
-    try expect(floor(-0.0) == -0.0);
-    try expect(math.isPositiveInf(floor(math.inf(f64))));
-    try expect(math.isNegativeInf(floor(-math.inf(f64))));
-    try expect(math.isNan(floor(math.nan(f64))));
+test ceil_f64 {
+    try expect(ceil_f64(1.3) == 2.0);
+    try expect(ceil_f64(-1.3) == -1.0);
+    try expect(ceil_f64(0.2) == 1.0);
+    try expect(math.isNegativeZero(ceil_f64(-0.2)));
+    try expect(math.isPositiveZero(ceil_f64(0.0)));
+    try expect(math.isNegativeZero(ceil_f64(-0.0)));
+    try expect(math.isPositiveInf(ceil_f64(math.inf(f64))));
+    try expect(math.isNegativeInf(ceil_f64(-math.inf(f64))));
+    try expect(math.isNan(ceil_f64(math.nan(f64))));
 }
 
-test "floor80.special" {
-    try expect(__floorx(0.0) == 0.0);
-    try expect(__floorx(-0.0) == -0.0);
-    try expect(math.isPositiveInf(__floorx(math.inf(f80))));
-    try expect(math.isNegativeInf(__floorx(-math.inf(f80))));
-    try expect(math.isNan(__floorx(math.nan(f80))));
+test ceil_f80 {
+    try expect(ceil_f80(1.3) == 2.0);
+    try expect(ceil_f80(-1.3) == -1.0);
+    try expect(ceil_f80(0.2) == 1.0);
+    try expect(math.isNegativeZero(ceil_f80(-0.2)));
+    try expect(math.isPositiveZero(ceil_f80(0.0)));
+    try expect(math.isNegativeZero(ceil_f80(-0.0)));
+    try expect(math.isPositiveInf(ceil_f80(math.inf(f80))));
+    try expect(math.isNegativeInf(ceil_f80(-math.inf(f80))));
+    try expect(math.isNan(ceil_f80(math.nan(f80))));
 }
 
-test "floor128.special" {
-    try expect(floorq(0.0) == 0.0);
-    try expect(floorq(-0.0) == -0.0);
-    try expect(math.isPositiveInf(floorq(math.inf(f128))));
-    try expect(math.isNegativeInf(floorq(-math.inf(f128))));
-    try expect(math.isNan(floorq(math.nan(f128))));
-}
-
-test "ceil16" {
-    try expect(__ceilh(1.3) == 2.0);
-    try expect(__ceilh(-1.3) == -1.0);
-    try expect(__ceilh(0.2) == 1.0);
-}
-
-test "ceil32" {
-    try expect(ceilf(1.3) == 2.0);
-    try expect(ceilf(-1.3) == -1.0);
-    try expect(ceilf(0.2) == 1.0);
-}
-
-test "ceil64" {
-    try expect(ceil(1.3) == 2.0);
-    try expect(ceil(-1.3) == -1.0);
-    try expect(ceil(0.2) == 1.0);
-}
-
-test "ceil80" {
-    try expect(__ceilx(1.3) == 2.0);
-    try expect(__ceilx(-1.3) == -1.0);
-    try expect(__ceilx(0.2) == 1.0);
-}
-
-test "ceil128" {
-    try expect(ceilq(1.3) == 2.0);
-    try expect(ceilq(-1.3) == -1.0);
-    try expect(ceilq(0.2) == 1.0);
-}
-
-test "ceil16.special" {
-    try expect(__ceilh(0.0) == 0.0);
-    try expect(__ceilh(-0.0) == -0.0);
-    try expect(math.isPositiveInf(__ceilh(math.inf(f16))));
-    try expect(math.isNegativeInf(__ceilh(-math.inf(f16))));
-    try expect(math.isNan(__ceilh(math.nan(f16))));
-}
-
-test "ceil32.special" {
-    try expect(ceilf(0.0) == 0.0);
-    try expect(ceilf(-0.0) == -0.0);
-    try expect(math.isPositiveInf(ceilf(math.inf(f32))));
-    try expect(math.isNegativeInf(ceilf(-math.inf(f32))));
-    try expect(math.isNan(ceilf(math.nan(f32))));
-}
-
-test "ceil64.special" {
-    try expect(ceil(0.0) == 0.0);
-    try expect(ceil(-0.0) == -0.0);
-    try expect(math.isPositiveInf(ceil(math.inf(f64))));
-    try expect(math.isNegativeInf(ceil(-math.inf(f64))));
-    try expect(math.isNan(ceil(math.nan(f64))));
-}
-
-test "ceil80.special" {
-    try expect(__ceilx(0.0) == 0.0);
-    try expect(__ceilx(-0.0) == -0.0);
-    try expect(math.isPositiveInf(__ceilx(math.inf(f80))));
-    try expect(math.isNegativeInf(__ceilx(-math.inf(f80))));
-    try expect(math.isNan(__ceilx(math.nan(f80))));
-}
-
-test "ceil128.special" {
-    try expect(ceilq(0.0) == 0.0);
-    try expect(ceilq(-0.0) == -0.0);
-    try expect(math.isPositiveInf(ceilq(math.inf(f128))));
-    try expect(math.isNegativeInf(ceilq(-math.inf(f128))));
-    try expect(math.isNan(ceilq(math.nan(f128))));
+test ceil_f128 {
+    try expect(ceil_f128(1.3) == 2.0);
+    try expect(ceil_f128(-1.3) == -1.0);
+    try expect(ceil_f128(0.2) == 1.0);
+    try expect(math.isNegativeZero(ceil_f128(-0.2)));
+    try expect(math.isPositiveZero(ceil_f128(0.0)));
+    try expect(math.isNegativeZero(ceil_f128(-0.0)));
+    try expect(math.isPositiveInf(ceil_f128(math.inf(f128))));
+    try expect(math.isNegativeInf(ceil_f128(-math.inf(f128))));
+    try expect(math.isNan(ceil_f128(math.nan(f128))));
 }

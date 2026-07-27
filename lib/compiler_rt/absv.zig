@@ -14,8 +14,7 @@ pub inline fn absv(comptime ST: type, a: ST) ST {
     const sign: ST = a >> N - 1;
     x +%= sign;
     x ^= sign;
-    if (x < 0)
-        @panic("compiler_rt absv: overflow");
+    if (x < 0) @panic("integer overflow");
     return x;
 }
 

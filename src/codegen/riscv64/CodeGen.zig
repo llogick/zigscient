@@ -5036,7 +5036,7 @@ fn airRet(func: *Func, inst: Air.Inst.Index, safety: bool) !void {
         .register_pair,
         => {
             if (ret_ty.isVector(zcu)) {
-                const bit_size = ret_ty.totalVectorBits(zcu);
+                const bit_size = ret_ty.bitSize(zcu);
 
                 // set the vtype to hold the entire vector's contents in a single element
                 try func.setVl(.zero, 0, .{
@@ -6871,7 +6871,7 @@ fn genSetReg(func: *Func, ty: Type, reg: Register, src_mcv: MCValue) InnerError!
             // size to the total size of the vector, and vmv.x.s will work then
             if (src_reg.class() == .vector) {
                 try func.setVl(.zero, 0, .{
-                    .vsew = switch (ty.totalVectorBits(zcu)) {
+                    .vsew = switch (ty.bitSize(zcu)) {
                         8 => .@"8",
                         16 => .@"16",
                         32 => .@"32",

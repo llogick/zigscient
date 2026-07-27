@@ -957,12 +957,27 @@ pub fn abiAlignment(ty: Type, zcu: *const Zcu) Alignment {
             if (vector_type.len == 0) return .@"1";
             switch (zcu.comp.getZigBackend()) {
                 else => {
-                    const elem_bits: u32 = @intCast(Type.fromInterned(vector_type.child).bitSize(zcu));
+                    const elem_ty: Type = .fromInterned(vector_type.child);
+                    switch (if (elem_ty.isRuntimeFloat())
+                        std.zig.target.compilerRtFloatAbi(target, elem_ty.floatBits(target))
+                    else
+                        .hard) {
+                        .hard => {},
+                        .soft => return elem_ty.abiAlignment(zcu),
+                    }
+                    const elem_bits: u32 = @intCast(elem_ty.bitSize(zcu));
                     if (elem_bits == 0) return .@"1";
                     const bytes = ((elem_bits * vector_type.len) + 7) / 8;
-                    return .fromByteUnits(std.math.ceilPowerOfTwoAssert(u32, bytes));
+                    const arch = target.cpu.arch;
+                    return .fromByteUnits(std.math.ceilPowerOfTwoAssert(
+                        u32,
+                        if (arch.isArm() or arch.isAARCH64() or arch == .s390x)
+                            @min(bytes, target.stackAlignment())
+                        else
+                            bytes,
+                    ));
                 },
-                .stage2_c, .stage2_wasm => return Type.fromInterned(vector_type.child).defaultStructFieldAlignment(.auto, zcu),
+                .stage2_c, .stage2_wasm => return Type.fromInterned(vector_type.child).abiAlignment(zcu),
                 .stage2_x86_64 => {
                     if (vector_type.child == .bool_type) {
                         if (vector_type.len > 256 and target.cpu.has(.x86, .avx512f)) return .@"64";
@@ -1018,19 +1033,33 @@ pub fn abiAlignment(ty: Type, zcu: *const Zcu) Alignment {
             .c_ulonglong => cTypeAlign(target, .ulonglong),
             .c_longdouble => cTypeAlign(target, .longdouble),
 
-            .f16 => .@"2",
-            .f32 => if (target.os.tag == .opengl) .@"4" else cTypeAlign(target, .float),
-            .f64 => if (target.os.tag == .opengl) .@"8" else switch (target.cTypeBitSize(.double)) {
-                64 => cTypeAlign(target, .double),
-                else => .@"8",
-            },
-            .f80 => switch (target.cTypeBitSize(.longdouble)) {
-                80 => cTypeAlign(target, .longdouble),
-                else => Type.u80.abiAlignment(zcu),
-            },
-            .f128 => switch (target.cTypeBitSize(.longdouble)) {
-                128 => cTypeAlign(target, .longdouble),
-                else => .@"16",
+            .f16 => .fromByteUnits(std.zig.target.intAlignment(target, 16)), // repr: u16
+            .f32 => if (target.cTypeBitSize(.float) == 32)
+                cTypeAlign(target, .float) // abi: c_float,
+            else
+                .fromByteUnits(std.zig.target.intAlignment(target, 32)), // repr: u32,
+            .f64 => if (target.cTypeBitSize(.double) == 64)
+                cTypeAlign(target, .double) // abi: c_double,
+            else
+                .fromByteUnits(std.zig.target.intAlignment(target, 64)), // repr: u64,
+            .f80 => if (target.cTypeBitSize(.longdouble) == 80)
+                cTypeAlign(target, .longdouble) // abi: c_longdouble,
+            else
+                .fromByteUnits(switch (std.zig.target.compilerRtFloatAbi(target, 80)) {
+                    .hard => std.zig.target.intAlignment(target, 80), // repr: u80,
+                    .soft => @max(
+                        std.zig.target.intAlignment(target, 64), // mantissa: u64,
+                        std.zig.target.intAlignment(target, 16), // exponent: u16,
+                    ),
+                }),
+            .f128 => if (target.cTypeBitSize(.longdouble) == 128)
+                cTypeAlign(target, .longdouble) // abi: c_longdouble,
+            else switch (std.zig.target.compilerRtFloatAbi(target, 128)) {
+                .hard => if (target.cpu.arch.isX86())
+                    .@"16" // abi: c___float128,
+                else
+                    .fromByteUnits(std.zig.target.intAlignment(target, 128)), // repr: u128,
+                .soft => .fromByteUnits(std.zig.target.intAlignment(target, 64)), // lo: u64, hi: u64,
             },
 
             .generic_poison => unreachable,
@@ -1111,7 +1140,13 @@ pub fn abiSize(ty: Type, zcu: *const Zcu) u64 {
         .vector_type => |vec| {
             const elem_ty: Type = .fromInterned(vec.child);
             const bytes = switch (zcu.comp.getZigBackend()) {
-                else => @divCeil(vec.len * elem_ty.bitSize(zcu), 8),
+                else => switch (if (elem_ty.isRuntimeFloat())
+                    std.zig.target.compilerRtFloatAbi(target, elem_ty.floatBits(target))
+                else
+                    .hard) {
+                    .hard => @divCeil(vec.len * elem_ty.bitSize(zcu), 8),
+                    .soft => vec.len * elem_ty.abiSize(zcu),
+                },
                 .stage2_c, .stage2_wasm => vec.len * elem_ty.abiSize(zcu),
                 .stage2_x86_64 => switch (elem_ty.toIntern()) {
                     .bool_type => @divCeil(vec.len, 8),
@@ -1167,25 +1202,44 @@ pub fn abiSize(ty: Type, zcu: *const Zcu) u64 {
             .anyerror, .adhoc_inferred_error_set => errorAbiSize(zcu),
             .usize, .isize => ptrAbiSize(target),
 
-            .c_char => target.cTypeByteSize(.char),
-            .c_short => target.cTypeByteSize(.short),
-            .c_ushort => target.cTypeByteSize(.ushort),
-            .c_int => target.cTypeByteSize(.int),
-            .c_uint => target.cTypeByteSize(.uint),
-            .c_long => target.cTypeByteSize(.long),
-            .c_ulong => target.cTypeByteSize(.ulong),
-            .c_longlong => target.cTypeByteSize(.longlong),
-            .c_ulonglong => target.cTypeByteSize(.ulonglong),
-            .c_longdouble => target.cTypeByteSize(.longdouble),
+            .c_char => target.cTypeByteSize(.char).?,
+            .c_short => target.cTypeByteSize(.short).?,
+            .c_ushort => target.cTypeByteSize(.ushort).?,
+            .c_int => target.cTypeByteSize(.int).?,
+            .c_uint => target.cTypeByteSize(.uint).?,
+            .c_long => target.cTypeByteSize(.long).?,
+            .c_ulong => target.cTypeByteSize(.ulong).?,
+            .c_longlong => target.cTypeByteSize(.longlong).?,
+            .c_ulonglong => target.cTypeByteSize(.ulonglong).?,
+            .c_longdouble => target.cTypeByteSize(.longdouble).?,
 
-            .f16 => 2,
-            .f32 => 4,
-            .f64 => 8,
-            .f80 => switch (target.cTypeBitSize(.longdouble)) {
-                80 => target.cTypeByteSize(.longdouble),
-                else => Type.u80.abiSize(zcu),
+            .f16 => std.zig.target.intByteSize(target, 16), // repr: u16
+            .f32 => if (target.cTypeBitSize(.float) == 32)
+                target.cTypeByteSize(.float).? // abi: c_float,
+            else
+                std.zig.target.intByteSize(target, 32), // repr: u32,
+            .f64 => if (target.cTypeBitSize(.double) == 64)
+                target.cTypeByteSize(.double).? // abi: c_double,
+            else
+                std.zig.target.intByteSize(target, 64), // repr: u64,
+            .f80 => if (target.cTypeBitSize(.longdouble) == 80)
+                target.cTypeByteSize(.longdouble).? // abi: c_longdouble,
+            else switch (std.zig.target.compilerRtFloatAbi(target, 80)) {
+                .hard => std.zig.target.intByteSize(target, 80), // repr: u80,
+                .soft => ty.abiAlignment(zcu).forward(
+                    std.zig.target.intByteSize(target, 64) + // mantissa: u64,
+                        std.zig.target.intByteSize(target, 16), // exponent: u16
+                ),
             },
-            .f128 => 16,
+            .f128 => if (target.cTypeBitSize(.longdouble) == 128)
+                target.cTypeByteSize(.longdouble).? // abi: c_longdouble,
+            else switch (std.zig.target.compilerRtFloatAbi(target, 128)) {
+                .hard => if (target.cpu.arch.isX86())
+                    16 // abi: c___float128,
+                else
+                    std.zig.target.intByteSize(target, 128), // repr: u128,
+                .soft => std.zig.target.intByteSize(target, 64) * 2, // lo: u64, hi: u64,
+            },
 
             .anyopaque => unreachable,
             .generic_poison => unreachable,
@@ -1733,7 +1787,7 @@ pub fn isInt(self: Type, zcu: *const Zcu) bool {
 /// Returns true if and only if the type is a fixed-width, signed integer.
 pub fn isSignedInt(ty: Type, zcu: *const Zcu) bool {
     return switch (ty.toIntern()) {
-        .c_char_type => zcu.getTarget().cCharSignedness() == .signed,
+        .c_char_type => zcu.getTarget().cCharSignedness().? == .signed,
         .isize_type, .c_short_type, .c_int_type, .c_long_type, .c_longlong_type => true,
         else => switch (zcu.intern_pool.indexToKey(ty.toIntern())) {
             .int_type => |int_type| int_type.signedness == .signed,
@@ -1745,7 +1799,7 @@ pub fn isSignedInt(ty: Type, zcu: *const Zcu) bool {
 /// Returns true if and only if the type is a fixed-width, unsigned integer.
 pub fn isUnsignedInt(ty: Type, zcu: *const Zcu) bool {
     return switch (ty.toIntern()) {
-        .c_char_type => zcu.getTarget().cCharSignedness() == .unsigned,
+        .c_char_type => zcu.getTarget().cCharSignedness().? == .unsigned,
         .usize_type, .c_ushort_type, .c_uint_type, .c_ulong_type, .c_ulonglong_type => true,
         else => switch (zcu.intern_pool.indexToKey(ty.toIntern())) {
             .int_type => |int_type| int_type.signedness == .unsigned,
@@ -1776,15 +1830,15 @@ pub fn intInfo(starting_ty: Type, zcu: *const Zcu) InternPool.Key.IntType {
         },
         .usize_type => return .{ .signedness = .unsigned, .bits = target.ptrBitWidth() },
         .isize_type => return .{ .signedness = .signed, .bits = target.ptrBitWidth() },
-        .c_char_type => return .{ .signedness = zcu.getTarget().cCharSignedness(), .bits = target.cTypeBitSize(.char) },
-        .c_short_type => return .{ .signedness = .signed, .bits = target.cTypeBitSize(.short) },
-        .c_ushort_type => return .{ .signedness = .unsigned, .bits = target.cTypeBitSize(.ushort) },
-        .c_int_type => return .{ .signedness = .signed, .bits = target.cTypeBitSize(.int) },
-        .c_uint_type => return .{ .signedness = .unsigned, .bits = target.cTypeBitSize(.uint) },
-        .c_long_type => return .{ .signedness = .signed, .bits = target.cTypeBitSize(.long) },
-        .c_ulong_type => return .{ .signedness = .unsigned, .bits = target.cTypeBitSize(.ulong) },
-        .c_longlong_type => return .{ .signedness = .signed, .bits = target.cTypeBitSize(.longlong) },
-        .c_ulonglong_type => return .{ .signedness = .unsigned, .bits = target.cTypeBitSize(.ulonglong) },
+        .c_char_type => return .{ .signedness = target.cCharSignedness().?, .bits = target.cTypeBitSize(.char).? },
+        .c_short_type => return .{ .signedness = .signed, .bits = target.cTypeBitSize(.short).? },
+        .c_ushort_type => return .{ .signedness = .unsigned, .bits = target.cTypeBitSize(.ushort).? },
+        .c_int_type => return .{ .signedness = .signed, .bits = target.cTypeBitSize(.int).? },
+        .c_uint_type => return .{ .signedness = .unsigned, .bits = target.cTypeBitSize(.uint).? },
+        .c_long_type => return .{ .signedness = .signed, .bits = target.cTypeBitSize(.long).? },
+        .c_ulong_type => return .{ .signedness = .unsigned, .bits = target.cTypeBitSize(.ulong).? },
+        .c_longlong_type => return .{ .signedness = .signed, .bits = target.cTypeBitSize(.longlong).? },
+        .c_ulonglong_type => return .{ .signedness = .unsigned, .bits = target.cTypeBitSize(.ulonglong).? },
         else => switch (ip.indexToKey(ty.toIntern())) {
             .int_type => |int_type| return int_type,
             .struct_type => {
@@ -1882,7 +1936,7 @@ pub fn floatBits(ty: Type, target: *const Target) u16 {
         .f64_type => 64,
         .f80_type => 80,
         .f128_type, .comptime_float_type => 128,
-        .c_longdouble_type => target.cTypeBitSize(.longdouble),
+        .c_longdouble_type => target.cTypeBitSize(.longdouble).?,
 
         else => unreachable,
     };
@@ -2147,13 +2201,6 @@ pub fn isVector(ty: Type, zcu: *const Zcu) bool {
     return ty.zigTypeTag(zcu) == .vector;
 }
 
-/// Returns 0 if not a vector, otherwise returns @bitSizeOf(Element) * vector_len.
-pub fn totalVectorBits(ty: Type, zcu: *Zcu) u64 {
-    if (!ty.isVector(zcu)) return 0;
-    const v = zcu.intern_pool.indexToKey(ty.toIntern()).vector_type;
-    return v.len * Type.fromInterned(v.child).bitSize(zcu);
-}
-
 pub fn isArrayOrVector(ty: Type, zcu: *const Zcu) bool {
     return switch (ty.zigTypeTag(zcu)) {
         .array, .vector => true,
@@ -2414,34 +2461,6 @@ pub fn explicitFieldAlignment(ty: Type, index: usize, zcu: *const Zcu) Alignment
         },
         else => unreachable,
     };
-}
-
-/// Returns the alignment a struct field of type `field_ty` will be given if no alignment is
-/// explicitly specified. However, in an `extern struct`, a higher alignment may be available due
-/// to the struct's full layout (i.e. a field might coincidentally be more aligned).
-///
-/// Asserts that the layout of `field_ty` is resolved. Asserts that `layout` is not `.@"packed"`.
-pub fn defaultStructFieldAlignment(
-    field_ty: Type,
-    layout: std.lang.Type.ContainerLayout,
-    zcu: *const Zcu,
-) Alignment {
-    const overalign_big_int = switch (layout) {
-        .@"packed" => unreachable,
-        .auto => zcu.getTarget().ofmt == .c,
-        .@"extern" => true,
-    };
-    const abi_align = field_ty.abiAlignment(zcu);
-    assert(abi_align != .none);
-    // We check for anything over 64 here, because the C backend will lower e.g. u64 to a 128-bit
-    // integer, which has 16-byte alignment.
-    if (overalign_big_int and
-        ((field_ty.isAbiInt(zcu) and field_ty.intInfo(zcu).bits > 64) or
-            (field_ty.toIntern() == .f80_type and zcu.getTarget().cTypeBitSize(.longdouble) != 80)))
-    {
-        return abi_align.maxStrict(if (zcu.getTarget().cpu.arch == .s390x) .@"8" else .@"16");
-    }
-    return abi_align;
 }
 
 pub fn structFieldDefaultValue(ty: Type, index: usize, zcu: *const Zcu) ?Value {
@@ -2961,8 +2980,7 @@ pub fn fieldPtrType(ptr_ty: Type, field_index: u32, pt: Zcu.PerThread) Allocator
         }
         const actual_field_align = switch (field_align) {
             .none => switch (ip.indexToKey(aggregate_ty.toIntern())) {
-                .tuple_type, .union_type => field_ty.abiAlignment(zcu),
-                .struct_type => field_ty.defaultStructFieldAlignment(.auto, zcu),
+                .struct_type, .tuple_type, .union_type => field_ty.abiAlignment(zcu),
                 .ptr_type => Type.usize.abiAlignment(zcu),
                 else => unreachable,
             },
@@ -3122,7 +3140,6 @@ pub fn validateExtern(ty: Type, position: ExternPosition, zcu: *const Zcu) bool 
 
         .@"opaque",
         .bool,
-        .float,
         .@"anyframe",
         => true,
 
@@ -3143,6 +3160,10 @@ pub fn validateExtern(ty: Type, position: ExternPosition, zcu: *const Zcu) bool 
             0, 8, 16, 32, 64, 128 => true,
             24, 48 => zcu.getTarget().cpu.arch == .ez80,
             else => false,
+        },
+        .float => switch (ty.floatBits(zcu.getTarget())) {
+            else => true,
+            80 => zcu.getTarget().cTypeBitSize(.longdouble) == 80,
         },
         .@"fn" => {
             if (position != .other) return false;
@@ -3600,5 +3621,5 @@ pub fn smallestUnsignedBits(max: u64) u16 {
 pub const packed_struct_layout_version = 2;
 
 fn cTypeAlign(target: *const Target, c_type: Target.CType) Alignment {
-    return Alignment.fromByteUnits(target.cTypeAlignment(c_type));
+    return .fromByteUnits(target.cTypeAlignment(c_type).?);
 }

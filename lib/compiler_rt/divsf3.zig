@@ -9,6 +9,7 @@ const symbol = compiler_rt.symbol;
 const normalize = compiler_rt.normalize;
 
 comptime {
+    symbol(&__divhf3, "__divhf3");
     if (compiler_rt.want_aeabi) {
         symbol(&__aeabi_fdiv, "__aeabi_fdiv");
     } else {
@@ -16,15 +17,23 @@ comptime {
     }
 }
 
-pub fn __divsf3(a: f32, b: f32) callconv(.c) f32 {
-    return div(a, b);
+fn __divhf3(a: compiler_rt.f16.Abi, b: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(div_f16(compiler_rt.f16.fromAbi(a), compiler_rt.f16.fromAbi(b)));
+}
+pub fn div_f16(a: f16, b: f16) f16 {
+    // TODO: more efficient implementation
+    return @floatCast(div_f32(a, b));
+}
+
+fn __divsf3(a: compiler_rt.f32.Abi, b: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(div_f32(compiler_rt.f32.fromAbi(a), compiler_rt.f32.fromAbi(b)));
 }
 
 fn __aeabi_fdiv(a: f32, b: f32) callconv(.{ .arm_aapcs = .{} }) f32 {
-    return div(a, b);
+    return div_f32(a, b);
 }
 
-inline fn div(a: f32, b: f32) f32 {
+pub fn div_f32(a: f32, b: f32) f32 {
     const Z = @Int(.unsigned, 32);
 
     const significandBits = std.math.floatMantissaBits(f32);

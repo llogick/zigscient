@@ -279,6 +279,15 @@ const module_test_targets = blk: {
                 .cpu_arch = .arm,
                 .os_tag = .linux,
                 .abi = .musleabi,
+                .ofmt = .c,
+            },
+            .link_libc = true,
+        },
+        .{
+            .target = .{
+                .cpu_arch = .arm,
+                .os_tag = .linux,
+                .abi = .musleabi,
             },
             .linkage = .dynamic,
             .link_libc = true,
@@ -289,6 +298,15 @@ const module_test_targets = blk: {
                 .cpu_arch = .arm,
                 .os_tag = .linux,
                 .abi = .musleabihf,
+            },
+            .link_libc = true,
+        },
+        .{
+            .target = .{
+                .cpu_arch = .arm,
+                .os_tag = .linux,
+                .abi = .musleabihf,
+                .ofmt = .c,
             },
             .link_libc = true,
         },
@@ -341,6 +359,15 @@ const module_test_targets = blk: {
             },
             .link_libc = true,
         },
+        .{
+            .target = .{
+                .cpu_arch = .armeb,
+                .os_tag = .linux,
+                .abi = .musleabi,
+                .ofmt = .c,
+            },
+            .link_libc = true,
+        },
         // Crashes in weird ways when applying relocations.
         // .{
         //     .target = .{
@@ -357,6 +384,15 @@ const module_test_targets = blk: {
                 .cpu_arch = .armeb,
                 .os_tag = .linux,
                 .abi = .musleabihf,
+            },
+            .link_libc = true,
+        },
+        .{
+            .target = .{
+                .cpu_arch = .armeb,
+                .os_tag = .linux,
+                .abi = .musleabihf,
+                .ofmt = .c,
             },
             .link_libc = true,
         },
@@ -1112,6 +1148,15 @@ const module_test_targets = blk: {
                 .cpu_arch = .x86,
                 .os_tag = .linux,
                 .abi = .musl,
+                .ofmt = .c,
+            },
+            .link_libc = true,
+        },
+        .{
+            .target = .{
+                .cpu_arch = .x86,
+                .os_tag = .linux,
+                .abi = .musl,
             },
             .linkage = .dynamic,
             .link_libc = true,
@@ -1645,6 +1690,15 @@ const module_test_targets = blk: {
             },
             .link_libc = true,
         },
+        .{
+            .target = .{
+                .cpu_arch = .x86,
+                .os_tag = .windows,
+                .abi = .gnu,
+                .ofmt = .c,
+            },
+            .link_libc = true,
+        },
 
         .{
             .target = .{
@@ -1961,7 +2015,6 @@ const c_abi_targets = blk: {
                 .abi = .musl,
             },
             .use_llvm = false,
-            .c_defines = &.{"ZIG_BACKEND_STAGE2_X86_64"},
         },
         .{
             .target = .{
@@ -1972,7 +2025,6 @@ const c_abi_targets = blk: {
             },
             .use_llvm = false,
             .strip = true,
-            .c_defines = &.{"ZIG_BACKEND_STAGE2_X86_64"},
         },
         .{
             .target = .{
@@ -1983,7 +2035,6 @@ const c_abi_targets = blk: {
             },
             .use_llvm = false,
             .pic = true,
-            .c_defines = &.{"ZIG_BACKEND_STAGE2_X86_64"},
         },
         .{
             .target = .{
@@ -2028,7 +2079,6 @@ const c_abi_targets = blk: {
                 .abi = .gnu,
             },
             .use_llvm = false,
-            .c_defines = &.{"ZIG_BACKEND_STAGE2_X86_64"},
         },
         .{
             .target = .{
@@ -2038,7 +2088,6 @@ const c_abi_targets = blk: {
                 .abi = .gnu,
             },
             .use_llvm = false,
-            .c_defines = &.{"ZIG_BACKEND_STAGE2_X86_64"},
         },
         .{
             .target = .{
@@ -2048,7 +2097,6 @@ const c_abi_targets = blk: {
                 .abi = .gnu,
             },
             .use_llvm = false,
-            .c_defines = &.{"ZIG_BACKEND_STAGE2_X86_64"},
         },
         .{
             .target = .{
@@ -2781,16 +2829,6 @@ pub fn addModuleTests(b: *std.Build, options: ModuleTestOptions) *Step {
             continue;
 
         const target = &resolved_target.result;
-
-        if (target.cpu.arch == .s390x and target.ofmt == .c) {
-            // https://codeberg.org/ziglang/zig/issues/35523
-            continue;
-        }
-
-        if (target.cpu.arch == .riscv64 and target.ofmt == .c) {
-            // https://codeberg.org/ziglang/zig/issues/30930
-            continue;
-        }
 
         if (std.mem.eql(u8, options.name, "libc")) {
             // The libc API tests obviously need to link libc. So for test

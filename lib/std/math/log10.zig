@@ -1,5 +1,4 @@
 const std = @import("../std.zig");
-const builtin = @import("builtin");
 const testing = std.testing;
 
 /// Returns the base-10 logarithm of x.
@@ -135,10 +134,6 @@ inline fn less_than_5(x: u32) u32 {
 }
 
 test log10_int {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
-
     inline for (
         .{ u8, u16, u32, u64, u128, u256, u512 },
         .{ 2, 4, 9, 19, 38, 77, 154 },

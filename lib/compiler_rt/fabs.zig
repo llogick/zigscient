@@ -9,39 +9,51 @@ comptime {
     symbol(&fabsf, "fabsf");
     symbol(&fabs, "fabs");
     symbol(&__fabsx, "__fabsx");
-    if (compiler_rt.want_ppc_abi) {
-        symbol(&fabsq, "fabsf128");
-    }
-    symbol(&fabsq, "fabsq");
+    symbol(&fabsq, "fabsf128");
     symbol(&fabsl, "fabsl");
 }
 
-pub fn __fabsh(a: f16) callconv(.c) f16 {
+fn __fabsh(a: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(fabs_f16(compiler_rt.f16.fromAbi(a)));
+}
+pub fn fabs_f16(a: f16) f16 {
     return generic_fabs(a);
 }
 
-pub fn fabsf(a: f32) callconv(.c) f32 {
+fn fabsf(a: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(fabs_f32(compiler_rt.f32.fromAbi(a)));
+}
+pub fn fabs_f32(a: f32) f32 {
     return generic_fabs(a);
 }
 
-pub fn fabs(a: f64) callconv(.c) f64 {
+fn fabs(a: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(fabs_f64(compiler_rt.f64.fromAbi(a)));
+}
+pub fn fabs_f64(a: f64) f64 {
     return generic_fabs(a);
 }
 
-pub fn __fabsx(a: f80) callconv(.c) f80 {
+fn __fabsx(a: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(fabs_f80(compiler_rt.f80.fromAbi(a)));
+}
+pub fn fabs_f80(a: f80) f80 {
     return generic_fabs(a);
 }
 
-pub fn fabsq(a: f128) callconv(.c) f128 {
+fn fabsq(a: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(fabs_f128(compiler_rt.f128.fromAbi(a)));
+}
+pub fn fabs_f128(a: f128) f128 {
     return generic_fabs(a);
 }
 
 pub fn fabsl(x: c_longdouble) callconv(.c) c_longdouble {
     switch (@typeInfo(c_longdouble).float.bits) {
-        64 => return fabs(x),
-        80 => return __fabsx(x),
-        128 => return fabsq(x),
-        else => @compileError("unreachable"),
+        64 => return fabs_f64(x),
+        80 => return fabs_f80(x),
+        128 => return fabs_f128(x),
+        else => comptime unreachable,
     }
 }
 

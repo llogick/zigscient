@@ -5,7 +5,7 @@ const std = @import("std");
 
 const compiler_rt = @import("../compiler_rt.zig");
 const udivmod = @import("udivmodei4.zig").divmod;
-const symbol = @import("../compiler_rt.zig").symbol;
+const symbol = compiler_rt.symbol;
 
 comptime {
     symbol(&__divei4, "__divei4");

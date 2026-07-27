@@ -2205,7 +2205,7 @@ test "'.' and '..' in absolute functions" {
 }
 
 test "chmod" {
-    if (native_os == .windows or native_os == .wasi) return;
+    if (native_os == .windows or native_os == .wasi) return error.SkipZigTest;
 
     const io = testing.io;
 
@@ -2228,8 +2228,7 @@ test "chmod" {
 }
 
 test "change ownership" {
-    if (native_os == .windows or native_os == .wasi)
-        return error.SkipZigTest;
+    if (native_os == .windows or native_os == .wasi) return error.SkipZigTest;
 
     const io = testing.io;
 

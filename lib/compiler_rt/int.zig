@@ -36,7 +36,7 @@ comptime {
 
 pub fn __divmodti4(a: i128, b: i128, rem: *i128) callconv(.c) i128 {
     const d = __divti3(a, b);
-    rem.* = a -% (d * b);
+    rem.* = a - d *% b;
     return d;
 }
 
@@ -69,7 +69,7 @@ fn test_one_divmodti4(a: i128, b: i128, expected_q: i128, expected_r: i128) !voi
 
 pub fn __divmoddi4(a: i64, b: i64, rem: *i64) callconv(.c) i64 {
     const d = __divdi3(a, b);
-    rem.* = a -% (d * b);
+    rem.* = a - d *% b;
     return d;
 }
 
@@ -79,21 +79,20 @@ fn test_one_divmoddi4(a: i64, b: i64, expected_q: i64, expected_r: i64) !void {
     try testing.expect(q == expected_q and r == expected_r);
 }
 
-const cases__divmoddi4 =
-    [_][4]i64{
-        [_]i64{ 0, 1, 0, 0 },
-        [_]i64{ 0, -1, 0, 0 },
-        [_]i64{ 2, 1, 2, 0 },
-        [_]i64{ 2, -1, -2, 0 },
-        [_]i64{ -2, 1, -2, 0 },
-        [_]i64{ -2, -1, 2, 0 },
-        [_]i64{ 7, 5, 1, 2 },
-        [_]i64{ -7, 5, -1, -2 },
-        [_]i64{ 19, 5, 3, 4 },
-        [_]i64{ 19, -5, -3, 4 },
-        [_]i64{ @as(i64, @bitCast(@as(u64, 0x8000000000000000))), 8, @as(i64, @bitCast(@as(u64, 0xf000000000000000))), 0 },
-        [_]i64{ @as(i64, @bitCast(@as(u64, 0x8000000000000007))), 8, @as(i64, @bitCast(@as(u64, 0xf000000000000001))), -1 },
-    };
+const cases__divmoddi4 = [_][4]i64{
+    [_]i64{ 0, 1, 0, 0 },
+    [_]i64{ 0, -1, 0, 0 },
+    [_]i64{ 2, 1, 2, 0 },
+    [_]i64{ 2, -1, -2, 0 },
+    [_]i64{ -2, 1, -2, 0 },
+    [_]i64{ -2, -1, 2, 0 },
+    [_]i64{ 7, 5, 1, 2 },
+    [_]i64{ -7, 5, -1, -2 },
+    [_]i64{ 19, 5, 3, 4 },
+    [_]i64{ 19, -5, -3, 4 },
+    [_]i64{ @as(i64, @bitCast(@as(u64, 0x8000000000000000))), 8, @as(i64, @bitCast(@as(u64, 0xf000000000000000))), 0 },
+    [_]i64{ @as(i64, @bitCast(@as(u64, 0x8000000000000007))), 8, @as(i64, @bitCast(@as(u64, 0xf000000000000001))), -1 },
+};
 
 test "test_divmoddi4" {
     for (cases__divmoddi4) |case| {
@@ -103,10 +102,6 @@ test "test_divmoddi4" {
 
 pub fn __udivmoddi4(a: u64, b: u64, maybe_rem: ?*u64) callconv(.c) u64 {
     return udivmod(u64, a, b, maybe_rem);
-}
-
-test "test_udivmoddi4" {
-    _ = @import("udivmoddi4_test.zig");
 }
 
 pub fn __divdi3(a: i64, b: i64) callconv(.c) i64 {
@@ -209,25 +204,24 @@ fn test_one_umoddi3(a: u64, b: u64, expected_r: u64) !void {
 
 pub fn __divmodsi4(a: i32, b: i32, rem: *i32) callconv(.c) i32 {
     const d = __divsi3(a, b);
-    rem.* = a -% (d * b);
+    rem.* = a - d *% b;
     return d;
 }
 
-const cases__divmodsi4 =
-    [_][4]i32{
-        [_]i32{ 0, 1, 0, 0 },
-        [_]i32{ 0, -1, 0, 0 },
-        [_]i32{ 2, 1, 2, 0 },
-        [_]i32{ 2, -1, -2, 0 },
-        [_]i32{ -2, 1, -2, 0 },
-        [_]i32{ -2, -1, 2, 0 },
-        [_]i32{ 7, 5, 1, 2 },
-        [_]i32{ -7, 5, -1, -2 },
-        [_]i32{ 19, 5, 3, 4 },
-        [_]i32{ 19, -5, -3, 4 },
-        [_]i32{ @bitCast(@as(u32, 0x80000000)), 8, @bitCast(@as(u32, 0xf0000000)), 0 },
-        [_]i32{ @bitCast(@as(u32, 0x80000007)), 8, @bitCast(@as(u32, 0xf0000001)), -1 },
-    };
+const cases__divmodsi4 = [_][4]i32{
+    [_]i32{ 0, 1, 0, 0 },
+    [_]i32{ 0, -1, 0, 0 },
+    [_]i32{ 2, 1, 2, 0 },
+    [_]i32{ 2, -1, -2, 0 },
+    [_]i32{ -2, 1, -2, 0 },
+    [_]i32{ -2, -1, 2, 0 },
+    [_]i32{ 7, 5, 1, 2 },
+    [_]i32{ -7, 5, -1, -2 },
+    [_]i32{ 19, 5, 3, 4 },
+    [_]i32{ 19, -5, -3, 4 },
+    [_]i32{ @bitCast(@as(u32, 0x80000000)), 8, @bitCast(@as(u32, 0xf0000000)), 0 },
+    [_]i32{ @bitCast(@as(u32, 0x80000007)), 8, @bitCast(@as(u32, 0xf0000001)), -1 },
+};
 
 fn test_one_divmodsi4(a: i32, b: i32, expected_q: i32, expected_r: i32) !void {
     var r: i32 = undefined;
@@ -243,7 +237,7 @@ test "test_divmodsi4" {
 
 pub fn __udivmodsi4(a: u32, b: u32, rem: *u32) callconv(.c) u32 {
     const d = __udivsi3(a, b);
-    rem.* = @bitCast(@as(i32, @bitCast(a)) -% (@as(i32, @bitCast(d)) * @as(i32, @bitCast(b))));
+    rem.* = a - d * b;
     return d;
 }
 
@@ -486,7 +480,7 @@ fn test_one_udivsi3(a: u32, b: u32, expected_q: u32) !void {
 }
 
 pub fn __modsi3(n: i32, d: i32) callconv(.c) i32 {
-    return n -% __divsi3(n, d) * d;
+    return n - __divsi3(n, d) *% d;
 }
 
 test "test_modsi3" {
@@ -515,7 +509,7 @@ fn test_one_modsi3(a: i32, b: i32, expected_r: i32) !void {
 }
 
 pub fn __umodsi3(n: u32, d: u32) callconv(.c) u32 {
-    return n -% __udivsi3(n, d) * d;
+    return n - __udivsi3(n, d) * d;
 }
 
 test "test_umodsi3" {
@@ -662,4 +656,9 @@ test "test_umodsi3" {
 fn test_one_umodsi3(a: u32, b: u32, expected_r: u32) !void {
     const r: u32 = __umodsi3(a, b);
     try testing.expect(r == expected_r);
+}
+
+test {
+    _ = @import("udivmodsi4_test.zig");
+    _ = @import("udivmoddi4_test.zig");
 }

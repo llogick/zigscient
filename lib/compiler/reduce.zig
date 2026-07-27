@@ -400,7 +400,7 @@ fn parse(gpa: Allocator, io: Io, file_path: []const u8) !Ast {
         file_path,
         gpa,
         .limited(std.math.maxInt(u32)),
-        .fromByteUnits(1),
+        .@"1",
         0,
     ) catch |err| {
         fatal("unable to open '{s}': {s}", .{ file_path, @errorName(err) });

@@ -1,4 +1,3 @@
-const builtin = @import("builtin");
 const std = @import("std");
 const crypto = std.crypto;
 const fmt = std.fmt;
@@ -415,8 +414,6 @@ pub fn Ecdsa(comptime Curve: type, comptime Hash: type) type {
 }
 
 test "Basic operations over EcdsaP384Sha384" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const io = testing.io;
     const Scheme = EcdsaP384Sha384;
     const kp = Scheme.KeyPair.generate(io);
@@ -432,8 +429,6 @@ test "Basic operations over EcdsaP384Sha384" {
 }
 
 test "Basic operations over Secp256k1" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const io = testing.io;
     const Scheme = EcdsaSecp256k1Sha256oSha256;
     const kp = Scheme.KeyPair.generate(io);
@@ -449,8 +444,6 @@ test "Basic operations over Secp256k1" {
 }
 
 test "Basic operations over EcdsaP384Sha256" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const io = testing.io;
     const Scheme = Ecdsa(crypto.ecc.P384, crypto.hash.sha2.Sha256);
     const kp = Scheme.KeyPair.generate(io);
@@ -466,8 +459,6 @@ test "Basic operations over EcdsaP384Sha256" {
 }
 
 test "Verifying a existing signature with EcdsaP384Sha256" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const Scheme = Ecdsa(crypto.ecc.P384, crypto.hash.sha2.Sha256);
     // zig fmt: off
     const sk_bytes = [_]u8{
@@ -503,8 +494,6 @@ test "Verifying a existing signature with EcdsaP384Sha256" {
 }
 
 test "Prehashed message operations" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const io = testing.io;
 
     const Scheme = EcdsaP256Sha256;
@@ -539,8 +528,6 @@ const TestVector = struct {
 };
 
 test "Test vectors from Project Wycheproof - EcdsaP256Sha256 valid" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const vectors: []const TestVector = &.{
         // well-formed DER encoding -> expected valid
         .{ .key = "042927b10512bae3eddcfe467828128bad2903269919f7086069c8c4df6c732838c7787964eaac00e5921fb1498a60f4606766b3d9685001558d1a974e7341513e", .msg = "313233343030", .sig = "304402202ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e1802204cd60b855d442f5b3c7b11eb6c4e0ae7525fe710fab9aa7c77a67f79e6fadd76" },
@@ -711,8 +698,6 @@ test "Test vectors from Project Wycheproof - EcdsaP256Sha256 valid" {
 }
 
 test "Test vectors from Project Wycheproof - EcdsaP256Sha256 invalid" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const vectors: []const TestVector = &.{
         // S encoded with negative sign -> expected invalid
         .{ .key = "042927b10512bae3eddcfe467828128bad2903269919f7086069c8c4df6c732838c7787964eaac00e5921fb1498a60f4606766b3d9685001558d1a974e7341513e", .msg = "313233343030", .sig = "304402202ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e180220b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db" },
@@ -1026,8 +1011,6 @@ test "Test vectors from Project Wycheproof - EcdsaP256Sha256 invalid" {
 }
 
 test "Test vectors from Project Wycheproof - EcdsaP384Sha384 valid" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const vectors: []const TestVector = &.{
         // canonical sign-bit padding on R; canonical sign-bit padding on S -> expected valid
         .{ .key = "0429bdb76d5fa741bfd70233cb3a66cc7d44beb3b0663d92a8136650478bcefb61ef182e155a54345a5e8e5e88f064e5bc9a525ab7f764dad3dae1468c2b419f3b62b9ba917d5e8c4fb1ec47404a3fc76474b2713081be9db4c00e043ada9fc4a3", .msg = "4d7367", .sig = "3066023100d7143a836608b25599a7f28dec6635494c2992ad1e2bbeecb7ef601a9c01746e710ce0d9c48accb38a79ede5b9638f3402310080f9e165e8c61035bf8aa7b5533960e46dd0e211c904a064edb6de41f797c0eae4e327612ee3f816f4157272bb4fabc9" },
@@ -1243,8 +1226,6 @@ test "Test vectors from Project Wycheproof - EcdsaP384Sha384 valid" {
 }
 
 test "Test vectors from Project Wycheproof - EcdsaP384Sha384 invalid" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const vectors: []const TestVector = &.{
         // S encoded with negative sign -> expected invalid
         .{ .key = "042da57dda1089276a543f9ffdac0bff0d976cad71eb7280e7d9bfd9fee4bdb2f20f47ff888274389772d98cc5752138aa4b6d054d69dcf3e25ec49df870715e34883b1836197d76f8ad962e78f6571bbc7407b0d6091f9e4d88f014274406174f", .msg = "313233343030", .sig = "3064023012b30abef6b5476fe6b612ae557c0425661e26b44b1bfe19daf2ca28e3113083ba8e4ae4cc45a0320abd3394f1c548d70230e7bf25603e2d07076ff30b7a2abec473da8b11c572b35fc631991d5de62ddca7525aaba89325dfd04fecc47bff426f82" },
@@ -1631,8 +1612,6 @@ fn tvTry(comptime Scheme: type, vector: TestVector) !void {
 }
 
 test "Sec1 encoding/decoding" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const io = testing.io;
     const Scheme = EcdsaP384Sha384;
     const kp = Scheme.KeyPair.generate(io);

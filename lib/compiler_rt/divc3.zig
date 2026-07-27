@@ -7,12 +7,81 @@ const maxInt = std.math.maxInt;
 const minInt = std.math.minInt;
 const isFinite = std.math.isFinite;
 const copysign = std.math.copysign;
-const Complex = @import("mulc3.zig").Complex;
+
+const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
+const Complex = compiler_rt.Complex;
+
+comptime {
+    if (@import("builtin").zig_backend != .stage2_c) {
+        symbol(&__divhc3, "__divhc3");
+        symbol(&__divsc3, "__divsc3");
+        symbol(&__divdc3, "__divdc3");
+        symbol(&__divxc3, "__divxc3");
+        if (compiler_rt.want_ppc_abi) {
+            symbol(&__divtc3, "__divkc3");
+        } else {
+            symbol(&__divtc3, "__divtc3");
+        }
+    }
+}
+
+fn __divhc3(lhs_real: compiler_rt.f16.Abi, lhs_imag: compiler_rt.f16.Abi, rhs_real: compiler_rt.f16.Abi, rhs_imag: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.complex.Abi {
+    return compiler_rt.f16.complex.toAbi(div_cf16(
+        compiler_rt.f16.complex.fromAbi(.{ .real = lhs_real, .imag = lhs_imag }),
+        compiler_rt.f16.complex.fromAbi(.{ .real = rhs_real, .imag = rhs_imag }),
+    ));
+}
+pub fn div_cf16(a: Complex(f16), b: Complex(f16)) Complex(f16) {
+    return divc3(f16, a, b);
+}
+
+fn __divsc3(lhs_real: compiler_rt.f32.Abi, lhs_imag: compiler_rt.f32.Abi, rhs_real: compiler_rt.f32.Abi, rhs_imag: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.complex.Abi {
+    return compiler_rt.f32.complex.toAbi(div_cf32(
+        compiler_rt.f32.complex.fromAbi(.{ .real = lhs_real, .imag = lhs_imag }),
+        compiler_rt.f32.complex.fromAbi(.{ .real = rhs_real, .imag = rhs_imag }),
+    ));
+}
+pub fn div_cf32(a: Complex(f32), b: Complex(f32)) Complex(f32) {
+    return divc3(f32, a, b);
+}
+
+fn __divdc3(lhs_real: compiler_rt.f64.Abi, lhs_imag: compiler_rt.f64.Abi, rhs_real: compiler_rt.f64.Abi, rhs_imag: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.complex.Abi {
+    return compiler_rt.f64.complex.toAbi(div_cf64(
+        compiler_rt.f64.complex.fromAbi(.{ .real = lhs_real, .imag = lhs_imag }),
+        compiler_rt.f64.complex.fromAbi(.{ .real = rhs_real, .imag = rhs_imag }),
+    ));
+}
+pub fn div_cf64(a: Complex(f64), b: Complex(f64)) Complex(f64) {
+    return divc3(f64, a, b);
+}
+
+fn __divxc3(lhs_real: compiler_rt.f80.Abi, lhs_imag: compiler_rt.f80.Abi, rhs_real: compiler_rt.f80.Abi, rhs_imag: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.complex.Abi {
+    return compiler_rt.f80.complex.toAbi(div_cf80(
+        compiler_rt.f80.complex.fromAbi(.{ .real = lhs_real, .imag = lhs_imag }),
+        compiler_rt.f80.complex.fromAbi(.{ .real = rhs_real, .imag = rhs_imag }),
+    ));
+}
+pub fn div_cf80(a: Complex(f80), b: Complex(f80)) Complex(f80) {
+    return divc3(f80, a, b);
+}
+
+fn __divtc3(lhs_real: compiler_rt.f128.Abi, lhs_imag: compiler_rt.f128.Abi, rhs_real: compiler_rt.f128.Abi, rhs_imag: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.complex.Abi {
+    return compiler_rt.f128.complex.toAbi(div_cf128(
+        compiler_rt.f128.complex.fromAbi(.{ .real = lhs_real, .imag = lhs_imag }),
+        compiler_rt.f128.complex.fromAbi(.{ .real = rhs_real, .imag = rhs_imag }),
+    ));
+}
+pub fn div_cf128(a: Complex(f128), b: Complex(f128)) Complex(f128) {
+    return divc3(f128, a, b);
+}
 
 /// Implementation based on Annex G of C17 Standard (N2176)
-pub inline fn divc3(comptime T: type, a: T, b: T, c_in: T, d_in: T) Complex(T) {
-    var c = c_in;
-    var d = d_in;
+inline fn divc3(comptime T: type, lhs: Complex(T), rhs: Complex(T)) Complex(T) {
+    const a = lhs.real;
+    const b = lhs.imag;
+    var c = rhs.real;
+    var d = rhs.imag;
 
     // logbw used to prevent under/over-flow
     const logbw = ilogb(@max(@abs(c), @abs(d)));
@@ -23,7 +92,7 @@ pub inline fn divc3(comptime T: type, a: T, b: T, c_in: T, d_in: T) Complex(T) {
         break :b logbw;
     } else 0;
     const denom = c * c + d * d;
-    const result = Complex(T){
+    const result: Complex(T) = .{
         .real = scalbn((a * c + b * d) / denom, -ilogbw),
         .imag = scalbn((b * c - a * d) / denom, -ilogbw),
     };
@@ -57,4 +126,8 @@ pub inline fn divc3(comptime T: type, a: T, b: T, c_in: T, d_in: T) Complex(T) {
     }
 
     return result;
+}
+
+test {
+    _ = @import("divc3_test.zig");
 }

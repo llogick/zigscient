@@ -3,7 +3,6 @@ const std = @import("std");
 const expect = std.testing.expect;
 
 test "anyopaque extern symbol" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 

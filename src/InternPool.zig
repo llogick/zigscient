@@ -4195,7 +4195,7 @@ pub const Index = enum(u32) {
         };
     }
 
-    /// This function is used in the debugger pretty formatters in tools/ to fetch the
+    /// This function is used in the debugger pretty formatters in lib/lldb/ to fetch the
     /// Tag to encoding mapping to facilitate fancy debug printing for this type.
     fn dbHelper(self: *Index, tag_to_encoding_map: *struct {
         const DataIsIndex = struct { data: Index };
@@ -4221,26 +4221,17 @@ pub const Index = enum(u32) {
         type_inferred_error_set: DataIsIndex,
         simple_type: void,
         type_function: struct {
-            const @"data.flags.has_comptime_bits" = opaque {};
-            const @"data.flags.has_noalias_bits" = opaque {};
-            const @"data.flags.cc.extraLen()" = opaque {};
             const @"data.params_len" = opaque {};
             data: *Tag.TypeFunction,
-            @"trailing.comptime_bits.len": *@"data.flags.has_comptime_bits",
-            @"trailing.noalias_bits.len": *@"data.flags.has_noalias_bits",
-            @"trailing.cc_bits.len": *@"data.flags.cc.extraLen()",
             @"trailing.param_types.len": *@"data.params_len",
-            trailing: struct { comptime_bits: []u32, noalias_bits: []u32, cc_bits: []u32, param_types: []Index },
+            trailing: struct { param_types: []Index },
         },
         type_tuple: struct {
             const @"data.fields_len" = opaque {};
             data: *TypeTuple,
             @"trailing.types.len": *@"data.fields_len",
             @"trailing.values.len": *@"data.fields_len",
-            trailing: struct {
-                types: []Index,
-                values: []Index,
-            },
+            trailing: struct { types: []Index, values: []Index },
         },
 
         type_struct: struct { data: *Tag.TypeStruct },
@@ -4352,7 +4343,7 @@ pub const Index = enum(u32) {
                 const encoding = @field(Tag.encodings, tag_name);
                 if (@hasField(@TypeOf(encoding), "trailing")) {
                     const trailing_info = @typeInfo(encoding.trailing).@"struct";
-                    for (trailing_info.field_names, trailing_info.field_types) |field_name, field_type| {
+                    for (trailing_info.field_names, trailing_info.field_types) |trailing_field_name, trailing_field_type| {
                         struct {
                             fn checkConfig(name: []const u8) void {
                                 if (!@hasField(@TypeOf(encoding.config), name)) @compileError("missing field: " ++ @typeName(Tag) ++ ".encodings." ++ tag_name ++ ".config.@\"" ++ name ++ "\"");
@@ -4361,22 +4352,30 @@ pub const Index = enum(u32) {
                             }
                             fn checkField(name: []const u8, Type: type) void {
                                 switch (@typeInfo(Type)) {
-                                    .int => {},
-                                    .@"enum" => {},
-                                    .@"struct" => |info| assert(info.layout == .@"packed"),
+                                    .int, .@"enum" => return,
+                                    .@"struct" => |info| switch (info.layout) {
+                                        .auto => unreachable,
+                                        .@"extern" => {
+                                            for (info.field_names, info.field_types) |field_name, field_type| checkField(name ++ "." ++ field_name, field_type);
+                                            return;
+                                        },
+                                        .@"packed" => return,
+                                    },
                                     .optional => |info| {
                                         checkConfig(name ++ ".?");
                                         checkField(name ++ ".?", info.child);
+                                        return;
                                     },
-                                    .pointer => |info| {
-                                        assert(info.size == .slice);
+                                    .pointer => |info| if (info.size == .slice) {
                                         checkConfig(name ++ ".len");
                                         checkField(name ++ "[0]", info.child);
+                                        return;
                                     },
-                                    else => @compileError("unsupported type: " ++ @typeName(Tag) ++ ".encodings." ++ tag_name ++ "." ++ name ++ ": " ++ @typeName(Type)),
+                                    else => {},
                                 }
+                                @compileError("unsupported type: " ++ @typeName(Tag) ++ ".encodings." ++ tag_name ++ "." ++ name ++ ": " ++ @typeName(Type));
                             }
-                        }.checkField("trailing." ++ field_name, field_type);
+                        }.checkField("trailing." ++ trailing_field_name, trailing_field_type);
                     }
                 }
             },
@@ -5188,17 +5187,18 @@ pub const Tag = enum(u8) {
             .trailing = struct {
                 param_comptime_bits: ?[]u32,
                 param_noalias_bits: ?[]u32,
-                param_cc_bits: ?[]u32,
-                param_type: []Index,
+                spirv_kernel_options: ?extern struct { x: u32, y: u32, z: u32 },
+                spirv_mesh_options: ?extern struct { max_primitives: u32, max_vertices: u32 },
+                param_types: []Index,
             },
             .config = .{
                 .@"trailing.param_comptime_bits.?" = .@"payload.flags.has_comptime_bits",
                 .@"trailing.param_comptime_bits.?.len" = .@"(payload.params_len + 31) / 32",
                 .@"trailing.param_noalias_bits.?" = .@"payload.flags.has_noalias_bits",
                 .@"trailing.param_noalias_bits.?.len" = .@"(payload.params_len + 31) / 32",
-                .@"trailing.param_cc_bits.?" = .@"payload.flags.cc.extraLen() != 0",
-                .@"trailing.param_cc_bits.?.len" = .@"payload.flags.cc.extraLen()",
-                .@"trailing.param_type.len" = .@"payload.params_len",
+                .@"trailing.spirv_kernel_options.?" = .@"payload.flags.cc.tag == .spirv_kernel or payload.flags.cc.tag == .spirv_task",
+                .@"trailing.spirv_mesh_options.?" = .@"payload.flags.cc.tag == .spirv_mesh",
+                .@"trailing.param_types.len" = .@"payload.params_len",
             },
         },
 
@@ -5227,7 +5227,7 @@ pub const Tag = enum(u8) {
                 .@"trailing.field_defaults.?" = .@"payload.flags.any_field_defaults",
                 .@"trailing.field_defaults.?.len" = .@"payload.fields_len",
                 .@"trailing.field_aligns.?" = .@"payload.flags.any_field_aligns",
-                .@"trailing.field_aligns.?.len" = .@"payload.fields_len",
+                .@"trailing.field_aligns.?.len" = .@"(payload.fields_len + 3) / 4",
                 .@"trailing.field_is_comptime_bits.?" = .@"payload.flags.any_comptime_fields",
                 .@"trailing.field_is_comptime_bits.?.len" = .@"(payload.fields_len + 31) / 32",
                 .@"trailing.field_runtime_order.?" = .@"payload.flags.layout == .auto",
@@ -5256,7 +5256,7 @@ pub const Tag = enum(u8) {
                 .@"trailing.captures.?.len" = .@"trailing.captures_len.?",
                 .@"trailing.field_types.len" = .@"payload.fields_len",
                 .@"trailing.field_aligns.?" = .@"payloads.flags.any_field_aligns",
-                .@"trailing.field_aligns.?.len" = .@"payload.fields_len",
+                .@"trailing.field_aligns.?.len" = .@"(payload.fields_len + 3) / 4",
             },
         },
         .type_union_packed_auto = union_packed_encoding,

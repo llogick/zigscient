@@ -24,12 +24,6 @@ const Alignment = InternPool.Alignment;
 const errUnionPayloadOffset = codegen.errUnionPayloadOffset;
 const errUnionErrorOffset = codegen.errUnionErrorOffset;
 
-const target_util = @import("../../target.zig");
-const libcFloatPrefix = target_util.libcFloatPrefix;
-const libcFloatSuffix = target_util.libcFloatSuffix;
-const compilerRtFloatAbbrev = target_util.compilerRtFloatAbbrev;
-const compilerRtIntAbbrev = target_util.compilerRtIntAbbrev;
-
 pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
     return comptime &.initMany(&.{
         .expand_bit_cast_safe,
@@ -2515,15 +2509,15 @@ const IntType = struct {
                 .anyerror, .adhoc_inferred_error_set => .{ .is_signed = false, .bits = zcu.errorSetBits() },
                 .isize => .{ .is_signed = true, .bits = cg.target.ptrBitWidth() },
                 .usize => .{ .is_signed = false, .bits = cg.target.ptrBitWidth() },
-                .c_char => .{ .is_signed = cg.target.cCharSignedness() == .signed, .bits = cg.target.cTypeBitSize(.char) },
-                .c_short => .{ .is_signed = true, .bits = cg.target.cTypeBitSize(.short) },
-                .c_ushort => .{ .is_signed = false, .bits = cg.target.cTypeBitSize(.short) },
-                .c_int => .{ .is_signed = true, .bits = cg.target.cTypeBitSize(.int) },
-                .c_uint => .{ .is_signed = false, .bits = cg.target.cTypeBitSize(.int) },
-                .c_long => .{ .is_signed = true, .bits = cg.target.cTypeBitSize(.long) },
-                .c_ulong => .{ .is_signed = false, .bits = cg.target.cTypeBitSize(.long) },
-                .c_longlong => .{ .is_signed = true, .bits = cg.target.cTypeBitSize(.longlong) },
-                .c_ulonglong => .{ .is_signed = false, .bits = cg.target.cTypeBitSize(.longlong) },
+                .c_char => .{ .is_signed = cg.target.cCharSignedness().? == .signed, .bits = cg.target.cTypeBitSize(.char).? },
+                .c_short => .{ .is_signed = true, .bits = cg.target.cTypeBitSize(.short).? },
+                .c_ushort => .{ .is_signed = false, .bits = cg.target.cTypeBitSize(.short).? },
+                .c_int => .{ .is_signed = true, .bits = cg.target.cTypeBitSize(.int).? },
+                .c_uint => .{ .is_signed = false, .bits = cg.target.cTypeBitSize(.int).? },
+                .c_long => .{ .is_signed = true, .bits = cg.target.cTypeBitSize(.long).? },
+                .c_ulong => .{ .is_signed = false, .bits = cg.target.cTypeBitSize(.long).? },
+                .c_longlong => .{ .is_signed = true, .bits = cg.target.cTypeBitSize(.longlong).? },
+                .c_ulonglong => .{ .is_signed = false, .bits = cg.target.cTypeBitSize(.longlong).? },
                 .f16, .f32, .f64, .f80, .f128, .c_longdouble => unreachable,
                 .anyopaque, .void, .type, .comptime_int, .comptime_float, .noreturn, .null, .undefined, .enum_literal, .generic_poison => unreachable,
             },
@@ -4340,7 +4334,7 @@ fn floatRem(cg: *CodeGen, ty: FloatType, lhs: WValue, rhs: WValue) InnerError!WV
         .f32 => return cg.callIntrinsic(.fmodf, &.{ .f32_type, .f32_type }, Type.f32, &.{ lhs, rhs }),
         .f64 => return cg.callIntrinsic(.fmod, &.{ .f64_type, .f64_type }, Type.f64, &.{ lhs, rhs }),
         .f80 => return cg.callIntrinsic(.__fmodx, &.{ .f80_type, .f80_type }, Type.f80, &.{ lhs, rhs }),
-        .f128 => return cg.callIntrinsic(.fmodq, &.{ .f128_type, .f128_type }, Type.f128, &.{ lhs, rhs }),
+        .f128 => return cg.callIntrinsic(.fmodf128, &.{ .f128_type, .f128_type }, Type.f128, &.{ lhs, rhs }),
     }
 }
 
@@ -4376,7 +4370,7 @@ fn floatMax(cg: *CodeGen, ty: FloatType, lhs: WValue, rhs: WValue) InnerError!WV
         .f32 => return cg.callIntrinsic(.fmaxf, &.{ .f32_type, .f32_type }, Type.f32, &.{ lhs, rhs }),
         .f64 => return cg.callIntrinsic(.fmax, &.{ .f64_type, .f64_type }, Type.f64, &.{ lhs, rhs }),
         .f80 => return cg.callIntrinsic(.__fmaxx, &.{ .f80_type, .f80_type }, Type.f80, &.{ lhs, rhs }),
-        .f128 => return cg.callIntrinsic(.fmaxq, &.{ .f128_type, .f128_type }, Type.f128, &.{ lhs, rhs }),
+        .f128 => return cg.callIntrinsic(.fmaxf128, &.{ .f128_type, .f128_type }, Type.f128, &.{ lhs, rhs }),
     }
 }
 
@@ -4387,7 +4381,7 @@ fn floatMin(cg: *CodeGen, ty: FloatType, lhs: WValue, rhs: WValue) InnerError!WV
         .f32 => return cg.callIntrinsic(.fminf, &.{ .f32_type, .f32_type }, Type.f32, &.{ lhs, rhs }),
         .f64 => return cg.callIntrinsic(.fmin, &.{ .f64_type, .f64_type }, Type.f64, &.{ lhs, rhs }),
         .f80 => return cg.callIntrinsic(.__fminx, &.{ .f80_type, .f80_type }, Type.f80, &.{ lhs, rhs }),
-        .f128 => return cg.callIntrinsic(.fminq, &.{ .f128_type, .f128_type }, Type.f128, &.{ lhs, rhs }),
+        .f128 => return cg.callIntrinsic(.fminf128, &.{ .f128_type, .f128_type }, Type.f128, &.{ lhs, rhs }),
     }
 }
 
@@ -4405,7 +4399,7 @@ fn floatSqrt(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
             return .stack;
         },
         .f80 => return cg.callIntrinsic(.__sqrtx, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.sqrtq, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.sqrtf128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4415,7 +4409,7 @@ fn floatSin(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
         .f32 => return cg.callIntrinsic(.sinf, &.{.f32_type}, Type.f32, &.{arg}),
         .f64 => return cg.callIntrinsic(.sin, &.{.f64_type}, Type.f64, &.{arg}),
         .f80 => return cg.callIntrinsic(.__sinx, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.sinq, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.sinf128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4425,7 +4419,7 @@ fn floatCos(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
         .f32 => return cg.callIntrinsic(.cosf, &.{.f32_type}, Type.f32, &.{arg}),
         .f64 => return cg.callIntrinsic(.cos, &.{.f64_type}, Type.f64, &.{arg}),
         .f80 => return cg.callIntrinsic(.__cosx, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.cosq, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.cosf128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4435,7 +4429,7 @@ fn floatTan(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
         .f32 => return cg.callIntrinsic(.tanf, &.{.f32_type}, Type.f32, &.{arg}),
         .f64 => return cg.callIntrinsic(.tan, &.{.f64_type}, Type.f64, &.{arg}),
         .f80 => return cg.callIntrinsic(.__tanx, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.tanq, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.tanf128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4445,7 +4439,7 @@ fn floatExp(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
         .f32 => return cg.callIntrinsic(.expf, &.{.f32_type}, Type.f32, &.{arg}),
         .f64 => return cg.callIntrinsic(.exp, &.{.f64_type}, Type.f64, &.{arg}),
         .f80 => return cg.callIntrinsic(.__expx, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.expq, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.expf128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4455,7 +4449,7 @@ fn floatExp2(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
         .f32 => return cg.callIntrinsic(.exp2f, &.{.f32_type}, Type.f32, &.{arg}),
         .f64 => return cg.callIntrinsic(.exp2, &.{.f64_type}, Type.f64, &.{arg}),
         .f80 => return cg.callIntrinsic(.__exp2x, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.exp2q, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.exp2f128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4465,7 +4459,7 @@ fn floatLog(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
         .f32 => return cg.callIntrinsic(.logf, &.{.f32_type}, Type.f32, &.{arg}),
         .f64 => return cg.callIntrinsic(.log, &.{.f64_type}, Type.f64, &.{arg}),
         .f80 => return cg.callIntrinsic(.__logx, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.logq, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.logf128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4475,7 +4469,7 @@ fn floatLog2(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
         .f32 => return cg.callIntrinsic(.log2f, &.{.f32_type}, Type.f32, &.{arg}),
         .f64 => return cg.callIntrinsic(.log2, &.{.f64_type}, Type.f64, &.{arg}),
         .f80 => return cg.callIntrinsic(.__log2x, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.log2q, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.log2f128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4485,7 +4479,7 @@ fn floatLog10(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
         .f32 => return cg.callIntrinsic(.log10f, &.{.f32_type}, Type.f32, &.{arg}),
         .f64 => return cg.callIntrinsic(.log10, &.{.f64_type}, Type.f64, &.{arg}),
         .f80 => return cg.callIntrinsic(.__log10x, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.log10q, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.log10f128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4503,7 +4497,7 @@ fn floatFloor(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
             return .stack;
         },
         .f80 => return cg.callIntrinsic(.__floorx, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.floorq, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.floorf128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4521,7 +4515,7 @@ fn floatCeil(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
             return .stack;
         },
         .f80 => return cg.callIntrinsic(.__ceilx, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.ceilq, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.ceilf128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4539,7 +4533,7 @@ fn floatRound(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
             return .stack;
         },
         .f80 => return cg.callIntrinsic(.__roundx, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.roundq, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.roundf128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 
@@ -4557,7 +4551,7 @@ fn floatTrunc(cg: *CodeGen, ty: FloatType, arg: WValue) InnerError!WValue {
             return .stack;
         },
         .f80 => return cg.callIntrinsic(.__truncx, &.{.f80_type}, Type.f80, &.{arg}),
-        .f128 => return cg.callIntrinsic(.truncq, &.{.f128_type}, Type.f128, &.{arg}),
+        .f128 => return cg.callIntrinsic(.truncf128, &.{.f128_type}, Type.f128, &.{arg}),
     }
 }
 

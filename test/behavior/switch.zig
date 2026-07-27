@@ -1267,7 +1267,7 @@ test "switch with complex item expressions" {
 test "switch evaluation order" {
     const eu: anyerror!u32 = 0;
     _ = eu catch |err| switch (err) {
-        if (true) @compileError("unreachable") => unreachable,
+        if (true) comptime unreachable => unreachable,
         else => unreachable,
     };
 }

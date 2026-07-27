@@ -26,7 +26,7 @@ const exp_f128 = @This();
 const std = @import("std");
 const math = std.math;
 
-pub fn exp(x: f128) callconv(.c) f128 {
+pub fn exp(x: f128) f128 {
     if (!math.isFinite(x)) {
         if (math.isNan(x)) {
             if (math.isSignalNan(x)) math.raiseInvalid();
@@ -91,7 +91,7 @@ fn expPoly(r_hi: f128, r_lo: f128) f128 {
 }
 
 /// Computes 2^x
-pub fn exp2(x: f128) callconv(.c) f128 {
+pub fn exp2(x: f128) f128 {
     if (!math.isFinite(x)) {
         if (math.isNan(x)) {
             if (math.isSignalNan(x)) math.raiseInvalid();

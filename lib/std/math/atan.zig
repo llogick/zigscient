@@ -481,8 +481,6 @@ fn atanBinary128(x: f128) f128 {
 }
 
 test "atanBinary16.special" {
-    if (builtin.target.cpu.arch == .x86_64 and builtin.target.os.tag == .macos) return error.SkipZigTest;
-
     try testing.expectEqual(0x0p+0, atanBinary16(0x0p+0));
     try testing.expectEqual(-0x0p+0, atanBinary16(-0x0p+0));
     try testing.expectApproxEqAbs(0x1.92p-1, atanBinary16(0x1p+0), math.floatEpsAt(f16, 0x1.92p-1));
@@ -493,8 +491,6 @@ test "atanBinary16.special" {
 }
 
 test "atanBinary16" {
-    if (builtin.target.cpu.arch == .x86_64 and builtin.target.os.tag == .macos) return error.SkipZigTest;
-
     try testing.expectApproxEqAbs(-0x1.74cp-2, atanBinary16(-0x1.864p-2), math.floatEpsAt(f16, -0x1.74cp-2));
     try testing.expectApproxEqAbs(-0x1.374p0, atanBinary16(-0x1.59cp1), math.floatEpsAt(f16, -0x1.374p0));
     try testing.expectApproxEqAbs(-0x1.11cp0, atanBinary16(-0x1.d2cp0), math.floatEpsAt(f16, -0x1.11cp0));

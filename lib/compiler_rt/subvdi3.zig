@@ -1,5 +1,6 @@
-const symbol = @import("../compiler_rt.zig").symbol;
 const testing = @import("std").testing;
+const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
 
 comptime {
     symbol(&__subvdi3, "__subvdi3");
@@ -9,7 +10,7 @@ pub fn __subvdi3(a: i64, b: i64) callconv(.c) i64 {
     const sum = a -% b;
     // Overflow occurred iff the operands have opposite signs, and the sign of the
     // sum is the opposite of the lhs sign.
-    if (((a ^ b) & (sum ^ a)) < 0) @panic("compiler-rt: integer overflow");
+    if (((a ^ b) & (sum ^ a)) < 0) @panic("integer overflow");
     return sum;
 }
 

@@ -8,12 +8,13 @@ const builtin = @import("builtin");
 const math = std.math;
 const qnan128: f128 = @bitCast(@as(u128, 0x7fff800000000000) << 64);
 
-const __addtf3 = @import("addtf3.zig").__addtf3;
-const __addxf3 = @import("addxf3.zig").__addxf3;
-const __subtf3 = @import("subtf3.zig").__subtf3;
+const impl = @import("addf3.zig");
+const add_f128 = impl.add_f128;
+const add_f80 = impl.add_f80;
+const sub_f128 = impl.sub_f128;
 
 fn test__addtf3(a: f128, b: f128, expected_hi: u64, expected_lo: u64) !void {
-    const x = __addtf3(a, b);
+    const x = add_f128(a, b);
 
     const rep: u128 = @bitCast(x);
     const hi: u64 = @intCast(rep >> 64);
@@ -52,7 +53,7 @@ test "addtf3" {
 }
 
 fn test__subtf3(a: f128, b: f128, expected_hi: u64, expected_lo: u64) !void {
-    const x = __subtf3(a, b);
+    const x = sub_f128(a, b);
 
     const rep: u128 = @bitCast(x);
     const hi: u64 = @intCast(rep >> 64);
@@ -91,7 +92,7 @@ test "subtf3" {
 const qnan80: f80 = @bitCast(@as(u80, @bitCast(math.nan(f80))) | (1 << (math.floatFractionalBits(f80) - 1)));
 
 fn test__addxf3(a: f80, b: f80, expected: u80) !void {
-    const x = __addxf3(a, b);
+    const x = add_f80(a, b);
     const rep: u80 = @bitCast(x);
 
     if (rep == expected)

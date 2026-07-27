@@ -17,18 +17,19 @@ comptime {
     symbol(&sqrtf, "sqrtf");
     symbol(&sqrt, "sqrt");
     symbol(&__sqrtx, "__sqrtx");
-    if (compiler_rt.want_ppc_abi) {
-        symbol(&sqrtq, "sqrtf128");
-    } else if (compiler_rt.want_sparc64_abi) {
+    symbol(&sqrtq, "sqrtf128");
+    if (compiler_rt.want_sparc64_abi) {
         symbol(&_Qp_sqrt, "_Qp_sqrt");
     } else if (compiler_rt.want_sparc32_abi) {
         symbol(&sqrtq, "_Q_sqrt");
     }
-    symbol(&sqrtq, "sqrtq");
     symbol(&sqrtl, "sqrtl");
 }
 
-pub fn __sqrth(x: f16) callconv(.c) f16 {
+fn __sqrth(x: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(sqrt_f16(compiler_rt.f16.fromAbi(x)));
+}
+pub fn sqrt_f16(x: f16) f16 {
     var ix: u16 = @bitCast(x);
     var top = ix >> 10;
 
@@ -93,7 +94,10 @@ pub fn __sqrth(x: f16) callconv(.c) f16 {
     return y;
 }
 
-pub fn sqrtf(x: f32) callconv(.c) f32 {
+fn sqrtf(x: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(sqrt_f32(compiler_rt.f32.fromAbi(x)));
+}
+pub fn sqrt_f32(x: f32) f32 {
     var ix: u32 = @bitCast(x);
 
     if (ix < @as(u32, @bitCast(@as(f32, 0x1p-126))) or @as(u32, @bitCast(std.math.inf(f32))) <= ix) {
@@ -147,7 +151,10 @@ pub fn sqrtf(x: f32) callconv(.c) f32 {
     return y + t;
 }
 
-pub fn sqrt(x: f64) callconv(.c) f64 {
+fn sqrt(x: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(sqrt_f64(compiler_rt.f64.fromAbi(x)));
+}
+pub fn sqrt_f64(x: f64) f64 {
     var ix: u64 = @bitCast(x);
     var top = ix >> 52;
 
@@ -284,7 +291,10 @@ pub fn sqrt(x: f64) callconv(.c) f64 {
     return y;
 }
 
-pub fn __sqrtx(x: f80) callconv(.c) f80 {
+fn __sqrtx(x: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(sqrt_f80(compiler_rt.f80.fromAbi(x)));
+}
+pub fn sqrt_f80(x: f80) f80 {
     var ix: u80 = @bitCast(x);
     var top = ix >> 64;
 
@@ -381,7 +391,10 @@ pub fn __sqrtx(x: f80) callconv(.c) f80 {
     return y;
 }
 
-pub fn sqrtq(x: f128) callconv(.c) f128 {
+fn sqrtq(x: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(sqrt_f128(compiler_rt.f128.fromAbi(x)));
+}
+pub fn sqrt_f128(x: f128) f128 {
     var ix: u128 = @bitCast(x);
     var top = ix >> 112;
 
@@ -483,10 +496,10 @@ fn _Qp_sqrt(c: *f128, a: *f128) callconv(.c) void {
 
 pub fn sqrtl(x: c_longdouble) callconv(.c) c_longdouble {
     switch (@typeInfo(c_longdouble).float.bits) {
-        64 => return sqrt(x),
-        80 => return __sqrtx(x),
-        128 => return sqrtq(x),
-        else => @compileError("unreachable"),
+        64 => return sqrt_f64(x),
+        80 => return sqrt_f80(x),
+        128 => return sqrt_f128(x),
+        else => comptime unreachable,
     }
 }
 
@@ -545,187 +558,187 @@ inline fn mul80_tail(a: u80, b: u80) u80 {
     return alo * blo +% ((ahi * blo) << 40) +% ((alo * bhi) << 40);
 }
 
-test "__sqrth" {
+test "sqrt_f16" {
     // sqrt(±0) is ±0
-    try std.testing.expectEqual(__sqrth(0x0.0p0), 0x0.0p0);
-    try std.testing.expectEqual(__sqrth(-0x0.0p0), -0x0.0p0);
+    try std.testing.expectEqual(sqrt_f16(0x0.0p0), 0x0.0p0);
+    try std.testing.expectEqual(sqrt_f16(-0x0.0p0), -0x0.0p0);
     // sqrt(+max) is finite
-    try std.testing.expectEqual(__sqrth(0x1.FFCp15), 0x1.FFCp7);
+    try std.testing.expectEqual(sqrt_f16(0x1.FFCp15), 0x1.FFCp7);
     // sqrt(4)=2
-    try std.testing.expectEqual(__sqrth(0x1p2), 0x1p1);
+    try std.testing.expectEqual(sqrt_f16(0x1p2), 0x1p1);
     // sqrt(x) for x=1, 1±ulp
-    try std.testing.expectEqual(__sqrth(0x1p0), 0x1p0);
-    try std.testing.expectEqual(__sqrth(0x1.004p0), 0x1p0);
-    try std.testing.expectEqual(__sqrth(0x1.FF8p-1), 0x1.FFCp-1);
+    try std.testing.expectEqual(sqrt_f16(0x1p0), 0x1p0);
+    try std.testing.expectEqual(sqrt_f16(0x1.004p0), 0x1p0);
+    try std.testing.expectEqual(sqrt_f16(0x1.FF8p-1), 0x1.FFCp-1);
     // sqrt(+min) is non-zero
-    try std.testing.expectEqual(__sqrth(0x1p-14), 0x1p-7);
+    try std.testing.expectEqual(sqrt_f16(0x1p-14), 0x1p-7);
     // sqrt(min subnormal) is non-zero
-    try std.testing.expectEqual(__sqrth(0x0.004p-14), 0x1p-12);
+    try std.testing.expectEqual(sqrt_f16(0x0.004p-14), 0x1p-12);
     // sqrt(inf) is inf
-    try std.testing.expect(math.isInf(__sqrth(math.inf(f16))));
+    try std.testing.expect(math.isInf(sqrt_f16(math.inf(f16))));
     // sqrt(nan) is nan
-    try std.testing.expect(math.isNan(__sqrth(math.nan(f16))));
+    try std.testing.expect(math.isNan(sqrt_f16(math.nan(f16))));
     // sqrt(-ve) is nan
-    try std.testing.expect(math.isNan(__sqrth(-0x1p-14)));
-    try std.testing.expect(math.isNan(__sqrth(-0x1p+0)));
-    try std.testing.expect(math.isNan(__sqrth(-math.inf(f16))));
+    try std.testing.expect(math.isNan(sqrt_f16(-0x1p-14)));
+    try std.testing.expect(math.isNan(sqrt_f16(-0x1p+0)));
+    try std.testing.expect(math.isNan(sqrt_f16(-math.inf(f16))));
     // random arguments
-    try std.testing.expectEqual(__sqrth(0x1.1p14), 0x1.08p7);
-    try std.testing.expectEqual(__sqrth(0x1.C9p-12), 0x1.56p-6);
-    try std.testing.expectEqual(__sqrth(0x1.CE8p-7), 0x1.E68p-4);
-    try std.testing.expectEqual(__sqrth(0x1.134p-7), 0x1.778p-4);
-    try std.testing.expectEqual(__sqrth(0x1.E9Cp-10), 0x1.62p-5);
-    try std.testing.expectEqual(__sqrth(0x1.3Dp9), 0x1.92Cp4);
-    try std.testing.expectEqual(__sqrth(0x1.AA4p8), 0x1.4A4p4);
-    try std.testing.expectEqual(__sqrth(0x1.8A8p4), 0x1.3DCp2);
-    try std.testing.expectEqual(__sqrth(0x1.8Fp-7), 0x1.C4p-4);
-    try std.testing.expectEqual(__sqrth(0x1.584p-11), 0x1.A3Cp-6);
+    try std.testing.expectEqual(sqrt_f16(0x1.1p14), 0x1.08p7);
+    try std.testing.expectEqual(sqrt_f16(0x1.C9p-12), 0x1.56p-6);
+    try std.testing.expectEqual(sqrt_f16(0x1.CE8p-7), 0x1.E68p-4);
+    try std.testing.expectEqual(sqrt_f16(0x1.134p-7), 0x1.778p-4);
+    try std.testing.expectEqual(sqrt_f16(0x1.E9Cp-10), 0x1.62p-5);
+    try std.testing.expectEqual(sqrt_f16(0x1.3Dp9), 0x1.92Cp4);
+    try std.testing.expectEqual(sqrt_f16(0x1.AA4p8), 0x1.4A4p4);
+    try std.testing.expectEqual(sqrt_f16(0x1.8A8p4), 0x1.3DCp2);
+    try std.testing.expectEqual(sqrt_f16(0x1.8Fp-7), 0x1.C4p-4);
+    try std.testing.expectEqual(sqrt_f16(0x1.584p-11), 0x1.A3Cp-6);
 }
 
-test "sqrtf" {
+test "sqrt_f32" {
     // sqrt(±0) is ±0
-    try std.testing.expectEqual(sqrtf(0x0.0p0), 0x0.0p0);
-    try std.testing.expectEqual(sqrtf(-0x0.0p0), -0x0.0p0);
+    try std.testing.expectEqual(sqrt_f32(0x0.0p0), 0x0.0p0);
+    try std.testing.expectEqual(sqrt_f32(-0x0.0p0), -0x0.0p0);
     // sqrt(+max) is finite
-    try std.testing.expectEqual(sqrtf(0x1.FFFFFEp127), 0x1.FFFFFEp63);
+    try std.testing.expectEqual(sqrt_f32(0x1.FFFFFEp127), 0x1.FFFFFEp63);
     // sqrt(4)=2
-    try std.testing.expectEqual(sqrtf(0x1p2), 0x1p1);
+    try std.testing.expectEqual(sqrt_f32(0x1p2), 0x1p1);
     // sqrt(x) for x=1, 1±ulp
-    try std.testing.expectEqual(sqrtf(0x1p0), 0x1p0);
-    try std.testing.expectEqual(sqrtf(0x1.000002p0), 0x1p0);
-    try std.testing.expectEqual(sqrtf(0x1.FFFFFEp-1), 0x1.FFFFFEp-1);
+    try std.testing.expectEqual(sqrt_f32(0x1p0), 0x1p0);
+    try std.testing.expectEqual(sqrt_f32(0x1.000002p0), 0x1p0);
+    try std.testing.expectEqual(sqrt_f32(0x1.FFFFFEp-1), 0x1.FFFFFEp-1);
     // sqrt(+min) is non-zero
-    try std.testing.expectEqual(sqrtf(0x1p-126), 0x1p-63);
+    try std.testing.expectEqual(sqrt_f32(0x1p-126), 0x1p-63);
     // sqrt(min subnormal) is non-zero
-    try std.testing.expectEqual(sqrtf(0x0.000002p-126), 0x1.6a09e6p-75);
+    try std.testing.expectEqual(sqrt_f32(0x0.000002p-126), 0x1.6a09e6p-75);
     // sqrt(inf) is inf
-    try std.testing.expect(math.isInf(sqrtf(math.inf(f32))));
+    try std.testing.expect(math.isInf(sqrt_f32(math.inf(f32))));
     // sqrt(nan) is nan
-    try std.testing.expect(math.isNan(sqrtf(math.nan(f32))));
+    try std.testing.expect(math.isNan(sqrt_f32(math.nan(f32))));
     // sqrt(-ve) is nan
-    try std.testing.expect(math.isNan(sqrtf(-0x1p-149)));
-    try std.testing.expect(math.isNan(sqrtf(-0x1p0)));
-    try std.testing.expect(math.isNan(sqrtf(-math.inf(f32))));
+    try std.testing.expect(math.isNan(sqrt_f32(-0x1p-149)));
+    try std.testing.expect(math.isNan(sqrt_f32(-0x1p0)));
+    try std.testing.expect(math.isNan(sqrt_f32(-math.inf(f32))));
     // random arguments
-    try std.testing.expectEqual(sqrtf(0x1.4DD57Ep77), 0x1.9D6DA8p38);
-    try std.testing.expectEqual(sqrtf(0x1.871848p102), 0x1.3C6AFAp51);
-    try std.testing.expectEqual(sqrtf(0x1.A1D748p-112), 0x1.470EFCp-56);
-    try std.testing.expectEqual(sqrtf(0x1.E626C2p18), 0x1.60C80Ep9);
-    try std.testing.expectEqual(sqrtf(0x1.E80E66p-29), 0x1.F3E282p-15);
-    try std.testing.expectEqual(sqrtf(0x1.B47204p89), 0x1.D8B732p44);
-    try std.testing.expectEqual(sqrtf(0x1.77F45p15), 0x1.B6BC3Ap7);
-    try std.testing.expectEqual(sqrtf(0x1.AD5F5p-48), 0x1.4B8A72p-24);
-    try std.testing.expectEqual(sqrtf(0x1.91A39p-76), 0x1.40A7A8p-38);
-    try std.testing.expectEqual(sqrtf(0x1.DAE088p79), 0x1.ED16DCp39);
+    try std.testing.expectEqual(sqrt_f32(0x1.4DD57Ep77), 0x1.9D6DA8p38);
+    try std.testing.expectEqual(sqrt_f32(0x1.871848p102), 0x1.3C6AFAp51);
+    try std.testing.expectEqual(sqrt_f32(0x1.A1D748p-112), 0x1.470EFCp-56);
+    try std.testing.expectEqual(sqrt_f32(0x1.E626C2p18), 0x1.60C80Ep9);
+    try std.testing.expectEqual(sqrt_f32(0x1.E80E66p-29), 0x1.F3E282p-15);
+    try std.testing.expectEqual(sqrt_f32(0x1.B47204p89), 0x1.D8B732p44);
+    try std.testing.expectEqual(sqrt_f32(0x1.77F45p15), 0x1.B6BC3Ap7);
+    try std.testing.expectEqual(sqrt_f32(0x1.AD5F5p-48), 0x1.4B8A72p-24);
+    try std.testing.expectEqual(sqrt_f32(0x1.91A39p-76), 0x1.40A7A8p-38);
+    try std.testing.expectEqual(sqrt_f32(0x1.DAE088p79), 0x1.ED16DCp39);
 }
 
-test "sqrt" {
+test "sqrt_f64" {
     // sqrt(±0) is ±0
-    try std.testing.expectEqual(sqrt(0x0.0p0), 0x0.0p0);
-    try std.testing.expectEqual(sqrt(-0x0.0p0), -0x0.0p0);
+    try std.testing.expectEqual(sqrt_f64(0x0.0p0), 0x0.0p0);
+    try std.testing.expectEqual(sqrt_f64(-0x0.0p0), -0x0.0p0);
     // sqrt(+max) is finite
-    try std.testing.expectEqual(sqrt(math.floatMax(f64)), 0x1.FFFFFFFFFFFFFp511);
+    try std.testing.expectEqual(sqrt_f64(math.floatMax(f64)), 0x1.FFFFFFFFFFFFFp511);
     // sqrt(4)=2
-    try std.testing.expectEqual(sqrt(0x1p2), 0x1p1);
+    try std.testing.expectEqual(sqrt_f64(0x1p2), 0x1p1);
     // sqrt(x) for x=1, 1±ulp
-    try std.testing.expectEqual(sqrt(0x1p0), 0x1p0);
-    try std.testing.expectEqual(sqrt(0x1p0 + math.floatEps(f64)), 0x1p0);
-    try std.testing.expectEqual(sqrt(0x1p0 - math.floatEps(f64)), 0x1.FFFFFFFFFFFFFp-1);
+    try std.testing.expectEqual(sqrt_f64(0x1p0), 0x1p0);
+    try std.testing.expectEqual(sqrt_f64(0x1p0 + math.floatEps(f64)), 0x1p0);
+    try std.testing.expectEqual(sqrt_f64(0x1p0 - math.floatEps(f64)), 0x1.FFFFFFFFFFFFFp-1);
     // sqrt(+min) is non-zero
-    try std.testing.expectEqual(sqrt(math.floatMin(f64)), 0x1p-511);
+    try std.testing.expectEqual(sqrt_f64(math.floatMin(f64)), 0x1p-511);
     // sqrt(min subnormal) is non-zero
-    try std.testing.expectEqual(sqrt(math.floatTrueMin(f64)), 0x1p-537);
+    try std.testing.expectEqual(sqrt_f64(math.floatTrueMin(f64)), 0x1p-537);
     // sqrt(inf) is inf
-    try std.testing.expect(math.isInf(sqrt(math.inf(f64))));
+    try std.testing.expect(math.isInf(sqrt_f64(math.inf(f64))));
     // sqrt(nan) is nan
-    try std.testing.expect(math.isNan(sqrt(math.nan(f64))));
+    try std.testing.expect(math.isNan(sqrt_f64(math.nan(f64))));
     // sqrt(-ve) is nan
-    try std.testing.expect(math.isNan(sqrt(-0x1p-1074)));
-    try std.testing.expect(math.isNan(sqrt(-0x1p0)));
-    try std.testing.expect(math.isNan(sqrt(-math.inf(f64))));
+    try std.testing.expect(math.isNan(sqrt_f64(-0x1p-1074)));
+    try std.testing.expect(math.isNan(sqrt_f64(-0x1p0)));
+    try std.testing.expect(math.isNan(sqrt_f64(-math.inf(f64))));
     // random arguments
-    try std.testing.expectEqual(sqrt(0x1.27D3510D4789Bp471), 0x1.852E97E58CFB7p235);
-    try std.testing.expectEqual(sqrt(0x1.8C4FCD5A07846p791), 0x1.C27504E56D938p395);
-    try std.testing.expectEqual(sqrt(0x1.B1B69324F96E7p-137), 0x1.D73BD0414D8BFp-69);
-    try std.testing.expectEqual(sqrt(0x1.1CBD179A811FEp278), 0x1.0DFCB9A114A61p139);
-    try std.testing.expectEqual(sqrt(0x1.1D0C7EFB04A56p917), 0x1.7E0708A25DDCDp458);
-    try std.testing.expectEqual(sqrt(0x1.21B355DA8C94Bp-249), 0x1.8121CBE2608E3p-125);
-    try std.testing.expectEqual(sqrt(0x1.63024D4C5E987p487), 0x1.AA56AEA589DCDp243);
-    try std.testing.expectEqual(sqrt(0x1.45AC3BE941F6Ep339), 0x1.9857F3F453E2Dp169);
-    try std.testing.expectEqual(sqrt(0x1.3B719C733AA24p267), 0x1.91E12E3AC8F71p133);
-    try std.testing.expectEqual(sqrt(0x1.0B150433A2275p357), 0x1.71CAB87F8277Cp178);
+    try std.testing.expectEqual(sqrt_f64(0x1.27D3510D4789Bp471), 0x1.852E97E58CFB7p235);
+    try std.testing.expectEqual(sqrt_f64(0x1.8C4FCD5A07846p791), 0x1.C27504E56D938p395);
+    try std.testing.expectEqual(sqrt_f64(0x1.B1B69324F96E7p-137), 0x1.D73BD0414D8BFp-69);
+    try std.testing.expectEqual(sqrt_f64(0x1.1CBD179A811FEp278), 0x1.0DFCB9A114A61p139);
+    try std.testing.expectEqual(sqrt_f64(0x1.1D0C7EFB04A56p917), 0x1.7E0708A25DDCDp458);
+    try std.testing.expectEqual(sqrt_f64(0x1.21B355DA8C94Bp-249), 0x1.8121CBE2608E3p-125);
+    try std.testing.expectEqual(sqrt_f64(0x1.63024D4C5E987p487), 0x1.AA56AEA589DCDp243);
+    try std.testing.expectEqual(sqrt_f64(0x1.45AC3BE941F6Ep339), 0x1.9857F3F453E2Dp169);
+    try std.testing.expectEqual(sqrt_f64(0x1.3B719C733AA24p267), 0x1.91E12E3AC8F71p133);
+    try std.testing.expectEqual(sqrt_f64(0x1.0B150433A2275p357), 0x1.71CAB87F8277Cp178);
 }
 
 test "__sqrtx" {
     // sqrt(±0) is ±0
-    try std.testing.expectEqual(__sqrtx(0x0.0p0), 0x0.0p0);
-    try std.testing.expectEqual(__sqrtx(-0x0.0p0), -0x0.0p0);
+    try std.testing.expectEqual(sqrt_f80(0x0.0p0), 0x0.0p0);
+    try std.testing.expectEqual(sqrt_f80(-0x0.0p0), -0x0.0p0);
     // sqrt(+max) is finite
-    try std.testing.expectEqual(__sqrtx(math.floatMax(f80)), 0x1.FFFFFFFFFFFFFFFEp8191);
+    try std.testing.expectEqual(sqrt_f80(math.floatMax(f80)), 0x1.FFFFFFFFFFFFFFFEp8191);
     // sqrt(4)=2
-    try std.testing.expectEqual(__sqrtx(0x1p2), 0x1p1);
+    try std.testing.expectEqual(sqrt_f80(0x1p2), 0x1p1);
     // sqrt(x) for x=1, 1±ulp
-    try std.testing.expectEqual(__sqrtx(0x1p0), 0x1p0);
-    try std.testing.expectEqual(__sqrtx(0x1p0 + math.floatEps(f80)), 0x1p0);
-    try std.testing.expectEqual(__sqrtx(0x1p0 - math.floatEps(f80)), 0x1.FFFFFFFFFFFFFFFEp-1);
+    try std.testing.expectEqual(sqrt_f80(0x1p0), 0x1p0);
+    try std.testing.expectEqual(sqrt_f80(0x1p0 + math.floatEps(f80)), 0x1p0);
+    try std.testing.expectEqual(sqrt_f80(0x1p0 - math.floatEps(f80)), 0x1.FFFFFFFFFFFFFFFEp-1);
     // sqrt(+min) is non-zero
-    try std.testing.expectEqual(__sqrtx(math.floatMin(f80)), 0x1p-8191);
+    try std.testing.expectEqual(sqrt_f80(math.floatMin(f80)), 0x1p-8191);
     // sqrt(min subnormal) is non-zero
-    try std.testing.expectEqual(__sqrtx(math.floatTrueMin(f80)), 0x1.6A09E667F3BCC908p-8223);
+    try std.testing.expectEqual(sqrt_f80(math.floatTrueMin(f80)), 0x1.6A09E667F3BCC908p-8223);
     // sqrt(inf) is inf
-    try std.testing.expect(math.isInf(__sqrtx(math.inf(f80))));
+    try std.testing.expect(math.isInf(sqrt_f80(math.inf(f80))));
     // sqrt(nan) is nan
-    try std.testing.expect(math.isNan(__sqrtx(math.nan(f80))));
+    try std.testing.expect(math.isNan(sqrt_f80(math.nan(f80))));
     // sqrt(-ve) is nan
-    try std.testing.expect(math.isNan(__sqrtx(-0x1p-16442)));
-    try std.testing.expect(math.isNan(__sqrtx(-0x1p0)));
-    try std.testing.expect(math.isNan(__sqrtx(-math.inf(f80))));
+    try std.testing.expect(math.isNan(sqrt_f80(-0x1p-16442)));
+    try std.testing.expect(math.isNan(sqrt_f80(-0x1p0)));
+    try std.testing.expect(math.isNan(sqrt_f80(-math.inf(f80))));
     // random arguments
-    try std.testing.expectEqual(__sqrtx(0x1.087F3953486918A4p15482), 0x1.0436BBE03D02F32p7741);
-    try std.testing.expectEqual(__sqrtx(0x1.530CF9E2AE84D8Fp-6330), 0x1.269CFEF51933BE58p-3165);
-    try std.testing.expectEqual(__sqrtx(0x1.3F971515EADD574Ap5713), 0x1.9483232AB780B006p2856);
-    try std.testing.expectEqual(__sqrtx(0x1.4CC0DC7379222954p864), 0x1.23DD4D0A4758C2Cp432);
-    try std.testing.expectEqual(__sqrtx(0x1.920E5649559A839Ep-3181), 0x1.C5B5BC0F98DD83D2p-1591);
-    try std.testing.expectEqual(__sqrtx(0x1.2E59726F87CD1746p-629), 0x1.8973327E95CB350Cp-315);
-    try std.testing.expectEqual(__sqrtx(0x1.D3A16391F57B4D64p-9034), 0x1.59FF08B7DEEF5DB2p-4517);
-    try std.testing.expectEqual(__sqrtx(0x1.E7053D8DAA49BCEEp-11411), 0x1.F35AA3EA5E18E344p-5706);
-    try std.testing.expectEqual(__sqrtx(0x1.797ED0B05DD4A984p7521), 0x1.B7A22E40C6A7867Ap3760);
-    try std.testing.expectEqual(__sqrtx(0x1.FC50806445C7226Ap15371), 0x1.FE2766142653F5BEp7685);
+    try std.testing.expectEqual(sqrt_f80(0x1.087F3953486918A4p15482), 0x1.0436BBE03D02F32p7741);
+    try std.testing.expectEqual(sqrt_f80(0x1.530CF9E2AE84D8Fp-6330), 0x1.269CFEF51933BE58p-3165);
+    try std.testing.expectEqual(sqrt_f80(0x1.3F971515EADD574Ap5713), 0x1.9483232AB780B006p2856);
+    try std.testing.expectEqual(sqrt_f80(0x1.4CC0DC7379222954p864), 0x1.23DD4D0A4758C2Cp432);
+    try std.testing.expectEqual(sqrt_f80(0x1.920E5649559A839Ep-3181), 0x1.C5B5BC0F98DD83D2p-1591);
+    try std.testing.expectEqual(sqrt_f80(0x1.2E59726F87CD1746p-629), 0x1.8973327E95CB350Cp-315);
+    try std.testing.expectEqual(sqrt_f80(0x1.D3A16391F57B4D64p-9034), 0x1.59FF08B7DEEF5DB2p-4517);
+    try std.testing.expectEqual(sqrt_f80(0x1.E7053D8DAA49BCEEp-11411), 0x1.F35AA3EA5E18E344p-5706);
+    try std.testing.expectEqual(sqrt_f80(0x1.797ED0B05DD4A984p7521), 0x1.B7A22E40C6A7867Ap3760);
+    try std.testing.expectEqual(sqrt_f80(0x1.FC50806445C7226Ap15371), 0x1.FE2766142653F5BEp7685);
 }
 
-test "sqrtq" {
+test "sqrt_f128" {
     // sqrt(±0) is ±0
-    try std.testing.expectEqual(sqrtq(0x0.0p0), 0x0.0p0);
-    try std.testing.expectEqual(sqrtq(-0x0.0p0), -0x0.0p0);
+    try std.testing.expectEqual(sqrt_f128(0x0.0p0), 0x0.0p0);
+    try std.testing.expectEqual(sqrt_f128(-0x0.0p0), -0x0.0p0);
     // sqrt(+max) is finite
-    try std.testing.expectEqual(sqrtq(math.floatMax(f128)), 0x1.FFFFFFFFFFFFFFFFFFFFFFFFFFFFp8191);
+    try std.testing.expectEqual(sqrt_f128(math.floatMax(f128)), 0x1.FFFFFFFFFFFFFFFFFFFFFFFFFFFFp8191);
     // sqrt(4)=2
-    try std.testing.expectEqual(sqrtq(0x1p2), 0x1p1);
+    try std.testing.expectEqual(sqrt_f128(0x1p2), 0x1p1);
     // sqrt(x) for x=1, 1±ulp
-    try std.testing.expectEqual(sqrtq(0x1p0), 0x1p0);
-    try std.testing.expectEqual(sqrtq(0x1p0 + math.floatEps(f128)), 0x1p0);
-    try std.testing.expectEqual(sqrtq(0x1p0 - math.floatEps(f128)), 0x1.FFFFFFFFFFFFFFFFFFFFFFFFFFFFp-1);
+    try std.testing.expectEqual(sqrt_f128(0x1p0), 0x1p0);
+    try std.testing.expectEqual(sqrt_f128(0x1p0 + math.floatEps(f128)), 0x1p0);
+    try std.testing.expectEqual(sqrt_f128(0x1p0 - math.floatEps(f128)), 0x1.FFFFFFFFFFFFFFFFFFFFFFFFFFFFp-1);
     // sqrt(+min) is non-zero
-    try std.testing.expectEqual(sqrtq(math.floatMin(f128)), 0x1p-8191);
+    try std.testing.expectEqual(sqrt_f128(math.floatMin(f128)), 0x1p-8191);
     // sqrt(min subnormal) is non-zero
-    try std.testing.expectEqual(sqrtq(math.floatTrueMin(f128)), 0x1p-8247);
+    try std.testing.expectEqual(sqrt_f128(math.floatTrueMin(f128)), 0x1p-8247);
     // sqrt(inf) is inf
-    try std.testing.expect(math.isInf(sqrtq(math.inf(f128))));
+    try std.testing.expect(math.isInf(sqrt_f128(math.inf(f128))));
     // sqrt(nan) is nan
-    try std.testing.expect(math.isNan(sqrtq(math.nan(f128))));
+    try std.testing.expect(math.isNan(sqrt_f128(math.nan(f128))));
     // sqrt(-ve) is nan
-    try std.testing.expect(math.isNan(sqrtq(-0x1p-16442)));
-    try std.testing.expect(math.isNan(sqrtq(-0x1p0)));
-    try std.testing.expect(math.isNan(sqrtq(-math.inf(f128))));
+    try std.testing.expect(math.isNan(sqrt_f128(-0x1p-16442)));
+    try std.testing.expect(math.isNan(sqrt_f128(-0x1p0)));
+    try std.testing.expect(math.isNan(sqrt_f128(-math.inf(f128))));
     // random arguments
-    try std.testing.expectEqual(sqrtq(0x1.B6942D29A331751600C9F3AF7E5Fp3363), 0x1.D9DE9AFEF0F2D25586A50CA39D4Dp1681);
-    try std.testing.expectEqual(sqrtq(0x1.5E65C405F84D471A8070ADD7A42Dp11765), 0x1.A78F7F9452B4D9EC2403C81D9D42p5882);
-    try std.testing.expectEqual(sqrtq(0x1.B42334D68F8016D8AE6F5E22B044p-5624), 0x1.4E247A7F2FF2A325E9377BB09C8p-2812);
-    try std.testing.expectEqual(sqrtq(0x1.E61715047F80F2E0B9382B38E06Bp10062), 0x1.60C25D9DFDC0116B78EF5AFDE0E9p5031);
-    try std.testing.expectEqual(sqrtq(0x1.2ED0B53B494CB55A7B04E653D40Ep-1026), 0x1.166CE78D658D2453D700B04C5748p-513);
-    try std.testing.expectEqual(sqrtq(0x1.1BA756B9790E78A4E6F0B083AA89p1835), 0x1.7D1767EA3303DB7A46940033988p917);
-    try std.testing.expectEqual(sqrtq(0x1.5B6C574319C1120335C8E1609704p4512), 0x1.2A3A8A415BB1648C548FBA2A4182p2256);
-    try std.testing.expectEqual(sqrtq(0x1.FF91E8CDEE1552A2B74E77B602Ep14953), 0x1.FFC8F171267D4FE75CBE7AB4D851p7476);
-    try std.testing.expectEqual(sqrtq(0x1.9B1837CFC629A1B6B1BB97099E7Dp2892), 0x1.4468511B909EAF8641BD59105A6Bp1446);
-    try std.testing.expectEqual(sqrtq(0x1.0E2115475E64A92340914E7F7B37p-13951), 0x1.73E536F82F414134012F55BA5368p-6976);
+    try std.testing.expectEqual(sqrt_f128(0x1.B6942D29A331751600C9F3AF7E5Fp3363), 0x1.D9DE9AFEF0F2D25586A50CA39D4Dp1681);
+    try std.testing.expectEqual(sqrt_f128(0x1.5E65C405F84D471A8070ADD7A42Dp11765), 0x1.A78F7F9452B4D9EC2403C81D9D42p5882);
+    try std.testing.expectEqual(sqrt_f128(0x1.B42334D68F8016D8AE6F5E22B044p-5624), 0x1.4E247A7F2FF2A325E9377BB09C8p-2812);
+    try std.testing.expectEqual(sqrt_f128(0x1.E61715047F80F2E0B9382B38E06Bp10062), 0x1.60C25D9DFDC0116B78EF5AFDE0E9p5031);
+    try std.testing.expectEqual(sqrt_f128(0x1.2ED0B53B494CB55A7B04E653D40Ep-1026), 0x1.166CE78D658D2453D700B04C5748p-513);
+    try std.testing.expectEqual(sqrt_f128(0x1.1BA756B9790E78A4E6F0B083AA89p1835), 0x1.7D1767EA3303DB7A46940033988p917);
+    try std.testing.expectEqual(sqrt_f128(0x1.5B6C574319C1120335C8E1609704p4512), 0x1.2A3A8A415BB1648C548FBA2A4182p2256);
+    try std.testing.expectEqual(sqrt_f128(0x1.FF91E8CDEE1552A2B74E77B602Ep14953), 0x1.FFC8F171267D4FE75CBE7AB4D851p7476);
+    try std.testing.expectEqual(sqrt_f128(0x1.9B1837CFC629A1B6B1BB97099E7Dp2892), 0x1.4468511B909EAF8641BD59105A6Bp1446);
+    try std.testing.expectEqual(sqrt_f128(0x1.0E2115475E64A92340914E7F7B37p-13951), 0x1.73E536F82F414134012F55BA5368p-6976);
 }

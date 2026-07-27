@@ -326,8 +326,6 @@ fn asinBinary128(x: f128) f128 {
 }
 
 test "asinBinary16.special" {
-    if (builtin.target.cpu.arch == .x86_64 and builtin.target.os.tag == .macos) return error.SkipZigTest;
-
     try testing.expectApproxEqAbs(0x1.92p0, asinBinary16(0x1p+0), math.floatEpsAt(f16, 0x1.92p0));
     try testing.expectApproxEqAbs(-0x1.92p0, asinBinary16(-0x1p+0), math.floatEpsAt(f16, -0x1.92p0));
     try testing.expectEqual(0x0p+0, asinBinary16(0x0p+0));
@@ -340,8 +338,6 @@ test "asinBinary16.special" {
 }
 
 test "asinBinary16" {
-    if (builtin.target.cpu.arch == .x86_64 and builtin.target.os.tag == .macos) return error.SkipZigTest;
-
     try testing.expectApproxEqAbs(-0x1.e4cp-6, asinBinary16(-0x1.e4cp-6), math.floatEpsAt(f16, -0x1.e4cp-6));
     try testing.expectApproxEqAbs(0x1.2a8p0, asinBinary16(0x1.d68p-1), math.floatEpsAt(f16, 0x1.2a8p0));
     try testing.expectApproxEqAbs(-0x1.eep-1, asinBinary16(-0x1.a4cp-1), math.floatEpsAt(f16, -0x1.eep-1));

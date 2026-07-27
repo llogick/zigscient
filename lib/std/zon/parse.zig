@@ -9,7 +9,6 @@
 //! For lower level control over parsing, see `std.zig.Zoir`.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const Ast = std.zig.Ast;
 const Zoir = std.zig.Zoir;
@@ -1868,8 +1867,6 @@ test "std.zon tuples" {
 
 // Test sizes 0 to 3 since small sizes get parsed differently
 test "std.zon arrays and slices" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // https://github.com/ziglang/zig/issues/20881
-
     const gpa = std.testing.allocator;
 
     // Literals
@@ -2802,8 +2799,6 @@ test "std.zon negative char" {
 }
 
 test "std.zon parse float" {
-    if (builtin.cpu.arch == .x86) return error.SkipZigTest;
-
     const gpa = std.testing.allocator;
 
     // Test decimals
@@ -3135,7 +3130,7 @@ test "std.zon free on error" {
 }
 
 test "std.zon vector" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // https://github.com/ziglang/zig/issues/15330
+    const builtin = @import("builtin");
     if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch == .s390x) return error.SkipZigTest; // https://github.com/ziglang/zig/issues/25957
 
     const gpa = std.testing.allocator;

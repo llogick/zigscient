@@ -800,7 +800,6 @@ test "extern variable with non-pointer opaque type" {
     if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
 
     @export(&var_to_export, .{ .name = "opaque_extern_var" });
@@ -1398,7 +1397,6 @@ test "allocation and looping over 3-byte integer" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_llvm and builtin.os.tag.isDarwin()) return error.SkipZigTest; // TODO
 
     try expect(@sizeOf(u24) == 4);
     try expect(@sizeOf([1]u24) == 4);

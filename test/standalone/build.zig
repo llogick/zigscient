@@ -39,7 +39,6 @@ pub fn build(b: *std.Build) void {
         "../../tools/gen_parser_oracle.zig",
         "../../tools/gen_spirv_spec.zig",
         "../../tools/gen_stubs.zig",
-        "../../tools/generate_c_size_and_align_checks.zig",
         "../../tools/generate_JSONTestSuite.zig",
         "../../tools/generate_linux_syscalls.zig",
         "../../tools/process_headers.zig",

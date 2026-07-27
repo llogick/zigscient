@@ -19,19 +19,22 @@ comptime {
     symbol(&log2f, "log2f");
     symbol(&log2, "log2");
     symbol(&__log2x, "__log2x");
-    if (compiler_rt.want_ppc_abi) {
-        symbol(&log2q, "log2f128");
-    }
-    symbol(&log2q, "log2q");
+    symbol(&log2q, "log2f128");
     symbol(&log2l, "log2l");
 }
 
-pub fn __log2h(a: f16) callconv(.c) f16 {
+fn __log2h(a: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(log2_f16(compiler_rt.f16.fromAbi(a)));
+}
+pub fn log2_f16(a: f16) f16 {
     // TODO: more efficient implementation
-    return @floatCast(log2f(a));
+    return @floatCast(log2_f32(a));
 }
 
-pub fn log2f(x_: f32) callconv(.c) f32 {
+fn log2f(a: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(log2_f32(compiler_rt.f32.fromAbi(a)));
+}
+pub fn log2_f32(x_: f32) f32 {
     const ivln2hi: f32 = 1.4428710938e+00;
     const ivln2lo: f32 = -1.7605285393e-04;
     const Lg1: f32 = 0xaaaaaa.0p-24;
@@ -87,7 +90,10 @@ pub fn log2f(x_: f32) callconv(.c) f32 {
     return (lo + hi) * ivln2lo + lo * ivln2hi + hi * ivln2hi + @as(f32, @floatFromInt(k));
 }
 
-pub fn log2(x_: f64) callconv(.c) f64 {
+fn log2(a: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(log2_f64(compiler_rt.f64.fromAbi(a)));
+}
+pub fn log2_f64(x_: f64) f64 {
     const ivln2hi: f64 = 1.44269504072144627571e+00;
     const ivln2lo: f64 = 1.67517131648865118353e-10;
     const Lg1: f64 = 6.666666666666735130e-01;
@@ -158,11 +164,17 @@ pub fn log2(x_: f64) callconv(.c) f64 {
     return val_lo + val_hi;
 }
 
-pub fn __log2x(a: f80) callconv(.c) f80 {
+fn __log2x(a: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(log2_f80(compiler_rt.f80.fromAbi(a)));
+}
+pub fn log2_f80(a: f80) f80 {
     // TODO: more efficient implementation
-    return @floatCast(log2q(a));
+    return @floatCast(log2_f128(a));
 }
 
+fn log2q(a: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(log2_f128(compiler_rt.f128.fromAbi(a)));
+}
 /// Implementation of "Table-driven implementation of the logarithm function in IEEE floating-point arithmetic"
 /// by PTP Tang in ACM Transactions on Mathematical Software (TOMS), 1990
 ///
@@ -175,7 +187,7 @@ pub fn __log2x(a: f80) callconv(.c) f80 {
 ///
 /// Accuracy on 10 million random numbers near x = 1 (testing the proc2 case):
 /// <= 0.5 ulp: 99.86%, worst case <= 0.546 ulp
-pub fn log2q(x: f128) callconv(.c) f128 {
+pub fn log2_f128(x: f128) f128 {
     const impl = @import("log_f128.zig");
 
     if (impl.specialCases(x)) |y|
@@ -351,117 +363,117 @@ pub fn log2q(x: f128) callconv(.c) f128 {
 
 pub fn log2l(x: c_longdouble) callconv(.c) c_longdouble {
     switch (@typeInfo(c_longdouble).float.bits) {
-        64 => return log2(x),
-        80 => return __log2x(x),
-        128 => return log2q(x),
-        else => @compileError("unreachable"),
+        64 => return log2_f64(x),
+        80 => return log2_f80(x),
+        128 => return log2_f128(x),
+        else => comptime unreachable,
     }
 }
 
 test "log2f() special" {
-    try expectEqual(log2f(0.0), -math.inf(f32));
-    try expectEqual(log2f(-0.0), -math.inf(f32));
-    try expect(math.isPositiveZero(log2f(1.0)));
-    try expectEqual(log2f(2.0), 1.0);
-    try expectEqual(log2f(math.inf(f32)), math.inf(f32));
-    try expect(math.isNan(log2f(-1.0)));
-    try expect(math.isNan(log2f(-math.inf(f32))));
-    try expect(math.isNan(log2f(math.nan(f32))));
-    try expect(math.isNan(log2f(math.snan(f32))));
+    try expectEqual(log2_f32(0.0), -math.inf(f32));
+    try expectEqual(log2_f32(-0.0), -math.inf(f32));
+    try expect(math.isPositiveZero(log2_f32(1.0)));
+    try expectEqual(log2_f32(2.0), 1.0);
+    try expectEqual(log2_f32(math.inf(f32)), math.inf(f32));
+    try expect(math.isNan(log2_f32(-1.0)));
+    try expect(math.isNan(log2_f32(-math.inf(f32))));
+    try expect(math.isNan(log2_f32(math.nan(f32))));
+    try expect(math.isNan(log2_f32(math.snan(f32))));
 }
 
 test "log2f() sanity" {
-    try expect(math.isNan(log2f(-0x1.0223a0p+3)));
-    try expectEqual(log2f(0x1.161868p+2), 0x1.0f49acp+1);
-    try expect(math.isNan(log2f(-0x1.0c34b4p+3)));
-    try expect(math.isNan(log2f(-0x1.a206f0p+2)));
-    try expectEqual(log2f(0x1.288bbcp+3), 0x1.9b2676p+1);
-    try expectEqual(log2f(0x1.52efd0p-1), -0x1.30b494p-1); // Disagrees with GCC in last bit
-    try expect(math.isNan(log2f(-0x1.a05cc8p-2)));
-    try expectEqual(log2f(0x1.1f9efap-1), -0x1.a9f89ap-1);
-    try expectEqual(log2f(0x1.8c5db0p-1), -0x1.7a2c96p-2);
-    try expect(math.isNan(log2f(-0x1.5b86eap-1)));
+    try expect(math.isNan(log2_f32(-0x1.0223a0p+3)));
+    try expectEqual(log2_f32(0x1.161868p+2), 0x1.0f49acp+1);
+    try expect(math.isNan(log2_f32(-0x1.0c34b4p+3)));
+    try expect(math.isNan(log2_f32(-0x1.a206f0p+2)));
+    try expectEqual(log2_f32(0x1.288bbcp+3), 0x1.9b2676p+1);
+    try expectEqual(log2_f32(0x1.52efd0p-1), -0x1.30b494p-1); // Disagrees with GCC in last bit
+    try expect(math.isNan(log2_f32(-0x1.a05cc8p-2)));
+    try expectEqual(log2_f32(0x1.1f9efap-1), -0x1.a9f89ap-1);
+    try expectEqual(log2_f32(0x1.8c5db0p-1), -0x1.7a2c96p-2);
+    try expect(math.isNan(log2_f32(-0x1.5b86eap-1)));
 }
 
 test "log2f() boundary" {
-    try expectEqual(log2f(0x1.fffffep+127), 0x1p+7); // Max input value
-    try expectEqual(log2f(0x1p-149), -0x1.2ap+7); // Min positive input value
-    try expect(math.isNan(log2f(-0x1p-149))); // Min negative input value
-    try expectEqual(log2f(0x1.000002p+0), 0x1.715474p-23); // Last value before result reaches +0
-    try expectEqual(log2f(0x1.fffffep-1), -0x1.715478p-24); // Last value before result reaches -0
-    try expectEqual(log2f(0x1p-126), -0x1.f8p+6); // First subnormal
-    try expect(math.isNan(log2f(-0x1p-126))); // First negative subnormal
+    try expectEqual(log2_f32(0x1.fffffep+127), 0x1p+7); // Max input value
+    try expectEqual(log2_f32(0x1p-149), -0x1.2ap+7); // Min positive input value
+    try expect(math.isNan(log2_f32(-0x1p-149))); // Min negative input value
+    try expectEqual(log2_f32(0x1.000002p+0), 0x1.715474p-23); // Last value before result reaches +0
+    try expectEqual(log2_f32(0x1.fffffep-1), -0x1.715478p-24); // Last value before result reaches -0
+    try expectEqual(log2_f32(0x1p-126), -0x1.f8p+6); // First subnormal
+    try expect(math.isNan(log2_f32(-0x1p-126))); // First negative subnormal
 
 }
 
 test "log2() special" {
-    try expectEqual(log2(0.0), -math.inf(f64));
-    try expectEqual(log2(-0.0), -math.inf(f64));
-    try expect(math.isPositiveZero(log2(1.0)));
-    try expectEqual(log2(2.0), 1.0);
-    try expectEqual(log2(math.inf(f64)), math.inf(f64));
-    try expect(math.isNan(log2(-1.0)));
-    try expect(math.isNan(log2(-math.inf(f64))));
-    try expect(math.isNan(log2(math.nan(f64))));
-    try expect(math.isNan(log2(math.snan(f64))));
+    try expectEqual(log2_f64(0.0), -math.inf(f64));
+    try expectEqual(log2_f64(-0.0), -math.inf(f64));
+    try expect(math.isPositiveZero(log2_f64(1.0)));
+    try expectEqual(log2_f64(2.0), 1.0);
+    try expectEqual(log2_f64(math.inf(f64)), math.inf(f64));
+    try expect(math.isNan(log2_f64(-1.0)));
+    try expect(math.isNan(log2_f64(-math.inf(f64))));
+    try expect(math.isNan(log2_f64(math.nan(f64))));
+    try expect(math.isNan(log2_f64(math.snan(f64))));
 }
 
 test "log2() sanity" {
-    try expect(math.isNan(log2(-0x1.02239f3c6a8f1p+3)));
-    try expectEqual(log2(0x1.161868e18bc67p+2), 0x1.0f49ac3838580p+1);
-    try expect(math.isNan(log2(-0x1.0c34b3e01e6e7p+3)));
-    try expect(math.isNan(log2(-0x1.a206f0a19dcc4p+2)));
-    try expectEqual(log2(0x1.288bbb0d6a1e6p+3), 0x1.9b26760c2a57ep+1);
-    try expectEqual(log2(0x1.52efd0cd80497p-1), -0x1.30b490ef684c7p-1);
-    try expect(math.isNan(log2(-0x1.a05cc754481d1p-2)));
-    try expectEqual(log2(0x1.1f9ef934745cbp-1), -0x1.a9f89b5f5acb8p-1);
-    try expectEqual(log2(0x1.8c5db097f7442p-1), -0x1.7a2c947173f06p-2);
-    try expect(math.isNan(log2(-0x1.5b86ea8118a0ep-1)));
+    try expect(math.isNan(log2_f64(-0x1.02239f3c6a8f1p+3)));
+    try expectEqual(log2_f64(0x1.161868e18bc67p+2), 0x1.0f49ac3838580p+1);
+    try expect(math.isNan(log2_f64(-0x1.0c34b3e01e6e7p+3)));
+    try expect(math.isNan(log2_f64(-0x1.a206f0a19dcc4p+2)));
+    try expectEqual(log2_f64(0x1.288bbb0d6a1e6p+3), 0x1.9b26760c2a57ep+1);
+    try expectEqual(log2_f64(0x1.52efd0cd80497p-1), -0x1.30b490ef684c7p-1);
+    try expect(math.isNan(log2_f64(-0x1.a05cc754481d1p-2)));
+    try expectEqual(log2_f64(0x1.1f9ef934745cbp-1), -0x1.a9f89b5f5acb8p-1);
+    try expectEqual(log2_f64(0x1.8c5db097f7442p-1), -0x1.7a2c947173f06p-2);
+    try expect(math.isNan(log2_f64(-0x1.5b86ea8118a0ep-1)));
 }
 
 test "log2() boundary" {
-    try expectEqual(log2(0x1.fffffffffffffp+1023), 0x1p+10); // Max input value
-    try expectEqual(log2(0x1p-1074), -0x1.0c8p+10); // Min positive input value
-    try expect(math.isNan(log2(-0x1p-1074))); // Min negative input value
-    try expectEqual(log2(0x1.0000000000001p+0), 0x1.71547652b82fdp-52); // Last value before result reaches +0
-    try expectEqual(log2(0x1.fffffffffffffp-1), -0x1.71547652b82fep-53); // Last value before result reaches -0
-    try expectEqual(log2(0x1p-1022), -0x1.ffp+9); // First subnormal
-    try expect(math.isNan(log2(-0x1p-1022))); // First negative subnormal
+    try expectEqual(log2_f64(0x1.fffffffffffffp+1023), 0x1p+10); // Max input value
+    try expectEqual(log2_f64(0x1p-1074), -0x1.0c8p+10); // Min positive input value
+    try expect(math.isNan(log2_f64(-0x1p-1074))); // Min negative input value
+    try expectEqual(log2_f64(0x1.0000000000001p+0), 0x1.71547652b82fdp-52); // Last value before result reaches +0
+    try expectEqual(log2_f64(0x1.fffffffffffffp-1), -0x1.71547652b82fep-53); // Last value before result reaches -0
+    try expectEqual(log2_f64(0x1p-1022), -0x1.ffp+9); // First subnormal
+    try expect(math.isNan(log2_f64(-0x1p-1022))); // First negative subnormal
 }
 
 test "log2q() special" {
-    try expectEqual(log2q(0.0), -math.inf(f128));
-    try expectEqual(log2q(-0.0), -math.inf(f128));
-    try expect(math.isPositiveZero(log2q(1.0)));
-    try expectEqual(log2q(2.0), 1.0);
-    try expectEqual(log2q(math.inf(f128)), math.inf(f128));
-    try expect(math.isNan(log2q(-1.0)));
-    try expect(math.isNan(log2q(-math.inf(f128))));
-    try expect(math.isNan(log2q(math.nan(f128))));
-    try expect(math.isNan(log2q(math.snan(f128))));
+    try expectEqual(log2_f128(0.0), -math.inf(f128));
+    try expectEqual(log2_f128(-0.0), -math.inf(f128));
+    try expect(math.isPositiveZero(log2_f128(1.0)));
+    try expectEqual(log2_f128(2.0), 1.0);
+    try expectEqual(log2_f128(math.inf(f128)), math.inf(f128));
+    try expect(math.isNan(log2_f128(-1.0)));
+    try expect(math.isNan(log2_f128(-math.inf(f128))));
+    try expect(math.isNan(log2_f128(math.nan(f128))));
+    try expect(math.isNan(log2_f128(math.snan(f128))));
 }
 
 test "log2q() boundary" {
-    try expectEqual(log2q(0x1.ffffffffffffffffffffffffffffp16383), 0x1p14); // Max input value
-    try expectEqual(log2q(0x1p-16494), -0x1.01b8p14); // Min positive input value
-    try expect(math.isNan(log2q(-0x1p-16494))); // Min negative input value
-    try expectEqual(log2q(0x1.0000000000000000000000000001p0), 0x1.71547652b82fe1777d0ffda0d23ap-112); // Last value before result reaches +0
-    try expectEqual(log2q(0x1.ffffffffffffffffffffffffffffp-1), -0x1.71547652b82fe1777d0ffda0d23bp-113); // Last value before result reaches -0
-    try expectEqual(log2q(0x1p-16382), -0x1.fffp13); // First subnormal
-    try expect(math.isNan(log2q(-0x1p-16382))); // First negative subnormal
+    try expectEqual(log2_f128(0x1.ffffffffffffffffffffffffffffp16383), 0x1p14); // Max input value
+    try expectEqual(log2_f128(0x1p-16494), -0x1.01b8p14); // Min positive input value
+    try expect(math.isNan(log2_f128(-0x1p-16494))); // Min negative input value
+    try expectEqual(log2_f128(0x1.0000000000000000000000000001p0), 0x1.71547652b82fe1777d0ffda0d23ap-112); // Last value before result reaches +0
+    try expectEqual(log2_f128(0x1.ffffffffffffffffffffffffffffp-1), -0x1.71547652b82fe1777d0ffda0d23bp-113); // Last value before result reaches -0
+    try expectEqual(log2_f128(0x1p-16382), -0x1.fffp13); // First subnormal
+    try expect(math.isNan(log2_f128(-0x1p-16382))); // First negative subnormal
 }
 
 test "log2q() sanity" {
-    try expectEqual(log2q(8.0965013884643408203125e11), 3.955850767769801288865582596068254e1);
-    try expectEqual(log2q(8.346531942223744e15), 5.28900982928636641107356163006646e1);
-    try expectEqual(log2q(9.707809913413123613777865431464565e-20), -6.315941603809020445822192336703809e1);
-    try expectEqual(log2q(1.9179565888043380306021427656243352e-24), -7.878670421065570557450089031998522e1);
-    try expectEqual(log2q(2.5260048200126556877075044745936796e-25), -8.17113449801679676275805009400338e1);
-    try expectEqual(log2q(3.1170134002568967640399932861328125e7), 2.489366102143423848582774267206741e1);
+    try expectEqual(log2_f128(8.0965013884643408203125e11), 3.955850767769801288865582596068254e1);
+    try expectEqual(log2_f128(8.346531942223744e15), 5.28900982928636641107356163006646e1);
+    try expectEqual(log2_f128(9.707809913413123613777865431464565e-20), -6.315941603809020445822192336703809e1);
+    try expectEqual(log2_f128(1.9179565888043380306021427656243352e-24), -7.878670421065570557450089031998522e1);
+    try expectEqual(log2_f128(2.5260048200126556877075044745936796e-25), -8.17113449801679676275805009400338e1);
+    try expectEqual(log2_f128(3.1170134002568967640399932861328125e7), 2.489366102143423848582774267206741e1);
     // test near 1
-    try expectEqual(log2q(1.026586845186097528392910049888087e0), 3.7855678902522753591699367969189364e-2);
-    try expectEqual(log2q(1.0005582850578053877743656130405725e0), 8.052103367568488432896147152682078e-4);
-    try expectEqual(log2q(1.0370174103591254835765589348284266e0), 5.244011558596899945639244281954306e-2);
-    try expectEqual(log2q(1.0429996503525671713075162472250667e0), 6.073867421942172944687194557176633e-2);
-    try expectEqual(log2q(1.0383384027961064621892184334228659e0), 5.4276706191956281784022630732940314e-2);
+    try expectEqual(log2_f128(1.026586845186097528392910049888087e0), 3.7855678902522753591699367969189364e-2);
+    try expectEqual(log2_f128(1.0005582850578053877743656130405725e0), 8.052103367568488432896147152682078e-4);
+    try expectEqual(log2_f128(1.0370174103591254835765589348284266e0), 5.244011558596899945639244281954306e-2);
+    try expectEqual(log2_f128(1.0429996503525671713075162472250667e0), 6.073867421942172944687194557176633e-2);
+    try expectEqual(log2_f128(1.0383384027961064621892184334228659e0), 5.4276706191956281784022630732940314e-2);
 }

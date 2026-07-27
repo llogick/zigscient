@@ -1151,9 +1151,6 @@ test "std.zon depth limits" {
 }
 
 test "std.zon stringify primitives" {
-    // Issue: https://github.com/ziglang/zig/issues/20880
-    if (@import("builtin").zig_backend == .stage2_c) return error.SkipZigTest;
-
     try expectSerializeEqual(
         \\.{
         \\    .a = 1.5,

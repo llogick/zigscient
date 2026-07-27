@@ -89,8 +89,6 @@ pub fn fill(self: *Xoshiro256, buf: []u8) void {
 }
 
 test "sequence" {
-    if (@import("builtin").zig_backend == .stage2_c) return error.SkipZigTest;
-
     var r = Xoshiro256.init(0);
 
     const seq1 = [_]u64{

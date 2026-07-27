@@ -6,7 +6,7 @@ const shr = std.math.shr;
 const shl = std.math.shl;
 
 const compiler_rt = @import("../compiler_rt.zig");
-const symbol = @import("../compiler_rt.zig").symbol;
+const symbol = compiler_rt.symbol;
 
 const max_limbs = @divCeil(65535, 32); // max supported type is u65535
 

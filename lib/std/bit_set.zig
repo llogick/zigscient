@@ -1707,8 +1707,6 @@ fn testStaticBitSet(comptime Set: type) !void {
 }
 
 test Integer {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     try testStaticBitSet(Integer(0));
     try testStaticBitSet(Integer(1));
     try testStaticBitSet(Integer(2));

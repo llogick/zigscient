@@ -1518,7 +1518,7 @@ fn Custom(
             self.available = 0;
         }
 
-        /// This function is used in the debugger pretty formatters in tools/ to fetch the
+        /// This function is used in the debugger pretty formatters in lib/lldb/ to fetch the
         /// header type to facilitate fancy debug printing for this type.
         fn dbHelper(self: *Self, hdr: *Header, entry: *Entry) void {
             _ = self;

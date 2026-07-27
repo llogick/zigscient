@@ -4,8 +4,6 @@
 //! This API supports static initialization and does not require deinitialization.
 const Semaphore = @This();
 
-const builtin = @import("builtin");
-
 const std = @import("../std.zig");
 const Io = std.Io;
 const testing = std.testing;

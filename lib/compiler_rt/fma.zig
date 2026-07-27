@@ -16,19 +16,22 @@ comptime {
     symbol(&fmaf, "fmaf");
     symbol(&fma, "fma");
     symbol(&__fmax, "__fmax");
-    if (compiler_rt.want_ppc_abi) {
-        symbol(&fmaq, "fmaf128");
-    }
-    symbol(&fmaq, "fmaq");
+    symbol(&fmaq, "fmaf128");
     symbol(&fmal, "fmal");
 }
 
-pub fn __fmah(x: f16, y: f16, z: f16) callconv(.c) f16 {
+fn __fmah(x: compiler_rt.f16.Abi, y: compiler_rt.f16.Abi, z: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(fma_f16(compiler_rt.f16.fromAbi(x), compiler_rt.f16.fromAbi(y), compiler_rt.f16.fromAbi(z)));
+}
+pub fn fma_f16(x: f16, y: f16, z: f16) f16 {
     // TODO: more efficient implementation
-    return @floatCast(fmaf(x, y, z));
+    return @floatCast(fma_f32(x, y, z));
 }
 
-pub fn fmaf(x: f32, y: f32, z: f32) callconv(.c) f32 {
+fn fmaf(x: compiler_rt.f32.Abi, y: compiler_rt.f32.Abi, z: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(fma_f32(compiler_rt.f32.fromAbi(x), compiler_rt.f32.fromAbi(y), compiler_rt.f32.fromAbi(z)));
+}
+pub fn fma_f32(x: f32, y: f32, z: f32) f32 {
     const xy = @as(f64, x) * y;
     const xy_z = xy + z;
     const u = @as(u64, @bitCast(xy_z));
@@ -42,8 +45,11 @@ pub fn fmaf(x: f32, y: f32, z: f32) callconv(.c) f32 {
     }
 }
 
+fn fma(x: compiler_rt.f64.Abi, y: compiler_rt.f64.Abi, z: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(fma_f64(compiler_rt.f64.fromAbi(x), compiler_rt.f64.fromAbi(y), compiler_rt.f64.fromAbi(z)));
+}
 /// NOTE: Upstream fma.c has been rewritten completely to raise fp exceptions more accurately.
-pub fn fma(x: f64, y: f64, z: f64) callconv(.c) f64 {
+pub fn fma_f64(x: f64, y: f64, z: f64) f64 {
     if (!math.isFinite(x) or !math.isFinite(y)) {
         return x * y + z;
     }
@@ -90,11 +96,17 @@ pub fn fma(x: f64, y: f64, z: f64) callconv(.c) f64 {
     }
 }
 
-pub fn __fmax(a: f80, b: f80, c: f80) callconv(.c) f80 {
+fn __fmax(a: compiler_rt.f80.Abi, b: compiler_rt.f80.Abi, c: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(fma_f80(compiler_rt.f80.fromAbi(a), compiler_rt.f80.fromAbi(b), compiler_rt.f80.fromAbi(c)));
+}
+pub fn fma_f80(a: f80, b: f80, c: f80) f80 {
     // TODO: more efficient implementation
-    return @floatCast(fmaq(a, b, c));
+    return @floatCast(fma_f128(a, b, c));
 }
 
+fn fmaq(x: compiler_rt.f128.Abi, y: compiler_rt.f128.Abi, z: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(fma_f128(compiler_rt.f128.fromAbi(x), compiler_rt.f128.fromAbi(y), compiler_rt.f128.fromAbi(z)));
+}
 /// Fused multiply-add: Compute x * y + z with a single rounding error.
 ///
 /// We use scaling to avoid overflow/underflow, along with the
@@ -102,7 +114,7 @@ pub fn __fmax(a: f80, b: f80, c: f80) callconv(.c) f80 {
 ///
 ///      Dekker, T.  A Floating-Point Technique for Extending the
 ///      Available Precision.  Numer. Math. 18, 224-242 (1971).
-pub fn fmaq(x: f128, y: f128, z: f128) callconv(.c) f128 {
+pub fn fma_f128(x: f128, y: f128, z: f128) f128 {
     if (!math.isFinite(x) or !math.isFinite(y)) {
         return x * y + z;
     }
@@ -151,10 +163,10 @@ pub fn fmaq(x: f128, y: f128, z: f128) callconv(.c) f128 {
 
 pub fn fmal(x: c_longdouble, y: c_longdouble, z: c_longdouble) callconv(.c) c_longdouble {
     switch (@typeInfo(c_longdouble).float.bits) {
-        64 => return fma(x, y, z),
-        80 => return __fmax(x, y, z),
-        128 => return fmaq(x, y, z),
-        else => @compileError("unreachable"),
+        64 => return fma_f64(x, y, z),
+        80 => return fma_f80(x, y, z),
+        128 => return fma_f128(x, y, z),
+        else => comptime unreachable,
     }
 }
 
@@ -316,35 +328,35 @@ fn dd_mul128(a: f128, b: f128) dd128 {
 test "32" {
     const epsilon = 0.000001;
 
-    try expect(math.approxEqAbs(f32, fmaf(0.0, 5.0, 9.124), 9.124, epsilon));
-    try expect(math.approxEqAbs(f32, fmaf(0.2, 5.0, 9.124), 10.124, epsilon));
-    try expect(math.approxEqAbs(f32, fmaf(0.8923, 5.0, 9.124), 13.5855, epsilon));
-    try expect(math.approxEqAbs(f32, fmaf(1.5, 5.0, 9.124), 16.624, epsilon));
-    try expect(math.approxEqAbs(f32, fmaf(37.45, 5.0, 9.124), 196.374004, epsilon));
-    try expect(math.approxEqAbs(f32, fmaf(89.123, 5.0, 9.124), 454.739005, epsilon));
-    try expect(math.approxEqAbs(f32, fmaf(123123.234375, 5.0, 9.124), 615625.295875, epsilon));
+    try expect(math.approxEqAbs(f32, fma_f32(0.0, 5.0, 9.124), 9.124, epsilon));
+    try expect(math.approxEqAbs(f32, fma_f32(0.2, 5.0, 9.124), 10.124, epsilon));
+    try expect(math.approxEqAbs(f32, fma_f32(0.8923, 5.0, 9.124), 13.5855, epsilon));
+    try expect(math.approxEqAbs(f32, fma_f32(1.5, 5.0, 9.124), 16.624, epsilon));
+    try expect(math.approxEqAbs(f32, fma_f32(37.45, 5.0, 9.124), 196.374004, epsilon));
+    try expect(math.approxEqAbs(f32, fma_f32(89.123, 5.0, 9.124), 454.739005, epsilon));
+    try expect(math.approxEqAbs(f32, fma_f32(123123.234375, 5.0, 9.124), 615625.295875, epsilon));
 }
 
 test "64" {
     const epsilon = 0.000001;
 
-    try expect(math.approxEqAbs(f64, fma(0.0, 5.0, 9.124), 9.124, epsilon));
-    try expect(math.approxEqAbs(f64, fma(0.2, 5.0, 9.124), 10.124, epsilon));
-    try expect(math.approxEqAbs(f64, fma(0.8923, 5.0, 9.124), 13.5855, epsilon));
-    try expect(math.approxEqAbs(f64, fma(1.5, 5.0, 9.124), 16.624, epsilon));
-    try expect(math.approxEqAbs(f64, fma(37.45, 5.0, 9.124), 196.374, epsilon));
-    try expect(math.approxEqAbs(f64, fma(89.123, 5.0, 9.124), 454.739, epsilon));
-    try expect(math.approxEqAbs(f64, fma(123123.234375, 5.0, 9.124), 615625.295875, epsilon));
+    try expect(math.approxEqAbs(f64, fma_f64(0.0, 5.0, 9.124), 9.124, epsilon));
+    try expect(math.approxEqAbs(f64, fma_f64(0.2, 5.0, 9.124), 10.124, epsilon));
+    try expect(math.approxEqAbs(f64, fma_f64(0.8923, 5.0, 9.124), 13.5855, epsilon));
+    try expect(math.approxEqAbs(f64, fma_f64(1.5, 5.0, 9.124), 16.624, epsilon));
+    try expect(math.approxEqAbs(f64, fma_f64(37.45, 5.0, 9.124), 196.374, epsilon));
+    try expect(math.approxEqAbs(f64, fma_f64(89.123, 5.0, 9.124), 454.739, epsilon));
+    try expect(math.approxEqAbs(f64, fma_f64(123123.234375, 5.0, 9.124), 615625.295875, epsilon));
 }
 
 test "128" {
     const epsilon = 0.000001;
 
-    try expect(math.approxEqAbs(f128, fmaq(0.0, 5.0, 9.124), 9.124, epsilon));
-    try expect(math.approxEqAbs(f128, fmaq(0.2, 5.0, 9.124), 10.124, epsilon));
-    try expect(math.approxEqAbs(f128, fmaq(0.8923, 5.0, 9.124), 13.5855, epsilon));
-    try expect(math.approxEqAbs(f128, fmaq(1.5, 5.0, 9.124), 16.624, epsilon));
-    try expect(math.approxEqAbs(f128, fmaq(37.45, 5.0, 9.124), 196.374, epsilon));
-    try expect(math.approxEqAbs(f128, fmaq(89.123, 5.0, 9.124), 454.739, epsilon));
-    try expect(math.approxEqAbs(f128, fmaq(123123.234375, 5.0, 9.124), 615625.295875, epsilon));
+    try expect(math.approxEqAbs(f128, fma_f128(0.0, 5.0, 9.124), 9.124, epsilon));
+    try expect(math.approxEqAbs(f128, fma_f128(0.2, 5.0, 9.124), 10.124, epsilon));
+    try expect(math.approxEqAbs(f128, fma_f128(0.8923, 5.0, 9.124), 13.5855, epsilon));
+    try expect(math.approxEqAbs(f128, fma_f128(1.5, 5.0, 9.124), 16.624, epsilon));
+    try expect(math.approxEqAbs(f128, fma_f128(37.45, 5.0, 9.124), 196.374, epsilon));
+    try expect(math.approxEqAbs(f128, fma_f128(89.123, 5.0, 9.124), 454.739, epsilon));
+    try expect(math.approxEqAbs(f128, fma_f128(123123.234375, 5.0, 9.124), 615625.295875, epsilon));
 }

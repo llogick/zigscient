@@ -133,7 +133,7 @@ pub fn classifyWindows(init_ty: Type, zcu: *Zcu, target: *const std.Target, ctx:
         .float => switch (ty.floatBits(target)) {
             16, 32, 64 => .sse,
             80 => .memory,
-            128 => if (ctx == .arg) .memory else .sse,
+            128 => .win_i128,
             else => unreachable,
         },
         .vector => {
@@ -238,16 +238,18 @@ pub fn classifySystemV(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
             };
             const unaligned_size = elem_ty.abiSize(zcu) * len;
             if (unaligned_size <= 4) return Class.one_integer;
-            if (ctx == .arg and unaligned_size == 8 * 1 * 1 and len == 1 and
-                elem_ty.isRuntimeFloat()) return Class.stack; // what
+            if (unaligned_size == 8 * 1 * 1 and len == 1) {
+                if (ctx == .arg and elem_ty.isRuntimeFloat()) return Class.stack; // what?
+                if (ctx != .other and !elem_ty.isRuntimeFloat() and target.os.tag == .freebsd) return Class.one_integer; // who?
+            }
             if (unaligned_size <= 8 * 1) return .{ .sse, .none, .none, .none, .none, .none, .none, .none };
             if (unaligned_size <= 8 * 2) return .{ .sse, .sseup, .none, .none, .none, .none, .none, .none };
             if (!target.cpu.has(.x86, .avx)) {
                 if (ctx == .ret) switch (unaligned_size) {
                     else => {},
                     8 * 3 => if (len == 3) return if (elem_ty.isRuntimeFloat()) .{
-                        .sse_sse_x87_per_qword, .none, .none, .none, .none, .none, .none, .none, // how
-                    } else Class.len_integers, // why
+                        .sse_sse_x87_per_qword, .none, .none, .none, .none, .none, .none, .none, // how?
+                    } else Class.len_integers, // why?
                     8 * 2 * 2, 8 * 2 * 4 => return .{ .sse_per_xword, .none, .none, .none, .none, .none, .none, .none },
                 };
                 return Class.stack;
@@ -356,11 +358,10 @@ fn classifySystemVStruct(
     while (field_it.next()) |field_index| {
         const field_ty = Type.fromInterned(loaded_struct.field_types.get(ip)[field_index]);
         const field_align = loaded_struct.field_aligns.getOrNone(ip, field_index);
-        byte_offset = std.mem.alignForward(
-            u64,
-            byte_offset,
-            field_align.toByteUnits() orelse field_ty.abiAlignment(zcu).toByteUnits().?,
-        );
+        byte_offset = switch (field_align) {
+            .none => field_ty.abiAlignment(zcu),
+            else => field_align,
+        }.forward(byte_offset);
         if (zcu.typeToStruct(field_ty)) |field_loaded_struct| {
             switch (field_loaded_struct.layout) {
                 .auto => unreachable,
@@ -379,6 +380,9 @@ fn classifySystemVStruct(
                 },
                 .@"packed" => {},
             }
+        } else if (field_ty.zigTypeTag(zcu) == .array) {
+            byte_offset = classifySystemVArray(result, byte_offset, field_ty, zcu, target);
+            continue;
         }
         const field_classes = std.mem.sliceTo(&classifySystemV(field_ty, zcu, target, .other), .none);
         for (result[@intCast(byte_offset / 8)..][0..field_classes.len], field_classes) |*result_class, field_class|
@@ -386,11 +390,7 @@ fn classifySystemVStruct(
         byte_offset += field_ty.abiSize(zcu);
     }
     const final_byte_offset = starting_byte_offset + loaded_struct.size;
-    std.debug.assert(final_byte_offset == std.mem.alignForward(
-        u64,
-        byte_offset,
-        loaded_struct.alignment.toByteUnits().?,
-    ));
+    std.debug.assert(final_byte_offset == loaded_struct.alignment.forward(byte_offset));
     return final_byte_offset;
 }
 
@@ -422,12 +422,35 @@ fn classifySystemVUnion(
                 },
                 .@"packed" => {},
             }
+        } else if (field_ty.zigTypeTag(zcu) == .array) {
+            _ = classifySystemVArray(result, starting_byte_offset, field_ty, zcu, target);
+            continue;
         }
         const field_classes = std.mem.sliceTo(&classifySystemV(field_ty, zcu, target, .other), .none);
         for (result[@intCast(starting_byte_offset / 8)..][0..field_classes.len], field_classes) |*result_class, field_class|
             result_class.* = result_class.combineSystemV(field_class);
     }
     return starting_byte_offset + loaded_union.size;
+}
+
+fn classifySystemVArray(
+    result: *[8]Class,
+    starting_byte_offset: u64,
+    array_ty: Type,
+    zcu: *Zcu,
+    target: *const std.Target,
+) u64 {
+    const field_classes = std.mem.sliceTo(&classifySystemV(array_ty.childType(zcu), zcu, target, .other), .none);
+    var byte_offset = starting_byte_offset;
+    const elem_size = array_ty.childType(zcu).abiSize(zcu);
+    for (0..@intCast(array_ty.arrayLen(zcu))) |_| {
+        for (result[@intCast(byte_offset / 8)..][0..field_classes.len], field_classes) |*result_class, field_class|
+            result_class.* = result_class.combineSystemV(field_class);
+        byte_offset += elem_size;
+    }
+    const final_byte_offset = starting_byte_offset + array_ty.abiSize(zcu);
+    assert(final_byte_offset == byte_offset);
+    return final_byte_offset;
 }
 
 pub const zigcc = struct {

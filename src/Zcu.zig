@@ -2866,6 +2866,11 @@ pub const CompileError = error{
 
 pub fn init(zcu: *Zcu, gpa: Allocator, io: Io, thread_count: usize) !void {
     try zcu.intern_pool.init(gpa, io, thread_count);
+}
+
+/// It is valid to not call this function before `deinit` in error paths.
+/// Requires the fields on `zcu.comp` to already be initialized.
+pub fn initAfterCompilation(zcu: *Zcu) void {
     zcu.initTracyPlots();
 }
 
@@ -4654,43 +4659,26 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
                 .m68k_rtd,
                 .m68k_interrupt,
                 .msp430_interrupt,
-                => |opts| opts.incoming_stack_alignment == null,
-
                 .arm_aapcs_vfp,
-                => |opts| opts.incoming_stack_alignment == null,
-
                 .arc_interrupt,
-                => |opts| opts.incoming_stack_alignment == null,
-
                 .arm_interrupt,
-                => |opts| opts.incoming_stack_alignment == null,
-
                 .microblaze_interrupt,
-                => |opts| opts.incoming_stack_alignment == null,
-
                 .mips_interrupt,
                 .mips64_interrupt,
-                => |opts| opts.incoming_stack_alignment == null,
-
                 .riscv32_interrupt,
                 .riscv64_interrupt,
-                => |opts| opts.incoming_stack_alignment == null,
-
                 .sh_interrupt,
-                => |opts| opts.incoming_stack_alignment == null,
+                .avr_interrupt,
+                .avr_signal,
+                .ez80_tiflags,
+                .naked,
+                => true, // incoming stack alignment supported
 
                 .x86_sysv,
                 .x86_win,
+                .x86_mingw,
                 .x86_stdcall,
-                => |opts| opts.incoming_stack_alignment == null and opts.register_params == 0,
-
-                .avr_interrupt,
-                .avr_signal,
-                => true,
-
-                .ez80_tiflags => true,
-
-                .naked => true,
+                => |opts| opts.register_params == 0, // incoming stack alignment supported
 
                 else => false,
             };
@@ -4715,6 +4703,7 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
         .stage2_x86 => switch (cc) {
             .x86_sysv,
             .x86_win,
+            .x86_mingw,
             => |opts| opts.incoming_stack_alignment == null and opts.register_params == 0,
             .naked => true,
             else => false,

@@ -17,19 +17,22 @@ comptime {
     symbol(&truncf, "truncf");
     symbol(&trunc, "trunc");
     symbol(&__truncx, "__truncx");
-    if (compiler_rt.want_ppc_abi) {
-        symbol(&truncq, "truncf128");
-    }
-    symbol(&truncq, "truncq");
+    symbol(&truncq, "truncf128");
     symbol(&truncl, "truncl");
 }
 
-pub fn __trunch(x: f16) callconv(.c) f16 {
+fn __trunch(x: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(trunc_f16(compiler_rt.f16.fromAbi(x)));
+}
+pub fn trunc_f16(x: f16) f16 {
     // TODO: more efficient implementation
-    return @floatCast(truncf(x));
+    return @floatCast(trunc_f32(x));
 }
 
-pub fn truncf(x: f32) callconv(.c) f32 {
+fn truncf(x: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(trunc_f32(compiler_rt.f32.fromAbi(x)));
+}
+pub fn trunc_f32(x: f32) f32 {
     const u: u32 = @bitCast(x);
     var e = @as(i32, @intCast(((u >> 23) & 0xFF))) - 0x7F + 9;
     var m: u32 = undefined;
@@ -50,7 +53,10 @@ pub fn truncf(x: f32) callconv(.c) f32 {
     }
 }
 
-pub fn trunc(x: f64) callconv(.c) f64 {
+fn trunc(x: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(trunc_f64(compiler_rt.f64.fromAbi(x)));
+}
+pub fn trunc_f64(x: f64) f64 {
     const u: u64 = @bitCast(x);
     var e = @as(i32, @intCast(((u >> 52) & 0x7FF))) - 0x3FF + 12;
     var m: u64 = undefined;
@@ -71,12 +77,18 @@ pub fn trunc(x: f64) callconv(.c) f64 {
     }
 }
 
-pub fn __truncx(x: f80) callconv(.c) f80 {
+fn __truncx(x: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(trunc_f80(compiler_rt.f80.fromAbi(x)));
+}
+pub fn trunc_f80(x: f80) f80 {
     // TODO: more efficient implementation
-    return @floatCast(truncq(x));
+    return @floatCast(trunc_f128(x));
 }
 
-pub fn truncq(x: f128) callconv(.c) f128 {
+fn truncq(x: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(trunc_f128(compiler_rt.f128.fromAbi(x)));
+}
+pub fn trunc_f128(x: f128) f128 {
     const u: u128 = @bitCast(x);
     var e = @as(i32, @intCast(((u >> 112) & 0x7FFF))) - 0x3FFF + 16;
     var m: u128 = undefined;
@@ -99,51 +111,69 @@ pub fn truncq(x: f128) callconv(.c) f128 {
 
 pub fn truncl(x: c_longdouble) callconv(.c) c_longdouble {
     switch (@typeInfo(c_longdouble).float.bits) {
-        64 => return trunc(x),
-        80 => return __truncx(x),
-        128 => return truncq(x),
-        else => @compileError("unreachable"),
+        64 => return trunc_f64(x),
+        80 => return trunc_f80(x),
+        128 => return trunc_f128(x),
+        else => comptime unreachable,
     }
 }
 
-test "trunc32" {
-    try expect(truncf(1.3) == 1.0);
-    try expect(truncf(-1.3) == -1.0);
-    try expect(truncf(0.2) == 0.0);
+test trunc_f16 {
+    try expect(trunc_f16(1.3) == 1.0);
+    try expect(trunc_f16(-1.3) == -1.0);
+    try expect(math.isPositiveZero(trunc_f16(0.2)));
+    try expect(math.isNegativeZero(trunc_f16(-0.2)));
+    try expect(math.isPositiveZero(trunc_f16(0.0)));
+    try expect(math.isNegativeZero(trunc_f16(-0.0)));
+    try expect(math.isPositiveInf(trunc_f16(math.inf(f32))));
+    try expect(math.isNegativeInf(trunc_f16(-math.inf(f32))));
+    try expect(math.isNan(trunc_f16(math.nan(f32))));
 }
 
-test "trunc64" {
-    try expect(trunc(1.3) == 1.0);
-    try expect(trunc(-1.3) == -1.0);
-    try expect(trunc(0.2) == 0.0);
+test trunc_f32 {
+    try expect(trunc_f32(1.3) == 1.0);
+    try expect(trunc_f32(-1.3) == -1.0);
+    try expect(math.isPositiveZero(trunc_f32(0.2)));
+    try expect(math.isNegativeZero(trunc_f32(-0.2)));
+    try expect(math.isPositiveZero(trunc_f32(0.0)));
+    try expect(math.isNegativeZero(trunc_f32(-0.0)));
+    try expect(math.isPositiveInf(trunc_f32(math.inf(f32))));
+    try expect(math.isNegativeInf(trunc_f32(-math.inf(f32))));
+    try expect(math.isNan(trunc_f32(math.nan(f32))));
 }
 
-test "trunc128" {
-    try expect(truncq(1.3) == 1.0);
-    try expect(truncq(-1.3) == -1.0);
-    try expect(truncq(0.2) == 0.0);
+test trunc_f64 {
+    try expect(trunc_f64(1.3) == 1.0);
+    try expect(trunc_f64(-1.3) == -1.0);
+    try expect(math.isPositiveZero(trunc_f64(0.2)));
+    try expect(math.isNegativeZero(trunc_f64(-0.2)));
+    try expect(math.isPositiveZero(trunc_f64(0.0)));
+    try expect(math.isNegativeZero(trunc_f64(-0.0)));
+    try expect(math.isPositiveInf(trunc_f64(math.inf(f64))));
+    try expect(math.isNegativeInf(trunc_f64(-math.inf(f64))));
+    try expect(math.isNan(trunc_f64(math.nan(f64))));
 }
 
-test "trunc32.special" {
-    try expect(truncf(0.0) == 0.0); // 0x3F800000
-    try expect(truncf(-0.0) == -0.0);
-    try expect(math.isPositiveInf(truncf(math.inf(f32))));
-    try expect(math.isNegativeInf(truncf(-math.inf(f32))));
-    try expect(math.isNan(truncf(math.nan(f32))));
+test trunc_f80 {
+    try expect(trunc_f80(1.3) == 1.0);
+    try expect(trunc_f80(-1.3) == -1.0);
+    try expect(math.isPositiveZero(trunc_f80(0.2)));
+    try expect(math.isNegativeZero(trunc_f80(-0.2)));
+    try expect(math.isPositiveZero(trunc_f80(0.0)));
+    try expect(math.isNegativeZero(trunc_f80(-0.0)));
+    try expect(math.isPositiveInf(trunc_f80(math.inf(f64))));
+    try expect(math.isNegativeInf(trunc_f80(-math.inf(f64))));
+    try expect(math.isNan(trunc_f80(math.nan(f64))));
 }
 
-test "trunc64.special" {
-    try expect(trunc(0.0) == 0.0);
-    try expect(trunc(-0.0) == -0.0);
-    try expect(math.isPositiveInf(trunc(math.inf(f64))));
-    try expect(math.isNegativeInf(trunc(-math.inf(f64))));
-    try expect(math.isNan(trunc(math.nan(f64))));
-}
-
-test "trunc128.special" {
-    try expect(truncq(0.0) == 0.0);
-    try expect(truncq(-0.0) == -0.0);
-    try expect(math.isPositiveInf(truncq(math.inf(f128))));
-    try expect(math.isNegativeInf(truncq(-math.inf(f128))));
-    try expect(math.isNan(truncq(math.nan(f128))));
+test trunc_f128 {
+    try expect(trunc_f128(1.3) == 1.0);
+    try expect(trunc_f128(-1.3) == -1.0);
+    try expect(math.isPositiveZero(trunc_f128(0.2)));
+    try expect(math.isNegativeZero(trunc_f128(-0.2)));
+    try expect(math.isPositiveZero(trunc_f128(0.0)));
+    try expect(math.isNegativeZero(trunc_f128(-0.0)));
+    try expect(math.isPositiveInf(trunc_f128(math.inf(f128))));
+    try expect(math.isNegativeInf(trunc_f128(-math.inf(f128))));
+    try expect(math.isNan(trunc_f128(math.nan(f128))));
 }

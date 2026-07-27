@@ -2020,6 +2020,8 @@ const signal_ucontext_t = switch (native_os) {
         .mips64el,
         .or1k,
         .s390x,
+        .sh,
+        .sheb,
         .x86,
         .x86_64,
         .xtensa,

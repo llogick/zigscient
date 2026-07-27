@@ -1,5 +1,4 @@
 const std = @import("../../std.zig");
-const builtin = @import("builtin");
 const mem = std.mem;
 const testing = std.testing;
 const Managed = std.math.big.int.Managed;
@@ -276,8 +275,6 @@ fn setFloat(comptime Float: type) !void {
     try expectNormalized(1 << 10, res.toConst());
 }
 test setFloat {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     try setFloat(f16);
     try setFloat(f32);
     try setFloat(f64);
@@ -484,7 +481,6 @@ fn toFloat(comptime Float: type) !void {
     );
 }
 test toFloat {
-    if (builtin.cpu.arch == .x86) return error.SkipZigTest;
     try toFloat(f16);
     try toFloat(f32);
     try toFloat(f64);
@@ -1391,8 +1387,6 @@ test "mul multi-single" {
 }
 
 test "mul multi-multi" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     var op1: u256 = 0x998888efefefefefefefef;
     var op2: u256 = 0x333000abababababababab;
     _ = .{ &op1, &op2 };
@@ -1514,8 +1508,6 @@ test "mulWrap single-single signed" {
 }
 
 test "mulWrap multi-multi unsigned" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     var op1: u256 = 0x998888efefefefefefefef;
     var op2: u256 = 0x333000abababababababab;
     _ = .{ &op1, &op2 };
@@ -1533,11 +1525,6 @@ test "mulWrap multi-multi unsigned" {
 }
 
 test "mulWrap multi-multi signed" {
-    switch (builtin.zig_backend) {
-        .stage2_c => return error.SkipZigTest,
-        else => {},
-    }
-
     var a = try Managed.initSet(testing.allocator, maxInt(SignedDoubleLimb) - 1);
     defer a.deinit();
     var b = try Managed.initSet(testing.allocator, maxInt(SignedDoubleLimb));
@@ -1744,8 +1731,6 @@ test "div q=0 alias" {
 }
 
 test "div multi-multi q < r" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const op1 = 0x1ffffffff0078f432;
     const op2 = 0x1ffffffff01000000;
     var a = try Managed.initSet(testing.allocator, op1);
@@ -2166,8 +2151,6 @@ test "div ceil multi-limb" {
 }
 
 test "div multi-multi with rem" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     var a = try Managed.initSet(testing.allocator, 0x8888999911110000ffffeeeeddddccccbbbbaaaa9999);
     defer a.deinit();
     var b = try Managed.initSet(testing.allocator, 0x99990000111122223333);
@@ -2184,8 +2167,6 @@ test "div multi-multi with rem" {
 }
 
 test "div multi-multi no rem" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     var a = try Managed.initSet(testing.allocator, 0x8888999911110000ffffeeeedb4fec200ee3a4286361);
     defer a.deinit();
     var b = try Managed.initSet(testing.allocator, 0x99990000111122223333);
@@ -2202,8 +2183,6 @@ test "div multi-multi no rem" {
 }
 
 test "div multi-multi (2 branch)" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     var a = try Managed.initSet(testing.allocator, 0x866666665555555588888887777777761111111111111111);
     defer a.deinit();
     var b = try Managed.initSet(testing.allocator, 0x86666666555555554444444433333333);
@@ -2220,8 +2199,6 @@ test "div multi-multi (2 branch)" {
 }
 
 test "div multi-multi (3.1/3.3 branch)" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     var a = try Managed.initSet(testing.allocator, 0x11111111111111111111111111111111111111111111111111111111111111);
     defer a.deinit();
     var b = try Managed.initSet(testing.allocator, 0x1111111111111111111111111111111111111111171);
@@ -2238,8 +2215,6 @@ test "div multi-multi (3.1/3.3 branch)" {
 }
 
 test "div multi-single zero-limb trailing" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     var a = try Managed.initSet(testing.allocator, 0x60000000000000000000000000000000000000000000000000000000000000000);
     defer a.deinit();
     var b = try Managed.initSet(testing.allocator, 0x10000000000000000);
@@ -2258,8 +2233,6 @@ test "div multi-single zero-limb trailing" {
 }
 
 test "div multi-multi zero-limb trailing (with rem)" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     var a = try Managed.initSet(testing.allocator, 0x86666666555555558888888777777776111111111111111100000000000000000000000000000000);
     defer a.deinit();
     var b = try Managed.initSet(testing.allocator, 0x8666666655555555444444443333333300000000000000000000000000000000);
@@ -2279,8 +2252,6 @@ test "div multi-multi zero-limb trailing (with rem)" {
 }
 
 test "div multi-multi zero-limb trailing (with rem) and dividend zero-limb count > divisor zero-limb count" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     var a = try Managed.initSet(testing.allocator, 0x8666666655555555888888877777777611111111111111110000000000000000);
     defer a.deinit();
     var b = try Managed.initSet(testing.allocator, 0x8666666655555555444444443333333300000000000000000000000000000000);
@@ -2300,8 +2271,6 @@ test "div multi-multi zero-limb trailing (with rem) and dividend zero-limb count
 }
 
 test "div multi-multi zero-limb trailing (with rem) and dividend zero-limb count < divisor zero-limb count" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     var a = try Managed.initSet(testing.allocator, 0x86666666555555558888888777777776111111111111111100000000000000000000000000000000);
     defer a.deinit();
     var b = try Managed.initSet(testing.allocator, 0x866666665555555544444444333333330000000000000000);
@@ -2832,10 +2801,6 @@ test "bitNotWrap signed multi" {
 }
 
 test "bitNotWrap more than two limbs" {
-    // This test requires int sizes greater than 128 bits.
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
-
     var a = try Managed.initSet(testing.allocator, maxInt(Limb));
     defer a.deinit();
 
@@ -3179,8 +3144,6 @@ test "gcd non-one large" {
 }
 
 test "gcd large multi-limb result" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     var a = try Managed.initSet(testing.allocator, 0x12345678123456781234567812345678123456781234567812345678);
     defer a.deinit();
     var b = try Managed.initSet(testing.allocator, 0x12345671234567123456712345671234567123456712345671234567);
@@ -3431,7 +3394,7 @@ test "big int conversion read/write twos complement" {
     var buffer1 = try testing.allocator.alloc(u8, 64);
     defer testing.allocator.free(buffer1);
 
-    const endians = [_]std.builtin.Endian{ .little, .big };
+    const endians = [_]std.lang.Endian{ .little, .big };
     const abi_size = 64;
 
     for (endians) |endian| {

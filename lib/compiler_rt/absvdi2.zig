@@ -1,5 +1,6 @@
-const symbol = @import("../compiler_rt.zig").symbol;
-const absv = @import("./absv.zig").absv;
+const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
+const absv = @import("absv.zig").absv;
 
 comptime {
     symbol(&__absvdi2, "__absvdi2");

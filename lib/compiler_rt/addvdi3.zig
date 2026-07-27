@@ -1,4 +1,5 @@
-const symbol = @import("../compiler_rt.zig").symbol;
+const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
 const testing = @import("std").testing;
 
 comptime {
@@ -9,7 +10,7 @@ pub fn __addvdi3(a: i64, b: i64) callconv(.c) i64 {
     const sum = a +% b;
     // Overflow occurred iff both operands have the same sign, and the sign of the sum does
     // not match it. In other words, iff the sum sign is not the sign of either operand.
-    if (((sum ^ a) & (sum ^ b)) < 0) @panic("compiler-rt: integer overflow");
+    if (((sum ^ a) & (sum ^ b)) < 0) @panic("integer overflow");
     return sum;
 }
 

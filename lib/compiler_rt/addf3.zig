@@ -1,12 +1,143 @@
 const std = @import("std");
 const math = std.math;
 const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
 const normalize = compiler_rt.normalize;
+
+comptime {
+    symbol(&__addhf3, "__addhf3");
+    if (compiler_rt.want_aeabi) {
+        symbol(&__aeabi_fadd, "__aeabi_fadd");
+        symbol(&__aeabi_dadd, "__aeabi_dadd");
+    } else {
+        symbol(&__addsf3, "__addsf3");
+        symbol(&__adddf3, "__adddf3");
+    }
+    symbol(&__addxf3, "__addxf3");
+    if (compiler_rt.want_ppc_abi) {
+        symbol(&__addtf3, "__addkf3");
+    } else if (compiler_rt.want_sparc64_abi) {
+        symbol(&_Qp_add, "_Qp_add");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__addtf3, "_Q_add");
+    } else {
+        symbol(&__addtf3, "__addtf3");
+    }
+}
+
+fn __addhf3(a: compiler_rt.f16.Abi, b: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(add_f16(compiler_rt.f16.fromAbi(a), compiler_rt.f16.fromAbi(b)));
+}
+pub fn add_f16(a: f16, b: f16) f16 {
+    return addf3(f16, a, b);
+}
+
+fn __addsf3(a: compiler_rt.f32.Abi, b: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(add_f32(compiler_rt.f32.fromAbi(a), compiler_rt.f32.fromAbi(b)));
+}
+fn __aeabi_fadd(a: f32, b: f32) callconv(.{ .arm_aapcs = .{} }) f32 {
+    return add_f32(a, b);
+}
+pub fn add_f32(a: f32, b: f32) f32 {
+    return addf3(f32, a, b);
+}
+
+fn __adddf3(a: compiler_rt.f64.Abi, b: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(add_f64(compiler_rt.f64.fromAbi(a), compiler_rt.f64.fromAbi(b)));
+}
+fn __aeabi_dadd(a: f64, b: f64) callconv(.{ .arm_aapcs = .{} }) f64 {
+    return add_f64(a, b);
+}
+pub fn add_f64(a: f64, b: f64) f64 {
+    return addf3(f64, a, b);
+}
+
+fn __addxf3(a: compiler_rt.f80.Abi, b: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(add_f80(compiler_rt.f80.fromAbi(a), compiler_rt.f80.fromAbi(b)));
+}
+pub fn add_f80(a: f80, b: f80) f80 {
+    return addf3(f80, a, b);
+}
+
+fn __addtf3(a: compiler_rt.f128.Abi, b: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(add_f128(compiler_rt.f128.fromAbi(a), compiler_rt.f128.fromAbi(b)));
+}
+fn _Qp_add(c: *f128, a: *f128, b: *f128) callconv(.c) void {
+    c.* = add_f128(a.*, b.*);
+}
+pub fn add_f128(a: f128, b: f128) f128 {
+    return addf3(f128, a, b);
+}
+
+comptime {
+    symbol(&__subhf3, "__subhf3");
+    if (compiler_rt.want_aeabi) {
+        symbol(&__aeabi_fsub, "__aeabi_fsub");
+        symbol(&__aeabi_dsub, "__aeabi_dsub");
+    } else {
+        symbol(&__subsf3, "__subsf3");
+        symbol(&__subdf3, "__subdf3");
+    }
+    symbol(&__subxf3, "__subxf3");
+    if (compiler_rt.want_ppc_abi) {
+        symbol(&__subtf3, "__subkf3");
+    } else if (compiler_rt.want_sparc64_abi) {
+        symbol(&_Qp_sub, "_Qp_sub");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__subtf3, "_Q_sub");
+    } else {
+        symbol(&__subtf3, "__subtf3");
+    }
+}
+
+fn __subhf3(a: compiler_rt.f16.Abi, b: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(sub_f16(compiler_rt.f16.fromAbi(a), compiler_rt.f16.fromAbi(b)));
+}
+pub fn sub_f16(a: f16, b: f16) f16 {
+    return add_f16(a, compiler_rt.fneg(b));
+}
+
+fn __subsf3(a: compiler_rt.f32.Abi, b: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(sub_f32(compiler_rt.f32.fromAbi(a), compiler_rt.f32.fromAbi(b)));
+}
+fn __aeabi_fsub(a: f32, b: f32) callconv(.{ .arm_aapcs = .{} }) f32 {
+    return sub_f32(a, b);
+}
+pub fn sub_f32(a: f32, b: f32) f32 {
+    return add_f32(a, compiler_rt.fneg(b));
+}
+
+fn __subdf3(a: compiler_rt.f64.Abi, b: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(sub_f64(compiler_rt.f64.fromAbi(a), compiler_rt.f64.fromAbi(b)));
+}
+fn __aeabi_dsub(a: f64, b: f64) callconv(.{ .arm_aapcs = .{} }) f64 {
+    return sub_f64(a, b);
+}
+pub fn sub_f64(a: f64, b: f64) f64 {
+    return add_f64(a, compiler_rt.fneg(b));
+}
+
+fn __subxf3(a: compiler_rt.f80.Abi, b: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(sub_f80(compiler_rt.f80.fromAbi(a), compiler_rt.f80.fromAbi(b)));
+}
+pub fn sub_f80(a: f80, b: f80) f80 {
+    return add_f80(a, compiler_rt.fneg(b));
+}
+
+fn __subtf3(a: compiler_rt.f128.Abi, b: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(sub_f128(compiler_rt.f128.fromAbi(a), compiler_rt.f128.fromAbi(b)));
+}
+fn _Qp_sub(c: *f128, a: *const f128, b: *const f128) callconv(.c) void {
+    c.* = sub_f128(a.*, b.*);
+}
+pub fn sub_f128(a: f128, b: f128) f128 {
+    return add_f128(a, compiler_rt.fneg(b));
+}
 
 /// Ported from:
 ///
 /// https://github.com/llvm/llvm-project/blob/02d85149a05cb1f6dc49f0ba7a2ceca53718ae17/compiler-rt/lib/builtins/fp_add_impl.inc
-pub inline fn addf3(comptime T: type, a: T, b: T) T {
+inline fn addf3(comptime T: type, a: T, b: T) T {
     const bits = @typeInfo(T).float.bits;
     const Z = @Int(.unsigned, bits);
 

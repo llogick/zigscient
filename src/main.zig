@@ -4154,11 +4154,17 @@ pub fn buildOutputType(
 
             var prev_has_cflags = false;
             var prev_has_rcflags = false;
-            if (cs.dirs.zig_lib.path) |zig_lib_path| {
-                try cs.test_exec_args.appendSlice(arena, &.{ "-cflags", "-I", zig_lib_path, "--" });
-                prev_has_cflags = true;
+            {
+                if (cs.dirs.zig_lib.path) |zig_lib_path| {
+                    try cs.test_exec_args.appendSlice(arena, &.{ "-cflags", "-I", zig_lib_path, "--" });
+                    prev_has_cflags = true;
+                }
+                const emit_ext: Compilation.FileExt = .c;
+                const need_lang = if (comp.emit_bin) |comp_emit_bin| Compilation.classifyFileExt(comp_emit_bin) != emit_ext else true;
+                if (need_lang) try cs.test_exec_args.appendSlice(arena, &.{ "-x", emit_ext.toLang() });
+                try cs.test_exec_args.append(arena, null);
+                if (need_lang) try cs.test_exec_args.appendSlice(arena, &.{ "-x", "none" });
             }
-            try cs.test_exec_args.append(arena, null);
             for (cs.create_module.modules.keys(), cs.create_module.modules.values()) |mod_name, mod| {
                 for (cs.create_module.c_source_files.items[mod.c_source_files_start..mod.c_source_files_end]) |c_source_file| {
                     const cflags_len = c_source_file.extra_flags.len + c_source_file.cache_exempt_flags.len;

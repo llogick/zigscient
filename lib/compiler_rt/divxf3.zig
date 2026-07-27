@@ -11,7 +11,10 @@ comptime {
     symbol(&__divxf3, "__divxf3");
 }
 
-pub fn __divxf3(a: f80, b: f80) callconv(.c) f80 {
+fn __divxf3(a: compiler_rt.f80.Abi, b: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(div_f80(compiler_rt.f80.fromAbi(a), compiler_rt.f80.fromAbi(b)));
+}
+pub fn div_f80(a: f80, b: f80) f80 {
     const T = f80;
     const Z = @Int(.unsigned, @bitSizeOf(T));
 

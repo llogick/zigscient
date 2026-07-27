@@ -12,29 +12,38 @@ comptime {
     symbol(&fmodf, "fmodf");
     symbol(&fmod, "fmod");
     symbol(&__fmodx, "__fmodx");
-    if (compiler_rt.want_ppc_abi) {
-        symbol(&fmodq, "fmodf128");
-    }
-    symbol(&fmodq, "fmodq");
+    symbol(&fmodq, "fmodf128");
     symbol(&fmodl, "fmodl");
 }
 
-pub fn __fmodh(x: f16, y: f16) callconv(.c) f16 {
+fn __fmodh(a: compiler_rt.f16.Abi, b: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(fmod_f16(compiler_rt.f16.fromAbi(a), compiler_rt.f16.fromAbi(b)));
+}
+pub fn fmod_f16(x: f16, y: f16) f16 {
     // TODO: more efficient implementation
-    return @floatCast(fmodf(x, y));
+    return @floatCast(fmod_f32(x, y));
 }
 
-pub fn fmodf(x: f32, y: f32) callconv(.c) f32 {
+fn fmodf(a: compiler_rt.f32.Abi, b: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(fmod_f32(compiler_rt.f32.fromAbi(a), compiler_rt.f32.fromAbi(b)));
+}
+pub fn fmod_f32(x: f32, y: f32) f32 {
     return generic_fmod(f32, x, y);
 }
 
-pub fn fmod(x: f64, y: f64) callconv(.c) f64 {
+fn fmod(a: compiler_rt.f64.Abi, b: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(fmod_f64(compiler_rt.f64.fromAbi(a), compiler_rt.f64.fromAbi(b)));
+}
+pub fn fmod_f64(x: f64, y: f64) f64 {
     return generic_fmod(f64, x, y);
 }
 
+fn __fmodx(a: compiler_rt.f80.Abi, b: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(fmod_f80(compiler_rt.f80.fromAbi(a), compiler_rt.f80.fromAbi(b)));
+}
 /// fmodx - floating modulo large, returns the remainder of division for f80 types
 /// Logic and flow heavily inspired by MUSL fmodl for 113 mantissa digits
-pub fn __fmodx(a: f80, b: f80) callconv(.c) f80 {
+pub fn fmod_f80(a: f80, b: f80) f80 {
     const T = f80;
     const Z = @Int(.unsigned, @bitSizeOf(T));
 
@@ -130,9 +139,12 @@ pub fn __fmodx(a: f80, b: f80) callconv(.c) f80 {
     }
 }
 
+fn fmodq(a: compiler_rt.f128.Abi, b: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(fmod_f128(compiler_rt.f128.fromAbi(a), compiler_rt.f128.fromAbi(b)));
+}
 /// fmodq - floating modulo large, returns the remainder of division for f128 types
 /// Logic and flow heavily inspired by MUSL fmodl for 113 mantissa digits
-pub fn fmodq(a: f128, b: f128) callconv(.c) f128 {
+pub fn fmod_f128(a: f128, b: f128) f128 {
     var amod = a;
     var bmod = b;
     const aPtr_u64: [*]u64 = @ptrCast(&amod);
@@ -251,10 +263,10 @@ pub fn fmodq(a: f128, b: f128) callconv(.c) f128 {
 
 pub fn fmodl(a: c_longdouble, b: c_longdouble) callconv(.c) c_longdouble {
     switch (@typeInfo(c_longdouble).float.bits) {
-        64 => return fmod(a, b),
-        80 => return __fmodx(a, b),
-        128 => return fmodq(a, b),
-        else => @compileError("unreachable"),
+        64 => return fmod_f64(a, b),
+        80 => return fmod_f80(a, b),
+        128 => return fmod_f128(a, b),
+        else => comptime unreachable,
     }
 }
 
@@ -342,42 +354,42 @@ inline fn generic_fmod(comptime T: type, x: T, y: T) T {
     return @bitCast(ux);
 }
 
-test "fmodf" {
+test fmod_f32 {
     const nan_val = math.nan(f32);
     const inf_val = math.inf(f32);
 
-    try std.testing.expect(math.isNan(fmodf(nan_val, 1.0)));
-    try std.testing.expect(math.isNan(fmodf(1.0, nan_val)));
-    try std.testing.expect(math.isNan(fmodf(inf_val, 1.0)));
-    try std.testing.expect(math.isNan(fmodf(0.0, 0.0)));
-    try std.testing.expect(math.isNan(fmodf(1.0, 0.0)));
+    try std.testing.expect(math.isNan(fmod_f32(nan_val, 1.0)));
+    try std.testing.expect(math.isNan(fmod_f32(1.0, nan_val)));
+    try std.testing.expect(math.isNan(fmod_f32(inf_val, 1.0)));
+    try std.testing.expect(math.isNan(fmod_f32(0.0, 0.0)));
+    try std.testing.expect(math.isNan(fmod_f32(1.0, 0.0)));
 
-    try std.testing.expectEqual(@as(f32, 0.0), fmodf(0.0, 2.0));
-    try std.testing.expectEqual(@as(f32, -0.0), fmodf(-0.0, 2.0));
+    try std.testing.expectEqual(@as(f32, 0.0), fmod_f32(0.0, 2.0));
+    try std.testing.expectEqual(@as(f32, -0.0), fmod_f32(-0.0, 2.0));
 
-    try std.testing.expectEqual(@as(f32, -2.0), fmodf(-32.0, 10.0));
-    try std.testing.expectEqual(@as(f32, -2.0), fmodf(-32.0, -10.0));
-    try std.testing.expectEqual(@as(f32, 2.0), fmodf(32.0, 10.0));
-    try std.testing.expectEqual(@as(f32, 2.0), fmodf(32.0, -10.0));
+    try std.testing.expectEqual(@as(f32, -2.0), fmod_f32(-32.0, 10.0));
+    try std.testing.expectEqual(@as(f32, -2.0), fmod_f32(-32.0, -10.0));
+    try std.testing.expectEqual(@as(f32, 2.0), fmod_f32(32.0, 10.0));
+    try std.testing.expectEqual(@as(f32, 2.0), fmod_f32(32.0, -10.0));
 }
 
-test "fmod" {
+test fmod_f64 {
     const nan_val = math.nan(f64);
     const inf_val = math.inf(f64);
 
-    try std.testing.expect(math.isNan(fmod(nan_val, 1.0)));
-    try std.testing.expect(math.isNan(fmod(1.0, nan_val)));
-    try std.testing.expect(math.isNan(fmod(inf_val, 1.0)));
-    try std.testing.expect(math.isNan(fmod(0.0, 0.0)));
-    try std.testing.expect(math.isNan(fmod(1.0, 0.0)));
+    try std.testing.expect(math.isNan(fmod_f64(nan_val, 1.0)));
+    try std.testing.expect(math.isNan(fmod_f64(1.0, nan_val)));
+    try std.testing.expect(math.isNan(fmod_f64(inf_val, 1.0)));
+    try std.testing.expect(math.isNan(fmod_f64(0.0, 0.0)));
+    try std.testing.expect(math.isNan(fmod_f64(1.0, 0.0)));
 
-    try std.testing.expectEqual(@as(f64, 0.0), fmod(0.0, 2.0));
-    try std.testing.expectEqual(@as(f64, -0.0), fmod(-0.0, 2.0));
+    try std.testing.expectEqual(@as(f64, 0.0), fmod_f64(0.0, 2.0));
+    try std.testing.expectEqual(@as(f64, -0.0), fmod_f64(-0.0, 2.0));
 
-    try std.testing.expectEqual(@as(f64, -2.0), fmod(-32.0, 10.0));
-    try std.testing.expectEqual(@as(f64, -2.0), fmod(-32.0, -10.0));
-    try std.testing.expectEqual(@as(f64, 2.0), fmod(32.0, 10.0));
-    try std.testing.expectEqual(@as(f64, 2.0), fmod(32.0, -10.0));
+    try std.testing.expectEqual(@as(f64, -2.0), fmod_f64(-32.0, 10.0));
+    try std.testing.expectEqual(@as(f64, -2.0), fmod_f64(-32.0, -10.0));
+    try std.testing.expectEqual(@as(f64, 2.0), fmod_f64(32.0, 10.0));
+    try std.testing.expectEqual(@as(f64, 2.0), fmod_f64(32.0, -10.0));
 }
 
 test {

@@ -19,19 +19,22 @@ comptime {
     symbol(&exp2f, "exp2f");
     symbol(&exp2, "exp2");
     symbol(&__exp2x, "__exp2x");
-    if (compiler_rt.want_ppc_abi) {
-        symbol(&exp2q, "exp2f128");
-    }
-    symbol(&exp2q, "exp2q");
+    symbol(&exp2q, "exp2f128");
     symbol(&exp2l, "exp2l");
 }
 
-pub fn __exp2h(x: f16) callconv(.c) f16 {
+fn __exp2h(x: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(exp2_f16(compiler_rt.f16.fromAbi(x)));
+}
+pub fn exp2_f16(x: f16) f16 {
     // TODO: more efficient implementation
-    return @floatCast(exp2f(x));
+    return @floatCast(exp2_f32(x));
 }
 
-pub fn exp2f(x: f32) callconv(.c) f32 {
+fn exp2f(x: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(exp2_f32(compiler_rt.f32.fromAbi(x)));
+}
+pub fn exp2_f32(x: f32) f32 {
     const tblsiz: u32 = @intCast(exp2ft.len);
     const redux: f32 = 0x1.8p23 / @as(f32, @floatFromInt(tblsiz));
     const P1: f32 = 0x1.62e430p-1;
@@ -88,7 +91,10 @@ pub fn exp2f(x: f32) callconv(.c) f32 {
     return @floatCast(r * uk);
 }
 
-pub fn exp2(x: f64) callconv(.c) f64 {
+fn exp2(x: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(exp2_f64(compiler_rt.f64.fromAbi(x)));
+}
+pub fn exp2_f64(x: f64) f64 {
     const tblsiz: u32 = @intCast(exp2dt.len / 2);
     const redux: f64 = 0x1.8p52 / @as(f64, @floatFromInt(tblsiz));
     const P1: f64 = 0x1.62e42fefa39efp-1;
@@ -156,19 +162,25 @@ pub fn exp2(x: f64) callconv(.c) f64 {
     return math.scalbn(r, ik);
 }
 
-pub fn __exp2x(x: f80) callconv(.c) f80 {
+fn __exp2x(x: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(exp2_f80(compiler_rt.f80.fromAbi(x)));
+}
+pub fn exp2_f80(x: f80) f80 {
     // TODO: more efficient implementation
-    return @floatCast(exp2q(x));
+    return @floatCast(exp2_f128(x));
 }
 
-pub const exp2q = @import("exp_f128.zig").exp2;
+fn exp2q(x: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(exp2_f128(compiler_rt.f128.fromAbi(x)));
+}
+pub const exp2_f128 = @import("exp_f128.zig").exp2;
 
 pub fn exp2l(x: c_longdouble) callconv(.c) c_longdouble {
     switch (@typeInfo(c_longdouble).float.bits) {
-        64 => return exp2(x),
-        80 => return __exp2x(x),
-        128 => return exp2q(x),
-        else => @compileError("unreachable"),
+        64 => return exp2_f64(x),
+        80 => return exp2_f80(x),
+        128 => return exp2_f128(x),
+        else => comptime unreachable,
     }
 }
 
@@ -452,77 +464,77 @@ const exp2dt = [_]f64{
 };
 
 test "exp2f() special" {
-    try expectEqual(exp2f(0.0), 1.0);
-    try expectEqual(exp2f(-0.0), 1.0);
-    try expectEqual(exp2f(1.0), 2.0);
-    try expectEqual(exp2f(-1.0), 0.5);
-    try expectEqual(exp2f(math.inf(f32)), math.inf(f32));
-    try expect(math.isPositiveZero(exp2f(-math.inf(f32))));
-    try expect(math.isNan(exp2f(math.nan(f32))));
-    try expect(math.isNan(exp2f(math.snan(f32))));
+    try expectEqual(exp2_f32(0.0), 1.0);
+    try expectEqual(exp2_f32(-0.0), 1.0);
+    try expectEqual(exp2_f32(1.0), 2.0);
+    try expectEqual(exp2_f32(-1.0), 0.5);
+    try expectEqual(exp2_f32(math.inf(f32)), math.inf(f32));
+    try expect(math.isPositiveZero(exp2_f32(-math.inf(f32))));
+    try expect(math.isNan(exp2_f32(math.nan(f32))));
+    try expect(math.isNan(exp2_f32(math.snan(f32))));
 }
 
 test "exp2f() sanity" {
-    try expectEqual(exp2f(-0x1.0223a0p+3), 0x1.e8d134p-9);
-    try expectEqual(exp2f(0x1.161868p+2), 0x1.453672p+4);
-    try expectEqual(exp2f(-0x1.0c34b4p+3), 0x1.890ca0p-9);
-    try expectEqual(exp2f(-0x1.a206f0p+2), 0x1.622d4ep-7);
-    try expectEqual(exp2f(0x1.288bbcp+3), 0x1.340ecep+9);
-    try expectEqual(exp2f(0x1.52efd0p-1), 0x1.950eeep+0);
-    try expectEqual(exp2f(-0x1.a05cc8p-2), 0x1.824056p-1);
-    try expectEqual(exp2f(0x1.1f9efap-1), 0x1.79dfa2p+0);
-    try expectEqual(exp2f(0x1.8c5db0p-1), 0x1.b5ceacp+0);
-    try expectEqual(exp2f(-0x1.5b86eap-1), 0x1.3fd8bap-1);
+    try expectEqual(exp2_f32(-0x1.0223a0p+3), 0x1.e8d134p-9);
+    try expectEqual(exp2_f32(0x1.161868p+2), 0x1.453672p+4);
+    try expectEqual(exp2_f32(-0x1.0c34b4p+3), 0x1.890ca0p-9);
+    try expectEqual(exp2_f32(-0x1.a206f0p+2), 0x1.622d4ep-7);
+    try expectEqual(exp2_f32(0x1.288bbcp+3), 0x1.340ecep+9);
+    try expectEqual(exp2_f32(0x1.52efd0p-1), 0x1.950eeep+0);
+    try expectEqual(exp2_f32(-0x1.a05cc8p-2), 0x1.824056p-1);
+    try expectEqual(exp2_f32(0x1.1f9efap-1), 0x1.79dfa2p+0);
+    try expectEqual(exp2_f32(0x1.8c5db0p-1), 0x1.b5ceacp+0);
+    try expectEqual(exp2_f32(-0x1.5b86eap-1), 0x1.3fd8bap-1);
 }
 
 test "exp2f() boundary" {
-    try expectEqual(exp2f(0x1.fffffep+6), 0x1.ffff4ep+127); // The last value before the result gets infinite
-    try expectEqual(exp2f(0x1p+7), math.inf(f32)); // The first value that gives infinite result
-    try expectEqual(exp2f(-0x1.2bccccp+7), 0x1p-149); // The last value before the result flushes to zero
-    try expectEqual(exp2f(-0x1.2cp+7), 0); // The first value at which the result flushes to zero
-    try expectEqual(exp2f(-0x1.f8p+6), 0x1p-126); // The last value before the result flushes to subnormal
-    try expectEqual(exp2f(-0x1.f80002p+6), 0x1.ffff50p-127); // The first value for which the result flushes to subnormal
-    try expectEqual(exp2f(0x1.fffffep+127), math.inf(f32)); // Max input value
-    try expectEqual(exp2f(0x1p-149), 1); // Min positive input value
-    try expectEqual(exp2f(-0x1p-149), 1); // Min negative input value
-    try expectEqual(exp2f(0x1p-126), 1); // First positive subnormal input
-    try expectEqual(exp2f(-0x1p-126), 1); // First negative subnormal input
+    try expectEqual(exp2_f32(0x1.fffffep+6), 0x1.ffff4ep+127); // The last value before the result gets infinite
+    try expectEqual(exp2_f32(0x1p+7), math.inf(f32)); // The first value that gives infinite result
+    try expectEqual(exp2_f32(-0x1.2bccccp+7), 0x1p-149); // The last value before the result flushes to zero
+    try expectEqual(exp2_f32(-0x1.2cp+7), 0); // The first value at which the result flushes to zero
+    try expectEqual(exp2_f32(-0x1.f8p+6), 0x1p-126); // The last value before the result flushes to subnormal
+    try expectEqual(exp2_f32(-0x1.f80002p+6), 0x1.ffff50p-127); // The first value for which the result flushes to subnormal
+    try expectEqual(exp2_f32(0x1.fffffep+127), math.inf(f32)); // Max input value
+    try expectEqual(exp2_f32(0x1p-149), 1); // Min positive input value
+    try expectEqual(exp2_f32(-0x1p-149), 1); // Min negative input value
+    try expectEqual(exp2_f32(0x1p-126), 1); // First positive subnormal input
+    try expectEqual(exp2_f32(-0x1p-126), 1); // First negative subnormal input
 }
 
 test "exp2() special" {
-    try expectEqual(exp2(0.0), 1.0);
-    try expectEqual(exp2(-0.0), 1.0);
-    try expectEqual(exp2(1.0), 2.0);
-    try expectEqual(exp2(-1.0), 0.5);
-    try expectEqual(exp2(math.inf(f64)), math.inf(f64));
-    try expect(math.isPositiveZero(exp2(-math.inf(f64))));
-    try expect(math.isNan(exp2(math.nan(f64))));
-    try expect(math.isNan(exp2(math.snan(f64))));
+    try expectEqual(exp2_f64(0.0), 1.0);
+    try expectEqual(exp2_f64(-0.0), 1.0);
+    try expectEqual(exp2_f64(1.0), 2.0);
+    try expectEqual(exp2_f64(-1.0), 0.5);
+    try expectEqual(exp2_f64(math.inf(f64)), math.inf(f64));
+    try expect(math.isPositiveZero(exp2_f64(-math.inf(f64))));
+    try expect(math.isNan(exp2_f64(math.nan(f64))));
+    try expect(math.isNan(exp2_f64(math.snan(f64))));
 }
 
 test "exp2() sanity" {
-    try expectEqual(exp2(-0x1.02239f3c6a8f1p+3), 0x1.e8d13c396f452p-9);
-    try expectEqual(exp2(0x1.161868e18bc67p+2), 0x1.4536746bb6f12p+4);
-    try expectEqual(exp2(-0x1.0c34b3e01e6e7p+3), 0x1.890ca0c00b9a2p-9);
-    try expectEqual(exp2(-0x1.a206f0a19dcc4p+2), 0x1.622d4b0ebc6c1p-7);
-    try expectEqual(exp2(0x1.288bbb0d6a1e6p+3), 0x1.340ec7f3e607ep+9);
-    try expectEqual(exp2(0x1.52efd0cd80497p-1), 0x1.950eef4bc5451p+0);
-    try expectEqual(exp2(-0x1.a05cc754481d1p-2), 0x1.824056efc687cp-1);
-    try expectEqual(exp2(0x1.1f9ef934745cbp-1), 0x1.79dfa14ab121ep+0);
-    try expectEqual(exp2(0x1.8c5db097f7442p-1), 0x1.b5cead2247372p+0);
-    try expectEqual(exp2(-0x1.5b86ea8118a0ep-1), 0x1.3fd8ba33216b9p-1);
+    try expectEqual(exp2_f64(-0x1.02239f3c6a8f1p+3), 0x1.e8d13c396f452p-9);
+    try expectEqual(exp2_f64(0x1.161868e18bc67p+2), 0x1.4536746bb6f12p+4);
+    try expectEqual(exp2_f64(-0x1.0c34b3e01e6e7p+3), 0x1.890ca0c00b9a2p-9);
+    try expectEqual(exp2_f64(-0x1.a206f0a19dcc4p+2), 0x1.622d4b0ebc6c1p-7);
+    try expectEqual(exp2_f64(0x1.288bbb0d6a1e6p+3), 0x1.340ec7f3e607ep+9);
+    try expectEqual(exp2_f64(0x1.52efd0cd80497p-1), 0x1.950eef4bc5451p+0);
+    try expectEqual(exp2_f64(-0x1.a05cc754481d1p-2), 0x1.824056efc687cp-1);
+    try expectEqual(exp2_f64(0x1.1f9ef934745cbp-1), 0x1.79dfa14ab121ep+0);
+    try expectEqual(exp2_f64(0x1.8c5db097f7442p-1), 0x1.b5cead2247372p+0);
+    try expectEqual(exp2_f64(-0x1.5b86ea8118a0ep-1), 0x1.3fd8ba33216b9p-1);
 }
 
 test "exp2() boundary" {
-    try expectEqual(exp2(0x1.fffffffffffffp+9), 0x1.ffffffffffd3ap+1023); // The last value before the result gets infinite
-    try expectEqual(exp2(0x1p+10), math.inf(f64)); // The first value that gives infinite result
-    try expectEqual(exp2(-0x1.0cbffffffffffp+10), 0x1p-1074); // The last value before the result flushes to zero
-    try expectEqual(exp2(-0x1.0ccp+10), 0); // The first value at which the result flushes to zero
-    try expectEqual(exp2(-0x1.ffp+9), 0x1p-1022); // The last value before the result flushes to subnormal
-    try expectEqual(exp2(-0x1.ff00000000001p+9), 0x1.ffffffffffd3ap-1023); // The first value for which the result flushes to subnormal
-    try expectEqual(exp2(0x1.fffffffffffffp+1023), math.inf(f64)); // Max input value
-    try expectEqual(exp2(0x1p-1074), 1); // Min positive input value
-    try expectEqual(exp2(-0x1p-1074), 1); // Min negative input value
-    try expectEqual(exp2(0x1p-1022), 1); // First positive subnormal input
-    try expectEqual(exp2(-0x1p-1022), 1); // First negative subnormal input
+    try expectEqual(exp2_f64(0x1.fffffffffffffp+9), 0x1.ffffffffffd3ap+1023); // The last value before the result gets infinite
+    try expectEqual(exp2_f64(0x1p+10), math.inf(f64)); // The first value that gives infinite result
+    try expectEqual(exp2_f64(-0x1.0cbffffffffffp+10), 0x1p-1074); // The last value before the result flushes to zero
+    try expectEqual(exp2_f64(-0x1.0ccp+10), 0); // The first value at which the result flushes to zero
+    try expectEqual(exp2_f64(-0x1.ffp+9), 0x1p-1022); // The last value before the result flushes to subnormal
+    try expectEqual(exp2_f64(-0x1.ff00000000001p+9), 0x1.ffffffffffd3ap-1023); // The first value for which the result flushes to subnormal
+    try expectEqual(exp2_f64(0x1.fffffffffffffp+1023), math.inf(f64)); // Max input value
+    try expectEqual(exp2_f64(0x1p-1074), 1); // Min positive input value
+    try expectEqual(exp2_f64(-0x1p-1074), 1); // Min negative input value
+    try expectEqual(exp2_f64(0x1p-1022), 1); // First positive subnormal input
+    try expectEqual(exp2_f64(-0x1p-1022), 1); // First negative subnormal input
 }

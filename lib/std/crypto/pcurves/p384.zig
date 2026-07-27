@@ -56,7 +56,7 @@ pub const P384 = struct {
     }
 
     /// Create a point from serialized affine coordinates.
-    pub fn fromSerializedAffineCoordinates(xs: [48]u8, ys: [48]u8, endian: std.builtin.Endian) (NonCanonicalError || EncodingError)!P384 {
+    pub fn fromSerializedAffineCoordinates(xs: [48]u8, ys: [48]u8, endian: std.lang.Endian) (NonCanonicalError || EncodingError)!P384 {
         const x = try Fe.fromBytes(xs, endian);
         const y = try Fe.fromBytes(ys, endian);
         return fromAffineCoordinates(.{ .x = x, .y = y });
@@ -395,7 +395,7 @@ pub const P384 = struct {
 
     /// Multiply an elliptic curve point by a scalar.
     /// Return error.IdentityElement if the result is the identity element.
-    pub fn mul(p: P384, s_: [48]u8, endian: std.builtin.Endian) IdentityElementError!P384 {
+    pub fn mul(p: P384, s_: [48]u8, endian: std.lang.Endian) IdentityElementError!P384 {
         const s = if (endian == .little) s_ else Fe.orderSwap(s_);
         if (p.is_base) {
             return pcMul16(&basePointPc, s, false);
@@ -407,7 +407,7 @@ pub const P384 = struct {
 
     /// Multiply an elliptic curve point by a *PUBLIC* scalar *IN VARIABLE TIME*
     /// This can be used for signature verification.
-    pub fn mulPublic(p: P384, s_: [48]u8, endian: std.builtin.Endian) IdentityElementError!P384 {
+    pub fn mulPublic(p: P384, s_: [48]u8, endian: std.lang.Endian) IdentityElementError!P384 {
         const s = if (endian == .little) s_ else Fe.orderSwap(s_);
         if (p.is_base) {
             return pcMul16(&basePointPc, s, true);
@@ -419,7 +419,7 @@ pub const P384 = struct {
 
     /// Double-base multiplication of public parameters - Compute (p1*s1)+(p2*s2) *IN VARIABLE TIME*
     /// This can be used for signature verification.
-    pub fn mulDoubleBasePublic(p1: P384, s1_: [48]u8, p2: P384, s2_: [48]u8, endian: std.builtin.Endian) IdentityElementError!P384 {
+    pub fn mulDoubleBasePublic(p1: P384, s1_: [48]u8, p2: P384, s2_: [48]u8, endian: std.lang.Endian) IdentityElementError!P384 {
         const s1 = if (endian == .little) s1_ else Fe.orderSwap(s1_);
         const s2 = if (endian == .little) s2_ else Fe.orderSwap(s2_);
         try p1.rejectIdentity();
@@ -478,7 +478,5 @@ pub const AffineCoordinates = struct {
 };
 
 test {
-    if (@import("builtin").zig_backend == .stage2_c) return error.SkipZigTest;
-
     _ = @import("tests/p384.zig");
 }

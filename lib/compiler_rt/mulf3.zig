@@ -2,10 +2,76 @@ const std = @import("std");
 const math = std.math;
 const builtin = @import("builtin");
 const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
+
+comptime {
+    symbol(&__mulhf3, "__mulhf3");
+    if (compiler_rt.want_aeabi) {
+        symbol(&__aeabi_fmul, "__aeabi_fmul");
+        symbol(&__aeabi_dmul, "__aeabi_dmul");
+    } else {
+        symbol(&__mulsf3, "__mulsf3");
+        symbol(&__muldf3, "__muldf3");
+    }
+    symbol(&__mulxf3, "__mulxf3");
+    if (compiler_rt.want_ppc_abi) {
+        symbol(&__multf3, "__mulkf3");
+    } else if (compiler_rt.want_sparc64_abi) {
+        symbol(&_Qp_mul, "_Qp_mul");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&__multf3, "_Q_mul");
+    } else {
+        symbol(&__multf3, "__multf3");
+    }
+}
+
+fn __mulhf3(a: compiler_rt.f16.Abi, b: compiler_rt.f16.Abi) callconv(.c) compiler_rt.f16.Abi {
+    return compiler_rt.f16.toAbi(mul_f16(compiler_rt.f16.fromAbi(a), compiler_rt.f16.fromAbi(b)));
+}
+pub fn mul_f16(a: f16, b: f16) f16 {
+    return mulf3(f16, a, b);
+}
+
+fn __mulsf3(a: compiler_rt.f32.Abi, b: compiler_rt.f32.Abi) callconv(.c) compiler_rt.f32.Abi {
+    return compiler_rt.f32.toAbi(mul_f32(compiler_rt.f32.fromAbi(a), compiler_rt.f32.fromAbi(b)));
+}
+fn __aeabi_fmul(a: f32, b: f32) callconv(.{ .arm_aapcs = .{} }) f32 {
+    return mul_f32(a, b);
+}
+pub fn mul_f32(a: f32, b: f32) f32 {
+    return mulf3(f32, a, b);
+}
+
+fn __muldf3(a: compiler_rt.f64.Abi, b: compiler_rt.f64.Abi) callconv(.c) compiler_rt.f64.Abi {
+    return compiler_rt.f64.toAbi(mul_f64(compiler_rt.f64.fromAbi(a), compiler_rt.f64.fromAbi(b)));
+}
+fn __aeabi_dmul(a: f64, b: f64) callconv(.{ .arm_aapcs = .{} }) f64 {
+    return mul_f64(a, b);
+}
+pub fn mul_f64(a: f64, b: f64) f64 {
+    return mulf3(f64, a, b);
+}
+
+fn __mulxf3(a: compiler_rt.f80.Abi, b: compiler_rt.f80.Abi) callconv(.c) compiler_rt.f80.Abi {
+    return compiler_rt.f80.toAbi(mul_f80(compiler_rt.f80.fromAbi(a), compiler_rt.f80.fromAbi(b)));
+}
+pub fn mul_f80(a: f80, b: f80) f80 {
+    return mulf3(f80, a, b);
+}
+
+fn __multf3(a: compiler_rt.f128.Abi, b: compiler_rt.f128.Abi) callconv(.c) compiler_rt.f128.Abi {
+    return compiler_rt.f128.toAbi(mul_f128(compiler_rt.f128.fromAbi(a), compiler_rt.f128.fromAbi(b)));
+}
+fn _Qp_mul(c: *f128, a: *const f128, b: *const f128) callconv(.c) void {
+    c.* = mul_f128(a.*, b.*);
+}
+pub fn mul_f128(a: f128, b: f128) f128 {
+    return mulf3(f128, a, b);
+}
 
 /// Ported from:
 /// https://github.com/llvm/llvm-project/blob/2ffb1b0413efa9a24eb3c49e710e36f92e2cb50b/compiler-rt/lib/builtins/fp_mul_impl.inc
-pub inline fn mulf3(comptime T: type, a: T, b: T) T {
+inline fn mulf3(comptime T: type, a: T, b: T) T {
     @setRuntimeSafety(compiler_rt.test_safety);
     const typeWidth = @typeInfo(T).float.bits;
     const significandBits = math.floatMantissaBits(T);

@@ -1,163 +1,309 @@
+const builtin = @import("builtin");
 const std = @import("std");
 
 const compiler_rt = @import("../compiler_rt.zig");
 const symbol = compiler_rt.symbol;
 
+const Unordered = if (builtin.cpu.arch == .avr)
+    i8
+else if (builtin.cpu.arch.isAARCH64())
+    i32
+else if (builtin.target.cTypeBitSize(.long).? >= builtin.target.ptrBitWidth())
+    c_long
+else
+    c_longlong;
+pub const Order = enum(Unordered) { lt = -1, eq = 0, gt = 1 };
+const SparcOrder = enum(i32) { eq = 0, lt = 1, gt = 2, un = 3 };
+
 comptime {
-    if (compiler_rt.want_aeabi) {
-        symbol(&__aeabi_fcmpun, "__aeabi_fcmpun");
-    } else {
-        symbol(&__unordsf2, "__unordsf2");
-    }
-
-    symbol(&__unordxf2, "__unordxf2");
-
-    symbol(&__eqhf2, "__eqhf2");
-    symbol(&__nehf2, "__nehf2");
-    symbol(&__lehf2, "__lehf2");
     symbol(&__cmphf2, "__cmphf2");
-    symbol(&__lthf2, "__lthf2");
+    symbol(&__cmphf2, "__eqhf2");
+    symbol(&__cmphf2, "__nehf2");
+    symbol(&__cmphf2, "__lthf2");
+    symbol(&__cmphf2, "__lehf2");
+    symbol(&__gehf2, "__gthf2");
+    symbol(&__gehf2, "__gehf2");
+    symbol(&__unordhf2, "__unordhf2");
 
     if (compiler_rt.want_aeabi) {
         symbol(&__aeabi_fcmpeq, "__aeabi_fcmpeq");
         symbol(&__aeabi_fcmplt, "__aeabi_fcmplt");
         symbol(&__aeabi_fcmple, "__aeabi_fcmple");
+        symbol(&__aeabi_fcmpgt, "__aeabi_fcmpgt");
+        symbol(&__aeabi_fcmpge, "__aeabi_fcmpge");
+        symbol(&__aeabi_fcmpun, "__aeabi_fcmpun");
+
+        symbol(&__aeabi_dcmpeq, "__aeabi_dcmpeq");
+        symbol(&__aeabi_dcmplt, "__aeabi_dcmplt");
+        symbol(&__aeabi_dcmple, "__aeabi_dcmple");
+        symbol(&__aeabi_dcmpgt, "__aeabi_dcmpgt");
+        symbol(&__aeabi_dcmpge, "__aeabi_dcmpge");
+        symbol(&__aeabi_dcmpun, "__aeabi_dcmpun");
     } else {
-        symbol(&__eqsf2, "__eqsf2");
-        symbol(&__nesf2, "__nesf2");
-        symbol(&__lesf2, "__lesf2");
         symbol(&__cmpsf2, "__cmpsf2");
-        symbol(&__ltsf2, "__ltsf2");
+        symbol(&__cmpsf2, "__eqsf2");
+        symbol(&__cmpsf2, "__nesf2");
+        symbol(&__cmpsf2, "__ltsf2");
+        symbol(&__cmpsf2, "__lesf2");
+        symbol(&__gesf2, "__gtsf2");
+        symbol(&__gesf2, "__gesf2");
+        symbol(&__unordsf2, "__unordsf2");
+
+        symbol(&__cmpdf2, "__cmpdf2");
+        symbol(&__cmpdf2, "__eqdf2");
+        symbol(&__cmpdf2, "__nedf2");
+        symbol(&__cmpdf2, "__ltdf2");
+        symbol(&__cmpdf2, "__ledf2");
+        symbol(&__gedf2, "__gtdf2");
+        symbol(&__gedf2, "__gedf2");
+        symbol(&__unorddf2, "__unorddf2");
     }
+
+    symbol(&__cmpxf2, "__cmpxf2");
+    symbol(&__cmpxf2, "__eqxf2");
+    symbol(&__cmpxf2, "__nexf2");
+    symbol(&__cmpxf2, "__ltxf2");
+    symbol(&__cmpxf2, "__lexf2");
+    symbol(&__gexf2, "__gtxf2");
+    symbol(&__gexf2, "__gexf2");
+    symbol(&__unordxf2, "__unordxf2");
 
     if (compiler_rt.want_ppc_abi) {
+        symbol(&__cmptf2, "__eqkf2");
+        symbol(&__cmptf2, "__nekf2");
+        symbol(&__cmptf2, "__ltkf2");
+        symbol(&__cmptf2, "__lekf2");
+        symbol(&__getf2, "__gtkf2");
+        symbol(&__getf2, "__gekf2");
         symbol(&__unordtf2, "__unordkf2");
+    } else if (compiler_rt.want_sparc64_abi) {
+        symbol(&_Qp_cmp, "_Qp_cmp");
+        symbol(&_Qp_feq, "_Qp_feq");
+        symbol(&_Qp_fne, "_Qp_fne");
+        symbol(&_Qp_flt, "_Qp_flt");
+        symbol(&_Qp_fle, "_Qp_fle");
+        symbol(&_Qp_fgt, "_Qp_fgt");
+        symbol(&_Qp_fge, "_Qp_fge");
+    } else if (compiler_rt.want_sparc32_abi) {
+        symbol(&_Q_cmp, "_Q_cmp");
+        symbol(&_Q_feq, "_Q_feq");
+        symbol(&_Q_fne, "_Q_fne");
+        symbol(&_Q_flt, "_Q_flt");
+        symbol(&_Q_fle, "_Q_fle");
+        symbol(&_Q_fgt, "_Q_fgt");
+        symbol(&_Q_fge, "_Q_fge");
+    } else {
+        symbol(&__cmptf2, "__cmptf2");
+        symbol(&__cmptf2, "__eqtf2");
+        symbol(&__cmptf2, "__netf2");
+        symbol(&__cmptf2, "__lttf2");
+        symbol(&__cmptf2, "__letf2");
+        symbol(&__getf2, "__gttf2");
+        symbol(&__getf2, "__getf2");
+        symbol(&__unordtf2, "__unordtf2");
     }
-    symbol(&__unordtf2, "__unordtf2");
-    symbol(&__unordhf2, "__unordhf2");
 }
 
-pub fn __unordhf2(a: f16, b: f16) callconv(.c) i32 {
-    return unordcmp(f16, a, b);
+fn __cmphf2(a: compiler_rt.f16.Abi, b: compiler_rt.f16.Abi) callconv(.c) Order {
+    return cmp_f16(compiler_rt.f16.fromAbi(a), compiler_rt.f16.fromAbi(b)) orelse .gt;
+}
+fn __gehf2(a: compiler_rt.f16.Abi, b: compiler_rt.f16.Abi) callconv(.c) Order {
+    return cmp_f16(compiler_rt.f16.fromAbi(a), compiler_rt.f16.fromAbi(b)) orelse .lt;
+}
+fn __unordhf2(a: compiler_rt.f16.Abi, b: compiler_rt.f16.Abi) callconv(.c) Unordered {
+    return @intFromBool(unord_f16(compiler_rt.f16.fromAbi(a), compiler_rt.f16.fromAbi(b)));
+}
+pub fn cmp_f16(a: f16, b: f16) ?Order {
+    return cmpf2(f16, a, b);
+}
+pub fn unord_f16(a: f16, b: f16) bool {
+    return unord(f16, a, b);
 }
 
-pub fn __unordtf2(a: f128, b: f128) callconv(.c) i32 {
-    return unordcmp(f128, a, b);
+fn __cmpsf2(a: compiler_rt.f32.Abi, b: compiler_rt.f32.Abi) callconv(.c) Order {
+    return cmp_f32(compiler_rt.f32.fromAbi(a), compiler_rt.f32.fromAbi(b)) orelse .gt;
 }
-
-/// "These functions calculate a <=> b. That is, if a is less than b, they return -1;
-/// if a is greater than b, they return 1; and if a and b are equal they return 0.
-/// If either argument is NaN they return 1..."
-///
-/// Note that this matches the definition of `__lesf2`, `__eqsf2`, `__nesf2`, `__cmpsf2`,
-/// and `__ltsf2`.
-fn __cmpsf2(a: f32, b: f32) callconv(.c) i32 {
-    return @backingInt(cmpf2(f32, LE, a, b));
-}
-
-/// "These functions return a value less than or equal to zero if neither argument is NaN,
-/// and a is less than or equal to b."
-pub fn __lesf2(a: f32, b: f32) callconv(.c) i32 {
-    return __cmpsf2(a, b);
-}
-
-/// "These functions return zero if neither argument is NaN, and a and b are equal."
-/// Note that due to some kind of historical accident, __eqsf2 and __nesf2 are defined
-/// to have the same return value.
-pub fn __eqsf2(a: f32, b: f32) callconv(.c) i32 {
-    return __cmpsf2(a, b);
-}
-
-/// "These functions return a nonzero value if either argument is NaN, or if a and b are unequal."
-/// Note that due to some kind of historical accident, __eqsf2 and __nesf2 are defined
-/// to have the same return value.
-pub fn __nesf2(a: f32, b: f32) callconv(.c) i32 {
-    return __cmpsf2(a, b);
-}
-
-/// "These functions return a value less than zero if neither argument is NaN, and a
-/// is strictly less than b."
-pub fn __ltsf2(a: f32, b: f32) callconv(.c) i32 {
-    return __cmpsf2(a, b);
-}
-
 fn __aeabi_fcmpeq(a: f32, b: f32) callconv(.{ .arm_aapcs = .{} }) i32 {
-    return @intFromBool(cmpf2(f32, LE, a, b) == .Equal);
+    return @intFromBool(cmp_f32(a, b) == .eq);
 }
-
 fn __aeabi_fcmplt(a: f32, b: f32) callconv(.{ .arm_aapcs = .{} }) i32 {
-    return @intFromBool(cmpf2(f32, LE, a, b) == .Less);
+    return @intFromBool(cmp_f32(a, b) == .lt);
 }
-
 fn __aeabi_fcmple(a: f32, b: f32) callconv(.{ .arm_aapcs = .{} }) i32 {
-    return @intFromBool(cmpf2(f32, LE, a, b) != .Greater);
+    return @intFromBool(cmp_f32(a, b) orelse .gt != .gt);
 }
-
-/// "These functions calculate a <=> b. That is, if a is less than b, they return -1;
-/// if a is greater than b, they return 1; and if a and b are equal they return 0.
-/// If either argument is NaN they return 1..."
-///
-/// Note that this matches the definition of `__lehf2`, `__eqhf2`, `__nehf2`, `__cmphf2`,
-/// and `__lthf2`.
-fn __cmphf2(a: f16, b: f16) callconv(.c) i32 {
-    return @backingInt(cmpf2(f16, LE, a, b));
+fn __gesf2(a: compiler_rt.f32.Abi, b: compiler_rt.f32.Abi) callconv(.c) Order {
+    return cmp_f32(compiler_rt.f32.fromAbi(a), compiler_rt.f32.fromAbi(b)) orelse .lt;
 }
-
-/// "These functions return a value less than or equal to zero if neither argument is NaN,
-/// and a is less than or equal to b."
-fn __lehf2(a: f16, b: f16) callconv(.c) i32 {
-    return __cmphf2(a, b);
+fn __aeabi_fcmpge(a: f32, b: f32) callconv(.{ .arm_aapcs = .{} }) i32 {
+    return @intFromBool(cmp_f32(a, b) orelse .lt != .lt);
 }
-
-/// "These functions return zero if neither argument is NaN, and a and b are equal."
-/// Note that due to some kind of historical accident, __eqhf2 and __nehf2 are defined
-/// to have the same return value.
-fn __eqhf2(a: f16, b: f16) callconv(.c) i32 {
-    return __cmphf2(a, b);
+fn __aeabi_fcmpgt(a: f32, b: f32) callconv(.{ .arm_aapcs = .{} }) i32 {
+    return @intFromBool(cmp_f32(a, b) == .gt);
 }
-
-/// "These functions return a nonzero value if either argument is NaN, or if a and b are unequal."
-/// Note that due to some kind of historical accident, __eqhf2 and __nehf2 are defined
-/// to have the same return value.
-fn __nehf2(a: f16, b: f16) callconv(.c) i32 {
-    return __cmphf2(a, b);
+fn __unordsf2(a: compiler_rt.f32.Abi, b: compiler_rt.f32.Abi) callconv(.c) Unordered {
+    return @intFromBool(unord_f32(compiler_rt.f32.fromAbi(a), compiler_rt.f32.fromAbi(b)));
 }
-
-/// "These functions return a value less than zero if neither argument is NaN, and a
-/// is strictly less than b."
-fn __lthf2(a: f16, b: f16) callconv(.c) i32 {
-    return __cmphf2(a, b);
-}
-
-fn __unordxf2(a: f80, b: f80) callconv(.c) i32 {
-    return unordcmp(f80, a, b);
-}
-
-pub fn __unordsf2(a: f32, b: f32) callconv(.c) i32 {
-    return unordcmp(f32, a, b);
-}
-
 fn __aeabi_fcmpun(a: f32, b: f32) callconv(.{ .arm_aapcs = .{} }) i32 {
-    return unordcmp(f32, a, b);
+    return @intFromBool(unord_f32(a, b));
+}
+pub fn cmp_f32(a: f32, b: f32) ?Order {
+    return cmpf2(f32, a, b);
+}
+pub fn unord_f32(a: f32, b: f32) bool {
+    return unord(f32, a, b);
 }
 
-pub const LE = enum(i32) {
-    Less = -1,
-    Equal = 0,
-    Greater = 1,
+fn __cmpdf2(a: compiler_rt.f64.Abi, b: compiler_rt.f64.Abi) callconv(.c) Order {
+    return cmp_f64(compiler_rt.f64.fromAbi(a), compiler_rt.f64.fromAbi(b)) orelse .gt;
+}
+fn __aeabi_dcmpeq(a: f64, b: f64) callconv(.{ .arm_aapcs = .{} }) i32 {
+    return @intFromBool(cmp_f64(a, b) == .eq);
+}
+fn __aeabi_dcmplt(a: f64, b: f64) callconv(.{ .arm_aapcs = .{} }) i32 {
+    return @intFromBool(cmp_f64(a, b) == .lt);
+}
+fn __aeabi_dcmple(a: f64, b: f64) callconv(.{ .arm_aapcs = .{} }) i32 {
+    return @intFromBool(cmp_f64(a, b) orelse .gt != .gt);
+}
+fn __gedf2(a: compiler_rt.f64.Abi, b: compiler_rt.f64.Abi) callconv(.c) Order {
+    return cmp_f64(compiler_rt.f64.fromAbi(a), compiler_rt.f64.fromAbi(b)) orelse .lt;
+}
+fn __aeabi_dcmpge(a: f64, b: f64) callconv(.{ .arm_aapcs = .{} }) i32 {
+    return @intFromBool(cmp_f64(a, b) orelse .lt != .lt);
+}
+fn __aeabi_dcmpgt(a: f64, b: f64) callconv(.{ .arm_aapcs = .{} }) i32 {
+    return @intFromBool(cmp_f64(a, b) == .gt);
+}
+fn __unorddf2(a: compiler_rt.f64.Abi, b: compiler_rt.f64.Abi) callconv(.c) Unordered {
+    return @intFromBool(unord_f64(compiler_rt.f64.fromAbi(a), compiler_rt.f64.fromAbi(b)));
+}
+fn __aeabi_dcmpun(a: f64, b: f64) callconv(.{ .arm_aapcs = .{} }) i32 {
+    return @intFromBool(unord_f64(a, b));
+}
+pub fn cmp_f64(a: f64, b: f64) ?Order {
+    return cmpf2(f64, a, b);
+}
+pub fn unord_f64(a: f64, b: f64) bool {
+    return unord(f64, a, b);
+}
 
-    const Unordered: LE = .Greater;
-};
+fn __cmpxf2(a: compiler_rt.f80.Abi, b: compiler_rt.f80.Abi) callconv(.c) Order {
+    return cmp_f80(compiler_rt.f80.fromAbi(a), compiler_rt.f80.fromAbi(b)) orelse .gt;
+}
+fn __gexf2(a: compiler_rt.f80.Abi, b: compiler_rt.f80.Abi) callconv(.c) Order {
+    return cmp_f80(compiler_rt.f80.fromAbi(a), compiler_rt.f80.fromAbi(b)) orelse .lt;
+}
+fn __unordxf2(a: compiler_rt.f80.Abi, b: compiler_rt.f80.Abi) callconv(.c) Unordered {
+    return @intFromBool(unord_f80(compiler_rt.f80.fromAbi(a), compiler_rt.f80.fromAbi(b)));
+}
+pub fn cmp_f80(a: f80, b: f80) ?Order {
+    const a_rep = std.math.F80.fromFloat(a);
+    const b_rep = std.math.F80.fromFloat(b);
+    const sig_bits = std.math.floatMantissaBits(f80);
+    const int_bit = 0x8000000000000000;
+    const sign_bit = 0x8000;
+    const special_exp = 0x7FFF;
 
-pub const GE = enum(i32) {
-    Less = -1,
-    Equal = 0,
-    Greater = 1,
+    // If either a or b is NaN, they are unordered.
+    if ((a_rep.exp & special_exp == special_exp and a_rep.fraction ^ int_bit != 0) or
+        (b_rep.exp & special_exp == special_exp and b_rep.fraction ^ int_bit != 0))
+        return null;
 
-    const Unordered: GE = .Less;
-};
+    // If a and b are both zeros, they are equal.
+    if ((a_rep.fraction | b_rep.fraction) | ((a_rep.exp | b_rep.exp) & special_exp) == 0)
+        return .eq;
 
-pub inline fn cmpf2(comptime T: type, comptime RT: type, a: T, b: T) RT {
+    if (@intFromBool(a_rep.exp == b_rep.exp) & @intFromBool(a_rep.fraction == b_rep.fraction) != 0) {
+        return .eq;
+    } else if (a_rep.exp & sign_bit != b_rep.exp & sign_bit) {
+        // signs are different
+        if (@as(i16, @bitCast(a_rep.exp)) < @as(i16, @bitCast(b_rep.exp))) {
+            return .lt;
+        } else {
+            return .gt;
+        }
+    } else {
+        const a_fraction = a_rep.fraction | (@as(u80, a_rep.exp) << sig_bits);
+        const b_fraction = b_rep.fraction | (@as(u80, b_rep.exp) << sig_bits);
+        if ((a_fraction < b_fraction) == (a_rep.exp & sign_bit == 0)) {
+            return .lt;
+        } else {
+            return .gt;
+        }
+    }
+}
+pub fn unord_f80(a: f80, b: f80) bool {
+    return unord(f80, a, b);
+}
+
+fn __cmptf2(a: compiler_rt.f128.Abi, b: compiler_rt.f128.Abi) callconv(.c) Order {
+    return cmp_f128(compiler_rt.f128.fromAbi(a), compiler_rt.f128.fromAbi(b)) orelse .gt;
+}
+fn __getf2(a: compiler_rt.f128.Abi, b: compiler_rt.f128.Abi) callconv(.c) Order {
+    return cmp_f128(compiler_rt.f128.fromAbi(a), compiler_rt.f128.fromAbi(b)) orelse .lt;
+}
+fn __unordtf2(a: compiler_rt.f128.Abi, b: compiler_rt.f128.Abi) callconv(.c) Unordered {
+    return @intFromBool(unord_f128(compiler_rt.f128.fromAbi(a), compiler_rt.f128.fromAbi(b)));
+}
+fn _Qp_cmp(a: *const f128, b: *const f128) callconv(.c) SparcOrder {
+    return switch (cmp_f128(a.*, b.*) orelse return .un) {
+        .lt => .lt,
+        .eq => .eq,
+        .gt => .gt,
+    };
+}
+fn _Qp_feq(a: *const f128, b: *const f128) callconv(.c) i32 {
+    return @intFromBool(cmp_f128(a.*, b.*) == .eq);
+}
+fn _Qp_fne(a: *const f128, b: *const f128) callconv(.c) i32 {
+    return @intFromBool(cmp_f128(a.*, b.*) != .eq);
+}
+fn _Qp_flt(a: *const f128, b: *const f128) callconv(.c) i32 {
+    return @intFromBool(cmp_f128(a.*, b.*) == .lt);
+}
+fn _Qp_fle(a: *const f128, b: *const f128) callconv(.c) i32 {
+    return @intFromBool((cmp_f128(a.*, b.*) orelse .gt) != .gt);
+}
+fn _Qp_fgt(a: *const f128, b: *const f128) callconv(.c) i32 {
+    return @intFromBool(cmp_f128(a.*, b.*) == .gt);
+}
+fn _Qp_fge(a: *const f128, b: *const f128) callconv(.c) i32 {
+    return @intFromBool((cmp_f128(a.*, b.*) orelse .lt) != .lt);
+}
+fn _Q_cmp(a: f128, b: f128) callconv(.c) SparcOrder {
+    return switch (cmp_f128(a, b) orelse return .un) {
+        .lt => .lt,
+        .eq => .eq,
+        .gt => .gt,
+    };
+}
+fn _Q_feq(a: f128, b: f128) callconv(.c) i32 {
+    return @intFromBool(cmp_f128(a, b) == .eq);
+}
+fn _Q_fne(a: f128, b: f128) callconv(.c) i32 {
+    return @intFromBool(cmp_f128(a, b) != .eq);
+}
+fn _Q_flt(a: f128, b: f128) callconv(.c) i32 {
+    return @intFromBool(cmp_f128(a, b) == .lt);
+}
+fn _Q_fle(a: f128, b: f128) callconv(.c) i32 {
+    return @intFromBool((cmp_f128(a, b) orelse .gt) != .gt);
+}
+fn _Q_fgt(a: f128, b: f128) callconv(.c) i32 {
+    return @intFromBool(cmp_f128(a, b) == .gt);
+}
+fn _Q_fge(a: f128, b: f128) callconv(.c) i32 {
+    return @intFromBool((cmp_f128(a, b) orelse .lt) != .lt);
+}
+pub fn cmp_f128(a: f128, b: f128) ?Order {
+    return cmpf2(f128, a, b);
+}
+pub fn unord_f128(a: f128, b: f128) bool {
+    return unord(f128, a, b);
+}
+
+inline fn cmpf2(comptime T: type, a: T, b: T) ?Order {
     const bits = @typeInfo(T).float.bits;
     const srep_t = @Int(.signed, bits);
     const rep_t = @Int(.unsigned, bits);
@@ -175,81 +321,42 @@ pub inline fn cmpf2(comptime T: type, comptime RT: type, a: T, b: T) RT {
     const bAbs = @as(rep_t, @bitCast(bInt)) & absMask;
 
     // If either a or b is NaN, they are unordered.
-    if (aAbs > infRep or bAbs > infRep) return RT.Unordered;
+    if (aAbs > infRep or bAbs > infRep) return null;
 
     // If a and b are both zeros, they are equal.
-    if ((aAbs | bAbs) == 0) return .Equal;
+    if ((aAbs | bAbs) == 0) return .eq;
 
     // If at least one of a and b is positive, we get the same result comparing
     // a and b as signed integers as we would with a floating-point compare.
     if ((aInt & bInt) >= 0) {
         if (aInt < bInt) {
-            return .Less;
+            return .lt;
         } else if (aInt == bInt) {
-            return .Equal;
-        } else return .Greater;
+            return .eq;
+        } else return .gt;
     } else {
         // Otherwise, both are negative, so we need to flip the sense of the
         // comparison to get the correct result.  (This assumes a twos- or ones-
         // complement integer representation; if integers are represented in a
         // sign-magnitude representation, then this flip is incorrect).
         if (aInt > bInt) {
-            return .Less;
+            return .lt;
         } else if (aInt == bInt) {
-            return .Equal;
-        } else return .Greater;
+            return .eq;
+        } else return .gt;
     }
 }
 
-pub inline fn cmp_f80(comptime RT: type, a: f80, b: f80) RT {
-    const a_rep = std.math.F80.fromFloat(a);
-    const b_rep = std.math.F80.fromFloat(b);
-    const sig_bits = std.math.floatMantissaBits(f80);
-    const int_bit = 0x8000000000000000;
-    const sign_bit = 0x8000;
-    const special_exp = 0x7FFF;
-
-    // If either a or b is NaN, they are unordered.
-    if ((a_rep.exp & special_exp == special_exp and a_rep.fraction ^ int_bit != 0) or
-        (b_rep.exp & special_exp == special_exp and b_rep.fraction ^ int_bit != 0))
-        return RT.Unordered;
-
-    // If a and b are both zeros, they are equal.
-    if ((a_rep.fraction | b_rep.fraction) | ((a_rep.exp | b_rep.exp) & special_exp) == 0)
-        return .Equal;
-
-    if (@intFromBool(a_rep.exp == b_rep.exp) & @intFromBool(a_rep.fraction == b_rep.fraction) != 0) {
-        return .Equal;
-    } else if (a_rep.exp & sign_bit != b_rep.exp & sign_bit) {
-        // signs are different
-        if (@as(i16, @bitCast(a_rep.exp)) < @as(i16, @bitCast(b_rep.exp))) {
-            return .Less;
-        } else {
-            return .Greater;
-        }
-    } else {
-        const a_fraction = a_rep.fraction | (@as(u80, a_rep.exp) << sig_bits);
-        const b_fraction = b_rep.fraction | (@as(u80, b_rep.exp) << sig_bits);
-        if ((a_fraction < b_fraction) == (a_rep.exp & sign_bit == 0)) {
-            return .Less;
-        } else {
-            return .Greater;
-        }
-    }
+test cmp_f80 {
+    try std.testing.expect(cmp_f80(1.0, 1.0) == .eq);
+    try std.testing.expect(cmp_f80(0.0, -0.0) == .eq);
+    try std.testing.expect(cmp_f80(2.0, 4.0) == .lt);
+    try std.testing.expect(cmp_f80(2.0, -4.0) == .gt);
+    try std.testing.expect(cmp_f80(-2.0, -4.0) == .gt);
+    try std.testing.expect(cmp_f80(-2.0, 4.0) == .lt);
 }
 
-test "cmp_f80" {
-    inline for (.{ LE, GE }) |RT| {
-        try std.testing.expect(cmp_f80(RT, 1.0, 1.0) == RT.Equal);
-        try std.testing.expect(cmp_f80(RT, 0.0, -0.0) == RT.Equal);
-        try std.testing.expect(cmp_f80(RT, 2.0, 4.0) == RT.Less);
-        try std.testing.expect(cmp_f80(RT, 2.0, -4.0) == RT.Greater);
-        try std.testing.expect(cmp_f80(RT, -2.0, -4.0) == RT.Greater);
-        try std.testing.expect(cmp_f80(RT, -2.0, 4.0) == RT.Less);
-    }
-}
-
-pub inline fn unordcmp(comptime T: type, a: T, b: T) i32 {
+inline fn unord(comptime T: type, a: T, b: T) bool {
     const rep_t = @Int(.unsigned, @typeInfo(T).float.bits);
 
     const significandBits = std.math.floatMantissaBits(T);
@@ -261,7 +368,7 @@ pub inline fn unordcmp(comptime T: type, a: T, b: T) i32 {
     const aAbs: rep_t = @as(rep_t, @bitCast(a)) & absMask;
     const bAbs: rep_t = @as(rep_t, @bitCast(b)) & absMask;
 
-    return @intFromBool(aAbs > infRep or bAbs > infRep);
+    return aAbs > infRep or bAbs > infRep;
 }
 
 test {

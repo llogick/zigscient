@@ -4780,60 +4780,45 @@ pub fn alignForwardLog2(addr: usize, log2_alignment: u8) usize {
 pub fn doNotOptimizeAway(val: anytype) void {
     if (@inComptime()) return;
 
+    if (builtin.zig_backend == .stage2_c and builtin.abi == .msvc) {
+        _ = @atomicRmw(*const anyopaque, @as(*volatile *const anyopaque, &struct {
+            var escape: *const anyopaque = undefined;
+        }.escape), .Xchg, &val, .acq_rel); // TODO: syncscope("singlethreaded")
+        return;
+    }
+
     const max_gp_register_bits = @bitSizeOf(c_long);
-    const t = @typeInfo(@TypeOf(val));
-    switch (t) {
+    switch (@typeInfo(@TypeOf(val))) {
         .void, .null, .comptime_int, .comptime_float => return,
         .@"enum" => doNotOptimizeAway(@backingInt(val)),
         .bool => doNotOptimizeAway(@intFromBool(val)),
-        .int => {
-            const bits = t.int.bits;
-            if (bits <= max_gp_register_bits and builtin.zig_backend != .stage2_c) {
-                const val2 = @as(
-                    @Int(t.int.signedness, @max(8, std.math.ceilPowerOfTwoAssert(u16, bits))),
-                    val,
-                );
-                asm volatile (""
-                    :
-                    : [_] "r" (val2),
-                );
-            } else doNotOptimizeAway(&val);
+        .int => |int| if (int.bits <= max_gp_register_bits) {
+            const val2 = @as(
+                @Int(int.signedness, @max(8, std.math.ceilPowerOfTwoAssert(u16, int.bits))),
+                val,
+            );
+            asm volatile (""
+                :
+                : [_] "r" (val2),
+            );
+        } else doNotOptimizeAway(&val),
+        .float => |float| switch (float.bits) {
+            else => comptime unreachable,
+            16, 80, 128 => doNotOptimizeAway(&val),
+            32, 64 => asm volatile (""
+                :
+                : [_] "rm" (val),
+            ),
         },
-        .float => {
-            if ((t.float.bits == 32 or t.float.bits == 64) and builtin.zig_backend != .stage2_c) {
-                asm volatile (""
-                    :
-                    : [_] "rm" (val),
-                );
-            } else doNotOptimizeAway(&val);
-        },
-        .pointer => {
-            if (builtin.zig_backend == .stage2_c) {
-                doNotOptimizeAwayC(val);
-            } else {
-                asm volatile (""
-                    :
-                    : [_] "m" (val),
-                    : .{ .memory = true });
-            }
-        },
-        .array => {
-            if (t.array.len * @sizeOf(t.array.child) <= 64) {
-                for (val) |v| doNotOptimizeAway(v);
-            } else doNotOptimizeAway(&val);
-        },
+        .pointer => asm volatile (""
+            :
+            : [_] "m" (val),
+            : .{ .memory = true }),
+        .array => |array| if (array.len * @sizeOf(array.child) <= 64) {
+            for (val) |v| doNotOptimizeAway(v);
+        } else doNotOptimizeAway(&val),
         else => doNotOptimizeAway(&val),
     }
-}
-
-/// .stage2_c doesn't support asm blocks yet, so use volatile stores instead
-var deopt_target: if (builtin.zig_backend == .stage2_c) u8 else void = undefined;
-fn doNotOptimizeAwayC(ptr: anytype) void {
-    const dest = @as(*volatile u8, @ptrCast(&deopt_target));
-    for (asBytes(ptr)) |b| {
-        dest.* = b;
-    }
-    dest.* = 0;
 }
 
 test doNotOptimizeAway {
@@ -4994,12 +4979,9 @@ pub fn alignInSlice(slice: anytype, comptime new_alignment: usize) ?AlignedSlice
 }
 
 test "read/write(Var)PackedInt" {
-    switch (builtin.cpu.arch) {
-        // This test generates too much code to execute on WASI.
-        // LLVM backend fails with "too many locals: locals exceed maximum"
-        .wasm32, .wasm64 => return error.SkipZigTest,
-        else => {},
-    }
+    // This test generates too much code to execute on WASI.
+    // LLVM backend fails with "too many locals: locals exceed maximum"
+    if (builtin.cpu.arch.isWasm()) return error.SkipZigTest;
 
     const foreign_endian: Endian = if (native_endian == .big) .little else .big;
     const expect = std.testing.expect;

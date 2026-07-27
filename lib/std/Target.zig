@@ -1797,6 +1797,7 @@ pub const Cpu = struct {
 
                 .x86_sysv,
                 .x86_win,
+                .x86_mingw,
                 .x86_stdcall,
                 .x86_fastcall,
                 .x86_thiscall,
@@ -3066,9 +3067,13 @@ pub fn stackGrowth(target: *const Target) StackGrowth {
 /// Default signedness of `char` for the native C compiler for this target
 /// Note that char signedness is implementation-defined and many compilers provide
 /// an option to override the default signedness e.g. GCC's -funsigned-char / -fsigned-char
-pub fn cCharSignedness(target: *const Target) std.builtin.Signedness {
+/// Returns `null` if no C ABI is defined for this target.
+pub fn cCharSignedness(target: *const Target) ?std.builtin.Signedness {
+    switch (target.os.tag) {
+        .opengl => return null,
+        else => {},
+    }
     if (target.os.tag.isDarwin() or target.os.tag == .windows or target.os.tag == .uefi) return .signed;
-
     return switch (target.cpu.arch) {
         .aarch64,
         .aarch64_be,
@@ -3114,7 +3119,8 @@ pub const CType = enum {
     longdouble,
 };
 
-pub fn cTypeByteSize(t: *const Target, c_type: CType) u16 {
+/// Returns `null` if no C ABI is defined for this target.
+pub fn cTypeByteSize(t: *const Target, c_type: CType) ?u16 {
     return switch (c_type) {
         .char,
         .short,
@@ -3127,18 +3133,19 @@ pub fn cTypeByteSize(t: *const Target, c_type: CType) u16 {
         .ulonglong,
         .float,
         .double,
-        => @divExact(cTypeBitSize(t, c_type), 8),
+        => @divExact(cTypeBitSize(t, c_type) orelse return null, 8),
 
-        .longdouble => switch (cTypeBitSize(t, c_type)) {
+        .longdouble => switch (cTypeBitSize(t, c_type) orelse return null) {
             64 => 8,
-            80 => @intCast(std.mem.alignForward(usize, 10, cTypeAlignment(t, .longdouble))),
+            80 => @intCast(std.mem.alignForward(usize, 10, cTypeAlignment(t, c_type).?)),
             128 => 16,
             else => unreachable,
         },
     };
 }
 
-pub fn cTypeBitSize(target: *const Target, c_type: CType) u16 {
+/// Returns `null` if no C ABI is defined for this target.
+pub fn cTypeBitSize(target: *const Target, c_type: CType) ?u16 {
     switch (target.os.tag) {
         .freestanding,
         .other,
@@ -3459,15 +3466,17 @@ pub fn cTypeBitSize(target: *const Target, c_type: CType) u16 {
             .longlong, .ulonglong, .longdouble => return 64,
         },
 
+        .opengl => return null,
+
         .ps3,
         .contiki,
         .managarm,
-        .opengl,
         => @panic("specify the C integer and float type sizes for this OS"),
     }
 }
 
-pub fn cTypeAlignment(target: *const Target, c_type: CType) u16 {
+/// Returns `null` if no C ABI is defined for this target.
+pub fn cTypeAlignment(target: *const Target, c_type: CType) ?u16 {
     // Overrides for unusual alignments
     switch (target.cpu.arch) {
         .avr,
@@ -3500,7 +3509,7 @@ pub fn cTypeAlignment(target: *const Target, c_type: CType) u16 {
 
     // Next-power-of-two-aligned, up to a maximum.
     return @min(
-        std.math.ceilPowerOfTwoAssert(u16, (cTypeBitSize(target, c_type) + 7) / 8),
+        std.math.ceilPowerOfTwoAssert(u16, ((cTypeBitSize(target, c_type) orelse return null) + 7) / 8),
         @as(u16, switch (target.cpu.arch) {
             .msp430,
             .x86_16,
@@ -3540,120 +3549,6 @@ pub fn cTypeAlignment(target: *const Target, c_type: CType) u16 {
             .sparc,
             .thumb,
             .thumbeb,
-            => 8,
-
-            .aarch64,
-            .aarch64_be,
-            .alpha,
-            .hppa64,
-            .kvx,
-            .loongarch32,
-            .loongarch64,
-            .mips64,
-            .mips64el,
-            .powerpc,
-            .powerpcle,
-            .powerpc64,
-            .powerpc64le,
-            .riscv32,
-            .riscv32be,
-            .riscv64,
-            .riscv64be,
-            .sparc64,
-            .spirv32,
-            .spirv64,
-            .ve,
-            .wasm32,
-            .wasm64,
-            .x86_64,
-            => 16,
-
-            .avr,
-            .ez80,
-            => unreachable, // Handled above.
-        }),
-    );
-}
-
-pub fn cTypePreferredAlignment(target: *const Target, c_type: CType) u16 {
-    // Overrides for unusual alignments
-    switch (target.cpu.arch) {
-        .arc, .arceb => switch (c_type) {
-            .longdouble => return 4,
-            else => {},
-        },
-        .avr,
-        .ez80,
-        => return 1,
-        .x86 => switch (target.os.tag) {
-            .windows, .uefi => switch (c_type) {
-                .longdouble => switch (target.abi) {
-                    .gnu => return 4,
-                    else => return 8,
-                },
-                else => {},
-            },
-            else => switch (c_type) {
-                .longdouble => return 4,
-                else => {},
-            },
-        },
-        .m68k => switch (c_type) {
-            .int, .uint, .long, .ulong => return 2,
-            else => {},
-        },
-        .wasm32, .wasm64 => switch (target.os.tag) {
-            .emscripten => switch (c_type) {
-                .longdouble => return 8,
-                else => {},
-            },
-            else => {},
-        },
-        else => {},
-    }
-
-    // Next-power-of-two-aligned, up to a maximum.
-    return @min(
-        std.math.ceilPowerOfTwoAssert(u16, (cTypeBitSize(target, c_type) + 7) / 8),
-        @as(u16, switch (target.cpu.arch) {
-            .x86_16,
-            .msp430,
-            => 2,
-
-            .arc,
-            .arceb,
-            .csky,
-            .kalimba,
-            .microblaze,
-            .microblazeel,
-            .or1k,
-            .propeller,
-            .sh,
-            .sheb,
-            .xcore,
-            .xtensa,
-            .xtensaeb,
-            => 4,
-
-            .amdgcn,
-            .arm,
-            .armeb,
-            .bpfeb,
-            .bpfel,
-            .hexagon,
-            .hppa,
-            .lanai,
-            .m68k,
-            .m88k,
-            .mips,
-            .mipsel,
-            .nvptx,
-            .nvptx64,
-            .s390x,
-            .sparc,
-            .thumb,
-            .thumbeb,
-            .x86,
             => 8,
 
             .aarch64,
@@ -3712,6 +3607,11 @@ pub fn cMaxIntAlignment(target: *const Target) u16 {
         .xcore,
         => 4,
 
+        .x86 => switch (target.os.tag) {
+            else => 4,
+            .uefi, .windows => 8,
+        },
+
         .arm,
         .armeb,
         .hexagon,
@@ -3730,7 +3630,6 @@ pub fn cMaxIntAlignment(target: *const Target) u16 {
         .sparc,
         .thumb,
         .thumbeb,
-        .x86,
         .xtensa,
         .xtensaeb,
         => 8,
@@ -3766,18 +3665,14 @@ pub fn cMaxIntAlignment(target: *const Target) u16 {
 pub fn cCallingConvention(target: *const Target) ?std.builtin.CallingConvention {
     return switch (target.cpu.arch) {
         .x86_64 => switch (target.os.tag) {
-            .windows,
-            .uefi,
-            => .{ .x86_64_win = .{} },
+            .windows, .uefi => .{ .x86_64_win = .{} },
             else => switch (target.abi) {
                 .gnux32, .muslx32, .x32 => .{ .x86_64_x32 = .{} },
                 else => .{ .x86_64_sysv = .{} },
             },
         },
         .x86 => switch (target.os.tag) {
-            .windows,
-            .uefi,
-            => .{ .x86_win = .{} },
+            .windows, .uefi => if (target.isMinGW()) .{ .x86_mingw = .{} } else .{ .x86_win = .{} },
             else => .{ .x86_sysv = .{} },
         },
         .x86_16 => .{ .x86_16_cdecl = .{} },

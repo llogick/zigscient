@@ -364,7 +364,7 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
                 const a = struct_obj.field_aligns.get(ip)[field_idx];
                 if (a != .none) break :a a;
             }
-            break :a field_ty.defaultStructFieldAlignment(struct_obj.layout, zcu);
+            break :a field_ty.abiAlignment(zcu);
         };
         align_out.* = field_align;
         if (struct_obj.field_is_comptime_bits.get(ip, field_idx)) {

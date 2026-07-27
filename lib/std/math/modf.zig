@@ -1,5 +1,4 @@
 const std = @import("../std.zig");
-const builtin = @import("builtin");
 const math = std.math;
 const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
@@ -85,9 +84,6 @@ fn ModfTests(comptime T: type) type {
             try expectApproxEqAbs(expected_c, r.fpart, epsilon);
         }
         test "vector" {
-            if (builtin.os.tag.isDarwin() and builtin.cpu.arch == .aarch64) return error.SkipZigTest;
-            if (builtin.cpu.arch == .s390x) return error.SkipZigTest; // https://github.com/llvm/llvm-project/issues/194256
-
             const widths = [_]comptime_int{ 1, 2, 3, 4, 8, 16 };
 
             inline for (widths) |len| {

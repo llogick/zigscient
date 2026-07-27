@@ -874,7 +874,7 @@ pub fn splatBytes(w: *Writer, bytes: []const u8, n: usize) Error!usize {
 }
 
 /// Asserts the `buffer` was initialized with a capacity of at least `@sizeOf(T)` bytes.
-pub inline fn writeInt(w: *Writer, comptime T: type, value: T, endian: std.builtin.Endian) Error!void {
+pub inline fn writeInt(w: *Writer, comptime T: type, value: T, endian: std.lang.Endian) Error!void {
     var bytes: [@divExact(@typeInfo(T).int.bits, 8)]u8 = undefined;
     std.mem.writeInt(std.math.ByteAlignedInt(@TypeOf(value)), &bytes, value, endian);
     return w.writeAll(&bytes);
@@ -882,7 +882,7 @@ pub inline fn writeInt(w: *Writer, comptime T: type, value: T, endian: std.built
 
 /// The function is inline to avoid the dead code in case `endian` is
 /// comptime-known and matches host endianness.
-pub inline fn writeStruct(w: *Writer, value: anytype, endian: std.builtin.Endian) Error!void {
+pub inline fn writeStruct(w: *Writer, value: anytype, endian: std.lang.Endian) Error!void {
     switch (@typeInfo(@TypeOf(value))) {
         .@"struct" => |info| switch (info.layout) {
             .auto => @compileError("ill-defined memory layout"),
@@ -907,7 +907,7 @@ pub inline fn writeSliceEndian(
     w: *Writer,
     Elem: type,
     slice: []const Elem,
-    endian: std.builtin.Endian,
+    endian: std.lang.Endian,
 ) Error!void {
     switch (@typeInfo(Elem)) {
         .@"struct" => |info| comptime assert(info.layout != .auto),
@@ -2817,12 +2817,12 @@ pub const Allocating = struct {
     }
 
     test Allocating {
-        try testAllocating(.fromByteUnits(1));
-        try testAllocating(.fromByteUnits(4));
-        try testAllocating(.fromByteUnits(8));
-        try testAllocating(.fromByteUnits(16));
-        try testAllocating(.fromByteUnits(32));
-        try testAllocating(.fromByteUnits(64));
+        try testAllocating(.@"1");
+        try testAllocating(.@"4");
+        try testAllocating(.@"8");
+        try testAllocating(.@"16");
+        try testAllocating(.@"32");
+        try testAllocating(.@"64");
     }
 };
 

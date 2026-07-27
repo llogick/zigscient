@@ -75,7 +75,7 @@ pub const snan = float.snan;
 ///
 /// NaN values are never considered equal to any value.
 pub fn approxEqAbs(comptime T: type, x: T, y: T, tolerance: T) bool {
-    assert(@typeInfo(T) == .float or @typeInfo(T) == .comptime_float);
+    comptime assert(@typeInfo(T) == .float or @typeInfo(T) == .comptime_float);
     assert(tolerance >= 0);
 
     // Fast path for equal values (and signed zeros and infinites).
@@ -103,7 +103,7 @@ pub fn approxEqAbs(comptime T: type, x: T, y: T, tolerance: T) bool {
 ///
 /// NaN values are never considered equal to any value.
 pub fn approxEqRel(comptime T: type, x: T, y: T, tolerance: T) bool {
-    assert(@typeInfo(T) == .float or @typeInfo(T) == .comptime_float);
+    comptime assert(@typeInfo(T) == .float or @typeInfo(T) == .comptime_float);
     assert(tolerance > 0);
 
     // Fast path for equal values (and signed zeros and infinites).
@@ -461,7 +461,7 @@ pub fn wrap(x: anytype, r: anytype) @TypeOf(x) {
     }
 }
 test wrap {
-    if (builtin.os.tag == .windows and builtin.cpu.arch == .x86) {
+    if (builtin.os.tag == .windows and builtin.cpu.arch == .x86 and builtin.abi == .msvc) {
         // https://codeberg.org/ziglang/zig/issues/35520
         return error.SkipZigTest;
     }
@@ -1385,7 +1385,8 @@ pub fn lerp(a: anytype, b: anytype, t: anytype) @TypeOf(a, b, t) {
 }
 
 test lerp {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // https://github.com/ziglang/zig/issues/17884
+    if (builtin.zig_backend == .stage2_c and builtin.cpu.arch.isArm()) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_c and builtin.cpu.arch.isX86()) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_x86_64 and !comptime builtin.cpu.has(.x86, .fma)) return error.SkipZigTest; // https://github.com/ziglang/zig/issues/17884
 
     try testing.expectEqual(@as(f64, 75), lerp(50, 100, 0.5));

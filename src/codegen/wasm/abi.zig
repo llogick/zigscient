@@ -25,7 +25,11 @@ pub fn classifyType(ty: Type, zcu: *const Zcu) Class {
     assert(ty.hasRuntimeBits(zcu));
     switch (ty.zigTypeTag(zcu)) {
         .int, .@"enum", .error_set => return .{ .direct = ty },
-        .float => return .{ .direct = ty },
+        .float => return switch (ty.floatBits(zcu.getTarget())) {
+            else => unreachable,
+            16, 32, 64, 128 => .{ .direct = ty },
+            80 => .indirect,
+        },
         .bool => return .{ .direct = ty },
         .vector => return .{ .direct = ty },
         .array => return .indirect,

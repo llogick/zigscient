@@ -966,8 +966,6 @@ const ct_unprotected = struct {
 };
 
 test "finite field arithmetic" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const M = Modulus(256);
     const m = try M.fromPrimitive(u256, 3429938563481314093726330772853735541133072814650493833233);
     var x = try M.Fe.fromPrimitive(u256, m, 80169837251094269539116136208111827396136208141182357733);
@@ -1066,8 +1064,6 @@ test "finite field arithmetic" {
 }
 
 fn testCt(ct_: anytype) !void {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
-
     const l0: Limb = 0;
     const l1: Limb = 1;
     try testing.expectEqual(l1, ct_.select(true, l1, l0));

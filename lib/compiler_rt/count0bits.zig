@@ -1,6 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
-const symbol = @import("../compiler_rt.zig").symbol;
+const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
 
 comptime {
     symbol(&__clzsi2, "__clzsi2");

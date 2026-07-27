@@ -163,7 +163,7 @@ pub fn MultiArrayList(comptime T: type) type {
                 };
             }
 
-            /// This function is used in the debugger pretty formatters in tools/ to fetch the
+            /// This function is used in the debugger pretty formatters in lib/lldb/ to fetch the
             /// child field order and entry type to facilitate fancy debug printing for this type.
             fn dbHelper(self: *Slice, child: *Elem, field: *Field, entry: *Entry) void {
                 _ = self;
@@ -681,7 +681,7 @@ pub fn MultiArrayList(comptime T: type) type {
             }
             break :entry @Struct(.@"extern", null, &entry_field_names, &entry_field_types, &entry_field_attrs);
         };
-        /// This function is used in the debugger pretty formatters in tools/ to fetch the
+        /// This function is used in the debugger pretty formatters in lib/lldb/ to fetch the
         /// child field order and entry type to facilitate fancy debug printing for this type.
         fn dbHelper(self: *Self, child: *Elem, field: *Field, entry: *Entry) void {
             _ = self;

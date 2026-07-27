@@ -1211,7 +1211,7 @@ pub const rsa = struct {
                     0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05,
                     0x00, 0x04, 0x40,
                 },
-                else => @compileError("unreachable"),
+                else => comptime unreachable,
             };
             em_index -= hash_der.len;
             @memcpy(em[em_index..][0..hash_der.len], hash_der);

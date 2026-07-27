@@ -122,7 +122,6 @@ test fill {
 }
 
 test "buf seeding test" {
-    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
     const buf0: [24]u8 = @bitCast([3]u64{ 16294208416658607535, 13964609475759908645, 4703697494102998476 });
     const resulting_state = .{ .x = 16294208416658607535, .y = 13964609475759908645, .z = 4703697494102998476 };
     var r = RomuTrio.init(0);

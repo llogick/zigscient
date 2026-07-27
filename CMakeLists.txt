@@ -358,6 +358,8 @@ set(ZIG_STAGE2_SOURCES
     src/codegen/c/type/render_defs.zig
     src/codegen/llvm.zig
     src/codegen/llvm/bindings.zig
+    src/codegen/loongarch/abi.zig
+    src/codegen/s390x/abi.zig
     src/crash_report.zig
     src/dev.zig
     src/libs/freebsd.zig
