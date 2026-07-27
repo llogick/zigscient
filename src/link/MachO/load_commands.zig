@@ -62,6 +62,10 @@ pub fn calcLoadCommandsSize(macho_file: *MachO, assume_max_path_len: bool) !u32 
             assume_max_path_len,
         );
     }
+    // LC_ENCRYPTION_INFO_64
+    if (macho_file.needsEncryptionInfo()) {
+        sizeofcmds += @sizeOf(macho.encryption_info_command_64);
+    }
     // LC_RPATH
     {
         for (macho_file.rpath_list) |rpath| {
@@ -163,23 +167,29 @@ pub fn calcLoadCommandsSizeObject(macho_file: *MachO) u32 {
     return @as(u32, @intCast(sizeofcmds));
 }
 
-pub fn calcMinHeaderPadSize(macho_file: *MachO) !u32 {
+pub fn calcMinHeaderSize(macho_file: *MachO) !u32 {
     var padding: u32 = (try calcLoadCommandsSize(macho_file, false)) +
         (macho_file.headerpad_size orelse MachO.default_headerpad_size);
-    log.debug("minimum requested headerpad size 0x{x}", .{padding + @sizeOf(macho.mach_header_64)});
+    log.debug("minimum requested header + padding size 0x{x}", .{padding + @sizeOf(macho.mach_header_64)});
 
     if (macho_file.headerpad_max_install_names) {
         const min_headerpad_size: u32 = try calcLoadCommandsSize(macho_file, true);
-        log.debug("headerpad_max_install_names minimum headerpad size 0x{x}", .{
+        log.debug("headerpad_max_install_names minimum header + padding size 0x{x}", .{
             min_headerpad_size + @sizeOf(macho.mach_header_64),
         });
         padding = @max(padding, min_headerpad_size);
     }
 
     const offset = @sizeOf(macho.mach_header_64) + padding;
-    log.debug("actual headerpad size 0x{x}", .{offset});
+    log.debug("actual header + padding size 0x{x}", .{offset});
 
-    return offset;
+    // Encryption is done at page granularity, so if the output needs a load
+    // command for encryption info, ensure that the header + load commands have
+    // at least one full, unencrypted page.
+    return if (macho_file.needsEncryptionInfo())
+        mem.alignForward(u32, offset, macho_file.getPageSize())
+    else
+        offset;
 }
 
 pub fn writeDylinkerLC(writer: *Writer) !void {
@@ -258,6 +268,13 @@ pub fn writeDylibIdLC(macho_file: *MachO, writer: *Writer) !void {
         .current_version = @as(u32, @intCast(curr.major << 16 | curr.minor << 8 | curr.patch)),
         .compatibility_version = @as(u32, @intCast(compat.major << 16 | compat.minor << 8 | compat.patch)),
     }, writer);
+}
+
+pub fn writeEncryptionInfoLC(macho_file: *MachO, writer: *Writer) !void {
+    try writer.writeAll(mem.asBytes(&macho.encryption_info_command_64{
+        .cryptoff = macho_file.header_size.?,
+        .cryptsize = @as(u32, @intCast(macho_file.getTextSegment().filesize)) - macho_file.header_size.?,
+    }));
 }
 
 pub fn writeRpathLC(rpath: []const u8, writer: *Writer) !void {

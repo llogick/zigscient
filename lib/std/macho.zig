@@ -588,6 +588,25 @@ pub const rpath_command = extern struct {
     path: u32,
 };
 
+pub const encryption_info_command = extern struct {
+    cmd: LC = .ENCRYPTION_INFO,
+    cmdsize: u32 = @sizeOf(encryption_info_command),
+
+    cryptoff: u32,
+    cryptsize: u32,
+    cryptid: u32 = 0,
+};
+
+pub const encryption_info_command_64 = extern struct {
+    cmd: LC = .ENCRYPTION_INFO_64,
+    cmdsize: u32 = @sizeOf(encryption_info_command_64),
+
+    cryptoff: u32,
+    cryptsize: u32,
+    cryptid: u32 = 0,
+    _pad: u32 = 0,
+};
+
 /// The segment load command indicates that a part of this file is to be
 /// mapped into the task's address space.  The size of this segment in memory,
 /// vmsize, maybe equal to or larger than the amount to map from this file,
