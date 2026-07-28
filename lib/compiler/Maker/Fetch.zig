@@ -1164,7 +1164,7 @@ const FileType = enum {
         if (cd_header[value_start] != '=') return null;
         value_start += 1;
 
-        var value_end = std.mem.indexOfPos(u8, cd_header, value_start, ";") orelse cd_header.len;
+        var value_end = std.mem.findPos(u8, cd_header, value_start, ";") orelse cd_header.len;
         if (cd_header[value_end - 1] == '\"') {
             value_end -= 1;
         }
@@ -1344,7 +1344,7 @@ fn unpackResource(
                 return f.fail(f.location_tok, try eb.addString("missing 'Content-Type' header"));
 
             // Extract the MIME type, ignoring charset and boundary directives
-            const mime_type_end = std.mem.indexOf(u8, content_type, ";") orelse content_type.len;
+            const mime_type_end = std.mem.find(u8, content_type, ";") orelse content_type.len;
             const mime_type = content_type[0..mime_type_end];
 
             if (ascii.eqlIgnoreCase(mime_type, "application/x-tar"))
@@ -1455,7 +1455,7 @@ fn unpackTarball(f: *Fetch, out_dir: Io.Dir, reader: *Io.Reader) RunError!Unpack
 
     var diagnostics: std.tar.Diagnostics = .{ .allocator = arena };
 
-    std.tar.pipeToFileSystem(io, out_dir, reader, .{
+    std.tar.extract(io, out_dir, reader, .{
         .diagnostics = &diagnostics,
         .strip_components = 0,
         .mode_mode = .ignore,

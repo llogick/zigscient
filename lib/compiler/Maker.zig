@@ -3165,7 +3165,7 @@ pub fn printErrorMessages(
         try stderr.setColor(.red);
         try writer.writeAll("error:");
         try stderr.setColor(.reset);
-        if (std.mem.indexOfScalar(u8, msg, '\n') == null) {
+        if (std.mem.findScalar(u8, msg, '\n') == null) {
             try writer.print(" {s}\n", .{msg});
         } else switch (multiline_errors) {
             .indent => {

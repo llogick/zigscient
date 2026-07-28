@@ -999,7 +999,7 @@ test "expectEqualDeep composite type" {
 }
 
 fn printIndicatorLine(source: []const u8, indicator_index: usize) void {
-    const line_begin_index = if (std.mem.lastIndexOfScalar(u8, source[0..indicator_index], '\n')) |line_begin|
+    const line_begin_index = if (std.mem.findScalarLast(u8, source[0..indicator_index], '\n')) |line_begin|
         line_begin + 1
     else
         0;

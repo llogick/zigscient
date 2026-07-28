@@ -555,7 +555,7 @@ const FuzzTestRunner = struct {
 
     const Instance = struct {
         child: process.Child,
-        message: std.ArrayListAligned(u8, .@"4"),
+        message: std.array_list.Aligned(u8, .@"4"),
         broadcast_written: usize,
         stderr: std.ArrayList(u8),
         stdin_vec: [1][]u8,
@@ -2120,7 +2120,7 @@ fn fmtSnapshotIndicatorLine(buf: []const u8, index: usize) std.fmt.Alt(
 }
 
 fn snapshotIndicatorLine(line: FmtIndicatorLine, w: *std.Io.Writer) std.Io.Writer.Error!void {
-    const line_begin_index = if (std.mem.lastIndexOfScalar(u8, line.buf[0..line.index], '\n')) |line_begin|
+    const line_begin_index = if (std.mem.findScalarLast(u8, line.buf[0..line.index], '\n')) |line_begin|
         line_begin + 1
     else
         0;

@@ -491,7 +491,7 @@ pub fn lowerToBuildSteps(
 
     for (self.cases.items) |case| {
         for (options.test_filters) |test_filter| {
-            if (std.mem.indexOf(u8, case.name, test_filter)) |_| break;
+            if (std.mem.find(u8, case.name, test_filter)) |_| break;
         } else if (options.test_filters.len > 0) continue;
 
         if (case.case.? == .Error and options.skip_compile_errors) continue;
@@ -524,7 +524,7 @@ pub fn lowerToBuildSteps(
 
         if (options.test_target_filters.len > 0) {
             for (options.test_target_filters) |filter| {
-                if (std.mem.indexOf(u8, triple_txt, filter) != null) break;
+                if (std.mem.find(u8, triple_txt, filter) != null) break;
             } else continue;
         }
 

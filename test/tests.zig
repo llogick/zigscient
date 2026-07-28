@@ -2542,13 +2542,13 @@ pub fn addStandaloneTests(
             .enable_ios_sdk = enable_ios_sdk,
             .enable_macos_sdk = enable_macos_sdk,
             .enable_symlinks_windows = enable_symlinks_windows,
-            .simple_skip_debug = mem.indexOfScalar(OptimizeMode, optimize_modes, .debug) == null,
-            .simple_skip_release_safe = mem.indexOfScalar(OptimizeMode, optimize_modes, .safe) == null,
-            .simple_skip_release_fast = mem.indexOfScalar(OptimizeMode, optimize_modes, .fast) == null,
-            .simple_skip_release_small = mem.indexOfScalar(OptimizeMode, optimize_modes, .small) == null,
+            .simple_skip_debug = mem.findScalar(OptimizeMode, optimize_modes, .debug) == null,
+            .simple_skip_release_safe = mem.findScalar(OptimizeMode, optimize_modes, .safe) == null,
+            .simple_skip_release_fast = mem.findScalar(OptimizeMode, optimize_modes, .fast) == null,
+            .simple_skip_release_small = mem.findScalar(OptimizeMode, optimize_modes, .small) == null,
         });
         const test_cases_dep_step = test_cases_dep.builder.default_step;
-        test_cases_dep_step.name = b.dupe(test_cases_dep_name);
+        test_cases_dep_step.name = b.graph.dupeString(test_cases_dep_name);
         step.dependOn(test_cases_dep.builder.default_step);
     }
     return step;
@@ -2862,7 +2862,7 @@ pub fn addModuleTests(b: *std.Build, options: ModuleTestOptions) *Step {
 
         if (options.test_target_filters.len > 0) {
             for (options.test_target_filters) |filter| {
-                if (std.mem.indexOf(u8, triple_txt, filter) != null) break;
+                if (std.mem.find(u8, triple_txt, filter) != null) break;
             } else continue;
         }
 
@@ -3160,7 +3160,7 @@ pub fn addCAbiTests(b: *std.Build, options: CAbiTestOptions) *Step {
 
         if (options.test_target_filters.len > 0) {
             for (options.test_target_filters) |filter| {
-                if (std.mem.indexOf(u8, triple_txt, filter) != null) break;
+                if (std.mem.find(u8, triple_txt, filter) != null) break;
             } else continue;
         }
 
@@ -3249,7 +3249,7 @@ pub fn addLinkTests(b: *std.Build, options: LinkTestOptions) *Step {
 
         if (options.test_target_filters.len > 0) {
             for (options.test_target_filters) |filter| {
-                if (std.mem.indexOf(u8, triple_txt, filter) != null) break;
+                if (std.mem.find(u8, triple_txt, filter) != null) break;
             } else continue;
         }
 
@@ -3374,7 +3374,7 @@ pub fn addIncrementalTests(b: *std.Build, test_step: *Step, test_filters: []cons
         if (std.mem.endsWith(u8, entry.basename, ".swp")) continue;
 
         for (test_filters) |test_filter| {
-            if (std.mem.indexOf(u8, entry.path, test_filter)) |_| break;
+            if (std.mem.find(u8, entry.path, test_filter)) |_| break;
         } else if (test_filters.len > 0) continue;
 
         switch (entry.kind) {

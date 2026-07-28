@@ -941,20 +941,20 @@ fn renderExpressionFixup(r: *Render, node: Ast.Node.Index, space: Space) Error!v
 }
 
 fn drainNoNewline(w: *Writer, data: []const []const u8, splat: usize) Writer.Error!usize {
-    if (std.mem.indexOfScalar(u8, w.buffered(), '\n') != null) {
+    if (std.mem.findScalar(u8, w.buffered(), '\n') != null) {
         return error.WriteFailed;
     }
 
     var n: usize = 0;
     for (data[0 .. data.len - 1]) |v| {
-        if (std.mem.indexOfScalar(u8, v, '\n') != null) {
+        if (std.mem.findScalar(u8, v, '\n') != null) {
             return error.WriteFailed;
         }
         n += v.len;
     }
 
     const pattern = data[data.len - 1];
-    if (splat != 0 and std.mem.indexOfScalar(u8, pattern, '\n') != null) {
+    if (splat != 0 and std.mem.findScalar(u8, pattern, '\n') != null) {
         return error.WriteFailed;
     }
     n += pattern.len * splat;
@@ -990,7 +990,7 @@ fn rendersMultiline(r: *const Render, node: Ast.Node.Index) error{OutOfMemory}!b
         error.WriteFailed => return true,
     };
     if (sub_ais.disabled_offset != null) return true;
-    if (std.mem.indexOfScalar(u8, no_nl_w.buffered(), '\n') != null) {
+    if (std.mem.findScalar(u8, no_nl_w.buffered(), '\n') != null) {
         return true;
     }
 
@@ -2993,7 +2993,7 @@ fn hasMultilineString(tree: Ast, start_token: Ast.TokenIndex, end_token: Ast.Tok
 /// Returns true if there exists a doc comment between the start
 /// of token `start_token` and the start of token `end_token`.
 fn hasDocComment(tree: Ast, start_token: Ast.TokenIndex, end_token: Ast.TokenIndex) bool {
-    return std.mem.indexOfScalar(
+    return std.mem.findScalar(
         Token.Tag,
         tree.tokens.items(.tag)[start_token..end_token],
         .doc_comment,

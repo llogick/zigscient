@@ -2384,13 +2384,13 @@ fn addTest(
 ) void {
     if (db.options.test_filters.len > 0) {
         for (db.options.test_filters) |test_filter| {
-            if (std.mem.indexOf(u8, name, test_filter) != null) break;
+            if (std.mem.find(u8, name, test_filter) != null) break;
         } else return;
     }
     if (db.options.test_target_filters.len > 0) {
         const triple_txt = target.resolved.query.zigTriple(db.b.allocator) catch @panic("OOM");
         for (db.options.test_target_filters) |filter| {
-            if (std.mem.indexOf(u8, triple_txt, filter) != null) break;
+            if (std.mem.find(u8, triple_txt, filter) != null) break;
         } else return;
     }
     const files_wf = db.b.addWriteFiles();

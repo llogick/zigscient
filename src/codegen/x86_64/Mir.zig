@@ -1745,8 +1745,8 @@ pub const Inst = struct {
             for (@typeInfo(Mnemonic).@"enum".field_names) |mnemonic_name| {
                 if (mnemonic_name[0] == '.') continue;
                 for (@typeInfo(Fixes).@"enum".field_names) |fixes_name| {
-                    const pattern = fixes_name[if (std.mem.indexOfScalar(u8, fixes_name, ' ')) |index| index + " ".len else 0..];
-                    const wildcard_index = std.mem.indexOfScalar(u8, pattern, '_').?;
+                    const pattern = fixes_name[if (std.mem.findScalar(u8, fixes_name, ' ')) |index| index + " ".len else 0..];
+                    const wildcard_index = std.mem.findScalar(u8, pattern, '_').?;
                     const mnem_prefix = pattern[0..wildcard_index];
                     const mnem_suffix = pattern[wildcard_index + "_".len ..];
                     if (!std.mem.startsWith(u8, mnemonic_name, mnem_prefix)) continue;
@@ -1823,7 +1823,7 @@ pub const NullTerminatedString = enum(u32) {
     pub fn toSlice(nts: NullTerminatedString, mir: *const Mir) ?[:0]const u8 {
         if (nts == .none) return null;
         const string_bytes = mir.string_bytes[@backingInt(nts)..];
-        return string_bytes[0..std.mem.indexOfScalar(u8, string_bytes, 0).? :0];
+        return string_bytes[0..std.mem.findScalar(u8, string_bytes, 0).? :0];
     }
 };
 

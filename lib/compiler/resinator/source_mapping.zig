@@ -538,7 +538,7 @@ pub fn handleLineCommand(allocator: Allocator, line_command: []const u8, current
     defer allocator.free(filename);
 
     // \x00 bytes in the filename is incompatible with how StringTable works
-    if (std.mem.indexOfScalar(u8, filename, '\x00') != null) return error.InvalidLineCommand;
+    if (std.mem.findScalar(u8, filename, '\x00') != null) return error.InvalidLineCommand;
 
     current_mapping.line_num = linenum;
     current_mapping.filename.clearRetainingCapacity();

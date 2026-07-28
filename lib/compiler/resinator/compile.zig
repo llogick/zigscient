@@ -540,7 +540,7 @@ pub const Compiler = struct {
         //       This currently only checks for NUL bytes, but it should probably also check for
         //       platform-specific invalid characters like '*', '?', '"', '<', '>', '|' (Windows)
         //       Related: https://github.com/ziglang/zig/pull/14533#issuecomment-1416888193
-        if (std.mem.indexOfScalar(u8, filename_utf8, 0) != null) {
+        if (std.mem.findScalar(u8, filename_utf8, 0) != null) {
             return self.addErrorDetailsAndFail(.{
                 .err = .invalid_filename,
                 .token = node.filename.getFirstToken(),
@@ -2919,11 +2919,11 @@ fn validateSearchPath(path: []const u8) error{BadPathName}!void {
             var component_iterator = std.fs.path.componentIterator(path);
             while (component_iterator.next()) |component| {
                 // https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file
-                if (std.mem.indexOfAny(u8, component.name, "\x00<>:\"|?*") != null) return error.BadPathName;
+                if (std.mem.findAny(u8, component.name, "\x00<>:\"|?*") != null) return error.BadPathName;
             }
         },
         else => {
-            if (std.mem.indexOfScalar(u8, path, 0) != null) return error.BadPathName;
+            if (std.mem.findScalar(u8, path, 0) != null) return error.BadPathName;
         },
     }
 }

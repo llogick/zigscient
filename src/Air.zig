@@ -1907,7 +1907,7 @@ pub const NullTerminatedString = enum(u32) {
     pub fn toSlice(nts: NullTerminatedString, air: Air) [:0]const u8 {
         if (nts == .none) return "";
         const bytes = std.mem.sliceAsBytes(air.extra.items[@backingInt(nts)..]);
-        return bytes[0..std.mem.indexOfScalar(u8, bytes, 0).? :0];
+        return bytes[0..std.mem.findScalar(u8, bytes, 0).? :0];
     }
 };
 

@@ -1925,7 +1925,7 @@ fn emitProducerSection(gpa: Allocator, binary_bytes: *ArrayList(u8)) !void {
 
 fn splitSegmentName(name: []const u8) struct { []const u8, []const u8 } {
     const start = @intFromBool(name.len >= 1 and name[0] == '.');
-    const pivot = mem.indexOfScalarPos(u8, name, start, '.') orelse name.len;
+    const pivot = mem.findScalarPos(u8, name, start, '.') orelse name.len;
     return .{ name[0..pivot], name[pivot..] };
 }
 
@@ -2092,7 +2092,7 @@ fn emitTagNameTable(
     const ptr_size_bytes: usize = if (is64) 8 else 4;
     try code.ensureUnusedCapacity(gpa, ptr_size_bytes * 2 * tag_name_offs.len);
     for (tag_name_offs) |off| {
-        const name_len: u32 = @intCast(mem.indexOfScalar(u8, tag_name_bytes[off..], 0).?);
+        const name_len: u32 = @intCast(mem.findScalar(u8, tag_name_bytes[off..], 0).?);
         if (is64) {
             mem.writeInt(u64, code.addManyAsArrayAssumeCapacity(8), base + off, .little);
             mem.writeInt(u64, code.addManyAsArrayAssumeCapacity(8), name_len, .little);
@@ -2119,7 +2119,7 @@ fn emitRelocatableNameTable(
     try code.ensureUnusedCapacity(gpa, @as(usize, ptr_size) * 2 * name_offs.len);
     try relocs.ensureUnusedCapacity(gpa, name_offs.len);
     for (name_offs) |off| {
-        const name_len: u32 = @intCast(mem.indexOfScalar(u8, name_bytes[off..], 0).?);
+        const name_len: u32 = @intCast(mem.findScalar(u8, name_bytes[off..], 0).?);
         const reloc_offset = output_offset + @as(u32, @intCast(code.items.len - table_start));
         switch (ptr_size) {
             4 => {

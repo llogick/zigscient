@@ -45,7 +45,7 @@ const Header = extern struct {
 
     fn nameOrIndex(archive: Header) !NameOrIndex {
         const value = getValue(&archive.name);
-        const slash_index = mem.indexOfScalar(u8, value, '/') orelse return error.MalformedArchive;
+        const slash_index = mem.findScalar(u8, value, '/') orelse return error.MalformedArchive;
         const len = value.len;
         if (slash_index == len - 1) {
             // Name stored directly

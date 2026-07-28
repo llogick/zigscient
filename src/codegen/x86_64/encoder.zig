@@ -1171,7 +1171,7 @@ fn expectEqualHexStrings(expected: []const u8, given: []const u8, assembly: []co
     defer testing.allocator.free(expected_fmt);
     const given_fmt = try std.fmt.allocPrint(testing.allocator, "{x}", .{given});
     defer testing.allocator.free(given_fmt);
-    const idx = std.mem.indexOfDiff(u8, expected_fmt, given_fmt).?;
+    const idx = std.mem.findDiff(u8, expected_fmt, given_fmt).?;
     const padding = try testing.allocator.alloc(u8, idx + 5);
     defer testing.allocator.free(padding);
     @memset(padding, ' ');

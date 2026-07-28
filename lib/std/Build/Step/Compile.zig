@@ -375,7 +375,7 @@ pub fn create(owner: *std.Build, options: Options) *Compile {
     const graph = owner.graph;
     const arena = graph.arena;
 
-    const name = owner.dupe(options.name);
+    const name = owner.graph.dupeString(options.name);
     if (mem.find(u8, name, "/") != null or mem.find(u8, name, "\\") != null) {
         panic("invalid name: '{s}'. It looks like a file path, but it is supposed to be the library or application name.", .{name});
     }

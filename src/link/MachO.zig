@@ -1070,7 +1070,7 @@ fn isHoisted(self: *MachO, install_name: []const u8) bool {
         if (mem.startsWith(u8, dirname, "/usr/lib")) return true;
         if (eatPrefix(dirname, "/System/Library/Frameworks/")) |path| {
             const basename = fs.path.basename(install_name);
-            if (mem.indexOfScalar(u8, path, '.')) |index| {
+            if (mem.findScalar(u8, path, '.')) |index| {
                 if (mem.eql(u8, basename, path[0..index])) return true;
             }
         }
@@ -1739,14 +1739,14 @@ fn initSyntheticSections(self: *MachO) !void {
                     });
                 }
             } else if (eatPrefix(name, "section$start$")) |actual_name| {
-                const sep = mem.indexOfScalar(u8, actual_name, '$').?; // TODO error rather than a panic
+                const sep = mem.findScalar(u8, actual_name, '$').?; // TODO error rather than a panic
                 const segname = actual_name[0..sep]; // TODO check segname is valid
                 const sectname = actual_name[sep + 1 ..]; // TODO check sectname is valid
                 if (self.getSectionByName(segname, sectname) == null) {
                     _ = try self.addSection(segname, sectname, .{});
                 }
             } else if (eatPrefix(name, "section$end$")) |actual_name| {
-                const sep = mem.indexOfScalar(u8, actual_name, '$').?; // TODO error rather than a panic
+                const sep = mem.findScalar(u8, actual_name, '$').?; // TODO error rather than a panic
                 const segname = actual_name[0..sep]; // TODO check segname is valid
                 const sectname = actual_name[sep + 1 ..]; // TODO check sectname is valid
                 if (self.getSectionByName(segname, sectname) == null) {
@@ -1767,7 +1767,7 @@ fn getSegmentProt(segname: []const u8) macho.vm_prot_t {
 fn getSegmentRank(segname: []const u8) u8 {
     if (mem.eql(u8, segname, "__PAGEZERO")) return 0x0;
     if (mem.eql(u8, segname, "__LINKEDIT")) return 0xf;
-    if (mem.indexOf(u8, segname, "ZIG")) |_| return 0xe;
+    if (mem.find(u8, segname, "ZIG")) |_| return 0xe;
     if (mem.startsWith(u8, segname, "__TEXT")) return 0x1;
     if (mem.startsWith(u8, segname, "__DATA_CONST")) return 0x2;
     if (mem.startsWith(u8, segname, "__DATA")) return 0x3;
@@ -2342,7 +2342,7 @@ fn allocateSyntheticSymbols(self: *MachO) void {
                 }
             } else if (mem.startsWith(u8, name, "section$start$")) {
                 const actual_name = name["section$start$".len..];
-                const sep = mem.indexOfScalar(u8, actual_name, '$').?; // TODO error rather than a panic
+                const sep = mem.findScalar(u8, actual_name, '$').?; // TODO error rather than a panic
                 const segname = actual_name[0..sep];
                 const sectname = actual_name[sep + 1 ..];
                 if (self.getSectionByName(segname, sectname)) |sect_id| {
@@ -2352,7 +2352,7 @@ fn allocateSyntheticSymbols(self: *MachO) void {
                 }
             } else if (mem.startsWith(u8, name, "section$end$")) {
                 const actual_name = name["section$end$".len..];
-                const sep = mem.indexOfScalar(u8, actual_name, '$').?; // TODO error rather than a panic
+                const sep = mem.findScalar(u8, actual_name, '$').?; // TODO error rather than a panic
                 const segname = actual_name[0..sep];
                 const sectname = actual_name[sep + 1 ..];
                 if (self.getSectionByName(segname, sectname)) |sect_id| {

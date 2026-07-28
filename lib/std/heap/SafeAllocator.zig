@@ -1519,7 +1519,7 @@ const FuzzSingleThreadedAllocator = struct {
         @disableInstrumentation();
 
         const allocs_slice = f.allocs.slice();
-        const i = mem.indexOfScalar([*]u8, allocs_slice.items(.ptr), memory.ptr) orelse panic(
+        const i = mem.findScalar([*]u8, allocs_slice.items(.ptr), memory.ptr) orelse panic(
             "invalid SafeAllocator free of {f}",
             .{FormatMemory{ .memory = memory, .alignment = alignment }},
         );

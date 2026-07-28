@@ -221,16 +221,16 @@ pub fn parseAfterScheme(scheme: []const u8, text: []const u8) ParseError!Uri {
         }
 
         if (authority.len > start_of_host and authority[start_of_host] == '[') { // IPv6
-            end_of_host = std.mem.lastIndexOf(u8, authority, "]") orelse return error.InvalidFormat;
+            end_of_host = std.mem.findLast(u8, authority, "]") orelse return error.InvalidFormat;
             end_of_host += 1;
 
-            if (std.mem.lastIndexOf(u8, authority, ":")) |index| {
+            if (std.mem.findLast(u8, authority, ":")) |index| {
                 if (index >= end_of_host) { // if not part of the V6 address field
                     end_of_host = @min(end_of_host, index);
                     uri.port = std.fmt.parseInt(u16, authority[index + 1 ..], 10) catch return error.InvalidPort;
                 }
             }
-        } else if (std.mem.lastIndexOf(u8, authority, ":")) |index| {
+        } else if (std.mem.findLast(u8, authority, ":")) |index| {
             if (index >= start_of_host) { // if not part of the userinfo field
                 end_of_host = @min(end_of_host, index);
                 uri.port = std.fmt.parseInt(u16, authority[index + 1 ..], 10) catch return error.InvalidPort;
@@ -475,7 +475,7 @@ fn merge_paths(base: Component, new: []u8, aux_buf: *[]u8) error{NoSpaceLeft}!Co
     var aux: Writer = .fixed(aux_buf.*);
     if (!base.isEmpty()) {
         base.formatPath(&aux) catch return error.NoSpaceLeft;
-        aux.end = std.mem.lastIndexOfScalar(u8, aux.buffered(), '/') orelse return remove_dot_segments(new);
+        aux.end = std.mem.findScalarLast(u8, aux.buffered(), '/') orelse return remove_dot_segments(new);
     }
     aux.print("/{s}", .{new}) catch return error.NoSpaceLeft;
     const merged_path = remove_dot_segments(aux.buffered());

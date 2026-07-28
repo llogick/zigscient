@@ -90,7 +90,7 @@ pub fn addCase(self: *TranslateCContext, case: *const TestCase) void {
     const translate_c_cmd = "translate-c";
     const annotated_case_name = fmt.allocPrint(self.b.allocator, "{s} {s}", .{ translate_c_cmd, case.name }) catch unreachable;
     for (self.test_filters) |test_filter| {
-        if (mem.indexOf(u8, annotated_case_name, test_filter)) |_| break;
+        if (mem.find(u8, annotated_case_name, test_filter)) |_| break;
     } else if (self.test_filters.len > 0) return;
 
     const target = b.resolveTargetQuery(case.target);
@@ -99,7 +99,7 @@ pub fn addCase(self: *TranslateCContext, case: *const TestCase) void {
         const triple_txt = target.query.zigTriple(b.allocator) catch @panic("OOM");
 
         for (self.test_target_filters) |filter| {
-            if (std.mem.indexOf(u8, triple_txt, filter) != null) break;
+            if (std.mem.find(u8, triple_txt, filter) != null) break;
         } else return;
     }
 

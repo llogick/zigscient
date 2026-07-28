@@ -402,8 +402,8 @@ pub fn addCSourceFiles(m: *Module, options: AddCSourceFilesOptions) void {
     const c_source_files = arena.create(CSourceFiles) catch @panic("OOM");
     c_source_files.* = .{
         .root = options.root orelse b.path(""),
-        .files = b.dupeStrings(options.files),
-        .flags = b.dupeStrings(options.flags),
+        .files = b.graph.dupeStrings(options.files),
+        .flags = b.graph.dupeStrings(options.flags),
         .language = options.language,
     };
     m.link_objects.append(arena, .{ .c_source_files = c_source_files }) catch @panic("OOM");

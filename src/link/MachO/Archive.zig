@@ -45,7 +45,7 @@ pub fn unpack(self: *Archive, macho_file: *MachO, path: Path, handle_index: File
                 const amt = try handle.readPositionalAll(io, buf, pos);
                 if (amt != len) return error.InputOutput;
                 pos += len;
-                const actual_len = mem.indexOfScalar(u8, buf, @as(u8, 0)) orelse len;
+                const actual_len = mem.findScalar(u8, buf, @as(u8, 0)) orelse len;
                 break :name buf[0..actual_len];
             }
             unreachable;
@@ -161,7 +161,7 @@ pub const ar_hdr = extern struct {
     fn name(self: *const ar_hdr) ?[]const u8 {
         const value = &self.ar_name;
         if (mem.startsWith(u8, value, "#1/")) return null;
-        const sentinel = mem.indexOfScalar(u8, value, '/') orelse value.len;
+        const sentinel = mem.findScalar(u8, value, '/') orelse value.len;
         return value[0..sentinel];
     }
 

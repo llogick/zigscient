@@ -54,7 +54,7 @@ fn putNode(self: *Trie, node_index: Node.Index, allocator: Allocator, label: []c
     // Check for match with edges from this node.
     for (self.nodes.items(.edges)[node_index].items) |edge_index| {
         const edge = &self.edges.items[edge_index];
-        const match = mem.indexOfDiff(u8, edge.label, label) orelse return edge.node;
+        const match = mem.findDiff(u8, edge.label, label) orelse return edge.node;
         if (match == 0) continue;
         if (match == edge.label.len) return self.putNode(edge.node, allocator, label[match..]);
 
@@ -351,7 +351,7 @@ fn expectEqualHexStrings(expected: []const u8, given: []const u8) !void {
     defer testing.allocator.free(expected_fmt);
     const given_fmt = try std.fmt.allocPrint(testing.allocator, "{x}", .{given});
     defer testing.allocator.free(given_fmt);
-    const idx = mem.indexOfDiff(u8, expected_fmt, given_fmt).?;
+    const idx = mem.findDiff(u8, expected_fmt, given_fmt).?;
     const padding = try testing.allocator.alloc(u8, idx + 5);
     defer testing.allocator.free(padding);
     @memset(padding, ' ');

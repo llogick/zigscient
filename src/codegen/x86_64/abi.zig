@@ -318,7 +318,7 @@ pub fn classifySystemV(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
             // byte isn't SSE or any other eightbyte isn't SSEUP, the whole argument
             // is passed in memory."
             if (ty_size > 16 and (result[0] != .sse or
-                std.mem.indexOfNone(Class, result[1..], &.{ .sseup, .none }) != null)) return Class.stack;
+                std.mem.findNone(Class, result[1..], &.{ .sseup, .none }) != null)) return Class.stack;
 
             // "If SSEUP is not preceded by SSE or SSEUP, it is converted to SSE."
             for (&result, 0..) |*class, i| switch (class.*) {

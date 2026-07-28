@@ -83,7 +83,7 @@ pub fn main(init: process.Init.Minimal) !void {
         if (mem.cutPrefix(u8, arg, "-D")) |option_contents| {
             if (option_contents.len == 0)
                 fatalWithHint("expected option name after '-D'", .{});
-            if (mem.indexOfScalar(u8, option_contents, '=')) |name_end| {
+            if (mem.findScalar(u8, option_contents, '=')) |name_end| {
                 const option_name = option_contents[0..name_end];
                 const option_value = option_contents[name_end + 1 ..];
                 if (try builder.addUserInputOption(option_name, option_value))

@@ -25,10 +25,10 @@ const Mir = @import("../codegen/spirv/Mir.zig");
 const Linker = @This();
 
 base: link.File,
-fragments: std.AutoArrayHashMapUnmanaged(InternPool.Nav.Index, Mir) = .empty,
-pending_navs: std.ArrayListUnmanaged(InternPool.Nav.Index) = .empty,
-entry_points: std.ArrayListUnmanaged(EntryPointDecl) = .empty,
-external_objects: std.ArrayListUnmanaged(ExternalObject) = .empty,
+fragments: std.array_hash_map.Auto(InternPool.Nav.Index, Mir) = .empty,
+pending_navs: std.ArrayList(InternPool.Nav.Index) = .empty,
+entry_points: std.ArrayList(EntryPointDecl) = .empty,
+external_objects: std.ArrayList(ExternalObject) = .empty,
 
 const EntryPointDecl = struct {
     nav: InternPool.Nav.Index,
@@ -363,16 +363,16 @@ fn mergeFragments(linker: *Linker, gpa: Allocator, arena: Allocator) error{OutOf
     }
 
     // Resolve Zig extern navs against external objects.
-    var ext_id_offsets: std.ArrayListUnmanaged(Word) = .empty;
+    var ext_id_offsets: std.ArrayList(Word) = .empty;
     defer ext_id_offsets.deinit(gpa);
     try ext_id_offsets.ensureTotalCapacity(gpa, linker.external_objects.items.len);
 
     var unresolved_extern_count: u32 = 0;
-    var resolved_ids: std.AutoArrayHashMapUnmanaged(Id, void) = .empty;
+    var resolved_ids: std.array_hash_map.Auto(Id, void) = .empty;
     defer resolved_ids.deinit(gpa);
 
     if (maybe_ip) |ip| {
-        var extern_name_map: std.StringArrayHashMapUnmanaged(InternPool.Nav.Index) = .empty;
+        var extern_name_map: std.array_hash_map.String(InternPool.Nav.Index) = .empty;
         defer extern_name_map.deinit(gpa);
 
         var nav_it = nav_final_ids.iterator();
@@ -518,14 +518,14 @@ fn mergeZigFragments(
     frag_infos: []const FragmentInfo,
     nav_final_ids: *const std.AutoHashMapUnmanaged(InternPool.Nav.Index, Id),
     uav_final_ids: *const std.AutoHashMapUnmanaged(struct { InternPool.Index, spec.StorageClass }, Id),
-    resolved_ids: *const std.AutoArrayHashMapUnmanaged(Id, void),
+    resolved_ids: *const std.array_hash_map.Auto(Id, void),
     maybe_ip: ?*InternPool,
 ) error{OutOfMemory}!void {
     for (linker.fragments.values(), frag_infos) |*mir, frag_info| {
         var id_remap: std.AutoHashMapUnmanaged(Id, Id) = .empty;
         defer id_remap.deinit(gpa);
 
-        var resolved_local_ids: std.AutoArrayHashMapUnmanaged(Id, void) = .empty;
+        var resolved_local_ids: std.array_hash_map.Auto(Id, void) = .empty;
         defer resolved_local_ids.deinit(gpa);
 
         for (mir.nav_refs) |ref| {
@@ -569,7 +569,7 @@ fn remapFilteredInsts(
     id_offset: Word,
     id_remap: *const std.AutoHashMapUnmanaged(Id, Id),
     parser: *BinaryModule.Parser,
-    skip_ids: *const std.AutoArrayHashMapUnmanaged(Id, void),
+    skip_ids: *const std.array_hash_map.Auto(Id, void),
     mode: FilterMode,
 ) error{OutOfMemory}!void {
     if (words.len == 0) return;
@@ -887,9 +887,9 @@ fn appendExternalObjects(
     has_linkage: *bool,
     keep_entry_points: bool,
     is_obj: bool,
-    resolved_ids: *const std.AutoArrayHashMapUnmanaged(Id, void),
+    resolved_ids: *const std.array_hash_map.Auto(Id, void),
 ) error{OutOfMemory}!void {
-    var export_map: std.StringArrayHashMapUnmanaged(Id) = .empty;
+    var export_map: std.array_hash_map.String(Id) = .empty;
     defer export_map.deinit(gpa);
 
     for (linker.external_objects.items, ext_id_offsets) |ext_obj, id_offset| {
@@ -908,7 +908,7 @@ fn appendExternalObjects(
     }
     for (per_obj_remaps) |*m| m.* = .empty;
 
-    var resolved_linkage_ids: std.AutoArrayHashMapUnmanaged(Id, void) = .empty;
+    var resolved_linkage_ids: std.array_hash_map.Auto(Id, void) = .empty;
     defer resolved_linkage_ids.deinit(gpa);
 
     for (resolved_ids.keys()) |id| {

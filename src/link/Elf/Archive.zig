@@ -118,7 +118,7 @@ pub fn parse(
 
 pub fn stringTableLookup(strtab: []const u8, off: u32) [:'\n']const u8 {
     const slice = strtab[off..];
-    return slice[0..mem.indexOfScalar(u8, slice, '\n').? :'\n'];
+    return slice[0..mem.findScalar(u8, slice, '\n').? :'\n'];
 }
 
 pub fn setArHdr(opts: struct {

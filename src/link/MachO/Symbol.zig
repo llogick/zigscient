@@ -43,7 +43,7 @@ pub fn isSymbolStab(symbol: Symbol, macho_file: *MachO) bool {
 
 pub fn isTlvInit(symbol: Symbol, macho_file: *MachO) bool {
     const name = symbol.getName(macho_file);
-    return std.mem.indexOf(u8, name, "$tlv$init") != null;
+    return std.mem.find(u8, name, "$tlv$init") != null;
 }
 
 pub fn weakRef(symbol: Symbol, macho_file: *MachO) bool {

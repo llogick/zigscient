@@ -954,7 +954,7 @@ pub fn anyScalarIsZero(val: Value, zcu: *Zcu) bool {
                 .bytes => |str| {
                     const len = Type.fromInterned(agg.ty).vectorLen(zcu);
                     const slice = str.toSlice(len, &zcu.intern_pool);
-                    return std.mem.indexOfScalar(u8, slice, 0) != null;
+                    return std.mem.findScalar(u8, slice, 0) != null;
                 },
                 .elems => |elems| {
                     for (elems) |elem| {

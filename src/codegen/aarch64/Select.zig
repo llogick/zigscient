@@ -2856,7 +2856,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                     const remaining_source = std.mem.span(as.source);
                     return isel.fail("unable to assemble: '{s}'", .{std.mem.trim(
                         u8,
-                        as.source[0 .. std.mem.indexOfScalar(u8, remaining_source, '\n') orelse remaining_source.len],
+                        as.source[0 .. std.mem.findScalar(u8, remaining_source, '\n') orelse remaining_source.len],
                         &std.ascii.whitespace,
                     )});
                 },

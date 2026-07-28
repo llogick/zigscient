@@ -187,8 +187,8 @@ fn fetchTarget(
 
     var it = mem.splitScalar(u8, headers_list_str, '\n');
     while (it.next()) |line| {
-        if (mem.lastIndexOf(u8, line, "clang") != null) continue;
-        if (mem.lastIndexOf(u8, line, prefix[0..])) |idx| {
+        if (mem.findLast(u8, line, "clang") != null) continue;
+        if (mem.findLast(u8, line, prefix[0..])) |idx| {
             const out_rel_path = line[idx + prefix.len + 1 ..];
             const out_rel_path_stripped = mem.trim(u8, out_rel_path, " \\");
             const dirname = Dir.path.dirname(out_rel_path_stripped) orelse ".";

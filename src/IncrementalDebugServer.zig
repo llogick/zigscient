@@ -130,7 +130,7 @@ fn serveStream(
         try stream_writer.writeAll("zig> ");
         const untrimmed = try stream_reader.takeSentinel('\n');
         const cmd_and_arg = std.mem.trim(u8, untrimmed, " \t\r\n");
-        const cmd: []const u8, const arg: []const u8 = if (std.mem.indexOfScalar(u8, cmd_and_arg, ' ')) |i|
+        const cmd: []const u8, const arg: []const u8 = if (std.mem.findScalar(u8, cmd_and_arg, ' ')) |i|
             .{ cmd_and_arg[0..i], cmd_and_arg[i + 1 ..] }
         else
             .{ cmd_and_arg, "" };
@@ -244,7 +244,7 @@ fn handleCommand(zcu: *Zcu, w: *Io.Writer, cmd_str: []const u8, arg_str: []const
             const ty: Type = .fromInterned(type_ip_index);
             const ty_name = ty.containerTypeName(ip).toSlice(ip);
             const success = switch (@as(u2, @intFromBool(anchor_start)) << 1 | @intFromBool(anchor_end)) {
-                0b00 => std.mem.indexOf(u8, ty_name, query) != null,
+                0b00 => std.mem.find(u8, ty_name, query) != null,
                 0b01 => std.mem.endsWith(u8, ty_name, query),
                 0b10 => std.mem.startsWith(u8, ty_name, query),
                 0b11 => std.mem.eql(u8, ty_name, query),
@@ -265,7 +265,7 @@ fn handleCommand(zcu: *Zcu, w: *Io.Writer, cmd_str: []const u8, arg_str: []const
             const nav = ip.getNav(nav_index);
             const nav_fqn = nav.fqn.toSlice(ip);
             const success = switch (@as(u2, @intFromBool(anchor_start)) << 1 | @intFromBool(anchor_end)) {
-                0b00 => std.mem.indexOf(u8, nav_fqn, query) != null,
+                0b00 => std.mem.find(u8, nav_fqn, query) != null,
                 0b01 => std.mem.endsWith(u8, nav_fqn, query),
                 0b10 => std.mem.startsWith(u8, nav_fqn, query),
                 0b11 => std.mem.eql(u8, nav_fqn, query),
@@ -378,7 +378,7 @@ fn parseIndex(str: []const u8) ?u32 {
     return std.fmt.parseInt(u32, str, 10) catch null;
 }
 fn parseAnalUnit(str: []const u8) ?AnalUnit {
-    const split_idx = std.mem.indexOfScalar(u8, str, ' ') orelse return null;
+    const split_idx = std.mem.findScalar(u8, str, ' ') orelse return null;
     const kind = str[0..split_idx];
     const idx_str = str[split_idx + 1 ..];
     if (std.mem.eql(u8, kind, "comptime")) {

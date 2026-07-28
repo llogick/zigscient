@@ -82,7 +82,7 @@ fn addCaseConfig(
     });
     if (self.test_filters.len > 0) {
         for (self.test_filters) |test_filter| {
-            if (mem.indexOf(u8, annotated_case_name, test_filter)) |_| break;
+            if (mem.find(u8, annotated_case_name, test_filter)) |_| break;
         } else return;
     }
 

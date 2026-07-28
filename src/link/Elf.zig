@@ -2173,7 +2173,7 @@ fn sortInitFini(self: *Elf) !void {
             => is_init_fini = true,
             else => {
                 const name = self.getShString(shdr.sh_name);
-                is_ctor_dtor = mem.indexOf(u8, name, ".ctors") != null or mem.indexOf(u8, name, ".dtors") != null;
+                is_ctor_dtor = mem.find(u8, name, ".ctors") != null or mem.find(u8, name, ".dtors") != null;
             },
         }
         if (!is_init_fini and !is_ctor_dtor) continue;
@@ -3702,7 +3702,7 @@ fn shString(
     off: u32,
 ) [:0]const u8 {
     const slice = shstrtab[off..];
-    return slice[0..mem.indexOfScalar(u8, slice, 0).? :0];
+    return slice[0..mem.findScalar(u8, slice, 0).? :0];
 }
 
 pub fn insertShString(self: *Elf, name: [:0]const u8) error{OutOfMemory}!u32 {
@@ -4376,7 +4376,7 @@ fn createThunks(elf_file: *Elf, atom_list: *AtomList) !void {
 
 pub fn stringTableLookup(strtab: []const u8, off: u32) [:0]const u8 {
     const slice = strtab[off..];
-    return slice[0..mem.indexOfScalar(u8, slice, 0).? :0];
+    return slice[0..mem.findScalar(u8, slice, 0).? :0];
 }
 
 pub fn pwriteAll(elf_file: *Elf, bytes: []const u8, offset: u64) error{AlreadyReported}!void {

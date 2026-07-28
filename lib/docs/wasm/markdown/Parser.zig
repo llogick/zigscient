@@ -159,7 +159,7 @@ const Block = struct {
             .heading => null,
             .code_block => code_block: {
                 const trimmed = mem.trimEnd(u8, unindented, " \t");
-                if (mem.indexOfNone(u8, trimmed, "`") != null or trimmed.len != b.data.code_block.fence_len) {
+                if (mem.findNone(u8, trimmed, "`") != null or trimmed.len != b.data.code_block.fence_len) {
                     const effective_indent = @min(indent, b.data.code_block.indent);
                     break :code_block line[effective_indent..];
                 } else {
@@ -594,7 +594,7 @@ fn startListItem(unindented_line: []const u8) ?ListItemStart {
         };
     }
 
-    const number_end = mem.indexOfNone(u8, unindented_line, "0123456789") orelse return null;
+    const number_end = mem.findNone(u8, unindented_line, "0123456789") orelse return null;
     const after_number = unindented_line[number_end..];
     const marker: Block.Data.ListMarker = if (mem.startsWith(u8, after_number, ". "))
         .number_dot
@@ -639,10 +639,10 @@ fn startTableRow(unindented_line: []const u8) ?TableRowStart {
                 // Ignoring pipes in code spans allows table cells to contain
                 // code using ||, for example.
                 const open_start = i;
-                i = mem.indexOfNonePos(u8, table_row_content, i, "`") orelse return null;
+                i = mem.findNonePos(u8, table_row_content, i, "`") orelse return null;
                 const open_len = i - open_start;
-                while (mem.indexOfScalarPos(u8, table_row_content, i, '`')) |close_start| {
-                    i = mem.indexOfNonePos(u8, table_row_content, close_start, "`") orelse return null;
+                while (mem.findScalarPos(u8, table_row_content, i, '`')) |close_start| {
+                    i = mem.findNonePos(u8, table_row_content, close_start, "`") orelse return null;
                     const close_len = i - close_start;
                     if (close_len == open_len) break;
                 } else return null;
@@ -794,7 +794,7 @@ fn startCodeBlock(p: *Parser, unindented_line: []const u8) !?CodeBlockStart {
     } else "";
     // Code block tags may not contain backticks, since that would create
     // potential confusion with inline code spans.
-    if (fence_len < 3 or mem.indexOfScalar(u8, tag_bytes, '`') != null) return null;
+    if (fence_len < 3 or mem.findScalar(u8, tag_bytes, '`') != null) return null;
     return .{
         .tag = try p.addString(mem.trim(u8, tag_bytes, " ")),
         .fence_len = fence_len,
@@ -1382,12 +1382,12 @@ const InlineParser = struct {
     /// parsing.
     fn parseCodeSpan(ip: *InlineParser) !void {
         const opener_start = ip.pos;
-        ip.pos = mem.indexOfNonePos(u8, ip.content, ip.pos, "`") orelse ip.content.len;
+        ip.pos = mem.findNonePos(u8, ip.content, ip.pos, "`") orelse ip.content.len;
         const opener_len = ip.pos - opener_start;
 
         const start = ip.pos;
-        const end = while (mem.indexOfScalarPos(u8, ip.content, ip.pos, '`')) |closer_start| {
-            ip.pos = mem.indexOfNonePos(u8, ip.content, closer_start, "`") orelse ip.content.len;
+        const end = while (mem.findScalarPos(u8, ip.content, ip.pos, '`')) |closer_start| {
+            ip.pos = mem.findNonePos(u8, ip.content, closer_start, "`") orelse ip.content.len;
             const closer_len = ip.pos - closer_start;
 
             if (closer_len == opener_len) break closer_start;
@@ -1627,7 +1627,7 @@ fn addScratchStringLine(p: *Parser, line: []const u8) !void {
 }
 
 fn isBlank(line: []const u8) bool {
-    return mem.indexOfNone(u8, line, " \t") == null;
+    return mem.findNone(u8, line, " \t") == null;
 }
 
 fn isPunctuation(c: u8) bool {

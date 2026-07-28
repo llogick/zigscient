@@ -312,7 +312,7 @@ pub const Header = extern struct {
 
         // add as much to prefix as you can, must split at /
         const prefix_remaining = max_prefix - prefix_pos;
-        if (std.mem.lastIndexOf(u8, sub_path[0..@min(prefix_remaining, sub_path.len)], &.{'/'})) |sep_pos| {
+        if (std.mem.findLast(u8, sub_path[0..@min(prefix_remaining, sub_path.len)], &.{'/'})) |sep_pos| {
             @memcpy(w.prefix[prefix_pos..][0..sep_pos], sub_path[0..sep_pos]);
             if ((sub_path.len - sep_pos - 1) > max_name) return error.NameTooLong;
             @memcpy(w.name[0..][0 .. sub_path.len - sep_pos - 1], sub_path[sep_pos + 1 ..]);

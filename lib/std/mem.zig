@@ -1528,7 +1528,7 @@ pub fn findLast(comptime T: type, haystack: []const T, needle: []const T) ?usize
     if (needle.len == 0) return haystack.len;
 
     if (!std.meta.hasUniqueRepresentation(T) or haystack.len < 52 or needle.len <= 4)
-        return lastIndexOfLinear(T, haystack, needle);
+        return findLastLinear(T, haystack, needle);
 
     const haystack_bytes = sliceAsBytes(haystack);
     const needle_bytes = sliceAsBytes(needle);
@@ -1583,26 +1583,26 @@ pub fn findPos(comptime T: type, haystack: []const T, start_index: usize, needle
 
 test find {
     try testing.expect(find(u8, "one two three four five six seven eight nine ten eleven", "three four").? == 8);
-    try testing.expect(lastIndexOf(u8, "one two three four five six seven eight nine ten eleven", "three four").? == 8);
+    try testing.expect(findLast(u8, "one two three four five six seven eight nine ten eleven", "three four").? == 8);
     try testing.expect(find(u8, "one two three four five six seven eight nine ten eleven", "two two") == null);
-    try testing.expect(lastIndexOf(u8, "one two three four five six seven eight nine ten eleven", "two two") == null);
+    try testing.expect(findLast(u8, "one two three four five six seven eight nine ten eleven", "two two") == null);
 
     try testing.expect(find(u8, "one two three four five six seven eight nine ten", "").? == 0);
-    try testing.expect(lastIndexOf(u8, "one two three four five six seven eight nine ten", "").? == 48);
+    try testing.expect(findLast(u8, "one two three four five six seven eight nine ten", "").? == 48);
 
     try testing.expect(find(u8, "one two three four", "four").? == 14);
-    try testing.expect(lastIndexOf(u8, "one two three two four", "two").? == 14);
+    try testing.expect(findLast(u8, "one two three two four", "two").? == 14);
     try testing.expect(find(u8, "one two three four", "gour") == null);
-    try testing.expect(lastIndexOf(u8, "one two three four", "gour") == null);
+    try testing.expect(findLast(u8, "one two three four", "gour") == null);
     try testing.expect(find(u8, "foo", "foo").? == 0);
-    try testing.expect(lastIndexOf(u8, "foo", "foo").? == 0);
+    try testing.expect(findLast(u8, "foo", "foo").? == 0);
     try testing.expect(find(u8, "foo", "fool") == null);
-    try testing.expect(lastIndexOf(u8, "foo", "lfoo") == null);
-    try testing.expect(lastIndexOf(u8, "foo", "fool") == null);
+    try testing.expect(findLast(u8, "foo", "lfoo") == null);
+    try testing.expect(findLast(u8, "foo", "fool") == null);
 
     try testing.expect(find(u8, "foo foo", "foo").? == 0);
-    try testing.expect(lastIndexOf(u8, "foo foo", "foo").? == 4);
-    try testing.expect(lastIndexOfAny(u8, "boo, cat", "abo").? == 6);
+    try testing.expect(findLast(u8, "foo foo", "foo").? == 4);
+    try testing.expect(findLastAny(u8, "boo, cat", "abo").? == 6);
     try testing.expect(findScalarLast(u8, "boo", 'o').? == 2);
 }
 
@@ -1624,13 +1624,13 @@ test "find multibyte" {
         // make haystack and needle long enough to trigger Boyer-Moore-Horspool algorithm
         const haystack = [_]u16{ 0xbbaa, 0xccbb, 0xddcc, 0xeedd, 0xffee, 0x00ff } ++ @as([100]u16, @splat(0));
         const needle = [_]u16{ 0xbbaa, 0xccbb, 0xddcc, 0xeedd, 0xffee };
-        try testing.expectEqual(lastIndexOf(u16, &haystack, &needle), 0);
+        try testing.expectEqual(findLast(u16, &haystack, &needle), 0);
 
         // check for misaligned false positives (little and big endian)
         const needleLE = [_]u16{ 0xbbbb, 0xcccc, 0xdddd, 0xeeee, 0xffff };
-        try testing.expectEqual(lastIndexOf(u16, &haystack, &needleLE), null);
+        try testing.expectEqual(findLast(u16, &haystack, &needleLE), null);
         const needleBE = [_]u16{ 0xaacc, 0xbbdd, 0xccee, 0xddff, 0xee00 };
-        try testing.expectEqual(lastIndexOf(u16, &haystack, &needleBE), null);
+        try testing.expectEqual(findLast(u16, &haystack, &needleBE), null);
     }
 }
 
@@ -3485,8 +3485,8 @@ pub fn SplitBackwardsIterator(comptime T: type, comptime delimiter_type: Delimit
         pub fn next(self: *Self) ?[]const T {
             const end = self.index orelse return null;
             const start = if (switch (delimiter_type) {
-                .sequence => lastIndexOf(T, self.buffer[0..end], self.delimiter),
-                .any => lastIndexOfAny(T, self.buffer[0..end], self.delimiter),
+                .sequence => findLast(T, self.buffer[0..end], self.delimiter),
+                .any => findLastAny(T, self.buffer[0..end], self.delimiter),
                 .scalar => findScalarLast(T, self.buffer[0..end], self.delimiter),
             }) |delim_start| blk: {
                 self.index = delim_start;

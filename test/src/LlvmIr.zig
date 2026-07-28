@@ -77,14 +77,14 @@ pub fn addCase(self: *LlvmIr, case: TestCase) void {
     if (self.options.test_target_filters.len > 0) {
         const triple_txt = target.query.zigTriple(self.b.allocator) catch @panic("OOM");
         for (self.options.test_target_filters) |filter| {
-            if (std.mem.indexOf(u8, triple_txt, filter) != null) break;
+            if (std.mem.find(u8, triple_txt, filter) != null) break;
         } else return;
     }
 
     const name = std.fmt.allocPrint(self.b.allocator, "check llvm-ir {s}", .{case.name}) catch @panic("OOM");
     if (self.options.test_filters.len > 0) {
         for (self.options.test_filters) |filter| {
-            if (std.mem.indexOf(u8, name, filter) != null) break;
+            if (std.mem.find(u8, name, filter) != null) break;
         } else return;
     }
 

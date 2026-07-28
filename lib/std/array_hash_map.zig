@@ -13,12 +13,12 @@ const hash_map = @This();
 ///
 /// See `AutoContext` for a description of the hash and equal implementations.
 pub fn Auto(comptime K: type, comptime V: type) type {
-    return ArrayHashMap(K, V, AutoContext(K), !autoEqlIsCheap(K));
+    return Custom(K, V, AutoContext(K), !autoEqlIsCheap(K));
 }
 
 /// An `ArrayHashMap` with strings as keys.
 pub fn String(comptime V: type) type {
-    return ArrayHashMap([]const u8, V, StringContext, true);
+    return Custom([]const u8, V, StringContext, true);
 }
 
 pub const StringContext = struct {
@@ -2130,7 +2130,7 @@ test "0 sized key and 0 sized value" {
 test "setKey storehash true" {
     const gpa = std.testing.allocator;
 
-    var map: ArrayHashMap(i32, i32, AutoContext(i32), true) = .empty;
+    var map: Custom(i32, i32, AutoContext(i32), true) = .empty;
     defer map.deinit(gpa);
 
     try map.put(gpa, 12, 34);
@@ -2146,7 +2146,7 @@ test "setKey storehash true" {
 test "setKey storehash false" {
     const gpa = std.testing.allocator;
 
-    var map: ArrayHashMap(i32, i32, AutoContext(i32), false) = .empty;
+    var map: Custom(i32, i32, AutoContext(i32), false) = .empty;
     defer map.deinit(gpa);
 
     try map.put(gpa, 12, 34);
@@ -2162,7 +2162,7 @@ test "setKey storehash false" {
 test "setKey storehash false with index" {
     const gpa = std.testing.allocator;
 
-    const T = ArrayHashMap(usize, usize, AutoContext(usize), false);
+    const T = Custom(usize, usize, AutoContext(usize), false);
 
     var map: T = .empty;
     defer map.deinit(gpa);
@@ -2180,9 +2180,9 @@ test "setKey storehash false with index" {
 test "setKey storehash true with index" {
     const gpa = std.testing.allocator;
 
-    const T = ArrayHashMap(usize, usize, AutoContext(usize), false);
+    const T = Custom(usize, usize, AutoContext(usize), false);
 
-    var map: ArrayHashMap(usize, usize, AutoContext(usize), true) = .empty;
+    var map: Custom(usize, usize, AutoContext(usize), true) = .empty;
     defer map.deinit(gpa);
 
     for (0..T.linear_scan_max + 1) |i| try map.put(gpa, i, i);

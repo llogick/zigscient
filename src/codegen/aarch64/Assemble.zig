@@ -163,7 +163,7 @@ const matchers = matchers: {
                         arg.* = zonCast(param_type.?, instruction.encode[encode_index], symbols);
                     return @call(.auto, encode, args);
                 } else if (pattern_token[0] == '<') {
-                    const symbol_name = comptime pattern_token[1 .. std.mem.indexOfScalarPos(u8, pattern_token, 1, '|') orelse
+                    const symbol_name = comptime pattern_token[1 .. std.mem.findScalarPos(u8, pattern_token, 1, '|') orelse
                         pattern_token.len - 1];
                     const symbol = @field(Symbol, symbol_name);
                     const symbol_ptr = &@field(symbols, symbol_name);

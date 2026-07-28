@@ -52,13 +52,13 @@ pub fn main(init: std.process.Init) !void {
             continue;
         }
 
-        const src_pos_end = std.mem.indexOf(u8, in_line, ": 0x") orelse {
+        const src_pos_end = std.mem.find(u8, in_line, ": 0x") orelse {
             try w.writeAll(in_line);
             continue;
         };
         const src_pos_start = b: {
             const postfix = ".zig:";
-            const postfix_index = std.mem.lastIndexOf(u8, in_line[0..src_pos_end], postfix) orelse {
+            const postfix_index = std.mem.findLast(u8, in_line[0..src_pos_end], postfix) orelse {
                 try w.writeAll(in_line);
                 continue;
             };
@@ -89,7 +89,7 @@ pub fn main(init: std.process.Init) !void {
         // ...with that first '_' being replaced by its basename.
 
         const src_path = in_line[0..src_pos_start];
-        const basename_start = if (std.mem.lastIndexOfAny(u8, src_path, "/\\")) |i| i + 1 else 0;
+        const basename_start = if (std.mem.findLastAny(u8, src_path, "/\\")) |i| i + 1 else 0;
         const symbol_start = addr_end + " in ".len;
         try w.writeAll(in_line[basename_start..src_pos_end]);
         try w.writeAll(": [address] in ");

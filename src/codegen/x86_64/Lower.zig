@@ -435,11 +435,11 @@ const mnemonic_table: [inst_tags_len * inst_fixes_len]?Mnemonic = table: {
     for (0..inst_fixes_len) |fixes_i| {
         const fixes: Mir.Inst.Fixes = @fromBackingInt(@intCast(fixes_i));
         const prefix, const suffix = affix: {
-            const pattern = if (std.mem.indexOfScalar(u8, @tagName(fixes), ' ')) |i|
+            const pattern = if (std.mem.findScalar(u8, @tagName(fixes), ' ')) |i|
                 @tagName(fixes)[i + 1 ..]
             else
                 @tagName(fixes);
-            const wildcard_idx = std.mem.indexOfScalar(u8, pattern, '_').?;
+            const wildcard_idx = std.mem.findScalar(u8, pattern, '_').?;
             break :affix .{ pattern[0..wildcard_idx], pattern[wildcard_idx + 1 ..] };
         };
         for (0..inst_tags_len) |inst_tag_i| {
@@ -477,7 +477,7 @@ fn generic(lower: *Lower, inst: Mir.Inst) Error!void {
         else => return lower.fail("TODO lower .{s}", .{@tagName(inst.ops)}),
     };
     try lower.encode(switch (fixes) {
-        inline else => |tag| comptime if (std.mem.indexOfScalar(u8, @tagName(tag), ' ')) |space|
+        inline else => |tag| comptime if (std.mem.findScalar(u8, @tagName(tag), ' ')) |space|
             @field(Prefix, @tagName(tag)[0..space])
         else
             .none,
@@ -487,8 +487,8 @@ fn generic(lower: *Lower, inst: Mir.Inst) Error!void {
         }
         // This combination is invalid; make the theoretical mnemonic name and emit an error with it.
         const fixes_name = @tagName(fixes);
-        const pattern = fixes_name[if (std.mem.indexOfScalar(u8, fixes_name, ' ')) |i| i + " ".len else 0..];
-        const wildcard_index = std.mem.indexOfScalar(u8, pattern, '_').?;
+        const pattern = fixes_name[if (std.mem.findScalar(u8, fixes_name, ' ')) |i| i + " ".len else 0..];
+        const wildcard_index = std.mem.findScalar(u8, pattern, '_').?;
         return lower.fail("unsupported mnemonic: '{s}{s}{s}'", .{
             pattern[0..wildcard_index],
             @tagName(inst.tag),

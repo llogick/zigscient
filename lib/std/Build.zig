@@ -830,7 +830,7 @@ pub fn addTest(b: *Build, options: TestOptions) *Step.Compile {
         .kind = if (options.emit_object) .test_obj else .@"test",
         .root_module = options.root_module,
         .max_rss = options.max_rss,
-        .filters = b.dupeStrings(options.filters),
+        .filters = b.graph.dupeStrings(options.filters),
         .test_runner = options.test_runner,
         .use_llvm = options.use_llvm,
         .use_lld = options.use_lld,
@@ -2648,7 +2648,10 @@ pub const LazyPath = union(enum) {
 
     fn dupeInner(lazy_path: LazyPath, arena: Allocator) LazyPath {
         return switch (lazy_path) {
-            .src_path => |sp| .{ .src_path = .{ .owner = sp.owner, .sub_path = sp.owner.dupePath(sp.sub_path) } },
+            .src_path => |sp| .{ .src_path = .{
+                .owner = sp.owner,
+                .sub_path = sp.owner.graph.dupePath(sp.sub_path),
+            } },
             .cwd_relative => |p| .{ .cwd_relative = Graph.dupePathInner(arena, p) },
             .relative => |r| .{ .relative = r },
             .generated => |gen| .{ .generated = .{

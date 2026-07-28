@@ -61,7 +61,7 @@ pub const ModuleDefinition = struct {
                 // or ? for C++ functions). Vectorcall functions won't have any
                 // fixed prefix, but the function base name will still be at least
                 // one char.
-                const name_len_without_at_suffix = std.mem.indexOfScalarPos(u8, e.name, 1, '@') orelse e.name.len;
+                const name_len_without_at_suffix = std.mem.findScalarPos(u8, e.name, 1, '@') orelse e.name.len;
                 e.name = e.name[0..name_len_without_at_suffix];
             }
         }
@@ -452,7 +452,7 @@ pub const Parser = struct {
                         var ext_name_needs_underscore = false;
                         if (self.machine_type == .I386) {
                             const is_decorated = isDecorated(name_tok.slice(self.tokenizer.source), self.module_definition_type);
-                            const is_forward_target = ext_name_tok != null and std.mem.indexOfScalar(u8, name_tok.slice(self.tokenizer.source), '.') != null;
+                            const is_forward_target = ext_name_tok != null and std.mem.findScalar(u8, name_tok.slice(self.tokenizer.source), '.') != null;
                             name_needs_underscore = !is_decorated and !is_forward_target;
 
                             if (ext_name_tok) |ext_name| {
@@ -578,9 +578,9 @@ pub const Parser = struct {
         // themselves can start with an underscore, while a second one still needs
         // to be added.
         if (std.mem.startsWith(u8, symbol, "@")) return true;
-        if (std.mem.indexOf(u8, symbol, "@@") != null) return true;
+        if (std.mem.find(u8, symbol, "@@") != null) return true;
         if (std.mem.startsWith(u8, symbol, "?")) return true;
-        if (module_definition_type != .mingw and std.mem.indexOfScalar(u8, symbol, '@') != null) return true;
+        if (module_definition_type != .mingw and std.mem.findScalar(u8, symbol, '@') != null) return true;
         return false;
     }
 

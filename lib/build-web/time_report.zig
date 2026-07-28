@@ -84,7 +84,7 @@ pub fn compileResultMessage(msg_bytes: []u8) error{ OutOfMemory, WriteFailed }!v
     defer gpa.free(slowest_decls);
 
     for (slowest_files) |*file_out| {
-        const i = std.mem.indexOfScalar(u8, trailing, 0) orelse @panic("malformed CompileResult message");
+        const i = std.mem.findScalar(u8, trailing, 0) orelse @panic("malformed CompileResult message");
         file_out.* = .{
             .name = trailing[0..i],
             .ns_sema = 0,
@@ -95,7 +95,7 @@ pub fn compileResultMessage(msg_bytes: []u8) error{ OutOfMemory, WriteFailed }!v
     }
 
     for (slowest_decls) |*decl_out| {
-        const i = std.mem.indexOfScalar(u8, trailing, 0) orelse @panic("malformed CompileResult message");
+        const i = std.mem.findScalar(u8, trailing, 0) orelse @panic("malformed CompileResult message");
         const file_idx = std.mem.readInt(u32, trailing[i..][1..5], .little);
         const sema_count = std.mem.readInt(u32, trailing[i..][5..9], .little);
         const sema_ns = std.mem.readInt(u64, trailing[i..][9..17], .little);
@@ -258,7 +258,7 @@ pub fn runTestResultMessage(msg_bytes: []u8) error{OutOfMemory}!void {
     defer table_html.deinit(gpa);
 
     for (durations) |test_ns| {
-        const test_name_len = std.mem.indexOfScalar(u8, trailing[offset..], 0) orelse @panic("malformed RunTestResult message");
+        const test_name_len = std.mem.findScalar(u8, trailing[offset..], 0) orelse @panic("malformed RunTestResult message");
         const test_name = trailing[offset..][0..test_name_len];
         offset += test_name_len + 1;
         try table_html.print(gpa, "<tr><th scope=\"row\"><code>{f}</code></th>", .{fmtEscapeHtml(test_name)});

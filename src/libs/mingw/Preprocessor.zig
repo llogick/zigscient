@@ -15,7 +15,7 @@ const RawTokenList = std.ArrayList(Token);
 const ExpandBuf = std.ArrayList(Token);
 
 const Preprocessor = @This();
-const DefineMap = std.StringArrayHashMapUnmanaged(Macro);
+const DefineMap = std.array_hash_map.String(Macro);
 
 const GeneratedTokens = std.ArrayList(u8);
 
@@ -29,7 +29,7 @@ pub const Source = struct {
     buf: []const u8,
 };
 
-sources: std.StringArrayHashMapUnmanaged(Source) = .empty,
+sources: std.array_hash_map.String(Source) = .empty,
 
 arena: Allocator,
 io: std.Io,

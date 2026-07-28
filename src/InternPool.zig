@@ -1739,7 +1739,7 @@ pub const String = enum(u32) {
     }
 
     pub fn toNullTerminatedString(string: String, len: u64, ip: *const InternPool) NullTerminatedString {
-        assert(std.mem.indexOfScalar(u8, string.toSlice(len, ip), 0) == null);
+        assert(std.mem.findScalar(u8, string.toSlice(len, ip), 0) == null);
         assert(string.at(len, ip) == 0);
         return @fromBackingInt(@intCast(@backingInt(string)));
     }
@@ -1866,7 +1866,7 @@ pub const NullTerminatedString = enum(u32) {
     pub fn toUnsigned(string: NullTerminatedString, ip: *const InternPool) ?u32 {
         const slice = string.toSlice(ip);
         if (slice.len > 1 and slice[0] == '0') return null;
-        if (std.mem.indexOfScalar(u8, slice, '_')) |_| return null;
+        if (std.mem.findScalar(u8, slice, '_')) |_| return null;
         return std.fmt.parseUnsigned(u32, slice, 10) catch null;
     }
 
@@ -11430,7 +11430,7 @@ pub fn getOrPutTrailingString(
         .tid = tid,
         .index = strings.mutate.len - 1,
     }).wrap(ip))));
-    const has_embedded_null = std.mem.indexOfScalar(u8, key, 0) != null;
+    const has_embedded_null = std.mem.findScalar(u8, key, 0) != null;
     switch (embedded_nulls) {
         .no_embedded_nulls => assert(!has_embedded_null),
         .maybe_embedded_nulls => if (has_embedded_null) {

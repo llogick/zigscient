@@ -621,7 +621,7 @@ pub const LongNamesTable = struct {
         }
 
         pub fn hash(_: Adapter, key: []const u8) u32 {
-            assert(std.mem.indexOfScalar(u8, key, 0) == null);
+            assert(std.mem.findScalar(u8, key, 0) == null);
             return std.array_hash_map.hashString(key);
         }
     };
@@ -711,7 +711,7 @@ pub const ExportTable = struct {
         }
 
         pub fn hash(_: Adapter, key: []const u8) u32 {
-            assert(std.mem.indexOfScalar(u8, key, 0) == null);
+            assert(std.mem.findScalar(u8, key, 0) == null);
             return std.array_hash_map.hashString(key);
         }
     };
@@ -759,7 +759,7 @@ pub const ImportTable = struct {
         }
 
         pub fn hash(_: Adapter, key: []const u8) u32 {
-            assert(std.mem.indexOfScalar(u8, key, 0) == null);
+            assert(std.mem.findScalar(u8, key, 0) == null);
             return std.array_hash_map.hashString(key);
         }
     };
@@ -822,7 +822,7 @@ pub const String = enum(u32) {
 
     pub fn toSlice(s: String, coff: *Coff) [:0]const u8 {
         const slice = coff.string_bytes.items[@backingInt(s)..];
-        return slice[0..std.mem.indexOfScalar(u8, slice, 0).? :0];
+        return slice[0..std.mem.findScalar(u8, slice, 0).? :0];
     }
 
     pub fn toOptional(s: String) String.Optional {
@@ -3535,7 +3535,7 @@ fn objectSectionParentName(coff: *Coff, name: []const u8) []const u8 {
     // Otherwise, we want to keep the full name so that this sort can occur correctly when
     // the object is finally linked into an image.
     return if (coff.isImage())
-        name[0 .. std.mem.indexOfScalar(u8, name, '$') orelse name.len]
+        name[0 .. std.mem.findScalar(u8, name, '$') orelse name.len]
     else
         name;
 }
@@ -5737,7 +5737,7 @@ fn reportUndefs(coff: *Coff, tid: Zcu.PerThread.Id) !void {
     const gpa = comp.gpa;
     const max_notes = 4;
 
-    var undef_indices: std.ArrayListUnmanaged(u32) = .empty;
+    var undef_indices: std.ArrayList(u32) = .empty;
     for (coff.relocs.items, 0..) |reloc, reloc_i| {
         if (reloc.flags.free) continue;
         const target_sym = reloc.target.get(coff);
@@ -6987,7 +6987,7 @@ fn flushMoved(coff: *Coff, ni: MappedFile.Node.Index) !void {
                             continue;
 
                         import_hint_name_index = @intCast(import_hint_name_align.forward(
-                            std.mem.indexOfScalarPos(
+                            std.mem.findScalarPos(
                                 u8,
                                 import_hint_name_slice,
                                 import_hint_name_index,

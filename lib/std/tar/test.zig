@@ -474,14 +474,14 @@ test "should not overwrite existing file" {
     defer root.cleanup();
     try testing.expectError(
         error.PathAlreadyExists,
-        tar.pipeToFileSystem(io, root.dir, &r, .{ .mode_mode = .ignore, .strip_components = 1 }),
+        tar.extract(io, root.dir, &r, .{ .mode_mode = .ignore, .strip_components = 1 }),
     );
 
     // Unpack with strip_components = 0 should pass
     r = .fixed(data);
     var root2 = std.testing.tmpDir(.{});
     defer root2.cleanup();
-    try tar.pipeToFileSystem(io, root2.dir, &r, .{ .mode_mode = .ignore, .strip_components = 0 });
+    try tar.extract(io, root2.dir, &r, .{ .mode_mode = .ignore, .strip_components = 0 });
 }
 
 test "case sensitivity" {
@@ -501,7 +501,7 @@ test "case sensitivity" {
     var root = std.testing.tmpDir(.{});
     defer root.cleanup();
 
-    tar.pipeToFileSystem(io, root.dir, &r, .{ .mode_mode = .ignore, .strip_components = 1 }) catch |err| {
+    tar.extract(io, root.dir, &r, .{ .mode_mode = .ignore, .strip_components = 1 }) catch |err| {
         // on case insensitive fs we fail on overwrite existing file
         try testing.expectEqual(error.PathAlreadyExists, err);
         return;

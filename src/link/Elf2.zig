@@ -3010,7 +3010,7 @@ const StringTable = struct {
         }
 
         pub fn hash(_: Adapter, key: []const u8) u64 {
-            assert(std.mem.indexOfScalar(u8, key, 0) == null);
+            assert(std.mem.findScalar(u8, key, 0) == null);
             return std.hash_map.hashString(key);
         }
     };

@@ -187,7 +187,7 @@ fn markAlive(
     parser: *BinaryModule.Parser,
     binary: BinaryModule,
     inst: BinaryModule.Instruction,
-    alive: *std.DynamicBitSetUnmanaged,
+    alive: *std.bit_set.Dynamic,
     id_to_index: *const std.AutoHashMapUnmanaged(ResultId, u32),
     code_offsets: *const std.ArrayList(usize),
     id_offset_buf: *std.ArrayList(u16),

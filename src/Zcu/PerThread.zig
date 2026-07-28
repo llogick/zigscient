@@ -3234,7 +3234,7 @@ const ScanDeclIter = struct {
                 if (is_named and comp.test_filters.len > 0) {
                     const fqn_slice = fqn.toSlice(ip);
                     for (comp.test_filters) |test_filter| {
-                        if (std.mem.indexOf(u8, fqn_slice, test_filter) != null) break;
+                        if (std.mem.find(u8, fqn_slice, test_filter) != null) break;
                     } else break :a false;
                 }
                 try zcu.test_functions.put(gpa, nav, {});

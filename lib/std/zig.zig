@@ -1560,7 +1560,7 @@ pub fn resolvePath(
     // Heuristic for a fast path: if no component is absolute and ".." never appears, we just need to resolve `paths`.
     for (paths) |p| {
         if (Dir.path.isAbsolute(p)) break; // absolute path
-        if (mem.indexOf(u8, p, "..") != null) break; // may contain up-dir
+        if (mem.find(u8, p, "..") != null) break; // may contain up-dir
     } else {
         // no absolute path, no "..".
         const res = try Dir.path.resolve(gpa, paths);

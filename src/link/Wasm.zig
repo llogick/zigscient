@@ -2539,14 +2539,14 @@ pub const String = enum(u32) {
         }
 
         pub fn hash(_: @This(), adapted_key: []const u8) u64 {
-            assert(mem.indexOfScalar(u8, adapted_key, 0) == null);
+            assert(mem.findScalar(u8, adapted_key, 0) == null);
             return std.hash_map.hashString(adapted_key);
         }
     };
 
     pub fn slice(index: String, wasm: *const Wasm) [:0]const u8 {
         const start_slice = wasm.string_bytes.items[@backingInt(index)..];
-        return start_slice[0..mem.indexOfScalar(u8, start_slice, 0).? :0];
+        return start_slice[0..mem.findScalar(u8, start_slice, 0).? :0];
     }
 
     pub fn toOptional(i: String) OptionalString {
@@ -4332,7 +4332,7 @@ pub fn internOptionalString(wasm: *Wasm, optional_bytes: ?[]const u8) Allocator.
 }
 
 pub fn internString(wasm: *Wasm, bytes: []const u8) Allocator.Error!String {
-    assert(mem.indexOfScalar(u8, bytes, 0) == null);
+    assert(mem.findScalar(u8, bytes, 0) == null);
     wasm.string_bytes_lock.lock();
     defer wasm.string_bytes_lock.unlock();
     const gpa = wasm.base.comp.gpa;
@@ -4363,7 +4363,7 @@ pub fn internStringFmt(wasm: *Wasm, comptime format: []const u8, args: anytype) 
 }
 
 pub fn getExistingString(wasm: *const Wasm, bytes: []const u8) ?String {
-    assert(mem.indexOfScalar(u8, bytes, 0) == null);
+    assert(mem.findScalar(u8, bytes, 0) == null);
     return wasm.string_table.getKeyAdapted(bytes, @as(String.TableIndexAdapter, .{
         .bytes = wasm.string_bytes.items,
     }));

@@ -1085,7 +1085,7 @@ const Fuzzer = struct {
     fn removeBest(f: *Fuzzer, i: Input.Index, best_i: u32) void {
         const t = &f.tests[f.test_i];
         const ref = &t.corpus.items(.ref)[@backingInt(i)];
-        const list_i = mem.indexOfScalar(u32, ref.best_i_buf[0..ref.best_i_len], best_i).?;
+        const list_i = mem.findScalar(u32, ref.best_i_buf[0..ref.best_i_len], best_i).?;
         ref.best_i_len -= 1;
         ref.best_i_buf[list_i] = ref.best_i_buf[ref.best_i_len];
 

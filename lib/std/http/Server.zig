@@ -102,7 +102,7 @@ pub const Request = struct {
             const method = std.meta.stringToEnum(http.Method, first_line[0..method_end]) orelse
                 return error.UnknownHttpMethod;
 
-            const version_start = mem.lastIndexOfScalar(u8, first_line, ' ') orelse
+            const version_start = mem.findScalarLast(u8, first_line, ' ') orelse
                 return error.HttpHeadersInvalid;
             if (version_start == method_end) return error.HttpHeadersInvalid;
 

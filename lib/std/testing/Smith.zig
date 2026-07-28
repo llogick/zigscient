@@ -52,7 +52,7 @@ pub inline fn baselineWeights(T: type) []const Weight {
         .bool, .int, .float => i: {
             // Reject types that don't have a fixed bitsize (esp. usize)
             // since they are not gauraunteed to fit in a u64 across targets.
-            if (std.mem.indexOfScalar(type, &.{
+            if (std.mem.findScalar(type, &.{
                 isize,      usize,
                 c_char,     c_longdouble,
                 c_short,    c_ushort,

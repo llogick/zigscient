@@ -351,7 +351,7 @@ fn getNameType(
     // the leading underscore. In MinGW on the other hand, a decorated
     // stdcall function still omits the underscore (IMPORT_NAME_NOPREFIX).
     if (std.mem.startsWith(u8, ext_name, "_") and
-        std.mem.indexOfScalar(u8, ext_name, '@') != null and
+        std.mem.findScalar(u8, ext_name, '@') != null and
         module_definition_type != .mingw)
         return .NAME;
     if (!std.mem.eql(u8, symbol, ext_name))

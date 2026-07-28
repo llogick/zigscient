@@ -680,14 +680,14 @@ pub fn isDynamicAMDGCNFeature(target: *const std.Target, feature: std.Target.Cpu
     const feature_tag: std.Target.amdgcn.Feature = @fromBackingInt(@intCast(feature.index));
 
     if (feature_tag == .sramecc) {
-        if (std.mem.indexOfScalar(
+        if (std.mem.findScalar(
             *const std.Target.Cpu.Model,
             sramecc_only ++ xnack_or_sramecc,
             target.cpu.model,
         )) |_| return true;
     }
     if (feature_tag == .xnack) {
-        if (std.mem.indexOfScalar(
+        if (std.mem.findScalar(
             *const std.Target.Cpu.Model,
             xnack_or_sramecc,
             target.cpu.model,

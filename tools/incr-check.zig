@@ -450,7 +450,7 @@ const Eval = struct {
             const raw_filename = eb.nullTerminatedString(src.src_path);
             // We need to replace backslashes for consistency between platforms.
             const filename = name: {
-                if (std.mem.indexOfScalar(u8, raw_filename, '\\') == null) break :name raw_filename;
+                if (std.mem.findScalar(u8, raw_filename, '\\') == null) break :name raw_filename;
                 const copied = try eval.arena.dupe(u8, raw_filename);
                 std.mem.replaceScalar(u8, copied, '\\', '/');
                 break :name copied;
@@ -777,7 +777,7 @@ const Case = struct {
                         .backend = backend,
                     });
                 } else if (std.mem.eql(u8, key, "module")) {
-                    const split_idx = std.mem.indexOfScalar(u8, val, '=') orelse
+                    const split_idx = std.mem.findScalar(u8, val, '=') orelse
                         fatal("line {d}: module does not include file", .{line_n});
                     const name = val[0..split_idx];
                     const file = val[split_idx + 1 ..];
@@ -983,7 +983,7 @@ fn rand64(io: Io) u64 {
 fn parseTargetQueryAndBackend(input_str: []const u8, err_prefix: []const u8) struct { std.Target.Query, Backend } {
     const fatal = std.process.fatal;
 
-    const split_idx = std.mem.lastIndexOfScalar(u8, input_str, '-') orelse
+    const split_idx = std.mem.findScalarLast(u8, input_str, '-') orelse
         fatal("{s}target does not include backend", .{err_prefix});
 
     const query = input_str[0..split_idx];

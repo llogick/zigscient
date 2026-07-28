@@ -6836,7 +6836,7 @@ fn dirRealPathFilePosix(userdata: ?*anyopaque, dir: Dir, sub_path: []const u8, o
             if (std.c.realpath(sub_path_posix, out_buffer.ptr)) |redundant_pointer| {
                 syscall.finish();
                 assert(redundant_pointer == out_buffer.ptr);
-                return std.mem.indexOfScalar(u8, out_buffer, 0) orelse out_buffer.len;
+                return std.mem.findScalar(u8, out_buffer, 0) orelse out_buffer.len;
             }
             const err: posix.E = @fromBackingInt(@intCast(std.c._errno().*));
             if (err == .INTR) {
@@ -6980,7 +6980,7 @@ fn realPathPosix(fd: posix.fd_t, out_buffer: []u8) File.RealPathError!usize {
                     },
                 }
             }
-            const n = std.mem.indexOfScalar(u8, &sufficient_buffer, 0) orelse sufficient_buffer.len;
+            const n = std.mem.findScalar(u8, &sufficient_buffer, 0) orelse sufficient_buffer.len;
             if (n > out_buffer.len) return error.NameTooLong;
             @memcpy(out_buffer[0..n], sufficient_buffer[0..n]);
             return n;
@@ -8999,7 +8999,7 @@ fn isCygwinPty(file: File) Io.Cancelable!bool {
     // The name we get from NtQueryInformationFile will be prefixed with a '\', e.g. \msys-1888ae32e00d56aa-pty0-to-master
     return (std.mem.startsWith(u16, name_wide, &[_]u16{ '\\', 'm', 's', 'y', 's', '-' }) or
         std.mem.startsWith(u16, name_wide, &[_]u16{ '\\', 'c', 'y', 'g', 'w', 'i', 'n', '-' })) and
-        std.mem.indexOf(u16, name_wide, &[_]u16{ '-', 'p', 't', 'y' }) != null;
+        std.mem.find(u16, name_wide, &[_]u16{ '-', 'p', 't', 'y' }) != null;
 }
 
 fn fileSetLength(userdata: ?*anyopaque, file: File, length: u64) File.SetLengthError!void {
@@ -16315,7 +16315,7 @@ fn windowsCreateProcessPathExt(
 
             const is_bat_or_cmd = bat_or_cmd: {
                 const app_name = app_buf.items[0..app_name_len];
-                const ext_start = std.mem.lastIndexOfScalar(u16, app_name, '.') orelse break :bat_or_cmd false;
+                const ext_start = std.mem.findScalarLast(u16, app_name, '.') orelse break :bat_or_cmd false;
                 const ext = app_name[ext_start..];
                 const ext_enum = windowsCreateProcessSupportsExtension(ext) orelse break :bat_or_cmd false;
                 switch (ext_enum) {
@@ -16351,7 +16351,7 @@ fn windowsCreateProcessPathExt(
                     // it's treated as an unrecoverable error. Otherwise, it'll be
                     // skipped as normal.
                     const app_name = app_buf.items[0..app_name_len];
-                    const ext_start = std.mem.lastIndexOfScalar(u16, app_name, '.') orelse break :unappended err;
+                    const ext_start = std.mem.findScalarLast(u16, app_name, '.') orelse break :unappended err;
                     const ext = app_name[ext_start..];
                     if (windows.eqlIgnoreCaseWtf16(ext, std.unicode.utf8ToUtf16LeStringLiteral(".EXE"))) {
                         return error.UnrecoverableInvalidExe;

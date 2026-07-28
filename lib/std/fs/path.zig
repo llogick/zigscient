@@ -1830,7 +1830,7 @@ fn testRelativeWindows(from: []const u8, to: []const u8, expected_output: []cons
 /// pointer address range of `path`, even if it is length zero.
 pub fn extension(path: []const u8) []const u8 {
     const filename = basename(path);
-    const index = mem.lastIndexOfScalar(u8, filename, '.') orelse return path[path.len..];
+    const index = mem.findScalarLast(u8, filename, '.') orelse return path[path.len..];
     if (index == 0) return path[path.len..];
     return filename[index..];
 }
@@ -1887,7 +1887,7 @@ test extension {
 /// - "hello/world/lib"        ⇒ "lib"
 pub fn stem(path: []const u8) []const u8 {
     const filename = basename(path);
-    const index = mem.lastIndexOfScalar(u8, filename, '.') orelse return filename[0..];
+    const index = mem.findScalarLast(u8, filename, '.') orelse return filename[0..];
     if (index == 0) return path;
     return filename[0..index];
 }

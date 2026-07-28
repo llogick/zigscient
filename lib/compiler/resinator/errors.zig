@@ -506,7 +506,7 @@ pub const ErrorDetails = struct {
                 // We know that the token slice is a well-formed #pragma code_page(N), so
                 // we can skip to the first ( and then get the number that follows
                 const token_slice = self.token.slice(source);
-                var number_start = std.mem.indexOfScalar(u8, token_slice, '(').? + 1;
+                var number_start = std.mem.findScalar(u8, token_slice, '(').? + 1;
                 while (std.ascii.isWhitespace(token_slice[number_start])) {
                     number_start += 1;
                 }

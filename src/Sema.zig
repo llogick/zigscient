@@ -34858,7 +34858,7 @@ pub fn resolveNavPtrModifiers(
         const linksection_body = zir_decl.linksection_body orelse break :ls .none;
         const linksection_ref = try sema.resolveInlineBody(block, linksection_body, decl_inst);
         const bytes = try sema.toConstString(block, section_src, linksection_ref, .{ .simple = .@"linksection" });
-        if (std.mem.indexOfScalar(u8, bytes, 0) != null) {
+        if (std.mem.findScalar(u8, bytes, 0) != null) {
             return sema.fail(block, section_src, "linksection cannot contain null bytes", .{});
         } else if (bytes.len == 0) {
             return sema.fail(block, section_src, "linksection cannot be empty", .{});

@@ -85,7 +85,7 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
 
         for (inst.operands, 0..) |word, i| {
             if (i == result_id_index) continue;
-            if (std.mem.indexOfScalar(u16, id_offsets.items, @intCast(i)) != null) {
+            if (std.mem.findScalar(u16, id_offsets.items, @intCast(i)) != null) {
                 const canonical = id_remap.get(@fromBackingInt(@intCast(word))) orelse @as(Id, @fromBackingInt(@intCast(word)));
                 try key_words.append(gpa, @backingInt(canonical));
             } else {
@@ -182,7 +182,7 @@ pub fn run(parser: *BinaryModule.Parser, binary: *BinaryModule) !void {
         } else null;
 
         for (inst_slice, 0..) |*word, i| {
-            if (std.mem.indexOfScalar(u16, id_offsets.items, @intCast(i)) == null) continue;
+            if (std.mem.findScalar(u16, id_offsets.items, @intCast(i)) == null) continue;
             max_id = @max(max_id, word.*);
             if (maybe_result_id_index != null and i == maybe_result_id_index.?) continue;
 

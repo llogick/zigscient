@@ -68,7 +68,7 @@ pub fn addCase(self: *RunTranslatedCContext, case: *const TestCase) void {
 
     const annotated_case_name = fmt.allocPrint(self.b.allocator, "run-translated-c {s}", .{case.name}) catch unreachable;
     for (self.test_filters) |test_filter| {
-        if (mem.indexOf(u8, annotated_case_name, test_filter)) |_| break;
+        if (mem.find(u8, annotated_case_name, test_filter)) |_| break;
     } else if (self.test_filters.len > 0) return;
 
     const write_src = b.addWriteFiles();
