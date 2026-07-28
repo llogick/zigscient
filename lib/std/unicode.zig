@@ -425,6 +425,15 @@ pub const Utf8Iterator = struct {
 
         return it.bytes[original_i..end_ix];
     }
+
+    /// Look ahead at the next codepoint without advancing the iterator.
+    /// If no codepoints exist, then returns null.
+    pub fn peekCodepoint(it: *Utf8Iterator) ?u21 {
+        const original_i = it.i;
+        defer it.i = original_i;
+
+        return it.nextCodepoint();
+    }
 };
 
 pub fn utf16IsHighSurrogate(c: u16) bool {
@@ -768,6 +777,9 @@ fn testMiscInvalidUtf8() !void {
 test "utf8 iterator peeking" {
     try comptime testUtf8Peeking();
     try testUtf8Peeking();
+
+    comptime try testUtf8PeekCodepoint();
+    try testUtf8PeekCodepoint();
 }
 
 fn testUtf8Peeking() !void {
@@ -788,6 +800,20 @@ fn testUtf8Peeking() !void {
     try testing.expect(it.nextCodepointSlice() == null);
 
     try testing.expect(mem.eql(u8, &[_]u8{}, it.peek(1)));
+}
+
+fn testUtf8PeekCodepoint() !void {
+    const s = Utf8View.initComptime("東京市");
+    var it = s.iterator();
+
+    try testing.expect(it.peekCodepoint().? == 0x6771);
+    try testing.expect(it.peekCodepoint().? == 0x6771);
+    _ = it.nextCodepoint();
+    try testing.expect(it.peekCodepoint().? == 0x4eac);
+    _ = it.nextCodepoint();
+    try testing.expect(it.peekCodepoint().? == 0x5e02);
+    _ = it.nextCodepoint();
+    try testing.expect(it.peekCodepoint() == null);
 }
 
 fn testError(bytes: []const u8, expected_err: anyerror) !void {
@@ -1757,6 +1783,15 @@ pub const Wtf8Iterator = struct {
         }
 
         return it.bytes[original_i..end_ix];
+    }
+
+    /// Look ahead at the next codepoint without advancing the iterator.
+    /// If no codepoints exist, then returns null.
+    pub fn peekCodepoint(it: *Wtf8Iterator) ?u21 {
+        const original_i = it.i;
+        defer it.i = original_i;
+
+        return it.nextCodepoint();
     }
 };
 
