@@ -5848,7 +5848,7 @@ fn cmpxchgWeakButNotAtomic(comptime T: type, ptr: *T, expected_value: T, new_val
       {#header_open|@Union#}
       <pre>{#syntax#}@Union(
     comptime layout: std.lang.Type.ContainerLayout,
-    /// Either the integer tag type, or the integer backing type, depending on `layout`.
+    /// Either the enum tag type, or the integer backing type, depending on `layout`.
     comptime ArgType: ?type,
     comptime field_names: []const []const u8,
     comptime field_types: *const [field_names.len]type,
