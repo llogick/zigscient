@@ -1506,6 +1506,9 @@ pub const Object = struct {
             variable.setSection(try o.builder.string(section_slice), &o.builder);
         }
 
+        const arch = comp.root_mod.resolved_target.result.cpu.arch;
+        const is_nvptx = arch == .nvptx or arch == .nvptx64;
+
         const llvm_global_ty = llvm_global.typeOf(&o.builder);
 
         // All exports are represented as aliases to the original global.
@@ -1513,7 +1516,7 @@ pub const Object = struct {
         // TODO: we currently do not delete old exports. To do that we'll need to track which
         // globals actually *are* exports.
 
-        for (export_indices) |export_idx| {
+        for (export_indices, 0..) |export_idx, export_i| {
             const exp = export_idx.ptr(zcu);
             const exp_name = try o.builder.strtabString(exp.opts.name.toSlice(ip));
 
@@ -1524,6 +1527,15 @@ pub const Object = struct {
             // The name, aliasee, and type will be set within this block. Other properties of the
             // alias will be set below.
             const alias_global: Builder.Global.Index = global: {
+
+                // WORKAROUND (see https://github.com/llvm/llvm-project/issues/213504)
+                // LLVM throws "NVPTX aliasee must be a non-kernel function definition"
+                // if we try to alias a kernel, so we just rename the global directly.
+                if (is_nvptx and export_i == 0) {
+                    try llvm_global.rename(exp_name, &o.builder);
+                    break :global llvm_global;
+                }
+
                 const existing_global = o.builder.getGlobal(exp_name) orelse {
                     // There is no existing global with this name, so make a new alias.
                     const alias = try o.builder.addAlias(
