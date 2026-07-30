@@ -52,17 +52,17 @@ static void FuncGen_free(struct FuncGen *self) {
 }
 
 static void FuncGen_outdent(struct FuncGen *self, FILE *out) {
-    for (uint32_t i = 0; i < self->block_i; i += 1) fputs("    ", out);
+    for (uint32_t i = 0; i < self->block_i; i += 1) fputs(" ", out);
 }
 
 static void FuncGen_indent(struct FuncGen *self, FILE *out) {
     FuncGen_outdent(self, out);
-    fputs("    ", out);
+    fputs(" ", out);
 }
 
 static void FuncGen_cont(struct FuncGen *self, FILE *out) {
     FuncGen_indent(self, out);
-    fputs("    ", out);
+    fputs(" ", out);
 }
 
 static uint32_t FuncGen_localAlloc(struct FuncGen *self, int8_t type) {

@@ -518,8 +518,8 @@ int main(int argc, char **argv) {
                     }
                     fprintf(out,
                             ") {\n"
-                            "    init();\n"
-                            "    %sf%" PRIu32 "(",
+                            " init();\n"
+                            " %sf%" PRIu32 "(",
                             func_type->result->len > 0 ? "return " : "", idx - imports_len);
                     for (uint32_t param_i = 0; param_i < func_type->param->len; param_i += 1) {
                         if (param_i > 0) fputs(", ", out);
@@ -552,7 +552,7 @@ int main(int argc, char **argv) {
             uint32_t segment_len = InputStream_readLeb128_u32(&in);
             for (uint32_t i = 0; i < segment_len; i += 1) {
                 uint32_t func_id = InputStream_readLeb128_u32(&in);
-                fprintf(out, "    t%" PRIu32 "[UINT32_C(%" PRIu32 ")] = (void (*)(void))&",
+                fprintf(out, " t%" PRIu32 "[UINT32_C(%" PRIu32 ")] = (void (*)(void))&",
                         table_idx, offset + i);
                 if (func_id < imports_len)
                     fprintf(out, "%s_%s", imports[func_id].mod, imports[func_id].name);
@@ -2260,9 +2260,9 @@ int main(int argc, char **argv) {
         uint32_t len = InputStream_readLeb128_u32(&in);
         fputs("static void init_data(void) {\n", out);
         for (uint32_t i = 0; i < mems_len; i += 1)
-            fprintf(out, "    p%" PRIu32 " = UINT32_C(%" PRIu32 ");\n"
-                    "    c%" PRIu32 " = p%" PRIu32 ";\n"
-                    "    m%" PRIu32 " = calloc(c%" PRIu32 ", UINT32_C(1) << 16);\n",
+            fprintf(out, " p%" PRIu32 " = UINT32_C(%" PRIu32 ");\n"
+                    " c%" PRIu32 " = p%" PRIu32 ";\n"
+                    " m%" PRIu32 " = calloc(c%" PRIu32 ", UINT32_C(1) << 16);\n",
                     i, mems[i].limits.min, i, i, i, i);
         for (uint32_t segment_i = 0; segment_i < len; segment_i += 1) {
             uint32_t mem_idx;
@@ -2280,15 +2280,15 @@ int main(int argc, char **argv) {
             uint32_t offset = evalExpr(&in);
             uint32_t segment_len = InputStream_readLeb128_u32(&in);
             fputc('\n', out);
-            fprintf(out, "    static const uint8_t s%" PRIu32 "[UINT32_C(%" PRIu32 ")] = {",
+            fprintf(out, " static const uint8_t s%" PRIu32 "[UINT32_C(%" PRIu32 ")] = {",
                     segment_i, segment_len);
             for (uint32_t i = 0; i < segment_len; i += 1) {
                 if (i % 32 == 0) fputs("\n       ", out);
                 fprintf(out, " 0x%02hhX,", InputStream_readByte(&in));
             }
             fprintf(out, "\n"
-                    "    };\n"
-                    "    memcpy(&m%" PRIu32 "[UINT32_C(0x%" PRIX32 ")], s%" PRIu32 ", UINT32_C(%" PRIu32 "));\n",
+                    " };\n"
+                    " memcpy(&m%" PRIu32 "[UINT32_C(0x%" PRIX32 ")], s%" PRIu32 ", UINT32_C(%" PRIu32 "));\n",
                     mem_idx, offset, segment_i, segment_len);
         }
         fputs("}\n", out);
