@@ -2742,29 +2742,26 @@ pub const Allocating = struct {
 
     fn drain(w: *Writer, data: []const []const u8, splat: usize) Error!usize {
         const a: *Allocating = @fieldParentPtr("writer", w);
-        const pattern = data[data.len - 1];
-        const splat_len = pattern.len * splat;
-        const start_len = a.writer.end;
         assert(data.len != 0);
-        for (data) |bytes| {
-            a.ensureUnusedCapacity(bytes.len + splat_len + 1) catch return error.WriteFailed;
+        const count = countSplat(data, splat);
+        a.ensureUnusedCapacity(count + 1) catch return error.WriteFailed;
+        for (data[0 .. data.len - 1]) |bytes| {
             @memcpy(a.writer.buffer[a.writer.end..][0..bytes.len], bytes);
             a.writer.end += bytes.len;
         }
-        if (splat == 0) {
-            a.writer.end -= pattern.len;
-        } else switch (pattern.len) {
+        const pattern = data[data.len - 1];
+        switch (pattern.len) {
             0 => {},
             1 => {
-                @memset(a.writer.buffer[a.writer.end..][0 .. splat - 1], pattern[0]);
-                a.writer.end += splat - 1;
+                @memset(a.writer.buffer[a.writer.end..][0..splat], pattern[0]);
+                a.writer.end += splat;
             },
-            else => for (0..splat - 1) |_| {
+            else => for (0..splat) |_| {
                 @memcpy(a.writer.buffer[a.writer.end..][0..pattern.len], pattern);
                 a.writer.end += pattern.len;
             },
         }
-        return a.writer.end - start_len;
+        return count;
     }
 
     fn sendFile(w: *Writer, file_reader: *File.Reader, limit: Limit) FileError!usize {
