@@ -103,6 +103,8 @@ pub fn build(b: *std.Build) void {
             .{ .arch_os_abi = t },
         ) catch unreachable);
 
+        if (target.result.cpu.arch.isLoongArch()) continue; // https://github.com/Vexu/arocc/issues/1096
+
         const glibc_ver = target.result.os.version_range.linux.glibc;
 
         // only build test if glibc version supports the architecture

@@ -21,6 +21,20 @@
 
 #include <pthread.h>
 
+typedef pthread_rwlock_t __libc_rwlock_t;
+
+#define __libc_rwlock_define(CLASS,NAME) \
+  CLASS __libc_rwlock_t NAME;
+#define __libc_rwlock_define_initialized(CLASS,NAME) \
+  CLASS __libc_rwlock_t NAME = PTHREAD_RWLOCK_INITIALIZER;
+#define __libc_rwlock_init(NAME) __pthread_rwlock_init (&(NAME), NULL)
+#define __libc_rwlock_fini(NAME) ((void) 0)
+#define __libc_rwlock_rdlock(NAME) __pthread_rwlock_rdlock (&(NAME))
+#define __libc_rwlock_wrlock(NAME) __pthread_rwlock_wrlock (&(NAME))
+#define __libc_rwlock_tryrdlock(NAME) __pthread_rwlock_tryrdlock (&(NAME))
+#define __libc_rwlock_trywrlock(NAME) __pthread_rwlock_trywrlock (&(NAME))
+#define __libc_rwlock_unlock(NAME) __pthread_rwlock_unlock (&(NAME))
+
 /* If we check for a weakly referenced symbol and then perform a
    normal jump to it te code generated for some platforms in case of
    PIC is unnecessarily slow.  What would happen is that the function

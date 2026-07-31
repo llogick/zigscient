@@ -7,6 +7,11 @@
  #error Applications may not define the macro _LIBC
 #endif
 
+#define __stub___compat_bdflush
+#define __stub___compat_create_module
+#define __stub___compat_get_kernel_syms
+#define __stub___compat_query_module
+#define __stub___compat_uselib
 #define __stub_chflags
 #define __stub_fchflags
 #define __stub_gtty

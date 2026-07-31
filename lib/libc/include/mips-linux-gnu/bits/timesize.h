@@ -1,4 +1,4 @@
-/* Bit size of the time_t type at glibc build time, Linux/s390.
+/* Bit size of the time_t type at glibc build time, Linux/MIPS.
    Copyright (C) 2021-2026 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
 

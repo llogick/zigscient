@@ -99,6 +99,17 @@
 #define __DECL_SIMD_powf64x
 #define __DECL_SIMD_powf128x
 
+#define __DECL_SIMD_powr
+#define __DECL_SIMD_powrf
+#define __DECL_SIMD_powrl
+#define __DECL_SIMD_powrf16
+#define __DECL_SIMD_powrf32
+#define __DECL_SIMD_powrf64
+#define __DECL_SIMD_powrf128
+#define __DECL_SIMD_powrf32x
+#define __DECL_SIMD_powrf64x
+#define __DECL_SIMD_powrf128x
+
 #define __DECL_SIMD_acos
 #define __DECL_SIMD_acosf
 #define __DECL_SIMD_acosl

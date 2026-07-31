@@ -197,6 +197,7 @@ __MATHCALL (compoundn,, (_Mdouble_ __x, long long int __y));
 __MATHCALL (pown,, (_Mdouble_ __x, long long int __y));
 
 /* Return X to the Y power.  */
+__MATHCALL_VEC (powr,, (_Mdouble_ __x, _Mdouble_ __y));
 __MATHCALL (powr,, (_Mdouble_ __x, _Mdouble_ __y));
 
 /* Return the Yth root of X.  */

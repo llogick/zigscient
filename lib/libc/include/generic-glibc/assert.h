@@ -52,13 +52,12 @@
    comma in the initializer list, can be passed to assert.  This
    depends on support for variadic macros (added in C99 and GCC 2.95),
    and on support for _Bool (added in C99 and GCC 3.0) in order to
-   validate that only a single expression is passed as an argument,
-   and is currently implemented only for C.  */
-#if (__GLIBC_USE (ISOC23)						\
-     && (defined __GNUC__						\
-	 ? __GNUC_PREREQ (3, 0)						\
-	 : defined __STDC_VERSION__ && __STDC_VERSION__ >= 199901L)	\
-     && !defined __cplusplus)
+   validate that only a single expression is passed as an argument.  */
+#if ((__GLIBC_USE (ISOC23)						\
+      && (defined __GNUC__						\
+	  ? __GNUC_PREREQ (3, 0)					\
+	  : defined __STDC_VERSION__ && __STDC_VERSION__ >= 199901L))	\
+     || (defined __cplusplus && __cplusplus > 202302L))
 # define __ASSERT_VARIADIC 1
 #else
 # define __ASSERT_VARIADIC 0
@@ -108,7 +107,7 @@ extern void __assert (const char *__assertion, const char *__file, int __line)
      __THROW __attribute__ ((__noreturn__)) __COLD;
 
 
-# if __ASSERT_VARIADIC
+# if __ASSERT_VARIADIC && !defined __cplusplus
 /* This function is not defined and is not called outside of an
    unevaluated sizeof, but serves to verify that the argument to
    assert is a single expression.  */
@@ -131,11 +130,22 @@ __END_DECLS
 #   define __ASSERT_FILE __FILE__
 #   define __ASSERT_LINE __LINE__
 #  endif
-#  define assert(expr)							\
+#  if __ASSERT_VARIADIC
+/* The first test of __VA_ARGS__ evaluates it without converting scoped
+   enumeration values to bool, and the second test checks that it is a
+   single expression without evaluating it.  */
+#    define assert(...)							\
+     ((__VA_ARGS__)							\
+      ? void (1 ? 1 : bool (__VA_ARGS__))				\
+      : __assert_fail (#__VA_ARGS__, __ASSERT_FILE, __ASSERT_LINE,	\
+                       __ASSERT_FUNCTION))
+#  else
+#    define assert(expr)						\
      (static_cast <bool> (expr)						\
       ? void (0)							\
       : __assert_fail (#expr, __ASSERT_FILE, __ASSERT_LINE,             \
                        __ASSERT_FUNCTION))
+#  endif
 # elif !defined __GNUC__ || defined __STRICT_ANSI__
 #  if __ASSERT_VARIADIC
 #   define assert(...)							\

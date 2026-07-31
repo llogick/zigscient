@@ -77,9 +77,9 @@ typedef struct
 {
   fexcept_t __fpc;
   void *__glibc_reserved;
-  /* The field __unused (formerly __ieee_instruction_pointer) is a relict from
-     commit "Remove PTRACE_PEEKUSER" (87b9b50f0d4b92248905e95a06a13c513dc45e59)
-     and isn't used anymore.  */
+  /* The field __glibc_reserved (formerly __ieee_instruction_pointer) is a
+     relict from commit "Remove PTRACE_PEEKUSER"
+     (87b9b50f0d4b92248905e95a06a13c513dc45e59) and isn't used anymore.  */
 } fenv_t;
 
 /* If the default argument is used we use this value.  */

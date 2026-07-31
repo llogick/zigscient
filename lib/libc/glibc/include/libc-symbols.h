@@ -113,6 +113,7 @@
 #define HAVE_LIBINTL_H	1
 #define HAVE_WCTYPE_H	1
 #define HAVE_ISWCTYPE	1
+#define HAVE_MEMPCPY	1
 #define ENABLE_NLS	1
 
 /* The symbols in all the user (non-_) macros are C symbols.  */
@@ -682,7 +683,7 @@ for linking")
 
 /* Helper / base  macros for indirect function symbols.  */
 #define __ifunc_resolver(type_name, name, expr, init, classifier, ...)	\
-  classifier inhibit_stack_protector					\
+  classifier								\
   __typeof (type_name) *name##_ifunc (__VA_ARGS__)			\
   {									\
     init ();								\

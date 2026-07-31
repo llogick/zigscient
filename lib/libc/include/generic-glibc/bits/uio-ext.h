@@ -51,6 +51,7 @@ extern ssize_t process_vm_writev (pid_t __pid, const struct iovec *__lvec,
 #define RWF_ATOMIC	0x00000040 /* Write is to be issued with torn-write
 				      prevention.  */
 #define RWF_DONTCACHE	0x00000080 /* Uncached buffered IO.  */
+#define RWF_NOSIGNAL	0x00000100 /* Do not generate SIGPIPE on error.  */
 
 __END_DECLS
 

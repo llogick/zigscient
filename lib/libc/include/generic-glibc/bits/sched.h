@@ -54,6 +54,9 @@
 #define SCHED_FLAG_UTIL_CLAMP \
   (SCHED_FLAG_UTIL_CLAMP_MIN | SCHED_FLAG_UTIL_CLAMP_MAX)
 
+/* Flags for the flags argument of sched_getattr.  */
+#define SCHED_GETATTR_FLAG_DL_DYNAMIC	0x01
+
 /* Use "" to work around incorrect macro expansion of the
    __has_include argument (GCC PR 80005).  */
 # ifdef __has_include

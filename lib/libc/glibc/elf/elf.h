@@ -798,7 +798,8 @@ typedef struct
 #define NT_X86_XSTATE	0x202		/* x86 extended state using xsave */
 #define NT_X86_SHSTK	0x204		/* x86 SHSTK state */
 #define NT_X86_XSAVE_LAYOUT	0x205		/* XSAVE layout description.  */
-#define NT_S390_HIGH_GPRS	0x300	/* s390 upper register halves */
+#define NT_S390_HIGH_GPRS	0x300	/* s390 upper register halves.  This was
+					   used in now removed s390-32 arch.  */
 #define NT_S390_TIMER	0x301		/* s390 timer register */
 #define NT_S390_TODCMP	0x302		/* s390 TOD clock comparator register */
 #define NT_S390_TODPREG	0x303		/* s390 TOD programmable register */
@@ -846,6 +847,7 @@ typedef struct
 #define NT_RISCV_VECTOR	0x901		/* RISC-V vector registers */
 #define NT_RISCV_TAGGED_ADDR_CTRL	0x902	/* RISC-V tagged
 						   address control */
+#define NT_RISCV_USER_CFI	0x903		/* RISC-V shadow stack state */
 #define NT_LOONGARCH_CPUCFG	0xa00	/* LoongArch CPU config registers.  */
 #define NT_LOONGARCH_CSR	0xa01	/* LoongArch control and
 					   status registers.  */
@@ -3470,7 +3472,9 @@ enum
 
 /* Valid values for the e_flags field.  */
 
-#define EF_S390_HIGH_GPRS    0x00000001  /* High GPRs kernel facility needed.  */
+#define EF_S390_HIGH_GPRS    0x00000001  /* High GPRs kernel facility needed.
+					    This was used in now removed s390-32
+					    arch.  */
 
 /* Additional s390 relocs */
 

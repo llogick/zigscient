@@ -24,6 +24,7 @@
 #define LIBRESOLV_SO                    "libresolv.so.2"
 #define LIBRT_SO                        "librt.so.1"
 #define LIBTHREAD_DB_SO                 "libthread_db.so.1"
+#define LIBUNWIND_SO                    "libunwind.so.1"
 #define LIBUTIL_SO                      "libutil.so.1"
 
 #endif	/* gnu/lib-names.h */

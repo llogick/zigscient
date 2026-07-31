@@ -64,6 +64,15 @@
 #define PIDFD_INFO_EXIT                       (1UL << 3)
 /* Only returned if requested. */
 #define PIDFD_INFO_COREDUMP                   (1UL << 4)
+// zig patch: check target glibc version
+#if (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 44) || __GLIBC__ > 2
+/* Want/got supported mask flags */
+#define PIDFD_INFO_SUPPORTED_MASK             (1UL << 5)
+/* Always returned if PIDFD_INFO_COREDUMP is requested. */
+#define PIDFD_INFO_COREDUMP_SIGNAL            (1UL << 6)
+/* Always returned if PIDFD_INFO_COREDUMP is requested. */
+#define PIDFD_INFO_COREDUMP_CODE              (1UL << 7)
+#endif /* (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 44) || __GLIBC__ > 2 */
 
 
 /* Value for coredump_mask in pidfd_info.  Only valid if PIDFD_INFO_COREDUMP
@@ -95,11 +104,28 @@ struct pidfd_info
   __uint32_t fsgid;
   __int32_t  exit_code;
   __uint32_t coredump_mask;
+// zig patch: check target glibc version
+#if (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 44) || __GLIBC__ > 2
+  __uint32_t coredump_signal;
+  __uint32_t coredump_code;
+  __uint32_t coredump_pad;
+  __uint64_t supported_mask;
+#else
   __uint32_t __spare1;
+#endif /* (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 44) || __GLIBC__ > 2 */
 };
 
 /* sizeof first published struct */
 #define PIDFD_INFO_SIZE_VER0                  64
+// zig patch: check target glibc version
+#if (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 44) || __GLIBC__ > 2
+/* sizeof second published struct */
+#define PIDFD_INFO_SIZE_VER1                  72
+/* sizeof third published struct */
+#define PIDFD_INFO_SIZE_VER2                  80
+/* sizeof fourth published struct */
+#define PIDFD_INFO_SIZE_VER3                  88
+#endif /* (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 44) || __GLIBC__ > 2 */
 
 #define PIDFD_GET_INFO                        _IOWR(PIDFS_IOCTL_MAGIC, 11, struct pidfd_info)
 

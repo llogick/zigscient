@@ -1,4 +1,4 @@
-/* Definitions for 31 & 64 bit S/390 sigaction.
+/* Definitions for 64 bit S/390 sigaction.
    Copyright (C) 2001-2026 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
 
@@ -23,9 +23,6 @@
 # error "Never include <bits/sigaction.h> directly; use <signal.h> instead."
 #endif
 
-#include <bits/wordsize.h>
-
-#if __WORDSIZE == 64
 /* Structure describing the action to be taken when a signal arrives.  */
 struct sigaction
   {
@@ -55,36 +52,6 @@ struct sigaction
     /* Additional set of signals to be blocked.	 */
     __sigset_t sa_mask;
   };
-#else
-/* Structure describing the action to be taken when a signal arrives.  */
-struct sigaction
-  {
-    /* Signal handler.  */
-#if defined __USE_POSIX199309 || defined __USE_XOPEN_EXTENDED
-    union
-      {
-	/* Used if SA_SIGINFO is not set.  */
-	__sighandler_t sa_handler;
-	/* Used if SA_SIGINFO is set.  */
-	void (*sa_sigaction) (int, siginfo_t *, void *);
-      }
-    __sigaction_handler;
-# define sa_handler	__sigaction_handler.sa_handler
-# define sa_sigaction	__sigaction_handler.sa_sigaction
-#else
-    __sighandler_t sa_handler;
-#endif
-
-    /* Additional set of signals to be blocked.  */
-    __sigset_t sa_mask;
-
-    /* Special flags.  */
-    int sa_flags;
-
-    /* Restore handler.  */
-    void (*sa_restorer) (void);
-  };
-#endif
 
 /* Bits in `sa_flags'.  */
 #define	SA_NOCLDSTOP  1		 /* Don't send SIGCHLD when children stop.  */

@@ -4,6 +4,12 @@
 
 #include <bits/wordsize.h>
 
+#if __WORDSIZE == 32 && defined __loongarch_soft_float
+# include <gnu/stubs-ilp32s.h>
+#endif
+#if __WORDSIZE == 32 && defined __loongarch_double_float
+# include <gnu/stubs-ilp32d.h>
+#endif
 #if __WORDSIZE == 64 && defined __loongarch_soft_float
 # include <gnu/stubs-lp64s.h>
 #endif

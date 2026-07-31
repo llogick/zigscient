@@ -80,6 +80,9 @@
 				       as a cmsg on read.  */
 #define TCP_CM_INQ		 TCP_INQ
 #define TCP_TX_DELAY		 37 /* Delay outgoing packets by XX usec.  */
+#define TCP_RTO_MAX_MS		 44 /* Max time to retransmit (msec).  */
+#define TCP_RTO_MIN_US		 45 /* Min time to retransmit (usec).  */
+#define TCP_DELACK_MAX_US	 46 /* Max delayed ack time (usec).  */
 
 #define TCP_REPAIR_ON		 1
 #define TCP_REPAIR_OFF		 0
@@ -226,6 +229,24 @@ enum tcp_ca_state
   TCP_CA_Loss = 4
 };
 
+/* Values for tcpi_ecn_mode after negotiation.  */
+#define TCPI_ECN_MODE_DISABLED	0x0
+#define TCPI_ECN_MODE_RFC3168	0x1
+#define TCPI_ECN_MODE_ACCECN	0x2
+#define TCPI_ECN_MODE_PENDING	0x3
+
+/* Values for tcpi_accecn_opt_seen.  */
+#define TCP_ACCECN_OPT_NOT_SEEN		0x0
+#define TCP_ACCECN_OPT_EMPTY_SEEN	0x1
+#define TCP_ACCECN_OPT_COUNTER_SEEN	0x2
+#define TCP_ACCECN_OPT_FAIL_SEEN	0x3
+
+/* Values for tcpi_accecn_fail_mode.  */
+#define TCP_ACCECN_ACE_FAIL_SEND	0x1
+#define TCP_ACCECN_ACE_FAIL_RECV	0x2
+#define TCP_ACCECN_OPT_FAIL_SEND	0x4
+#define TCP_ACCECN_OPT_FAIL_RECV	0x8
+
 struct tcp_info
 {
   uint8_t	tcpi_state;
@@ -319,8 +340,10 @@ struct tcp_info
   uint32_t	tcpi_received_e1_bytes;
   uint32_t	tcpi_received_e0_bytes;
   uint32_t	tcpi_received_ce_bytes;
-  uint16_t	tcpi_accecn_fail_mode;
-  uint16_t	tcpi_accecn_opt_seen;
+  uint32_t	tcpi_ecn_mode:2,
+		tcpi_accecn_opt_seen:2,
+		tcpi_accecn_fail_mode:4,
+		tcpi_options2:24;
 };
 
 /* Netlink attributes types for SCM_TIMESTAMPING_OPT_STATS */

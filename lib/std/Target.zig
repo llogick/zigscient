@@ -2660,12 +2660,26 @@ pub const DynamicLinker = struct {
                         else => return none,
                     }}),
 
-                    .loongarch64 => initFmt("/lib64/ld-linux-loongarch-{s}.so.1", .{switch (abi) {
-                        .gnu => "lp64d",
-                        .gnuf32 => "lp64f",
-                        .gnusf => "lp64s",
-                        else => return none,
-                    }}),
+                    .loongarch32,
+                    .loongarch64,
+                    => |arch| initFmt("/lib{s}/ld-linux-{s}{s}.so.1", .{
+                        switch (arch) {
+                            .loongarch32 => "32",
+                            .loongarch64 => "64",
+                            else => unreachable,
+                        },
+                        switch (arch) {
+                            .loongarch32 => "loongarch-ilp32",
+                            .loongarch64 => "loongarch-lp64",
+                            else => unreachable,
+                        },
+                        switch (abi) {
+                            .gnu => "d",
+                            .gnuf32 => "f",
+                            .gnusf => "s",
+                            else => return none,
+                        },
+                    }),
 
                     .hppa,
                     .m68k,

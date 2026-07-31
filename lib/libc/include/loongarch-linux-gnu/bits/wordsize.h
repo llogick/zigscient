@@ -15,5 +15,16 @@
    License along with the GNU C Library; if not, see
    <https://www.gnu.org/licenses/>.  */
 
-#define __WORDSIZE			64
+// zig patch: handle 32-bit and 64-bit in the same header
+#if __loongarch_grlen == (__SIZEOF_POINTER__ * 8)
+# define __WORDSIZE __loongarch_grlen
+#else
+# error unsupported ABI
+#endif
+
 #define __WORDSIZE_TIME64_COMPAT32	0
+
+#if __WORDSIZE == 32
+# define __WORDSIZE32_SIZE_ULONG    0
+# define __WORDSIZE32_PTRDIFF_LONG  0
+#endif

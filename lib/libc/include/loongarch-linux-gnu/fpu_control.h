@@ -94,6 +94,15 @@ extern void __loongarch_fpu_setcw (fpu_control_t) __THROW;
 #define _FPU_GETCW(cw) __asm__ volatile ("movfcsr2gr %0,$fcsr0" : "=r"(cw))
 #define _FPU_SETCW(cw) __asm__ volatile ("movgr2fcsr $fcsr0,%0" : : "r"(cw))
 
+#define _FPU_GET_ENABLES(cw) __asm__ volatile ("movfcsr2gr %0,$fcsr1" : "=r"(cw))
+#define _FPU_SET_ENABLES(cw) __asm__ volatile ("movgr2fcsr $fcsr1,%0" : : "r"(cw))
+
+#define _FPU_GET_FLAGS_CAUSE(cw) __asm__ volatile ("movfcsr2gr %0,$fcsr2" : "=r"(cw))
+#define _FPU_SET_FLAGS_CAUSE(cw) __asm__ volatile ("movgr2fcsr $fcsr2,%0" : : "r"(cw))
+
+#define _FPU_GET_RM(cw) __asm__ volatile ("movfcsr2gr %0,$fcsr3" : "=r"(cw))
+#define _FPU_SET_RM(cw) __asm__ volatile ("movgr2fcsr $fcsr3,%0" : : "r"(cw))
+
 /* Default control word set at startup.  */
 extern fpu_control_t __fpu_control;
 

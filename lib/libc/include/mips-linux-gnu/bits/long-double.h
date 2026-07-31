@@ -1,11 +1,10 @@
-/* Types of pr_uid and pr_gid in struct elf_prpsinfo.  S/390 version.
-   Copyright (C) 2018-2026 Free Software Foundation, Inc.
-
+/* Properties of long double type.  MIPS version.
+   Copyright (C) 2016-2026 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
 
    The GNU C Library is free software; you can redistribute it and/or
    modify it under the terms of the GNU Lesser General Public
-   License as published by the Free Software Foundation; either
+   License  published by the Free Software Foundation; either
    version 2.1 of the License, or (at your option) any later version.
 
    The GNU C Library is distributed in the hope that it will be useful,
@@ -17,14 +16,9 @@
    License along with the GNU C Library; if not, see
    <https://www.gnu.org/licenses/>.  */
 
-#ifndef _SYS_PROCFS_H
-# error "Never include <bits/procfs-id.h> directly; use <sys/procfs.h> instead."
-#endif
+#include <sgidefs.h>
 
-#if __WORDSIZE == 64
-typedef unsigned int __pr_uid_t;
-typedef unsigned int __pr_gid_t;
-#else
-typedef unsigned short int __pr_uid_t;
-typedef unsigned short int __pr_gid_t;
+#if !defined __NO_LONG_DOUBLE_MATH && _MIPS_SIM == _ABIO32
+# define __NO_LONG_DOUBLE_MATH	1
 #endif
+#define __LDOUBLE_REDIRECTS_TO_FLOAT128_ABI 0

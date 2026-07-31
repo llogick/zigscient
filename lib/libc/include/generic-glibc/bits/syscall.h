@@ -1,11 +1,11 @@
 /* Generated at libc build time from syscall list.  */
-/* The system call list corresponds to kernel 6.17.  */
+/* The system call list corresponds to kernel 7.1.  */
 
 #ifndef _SYSCALL_H
 # error "Never use <bits/syscall.h> directly; include <sys/syscall.h> instead."
 #endif
 
-#define __GLIBC_LINUX_VERSION_CODE 397568
+#define __GLIBC_LINUX_VERSION_CODE 459008
 
 #ifdef __NR_FAST_atomic_update
 # define SYS_FAST_atomic_update __NR_FAST_atomic_update
@@ -881,6 +881,10 @@
 
 #ifdef __NR_listmount
 # define SYS_listmount __NR_listmount
+#endif
+
+#ifdef __NR_listns
+# define SYS_listns __NR_listns
 #endif
 
 #ifdef __NR_listxattr
@@ -1899,6 +1903,10 @@
 # define SYS_rseq __NR_rseq
 #endif
 
+#ifdef __NR_rseq_slice_yield
+# define SYS_rseq_slice_yield __NR_rseq_slice_yield
+#endif
+
 #ifdef __NR_rt_sigaction
 # define SYS_rt_sigaction __NR_rt_sigaction
 #endif
@@ -2549,6 +2557,10 @@
 
 #ifdef __NR_unshare
 # define SYS_unshare __NR_unshare
+#endif
+
+#ifdef __NR_uprobe
+# define SYS_uprobe __NR_uprobe
 #endif
 
 #ifdef __NR_uretprobe

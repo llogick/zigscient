@@ -1,4 +1,4 @@
-/* Properties of long double type.  MIPS version.
+/* Properties of long double type.  ldbl-128 version.
    Copyright (C) 2016-2026 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
 
@@ -16,9 +16,6 @@
    License along with the GNU C Library; if not, see
    <https://www.gnu.org/licenses/>.  */
 
-#include <sgidefs.h>
-
-#if !defined __NO_LONG_DOUBLE_MATH && _MIPS_SIM == _ABIO32
-# define __NO_LONG_DOUBLE_MATH	1
-#endif
+/* long double is distinct from double, so there is nothing to
+   define here.  */
 #define __LDOUBLE_REDIRECTS_TO_FLOAT128_ABI 0

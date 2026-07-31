@@ -57,42 +57,34 @@
 #define __TIMER_T_TYPE		void *
 #define __BLKSIZE_T_TYPE	__SLONGWORD_TYPE
 #define __FSID_T_TYPE		struct { int __val[2]; }
-#if defined __GNUC__ && __GNUC__ <= 2
-/* Compatibility with g++ 2.95.x.  */
-#define __SSIZE_T_TYPE		__SWORD_TYPE
-#else
-/* size_t is unsigned long int on s390 -m31.  */
-#define __SSIZE_T_TYPE		__SLONGWORD_TYPE
-#endif
+
+/* With s390-32, __SSIZE_T_TYPE was __SWORD_TYPE for compatibility with
+   g++ 2.95.x.  Afterwards __SLONGWORD_TYPE was needed as size_t was
+   unsigned long int on s390-32.
+   Now as only s390-64 exists, __SWORD_TYPE can be used as also used in the
+   generic version as both types result in long int.  */
+#define __SSIZE_T_TYPE         __SWORD_TYPE
+
 #define __SYSCALL_SLONG_TYPE	__SLONGWORD_TYPE
 #define __SYSCALL_ULONG_TYPE	__ULONGWORD_TYPE
-#define __CPU_MASK_TYPE 	__ULONGWORD_TYPE
+#define __CPU_MASK_TYPE		__ULONGWORD_TYPE
 
-#ifdef __s390x__
 /* Tell the libc code that off_t and off64_t are actually the same type
    for all ABI purposes, even if possibly expressed as different base types
    for C type-checking purposes.  */
-# define __OFF_T_MATCHES_OFF64_T	1
+#define __OFF_T_MATCHES_OFF64_T	1
 
 /* Same for ino_t and ino64_t.  */
-# define __INO_T_MATCHES_INO64_T	1
+#define __INO_T_MATCHES_INO64_T	1
 
 /* And for __rlim_t and __rlim64_t.  */
-# define __RLIM_T_MATCHES_RLIM64_T	1
+#define __RLIM_T_MATCHES_RLIM64_T	1
 
 /* And for fsblkcnt_t, fsblkcnt64_t, fsfilcnt_t and fsfilcnt64_t.  */
-# define __STATFS_MATCHES_STATFS64  1
+#define __STATFS_MATCHES_STATFS64  1
 
 /* And for getitimer, setitimer and rusage  */
-# define __KERNEL_OLD_TIMEVAL_MATCHES_TIMEVAL64 1
-#else
-# define __RLIM_T_MATCHES_RLIM64_T	0
-
-# define __STATFS_MATCHES_STATFS64  0
-
-/* And for getitimer, setitimer and rusage  */
-# define __KERNEL_OLD_TIMEVAL_MATCHES_TIMEVAL64 0
-#endif
+#define __KERNEL_OLD_TIMEVAL_MATCHES_TIMEVAL64 1
 
 /* Number of descriptors that can fit in an `fd_set'.  */
 #define	__FD_SETSIZE		1024

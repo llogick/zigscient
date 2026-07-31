@@ -28,7 +28,6 @@ struct __pthread_rwlock_arch_t
   unsigned int __writers_futex;
   unsigned int __pad3;
   unsigned int __pad4;
-#if __WORDSIZE == 64
   int __cur_writer;
   int __shared;
   unsigned long int __pad1;
@@ -36,23 +35,9 @@ struct __pthread_rwlock_arch_t
   /* FLAGS must stay at this position in the structure to maintain
      binary compatibility.  */
   unsigned int __flags;
-# else
-  unsigned char __pad1;
-  unsigned char __pad2;
-  unsigned char __shared;
-  /* FLAGS must stay at this position in the structure to maintain
-     binary compatibility.  */
-  unsigned char __flags;
-  int __cur_writer;
-#endif
 };
 
-#if __WORDSIZE == 64
-# define __PTHREAD_RWLOCK_INITIALIZER(__flags) \
+#define __PTHREAD_RWLOCK_INITIALIZER(__flags) \
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, __flags
-#else
-# define __PTHREAD_RWLOCK_INITIALIZER(__flags) \
-  0, 0, 0, 0, 0, 0, 0, 0, 0, __flags, 0
-#endif
 
 #endif

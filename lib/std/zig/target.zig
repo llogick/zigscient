@@ -46,6 +46,8 @@ pub const available_libcs = [_]ArchOsAbi{
     .{ .arch = .csky, .os = .linux, .abi = .gnueabi, .os_ver = .{ .major = 4, .minor = 20, .patch = 0 }, .glibc_min = .{ .major = 2, .minor = 29, .patch = 0 }, .glibc_triple = "csky-linux-gnuabiv2-soft" },
     .{ .arch = .csky, .os = .linux, .abi = .gnueabihf, .os_ver = .{ .major = 4, .minor = 20, .patch = 0 }, .glibc_min = .{ .major = 2, .minor = 29, .patch = 0 }, .glibc_triple = "csky-linux-gnuabiv2" },
     .{ .arch = .hexagon, .os = .linux, .abi = .musl, .os_ver = .{ .major = 3, .minor = 2, .patch = 102 } },
+    .{ .arch = .loongarch32, .os = .linux, .abi = .gnu, .os_ver = .{ .major = 6, .minor = 19, .patch = 0 }, .glibc_min = .{ .major = 2, .minor = 44, .patch = 0 }, .glibc_triple = "loongarch32-linux-gnuf64" },
+    .{ .arch = .loongarch32, .os = .linux, .abi = .gnusf, .os_ver = .{ .major = 6, .minor = 19, .patch = 0 }, .glibc_min = .{ .major = 2, .minor = 44, .patch = 0 }, .glibc_triple = "loongarch32-linux-gnusf" },
     .{ .arch = .loongarch64, .os = .linux, .abi = .gnu, .os_ver = .{ .major = 5, .minor = 19, .patch = 0 }, .glibc_min = .{ .major = 2, .minor = 36, .patch = 0 }, .glibc_triple = "loongarch64-linux-gnuf64" },
     .{ .arch = .loongarch64, .os = .linux, .abi = .gnusf, .os_ver = .{ .major = 5, .minor = 19, .patch = 0 }, .glibc_min = .{ .major = 2, .minor = 36, .patch = 0 }, .glibc_triple = "loongarch64-linux-gnusf" },
     .{ .arch = .loongarch64, .os = .linux, .abi = .musl, .os_ver = .{ .major = 5, .minor = 19, .patch = 0 } },

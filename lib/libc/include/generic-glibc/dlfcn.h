@@ -167,7 +167,12 @@ enum
        the number of program headers in the array.  */
     RTLD_DI_PHDR = 11,
 
-    RTLD_DI_MAX = 11
+    /* Treat ARG as `const char **' and at that location, store the address
+       of the directory name used to expand $ORIGIN in this shared object's
+       dependency file names.  */
+    RTLD_DI_ORIGIN_PATH = 12,
+
+    RTLD_DI_MAX = 12
   };
 
 
