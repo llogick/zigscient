@@ -11,16 +11,44 @@ const assert = std.debug.assert;
 const Type = @import("../../Type.zig");
 const Zcu = @import("../../Zcu.zig");
 
-/// Defines how to pass a type as part of a function signature,
-/// both for parameters as well as return values.
+/// Describes how the Wasm backend represents a C ABI value.
 pub const Class = union(enum) {
+    direct: Type,
+    double_i64,
+    indirect,
+    unrolled: struct {
+        elem_type: Type,
+        len: u32,
+    },
+};
+
+pub const LlvmClass = union(enum) {
     direct: Type,
     indirect,
 };
 
-/// Classifies a given Zig type to determine how they must be passed
-/// or returned as value within a wasm function.
-pub fn classifyType(ty: Type, zcu: *const Zcu) Class {
+pub fn classifyType(ty: Type, zcu: *const Zcu, target: *const Target) Class {
+    if (ty.zigTypeTag(zcu) == .vector) {
+        if (!(ty.bitSize(zcu) == 128 and target.cpu.has(.wasm, .simd128))) {
+            const elem_type = ty.childType(zcu);
+            return .{ .unrolled = .{
+                .elem_type = elem_type,
+                .len = ty.vectorLen(zcu),
+            } };
+        }
+        return .{ .direct = ty };
+    }
+
+    return switch (classifyTypeForLlvm(ty, zcu)) {
+        .direct => |scalar_ty| if (scalar_ty.bitSize(zcu) > 64)
+            .double_i64
+        else
+            .{ .direct = scalar_ty },
+        .indirect => .indirect,
+    };
+}
+
+pub fn classifyTypeForLlvm(ty: Type, zcu: *const Zcu) LlvmClass {
     const ip = &zcu.intern_pool;
     assert(ty.hasRuntimeBits(zcu));
     switch (ty.zigTypeTag(zcu)) {
@@ -56,7 +84,7 @@ pub fn classifyType(ty: Type, zcu: *const Zcu) Class {
                 if (explicit_align.compareStrict(.gt, field_ty.abiAlignment(zcu)))
                     return .indirect;
             }
-            return classifyType(field_ty, zcu);
+            return classifyTypeForLlvm(field_ty, zcu);
         },
         .@"union" => {
             const union_obj = zcu.typeToUnion(ty).?;
@@ -67,7 +95,7 @@ pub fn classifyType(ty: Type, zcu: *const Zcu) Class {
             assert(layout.tag_size == 0);
             if (union_obj.field_types.len > 1) return .indirect;
             const first_field_ty = Type.fromInterned(union_obj.field_types.get(ip)[0]);
-            return classifyType(first_field_ty, zcu);
+            return classifyTypeForLlvm(first_field_ty, zcu);
         },
         .error_union,
         .frame,
@@ -85,8 +113,4 @@ pub fn classifyType(ty: Type, zcu: *const Zcu) Class {
         .enum_literal,
         => unreachable,
     }
-}
-
-pub fn lowerAsDoubleI64(scalar_ty: Type, zcu: *const Zcu) bool {
-    return scalar_ty.bitSize(zcu) > 64;
 }

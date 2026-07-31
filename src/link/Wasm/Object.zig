@@ -856,7 +856,7 @@ pub fn parse(
                 start_function = @fromBackingInt(@intCast(functions_start + index));
             },
             .element => {
-                log.warn("unimplemented: element section in {f} {?s}", .{ path, archive_member_name });
+                // element section is not needed for linking, validating it serves no purpose
                 pos = section_end;
             },
             .code => {

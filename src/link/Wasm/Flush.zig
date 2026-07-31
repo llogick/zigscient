@@ -248,6 +248,9 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
 
     if (comp.zcu) |zcu| {
         const ip: *const InternPool = &zcu.intern_pool; // No mutations allowed!
+        const function_imports_start = wasm.function_imports.entries.len;
+        const global_imports_start = wasm.global_imports.entries.len;
+        const data_imports_start = wasm.data_imports.entries.len;
 
         log.debug("total MIR instructions: {d}", .{wasm.mir_instructions.len});
 
@@ -463,6 +466,35 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
             },
             else => continue,
         };
+
+        // marking above may discover additional imports
+        try f.function_imports.ensureUnusedCapacity(gpa, wasm.function_imports.entries.len - function_imports_start);
+        for (
+            wasm.function_imports.keys()[function_imports_start..],
+            wasm.function_imports.values()[function_imports_start..],
+        ) |name, id| {
+            if (!f.function_imports.contains(name) and Wasm.FunctionIndex.fromSymbolName(wasm, name) == null) {
+                f.function_imports.putAssumeCapacity(name, id);
+            }
+        }
+
+        try f.global_imports.ensureUnusedCapacity(gpa, wasm.global_imports.entries.len - global_imports_start);
+        for (
+            wasm.global_imports.keys()[global_imports_start..],
+            wasm.global_imports.values()[global_imports_start..],
+        ) |name, id| {
+            if (!f.global_imports.contains(name)) f.global_imports.putAssumeCapacity(name, id);
+        }
+
+        try f.data_imports.ensureUnusedCapacity(gpa, wasm.data_imports.entries.len - data_imports_start);
+        for (
+            wasm.data_imports.keys()[data_imports_start..],
+            wasm.data_imports.values()[data_imports_start..],
+        ) |name, id| {
+            if (!f.data_imports.contains(name) and !f.data_exports.contains(name)) {
+                f.data_imports.putAssumeCapacity(name, id);
+            }
+        }
 
         for (f.missing_exports.keys()) |exp_name| {
             diags.addError("manually specified export name '{s}' undefined", .{exp_name.slice(wasm)});
@@ -1075,13 +1107,10 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
     if (wasm.functions.getIndex(.__wasm_init_memory)) |func_index| {
         try emitStartSection(gpa, binary_bytes, .fromFunctionIndex(wasm, @fromBackingInt(@intCast(func_index))));
         section_index += 1;
-    } else if (Wasm.OutputFunctionIndex.fromResolution(wasm, wasm.entry_resolution)) |func_index| {
-        try emitStartSection(gpa, binary_bytes, func_index);
-        section_index += 1;
     }
 
     // element section
-    if (f.indirect_function_table.entries.len > 0) {
+    if (!is_obj and f.indirect_function_table.entries.len > 0) {
         const header_offset = try reserveVecSectionHeader(gpa, binary_bytes);
 
         // indirect function table elements

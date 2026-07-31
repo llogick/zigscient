@@ -2060,6 +2060,15 @@ const c_abi_targets = blk: {
                 .abi = .musl,
             },
         },
+        .{
+            .target = .{
+                .cpu_arch = .wasm32,
+                .os_tag = .wasi,
+                .abi = .musl,
+            },
+            .use_llvm = false,
+            .use_lld = false,
+        },
 
         // Windows Targets
 

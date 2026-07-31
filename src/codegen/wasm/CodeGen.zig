@@ -927,21 +927,26 @@ fn resolveCallingConventionValues(
         },
         .wasm_mvp => {
             for (fn_info.param_types.get(ip)) |ty| {
-                if (!Type.fromInterned(ty).hasRuntimeBits(zcu)) {
+                const param_ty: Type = .fromInterned(ty);
+                if (!param_ty.hasRuntimeBits(zcu)) {
                     continue;
                 }
-                switch (abi.classifyType(.fromInterned(ty), zcu)) {
-                    .direct => |scalar_ty| if (!abi.lowerAsDoubleI64(scalar_ty, zcu)) {
+
+                switch (abi.classifyType(param_ty, zcu, target)) {
+                    .direct, .indirect => {
                         try args.append(.{ .local = .{ .value = result.local_index, .references = 1 } });
                         result.local_index += 1;
-                    } else {
+                    },
+                    .double_i64 => {
                         try args.append(.{ .local = .{ .value = result.local_index, .references = 1 } });
                         try args.append(.{ .local = .{ .value = result.local_index + 1, .references = 1 } });
                         result.local_index += 2;
                     },
-                    .indirect => {
-                        try args.append(.{ .local = .{ .value = result.local_index, .references = 1 } });
-                        result.local_index += 1;
+                    .unrolled => |vector| {
+                        for (0..vector.len) |_| {
+                            try args.append(.{ .local = .{ .value = result.local_index, .references = 1 } });
+                            result.local_index += 1;
+                        }
                     },
                 }
             }
@@ -968,9 +973,10 @@ pub fn firstParamSRet(
     switch (cc) {
         .@"inline" => unreachable,
         .auto => return isByRef(return_type, zcu, target),
-        .wasm_mvp => switch (abi.classifyType(return_type, zcu)) {
-            .direct => |scalar_ty| return abi.lowerAsDoubleI64(scalar_ty, zcu),
-            .indirect => return true,
+        .wasm_mvp => switch (abi.classifyType(return_type, zcu, target)) {
+            .direct => return false,
+            .double_i64, .indirect => return true,
+            .unrolled => |vector| return vector.len > 1,
         },
         else => return false,
     }
@@ -985,18 +991,15 @@ fn lowerArg(cg: *CodeGen, cc: std.lang.CallingConvention, ty: Type, value: WValu
 
     const zcu = cg.pt.zcu;
 
-    switch (abi.classifyType(ty, zcu)) {
-        .direct => |scalar_type| if (!abi.lowerAsDoubleI64(scalar_type, zcu)) {
+    switch (abi.classifyType(ty, zcu, cg.target)) {
+        .direct => |scalar_ty| {
             if (!isByRef(ty, zcu, cg.target)) {
                 return cg.lowerToStack(value);
             } else {
-                switch (value) {
-                    .nav_ref, .stack_offset => _ = try cg.load(value, scalar_type, 0),
-                    .dead => unreachable,
-                    else => try cg.emitWValue(value),
-                }
+                _ = try cg.load(value, scalar_ty, 0);
             }
-        } else {
+        },
+        .double_i64 => {
             assert(ty.abiSize(zcu) == 16);
             // in this case we have an integer or float that must be lowered as 2 i64's.
             try cg.emitWValue(value);
@@ -1004,7 +1007,17 @@ fn lowerArg(cg: *CodeGen, cc: std.lang.CallingConvention, ty: Type, value: WValu
             try cg.emitWValue(value);
             try cg.addMemArg(.i64_load, .{ .offset = value.offset() + 8, .alignment = 8 });
         },
-        .indirect => return cg.lowerToStack(value),
+        .indirect => {
+            const stack_copy = try cg.allocStack(ty);
+            try cg.store(stack_copy, value, ty, 0);
+            return cg.lowerToStack(stack_copy);
+        },
+        .unrolled => |vector| {
+            const elem_size: u32 = @intCast(vector.elem_type.abiSize(zcu));
+            for (0..vector.len) |index| {
+                _ = try cg.load(value, vector.elem_type, @intCast(index * elem_size));
+            }
+        },
     }
 }
 
@@ -1947,16 +1960,19 @@ fn airRet(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     if (cg.return_value != .none) {
         try cg.store(cg.return_value, operand, ret_ty, 0);
     } else if (fn_info.cc == .wasm_mvp and ret_ty.hasRuntimeBits(zcu)) {
-        switch (abi.classifyType(ret_ty, zcu)) {
+        switch (abi.classifyType(ret_ty, zcu, cg.target)) {
             .direct => |scalar_type| {
-                assert(!abi.lowerAsDoubleI64(scalar_type, zcu));
                 if (!isByRef(ret_ty, zcu, cg.target)) {
                     try cg.emitWValue(operand);
                 } else {
                     _ = try cg.load(operand, scalar_type, 0);
                 }
             },
-            .indirect => unreachable,
+            .double_i64, .indirect => unreachable,
+            .unrolled => |vector| {
+                assert(vector.len == 1);
+                _ = try cg.load(operand, vector.elem_type, 0);
+            },
         }
     } else {
         if (!ret_ty.hasRuntimeBits(zcu) and ret_ty.isError(zcu)) {
@@ -2003,8 +2019,18 @@ fn airRetLoad(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
             try cg.addImm32(0);
         }
     } else if (!firstParamSRet(fn_info.cc, Type.fromInterned(fn_info.return_type), zcu, cg.target)) {
-        // leave on the stack
-        _ = try cg.load(operand, ret_ty, 0);
+        if (fn_info.cc == .wasm_mvp) {
+            switch (abi.classifyType(ret_ty, zcu, cg.target)) {
+                .direct => |scalar_type| _ = try cg.load(operand, scalar_type, 0),
+                .double_i64, .indirect => unreachable,
+                .unrolled => |vector| {
+                    assert(vector.len == 1);
+                    _ = try cg.load(operand, vector.elem_type, 0);
+                },
+            }
+        } else {
+            _ = try cg.load(operand, ret_ty, 0);
+        }
     }
 
     try cg.restoreStackPointer();
@@ -2132,22 +2158,30 @@ fn airCall(cg: *CodeGen, inst: Air.Inst.Index, modifier: std.lang.CallModifier) 
         } else if (first_param_sret) {
             break :result_value sret;
         } else if (zcu.typeToFunc(fn_ty).?.cc == .wasm_mvp) {
-            switch (abi.classifyType(ret_ty, zcu)) {
+            switch (abi.classifyType(ret_ty, zcu, cg.target)) {
                 .direct => |scalar_type| {
-                    assert(!abi.lowerAsDoubleI64(scalar_type, zcu));
                     if (!isByRef(ret_ty, zcu, cg.target)) {
                         const result_local = try cg.allocLocal(ret_ty);
                         try cg.addLocal(.local_set, result_local.local.value);
                         break :result_value result_local;
                     } else {
-                        const result_local = try cg.allocLocal(ret_ty);
+                        const result_local = try cg.allocLocal(scalar_type);
                         try cg.addLocal(.local_set, result_local.local.value);
                         const result = try cg.allocStack(ret_ty);
                         try cg.store(result, result_local, scalar_type, 0);
                         break :result_value result;
                     }
                 },
-                .indirect => unreachable,
+                .double_i64, .indirect => unreachable,
+                .unrolled => |vector| {
+                    assert(vector.len == 1);
+                    const result_local = try cg.allocLocal(vector.elem_type);
+                    // save call result from operand stack
+                    try cg.addLocal(.local_set, result_local.local.value);
+                    const result = try cg.allocStack(ret_ty);
+                    try cg.store(result, result_local, vector.elem_type, 0);
+                    break :result_value result;
+                },
             }
         } else {
             const result_local = try cg.allocLocal(ret_ty);
@@ -2450,17 +2484,32 @@ fn airArg(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     const cc = zcu.typeToFunc(zcu.navValue(cg.owner_nav).typeOf(zcu)).?.cc;
     const arg_ty = cg.typeOfIndex(inst);
     if (cc == .wasm_mvp) {
-        switch (abi.classifyType(arg_ty, zcu)) {
-            .direct => |scalar_ty| if (!abi.lowerAsDoubleI64(scalar_ty, zcu)) {
+        switch (abi.classifyType(arg_ty, zcu, cg.target)) {
+            .direct => |scalar_type| {
                 cg.arg_index += 1;
-            } else {
+                if (isByRef(arg_ty, zcu, cg.target)) {
+                    const result = try cg.allocStack(arg_ty);
+                    try cg.store(result, arg, scalar_type, 0);
+                    return cg.finishAir(inst, result, &.{});
+                }
+            },
+            .indirect => cg.arg_index += 1,
+            .double_i64 => {
                 cg.arg_index += 2;
                 const result = try cg.allocStack(arg_ty);
                 try cg.store(result, arg, Type.u64, 0);
                 try cg.store(result, cg.args[arg_index + 1], Type.u64, 8);
                 return cg.finishAir(inst, result, &.{});
             },
-            .indirect => cg.arg_index += 1,
+            .unrolled => |vector| {
+                const result = try cg.allocStack(arg_ty);
+                const elem_size: u32 = @intCast(vector.elem_type.abiSize(zcu));
+                for (0..vector.len) |index| {
+                    try cg.store(result, cg.args[cg.arg_index], vector.elem_type, @intCast(index * elem_size));
+                    cg.arg_index += 1;
+                }
+                return cg.finishAir(inst, result, &.{});
+            },
         }
     } else {
         cg.arg_index += 1;

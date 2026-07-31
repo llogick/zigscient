@@ -7156,7 +7156,7 @@ const ParamTypeIterator = struct {
                     },
                 }
             },
-            .wasm_mvp => switch (wasm_c_abi.classifyType(ty, zcu)) {
+            .wasm_mvp => switch (wasm_c_abi.classifyTypeForLlvm(ty, zcu)) {
                 .direct => |scalar_ty| {
                     if (isScalar(zcu, ty)) {
                         it.zig_index += 1;
@@ -7508,7 +7508,7 @@ pub fn fnReturnStrat(o: *Object, cc: std.lang.CallingConvention, ret_ty: Type) A
             .simple_aggregate => unreachable,
             .pointer => .sret,
         },
-        .wasm_mvp => switch (wasm_c_abi.classifyType(ret_ty, zcu)) {
+        .wasm_mvp => switch (wasm_c_abi.classifyTypeForLlvm(ret_ty, zcu)) {
             .direct => |scalar_ty| if (scalar_ty.toIntern() == ret_ty.toIntern()) {
                 assert(!isByRef(ret_ty, zcu));
                 return .by_val;

@@ -4938,12 +4938,15 @@ fn convertZcuFnType(
         try params_buffer.append(gpa, .i32); // memory address is always a 32-bit handle
     } else if (return_type.hasRuntimeBits(zcu)) {
         if (cc == .wasm_mvp) {
-            switch (abi.classifyType(return_type, zcu)) {
-                .direct => |scalar_ty| {
-                    assert(!abi.lowerAsDoubleI64(scalar_ty, zcu));
-                    try returns_buffer.append(gpa, CodeGen.typeToValtype(scalar_ty, zcu, target));
+            switch (abi.classifyType(return_type, zcu, target)) {
+                .direct => |scalar_type| {
+                    try returns_buffer.append(gpa, CodeGen.typeToValtype(scalar_type, zcu, target));
                 },
-                .indirect => unreachable,
+                .double_i64, .indirect => unreachable,
+                .unrolled => |vector| {
+                    assert(vector.len == 1);
+                    try returns_buffer.append(gpa, CodeGen.typeToValtype(vector.elem_type, zcu, target));
+                },
             }
         } else {
             try returns_buffer.append(gpa, CodeGen.typeToValtype(return_type, zcu, target));
@@ -4959,16 +4962,22 @@ fn convertZcuFnType(
 
         switch (cc) {
             .wasm_mvp => {
-                switch (abi.classifyType(param_type, zcu)) {
-                    .direct => |scalar_ty| {
-                        if (!abi.lowerAsDoubleI64(scalar_ty, zcu)) {
-                            try params_buffer.append(gpa, CodeGen.typeToValtype(scalar_ty, zcu, target));
-                        } else {
-                            try params_buffer.append(gpa, .i64);
-                            try params_buffer.append(gpa, .i64);
+                switch (abi.classifyType(param_type, zcu, target)) {
+                    .direct => |scalar_type| {
+                        try params_buffer.append(gpa, CodeGen.typeToValtype(scalar_type, zcu, target));
+                    },
+                    .double_i64 => {
+                        try params_buffer.append(gpa, .i64);
+                        try params_buffer.append(gpa, .i64);
+                    },
+                    .indirect => {
+                        try params_buffer.append(gpa, CodeGen.typeToValtype(param_type, zcu, target));
+                    },
+                    .unrolled => |vector| {
+                        for (0..vector.len) |_| {
+                            try params_buffer.append(gpa, CodeGen.typeToValtype(vector.elem_type, zcu, target));
                         }
                     },
-                    .indirect => try params_buffer.append(gpa, CodeGen.typeToValtype(param_type, zcu, target)),
                 }
             },
             else => try params_buffer.append(gpa, CodeGen.typeToValtype(param_type, zcu, target)),

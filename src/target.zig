@@ -450,7 +450,7 @@ pub fn canBuildLibUbsanRt(target: *const std.Target) enum { no, yes, llvm_only, 
         else => {},
     }
     return switch (zigBackend(target, false)) {
-        .stage2_wasm => .llvm_lld_only,
+        .stage2_wasm => .yes,
         .stage2_x86_64 => .yes,
         else => .llvm_only,
     };

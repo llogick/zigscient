@@ -451,6 +451,7 @@ test "long double" {
 
 comptime {
     skip: {
+        if (builtin.zig_backend == .stage2_wasm) break :skip;
         if (builtin.cpu.arch == .hexagon) break :skip;
         if (builtin.cpu.arch == .loongarch64) break :skip;
         if (builtin.cpu.arch.isMIPS()) break :skip;
@@ -477,6 +478,7 @@ extern fn c_vector_2_bool(@Vector(2, bool)) void;
 extern fn c_test_vector_2_bool() void;
 
 test "@Vector(2, bool)" {
+    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.cpu.arch.isAARCH64()) return error.SkipZigTest;
     if (builtin.cpu.arch.isArm()) return error.SkipZigTest;
     if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
@@ -497,6 +499,7 @@ test "@Vector(2, bool)" {
 
 comptime {
     skip: {
+        if (builtin.zig_backend == .stage2_wasm) break :skip;
         if (builtin.cpu.arch == .hexagon) break :skip;
         if (builtin.cpu.arch == .loongarch64) break :skip;
         if (builtin.cpu.arch.isMIPS()) break :skip;
@@ -527,6 +530,7 @@ extern fn c_vector_4_bool(@Vector(4, bool)) void;
 extern fn c_test_vector_4_bool() void;
 
 test "@Vector(4, bool)" {
+    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.cpu.arch.isAARCH64()) return error.SkipZigTest;
     if (builtin.cpu.arch.isArm()) return error.SkipZigTest;
     if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
@@ -551,6 +555,7 @@ test "@Vector(4, bool)" {
 
 comptime {
     skip: {
+        if (builtin.zig_backend == .stage2_wasm) break :skip;
         if (builtin.cpu.arch == .hexagon) break :skip;
         if (builtin.cpu.arch == .loongarch64) break :skip;
         if (builtin.cpu.arch.isMIPS()) break :skip;
@@ -589,6 +594,7 @@ extern fn c_vector_8_bool(@Vector(8, bool)) void;
 extern fn c_test_vector_8_bool() void;
 
 test "@Vector(8, bool)" {
+    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.cpu.arch.isAARCH64()) return error.SkipZigTest;
     if (builtin.cpu.arch.isArm()) return error.SkipZigTest;
     if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
@@ -621,6 +627,7 @@ test "@Vector(8, bool)" {
 
 comptime {
     skip: {
+        if (builtin.zig_backend == .stage2_wasm) break :skip;
         if (builtin.cpu.arch == .hexagon) break :skip;
         if (builtin.cpu.arch == .loongarch64) break :skip;
         if (builtin.cpu.arch.isMIPS()) break :skip;
@@ -675,6 +682,7 @@ extern fn c_vector_16_bool(@Vector(16, bool)) void;
 extern fn c_test_vector_16_bool() void;
 
 test "@Vector(16, bool)" {
+    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.cpu.arch.isAARCH64()) return error.SkipZigTest;
     if (builtin.cpu.arch.isArm()) return error.SkipZigTest;
     if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
@@ -723,6 +731,7 @@ test "@Vector(16, bool)" {
 
 comptime {
     skip: {
+        if (builtin.zig_backend == .stage2_wasm) break :skip;
         if (builtin.cpu.arch == .hexagon) break :skip;
         if (builtin.cpu.arch == .loongarch64) break :skip;
         if (builtin.cpu.arch.isMIPS()) break :skip;
@@ -809,6 +818,7 @@ extern fn c_vector_32_bool(@Vector(32, bool)) void;
 extern fn c_test_vector_32_bool() void;
 
 test "@Vector(32, bool)" {
+    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.cpu.arch.isAARCH64()) return error.SkipZigTest;
     if (builtin.cpu.arch.isArm()) return error.SkipZigTest;
     if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
@@ -889,6 +899,7 @@ test "@Vector(32, bool)" {
 
 comptime {
     skip: {
+        if (builtin.zig_backend == .stage2_wasm) break :skip;
         if (builtin.cpu.arch == .hexagon) break :skip;
         if (builtin.cpu.arch == .loongarch64) break :skip;
         if (builtin.cpu.arch.isMIPS()) break :skip;
@@ -1039,6 +1050,7 @@ extern fn c_vector_64_bool(@Vector(64, bool)) void;
 extern fn c_test_vector_64_bool() void;
 
 test "@Vector(64, bool)" {
+    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
     if (builtin.cpu.arch == .loongarch64) return error.SkipZigTest;
     if (builtin.cpu.arch.isMIPS()) return error.SkipZigTest;
@@ -1181,6 +1193,7 @@ test "@Vector(64, bool)" {
 
 comptime {
     skip: {
+        if (builtin.zig_backend == .stage2_wasm) break :skip;
         if (builtin.cpu.arch == .hexagon) break :skip;
         if (builtin.cpu.arch == .loongarch64) break :skip;
         if (builtin.cpu.arch.isMIPS()) break :skip;
@@ -1459,6 +1472,7 @@ extern fn c_vector_128_bool(@Vector(128, bool)) void;
 extern fn c_test_vector_128_bool() void;
 
 test "@Vector(128, bool)" {
+    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
     if (builtin.cpu.arch == .loongarch64) return error.SkipZigTest;
     if (builtin.cpu.arch.isMIPS()) return error.SkipZigTest;
@@ -1729,6 +1743,7 @@ test "@Vector(128, bool)" {
 
 comptime {
     skip: {
+        if (builtin.zig_backend == .stage2_wasm) break :skip;
         if (builtin.cpu.arch == .hexagon) break :skip;
         if (builtin.cpu.arch == .loongarch64) break :skip;
         if (builtin.cpu.arch.isMIPS()) break :skip;
@@ -2263,6 +2278,7 @@ extern fn c_vector_256_bool(@Vector(256, bool)) void;
 extern fn c_test_vector_256_bool() void;
 
 test "@Vector(256, bool)" {
+    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
     if (builtin.cpu.arch == .loongarch64) return error.SkipZigTest;
     if (builtin.cpu.arch.isMIPS()) return error.SkipZigTest;
@@ -2789,6 +2805,7 @@ test "@Vector(256, bool)" {
 
 comptime {
     skip: {
+        if (builtin.zig_backend == .stage2_wasm) break :skip;
         if (builtin.cpu.arch == .hexagon) break :skip;
         if (builtin.cpu.arch == .loongarch64) break :skip;
         if (builtin.cpu.arch.isMIPS()) break :skip;
@@ -3835,6 +3852,7 @@ extern fn c_vector_512_bool(@Vector(512, bool)) void;
 extern fn c_test_vector_512_bool() void;
 
 test "@Vector(512, bool)" {
+    if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
     if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
     if (builtin.cpu.arch == .loongarch64) return error.SkipZigTest;
     if (builtin.cpu.arch.isMIPS()) return error.SkipZigTest;
