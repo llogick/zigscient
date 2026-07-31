@@ -262,6 +262,12 @@ pub fn main(init: process.Init.Minimal) !void {
         }
     }
 
+    if (EnvVar.ZIG_BUILD_SUMMARY.get(&graph.environ_map)) |str| {
+        if (stringToEnum(Summary, str)) |value| {
+            summary = value;
+        }
+    }
+
     try configure_argv.ensureUnusedCapacity(arena, 16);
     try cached_passthru_configure.ensureUnusedCapacity(arena, 16);
 
