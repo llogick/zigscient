@@ -259,13 +259,16 @@ pub fn clone() callconv(.naked) u64 {
 
 pub const restore = restore_rt;
 
-// Need to use C ABI here instead of naked
-// to prevent an infinite loop when calling rt_sigreturn.
-pub fn restore_rt() callconv(.c) void {
-    return asm volatile ("t 0x6d"
+pub fn restore_rt() callconv(.naked) noreturn {
+    asm volatile (
+        \\ nop
+        \\ nop
+    );
+    asm volatile (
+        \\ t 0x6d
         :
         : [number] "{g1}" (@backingInt(SYS.rt_sigreturn)),
-        : .{ .memory = true, .xcc = true, .o0 = true, .o1 = true, .o2 = true, .o3 = true, .o4 = true, .o5 = true, .o7 = true });
+    );
 }
 
 pub const VDSO = struct {

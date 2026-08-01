@@ -24,6 +24,7 @@ pub const vtable: Allocator.VTable = .{
 /// that don't provide a hint (for security reasons, but it serves our needs
 /// too).
 const enable_hints = switch (builtin.target.os.tag) {
+    .linux => !builtin.target.cpu.arch.isSPARC(), // https://bugzilla.kernel.org/show_bug.cgi?id=221820
     .openbsd => false,
     else => true,
 };

@@ -149,8 +149,6 @@ test "async with array return type" {
 }
 
 test "cancel blocked read from pipe" {
-    if (builtin.cpu.arch.isSPARC() and builtin.os.tag == .linux) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/35347
-
     const global = struct {
         fn readFromPipe(io: Io, pipe: Io.File) !void {
             var buf: [1]u8 = undefined;

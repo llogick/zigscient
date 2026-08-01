@@ -1146,6 +1146,13 @@ const LinuxThreadImpl = struct {
         parent_tid: i32 = undefined,
         mapped: []align(std.heap.page_size_min) u8,
 
+        // On SPARC, the kernel needs to be able to restore the current register window from the
+        // stack when returning from a syscall. That presents a bit of a problem in `freeAndExit`
+        // since we're deallocating the stack! The good news is that, since we do not care about
+        // the contents of the incoming and local registers at that point, we can just tell the
+        // kernel that our stack is this undefined global buffer.
+        var sparc_exit_stack: [192]u8 align(16) = undefined;
+
         /// Calls `munmap(mapped.ptr, mapped.len)` then `exit(1)` without touching the stack (which lives in `mapped.ptr`).
         /// Ported over from musl libc's pthread detached implementation:
         /// https://github.com/ifduyue/musl/search?q=__unmapself
@@ -1365,51 +1372,39 @@ const LinuxThreadImpl = struct {
                       [len] "{r5}" (self.mapped.len),
                 ),
                 .sparc => asm volatile (
-                    \\ # See sparc64 comments below.
-                    \\ 1:
-                    \\  cmp %%fp, 0
-                    \\  beq 2f
-                    \\  nop
-                    \\  ba 1b
-                    \\  restore
-                    \\ 2:
-                    \\  mov %%g1, %%o0 // ptr
-                    \\  mov %%g2, %%o1 // len
-                    \\  mov 73, %%g1 // SYS_munmap
-                    \\  t 0x3 // ST_FLUSH_WINDOWS
-                    \\  t 0x10
-                    \\  mov 1, %%g1 // SYS_exit
-                    \\  mov 0, %%o0
-                    \\  t 0x10
+                    \\ // See sparc64 comments below.
+                    \\ t 0x3 // ST_FLUSH_WINDOWS
+                    \\ mov %%g3, %%sp
+                    \\ mov %%g1, %%o0
+                    \\ mov %%g2, %%o1
+                    \\ mov 73, %%g1 // SYS_munmap
+                    \\ t 0x10
+                    \\ mov 1, %%g1 // SYS_exit
+                    \\ mov 0, %%o0
+                    \\ t 0x10
                     :
                     : [ptr] "{g1}" (@intFromPtr(self.mapped.ptr)),
                       [len] "{g2}" (self.mapped.len),
+                      [stack] "{g3}" (&sparc_exit_stack),
                     : .{ .memory = true }),
                 .sparc64 => asm volatile (
-                    \\ # SPARCs really don't like it when active stack frames
-                    \\ # is unmapped (it will result in a segfault), so we
-                    \\ # force-deactivate it by running `restore` until
-                    \\ # all frames are cleared.
-                    \\ 1:
-                    \\  cmp %%fp, 0
-                    \\  beq 2f
-                    \\  nop
-                    \\  ba 1b
-                    \\  restore
-                    \\ 2:
-                    \\  mov %%g1, %%o0 // ptr
-                    \\  mov %%g2, %%o1 // len
-                    \\  mov 73, %%g1 // SYS_munmap
-                    \\  # Flush register window contents to prevent background
-                    \\  # memory access before unmapping the stack.
-                    \\  flushw
-                    \\  t 0x6d
-                    \\  mov 1, %%g1 // SYS_exit
-                    \\  mov 0, %%o0
-                    \\  t 0x6d
+                    \\ // Ensure that the kernel only has to flush the current register window.
+                    \\ flushw
+                    \\ // Set up a fake stack for the syscall to restore l/i registers from. Local
+                    \\ // and incoming registers must be treated as effectively garbage past this
+                    \\ // instruction!
+                    \\ sub %%g3, 2047, %%sp
+                    \\ mov %%g1, %%o0
+                    \\ mov %%g2, %%o1
+                    \\ mov 73, %%g1 // SYS_munmap
+                    \\ t 0x6d
+                    \\ mov 1, %%g1 // SYS_exit
+                    \\ mov 0, %%o0
+                    \\ t 0x6d
                     :
                     : [ptr] "{g1}" (@intFromPtr(self.mapped.ptr)),
                       [len] "{g2}" (self.mapped.len),
+                      [stack] "{g3}" (&sparc_exit_stack),
                     : .{ .memory = true }),
                 .loongarch32, .loongarch64 => asm volatile (
                     \\ ori     $a7, $zero, 215     # SYS_munmap

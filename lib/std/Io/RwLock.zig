@@ -284,8 +284,6 @@ test "concurrent access" {
 }
 
 test "lock canceling" {
-    if (builtin.cpu.arch.isSPARC() and builtin.os.tag == .linux) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/35347
-
     const io = testing.io;
 
     var rl: Io.RwLock = .init;
