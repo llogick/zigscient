@@ -183,7 +183,10 @@ analysis_in_progress: std.array_hash_map.Auto(AnalUnit, ?*const DependencyReason
 /// The ErrorMsg memory is owned by the `AnalUnit`, using Module's general purpose allocator.
 failed_analysis: std.array_hash_map.Auto(AnalUnit, *ErrorMsg) = .empty,
 /// This `AnalUnit` failed semantic analysis because it required analysis of another `AnalUnit` which itself failed.
-transitive_failed_analysis: std.array_hash_map.Auto(AnalUnit, void) = .empty,
+transitive_failed_analysis: std.array_hash_map.Auto(
+    AnalUnit,
+    if (build_options.enable_debug_extensions) TransitiveFailureReason else void,
+) = .empty,
 /// This `Nav` succeeded analysis, but failed codegen.
 /// This may be a simple "value" `Nav`, or it may be a function.
 /// The ErrorMsg memory is owned by the `AnalUnit`, using Module's general purpose allocator.
@@ -352,6 +355,18 @@ pub const DependencyReason = struct {
     src: LazySrcLoc,
     /// Only populated if this is for a `.type_layout` unit.
     type_layout_reason: Sema.type_resolution.LayoutResolveReason,
+};
+
+/// These are not required for anything, but when the compiler is built with debug extensions, we
+/// store these in `Zcu.transitive_failed_analysis` and surface them in the incremental debug server
+/// (see `src/IncrementalDebugServer.zig`) because they are a useful debugging aid for bugs in
+/// incremental compilation.
+pub const TransitiveFailureReason = union(enum) {
+    astgen_error,
+    dependency_loop,
+    lost_tracking: InternPool.TrackedInst.Index,
+    failed_unit: AnalUnit,
+    func_nav_val_changed: InternPool.Index,
 };
 
 pub const IncrementalDebugState = struct {
@@ -2849,13 +2864,13 @@ pub const LazySrcLoc = struct {
     }
 };
 
-pub const SemaError = error{ OutOfMemory, Canceled, AnalysisFail };
+pub const SemaError = error{ OutOfMemory, Canceled, AlreadyReported };
 pub const CompileError = error{
     OutOfMemory,
     /// The compilation update is no longer desired.
     Canceled,
     /// When this is returned, the compile error for the failure has already been recorded.
-    AnalysisFail,
+    AlreadyReported,
     /// In a comptime scope, a return instruction was encountered. This error is only seen when
     /// doing a comptime function call.
     ComptimeReturn,

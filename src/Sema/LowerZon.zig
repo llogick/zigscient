@@ -320,7 +320,7 @@ fn failUnsupportedResultType(
     self: *LowerZon,
     ty: Type,
     opt_note: ?[]const u8,
-) error{ AnalysisFail, OutOfMemory } {
+) Zcu.SemaError {
     @branchHint(.cold);
     const sema = self.sema;
     const gpa = sema.gpa;
@@ -338,7 +338,7 @@ fn fail(
     node: Zoir.Node.Index,
     comptime format: []const u8,
     args: anytype,
-) error{ AnalysisFail, OutOfMemory } {
+) Zcu.SemaError {
     @branchHint(.cold);
     const err_msg = try Zcu.ErrorMsg.create(self.sema.pt.zcu.gpa, self.nodeSrc(node), format, args);
     try self.sema.pt.zcu.errNote(self.import_loc, err_msg, "imported here", .{});

@@ -1472,7 +1472,7 @@ fn analyzeBodyInner(
                         i += 1;
                         continue;
                     },
-                    .astgen_error => return error.AnalysisFail,
+                    .astgen_error => return sema.failTransitive(.astgen_error),
                     .float_op_result_ty => try sema.zirFloatOpResultType(block, extended),
                 };
             },
@@ -2697,12 +2697,14 @@ fn failWithTypeMismatch(sema: *Sema, block: *Block, src: LazySrcLoc, expected: T
     });
 }
 
-pub fn failWithOwnedErrorMsg(sema: *Sema, block: ?*Block, err_msg: *Zcu.ErrorMsg) error{ AnalysisFail, OutOfMemory } {
+pub fn failWithOwnedErrorMsg(sema: *Sema, block: ?*Block, err_msg: *Zcu.ErrorMsg) SemaError {
     @branchHint(.cold);
     const zcu = sema.pt.zcu;
     const comp = zcu.comp;
     const gpa = comp.gpa;
     const io = comp.io;
+
+    assert(sema.err == null);
 
     if (build_options.enable_debug_extensions and comp.debug_compile_errors) {
         var wip_errors: std.zig.ErrorBundle.Wip = undefined;
@@ -2729,17 +2731,11 @@ pub fn failWithOwnedErrorMsg(sema: *Sema, block: ?*Block, err_msg: *Zcu.ErrorMsg
 
     err_msg.reference_trace_root = sema.owner.toOptional();
 
-    const gop = try zcu.failed_analysis.getOrPut(gpa, sema.owner);
-    if (gop.found_existing) {
-        // If there are multiple errors for the same Decl, prefer the first one added.
-        sema.err = null;
-        err_msg.destroy(gpa);
-    } else {
-        sema.err = err_msg;
-        gop.value_ptr.* = err_msg;
-    }
+    try zcu.failed_analysis.putNoClobber(gpa, sema.owner, err_msg);
+    assert(!zcu.transitive_failed_analysis.contains(sema.owner));
 
-    return error.AnalysisFail;
+    sema.err = err_msg;
+    return error.AlreadyReported;
 }
 
 /// Given an ErrorMsg, modify its message and source location to the given values, turning the
@@ -4745,11 +4741,14 @@ fn failWithBadMemberAccess(
         .@"enum" => "enum",
         else => unreachable,
     };
-    if (agg_ty.typeDeclInst(zcu)) |inst| if ((inst.resolve(ip) orelse return error.AnalysisFail) == .main_struct_inst) {
-        return sema.fail(block, field_src, "root source file struct '{f}' has no member named '{f}'", .{
-            agg_ty.fmt(pt), field_name.fmt(ip),
-        });
-    };
+    if (agg_ty.typeDeclInst(zcu)) |inst| {
+        const inst_index = inst.resolve(ip) orelse return sema.failTransitive(.{ .lost_tracking = inst });
+        if (inst_index == .main_struct_inst) {
+            return sema.fail(block, field_src, "root source file struct '{f}' has no member named '{f}'", .{
+                agg_ty.fmt(pt), field_name.fmt(ip),
+            });
+        }
+    }
 
     return sema.fail(block, field_src, "{s} '{f}' has no member named '{f}'", .{
         kw_name, agg_ty.fmt(pt), field_name.fmt(ip),
@@ -5997,7 +5996,14 @@ fn lookupInNamespace(
     const pt = sema.pt;
     const zcu = pt.zcu;
 
-    try pt.ensureNamespaceUpToDate(namespace_index);
+    pt.ensureNamespaceUpToDate(namespace_index) catch |err| switch (err) {
+        error.LostZirContainerDecl => {
+            const namespace = zcu.namespacePtr(namespace_index);
+            const ns_ty: Type = .fromInterned(namespace.owner_type);
+            return sema.failTransitive(.{ .lost_tracking = ns_ty.typeDeclInstAllowGeneratedTag(zcu).? });
+        },
+        else => |e| return e,
+    };
 
     const namespace = zcu.namespacePtr(namespace_index);
 
@@ -6062,7 +6068,7 @@ pub fn analyzeSaveErrRetIndex(sema: *Sema, block: *Block) SemaError!Air.Inst.Ref
     const stack_trace_ty = try sema.getStdLangType(block.nodeOffset(.zero), .StackTrace);
     const field_name = try zcu.intern_pool.getOrPutString(gpa, io, pt.tid, "index", .no_embedded_nulls);
     const field_index = sema.structFieldIndex(block, stack_trace_ty, field_name, LazySrcLoc.unneeded) catch |err| switch (err) {
-        error.AnalysisFail => @panic("std.lang.StackTrace is corrupt"),
+        error.AlreadyReported => @panic("std.lang.StackTrace is corrupt"),
         error.ComptimeReturn, error.ComptimeBreak => unreachable,
         error.OutOfMemory, error.Canceled => |e| return e,
     };
@@ -6724,7 +6730,9 @@ fn analyzeCall(
     const fn_nav: InternPool.Nav, const fn_zir: Zir, const fn_tracked_inst: InternPool.TrackedInst.Index, const fn_zir_inst: Zir.Inst.Index, const fn_zir_info: Zir.FnInfo = if (func_val) |f| b: {
         const info = ip.indexToKey(f.toIntern()).func;
         const nav = ip.getNav(info.owner_nav);
-        const resolved_func_inst = info.zir_body_inst.resolveFull(ip) orelse return error.AnalysisFail;
+        const resolved_func_inst = info.zir_body_inst.resolveFull(ip) orelse {
+            return sema.failTransitive(.{ .lost_tracking = info.zir_body_inst });
+        };
         const file = zcu.fileByIndex(resolved_func_inst.file);
         const zir_info = file.zir.?.getFnInfo(resolved_func_inst.inst);
         break :b .{ nav, file.zir.?, info.zir_body_inst, resolved_func_inst.inst, zir_info };
@@ -8355,7 +8363,10 @@ fn zirFunc(
     const cc: std.lang.CallingConvention = if (has_body) cc: {
         const func_decl_nav = sema.owner.unwrap().nav_val;
         const fn_is_exported = exported: {
-            const decl_inst = ip.getNav(func_decl_nav).analysis.?.zir_index.resolve(ip) orelse return error.AnalysisFail;
+            const decl_ti = ip.getNav(func_decl_nav).analysis.?.zir_index;
+            const decl_inst = decl_ti.resolve(ip) orelse {
+                return sema.failTransitive(.{ .lost_tracking = decl_ti });
+            };
             const zir_decl = sema.code.getDeclaration(decl_inst);
             break :exported zir_decl.linkage == .@"export";
         };
@@ -12291,10 +12302,11 @@ fn analyzeSwitchPayloadCaptureTaggedUnion(
             dummy_captures,
             .{ .override = item_srcs },
         ) catch |err| switch (err) {
-            error.AnalysisFail => {
-                const msg = sema.err orelse return error.AnalysisFail;
-                try sema.reparentOwnedErrorMsg(capture_src, msg, "capture group with incompatible types", .{});
-                return error.AnalysisFail;
+            error.AlreadyReported => |e| {
+                if (sema.err) |msg| {
+                    try sema.reparentOwnedErrorMsg(capture_src, msg, "capture group with incompatible types", .{});
+                }
+                return e;
             },
             else => |e| return e,
         };
@@ -12330,11 +12342,12 @@ fn analyzeSwitchPayloadCaptureTaggedUnion(
                 dummy_captures,
                 .{ .override = item_srcs },
             ) catch |err| switch (err) {
-                error.AnalysisFail => {
-                    const msg = sema.err orelse return error.AnalysisFail;
-                    try sema.errNote(capture_src, msg, "this coercion is only possible when capturing by value", .{});
-                    try sema.reparentOwnedErrorMsg(capture_src, msg, "capture group with incompatible types", .{});
-                    return error.AnalysisFail;
+                error.AlreadyReported => |e| {
+                    if (sema.err) |msg| {
+                        try sema.errNote(capture_src, msg, "this coercion is only possible when capturing by value", .{});
+                        try sema.reparentOwnedErrorMsg(capture_src, msg, "capture group with incompatible types", .{});
+                    }
+                    return e;
                 },
                 else => |e| return e,
             };
@@ -17209,7 +17222,14 @@ fn typeInfoNamespaceDecls(
     const ip = &zcu.intern_pool;
 
     const namespace_index = opt_namespace_index.unwrap() orelse return;
-    try pt.ensureNamespaceUpToDate(namespace_index);
+    pt.ensureNamespaceUpToDate(namespace_index) catch |err| switch (err) {
+        error.LostZirContainerDecl => {
+            const namespace = zcu.namespacePtr(namespace_index);
+            const ns_ty: Type = .fromInterned(namespace.owner_type);
+            return sema.failTransitive(.{ .lost_tracking = ns_ty.typeDeclInstAllowGeneratedTag(zcu).? });
+        },
+        else => |e| return e,
+    };
     const namespace = zcu.namespacePtr(namespace_index);
 
     const gop = try seen_namespaces.getOrPut(namespace);
@@ -17935,11 +17955,12 @@ fn zirUnreachable(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError
     }
     // TODO Add compile error for @optimizeFor occurring too late in a scope.
     sema.analyzeUnreachable(block, src, true) catch |err| switch (err) {
-        error.AnalysisFail => {
-            const msg = sema.err orelse return err;
-            if (!mem.eql(u8, msg.msg, "runtime safety check not allowed in naked function")) return err;
-            try sema.errNote(src, msg, "the end of a naked function is implicitly unreachable", .{});
-            return err;
+        error.AlreadyReported => |e| {
+            if (sema.err) |msg| {
+                if (!mem.eql(u8, msg.msg, "runtime safety check not allowed in naked function")) return err;
+                try sema.errNote(src, msg, "the end of a naked function is implicitly unreachable", .{});
+            }
+            return e;
         },
         else => |e| return e,
     };
@@ -18355,11 +18376,16 @@ fn zirPtrType(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air
 
     const elem_ty = blk: {
         const air_inst = sema.resolveInst(extra.data.elem_type);
-        const ty = sema.analyzeAsType(block, elem_ty_src, .type, air_inst) catch |err| {
-            if (err == error.AnalysisFail and sema.err != null and sema.typeOf(air_inst).isSinglePointer(zcu)) {
-                try sema.errNote(elem_ty_src, sema.err.?, "use '.*' to dereference pointer", .{});
-            }
-            return err;
+        const ty = sema.analyzeAsType(block, elem_ty_src, .type, air_inst) catch |err| switch (err) {
+            error.AlreadyReported => |e| {
+                if (sema.err) |msg| {
+                    if (sema.typeOf(air_inst).isSinglePointer(zcu)) {
+                        try sema.errNote(elem_ty_src, msg, "use '.*' to dereference pointer", .{});
+                    }
+                }
+                return e;
+            },
+            else => |e| return e,
         };
         assert(!ty.isGenericPoison());
         break :blk ty;
@@ -24911,7 +24937,10 @@ fn zirFuncFancy(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!A
     } else cc: {
         if (has_body) {
             const func_decl_nav = sema.owner.unwrap().nav_val;
-            const func_decl_inst = ip.getNav(func_decl_nav).analysis.?.zir_index.resolve(&zcu.intern_pool) orelse return error.AnalysisFail;
+            const func_decl_ti = ip.getNav(func_decl_nav).analysis.?.zir_index;
+            const func_decl_inst = func_decl_ti.resolve(&zcu.intern_pool) orelse {
+                return sema.failTransitive(.{ .lost_tracking = func_decl_ti });
+            };
             const zir_decl = sema.code.getDeclaration(func_decl_inst);
             if (zir_decl.linkage == .@"export") {
                 break :cc target.cCallingConvention() orelse {
@@ -30644,7 +30673,10 @@ fn ensureMemoizedStateResolved(sema: *Sema, src: LazySrcLoc, stage: InternPool.M
     if (pt.zcu.analysis_in_progress.contains(unit)) {
         return sema.failWithDependencyLoop(unit, &reason);
     }
-    try pt.ensureMemoizedStateUpToDate(stage, &reason);
+    pt.ensureMemoizedStateUpToDate(stage, &reason) catch |err| switch (err) {
+        error.AnalysisFail => return sema.failTransitive(.{ .failed_unit = unit }),
+        else => |e| return e,
+    };
 }
 
 pub fn ensureNavResolved(sema: *Sema, block: *Block, src: LazySrcLoc, nav_index: InternPool.Nav.Index, kind: enum { type, fully }) CompileError!void {
@@ -30680,9 +30712,15 @@ pub fn ensureNavResolved(sema: *Sema, block: *Block, src: LazySrcLoc, nav_index:
     switch (kind) {
         .type => {
             try zcu.ensureNavValAnalysisQueued(nav_index);
-            return pt.ensureNavTypeUpToDate(nav_index, &reason);
+            return pt.ensureNavTypeUpToDate(nav_index, &reason) catch |err| switch (err) {
+                error.AnalysisFail => return sema.failTransitive(.{ .failed_unit = anal_unit }),
+                else => |e| return e,
+            };
         },
-        .fully => return pt.ensureNavValUpToDate(nav_index, &reason),
+        .fully => return pt.ensureNavValUpToDate(nav_index, &reason) catch |err| switch (err) {
+            error.AnalysisFail => return sema.failTransitive(.{ .failed_unit = anal_unit }),
+            else => |e| return e,
+        },
     }
 }
 
@@ -33745,7 +33783,10 @@ fn ensureFuncIesResolved(
         return sema.failWithDependencyLoop(.wrap(.{ .func = func_index }), &reason);
     }
 
-    try pt.ensureFuncBodyUpToDate(func_index, &reason);
+    pt.ensureFuncBodyUpToDate(func_index, &reason) catch |err| switch (err) {
+        error.AnalysisFail => return sema.failTransitive(.{ .failed_unit = .wrap(.{ .func = func_index }) }),
+        else => |e| return e,
+    };
 }
 
 pub fn resolveInferredErrorSetPtr(
@@ -34964,7 +35005,9 @@ pub fn setTypeName(
         },
         .parent => wip.setName(ip, block.type_name_ctx, sema.owner.unwrap().nav_val.toOptional()),
         .func => {
-            const fn_info = sema.code.getFnInfo(ip.funcZirBodyInst(sema.func_index).resolve(ip) orelse return error.AnalysisFail);
+            const fn_info = sema.code.getFnInfo(ip.funcZirBodyInst(sema.func_index).resolve(ip) orelse {
+                return sema.failTransitive(.{ .lost_tracking = ip.funcZirBodyInst(sema.func_index) });
+            });
             const zir_tags = sema.code.instructions.items(.tag);
 
             var aw: std.Io.Writer.Allocating = .init(gpa);
@@ -35080,7 +35123,10 @@ fn zirStructDecl(
     };
 
     try sema.addTypeReferenceEntry(src, ty);
-    try pt.ensureNamespaceUpToDate(ty.getNamespaceIndex(zcu));
+    pt.ensureNamespaceUpToDate(ty.getNamespaceIndex(zcu)) catch |err| switch (err) {
+        error.LostZirContainerDecl => unreachable, // we literally just tracked it
+        else => |e| return e,
+    };
 
     return .fromType(ty);
 }
@@ -35153,7 +35199,10 @@ fn zirUnionDecl(
     };
 
     try sema.addTypeReferenceEntry(src, ty);
-    try pt.ensureNamespaceUpToDate(ty.getNamespaceIndex(zcu));
+    pt.ensureNamespaceUpToDate(ty.getNamespaceIndex(zcu)) catch |err| switch (err) {
+        error.LostZirContainerDecl => unreachable, // we literally just tracked it
+        else => |e| return e,
+    };
 
     return .fromType(ty);
 }
@@ -35205,7 +35254,10 @@ fn zirEnumDecl(
     };
 
     try sema.addTypeReferenceEntry(src, ty);
-    try pt.ensureNamespaceUpToDate(ty.getNamespaceIndex(zcu));
+    pt.ensureNamespaceUpToDate(ty.getNamespaceIndex(zcu)) catch |err| switch (err) {
+        error.LostZirContainerDecl => unreachable, // we literally just tracked it
+        else => |e| return e,
+    };
 
     return .fromType(ty);
 }
@@ -35254,7 +35306,10 @@ fn zirOpaqueDecl(
     };
 
     try sema.addTypeReferenceEntry(src, ty);
-    try pt.ensureNamespaceUpToDate(ty.getNamespaceIndex(zcu));
+    pt.ensureNamespaceUpToDate(ty.getNamespaceIndex(zcu)) catch |err| switch (err) {
+        error.LostZirContainerDecl => unreachable, // we literally just tracked it
+        else => |e| return e,
+    };
 
     return .fromType(ty);
 }
@@ -35295,5 +35350,31 @@ pub fn failWithDependencyLoop(
     }
 
     // A dependency loop error will be reported. Mark us all as transitive failures.
-    return error.AnalysisFail;
+    return sema.failTransitive(.dependency_loop);
+}
+
+/// Marks the owner of `sema` as having failed semantic failed *without* an error message, and
+/// returns failure. This function is suitable to call when any one of the following is true:
+///
+/// * `sema.owner` is guaranteed to be unreferenced on this update, for instance because it uses a
+///   dead `InternPool.TrackedInst`.
+///
+/// * There is guaranteed to be a compile error if this unit is referenced. In practice, this means
+///   that either there is an error elsewhere in the pipeline (e.g. AstGen), or we depend on another
+///   `AnalUnit` which has itself failed.
+pub fn failTransitive(sema: *Sema, reason: Zcu.TransitiveFailureReason) SemaError {
+    assert(sema.err == null);
+    const zcu = sema.pt.zcu;
+    const unit = sema.owner;
+
+    log.debug("transitive failure analyzing '{f}' ({t})", .{ zcu.fmtAnalUnit(unit), reason });
+
+    assert(!zcu.failed_analysis.contains(unit));
+    try zcu.transitive_failed_analysis.putNoClobber(
+        zcu.comp.gpa,
+        unit,
+        if (build_options.enable_debug_extensions) reason,
+    );
+
+    return error.AlreadyReported;
 }

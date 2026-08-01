@@ -4084,7 +4084,14 @@ pub fn getAllErrorsAlloc(comp: *Compilation) error{OutOfMemory}!ErrorBundle {
                     ref = refs.get(r.referencer).?;
                 }
             }
-            @panic("referenced transitive analysis errors, but none actually emitted");
+            if (comp.debugIncremental()) {
+                std.debug.print("skipping compiler panic to allow incremental debug server usage", .{});
+                try bundle.addRootErrorMessage(.{
+                    .msg = try bundle.addString("compiler bug: referenced transitive analysis errors, but none actually emitted"),
+                });
+            } else {
+                @panic("referenced transitive analysis errors, but none actually emitted");
+            }
         }
     };
 
