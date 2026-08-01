@@ -15347,8 +15347,7 @@ fn childKillWindows(t: *Threaded, child: *process.Child, exit_code: windows.UINT
     _ = windows.ntdll.RtlReportSilentProcessExit(handle, @fromBackingInt(@intCast(exit_code)));
     switch (windows.ntdll.NtTerminateProcess(handle, @fromBackingInt(@intCast(exit_code)))) {
         .SUCCESS, .PROCESS_IS_TERMINATING => {
-            const infinite_timeout: windows.LARGE_INTEGER = std.math.minInt(windows.LARGE_INTEGER);
-            _ = windows.ntdll.NtWaitForSingleObject(handle, .FALSE, &infinite_timeout);
+            _ = windows.ntdll.NtWaitForSingleObject(handle, .FALSE, null);
             childCleanupWindows(child);
         },
         .ACCESS_DENIED => {
@@ -15371,8 +15370,7 @@ fn childWaitWindows(child: *process.Child) process.Child.WaitError!process.Child
     const handle = child.id.?;
 
     const alertable_syscall: AlertableSyscall = try .start();
-    const infinite_timeout: windows.LARGE_INTEGER = std.math.minInt(windows.LARGE_INTEGER);
-    while (true) switch (windows.ntdll.NtWaitForSingleObject(handle, .TRUE, &infinite_timeout)) {
+    while (true) switch (windows.ntdll.NtWaitForSingleObject(handle, .TRUE, null)) {
         windows.NTSTATUS.WAIT_0 => break alertable_syscall.finish(),
         .USER_APC, .ALERTED, .TIMEOUT => {
             try alertable_syscall.checkCancel();
