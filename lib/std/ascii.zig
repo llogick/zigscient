@@ -511,11 +511,11 @@ pub const HexEscape = struct {
 };
 
 /// Replaces non-ASCII bytes with hex escapes.
-pub fn hexEscape(bytes: []const u8, case: std.fmt.Case) std.fmt.Alt(HexEscape, HexEscape.format) {
-    return .{ .data = .{ .bytes = bytes, .charset = switch (case) {
+pub fn hexEscape(bytes: []const u8, case: std.fmt.Case) HexEscape {
+    return .{ .bytes = bytes, .charset = switch (case) {
         .lower => HexEscape.lower_charset,
         .upper => HexEscape.upper_charset,
-    } } };
+    } };
 }
 
 test hexEscape {

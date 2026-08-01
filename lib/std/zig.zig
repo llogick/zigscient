@@ -545,8 +545,7 @@ pub fn stringEscape(bytes: []const u8, w: *Writer) Writer.Error!void {
         '\t' => try w.writeAll("\\t"),
         '\\' => try w.writeAll("\\\\"),
         '"' => try w.writeAll("\\\""),
-        '\'' => try w.writeByte('\''),
-        ' ', '!', '#'...'&', '('...'[', ']'...'~' => try w.writeByte(byte),
+        ' ', '!', '#'...'[', ']'...'~' => try w.writeByte(byte),
         else => {
             try w.writeAll("\\x");
             try w.printInt(byte, 16, .lower, .{ .width = 2, .fill = '0' });
