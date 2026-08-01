@@ -116,7 +116,10 @@ fn ensureLayoutResolvedInner(sema: *Sema, ty: Type, orig_ty: Type, reason: *cons
             if (zcu.analysis_in_progress.contains(.wrap(.{ .type_layout = ty.toIntern() }))) {
                 return sema.failWithDependencyLoop(.wrap(.{ .type_layout = ty.toIntern() }), reason);
             }
-            try pt.ensureTypeLayoutUpToDate(ty, reason);
+            pt.ensureTypeLayoutUpToDate(ty, reason) catch |err| switch (err) {
+                error.AnalysisFail => return sema.failTransitive(.{ .failed_unit = .wrap(.{ .type_layout = ty.toIntern() }) }),
+                else => |e| return e,
+            };
         },
 
         // values, not types
@@ -166,7 +169,10 @@ pub fn ensureStructDefaultsResolved(sema: *Sema, ty: Type, src: LazySrcLoc) Sema
         return sema.failWithDependencyLoop(.wrap(.{ .struct_defaults = ty.toIntern() }), &reason);
     }
 
-    try pt.ensureStructDefaultsUpToDate(ty, &reason);
+    pt.ensureStructDefaultsUpToDate(ty, &reason) catch |err| switch (err) {
+        error.AnalysisFail => return sema.failTransitive(.{ .failed_unit = .wrap(.{ .struct_defaults = ty.toIntern() }) }),
+        else => |e| return e,
+    };
 }
 
 /// Asserts that `struct_ty` is a non-packed non-tuple struct, and that `sema.owner` is that type.
@@ -188,7 +194,9 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
 
     const struct_obj = ip.loadStructType(struct_ty.toIntern());
     assert(struct_obj.want_layout);
-    const zir_index = struct_obj.zir_index.resolve(ip) orelse return error.AnalysisFail;
+    const zir_index = struct_obj.zir_index.resolve(ip) orelse {
+        return sema.failTransitive(.{ .lost_tracking = struct_obj.zir_index });
+    };
 
     var block: Block = .{
         .parent = null,
@@ -606,7 +614,7 @@ pub fn resolveStructDefaults(sema: *Sema, struct_ty: Type) CompileError!void {
     struct_ty.assertHasLayout(zcu);
     const layout_unit: InternPool.AnalUnit = .wrap(.{ .type_layout = struct_ty.toIntern() });
     if (zcu.failed_analysis.contains(layout_unit) or zcu.transitive_failed_analysis.contains(layout_unit)) {
-        return error.AnalysisFail;
+        return sema.failTransitive(.{ .failed_unit = layout_unit });
     }
 
     const struct_obj = ip.loadStructType(struct_ty.toIntern());
@@ -656,7 +664,9 @@ fn resolveStructDefaultsInner(
     assert(struct_obj.field_defaults.len > 0);
 
     // We'll need to map the struct decl instruction to provide result types
-    const zir_index = struct_obj.zir_index.resolve(ip) orelse return error.AnalysisFail;
+    const zir_index = struct_obj.zir_index.resolve(ip) orelse {
+        return sema.failTransitive(.{ .lost_tracking = struct_obj.zir_index });
+    };
     try sema.inst_map.ensureSpaceForInstructions(gpa, &.{zir_index});
 
     const field_types = struct_obj.field_types.get(ip);
@@ -713,7 +723,9 @@ pub fn resolveUnionLayout(sema: *Sema, union_ty: Type) CompileError!void {
 
     const union_obj = ip.loadUnionType(union_ty.toIntern());
     assert(union_obj.want_layout);
-    const zir_index = union_obj.zir_index.resolve(ip) orelse return error.AnalysisFail;
+    const zir_index = union_obj.zir_index.resolve(ip) orelse {
+        return sema.failTransitive(.{ .lost_tracking = union_obj.zir_index });
+    };
 
     var block: Block = .{
         .parent = null,
@@ -1212,7 +1224,9 @@ pub fn resolveEnumLayout(sema: *Sema, enum_ty: Type) CompileError!void {
     };
 
     const tracked_inst = enum_obj.zir_index.unwrap() orelse maybe_parent_union_obj.?.zir_index;
-    const zir_index = tracked_inst.resolve(ip) orelse return error.AnalysisFail;
+    const zir_index = tracked_inst.resolve(ip) orelse {
+        return sema.failTransitive(.{ .lost_tracking = tracked_inst });
+    };
 
     var block: Block = .{
         .parent = null,

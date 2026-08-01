@@ -286,21 +286,34 @@ fn handleCommand(zcu: *Zcu, w: *Io.Writer, cmd_str: []const u8, arg_str: []const
             const referencer = (ref orelse break :ref "<analysis root>").referencer;
             break :ref printAnalUnit(referencer, &ref_str_buf);
         };
-        const has_err: []const u8 = err: {
-            if (zcu.failed_analysis.contains(unit)) break :err "true";
-            if (zcu.transitive_failed_analysis.contains(unit)) break :err "true (transitive)";
-            break :err "false";
-        };
         try w.print(
             \\last update generation: {d}
             \\current referencer: {s}
-            \\has error: {s}
             \\
         , .{
             unit_info.last_update_gen,
             ref_str,
-            has_err,
         });
+        if (zcu.failed_analysis.get(unit)) |err_msg| {
+            try w.print("analysis result: failure ({q})\n", .{err_msg.msg});
+        } else if (zcu.transitive_failed_analysis.get(unit)) |reason| {
+            switch (reason) {
+                .astgen_error => try w.writeAll("analysis result: transitive failure (astgen error)\n"),
+                .dependency_loop => try w.writeAll("analysis result: transitive failure (dependency loop)\n"),
+                .lost_tracking => try w.writeAll("analysis result: transitive failure (lost tracking for zir inst)\n"),
+                .failed_unit => |other_unit| {
+                    var buf: [32]u8 = undefined;
+                    try w.print("analysis result: transitive failure (failed unit: {s})\n", .{printAnalUnit(other_unit, &buf)});
+                },
+                .func_nav_val_changed => |func_index| try w.print("analysis result: transitive failure (owner nav of func '{d}' changed value)\n", .{@backingInt(func_index)}),
+            }
+        } else {
+            try w.writeAll("analysis result: success\n");
+        }
+        if (unit.unwrap() == .func) {
+            const nav_id = zcu.intern_pool.indexToKey(unit.unwrap().func).func.owner_nav;
+            try w.print("owner nav: {d}\n", .{@backingInt(nav_id)});
+        }
     } else if (std.mem.eql(u8, cmd_str, "unit_dependencies")) {
         const unit = parseAnalUnit(arg_str) orelse return w.writeAll("malformed anal unit");
         const unit_info = zcu.incremental_debug_state.units.get(unit) orelse return w.writeAll("unknown anal unit");
