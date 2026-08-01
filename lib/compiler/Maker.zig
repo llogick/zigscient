@@ -1498,7 +1498,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
         if (config_man) |man| for (configuration.path_deps) |path_dep| {
             switch (path_dep.flags.mode) {
                 .directory => {}, // TODO
-                .contents => try man.addPathPost(confPathDepToCachePath(graph, &configuration, path_dep)),
+                .contents => try man.addPathPost(try confPathDepToCachePath(arena, graph, &configuration, path_dep)),
                 .metadata => {}, // TODO
             }
         };
@@ -3973,7 +3973,12 @@ const Templates = struct {
     }
 };
 
-fn confPathDepToCachePath(graph: *const Graph, c: *const Configuration, path_dep: Configuration.PathDep) Path {
+fn confPathDepToCachePath(
+    arena: Allocator,
+    graph: *const Graph,
+    c: *const Configuration,
+    path_dep: Configuration.PathDep,
+) Allocator.Error!Path {
     const sub_path = path_dep.sub.slice(c);
     return switch (path_dep.flags.base) {
         .cwd => .{
@@ -3989,11 +3994,11 @@ fn confPathDepToCachePath(graph: *const Graph, c: *const Configuration, path_dep
             .sub_path = sub_path,
         },
         .build_root => .{
-            .root_dir = switch (path_dep.pkg.unwrap().?) {
-                .root => graph.build_root_directory,
-                _ => @panic("TODO"),
+            .root_dir = graph.build_root_directory,
+            .sub_path = switch (path_dep.pkg.unwrap().?) {
+                .root => sub_path,
+                else => |index| try Dir.path.join(arena, &.{ index.get(c).?.root_path.slice(c), sub_path }),
             },
-            .sub_path = sub_path,
         },
         .zig_lib => .{
             .root_dir = graph.zig_lib_directory,
