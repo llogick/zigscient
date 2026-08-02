@@ -9736,6 +9736,7 @@ pub const SS = switch (native_os) {
 
 pub const EV = switch (native_os) {
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => struct {
+        // https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/event.h
         /// add event to kq (implies enable)
         pub const ADD = 0x0001;
         /// delete event from kq
@@ -9771,11 +9772,14 @@ pub const EV = switch (native_os) {
         pub const FLAG0 = 0x1000;
         /// filter-specific flag
         pub const FLAG1 = 0x2000;
-        /// EOF detected
+        /// EOF detected (return value)
         pub const EOF = 0x8000;
-        /// error, data contains errno
+        /// error, data contains errno (return value)
         pub const ERROR = 0x4000;
+        /// use poll(2) semantics for EVFILT.READ
         pub const POLL = FLAG0;
+        /// on input, filter should actively return in the presence of OOB on the descriptor
+        /// on output, indicates the presence of OOB data on the descriptor
         pub const OOBAND = FLAG1;
     },
     .dragonfly => struct {
@@ -9818,6 +9822,7 @@ pub const EV = switch (native_os) {
         pub const EOF = 0x8000;
     },
     .freebsd => struct {
+        // https://cgit.freebsd.org/src/tree/sys/sys/event.h
         /// add event to kq (implies enable)
         pub const ADD = 0x0001;
         /// delete event from kq
@@ -9826,12 +9831,14 @@ pub const EV = switch (native_os) {
         pub const ENABLE = 0x0004;
         /// disable event (not reported)
         pub const DISABLE = 0x0008;
+        /// enable _ONESHOT and force trigger
+        pub const FORCEONESHOT = 0x0100;
+        /// do not update the udata field
+        pub const KEEPUDATA = 0x0200;
         /// only report one occurrence
         pub const ONESHOT = 0x0010;
         /// clear event state after reporting
         pub const CLEAR = 0x0020;
-        /// error, event data contains errno
-        pub const ERROR = 0x4000;
         /// force immediate event output
         /// ... with or without ERROR
         /// ... use KEVENT_FLAG_ERROR_EVENTS
@@ -9839,6 +9846,18 @@ pub const EV = switch (native_os) {
         pub const RECEIPT = 0x0040;
         /// disable event after reporting
         pub const DISPATCH = 0x0080;
+        /// reserved by system
+        pub const SYSFLAGS = 0xF000;
+        /// note should be dropped
+        pub const DROP = 0x1000;
+        /// filter-specific flag 1
+        pub const FLAG1 = 0x2000;
+        /// filter-specific flag 2
+        pub const FLAG2 = 0x4000;
+        /// EOF detected (return value)
+        pub const EOF = 0x8000;
+        /// error, event data contains errno (return value)
+        pub const ERROR = 0x4000;
     },
     .openbsd => struct {
         pub const ADD = 0x0001;
@@ -9962,6 +9981,7 @@ pub const EVFILT = switch (native_os) {
         pub const EMPTY = 9;
     },
     .freebsd => struct {
+        // https://cgit.freebsd.org/src/tree/sys/sys/event.h
         pub const READ = -1;
         pub const WRITE = -2;
         /// attached to aio requests
@@ -9978,12 +9998,18 @@ pub const EVFILT = switch (native_os) {
         pub const PROCDESC = -8;
         /// Filesystem events
         pub const FS = -9;
+        /// attached to lio requests
         pub const LIO = -10;
         /// User events
         pub const USER = -11;
         /// Sendfile events
         pub const SENDFILE = -12;
+        /// empty send socket buf
         pub const EMPTY = -13;
+        /// attached to struct prison
+        pub const JAIL = -14;
+        /// attached to jail descriptors
+        pub const JAILDESC = -15;
     },
     .openbsd => struct {
         pub const READ = -1;
@@ -10002,6 +10028,7 @@ pub const EVFILT = switch (native_os) {
 
 pub const NOTE = switch (native_os) {
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => struct {
+        // https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/event.h
         /// On input, TRIGGER causes the event to be triggered for output.
         pub const TRIGGER = 0x01000000;
         /// ignore input fflags
@@ -10033,7 +10060,7 @@ pub const NOTE = switch (native_os) {
         pub const RENAME = 0x00000020;
         /// vnode access was revoked
         pub const REVOKE = 0x00000040;
-        /// No specific vnode event: to test for EVFILT_READ      activation
+        /// No specific vnode event: to test for EVFILT_READ activation
         pub const NONE = 0x00000080;
         /// vnode was unlocked by flock(2)
         pub const FUNLOCK = 0x00000100;
@@ -10045,7 +10072,7 @@ pub const NOTE = switch (native_os) {
         pub const EXEC = 0x20000000;
         /// shared with EVFILT_SIGNAL
         pub const SIGNAL = 0x08000000;
-        /// exit status to be returned, valid for child       process only
+        /// exit status to be returned, valid for child process only
         pub const EXITSTATUS = 0x04000000;
         /// provide details on reasons for exit
         pub const EXIT_DETAIL = 0x02000000;
@@ -10056,11 +10083,11 @@ pub const NOTE = switch (native_os) {
         pub const EXIT_DECRYPTFAIL = 0x00010000;
         pub const EXIT_MEMORY = 0x00020000;
         pub const EXIT_CSERROR = 0x00040000;
-        /// will react on memory          pressure
+        /// will react on memory pressure
         pub const VM_PRESSURE = 0x80000000;
-        /// will quit on memory       pressure, possibly after cleaning up dirty state
+        /// will quit on memory pressure, possibly after cleaning up dirty state
         pub const VM_PRESSURE_TERMINATE = 0x40000000;
-        /// will quit immediately on      memory pressure
+        /// will quit immediately on memory pressure
         pub const VM_PRESSURE_SUDDEN_TERMINATE = 0x20000000;
         /// there was an error
         pub const VM_ERROR = 0x10000000;
@@ -10078,6 +10105,9 @@ pub const NOTE = switch (native_os) {
         pub const CRITICAL = 0x00000020;
         /// system does maximum timer coalescing
         pub const BACKGROUND = 0x00000040;
+        /// with ABSOLUTE: causes the timer to continue to tick across sleep, still uses gettimeofday epoch
+        /// with MACHTIME and ABSOLUTE: uses mach continuous time epoch
+        /// without ABSOLUTE: continues to tick across sleep
         pub const MACH_CONTINUOUS_TIME = 0x00000080;
         /// data is mach absolute time units
         pub const MACHTIME = 0x00000100;
