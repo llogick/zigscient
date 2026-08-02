@@ -36,6 +36,7 @@ const exempt_extensions = [_][]const u8{
     // These are the start files we use when targeting glibc <= 2.33.
     "-2.33.S",
     "-2.33.c",
+    "-2.32.c",
 };
 
 pub fn main(init: std.process.Init) !void {
