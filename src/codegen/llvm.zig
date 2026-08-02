@@ -263,7 +263,7 @@ pub fn targetTriple(allocator: Allocator, target: *const std.Target) ![]const u8
         => {},
         .semver => |ver| if (target.os.tag == .wasi and ver.min.major == 0) {
             try llvm_triple.print("p{d}", .{ver.min.minor});
-        } else {
+        } else if (target.os.tag != .amdhsa) {
             try llvm_triple.print("{d}.{d}.{d}", .{
                 ver.min.major,
                 ver.min.minor,
