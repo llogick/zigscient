@@ -580,6 +580,7 @@ pub fn deinit(ev: *Evented) void {
     ev.stderr_mutex.deinit();
     for (&ev.futexes) |*futex| futex.deinit();
     ev.exit_semaphore.as_object().release();
+    ev.backing_allocator_mutex.deinit();
     ev.backing_allocator.free(ev.main_loop_stack[0..main_loop_stack_size]);
     ev.queue.as_object().release();
 }
@@ -825,7 +826,7 @@ const Mutex = struct {
         sleeper: Sleeper = undefined,
         cancelable: Cancelable,
         mutex: *Mutex,
-        node: std.DoublyLinkedList.Node = undefined,
+        node: std.DoublyLinkedList.Node = .{},
 
         fn add(context: ?*anyopaque) callconv(.c) void {
             const waiter: *Waiter = @ptrCast(@alignCast(context));
@@ -4714,7 +4715,7 @@ fn sleep(userdata: ?*anyopaque, timeout: Io.Timeout) Io.Cancelable!void {
         return ev.yield(.{ .after = ev.timeFromTimeout(timeout) });
     };
     var waiter: SleepWaiter = .{
-        .cancelable = .{ .queue = queue, .cancel = &Futex.Waiter.canceled },
+        .cancelable = .{ .queue = queue, .cancel = &SleepWaiter.canceled },
         .timer = timer,
     };
     timer.as_object().set_context(&waiter);
