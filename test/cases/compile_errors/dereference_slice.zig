@@ -7,4 +7,4 @@ comptime {
 
 // error
 //
-// :2:13: error: index syntax required for slice type '[]i32'
+// :2:13: error: index syntax required to access runtime-known slice

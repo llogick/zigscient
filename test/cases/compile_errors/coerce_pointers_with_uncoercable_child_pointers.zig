@@ -28,6 +28,16 @@ export fn entry5() void {
     _ = q;
 }
 
+export fn entry6(p: **[3]u8) void {
+    const q: *[]u8 = p;
+    _ = q;
+}
+
+export fn entry7(p: *[]u8) void {
+    const q: **[3]u8 = p;
+    _ = q;
+}
+
 // error
 //
 // :3:22: error: expected type '**i32', found '**u32'
@@ -50,3 +60,7 @@ export fn entry5() void {
 // :27:24: note: pointer type child '*[1:42]u8' cannot cast into pointer type child '*[1]u8'
 // :27:24: note: pointer type child '[1:42]u8' cannot cast into pointer type child '[1]u8'
 // :27:24: note: source array cannot be guaranteed to maintain '42' sentinel
+// :32:22: error: expected type '*[]u8', found '**[3]u8'
+// :32:22: note: pointer type child '*[3]u8' cannot cast into pointer type child '[]u8'
+// :37:24: error: expected type '**[3]u8', found '*[]u8'
+// :37:24: note: pointer type child '[]u8' cannot cast into pointer type child '*[3]u8'

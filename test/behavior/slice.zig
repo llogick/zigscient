@@ -1089,3 +1089,85 @@ test "slice field alignment" {
     var arr: [10]u8 = @splat(0);
     try S.doTheTest(&&arr);
 }
+
+test "directly deref slice with comptime-known length" {
+    {
+        const slice: []const u16 = &.{ 1, 2, 3 };
+        const array = slice.*;
+
+        comptime assert(@TypeOf(array) == [3]u16);
+        comptime assert(array[0] == 1);
+        comptime assert(array[1] == 2);
+        comptime assert(array[2] == 3);
+    }
+    {
+        const slice: [:0]const u16 = &.{ 1, 2, 3 };
+        const array = slice.*;
+
+        comptime assert(@TypeOf(array) == [3:0]u16);
+        comptime assert(array[0] == 1);
+        comptime assert(array[1] == 2);
+        comptime assert(array[2] == 3);
+        comptime assert(array[3] == 0);
+    }
+}
+
+test "address of dereferenced slice is array pointer" {
+    {
+        const slice: []const u16 = &.{ 1, 2, 3 };
+        const array_ptr = &slice.*;
+
+        comptime assert(@TypeOf(array_ptr) == *const [3]u16);
+        comptime assert(array_ptr[0] == 1);
+        comptime assert(array_ptr[1] == 2);
+        comptime assert(array_ptr[2] == 3);
+    }
+    {
+        const slice: [:0]const u16 = &.{ 1, 2, 3 };
+        const array_ptr = &slice.*;
+
+        comptime assert(@TypeOf(array_ptr) == *const [3:0]u16);
+        comptime assert(array_ptr[0] == 1);
+        comptime assert(array_ptr[1] == 2);
+        comptime assert(array_ptr[2] == 3);
+        comptime assert(array_ptr[3] == 0);
+    }
+}
+
+test "coerce slice with comptime-known length to array pointer" {
+    {
+        const slice: []const u16 = &.{ 1, 2, 3 };
+        const array_ptr: *const [3]u16 = slice;
+
+        comptime assert(array_ptr[0] == 1);
+        comptime assert(array_ptr[1] == 2);
+        comptime assert(array_ptr[2] == 3);
+    }
+    {
+        const slice: [:0]const u16 = &.{ 1, 2, 3 };
+        const array_ptr: *const [3:0]u16 = slice;
+
+        comptime assert(array_ptr[0] == 1);
+        comptime assert(array_ptr[1] == 2);
+        comptime assert(array_ptr[2] == 3);
+        comptime assert(array_ptr[3] == 0);
+    }
+    {
+        const slice: [:0]const u16 = &.{ 1, 2, 3 };
+        const array_ptr: *const [3]u16 = slice;
+
+        comptime assert(array_ptr[0] == 1);
+        comptime assert(array_ptr[1] == 2);
+        comptime assert(array_ptr[2] == 3);
+    }
+}
+
+test "modify slice through coerced array pointer" {
+    comptime {
+        var array: [3]u16 = .{ 1, 2, 3 };
+        const slice: []u16 = &array;
+        const array_ptr: *[3]u16 = slice;
+        array_ptr[2] = 0;
+        assert(slice[2] == 0);
+    }
+}

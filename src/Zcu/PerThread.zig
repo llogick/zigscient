@@ -3556,6 +3556,25 @@ pub fn getErrorValueFromSlice(pt: Zcu.PerThread, name: []const u8) Allocator.Err
     return pt.getErrorValue(try pt.zcu.intern_pool.getOrPutString(gpa, io, name));
 }
 
+/// Asserts that `slice.len` is *not* undef.
+pub fn sliceToArrayPtr(pt: Zcu.PerThread, slice: InternPool.Key.Slice) Allocator.Error!Value {
+    const zcu = pt.zcu;
+    const slice_info = Type.fromInterned(slice.ty).ptrInfo(zcu);
+    const array_ty = try pt.arrayType(.{
+        .len = Value.fromInterned(slice.len).toUnsignedInt(zcu),
+        .child = slice_info.child,
+        .sentinel = slice_info.sentinel,
+    });
+    const ptr_ty = try pt.ptrType(ptr_info: {
+        var ptr_info = slice_info;
+        ptr_info.flags.size = .one;
+        ptr_info.child = array_ty.toIntern();
+        ptr_info.sentinel = .none;
+        break :ptr_info ptr_info;
+    });
+    return pt.getCoerced(.fromInterned(slice.ptr), ptr_ty);
+}
+
 /// Removes any entry from `Zcu.failed_files` associated with `file`. Acquires `Compilation.mutex` as needed.
 /// `file.zir` must be unchanged from the last update, as it is used to determine if there is such an entry.
 fn lockAndClearFileCompileError(pt: Zcu.PerThread, file_index: Zcu.File.Index, file: *Zcu.File) void {

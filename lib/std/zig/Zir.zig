@@ -584,7 +584,7 @@ pub const Inst = struct {
         /// containing the instruction.
         /// Uses the `un_tok` union field.
         ref,
-        /// Implements the dereference operand (`.*`). Checks that operand is a pointer
+        /// Implements the dereference operator (`.*`). Checks that operand is a pointer
         /// that supports being directly dereferenced.
         /// Uses the `un_node` union field.
         deref,

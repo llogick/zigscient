@@ -6,4 +6,4 @@ export fn entry() void {
 
 // error
 //
-// :3:10: error: index syntax required for slice type '[]u8'
+// :3:10: error: index syntax required to access runtime-known slice
