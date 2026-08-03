@@ -8181,13 +8181,11 @@ pub const rusage = extern struct {
 
 pub const NCC = if (is_ppc) 10 else 8;
 pub const NCCS = if (is_mips)
-    32
-else if (is_ppc or native_arch == .alpha)
-    19
+    23
 else if (is_sparc)
     17
 else
-    32;
+    19;
 
 pub const speed_t = if (is_ppc) enum(c_uint) {
     B0 = 0x0000000,
