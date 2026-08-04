@@ -2906,12 +2906,18 @@ fn packedAggregateInitBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Erro
     const orig_ty_pl = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_pl;
     const agg_ty = orig_ty_pl.ty.toType();
     const agg_field_count = agg_ty.structFieldCount(zcu);
+    var opv_field_count: u32 = 0;
+    for (0..agg_field_count) |field_idx| {
+        const field_ty = agg_ty.fieldType(field_idx, zcu);
+        const field_bits: u16 = @intCast(field_ty.bitSize(zcu));
+        if (field_bits == 0) opv_field_count += 1;
+    }
 
     var bfa_buf: [4 * 32 + 2]Air.Inst.Index = undefined;
     var bfa_state: std.heap.BufferFirstAllocator = .init(@ptrCast(&bfa_buf), gpa);
     const bfa = bfa_state.allocator();
 
-    const inst_buf = try bfa.alloc(Air.Inst.Index, 4 * agg_field_count + 2);
+    const inst_buf = try bfa.alloc(Air.Inst.Index, 4 * (agg_field_count - opv_field_count) + 2);
     defer bfa.free(inst_buf);
 
     var main_block: Block = .init(inst_buf);
@@ -2927,6 +2933,7 @@ fn packedAggregateInitBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Erro
         field_idx -= 1;
         const field_ty = agg_ty.fieldType(field_idx, zcu);
         const field_bits: u16 = @intCast(field_ty.bitSize(zcu));
+        if (field_bits == 0) continue;
         assert(field_bits < num_bits);
         const field_uint_ty = try pt.intType(.unsigned, field_bits);
         const field_bit_size_ref: Air.Inst.Ref = .fromValue(try pt.intValue(shift_ty, field_bits));

@@ -432,6 +432,22 @@ test "@bitCast of packed struct with void field to integer" {
     try comptime S.doTheTest(123);
 }
 
+test "@bitCast of packed struct with void field and multiple integers" {
+    const S = packed struct {
+        x: u8,
+        v: void,
+        y: u8,
+
+        fn doTheTest(x: u8, y: u8) !void {
+            const foo = @as(@This(), .{ .x = x, .v = {}, .y = y });
+            const as_int: u16 = @bitCast(foo);
+            try expect(as_int == @as(u16, y) << 8 | x);
+        }
+    };
+    try S.doTheTest(123, 45);
+    try comptime S.doTheTest(123, 45);
+}
+
 test "@bitCast vector to array with different element size" {
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
