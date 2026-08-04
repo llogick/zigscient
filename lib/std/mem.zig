@@ -2215,33 +2215,54 @@ test writeVarPackedInt {
     try testing.expectEqual(T{ .a = 1, .b = value, .c = 4 }, st);
 }
 
-/// Swap the byte order of all the members of the fields of a struct
-/// (Changing their endianness)
-pub fn byteSwapAllFields(comptime S: type, ptr: *S) void {
-    byteSwapAllFieldsAligned(S, .of(S), ptr);
+/// Deprecated: use `byteSwap` instead.
+pub const byteSwapAllFields = byteSwap;
+
+/// Deprecated: use `byteSwapAligned` instead.
+pub const byteSwapAllFieldsAligned = byteSwapAligned;
+
+/// Reverses the byte order.
+/// Handles structs, unions, arrays, enums, floats, and integers recursively.
+/// The order of extern struct fields and array elements remains unchanged and
+/// will be byte swapped recursively.
+/// Useful for converting between little-endian and big-endian representations.
+pub fn byteSwap(comptime S: type, ptr: *S) void {
+    byteSwapAligned(S, .of(S), ptr);
 }
 
-/// Swap the byte order of all the members of the fields of a struct
-/// (Changing their endianness)
-pub fn byteSwapAllFieldsAligned(comptime S: type, comptime a: Alignment, ptr: *align(a.toByteUnits()) S) void {
+/// Reverses the byte order.
+/// Handles structs, unions, arrays, enums, floats, and integers recursively.
+/// The order of extern struct fields and array elements remains unchanged and
+/// will be byte swapped recursively.
+/// Useful for converting between little-endian and big-endian representations.
+pub fn byteSwapAligned(
+    comptime S: type,
+    comptime a: Alignment,
+    ptr: *align(a.toByteUnits()) S,
+) void {
     switch (@typeInfo(S)) {
         .@"struct" => |@"struct"| {
             if (@"struct".backing_integer) |Int| {
                 ptr.* = @bitCast(@byteSwap(@as(Int, @bitCast(ptr.*))));
-            } else inline for (@"struct".field_types, @"struct".field_names, @"struct".field_attrs) |f_type, f_name, f_attr| {
-                switch (@typeInfo(f_type)) {
-                    .@"struct" => byteSwapAllFieldsAligned(f_type, .fromByteUnits(f_attr.@"align" orelse @alignOf(f_type)), &@field(ptr, f_name)),
-                    .@"union", .array => byteSwapAllFieldsAligned(f_type, .fromByteUnits(f_attr.@"align" orelse @alignOf(f_type)), &@field(ptr, f_name)),
-                    .@"enum" => {
-                        @field(ptr, f_name) = @fromBackingInt(@intCast(@byteSwap(@backingInt(@field(ptr, f_name)))));
-                    },
-                    .bool => {},
-                    .float => |float| {
-                        @field(ptr, f_name) = @bitCast(@byteSwap(@as(@Int(.unsigned, float.bits), @bitCast(@field(ptr, f_name)))));
-                    },
-                    else => {
-                        @field(ptr, f_name) = @byteSwap(@field(ptr, f_name));
-                    },
+            } else {
+                if (@"struct".layout != .@"extern") {
+                    @compileError("byteSwapAligned expects a packed or extern struct");
+                }
+                inline for (@"struct".field_types, @"struct".field_names, @"struct".field_attrs) |f_type, f_name, f_attr| {
+                    switch (@typeInfo(f_type)) {
+                        .@"struct" => byteSwapAligned(f_type, .fromByteUnits(f_attr.@"align" orelse @alignOf(f_type)), &@field(ptr, f_name)),
+                        .@"union", .array => byteSwapAligned(f_type, .fromByteUnits(f_attr.@"align" orelse @alignOf(f_type)), &@field(ptr, f_name)),
+                        .@"enum" => {
+                            @field(ptr, f_name) = @fromBackingInt(@byteSwap(@backingInt(@field(ptr, f_name))));
+                        },
+                        .bool => {},
+                        .float => |float| {
+                            @field(ptr, f_name) = @bitCast(@byteSwap(@as(@Int(.unsigned, float.bits), @bitCast(@field(ptr, f_name)))));
+                        },
+                        else => {
+                            @field(ptr, f_name) = @byteSwap(@field(ptr, f_name));
+                        },
+                    }
                 }
             }
         },
@@ -2249,7 +2270,7 @@ pub fn byteSwapAllFieldsAligned(comptime S: type, comptime a: Alignment, ptr: *a
             ptr.* = @bitCast(@byteSwap(@as(Int, @bitCast(ptr.*))));
         } else {
             if (@"union".layout != .@"extern") {
-                @compileError("byteSwapAllFields expects a packed or extern union");
+                @compileError("byteSwapAligned expects a packed or extern union");
             }
 
             const first_size = @bitSizeOf(@"union".field_types[0]);
@@ -2266,13 +2287,21 @@ pub fn byteSwapAllFieldsAligned(comptime S: type, comptime a: Alignment, ptr: *a
         .array => |array| {
             byteSwapAllElements(array.child, ptr);
         },
+        .@"enum" => {
+            ptr.* = @fromBackingInt(@byteSwap(@backingInt(ptr.*)));
+        },
+        .bool => {},
+        .float => |float| {
+            const int_repr: @Int(.unsigned, float.bits) = @bitCast(ptr.*);
+            ptr.* = @bitCast(@byteSwap(int_repr));
+        },
         else => {
             ptr.* = @byteSwap(ptr.*);
         },
     }
 }
 
-test byteSwapAllFields {
+test byteSwap {
     const T = extern struct {
         f0: u8,
         f1: u16,
@@ -2304,6 +2333,9 @@ test byteSwapAllFields {
         } align(4),
         f2: u32,
     };
+    const E = enum(u32) {
+        _,
+    };
     var s = T{
         .f0 = 0x12,
         .f1 = 0x1234,
@@ -2327,10 +2359,14 @@ test byteSwapAllFields {
         .f1 = .{ .f0 = 0x123456789ABCDEF0 },
         .f2 = 0x87654321,
     };
-    byteSwapAllFields(T, &s);
-    byteSwapAllFields(K, &k);
-    byteSwapAllFields(P, &p);
-    byteSwapAllFields(A, &a);
+    var e: E = @fromBackingInt(0x12345678);
+    var f: f32 = @bitCast(@as(u32, 0x4640e400));
+    byteSwap(T, &s);
+    byteSwap(K, &k);
+    byteSwap(P, &p);
+    byteSwap(A, &a);
+    byteSwap(E, &e);
+    byteSwap(f32, &f);
     try std.testing.expectEqual(T{
         .f0 = 0x12,
         .f1 = 0x3412,
@@ -2354,28 +2390,15 @@ test byteSwapAllFields {
         .f1 = .{ .f0 = 0xF0DEBC9A78563412 },
         .f2 = 0x21436587,
     }, a);
+    try std.testing.expectEqual(@as(E, @fromBackingInt(0x78563412)), e);
+    try std.testing.expectEqual(@as(f32, @bitCast(@as(u32, 0x00e44046))), f);
 }
 
 /// Reverses the byte order of all elements in a slice.
 /// Handles structs, unions, arrays, enums, floats, and integers recursively.
 /// Useful for converting between little-endian and big-endian representations.
 pub fn byteSwapAllElements(comptime Elem: type, slice: []Elem) void {
-    for (slice) |*elem| {
-        switch (@typeInfo(@TypeOf(elem.*))) {
-            .@"struct", .@"union", .array => byteSwapAllFields(@TypeOf(elem.*), elem),
-            .@"enum" => {
-                elem.* = @fromBackingInt(@intCast(@byteSwap(@backingInt(elem.*))));
-            },
-            .bool => {},
-            .float => |float| {
-                const int_repr: @Int(.unsigned, float.bits) = @bitCast(elem.*);
-                elem.* = @bitCast(@byteSwap(int_repr));
-            },
-            else => {
-                elem.* = @byteSwap(elem.*);
-            },
-        }
-    }
+    for (slice) |*elem| byteSwap(Elem, elem);
 }
 
 /// Returns an iterator that iterates over the slices of `buffer` that are not

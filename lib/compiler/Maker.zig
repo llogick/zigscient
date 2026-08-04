@@ -11,6 +11,7 @@ const File = std.Io.File;
 const Io = std.Io;
 const Dir = std.Io.Dir;
 const Path = std.Build.Cache.Path;
+const Reader = std.Io.Reader;
 const Writer = std.Io.Writer;
 const assert = std.debug.assert;
 const fatal = std.process.fatal;
@@ -19,6 +20,8 @@ const log = std.log;
 const mem = std.mem;
 const process = std.process;
 const Color = std.zig.Color;
+const Client = std.zig.Client;
+const Server = std.zig.Server;
 const EnvVar = std.zig.EnvVar;
 const default_local_zig_cache_basename = std.zig.default_local_zig_cache_basename;
 const stringToEnum = std.meta.stringToEnum;
@@ -51,9 +54,13 @@ max_rss_mutex: Io.Mutex,
 skip_oom_steps: bool,
 unit_test_timeout_ns: ?u64,
 watch: bool,
+protocol_server: ?*AvoidableServer,
+protocol_server_mutex: Io.Mutex,
 web_server: ?*AvoidableWebServer,
 /// Allocated into `gpa`.
 memory_blocked_steps: std.ArrayList(Configuration.Step.Index),
+/// Allocated into `gpa`.
+initial_steps: std.array_hash_map.Auto(Configuration.Step.Index, void),
 /// Allocated into `gpa`.
 step_stack: std.array_hash_map.Auto(Configuration.Step.Index, void),
 pkg_config: PkgConfig,
@@ -81,6 +88,7 @@ var stdio_buffer_allocation: [256]u8 = undefined;
 var stdout_writer_allocation: Io.File.Writer = undefined;
 var debug_maker_leaks: bool = false;
 
+const AvoidableServer = if (builtin.single_threaded) void else Server;
 const AvoidableWebServer = if (builtin.single_threaded) void else WebServer;
 
 const is_debug_mode = builtin.mode == .debug;
@@ -236,6 +244,7 @@ pub fn main(init: process.Init.Minimal) !void {
     var watch = false;
     var fuzz: ?Fuzz.Mode = null;
     var debounce_interval_ms: u16 = 50;
+    var listen: bool = false;
     var webui_listen: ?Io.net.IpAddress = null;
     var debug_pkg_config = false;
     var run_args: ?[]const []const u8 = null;
@@ -444,6 +453,8 @@ pub fn main(init: process.Init.Minimal) !void {
                         next_arg, err,
                     });
                 };
+            } else if (mem.eql(u8, arg, "--listen=-")) {
+                listen = true;
             } else if (mem.eql(u8, arg, "--webui")) {
                 if (webui_listen == null) webui_listen = .{ .ip6 = .loopback(0) };
             } else if (mem.startsWith(u8, arg, "--webui=")) {
@@ -582,7 +593,7 @@ pub fn main(init: process.Init.Minimal) !void {
     }
 
     const early_exit_mode = fetch_only or help_menu or steps_menu or print_configuration != .none;
-    const server_mode = !early_exit_mode and (watch or webui_listen != null or fuzz != null);
+    const server_mode = !early_exit_mode and (watch or webui_listen != null or fuzz != null or listen);
 
     process.raiseFileDescriptorLimit();
 
@@ -690,6 +701,25 @@ pub fn main(init: process.Init.Minimal) !void {
         break :ws &web_server_allocation;
     } else null;
 
+    var stdin_buffer: [256]u8 = undefined;
+    var stdout_buffer: [256]u8 = undefined;
+    var stdin_reader = Io.File.stdin().reader(io, &stdin_buffer);
+    var stdout_writer = Io.File.stdout().writer(io, &stdout_buffer);
+
+    var protocol_server_allocation: AvoidableServer = undefined;
+    const protocol_server: ?*AvoidableServer = if (listen) s: {
+        if (builtin.single_threaded) fatal("--listen is not yet supported on single-threaded hosts", .{});
+        if (watch) fatal("using '--watch' and '--listen' together is not supported", .{});
+        if (fuzz != null) fatal("using '--fuzz' and '--listen' together is not supported", .{});
+        if (step_names.items.len > 0) fatal("build steps must be provided over the protocol instead of using CLI arguments", .{});
+        protocol_server_allocation = .{
+            .in = &stdin_reader.interface,
+            .out = &stdout_writer.interface,
+        };
+        try serveBSPHandshake(&protocol_server_allocation);
+        break :s &protocol_server_allocation;
+    } else null;
+
     while (true) {
         // If this fails, we can still start the server and wait for user
         // to request a rebuild. If it returns error.FailedButCacheIntact
@@ -762,17 +792,26 @@ pub fn main(init: process.Init.Minimal) !void {
 
                 .watch = watch,
                 .web_server = web_server,
+                .protocol_server = protocol_server,
+                .protocol_server_mutex = .init,
                 .memory_blocked_steps = .empty,
+                .initial_steps = .empty,
                 .step_stack = .empty,
                 .pkg_config = .{ .debug = debug_pkg_config },
 
                 .error_style = error_style,
                 .multiline_errors = multiline_errors,
-                .summary = summary orelse if (watch or webui_listen != null) .new else .failures,
+                .summary = summary orelse if (listen)
+                    .none
+                else if (watch or webui_listen != null)
+                    .new
+                else
+                    .failures,
                 .dump_compile_step_info = override == .active,
             };
             defer {
                 maker.memory_blocked_steps.deinit(gpa);
+                maker.initial_steps.deinit(gpa);
                 maker.step_stack.deinit(gpa);
             }
 
@@ -781,7 +820,91 @@ pub fn main(init: process.Init.Minimal) !void {
                 maker.max_rss_is_default = true;
             }
 
-            maker.prepare(step_names.items) catch |err| switch (err) {
+            if (protocol_server) |s| {
+                try s.serveStringMessage(.bsp_configuration, try arena.print("{f}", .{scanned_config.path}));
+
+                var w: ?Watch = null;
+
+                const Event = union(enum) {
+                    message: Reader.Error!Client.Message.Header,
+                    fs_event: if (Watch.have_impl) @typeInfo(@TypeOf(Watch.wait)).@"fn".return_type.? else noreturn,
+                };
+
+                var select_buffer: [2]Event = undefined;
+                var select: Io.Select(Event) = .init(io, &select_buffer);
+                defer select.cancelDiscard();
+
+                try select.concurrent(.message, Server.receiveMessage, .{s});
+
+                var in_debounce = false;
+                loop: switch (try select.await()) {
+                    .message => |payload| {
+                        const header: Client.Message.Header = try payload;
+                        switch (header.tag) {
+                            .exit => {
+                                cleanExit(io, &scanned_config);
+                                process.exit(0);
+                            },
+                            .bsp_build_steps => {
+                                // Cancel existing file watching
+                                select.cancelDiscard();
+                                in_debounce = false;
+
+                                const body = try s.in.takeStruct(Client.Message.BuildSteps, .little);
+                                const steps = try s.in.readSliceEndianAlloc(gpa, Configuration.Step.Index, body.step_count, .little);
+                                defer gpa.free(steps);
+                                if (body.flags.watch and !Watch.have_impl) fatal("file watching is unavailable", .{});
+
+                                try select.concurrent(.message, Server.receiveMessage, .{s});
+
+                                maker.watch = body.flags.watch;
+                                maker.prepare(steps) catch |err| switch (err) {
+                                    error.DependencyLoopDetected, error.InsufficientMemory => {
+                                        // TODO handle DependencyLoopDetected as error.FailedButCacheIntact
+                                        // and handle InsufficientMemory as error.AlreadyReported
+                                        _ = io.lockStderr(&.{}, graph.stderr_mode) catch {};
+                                        process.exit(1);
+                                    },
+                                    else => |e| return e,
+                                };
+
+                                try maker.makeSteps(main_progress_node, null);
+
+                                if (body.flags.watch) {
+                                    if (!Watch.have_impl) unreachable;
+                                    if (w == null) w = try .init(&maker);
+
+                                    try w.?.update(maker.step_stack.keys());
+                                    try select.concurrent(.fs_event, Watch.wait, .{ &w.?, if (in_debounce) .{ .ms = debounce_interval_ms } else .none });
+                                }
+
+                                continue :loop try select.await();
+                            },
+                            else => fatal("unsupported message: {t}", .{header.tag}),
+                        }
+                    },
+                    .fs_event => |payload| {
+                        if (!Watch.have_impl) unreachable;
+                        switch (try payload) {
+                            .timeout => {
+                                assert(in_debounce);
+                                markFailedStepsDirty(&maker);
+                                try maker.makeSteps(main_progress_node, null);
+                                in_debounce = false;
+                            },
+                            .dirty => in_debounce = true,
+                            .clean => {},
+                        }
+                        try select.concurrent(.fs_event, Watch.wait, .{ &w.?, if (in_debounce) .{ .ms = debounce_interval_ms } else .none });
+                        continue :loop try select.await();
+                    },
+                }
+            }
+
+            const initial_steps = try maker.resolveTopLevelSteps(step_names.items);
+            defer gpa.free(initial_steps);
+
+            maker.prepare(initial_steps) catch |err| switch (err) {
                 error.DependencyLoopDetected, error.InsufficientMemory => {
                     // TODO handle DependencyLoopDetected as error.FailedButCacheIntact
                     // and handle InsufficientMemory as error.AlreadyReported
@@ -806,9 +929,7 @@ pub fn main(init: process.Init.Minimal) !void {
                     error.WriteFailed => return stderr.file_writer.err.?,
                 };
             }) {
-                if (web_server) |ws| ws.startBuild();
-
-                try maker.makeStepNames(step_names.items, main_progress_node, fuzz);
+                try maker.makeSteps(main_progress_node, fuzz);
 
                 if (maker.dump_compile_step_info) {
                     var agg: std.ArrayList(CompileStepsInfo.CompileStepInfo) = .empty;
@@ -828,15 +949,6 @@ pub fn main(init: process.Init.Minimal) !void {
                     var file_writer = std.Io.File.stdout().writer(io, &.{});
                     file_writer.interface.writeAll(stringified_build_config) catch return file_writer.err.?;
                     std.process.exit(0);
-                }
-
-                if (web_server) |ws| {
-                    if (fuzz) |mode| if (mode != .forever) fatal(
-                        "error: limited fuzzing is not implemented yet for --webui",
-                        .{},
-                    );
-
-                    ws.finishBuild(.{ .fuzz = fuzz != null });
                 }
 
                 if (web_server) |ws| {
@@ -901,6 +1013,9 @@ pub fn main(init: process.Init.Minimal) !void {
             if (!server_mode) {
                 _ = io.lockStderr(&.{}, graph.stderr_mode) catch {};
                 process.exit(1);
+            }
+            if (protocol_server != null) {
+                fatal("(zig build system) TODO send error messages to client when build.zig compilation fails", .{});
             }
             if (watch and can_fs_watch) {
                 fatal("(zig build system) TODO set up fs watching even when build.zig compilation fails", .{});
@@ -2069,11 +2184,44 @@ pub fn stepByIndex(maker: *const Maker, i: Configuration.Step.Index) *Step {
     return &maker.steps[@backingInt(i)];
 }
 
-fn prepare(maker: *Maker, step_names: []const []const u8) !void {
+fn resolveTopLevelSteps(maker: *Maker, step_names: []const []const u8) ![]const Configuration.Step.Index {
+    const gpa = maker.gpa;
+    const c = &maker.scanned_config.configuration;
+
+    if (step_names.len == 0) {
+        return try gpa.dupe(Configuration.Step.Index, &.{c.default_step});
+    }
+
+    var result: std.array_hash_map.Auto(Configuration.Step.Index, void) = .empty;
+    defer result.deinit(gpa);
+
+    try result.ensureTotalCapacity(gpa, step_names.len);
+
+    for (0..step_names.len) |i| {
+        const step_name = step_names[step_names.len - i - 1];
+        const s: std.Build.Configuration.Step.Index = if (mem.startsWith(u8, step_name, step_index_arg_prefix)) cs: {
+            const cs_idx = std.fmt.parseInt(u32, step_name[step_index_arg_prefix.len..], 10) catch {
+                fatal("step: {s} in not a valid Index", .{step_name[step_index_arg_prefix.len..]});
+            };
+            if (!(cs_idx < maker.scanned_config.configuration.steps.len))
+                fatal("step index: {s} in not a valid Index. OutOfBounds {}", .{ step_name, maker.scanned_config.configuration.steps.len });
+            break :cs @fromBackingInt(@intCast(cs_idx));
+        } else maker.scanned_config.top_level_steps.get(step_name) orelse {
+            log.info("to list available steps: zig build -l", .{});
+            fatal("no such step: {s}", .{step_name});
+        };
+        result.putAssumeCapacity(s, {});
+    }
+
+    return try gpa.dupe(Configuration.Step.Index, result.keys());
+}
+
+fn prepare(maker: *Maker, step_indices: []const Configuration.Step.Index) !void {
     const gpa = maker.gpa;
     const graph = maker.graph;
     const arena = graph.arena;
     const seed: u32 = graph.random_seed;
+    const initial_steps = &maker.initial_steps;
     const step_stack = &maker.step_stack;
     const c = &maker.scanned_config.configuration;
 
@@ -2082,26 +2230,15 @@ fn prepare(maker: *Maker, step_names: []const []const u8) !void {
         step.* = .{ .extended = .init(step_index.ptr(c).flags(c).tag) };
     }
 
-    if (step_names.len == 0) {
-        try step_stack.put(gpa, c.default_step, {});
-    } else {
-        try step_stack.ensureUnusedCapacity(gpa, step_names.len);
-        for (0..step_names.len) |i| {
-            const step_name = step_names[step_names.len - i - 1];
-            const s: std.Build.Configuration.Step.Index = if (mem.startsWith(u8, step_name, step_index_arg_prefix)) cs: {
-                const cs_idx = std.fmt.parseInt(u32, step_name[step_index_arg_prefix.len..], 10) catch {
-                    fatal("step: {s} in not a valid Index", .{step_name});
-                };
-                if (!(cs_idx < maker.scanned_config.configuration.steps.len))
-                    fatal("step index: {s} in not a valid Index. OutOfBounds {}", .{ step_name, maker.scanned_config.configuration.steps.len });
-                break :cs @fromBackingInt(@intCast(cs_idx));
-            } else maker.scanned_config.top_level_steps.get(step_name) orelse {
-                log.info("to list available steps: zig build -l", .{});
-                fatal("no such step: {s}", .{step_name});
-            };
+    try initial_steps.ensureUnusedCapacity(gpa, step_indices.len);
+    try step_stack.ensureUnusedCapacity(gpa, step_indices.len);
 
-            step_stack.putAssumeCapacity(s, {});
-        }
+    initial_steps.clearRetainingCapacity();
+    step_stack.clearRetainingCapacity();
+
+    for (step_indices) |step| {
+        initial_steps.putAssumeCapacity(step, {});
+        step_stack.putAssumeCapacity(step, {});
     }
 
     const starting_steps = try arena.dupe(Configuration.Step.Index, step_stack.keys());
@@ -2150,9 +2287,8 @@ fn prepare(maker: *Maker, step_names: []const []const u8) !void {
     }
 }
 
-fn makeStepNames(
+fn makeSteps(
     maker: *Maker,
-    step_names: []const []const u8,
     parent_progress_node: std.Progress.Node,
     fuzz: ?Fuzz.Mode,
 ) !void {
@@ -2162,6 +2298,12 @@ fn makeStepNames(
     const step_stack = &maker.step_stack;
     const top_level_steps = &maker.scanned_config.top_level_steps;
     const c = &maker.scanned_config.configuration;
+
+    if (maker.web_server) |ws| ws.startBuild();
+
+    if (maker.protocol_server) |s| {
+        try s.serveBodylessMessage(.bsp_build_started);
+    }
 
     {
         // Collect the initial set of tasks (those with no outstanding dependencies) into a buffer,
@@ -2186,6 +2328,19 @@ fn makeStepNames(
         for (initial_set.items) |step_index| try stepReady(maker, &group, step_index, step_prog);
         // ...and `makeStep` will trigger every other step when their last dependency finishes.
         try group.await(io);
+    }
+
+    if (maker.web_server) |ws| {
+        if (fuzz) |mode| if (mode != .forever) fatal(
+            "error: limited fuzzing is not implemented yet for --webui",
+            .{},
+        );
+
+        ws.finishBuild(.{ .fuzz = fuzz != null });
+    }
+
+    if (maker.protocol_server) |s| {
+        try s.serveBodylessMessage(.bsp_build_completed);
     }
 
     assert(maker.memory_blocked_steps.items.len == 0);
@@ -2342,7 +2497,7 @@ fn makeStepNames(
         defer step_stack_copy.deinit(gpa);
 
         var print_node: PrintNode = .{ .parent = null };
-        if (step_names.len == 0) {
+        if (maker.initial_steps.count() == 0) {
             print_node.last = true;
             printTreeStep(maker, c.default_step, t, &print_node, &step_stack_copy) catch |err| switch (err) {
                 error.Canceled => |e| return e,
@@ -2350,10 +2505,10 @@ fn makeStepNames(
             };
         } else if (override != .active) {
             const last_index = if (maker.summary == .all) top_level_steps.count() else blk: {
-                var i: usize = step_names.len;
+                var i: usize = maker.initial_steps.count();
                 while (i > 0) {
                     i -= 1;
-                    const step_index = top_level_steps.get(step_names[i]).?;
+                    const step_index = maker.initial_steps.keys()[i];
                     const step = maker.stepByIndex(step_index);
                     const found = switch (maker.summary) {
                         .all, .line, .none => unreachable,
@@ -2364,8 +2519,7 @@ fn makeStepNames(
                 }
                 break :blk top_level_steps.count();
             };
-            for (step_names, 0..) |step_name, i| {
-                const step_index = top_level_steps.get(step_name).?;
+            for (maker.initial_steps.keys(), 0..) |step_index, i| {
                 print_node.last = i + 1 == last_index;
                 printTreeStep(maker, step_index, t, &print_node, &step_stack_copy) catch |err| switch (err) {
                     error.Canceled => |e| return e,
@@ -2376,7 +2530,7 @@ fn makeStepNames(
         w.writeByte('\n') catch {};
     }
 
-    if (maker.watch or maker.web_server != null) return;
+    if (maker.watch or maker.web_server != null or maker.protocol_server != null) return;
 
     const code: u8 = code: {
         if (failure_count == 0) break :code 0; // success
@@ -2451,6 +2605,15 @@ fn makeStep(
         defer step_prog_node.end();
 
         if (maker.web_server) |ws| ws.updateStepStatus(step_index, .wip);
+        if (maker.protocol_server) |s| {
+            maker.protocol_server_mutex.lockUncancelable(io);
+            defer maker.protocol_server_mutex.unlock(io);
+
+            s.serveU32Message(
+                .bsp_step_started,
+                @backingInt(step_index),
+            ) catch @panic("TODO propagate error when failing to send protocol message");
+        }
 
         const new_state: Step.State = for (deps) |dep_index| {
             const dep_make_step = maker.stepByIndex(dep_index);
@@ -2476,7 +2639,7 @@ fn makeStep(
 
         @atomicStore(Step.State, &make_step.state, new_state, .monotonic);
 
-        switch (new_state) {
+        const success = switch (new_state) {
             .precheck_unstarted => unreachable,
             .precheck_started => unreachable,
             .precheck_done => unreachable,
@@ -2484,17 +2647,37 @@ fn makeStep(
             .failure,
             .dependency_failure,
             .skipped_oom,
-            => {
-                if (maker.web_server) |ws| ws.updateStepStatus(step_index, .failure);
-                std.Progress.setStatus(.failure_working);
-            },
+            => false,
 
             .success,
             .skipped,
-            => {
-                if (maker.web_server) |ws| ws.updateStepStatus(step_index, .success);
-            },
+            => true,
+        };
+
+        if (maker.web_server) |ws| {
+            ws.updateStepStatus(step_index, if (success) .success else .failure);
         }
+        if (maker.protocol_server != null) {
+            maker.protocol_server_mutex.lockUncancelable(io);
+            defer maker.protocol_server_mutex.unlock(io);
+
+            const status: Server.Message.BuildStepCompleted.Status = switch (new_state) {
+                .precheck_unstarted => unreachable,
+                .precheck_started => unreachable,
+                .precheck_done => unreachable,
+                .success => .success,
+                .failure, .dependency_failure => .failure,
+                .skipped => .skipped,
+                .skipped_oom => .skipped_oom,
+            };
+            serveBuildStepCompleted(
+                maker,
+                step_index,
+                status,
+            ) catch |err| std.debug.panic("TODO propagate error when failing to send protocol message: {t}", .{err});
+        }
+
+        if (!success) std.Progress.setStatus(.failure_working);
     }
 
     // No matter the result, we want to display error/warning messages.
@@ -3047,6 +3230,50 @@ fn cleanTmpFiles(maker: *Maker, steps: []const Configuration.Step.Index) void {
         tmp_path.root_dir.handle.deleteTree(io, tmp_path.subPathOrDot()) catch |err|
             log.warn("failed to delete temporary path {f}: {t}", .{ tmp_path, err });
     }
+}
+
+fn serveBSPHandshake(s: *const std.zig.Server) !void {
+    const handshake_header: Server.Message.Handshake = .{
+        .version = Server.build_system_version,
+        .flags = .{
+            .file_system_watch_supported = Watch.have_impl,
+        },
+    };
+    try s.serveMessageHeader(.{
+        .tag = .bsp_handshake,
+        .bytes_len = @sizeOf(Server.Message.Handshake),
+    });
+    try s.out.writeStruct(handshake_header, .little);
+    try s.out.flush();
+}
+
+fn serveBuildStepCompleted(
+    maker: *Maker,
+    step_index: Configuration.Step.Index,
+    status: Server.Message.BuildStepCompleted.Status,
+) !void {
+    const s: *Server = maker.protocol_server.?;
+    const step = maker.stepByIndex(step_index);
+    const error_bundle = step.result_error_bundle;
+
+    const body: Server.Message.BuildStepCompleted = .{
+        .step_index = step_index,
+        .status = status,
+        .error_bundle = .{
+            .extra_len = @intCast(error_bundle.extra.len),
+            .string_bytes_len = @intCast(error_bundle.string_bytes.len),
+        },
+    };
+    const eb_bytes_len = @sizeOf(u32) * error_bundle.extra.len + error_bundle.string_bytes.len;
+    const bytes_len = @sizeOf(Server.Message.BuildStepCompleted) + eb_bytes_len;
+    try s.serveMessageHeader(.{
+        .tag = .bsp_step_completed,
+        .bytes_len = @intCast(bytes_len),
+    });
+    try s.out.writeStruct(body, .little);
+    try s.out.writeSliceEndian(u32, error_bundle.extra, .little);
+    try s.out.writeAll(error_bundle.string_bytes);
+    try s.out.flush();
 }
 
 fn initStdoutWriter(io: Io) *Writer {

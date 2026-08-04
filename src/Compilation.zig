@@ -6038,26 +6038,30 @@ fn spawnZigRc(
     multi_reader.init(gpa, io, multi_reader_buffer.toStreams(), &.{ child.stdout.?, child.stderr.? });
     defer multi_reader.deinit();
 
-    const stdout = multi_reader.fileReader(0);
-    const MessageHeader = std.zig.Server.Message.Header;
+    const stdout = multi_reader.reader(0);
 
     var eos_err: error{EndOfStream}!void = {};
 
+    var client: std.zig.Client = .{
+        .in = stdout,
+        .out = undefined,
+    };
+
     while (true) {
-        const header = stdout.interface.takeStruct(MessageHeader, .little) catch |err| switch (err) {
-            error.EndOfStream => break,
-            error.ReadFailed => return stdout.err.?,
-        };
-        const body = stdout.interface.take(header.bytes_len) catch |err| switch (err) {
+        const header = client.receiveMessageWithMultiReader(&multi_reader, .none) catch |err| switch (err) {
+            error.Timeout => unreachable,
             error.EndOfStream => |e| {
+                if (client.in.bufferedLen() == 0) break;
                 // Better to report the crash with stderr below, but we set
                 // this in case the child exits successfully while violating
                 // this protocol.
                 eos_err = e;
                 break;
             },
-            error.ReadFailed => return stdout.err.?,
+            else => |e| return e,
         };
+        const body = client.in.take(header.bytes_len) catch unreachable;
+
         switch (header.tag) {
             // We expect exactly one ErrorBundle, and if any error_bundle header is
             // sent then it's a fatal error.

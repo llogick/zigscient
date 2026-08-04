@@ -1660,31 +1660,32 @@ pub fn buildExeSubprocess(
     };
     defer child.kill(io);
 
-    var stderr_task = io.concurrent(readStreamAlloc, .{ gpa, io, child.stderr.?, .unlimited }) catch
-        @panic("TODO use multireader instead");
-    defer if (stderr_task.cancel(io)) |slice| gpa.free(slice) else |_| {};
+    var multi_reader_buffer: Io.File.MultiReader.Buffer(2) = undefined;
+    var multi_reader: Io.File.MultiReader = undefined;
+    multi_reader.init(gpa, io, multi_reader_buffer.toStreams(), &.{ child.stdout.?, child.stderr.? });
+    defer multi_reader.deinit();
+    const stdout = multi_reader.reader(0);
+    const stderr = multi_reader.reader(1);
 
-    var stdout_buffer: [512]u8 = undefined;
-    var stdout_reader: Io.File.Reader = .initStreaming(child.stdout.?, io, &stdout_buffer);
-    const stdout = &stdout_reader.interface;
+    var stdin_buffer: [8]u8 = undefined;
+    var stdin_writer = child.stdin.?.writerStreaming(io, &stdin_buffer);
 
-    {
-        var w = child.stdin.?.writer(io, &.{});
-        w.interface.writeStruct(Client.Message.Header{ .tag = .update, .bytes_len = 0 }, .little) catch |err| switch (err) {
-            error.WriteFailed => {
-                log.err("{t} writing to command: {f}", .{ w.err.?, cmd });
-                return error.AlreadyReported;
-            },
-        };
-        w.interface.writeStruct(Client.Message.Header{ .tag = .exit, .bytes_len = 0 }, .little) catch |err| switch (err) {
-            error.WriteFailed => {
-                log.err("{t} writing to command: {f}", .{ w.err.?, cmd });
-                return error.AlreadyReported;
-            },
-        };
-    }
+    var client: Client = .{
+        .in = stdout,
+        .out = &stdin_writer.interface,
+    };
 
-    const Header = Server.Message.Header;
+    (blk: {
+        client.serveMessageHeader(.{ .tag = .update, .bytes_len = 0 }) catch |err| break :blk err;
+        client.serveMessageHeader(.{ .tag = .exit, .bytes_len = 0 }) catch |err| break :blk err;
+        client.out.flush() catch |err| break :blk err;
+    }) catch |err| switch (err) {
+        error.WriteFailed => {
+            if (stdin_writer.err.? == error.Canceled) return error.Canceled;
+            log.err("{t} writing to command: {f}", .{ stdin_writer.err.?, cmd });
+            return error.AlreadyReported;
+        },
+    };
 
     var result: ?Cache.Path = null;
     defer if (result) |r| gpa.free(r.sub_path);
@@ -1692,33 +1693,29 @@ pub fn buildExeSubprocess(
     var result_error_bundle: ErrorBundle = .empty;
     defer result_error_bundle.deinit(gpa);
 
-    var body_buffer: std.ArrayList(u8) = .empty;
-    defer body_buffer.deinit(gpa);
-
     var received_fs_inputs = false;
     var cache_hit = false;
 
+    var eos_err: error{EndOfStream}!void = {};
+
     while (true) {
-        const header = stdout.takeStruct(Header, .little) catch |err| switch (err) {
-            error.ReadFailed => {
-                log.err("{t} reading from command: {f}", .{ stdout_reader.err.?, cmd });
-                return error.AlreadyReported;
+        const header = client.receiveMessageWithMultiReader(&multi_reader, .none) catch |err| switch (err) {
+            error.Timeout => unreachable,
+            error.EndOfStream => |e| {
+                if (client.in.bufferedLen() == 0) break;
+                // Better to report the crash with stderr below, but we set
+                // this in case the child exits successfully while violating
+                // this protocol.
+                eos_err = e;
+                break;
             },
-            error.EndOfStream => break,
-        };
-        body_buffer.clearRetainingCapacity();
-        stdout.appendExact(gpa, &body_buffer, header.bytes_len) catch |err| switch (err) {
-            error.ReadFailed => {
-                log.err("{t} reading from command: {f}", .{ stdout_reader.err.?, cmd });
-                return error.AlreadyReported;
-            },
-            error.OutOfMemory => |e| return e,
-            error.EndOfStream => {
-                log.err("unexpected end of stream from command: {f}", .{cmd});
+            error.Canceled, error.OutOfMemory => |e| return e,
+            else => |e| {
+                log.err("{t} reading from command: {f}", .{ e, cmd });
                 return error.AlreadyReported;
             },
         };
-        const body = body_buffer.items;
+        const body = stdout.take(header.bytes_len) catch unreachable;
 
         switch (header.tag) {
             .zig_version => {
@@ -1769,15 +1766,14 @@ pub fn buildExeSubprocess(
         }
     }
 
-    const stderr_contents = stderr_task.await(io) catch |err| switch (err) {
-        error.Canceled, error.OutOfMemory => |e| return e,
-        else => |e| c: {
-            log.warn("{t} reading stderr from command: {f}", .{ e, cmd });
-            break :c "";
-        },
-    };
+    const stderr_contents = stderr.buffered();
     if (stderr_contents.len > 0)
         log.warn("unexpected stderr from {s} command:\n{s}", .{ options.argv[0], stderr_contents });
+
+    eos_err catch {
+        log.err("unexpected end of stream from command: {f}", .{cmd});
+        return error.AlreadyReported;
+    };
 
     // Send EOF to stdin.
     child.stdin.?.close(io);
@@ -1833,14 +1829,6 @@ pub fn buildExeSubprocess(
         .received_fs_inputs = received_fs_inputs,
         .cache_hit = cache_hit,
         .path = try base_path.join(gpa, bin_name),
-    };
-}
-
-fn readStreamAlloc(gpa: Allocator, io: Io, file: Io.File, limit: Io.Limit) ![]u8 {
-    var file_reader: Io.File.Reader = .initStreaming(file, io, &.{});
-    return file_reader.interface.allocRemaining(gpa, limit) catch |err| switch (err) {
-        error.ReadFailed => return file_reader.err.?,
-        else => |e| return e,
     };
 }
 

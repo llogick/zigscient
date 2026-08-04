@@ -305,21 +305,23 @@ const Eval = struct {
 
     fn check(eval: *Eval, mr: *Io.File.MultiReader, update: Case.Update, prog_node: std.Progress.Node) !void {
         const arena = eval.arena;
-        const stdout = mr.fileReader(0);
-        const stderr = &mr.fileReader(1).interface;
-        const Header = std.zig.Server.Message.Header;
+        const stdout = mr.reader(0);
+        const stderr = mr.reader(1);
+
+        var client: std.zig.Client = .{
+            .in = stdout,
+            .out = undefined,
+        };
 
         while (true) {
-            const header = stdout.interface.takeStruct(Header, .little) catch |err| switch (err) {
-                error.EndOfStream => break,
-                error.ReadFailed => return stdout.err.?,
-            };
-            const body = stdout.interface.take(header.bytes_len) catch |err| switch (err) {
+            const header = client.receiveMessageWithMultiReader(mr, .none) catch |err| switch (err) {
+                error.Timeout => unreachable,
                 // If this panic triggers it might be helpful to rework this
                 // code to print the stderr from the abnormally terminated child.
                 error.EndOfStream => @panic("unexpected mid-message end of stream"),
-                error.ReadFailed => return stdout.err.?,
+                else => |e| return e,
             };
+            const body = client.in.take(header.bytes_len) catch unreachable;
 
             switch (header.tag) {
                 .error_bundle => {
@@ -605,12 +607,13 @@ const Eval = struct {
 
     fn requestUpdate(eval: *Eval) !void {
         const io = eval.io;
-        const header: std.zig.Client.Message.Header = .{
-            .tag = .update,
-            .bytes_len = 0,
+
+        var w = eval.child.stdin.?.writerStreaming(io, &.{});
+        var client: std.zig.Client = .{
+            .in = undefined,
+            .out = &w.interface,
         };
-        var w = eval.child.stdin.?.writer(io, &.{});
-        w.interface.writeStruct(header, .little) catch |err| switch (err) {
+        client.serveBodylessMessage(.update) catch |err| switch (err) {
             error.WriteFailed => return w.err.?,
         };
     }
@@ -618,21 +621,22 @@ const Eval = struct {
     fn end(eval: *Eval, mr: *Io.File.MultiReader) !void {
         requestExit(eval.child, eval);
 
-        const stdout = mr.fileReader(0);
-        const Header = std.zig.Server.Message.Header;
+        var client: std.zig.Client = .{
+            .in = mr.reader(0),
+            .out = undefined,
+        };
 
         while (true) {
-            const header = stdout.interface.takeStruct(Header, .little) catch |err| switch (err) {
-                error.EndOfStream => break,
-                error.ReadFailed => return stdout.err.?,
+            const header = client.receiveMessageWithMultiReader(mr, .none) catch |err| switch (err) {
+                error.Timeout => unreachable,
+                error.EndOfStream => |e| {
+                    if (client.in.bufferedLen() == 0) break;
+                    return e;
+                },
+                else => |e| return e,
             };
-            stdout.interface.discardAll(header.bytes_len) catch |err| switch (err) {
-                error.ReadFailed => return stdout.err.?,
-                error.EndOfStream => |e| return e,
-            };
+            try client.in.discardAll(header.bytes_len);
         }
-
-        try mr.fillRemaining(.none);
 
         const stderr = mr.reader(1).buffered();
         if (stderr.len > 0) eval.fatal("unexpected stderr:\n{s}", .{stderr});
@@ -899,12 +903,12 @@ fn requestExit(child: *std.process.Child, eval: *Eval) void {
     if (child.stdin == null) return;
     const io = eval.io;
 
-    const header: std.zig.Client.Message.Header = .{
-        .tag = .exit,
-        .bytes_len = 0,
+    var w = eval.child.stdin.?.writerStreaming(io, &.{});
+    var client: std.zig.Client = .{
+        .in = undefined,
+        .out = &w.interface,
     };
-    var w = eval.child.stdin.?.writer(io, &.{});
-    w.interface.writeStruct(header, .little) catch |err| switch (err) {
+    client.serveBodylessMessage(.exit) catch |err| switch (err) {
         error.WriteFailed => switch (w.err.?) {
             error.BrokenPipe => {},
             else => |e| eval.fatal("failed to send exit: {t}", .{e}),

@@ -1,12 +1,8 @@
 const Server = @This();
 
-const builtin = @import("builtin");
-
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
-const native_endian = builtin.target.cpu.arch.endian();
-const need_bswap = native_endian != .little;
 const Cache = std.Build.Cache;
 const OutMessage = std.zig.Server.Message;
 const InMessage = std.zig.Client.Message;
@@ -15,6 +11,14 @@ const Writer = std.Io.Writer;
 
 in: *Reader,
 out: *Writer,
+
+/// The ABI version of the build system protocol. Will be bumped whenever a
+/// backwards incompatible changes to the protocol is made.
+///
+/// Does not apply to the internal compiler protocol or test runner.
+///
+/// See `version` in `Message.Handshake`.
+pub const build_system_version: u32 = 1;
 
 pub const Message = struct {
     pub const Header = extern struct {
@@ -70,7 +74,60 @@ pub const Message = struct {
         /// Body is a TimeReport.
         time_report,
 
+        /// The first message sent by the server over the build system protocol.
+        /// Body is a `Handshake`.
+        /// This message only applies to the build system protocol.
+        bsp_handshake = 0x80000000,
+        /// Notifies that a new configuration file is available.
+        /// Body is a cwd relative path to the configuration file.
+        /// This message only applies to the build system protocol.
+        bsp_configuration,
+        /// Does not have a body.
+        /// This message only applies to the build system protocol.
+        bsp_build_started,
+        /// Does not have a body.
+        /// This message only applies to the build system protocol.
+        bsp_build_completed,
+        /// Body is a `Configuration.Step.Index`.
+        /// This message only applies to the build system protocol.
+        bsp_step_started,
+        /// Body is a `BuildStepCompleted`.
+        /// This message only applies to the build system protocol.
+        bsp_step_completed,
+
         _,
+    };
+
+    /// Trailing:
+    /// * base_paths: BasePaths,
+    pub const Handshake = extern struct {
+        /// See `build_system_version`.
+        version: u32,
+        flags: Flags,
+
+        pub const Flags = packed struct(u32) {
+            file_system_watch_supported: bool,
+            _: u31 = 0,
+        };
+    };
+
+    /// Trailing:
+    /// * error_bundle: ErrorBundle,
+    pub const BuildStepCompleted = extern struct {
+        step_index: std.Build.Configuration.Step.Index,
+        status: Status,
+        error_bundle: ErrorBundle,
+        // TODO result_error_msgs
+        // TODO result_stderr
+        // TODO result_peak_rss
+        // TODO result_duration_ns
+
+        pub const Status = enum(u32) {
+            success,
+            failure,
+            skipped,
+            skipped_oom,
+        };
     };
 
     pub const PathPrefix = enum(u8) {
@@ -140,21 +197,6 @@ pub const Message = struct {
     };
 };
 
-pub const Options = struct {
-    in: *Reader,
-    out: *Writer,
-    zig_version: []const u8,
-};
-
-pub fn init(options: Options) !Server {
-    var s: Server = .{
-        .in = options.in,
-        .out = options.out,
-    };
-    try s.serveStringMessage(.zig_version, options.zig_version);
-    return s;
-}
-
 pub fn receiveMessage(s: *Server) !InMessage.Header {
     return s.in.takeStruct(InMessage.Header, .little);
 }
@@ -181,6 +223,11 @@ pub fn serveStringMessage(s: *Server, tag: OutMessage.Tag, msg: []const u8) !voi
 /// Don't forget to flush!
 pub fn serveMessageHeader(s: *const Server, header: OutMessage.Header) !void {
     try s.out.writeStruct(header, .little);
+}
+
+pub fn serveBodylessMessage(s: *const Server, tag: OutMessage.Tag) Writer.Error!void {
+    try s.serveMessageHeader(.{ .tag = tag, .bytes_len = 0 });
+    try s.out.flush();
 }
 
 pub fn serveU32Message(s: *const Server, tag: OutMessage.Tag, int: u32) !void {

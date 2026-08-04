@@ -718,7 +718,7 @@ pub inline fn readSliceEndian(
     endian: std.builtin.Endian,
 ) Error!void {
     try readSliceAll(r, @ptrCast(buffer));
-    if (native_endian != endian) for (buffer) |*elem| std.mem.byteSwapAllFields(Elem, elem);
+    if (native_endian != endian) std.mem.byteSwapAllElements(Elem, buffer);
 }
 
 pub const ReadAllocError = Error || Allocator.Error;
@@ -734,8 +734,7 @@ pub inline fn readSliceEndianAlloc(
 ) ReadAllocError![]Elem {
     const dest = try allocator.alloc(Elem, len);
     errdefer allocator.free(dest);
-    try readSliceAll(r, @ptrCast(dest));
-    if (native_endian != endian) for (dest) |*elem| std.mem.byteSwapAllFields(Elem, elem);
+    try r.readSliceEndian(Elem, dest, endian);
     return dest;
 }
 
@@ -1227,8 +1226,7 @@ pub inline fn takeStruct(r: *Reader, comptime T: type, endian: std.builtin.Endia
             .auto => @compileError("ill-defined memory layout"),
             .@"extern" => {
                 var res: T = undefined;
-                try r.readSliceAll(std.mem.asBytes(&res));
-                if (native_endian != endian) std.mem.byteSwapAllFields(T, &res);
+                try r.readSliceEndian(T, (&res)[0..1], endian);
                 return res;
             },
             .@"packed" => {

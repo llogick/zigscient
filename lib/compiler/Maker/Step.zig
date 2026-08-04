@@ -561,24 +561,26 @@ fn zigProcessUpdate(step_index: Configuration.Step.Index, maker: *Maker, zp: *Zi
     var result: ?Path = null;
     var eos_err: error{EndOfStream}!void = {};
 
-    const stdout = zp.multi_reader.fileReader(0);
+    var client: std.zig.Client = .{
+        .in = zp.multi_reader.reader(0),
+        .out = undefined,
+    };
 
     while (true) {
-        const Header = std.zig.Server.Message.Header;
-        const header = stdout.interface.takeStruct(Header, .little) catch |err| switch (err) {
-            error.EndOfStream => break,
-            error.ReadFailed => return stdout.err.?,
-        };
-        const body = stdout.interface.take(header.bytes_len) catch |err| switch (err) {
+        const header = client.receiveMessageWithMultiReader(&zp.multi_reader, .none) catch |err| switch (err) {
+            error.Timeout => unreachable,
             error.EndOfStream => |e| {
+                if (client.in.bufferedLen() == 0) break;
                 // Better to report the crash with stderr below, but we set
                 // this in case the child exits successfully while violating
                 // this protocol.
                 eos_err = e;
                 break;
             },
-            error.ReadFailed => return stdout.err.?,
+            else => |e| return e,
         };
+        const body = client.in.take(header.bytes_len) catch unreachable;
+
         switch (header.tag) {
             .zig_version => {
                 if (!maker.dump_compile_step_info) if (!std.mem.eql(u8, builtin.zig_version_string, body)) {

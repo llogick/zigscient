@@ -214,11 +214,11 @@ fn cmdObjCopy(arena: Allocator, io: Io, args: []const []const u8) !void {
     if (listen) {
         var stdin_reader = Io.File.stdin().reader(io, &stdin_buffer);
         var stdout_writer = Io.File.stdout().writer(io, &stdout_buffer);
-        var server = try Server.init(.{
+        var server: Server = .{
             .in = &stdin_reader.interface,
             .out = &stdout_writer.interface,
-            .zig_version = builtin.zig_version_string,
-        });
+        };
+        try server.serveStringMessage(.zig_version, builtin.zig_version_string);
 
         var seen_update = false;
         while (true) {
