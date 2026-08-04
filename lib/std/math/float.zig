@@ -112,17 +112,17 @@ pub fn FloatRepr(comptime Float: type) type {
             /// This currently truncates denormal values, which needs to be fixed before this can be used to
             /// produce a rounded value.
             pub fn reconstruct(normalized: Normalized, sign: std.math.Sign) Float {
-                if (normalized.exponent > BiasedExponent.max_normal.unbias()) return @bitCast(Repr{
+                if (normalized.exponent > comptime BiasedExponent.max_normal.unbias()) return @bitCast(Repr{
                     .mantissa = 0,
                     .exponent = .infinite,
                     .sign = sign,
                 });
                 const mantissa = @as(Mantissa, 1 << fractional_bits) | normalized.fraction;
-                if (normalized.exponent < BiasedExponent.min_normal.unbias()) return @bitCast(Repr{
+                if (normalized.exponent < comptime BiasedExponent.min_normal.unbias()) return @bitCast(Repr{
                     .mantissa = @truncate(std.math.shr(
                         Mantissa,
                         mantissa,
-                        BiasedExponent.min_normal.unbias() - normalized.exponent,
+                        (comptime BiasedExponent.min_normal.unbias()) - normalized.exponent,
                     )),
                     .exponent = .denormal,
                     .sign = sign,
