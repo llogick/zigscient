@@ -1486,7 +1486,6 @@ fn cmdFetch(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
 
     const color: Color = Color.settingFromEnvironment(environ_map);
     var opt_path_or_url: ?[]const u8 = null;
-    var override_global_cache_dir: ?[]const u8 = EnvVar.ZIG_GLOBAL_CACHE_DIR.get(environ_map);
     var override_local_cache_dir: ?[]const u8 = EnvVar.ZIG_LOCAL_CACHE_DIR.get(environ_map);
     var override_pkg_dir: ?[]const u8 = EnvVar.ZIG_LOCAL_PKG_DIR.get(environ_map);
     var debug_hash: bool = false;
@@ -1502,8 +1501,6 @@ fn cmdFetch(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
             if (mem.eql(u8, arg, "-h") or mem.eql(u8, arg, "--help")) {
                 try Io.File.stdout().writeStreamingAll(io, usage_fetch);
                 return process.cleanExit(io);
-            } else if (mem.eql(u8, arg, "--global-cache-dir")) {
-                override_global_cache_dir = nextArgOrFatal(args, &arg_i);
             } else if (mem.eql(u8, arg, "--cache-dir")) {
                 override_local_cache_dir = nextArgOrFatal(args, &arg_i);
             } else if (mem.eql(u8, arg, "--pkg-dir")) {
@@ -1783,7 +1780,6 @@ const usage_fetch =
     \\
     \\Options:
     \\  -h, --help                    Print this help and exit
-    \\  --global-cache-dir [path]     Override path to global Zig cache directory
     \\  --cache-dir [path]            Override path to local cache directory
     \\  --pkg-dir [path]              Override path to local package directory
     \\  --debug-hash                  Print verbose hash information to stdout
