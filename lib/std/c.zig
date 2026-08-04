@@ -2821,13 +2821,14 @@ pub const SIG = switch (native_os) {
         }
 
         pub const POLL: SIG = .IO;
+        pub const IOT: SIG = .ABRT;
+        pub const CLD: SIG = .CHLD;
 
         HUP = 1,
         INT = 2,
         QUIT = 3,
         ILL = 4,
         TRAP = 5,
-        IOT = 6,
         ABRT = 6,
         EMT = 7,
         FPE = 8,
@@ -2840,7 +2841,6 @@ pub const SIG = switch (native_os) {
         TERM = 15,
         USR1 = 16,
         USR2 = 17,
-        CLD = 18,
         CHLD = 18,
         PWR = 19,
         WINCH = 20,
