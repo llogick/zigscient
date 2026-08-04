@@ -1887,8 +1887,8 @@ test extension {
 /// - "hello/world/lib"        ⇒ "lib"
 pub fn stem(path: []const u8) []const u8 {
     const filename = basename(path);
-    const index = mem.findScalarLast(u8, filename, '.') orelse return filename[0..];
-    if (index == 0) return path;
+    const index = mem.findScalarLast(u8, filename, '.') orelse return filename;
+    if (index == 0) return filename;
     return filename[0..index];
 }
 
@@ -1904,8 +1904,14 @@ test stem {
     try testStem("hello...", "hello..");
     try testStem("hello.", "hello");
     try testStem("/hello.", "hello");
+    try testStem("hello/world/.gitignore", ".gitignore");
+    try testStem("/.gitignore", ".gitignore");
     try testStem(".gitignore", ".gitignore");
+    try testStem(".gitignore/", ".gitignore");
+    try testStem("hello/world/.image.png", ".image");
+    try testStem("/.image.png", ".image");
     try testStem(".image.png", ".image");
+    try testStem(".image.png/", ".image");
     try testStem("file.ext", "file");
     try testStem("file.ext.", "file.ext");
     try testStem("a.b.c", "a.b");
