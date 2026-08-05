@@ -1023,8 +1023,8 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
         }
 
         if (is_exe_or_dyn_lib and target.os.tag == .netbsd) {
-            // Add options to produce shared objects with only 2 PT_LOAD segments.
-            // NetBSD expects 2 PT_LOAD segments in a shared object, otherwise
+            // Add options to produce shared objects with only 2 PT.LOAD segments.
+            // NetBSD expects 2 PT.LOAD segments in a shared object, otherwise
             // ld.elf_so fails loading dynamic libraries with "not found" error.
             // See https://github.com/ziglang/zig/issues/9109 .
             try argv.append("--no-rosegment");

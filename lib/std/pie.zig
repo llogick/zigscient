@@ -293,7 +293,7 @@ inline fn getDynamicSymbol() [*]const elf.Dyn {
     };
 }
 
-pub fn relocate(phdrs: []const elf.Phdr) void {
+pub fn relocate(phdrs: []const elf.ElfN.Phdr) void {
     @setRuntimeSafety(false);
     @disableInstrumentation();
 
@@ -303,8 +303,8 @@ pub fn relocate(phdrs: []const elf.Phdr) void {
     // the theoretical load addresses for the `_DYNAMIC` symbol.
     const base_addr = base: {
         for (phdrs) |*phdr| {
-            if (phdr.p_type != elf.PT_DYNAMIC) continue;
-            break :base @intFromPtr(dynv) - phdr.p_vaddr;
+            if (phdr.type != .DYNAMIC) continue;
+            break :base @intFromPtr(dynv) - phdr.vaddr;
         }
         // This is not supposed to happen for well-formed binaries.
         @trap();

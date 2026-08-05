@@ -589,7 +589,7 @@ fn posixCallMainAndExit(argc_argv_ptr: [*]usize) callconv(.c) noreturn {
                 else => continue,
             }
         }
-        break :init @as([*]elf.Phdr, @ptrFromInt(at_phdr))[0..at_phnum];
+        break :init @as([*]elf.ElfN.Phdr, @ptrFromInt(at_phdr))[0..at_phnum];
     };
 
     // Apply the initial relocations as early as possible in the startup process. We cannot
@@ -621,7 +621,7 @@ fn posixCallMainAndExit(argc_argv_ptr: [*]usize) callconv(.c) noreturn {
             std.os.linux.tls.initStatic(phdrs);
         }
 
-        // The way Linux executables represent stack size is via the PT_GNU_STACK
+        // The way Linux executables represent stack size is via the PT.GNU_STACK
         // program header. However the kernel does not recognize it; it always gives 8 MiB.
         // Here we look for the stack size in our program headers and use setrlimit
         // to ask for more stack space.
@@ -645,19 +645,19 @@ fn posixCallMainAndExit(argc_argv_ptr: [*]usize) callconv(.c) noreturn {
     std.process.exit(callMainWithArgs(argc, argv, envp));
 }
 
-fn expandStackSize(phdrs: []elf.Phdr) void {
+fn expandStackSize(phdrs: []elf.ElfN.Phdr) void {
     @disableInstrumentation();
     for (phdrs) |*phdr| {
-        switch (phdr.p_type) {
-            elf.PT_GNU_STACK => {
-                if (phdr.p_memsz == 0) break;
-                assert(phdr.p_memsz % std.heap.page_size_min == 0);
+        switch (phdr.type) {
+            .GNU_STACK => {
+                if (phdr.memsz == 0) break;
+                assert(phdr.memsz % std.heap.page_size_min == 0);
 
                 // Silently fail if we are unable to get limits.
                 const limits = std.posix.getrlimit(.STACK) catch break;
 
                 // Clamp to limits.max .
-                const wanted_stack_size = @min(phdr.p_memsz, limits.max);
+                const wanted_stack_size = @min(phdr.memsz, limits.max);
 
                 if (wanted_stack_size > limits.cur) {
                     std.posix.setrlimit(.STACK, .{
@@ -702,7 +702,7 @@ fn main(c_argc: c_int, c_argv: [*][*:0]c_char, c_envp: [*:null]?[*:0]c_char) cal
         .linux => {
             const at_phdr = std.c.getauxval(elf.AT_PHDR);
             const at_phnum = std.c.getauxval(elf.AT_PHNUM);
-            const phdrs = (@as([*]elf.Phdr, @ptrFromInt(at_phdr)))[0..at_phnum];
+            const phdrs = (@as([*]elf.ElfN.Phdr, @ptrFromInt(at_phdr)))[0..at_phnum];
             expandStackSize(phdrs);
         },
         .windows => {

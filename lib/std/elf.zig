@@ -290,47 +290,6 @@ pub const VER_FLG_BASE = 1;
 /// Weak version identifier
 pub const VER_FLG_WEAK = 2;
 
-/// Deprecated, use `@intFromEnum(std.elf.PT.NULL)`
-pub const PT_NULL = @backingInt(std.elf.PT.NULL);
-/// Deprecated, use `@intFromEnum(std.elf.PT.LOAD)`
-pub const PT_LOAD = @backingInt(std.elf.PT.LOAD);
-/// Deprecated, use `@intFromEnum(std.elf.PT.DYNAMIC)`
-pub const PT_DYNAMIC = @backingInt(std.elf.PT.DYNAMIC);
-/// Deprecated, use `@intFromEnum(std.elf.PT.INTERP)`
-pub const PT_INTERP = @backingInt(std.elf.PT.INTERP);
-/// Deprecated, use `@intFromEnum(std.elf.PT.NOTE)`
-pub const PT_NOTE = @backingInt(std.elf.PT.NOTE);
-/// Deprecated, use `@intFromEnum(std.elf.PT.SHLIB)`
-pub const PT_SHLIB = @backingInt(std.elf.PT.SHLIB);
-/// Deprecated, use `@intFromEnum(std.elf.PT.PHDR)`
-pub const PT_PHDR = @backingInt(std.elf.PT.PHDR);
-/// Deprecated, use `@intFromEnum(std.elf.PT.TLS)`
-pub const PT_TLS = @backingInt(std.elf.PT.TLS);
-/// Deprecated, use `std.elf.PT.NUM`.
-pub const PT_NUM = PT.NUM;
-/// Deprecated, use `@intFromEnum(std.elf.PT.LOOS)`
-pub const PT_LOOS = @backingInt(std.elf.PT.LOOS);
-/// Deprecated, use `@intFromEnum(std.elf.PT.GNU_EH_FRAME)`
-pub const PT_GNU_EH_FRAME = @backingInt(std.elf.PT.GNU_EH_FRAME);
-/// Deprecated, use `@intFromEnum(std.elf.PT.GNU_STACK)`
-pub const PT_GNU_STACK = @backingInt(std.elf.PT.GNU_STACK);
-/// Deprecated, use `@intFromEnum(std.elf.PT.GNU_RELRO)`
-pub const PT_GNU_RELRO = @backingInt(std.elf.PT.GNU_RELRO);
-/// Deprecated, use `@intFromEnum(std.elf.PT.LOSUNW)`
-pub const PT_LOSUNW = @backingInt(std.elf.PT.LOSUNW);
-/// Deprecated, use `@intFromEnum(std.elf.PT.SUNWBSS)`
-pub const PT_SUNWBSS = @backingInt(std.elf.PT.SUNWBSS);
-/// Deprecated, use `@intFromEnum(std.elf.PT.SUNWSTACK)`
-pub const PT_SUNWSTACK = @backingInt(std.elf.PT.SUNWSTACK);
-/// Deprecated, use `@intFromEnum(std.elf.PT.HISUNW)`
-pub const PT_HISUNW = @backingInt(std.elf.PT.HISUNW);
-/// Deprecated, use `@intFromEnum(std.elf.PT.HIOS)`
-pub const PT_HIOS = @backingInt(std.elf.PT.HIOS);
-/// Deprecated, use `@intFromEnum(std.elf.PT.LOPROC)`
-pub const PT_LOPROC = @backingInt(std.elf.PT.LOPROC);
-/// Deprecated, use `@intFromEnum(std.elf.PT.HIPROC)`
-pub const PT_HIPROC = @backingInt(std.elf.PT.HIPROC);
-
 pub const PN_XNUM = 0xffff;
 
 /// Deprecated, use `@intFromEnum(std.elf.SHT.NULL)`
@@ -848,11 +807,11 @@ pub const ProgramHeaderIterator = struct {
     file_reader: *Io.File.Reader,
     index: usize = 0,
 
-    pub fn next(it: *ProgramHeaderIterator) !?Elf64_Phdr {
+    pub fn next(it: *ProgramHeaderIterator) !?Elf64.Phdr {
         if (it.index >= it.phnum) return null;
         defer it.index += 1;
 
-        const size: u64 = if (it.is_64) @sizeOf(Elf64_Phdr) else @sizeOf(Elf32_Phdr);
+        const size: u64 = if (it.is_64) @sizeOf(Elf64.Phdr) else @sizeOf(Elf32.Phdr);
         const offset = it.phoff + size * it.index;
         try it.file_reader.seekTo(offset);
 
@@ -869,11 +828,11 @@ pub const ProgramHeaderBufferIterator = struct {
     buf: []const u8,
     index: usize = 0,
 
-    pub fn next(it: *ProgramHeaderBufferIterator) !?Elf64_Phdr {
+    pub fn next(it: *ProgramHeaderBufferIterator) !?Elf64.Phdr {
         if (it.index >= it.phnum) return null;
         defer it.index += 1;
 
-        const size: usize = if (it.is_64) @sizeOf(Elf64_Phdr) else @sizeOf(Elf32_Phdr);
+        const size: usize = if (it.is_64) @sizeOf(Elf64.Phdr) else @sizeOf(Elf32.Phdr);
         const offset = @as(usize, @intCast(it.phoff)) + size * it.index;
         var reader = Io.Reader.fixed(it.buf[offset..]);
 
@@ -881,22 +840,22 @@ pub const ProgramHeaderBufferIterator = struct {
     }
 };
 
-pub fn takeProgramHeader(reader: *Io.Reader, is_64: bool, endian: Endian) !Elf64_Phdr {
+pub fn takeProgramHeader(reader: *Io.Reader, is_64: bool, endian: Endian) !Elf64.Phdr {
     if (is_64) {
-        const phdr = try reader.takeStruct(Elf64_Phdr, endian);
+        const phdr = try reader.takeStruct(Elf64.Phdr, endian);
         return phdr;
     }
 
-    const phdr = try reader.takeStruct(Elf32_Phdr, endian);
+    const phdr = try reader.takeStruct(Elf32.Phdr, endian);
     return .{
-        .p_type = phdr.p_type,
-        .p_offset = phdr.p_offset,
-        .p_vaddr = phdr.p_vaddr,
-        .p_paddr = phdr.p_paddr,
-        .p_filesz = phdr.p_filesz,
-        .p_memsz = phdr.p_memsz,
-        .p_flags = phdr.p_flags,
-        .p_align = phdr.p_align,
+        .type = phdr.type,
+        .offset = phdr.offset,
+        .vaddr = phdr.vaddr,
+        .paddr = phdr.paddr,
+        .filesz = phdr.filesz,
+        .memsz = phdr.memsz,
+        .flags = phdr.flags,
+        .@"align" = phdr.@"align",
     };
 }
 
@@ -1276,28 +1235,6 @@ pub const Elf64_Ehdr = extern struct {
     e_shnum: Half,
     e_shstrndx: Half,
 };
-/// Deprecated, use `std.elf.Elf32.Phdr`
-pub const Elf32_Phdr = extern struct {
-    p_type: Word,
-    p_offset: Elf32_Off,
-    p_vaddr: Elf32_Addr,
-    p_paddr: Elf32_Addr,
-    p_filesz: Word,
-    p_memsz: Word,
-    p_flags: Word,
-    p_align: Word,
-};
-/// Deprecated, use `std.elf.Elf64.Phdr`
-pub const Elf64_Phdr = extern struct {
-    p_type: Word,
-    p_flags: Word,
-    p_offset: Elf64_Off,
-    p_vaddr: Elf64_Addr,
-    p_paddr: Elf64_Addr,
-    p_filesz: Elf64_Xword,
-    p_memsz: Elf64_Xword,
-    p_align: Elf64_Xword,
-};
 /// Deprecated, use `std.elf.Elf32.Shdr`
 pub const Elf32_Shdr = extern struct {
     sh_name: Word,
@@ -1566,12 +1503,6 @@ pub const Auxv = switch (@sizeOf(usize)) {
 pub const Ehdr = switch (@sizeOf(usize)) {
     4 => Elf32_Ehdr,
     8 => Elf64_Ehdr,
-    else => @compileError("expected pointer size of 32 or 64"),
-};
-/// Deprecated, use `std.elf.ElfN.Phdr`
-pub const Phdr = switch (@sizeOf(usize)) {
-    4 => Elf32_Phdr,
-    8 => Elf64_Phdr,
     else => @compileError("expected pointer size of 32 or 64"),
 };
 pub const Dyn = switch (@sizeOf(usize)) {

@@ -75,7 +75,7 @@ fn iter_fn(info: *dl_phdr_info, size: usize, counter: *usize) IterFnError!void {
     // Count how many libraries are loaded
     counter.* += @as(usize, 1);
 
-    // The image should contain at least a PT_LOAD segment
+    // The image should contain at least a PT.LOAD segment
     if (info.phnum < 1) return error.MissingPtLoadSegment;
 
     // Quick & dirty validation of the phdr pointers, make sure we're not

@@ -435,13 +435,13 @@ const BinaryElfOutput = struct {
 
         var program_headers = elf_hdr.iterateProgramHeaders(in);
         while (try program_headers.next()) |phdr| {
-            if (phdr.p_type == elf.PT_LOAD) {
+            if (phdr.type == .LOAD) {
                 const newSegment = try allocator.create(BinaryElfSegment);
 
-                newSegment.physicalAddress = phdr.p_paddr;
-                newSegment.virtualAddress = phdr.p_vaddr;
-                newSegment.fileSize = @intCast(phdr.p_filesz);
-                newSegment.elfOffset = phdr.p_offset;
+                newSegment.physicalAddress = phdr.paddr;
+                newSegment.virtualAddress = phdr.vaddr;
+                newSegment.fileSize = @intCast(phdr.filesz);
+                newSegment.elfOffset = phdr.offset;
                 newSegment.binaryOffset = 0;
                 newSegment.firstSection = null;
 
@@ -495,8 +495,8 @@ const BinaryElfOutput = struct {
         return self;
     }
 
-    fn sectionWithinSegment(section: *BinaryElfSection, segment: elf.Elf64_Phdr) bool {
-        return segment.p_offset <= section.elfOffset and (segment.p_offset + segment.p_filesz) >= (section.elfOffset + section.fileSize);
+    fn sectionWithinSegment(section: *BinaryElfSection, segment: elf.Elf64.Phdr) bool {
+        return segment.offset <= section.elfOffset and (segment.offset + segment.filesz) >= (section.elfOffset + section.fileSize);
     }
 
     fn sectionValidForOutput(shdr: anytype) bool {

@@ -101,7 +101,7 @@ each_lib_rpath: ?bool = null,
 /// This option overrides the CLI argument passed to `zig build`.
 build_id: ?std.zig.BuildId = null,
 
-/// Create a .eh_frame_hdr section and a PT_GNU_EH_FRAME segment in the ELF
+/// Create a .eh_frame_hdr section and a PT.GNU_EH_FRAME segment in the ELF
 /// file.
 link_eh_frame_hdr: bool = false,
 link_emit_relocs: bool = false,
