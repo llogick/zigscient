@@ -455,6 +455,23 @@ const module_test_targets = blk: {
                 .abi = .none,
             },
         },
+        .{
+            .target = .{
+                .cpu_arch = .loongarch32,
+                .os_tag = .linux,
+                .abi = .gnu,
+            },
+            .link_libc = true,
+        },
+        .{
+            .target = .{
+                .cpu_arch = .loongarch32,
+                .os_tag = .linux,
+                .abi = .gnusf,
+            },
+            .link_libc = true,
+            .extra_target = true,
+        },
 
         .{
             .target = .{

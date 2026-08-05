@@ -6677,6 +6677,8 @@ pub fn addCCArgs(
 
     // Only compiled files support these flags.
     switch (ext) {
+        .assembly,
+        .assembly_with_cpp,
         .c,
         .h,
         .cpp,
