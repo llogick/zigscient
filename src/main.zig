@@ -368,7 +368,6 @@ pub fn mainArgs(
                 .prepend_global_cache_path = true,
                 .prepend_zig_exe_path = true,
                 .prepend_seed = true,
-                .debug_env_var = .ZIG_DEBUG_MAKER,
                 .release_mode = .safe,
             });
         },
@@ -5183,7 +5182,6 @@ const JitCmdOptions = struct {
     capture: ?*[]u8 = null,
     /// Send error bundles via std.zig.Server over stdout
     server: bool = false,
-    debug_env_var: EnvVar = .ZIG_DEBUG_CMD,
     release_mode: std.lang.Optimize = .fast,
 };
 
@@ -5236,7 +5234,7 @@ fn jitCmdInner(
     const self_exe_path = process.executablePathAlloc(io, arena) catch |err|
         fatal("unable to find self exe path: {t}", .{err});
 
-    const optimize_mode: std.lang.Optimize = if (options.debug_env_var.isSet(environ_map))
+    const optimize_mode: std.lang.Optimize = if (EnvVar.ZIG_DEBUG_CMD.isSet(environ_map))
         .debug
     else
         options.release_mode;

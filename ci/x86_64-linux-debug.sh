@@ -44,7 +44,7 @@ ninja install
 
 # Must be done after zig cc is finished.
 export ZIG_LIB_DIR="$PWD/../lib"
-export ZIG_DEBUG_MAKER=1
+export ZIG_DEBUG_CMD=1
 
 # simultaneously test building self-hosted without LLVM and with 32-bit arm
 stage3-debug/bin/zig build \

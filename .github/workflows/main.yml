@@ -29,4 +29,4 @@ jobs:
           version: master
 
       - name: Run zig build check test
-        run: ZIG_DEBUG_MAKER=TRUE ZIG_LIB_DIR=./lib zig build check test --summary all
+        run: ZIG_DEBUG_CMD=1 ZIG_LIB_DIR=./lib zig build check test --summary all

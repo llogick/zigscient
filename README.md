@@ -39,8 +39,8 @@
 ## [Settings](https://github.com/llogick/zigscient/blob/dev/src/lsp_server/settings.json)
 
 ## Building
-```
-ZIG_DEBUG_MAKER=TRUE ZIG_LIB_DIR=./lib zig build -Doptimize=ReleaseFast
+```bash
+ZIG_DEBUG_CMD=1 ZIG_LIB_DIR=./lib zig build -Doptimize=ReleaseFast
 ```
 
 > [!NOTE]  
