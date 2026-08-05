@@ -43,10 +43,10 @@ pub fn print(sc: *const ScannedConfig, w: *Writer) Writer.Error!void {
 
     {
         var tf = try s.beginTupleField("path_deps", .{});
-        for (c.path_deps_base, c.path_deps_sub) |base, sub| {
+        for (c.path_deps) |path_dep| {
             var sf = try tf.beginStructField(.{});
-            try sf.field("base", @tagName(base), .{});
-            try sf.field("sub", sub.slice(c), .{});
+            try sf.field("base", @tagName(path_dep.flags.base), .{});
+            try sf.field("sub", path_dep.sub.slice(c), .{});
             try sf.end();
         }
         try tf.end();
