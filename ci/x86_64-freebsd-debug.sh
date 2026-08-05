@@ -46,13 +46,7 @@ export ZIG_LIB_DIR="$PWD/../lib"
 stage3-debug/bin/zig build test docs \
   --maxrss ${ZSF_MAX_RSS:-0} \
   -Dstatic-llvm \
-  -Dskip-spirv \
-  -Dskip-wasm \
-  -Dskip-linux \
-  -Dskip-netbsd \
-  -Dskip-openbsd \
-  -Dskip-windows \
-  -Dskip-darwin \
+  -Dskip-non-native \
   --search-prefix "$PREFIX" \
   --test-timeout 2m
 
