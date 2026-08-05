@@ -175,6 +175,8 @@ pub const GeneralNameTag = enum(u5) {
     _,
 };
 
+const net = @import("../Io/net.zig");
+
 pub const Parsed = struct {
     certificate: Certificate,
     issuer_slice: Slice,
@@ -315,6 +317,7 @@ pub const Parsed = struct {
         // what to check. Otherwise, only the common name is checked.
         const subject_alt_name = parsed_subject.subjectAltName();
         if (subject_alt_name.len == 0) {
+            // note: checkIpAddress is intentionally omitted, as it is not permitted in the common name field anyway.
             if (checkHostName(host_name, parsed_subject.commonName())) {
                 return;
             } else {
@@ -331,6 +334,10 @@ pub const Parsed = struct {
                 .dNSName => {
                     const dns_name = subject_alt_name[general_name.slice.start..general_name.slice.end];
                     if (checkHostName(host_name, dns_name)) return;
+                },
+                .iPAddress => {
+                    const ip_address = subject_alt_name[general_name.slice.start..general_name.slice.end];
+                    if (checkIpAddress(host_name, ip_address)) return;
                 },
                 else => {},
             }
@@ -376,6 +383,22 @@ pub const Parsed = struct {
 
         return false;
     }
+
+    // Check IP address according to RFC 5280 §4.2.1.6.
+    fn checkIpAddress(host_name: []const u8, ip_address: []const u8) bool {
+        switch (ip_address.len) {
+            4 => {
+                // port is irrelevant to SAN matching, so 0 is a harmless placeholder.
+                const address = net.Ip4Address.parse(host_name, 0) catch return false;
+                return mem.eql(u8, &address.bytes, ip_address);
+            },
+            16 => {
+                const address = net.Ip6Address.parse(host_name, 0) catch return false;
+                return mem.eql(u8, &address.bytes, ip_address);
+            },
+            else => return false, // a malformed certificate, neither 4 nor 16 octets
+        }
+    }
 };
 
 test "Parsed.checkHostName RFC 6125 compliance" {
@@ -415,6 +438,39 @@ test "Parsed.checkHostName RFC 6125 compliance" {
     try expectEqual(false, Parsed.checkHostName("", "*.example.com"));
     try expectEqual(false, Parsed.checkHostName("example.com", "*"));
     try expectEqual(false, Parsed.checkHostName("example.com", "*."));
+}
+
+test "Parsed.checkIpAddress RFC 5280 4.2.1.6 compliance" {
+    const expectEqual = std.testing.expectEqual;
+
+    // Exact match positive tests
+    try expectEqual(true, Parsed.checkIpAddress("127.0.0.1", &[4]u8{ 127, 0, 0, 1 }));
+    try expectEqual(true, Parsed.checkIpAddress("0:0:0:0:0:0:0:1", &[16]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 }));
+
+    // Mismatches should not pass
+    try expectEqual(false, Parsed.checkIpAddress("1.2.3.4", &[4]u8{ 5, 6, 7, 8 }));
+    try expectEqual(false, Parsed.checkIpAddress("0:0:0:0:0:0:0:1", &[16]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2 }));
+
+    // IPv6: the hostname may be in short-form and should match the exact 16 octets specified in the SAN
+    try expectEqual(true, Parsed.checkIpAddress("::1", &[16]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 }));
+
+    // IPv6: do not match when using DNS64 / NAT64 (i.e. 64:ff9b::/96)
+    // the RFC requires exact octet matches, so this is likely surprising and wrong. The decision here is to fail-safe out of an abundance of caution.
+    // The test assertions are included not to harden on this behavior, but to show that this use-case was considered.
+    // This check may become more lenient in the future if a valid use-case is found.
+    try expectEqual(false, Parsed.checkIpAddress("64:ff9b::192.0.2.10", &[4]u8{ 192, 0, 2, 10 }));
+    try expectEqual(false, Parsed.checkIpAddress("::ffff:127.0.0.1", &[4]u8{ 127, 0, 0, 1 }));
+
+    // Malformed SAN lengths (not 4 or 16 octets) never match.
+    try expectEqual(false, Parsed.checkIpAddress("127.0.0", &[_]u8{ 127, 0, 0 }));
+    try expectEqual(false, Parsed.checkIpAddress("127.0.0.1.0", &[_]u8{ 127, 0, 0, 1, 0 }));
+
+    // A non-parseable host_name never matches.
+    try expectEqual(false, Parsed.checkIpAddress("not-an-ip", &[4]u8{ 127, 0, 0, 1 }));
+
+    // Edge cases - empty strings
+    try expectEqual(false, Parsed.checkIpAddress("", ""));
+    try expectEqual(false, Parsed.checkIpAddress("127.0.0.1", ""));
 }
 
 pub const ParseError = der.Element.ParseError || ParseVersionError || ParseTimeError || ParseEnumError || ParseBitStringError;
