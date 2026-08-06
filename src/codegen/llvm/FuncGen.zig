@@ -2950,12 +2950,11 @@ fn airIsErr(
         if (operand_is_ptr and operand_ty.isVolatilePtr(zcu)) .@"volatile" else .normal;
 
     if (err_union_ty.errorUnionSet(zcu).errorSetIsEmpty(zcu)) {
-        const val: Builder.Constant = switch (cond) {
+        return switch (cond) {
             .eq => .true, // 0 == 0
             .ne => .false, // 0 != 0
             else => unreachable,
         };
-        return val.toValue();
     }
 
     if (operand_is_ptr) self.maybeMarkAllowZeroAccess(operand_ty.ptrInfo(zcu));
@@ -6666,7 +6665,10 @@ fn load(
     const llvm_value_ty = try o.lowerType(load_ty, .as_value);
 
     if (llvm_access_ty != llvm_value_ty) {
-        assert(load_ty.isAbiInt(zcu));
+        const signedness: std.lang.Signedness = switch (load_ty.toIntern()) {
+            .bool_type => .unsigned,
+            else => load_ty.intInfo(zcu).signedness,
+        };
         // `load_ty` is an integer type with padding bits. In theory, we shouldn't need any special
         // handling for these, as LLVM's documented semantics are a valid implementation of Zig's
         // semantics. However:
@@ -6685,7 +6687,7 @@ fn load(
         // implemented, but until then, do a normal trunc for packed types.
         return fg.wip.cast(switch (load_ty.zigTypeTag(zcu)) {
             .@"struct", .@"union" => .trunc,
-            else => switch (load_ty.intInfo(zcu).signedness) {
+            else => switch (signedness) {
                 .unsigned => .@"trunc nuw",
                 .signed => .@"trunc nsw",
             },
@@ -6740,10 +6742,13 @@ fn store(
     const llvm_value_ty = try o.lowerType(elem_ty, .as_value);
 
     if (llvm_access_ty != llvm_value_ty) {
-        assert(elem_ty.isAbiInt(zcu));
+        const signedness: std.lang.Signedness = switch (elem_ty.toIntern()) {
+            .bool_type => .unsigned,
+            else => elem_ty.intInfo(zcu).signedness,
+        };
         // `elem_ty` is an integer type with padding bits, so we need to handle it specially---see
         // the corresponding comment in `FuncGen.load` for more details.
-        const extended = try fg.wip.cast(switch (elem_ty.intInfo(zcu).signedness) {
+        const extended = try fg.wip.cast(switch (signedness) {
             .unsigned => .zext,
             .signed => .sext,
         }, elem, llvm_access_ty, "");

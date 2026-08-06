@@ -116,6 +116,26 @@ pub fn addCases(cases: *tests.LlvmIrContext) void {
         "null_pointer_is_valid",
         "store i16 42, ptr",
     }, .{});
+
+    cases.addMatches("load and store bool",
+        \\export fn foo(a: *bool, b: *align(2) bool) void {
+        \\    const tmp = a.*;
+        \\    a.* = b.*;
+        \\    b.* = tmp;
+        \\}
+    , &.{
+        // TODO: this should all be one multiline string literal, but `-femit-llvm-ir` is currently
+        // emitting CRLF on Windows, which is a pain to handle here. In future that option will emit
+        // unoptimized LLVM IR emitted directly from Zig, so that bug will go away.
+        "  %3 = load i8, ptr %0, align 1",
+        "  %4 = trunc nuw i8 %3 to i1",
+        "  %5 = load i8, ptr %1, align 2",
+        "  %6 = trunc nuw i8 %5 to i1",
+        "  %7 = zext i1 %6 to i8",
+        "  store i8 %7, ptr %0, align 1",
+        "  %8 = zext i1 %4 to i8",
+        "  store i8 %8, ptr %1, align 2",
+    }, .{ .strip = true });
 }
 
 const std = @import("std");

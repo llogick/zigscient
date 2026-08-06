@@ -2912,7 +2912,7 @@ pub const Object = struct {
 
         return switch (t.toIntern()) {
             .u0_type => unreachable, // no runtime bits
-            .u1_type => try o.intType(1, repr),
+            .u1_type, .bool_type => try o.intType(1, repr),
             .u8_type, .i8_type => try o.intType(8, repr),
             .u16_type, .i16_type => try o.intType(16, repr),
             .u29_type => try o.intType(29, repr),
@@ -2983,7 +2983,6 @@ pub const Object = struct {
                 // @foo = external global i8
                 return .i8;
             },
-            .bool_type => .i1,
             .anyerror_type => try o.errorIntType(repr),
             .void_type => unreachable, // no runtime bits
             .type_type => unreachable, // no runtime bits
@@ -3472,8 +3471,14 @@ pub const Object = struct {
                 .null => unreachable, // non-runtime value
                 .@"unreachable" => unreachable, // non-runtime value
 
-                .false => .false,
-                .true => .true,
+                .false => switch (repr) {
+                    .as_value => .false,
+                    .in_memory, .memory_access => try o.builder.intConst(.i8, 0),
+                },
+                .true => switch (repr) {
+                    .as_value => .true,
+                    .in_memory, .memory_access => try o.builder.intConst(.i8, 1),
+                },
             },
             .enum_literal => unreachable, // non-runtime value
             .@"extern" => unreachable, // non-runtime value
