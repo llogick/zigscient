@@ -718,6 +718,7 @@ fn genBodyDebugScope(
         .scope = self.scope.toOptional(),
         .inlined_at = self.inlined_at,
     } };
+    defer self.wip.debug_location.location.scope = old_scope.toOptional();
 
     try self.genBody(body, coverage_point);
 }
