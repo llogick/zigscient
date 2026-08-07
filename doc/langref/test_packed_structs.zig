@@ -1,5 +1,4 @@
 const std = @import("std");
-const native_endian = @import("builtin").target.cpu.arch.endian();
 const expectEqual = std.testing.expectEqual;
 
 const Full = packed struct {
