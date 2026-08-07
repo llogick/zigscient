@@ -719,10 +719,9 @@ const PosixThreadImpl = struct {
             },
             .haiku => {
                 var system_info: std.c.system_info = undefined;
-                const rc = std.c.get_system_info(&system_info); // always returns B_OK
-                return switch (posix.errno(rc)) {
-                    .SUCCESS => @as(usize, @intCast(system_info.cpu_count)),
-                    else => |err| posix.unexpectedErrno(err),
+                return switch (std.c.get_system_info(&system_info)) {
+                    0 => @as(usize, @intCast(system_info.cpu_count)),
+                    else => error.Unexpected,
                 };
             },
             else => {

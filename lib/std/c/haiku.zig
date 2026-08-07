@@ -1,15 +1,8 @@
 const std = @import("../std.zig");
-const assert = std.debug.assert;
 const builtin = @import("builtin");
-const maxInt = std.math.maxInt;
-const iovec = std.posix.iovec;
-const iovec_const = std.posix.iovec_const;
-const socklen_t = std.c.socklen_t;
+const assert = std.debug.assert;
 const fd_t = std.c.fd_t;
 const off_t = std.c.off_t;
-const PATH_MAX = std.c.PATH_MAX;
-const uid_t = std.c.uid_t;
-const gid_t = std.c.gid_t;
 const dev_t = std.c.dev_t;
 const ino_t = std.c.ino_t;
 
@@ -17,52 +10,27 @@ comptime {
     assert(builtin.os.tag == .haiku); // Prevent access of std.c symbols on wrong OS.
 }
 
-pub extern "root" fn _errnop() *i32;
-pub extern "root" fn find_directory(which: directory_which, volume: i32, createIt: bool, path_ptr: [*]u8, length: i32) u64;
-pub extern "root" fn find_thread(thread_name: ?*anyopaque) i32;
-pub extern "root" fn get_system_info(system_info: *system_info) usize;
-pub extern "root" fn _get_team_info(team: i32, team_info: *team_info, size: usize) i32;
-pub extern "root" fn _get_next_area_info(team: i32, cookie: *i64, area_info: *area_info, size: usize) i32;
-pub extern "root" fn _get_next_image_info(team: i32, cookie: *i32, image_info: *image_info, size: usize) i32;
-pub extern "root" fn _kern_get_current_team() team_id;
+pub const B_OS_NAME_LENGTH = 32;
+pub const B_ABSOLUTE_TIMEOUT = 0x10;
+pub const B_TIMEOUT_REAL_TIME_BASE = 0x40;
+
+pub extern "root" fn _kern_create_sem(count: c_int, name: ?[*:0]const u8) sem_id;
+pub extern "root" fn _kern_delete_sem(id: sem_id) status_t;
+pub extern "root" fn _kern_acquire_sem_etc(id: sem_id, count: u32, flags: u32, timeout: i64) status_t;
+pub extern "root" fn _kern_release_sem_etc(id: sem_id, count: u32, flags: u32) status_t;
 pub extern "root" fn _kern_open_dir(fd: fd_t, path: [*:0]const u8) fd_t;
 pub extern "root" fn _kern_read_dir(fd: fd_t, buffer: [*]u8, bufferSize: usize, maxCount: u32) isize;
 pub extern "root" fn _kern_rewind_dir(fd: fd_t) status_t;
 pub extern "root" fn _kern_read_stat(fd: fd_t, path: [*:0]const u8, traverseLink: bool, stat: *std.c.Stat, statSize: usize) status_t;
+
+pub extern "root" fn on_exit_thread(callback: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) status_t;
+pub extern "root" fn find_thread(name: ?[*:0]const u8) thread_id;
+pub extern "root" fn get_system_info(info: *system_info) status_t;
+
+pub extern "root" fn _errnop() *i32;
+
 pub extern "root" fn readv_pos(fd: fd_t, pos: off_t, vec: [*]const std.c.iovec, count: i32) isize;
 pub extern "root" fn writev_pos(fd: fd_t, pos: off_t, vec: [*]const std.c.iovec_const, count: i32) isize;
-
-pub const area_info = extern struct {
-    area: u32,
-    name: [32]u8,
-    size: usize,
-    lock: u32,
-    protection: u32,
-    team_id: i32,
-    ram_size: u32,
-    copy_count: u32,
-    in_count: u32,
-    out_count: u32,
-    address: *anyopaque,
-};
-
-pub const image_info = extern struct {
-    id: u32,
-    image_type: u32,
-    sequence: i32,
-    init_order: i32,
-    init_routine: *anyopaque,
-    term_routine: *anyopaque,
-    device: i32,
-    node: i64,
-    name: [PATH_MAX]u8,
-    text: *anyopaque,
-    data: *anyopaque,
-    text_size: i32,
-    data_size: i32,
-    api_version: i32,
-    abi: i32,
-};
 
 pub const system_info = extern struct {
     boot_time: i64,
@@ -86,29 +54,10 @@ pub const system_info = extern struct {
     max_teams: u32,
     used_teams: u32,
     kernel_name: [256]u8,
-    kernel_build_date: [32]u8,
-    kernel_build_time: [32]u8,
+    kernel_build_date: [B_OS_NAME_LENGTH]u8,
+    kernel_build_time: [B_OS_NAME_LENGTH]u8,
     kernel_version: i64,
     abi: u32,
-};
-
-pub const team_info = extern struct {
-    team_id: i32,
-    thread_count: i32,
-    image_count: i32,
-    area_count: i32,
-    debugger_nub_thread: i32,
-    debugger_nub_port: i32,
-    argc: i32,
-    args: [64]u8,
-    uid: uid_t,
-    gid: gid_t,
-};
-
-pub const directory_which = enum(i32) {
-    B_USER_SETTINGS_DIRECTORY = 0xbbe,
-
-    _,
 };
 
 pub const area_id = i32;

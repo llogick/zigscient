@@ -118,10 +118,6 @@ pub fn defaultSingleThreaded(target: *const std.Target) bool {
         .wasm32, .wasm64 => return true,
         else => {},
     }
-    switch (target.os.tag) {
-        .haiku => return true,
-        else => {},
-    }
     return false;
 }
 
