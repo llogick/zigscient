@@ -187,7 +187,7 @@ overaligned_uavs: std.array_hash_map.Auto(InternPool.Index, Alignment) = .empty,
 zcu_funcs: std.array_hash_map.Auto(InternPool.Index, ZcuFunc) = .empty,
 nav_exports: std.array_hash_map.Auto(NavExport, Zcu.Export.Index) = .empty,
 uav_exports: std.array_hash_map.Auto(UavExport, Zcu.Export.Index) = .empty,
-imports: std.array_hash_map.Auto(InternPool.Nav.Index, void) = .empty,
+imports: std.array_hash_map.Auto(InternPool.Nav.Index, String) = .empty,
 
 dwarf: ?Dwarf = null,
 
@@ -409,7 +409,7 @@ pub const OutputFunctionIndex = enum(u32) {
         const ip = &zcu.intern_pool;
         return switch (ip.indexToKey(ip_index)) {
             .@"extern" => |ext| {
-                const name = wasm.getExistingString(ext.name.toSlice(ip)).?;
+                const name = wasm.imports.get(ext.owner_nav).?;
                 return fromSymbolName(wasm, name);
             },
             else => fromResolution(wasm, .fromIpIndex(wasm, ip_index)).?,
@@ -479,8 +479,8 @@ pub const OutputDataIndex = enum(u32) {
         const zcu = wasm.base.comp.zcu.?;
         const ip = &zcu.intern_pool;
         const nav = ip.getNav(nav_index);
-        if (nav.getExtern(ip)) |ext| {
-            return fromSymbolName(wasm, wasm.getExistingString(ext.name.toSlice(ip)).?);
+        if (nav.getExtern(ip) != null) {
+            return fromSymbolName(wasm, wasm.imports.get(nav_index).?);
         }
         const resolution: ObjectDataImport.Resolution = if (wasm.base.comp.config.output_mode == .Obj)
             .pack(wasm, .{ .nav_obj = @fromBackingInt(@intCast(wasm.navs_obj.getIndex(nav_index).?)) })
@@ -2592,6 +2592,10 @@ pub const ZcuImportIndex = enum(u32) {
         return &wasm.imports.keys()[@backingInt(index)];
     }
 
+    pub fn symbolName(index: ZcuImportIndex, wasm: *const Wasm) String {
+        return wasm.imports.values()[@backingInt(index)];
+    }
+
     pub fn flags(index: ZcuImportIndex, wasm: *const Wasm) SymbolFlags {
         const zcu = wasm.base.comp.zcu.?;
         const ip = &zcu.intern_pool;
@@ -2613,7 +2617,7 @@ pub const ZcuImportIndex = enum(u32) {
             },
             .undefined = true,
             .exported = wasm.missing_exports.contains(name_string),
-            .explicit_name = false,
+            .explicit_name = index.symbolName(wasm) != name_string,
             .no_strip = false,
             .tls = ext.is_threadlocal,
             .absolute = false,
@@ -3683,14 +3687,23 @@ pub fn updateNav(wasm: *Wasm, pt: Zcu.PerThread, nav_index: InternPool.Nav.Index
             } else {
                 assert(!wasm.navs_exe.contains(ext.owner_nav));
             }
-            const name = try wasm.internString(ext.name.toSlice(ip));
-            if (ext.lib_name.toSlice(ip)) |ext_name| _ = try wasm.internString(ext_name);
+            const name_slice = ext.name.toSlice(ip);
+            const name = try wasm.internString(name_slice);
+            const symbol_name = if (ip.isFunctionType(nav.resolved.?.type)) symbol_name: {
+                const lib_name = ext.lib_name.toSlice(ip) orelse break :symbol_name name;
+                _ = try wasm.internString(lib_name);
+                // match llvm backend behavior
+                if (mem.eql(u8, lib_name, "c")) break :symbol_name name;
+                const qualified_name = try std.fmt.allocPrint(gpa, "{s}|{s}", .{ name_slice, lib_name });
+                defer gpa.free(qualified_name);
+                break :symbol_name try wasm.internString(qualified_name);
+            } else name;
             try wasm.imports.ensureUnusedCapacity(gpa, 1);
             try wasm.function_imports.ensureUnusedCapacity(gpa, 1);
             try wasm.data_imports.ensureUnusedCapacity(gpa, 1);
-            const zcu_import = wasm.addZcuImportReserved(ext.owner_nav);
+            const zcu_import = wasm.addZcuImportReserved(ext.owner_nav, symbol_name);
             if (ip.isFunctionType(nav.resolved.?.type)) {
-                wasm.function_imports.putAssumeCapacity(name, .fromZcuImport(zcu_import, wasm));
+                wasm.function_imports.putAssumeCapacity(symbol_name, .fromZcuImport(zcu_import, wasm));
                 // Ensure there is a corresponding function type table entry.
                 const fn_info = zcu.typeToFunc(.fromInterned(ext.ty)).?;
                 _ = try internFunctionType(wasm, fn_info.cc, fn_info.param_types.get(ip), .fromInterned(fn_info.return_type), fn_info.is_var_args, target);
@@ -5073,9 +5086,9 @@ fn pointerSize(wasm: *const Wasm) u32 {
     };
 }
 
-fn addZcuImportReserved(wasm: *Wasm, nav_index: InternPool.Nav.Index) ZcuImportIndex {
+fn addZcuImportReserved(wasm: *Wasm, nav_index: InternPool.Nav.Index, symbol_name: String) ZcuImportIndex {
     const gop = wasm.imports.getOrPutAssumeCapacity(nav_index);
-    gop.value_ptr.* = {};
+    gop.value_ptr.* = symbol_name;
     return @fromBackingInt(@intCast(gop.index));
 }
 

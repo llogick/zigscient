@@ -1472,14 +1472,16 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
                 // SYMTAB_FUNCTION
                 {
                     symbol_table_offsets.function = symbol_count;
-                    for (f.function_imports.values(), 0..) |i, function_index| {
+                    for (f.function_imports.keys(), f.function_imports.values(), 0..) |symbol_name, i, function_index| {
                         try binary_bytes.append(gpa, @backingInt(Object.Symbol.Tag.function));
                         const flags = i.flags(wasm);
                         assert(flags.undefined);
                         try appendLeb128(gpa, binary_bytes, flags.toAbiInteger());
                         try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(function_index)));
                         if (flags.explicit_name) {
-                            unreachable; // never set
+                            const name = symbol_name.slice(wasm);
+                            try appendLeb128(gpa, binary_bytes, @as(u32, @intCast(name.len)));
+                            try binary_bytes.appendSlice(gpa, name);
                         }
                         symbol_count += 1;
                     }
