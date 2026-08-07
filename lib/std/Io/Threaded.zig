@@ -11771,7 +11771,6 @@ fn nowWasi(clock: Io.Clock) Io.Timestamp {
 
 fn sleep(userdata: ?*anyopaque, timeout: Io.Timeout) Io.Cancelable!void {
     const t: *Threaded = @ptrCast(@alignCast(userdata));
-    if (timeout == .none) return;
     if (use_parking_sleep) return parking_sleep.sleep(timeout);
     if (native_os == .wasi) return sleepWasi(t, timeout);
     if (@TypeOf(posix.system.clock_nanosleep) != void) return sleepPosix(timeout);

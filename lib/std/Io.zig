@@ -467,6 +467,7 @@ pub const OperateTimeoutError = Cancelable || Timeout.Error || ConcurrentError;
 
 /// Performs one `Operation` with provided `timeout`.
 pub fn operateTimeout(io: Io, operation: Operation, timeout: Timeout) OperateTimeoutError!Operation.Result {
+    if (timeout == .none) return io.vtable.operate(io.userdata, operation);
     var storage: [1]Operation.Storage = undefined;
     var batch: Batch = .init(&storage);
     batch.addAt(0, operation);
@@ -1147,6 +1148,7 @@ pub const Duration = struct {
 
 /// Declares under what conditions an operation should return `error.Timeout`.
 pub const Timeout = union(enum) {
+    /// `.none` will wait forever
     none,
     duration: Clock.Duration,
     deadline: Clock.Timestamp,
