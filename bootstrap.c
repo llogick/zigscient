@@ -56,7 +56,7 @@ static void panic(const char *reason) {
     #define GCC_BUG_119085_PRESENT 0
 #endif
 
-#if defined(__WIN32__)
+#if defined(_WIN32)
 #error TODO write the functionality for executing child process into this build script
 #else
 
@@ -99,7 +99,7 @@ static void print_and_run(const char **argv) {
 static const char *get_host_os(void) {
     const char *host_os = getenv("ZIG_HOST_TARGET_OS");
     if (host_os != NULL) return host_os;
-#if defined(__WIN32__)
+#if defined(_WIN32)
     return "windows";
 #elif defined(__APPLE__)
     return "macos";
