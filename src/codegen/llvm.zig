@@ -1507,7 +1507,7 @@ pub const Object = struct {
         }
 
         const arch = comp.root_mod.resolved_target.result.cpu.arch;
-        const is_nvptx = arch == .nvptx or arch == .nvptx64;
+        const workaround_alias_bugs = arch == .amdgcn or arch == .nvptx or arch == .nvptx64;
 
         const llvm_global_ty = llvm_global.typeOf(&o.builder);
 
@@ -1528,10 +1528,11 @@ pub const Object = struct {
             // alias will be set below.
             const alias_global: Builder.Global.Index = global: {
 
-                // WORKAROUND (see https://github.com/llvm/llvm-project/issues/213504)
-                // LLVM throws "NVPTX aliasee must be a non-kernel function definition"
-                // if we try to alias a kernel, so we just rename the global directly.
-                if (is_nvptx and export_i == 0) {
+                // WORKAROUND (see https://github.com/llvm/llvm-project/issues/213504, https://github.com/llvm/llvm-project/issues/214835)
+                // For NVPTX, LLVM throws "NVPTX aliasee must be a non-kernel function definition" if we try to alias a kernel
+                // On AMDGCN, LLVM does not generate an alias for the kernel descriptor symbol on associated functions
+                // To solve these, we rename the global
+                if (workaround_alias_bugs and export_i == 0) {
                     try llvm_global.rename(exp_name, &o.builder);
                     break :global llvm_global;
                 }
