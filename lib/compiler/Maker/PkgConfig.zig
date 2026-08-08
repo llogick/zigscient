@@ -63,6 +63,8 @@ pub fn run(
         }
     }
 
+    step.clearFailedCommand(maker.gpa);
+
     return parsed;
 }
 
