@@ -1778,14 +1778,16 @@ pub const ObjectDataImport = extern struct {
         __zig_error_name_table,
         __zig_tag_names,
         __zig_tag_name_table,
+        __global_base,
         __heap_base,
         __heap_end,
+        __wasm_first_page_end,
         /// Next, an `ObjectData.Index`.
         /// Next, index into `uavs_obj` or `uavs_exe` depending on whether emitting an object.
         /// Next, index into `navs_obj` or `navs_exe` depending on whether emitting an object.
         _,
 
-        const first_object = @backingInt(Resolution.__heap_end) + 1;
+        const first_object = @backingInt(Resolution.__wasm_first_page_end) + 1;
 
         pub const Unpacked = union(enum) {
             unresolved,
@@ -1793,8 +1795,10 @@ pub const ObjectDataImport = extern struct {
             __zig_error_name_table,
             __zig_tag_names,
             __zig_tag_name_table,
+            __global_base,
             __heap_base,
             __heap_end,
+            __wasm_first_page_end,
             object: ObjectData.Index,
             uav_exe: UavsExeIndex,
             uav_obj: UavsObjIndex,
@@ -1809,8 +1813,10 @@ pub const ObjectDataImport = extern struct {
                 .__zig_error_name_table => .__zig_error_name_table,
                 .__zig_tag_names => .__zig_tag_names,
                 .__zig_tag_name_table => .__zig_tag_name_table,
+                .__global_base => .__global_base,
                 .__heap_base => .__heap_base,
                 .__heap_end => .__heap_end,
+                .__wasm_first_page_end => .__wasm_first_page_end,
                 _ => {
                     const object_index = @backingInt(r) - first_object;
 
@@ -1847,8 +1853,10 @@ pub const ObjectDataImport = extern struct {
                 .__zig_error_name_table => .__zig_error_name_table,
                 .__zig_tag_names => .__zig_tag_names,
                 .__zig_tag_name_table => .__zig_tag_name_table,
+                .__global_base => .__global_base,
                 .__heap_base => .__heap_base,
                 .__heap_end => .__heap_end,
+                .__wasm_first_page_end => .__wasm_first_page_end,
                 .object => |i| @fromBackingInt(@intCast(first_object + @backingInt(i))),
                 inline .uav_exe, .uav_obj => |i| @fromBackingInt(@intCast(first_object + wasm.object_datas.items.len + @backingInt(i))),
                 .nav_exe => |i| @fromBackingInt(@intCast(first_object + wasm.object_datas.items.len + wasm.uavs_exe.entries.len + @backingInt(i))),
@@ -1886,8 +1894,10 @@ pub const ObjectDataImport = extern struct {
                 .__zig_error_name_table,
                 .__zig_tag_names,
                 .__zig_tag_name_table,
+                .__global_base,
                 .__heap_base,
                 .__heap_end,
+                .__wasm_first_page_end,
                 .uav_exe,
                 .uav_obj,
                 .nav_exe,
@@ -1910,8 +1920,11 @@ pub const ObjectDataImport = extern struct {
                 .__zig_error_name_table => .{ .segment = .__zig_error_name_table, .offset = 0 },
                 .__zig_tag_names => .{ .segment = .__zig_tag_names, .offset = 0 },
                 .__zig_tag_name_table => .{ .segment = .__zig_tag_name_table, .offset = 0 },
-                .__heap_base => .{ .segment = .__heap_base, .offset = 0 },
-                .__heap_end => .{ .segment = .__heap_end, .offset = 0 },
+                .__global_base,
+                .__heap_base,
+                .__heap_end,
+                .__wasm_first_page_end,
+                => unreachable,
                 .uav_exe => |i| .{ .segment = .pack(wasm, .{ .uav_exe = i }), .offset = 0 },
                 .uav_obj => |i| .{ .segment = .pack(wasm, .{ .uav_obj = i }), .offset = 0 },
                 .nav_exe => |i| .{ .segment = .pack(wasm, .{ .nav_exe = i }), .offset = 0 },
@@ -1927,8 +1940,10 @@ pub const ObjectDataImport = extern struct {
                 .__zig_tag_names,
                 .__zig_tag_name_table,
                 => .{ .binding = .local },
+                .__global_base,
                 .__heap_base,
                 .__heap_end,
+                .__wasm_first_page_end,
                 => unreachable,
                 .object => |i| i.ptr(wasm).flags,
                 inline .nav_exe, .nav_obj => |i| {
@@ -1976,8 +1991,10 @@ pub const ObjectDataImport = extern struct {
                 .__zig_error_name_table => @tagName(.__zig_error_name_table),
                 .__zig_tag_names => @tagName(.__zig_tag_names),
                 .__zig_tag_name_table => @tagName(.__zig_tag_name_table),
+                .__global_base => @tagName(.__global_base),
                 .__heap_base => @tagName(.__heap_base),
                 .__heap_end => @tagName(.__heap_end),
+                .__wasm_first_page_end => @tagName(.__wasm_first_page_end),
                 inline .uav_exe, .uav_obj => |i| std.fmt.bufPrint(
                     buf,
                     "__anon_{d}",
@@ -2006,7 +2023,7 @@ pub const ObjectDataImport = extern struct {
                     const elem_size = Zcu.Type.slice_const_u8_sentinel_0.abiSize(zcu);
                     return @intCast(table_len * elem_size);
                 },
-                .__heap_base, .__heap_end => wasm.pointerSize(),
+                .__global_base, .__heap_base, .__heap_end, .__wasm_first_page_end => 0,
                 .object => |i| i.ptr(wasm).size,
                 inline .uav_exe, .uav_obj, .nav_exe, .nav_obj => |i| i.value(wasm).code.len,
             };
@@ -2056,17 +2073,12 @@ pub const DataSegmentId = enum(u32) {
     __zig_tag_names,
     /// All tag name slices for all `@tagName` implementations, concatenated together.
     __zig_tag_name_table,
-    /// This and `__heap_end` are better retrieved via a global, but there is
-    /// some suboptimal code out there (wasi libc) that additionally needs them
-    /// as data symbols.
-    __heap_base,
-    __heap_end,
     /// First, an `ObjectDataSegment.Index`.
     /// Next, index into `uavs_obj` or `uavs_exe` depending on whether emitting an object.
     /// Next, index into `navs_obj` or `navs_exe` depending on whether emitting an object.
     _,
 
-    const first_object = @backingInt(DataSegmentId.__heap_end) + 1;
+    const first_object = @backingInt(DataSegmentId.__zig_tag_name_table) + 1;
 
     pub const Category = enum {
         /// Thread-local variables.
@@ -2083,8 +2095,6 @@ pub const DataSegmentId = enum(u32) {
         __zig_error_name_table,
         __zig_tag_names,
         __zig_tag_name_table,
-        __heap_base,
-        __heap_end,
         object: ObjectDataSegment.Index,
         uav_exe: UavsExeIndex,
         uav_obj: UavsObjIndex,
@@ -2098,8 +2108,6 @@ pub const DataSegmentId = enum(u32) {
             .__zig_error_name_table => .__zig_error_name_table,
             .__zig_tag_names => .__zig_tag_names,
             .__zig_tag_name_table => .__zig_tag_name_table,
-            .__heap_base => .__heap_base,
-            .__heap_end => .__heap_end,
             .object => |i| @fromBackingInt(@intCast(first_object + @backingInt(i))),
             inline .uav_exe, .uav_obj => |i| @fromBackingInt(@intCast(first_object + wasm.object_data_segments.items.len + @backingInt(i))),
             .nav_exe => |i| @fromBackingInt(@intCast(first_object + wasm.object_data_segments.items.len + wasm.uavs_exe.entries.len + @backingInt(i))),
@@ -2113,8 +2121,6 @@ pub const DataSegmentId = enum(u32) {
             .__zig_error_name_table => .__zig_error_name_table,
             .__zig_tag_names => .__zig_tag_names,
             .__zig_tag_name_table => .__zig_tag_name_table,
-            .__heap_base => .__heap_base,
-            .__heap_end => .__heap_end,
             _ => {
                 const object_index = @backingInt(id) - first_object;
 
@@ -2164,8 +2170,6 @@ pub const DataSegmentId = enum(u32) {
             .__zig_error_name_table,
             .__zig_tag_names,
             .__zig_tag_name_table,
-            .__heap_base,
-            .__heap_end,
             => .data,
 
             .object => |i| {
@@ -2192,8 +2196,6 @@ pub const DataSegmentId = enum(u32) {
             .__zig_error_name_table,
             .__zig_tag_names,
             .__zig_tag_name_table,
-            .__heap_base,
-            .__heap_end,
             => false,
 
             .object => |i| i.ptr(wasm).flags.tls,
@@ -2213,8 +2215,6 @@ pub const DataSegmentId = enum(u32) {
 
             .__zig_error_name_table,
             .__zig_tag_name_table,
-            .__heap_base,
-            .__heap_end,
             => false,
 
             .object => |i| i.ptr(wasm).flags.strings,
@@ -2229,8 +2229,6 @@ pub const DataSegmentId = enum(u32) {
             .__zig_error_name_table,
             .__zig_tag_names,
             .__zig_tag_name_table,
-            .__heap_base,
-            .__heap_end,
             => false,
 
             .object => |i| i.ptr(wasm).flags.retain,
@@ -2251,8 +2249,6 @@ pub const DataSegmentId = enum(u32) {
             .__zig_tag_name_table,
             .uav_exe,
             .uav_obj,
-            .__heap_base,
-            .__heap_end,
             => ".data",
 
             .object => |i| i.ptr(wasm).name.unwrap().?.slice(wasm),
@@ -2272,7 +2268,7 @@ pub const DataSegmentId = enum(u32) {
     pub fn alignment(id: DataSegmentId, wasm: *const Wasm) Alignment {
         return switch (unpack(id, wasm)) {
             .__zig_error_names, .__zig_tag_names => .@"1",
-            .__zig_error_name_table, .__zig_tag_name_table, .__heap_base, .__heap_end => wasm.pointerAlignment(),
+            .__zig_error_name_table, .__zig_tag_name_table => wasm.pointerAlignment(),
             .object => |i| i.ptr(wasm).flags.alignment,
             inline .uav_exe, .uav_obj => |i| {
                 const zcu = wasm.base.comp.zcu.?;
@@ -2304,7 +2300,7 @@ pub const DataSegmentId = enum(u32) {
             .__zig_error_name_table => wasm.error_name_table_ref_count,
             .__zig_tag_names => @intCast(wasm.tag_name_offs.items.len),
             .__zig_tag_name_table => wasm.tag_name_table_ref_count,
-            .object, .uav_obj, .nav_obj, .__heap_base, .__heap_end => 0,
+            .object, .uav_obj, .nav_obj => 0,
             inline .uav_exe, .nav_exe => |i| i.value(wasm).count,
         };
     }
@@ -2317,8 +2313,6 @@ pub const DataSegmentId = enum(u32) {
             .__zig_error_name_table,
             .__zig_tag_names,
             .__zig_tag_name_table,
-            .__heap_base,
-            .__heap_end,
             => false,
 
             .object => |i| i.ptr(wasm).flags.is_passive,
@@ -2332,8 +2326,6 @@ pub const DataSegmentId = enum(u32) {
             .__zig_error_name_table,
             .__zig_tag_names,
             .__zig_tag_name_table,
-            .__heap_base,
-            .__heap_end,
             => false,
 
             .object => |i| i.ptr(wasm).payload.off == .none,
@@ -2359,7 +2351,6 @@ pub const DataSegmentId = enum(u32) {
                 const elem_size = Zcu.Type.slice_const_u8_sentinel_0.abiSize(zcu);
                 return @intCast(table_len * elem_size);
             },
-            .__heap_base, .__heap_end => wasm.pointerSize(),
             .object => |i| i.ptr(wasm).payload.len,
             inline .uav_exe, .uav_obj, .nav_exe, .nav_obj => |i| i.value(wasm).code.len,
         };
@@ -2491,6 +2482,7 @@ pub const Func = extern struct {
 /// Type reflection is used on the field names to autopopulate each field
 /// during initialization.
 const PreloadedStrings = struct {
+    __global_base: String,
     __heap_base: String,
     __heap_end: String,
     __indirect_function_table: String,
@@ -2504,6 +2496,7 @@ const PreloadedStrings = struct {
     __wasm_init_memory: String,
     __wasm_init_memory_flag: String,
     __wasm_init_tls: String,
+    __wasm_first_page_end: String,
     __zig_error_names: String,
     __zig_error_name_table: String,
     __zig_errors_len: String,
@@ -3907,21 +3900,11 @@ pub fn prelink(wasm: *Wasm, prog_node: std.Progress.Node) link.Error!void {
             try markFunctionImport(wasm, name, import, @fromBackingInt(@intCast(i)));
         }
     }
-    // Also treat init functions as roots.
-    for (wasm.object_init_funcs.items) |init_func| {
-        const func = init_func.function_index.ptr(wasm);
-        if (func.object_index.ptr(wasm).is_included) {
-            try markFunction(wasm, init_func.function_index, false);
-        }
-    }
-    wasm.functions_end_prelink = @intCast(wasm.functions.entries.len);
-
     for (wasm.object_global_imports.keys(), wasm.object_global_imports.values(), 0..) |name, *import, i| {
         if (import.flags.isIncluded(rdynamic, is_obj)) {
             try markGlobalImport(wasm, name, import, @fromBackingInt(@intCast(i)));
         }
     }
-    wasm.globals_end_prelink = @intCast(wasm.globals.entries.len);
     wasm.global_exports_len = @intCast(wasm.global_exports.items.len);
 
     for (wasm.object_table_imports.keys(), wasm.object_table_imports.values(), 0..) |name, *import, i| {
@@ -3944,6 +3927,8 @@ pub fn prelink(wasm: *Wasm, prog_node: std.Progress.Node) link.Error!void {
         wasm.memories.limits.flags.has_max = wasm.memories.limits.flags.has_max or memory_import.limits_has_max;
     }
 
+    wasm.functions_end_prelink = @intCast(wasm.functions.entries.len);
+    wasm.globals_end_prelink = @intCast(wasm.globals.entries.len);
     wasm.function_imports_len_prelink = @intCast(wasm.function_imports.entries.len);
     wasm.data_imports_len_prelink = @intCast(wasm.data_imports.entries.len);
 }
@@ -3998,7 +3983,7 @@ fn markFunction(wasm: *Wasm, i: ObjectFunctionIndex, override_export: bool) link
     const rdynamic = comp.config.rdynamic;
     const is_obj = comp.config.output_mode == .Obj;
     const function = i.ptr(wasm);
-    markObject(wasm, function.object_index);
+    try markObject(wasm, function.object_index);
 
     if (!is_obj and (override_export or function.flags.isExported(rdynamic))) {
         const symbol_name = function.name.unwrap().?;
@@ -4012,8 +3997,15 @@ fn markFunction(wasm: *Wasm, i: ObjectFunctionIndex, override_export: bool) link
     try wasm.markRelocations(function.relocations(wasm));
 }
 
-fn markObject(wasm: *Wasm, i: ObjectIndex) void {
-    i.ptr(wasm).is_included = true;
+fn markObject(wasm: *Wasm, i: ObjectIndex) link.Error!void {
+    const object = i.ptr(wasm);
+    if (object.is_included) return;
+    object.is_included = true;
+
+    const init_funcs = wasm.object_init_funcs.items[object.init_funcs.off..][0..object.init_funcs.len];
+    for (init_funcs) |init_func| {
+        try markFunction(wasm, init_func.function_index, false);
+    }
 }
 
 /// Recursively mark alive everything referenced by the global.
@@ -4076,6 +4068,7 @@ fn markGlobal(wasm: *Wasm, i: ObjectGlobalIndex, override_export: bool) link.Err
     const rdynamic = comp.config.rdynamic;
     const is_obj = comp.config.output_mode == .Obj;
     const global = i.ptr(wasm);
+    try markObject(wasm, global.object_index);
 
     if (!is_obj and (override_export or global.flags.isExported(rdynamic))) try wasm.global_exports.append(gpa, .{
         .name = global.name.unwrap().?,
@@ -4122,6 +4115,7 @@ fn markDataSegment(wasm: *Wasm, segment_index: ObjectDataSegment.Index) link.Err
     const segment = segment_index.ptr(wasm);
     if (segment.flags.alive) return;
     segment.flags.alive = true;
+    try markObject(wasm, segment.object_index);
 
     wasm.any_passive_inits = wasm.any_passive_inits or segment.flags.is_passive or
         (comp.config.import_memory and !wasm.isBss(segment.name));
@@ -4143,16 +4137,16 @@ pub fn markDataImport(
     const gpa = comp.gpa;
     const is_obj = comp.config.output_mode == .Obj;
 
-    try wasm.data_segments.ensureUnusedCapacity(gpa, 1);
-
     if (import.resolution == .unresolved) {
         if (!is_obj) {
-            if (name == wasm.preloaded_strings.__heap_base) {
+            if (name == wasm.preloaded_strings.__global_base) {
+                import.resolution = .__global_base;
+            } else if (name == wasm.preloaded_strings.__heap_base) {
                 import.resolution = .__heap_base;
-                wasm.data_segments.putAssumeCapacity(.__heap_base, {});
             } else if (name == wasm.preloaded_strings.__heap_end) {
                 import.resolution = .__heap_end;
-                wasm.data_segments.putAssumeCapacity(.__heap_end, {});
+            } else if (name == wasm.preloaded_strings.__wasm_first_page_end) {
+                import.resolution = .__wasm_first_page_end;
             } else {
                 try wasm.data_imports.put(gpa, name, .fromObject(data_index, wasm));
             }
@@ -4857,6 +4851,17 @@ pub fn uavAddr(wasm: *const Wasm, ip_index: InternPool.Index) u32 {
     return wasm.flush_buffer.data_segments.get(ds_id).?;
 }
 
+pub fn syntheticDataAddr(wasm: *const Wasm, resolution: ObjectDataImport.Resolution) ?u32 {
+    const virtual_addrs = wasm.flush_buffer.virtual_addrs;
+    return switch (resolution.unpack(wasm)) {
+        .__global_base => virtual_addrs.global_base,
+        .__heap_base => virtual_addrs.heap_base,
+        .__heap_end => virtual_addrs.heap_end,
+        .__wasm_first_page_end => virtual_addrs.wasm_first_page_end,
+        else => null,
+    };
+}
+
 /// Asserts it is called after `Flush.data_segments` is fully populated and sorted.
 pub fn navAddr(wasm: *const Wasm, nav_index: InternPool.Nav.Index) u32 {
     assert(wasm.flush_buffer.memory_layout_finished);
@@ -4881,8 +4886,11 @@ pub fn navAddr(wasm: *const Wasm, nav_index: InternPool.Nav.Index) u32 {
                         const segment_base_addr = wasm.flush_buffer.data_segments.get(ds_id).?;
                         return segment_base_addr + object_data.offset;
                     },
+                    .__global_base,
                     .__heap_base,
                     .__heap_end,
+                    .__wasm_first_page_end,
+                    => return wasm.syntheticDataAddr(import.resolution).?,
                     .uav_exe,
                     .nav_exe,
                     => {
