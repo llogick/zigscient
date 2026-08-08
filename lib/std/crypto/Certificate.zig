@@ -1148,8 +1148,8 @@ pub const rsa = struct {
             }
             var m_p_buf: [8 + Hash.digest_length + Hash.digest_length]u8 = undefined;
             var m_p = m_p_buf[0 .. 8 + Hash.digest_length + sLen];
-            @memmove(m_p, @as(*const [8]u8, &@splat(0)));
-            @memmove(m_p[8..], &mHash);
+            @memmove(m_p[0..8], @as(*const [8]u8, &@splat(0)));
+            @memmove(m_p[8..][0..Hash.digest_length], &mHash);
             @memmove(m_p[(8 + Hash.digest_length)..], salt);
 
             // 13.  Let H' = Hash(M'), an octet string of length hLen.
