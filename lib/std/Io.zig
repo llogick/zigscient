@@ -2527,7 +2527,7 @@ pub fn lockStderr(io: Io, buffer: []u8, terminal_mode: ?Terminal.Mode) Cancelabl
 
 /// Same as `lockStderr` but non-blocking.
 pub fn tryLockStderr(io: Io, buffer: []u8, terminal_mode: ?Terminal.Mode) Cancelable!?LockedStderr {
-    const ls = (try io.vtable.tryLockStderr(io.userdata, buffer, terminal_mode)) orelse return null;
+    const ls = (try io.vtable.tryLockStderr(io.userdata, terminal_mode)) orelse return null;
     try ls.clear(buffer);
     return ls;
 }
