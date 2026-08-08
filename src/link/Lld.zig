@@ -306,8 +306,8 @@ fn linkAsArchive(lld: *Lld, arena: Allocator) link.Error!void {
 
     try object_files.ensureUnusedCapacity(arena, comp.link_inputs.len);
     for (comp.link_inputs) |input| switch (input) {
-        .res, .dso, .dso_exact => {}, // shared libraries should not be included in static archives
-        .object, .archive => {
+        .dso, .dso_exact, .archive => {}, // static archives should not contain shared libraries or other static archives
+        .res, .object => {
             const path = try input.path().?.toStringZ(arena);
             object_files.appendAssumeCapacity(path);
         },

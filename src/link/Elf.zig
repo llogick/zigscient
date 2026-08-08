@@ -714,7 +714,6 @@ pub fn loadInput(self: *Elf, input: link.Input) !void {
     const target = self.getTarget();
     const debug_fmt_strip = comp.config.debug_format == .strip;
     const default_sym_version = self.default_sym_version;
-    const is_static_lib = self.base.isStaticLib();
 
     if (comp.verbose_link) {
         comp.mutex.lockUncancelable(io); // protect comp.arena
@@ -733,7 +732,11 @@ pub fn loadInput(self: *Elf, input: link.Input) !void {
         .res => unreachable,
         .dso_exact => @panic("TODO"),
         .object => |obj| try parseObject(self, obj),
-        .archive => |obj| try parseArchive(gpa, io, diags, &self.file_handles, &self.files, target, debug_fmt_strip, default_sym_version, &self.objects, obj, is_static_lib),
+        .archive => |obj| if (self.base.isStaticLib()) {
+            // Ignore static library inputs when generating a static library.
+        } else {
+            try parseArchive(gpa, io, diags, &self.file_handles, &self.files, target, debug_fmt_strip, default_sym_version, &self.objects, obj);
+        },
         .dso => |dso| try parseDso(gpa, io, diags, dso, &self.shared_objects, &self.files, target),
     }
 }
@@ -1083,7 +1086,6 @@ fn parseArchive(
     default_sym_version: elf.Versym,
     objects: *std.ArrayList(File.Index),
     obj: link.Input.Object,
-    is_static_lib: bool,
 ) !void {
     const tracy = trace(@src());
     defer tracy.end();
@@ -1092,17 +1094,14 @@ fn parseArchive(
     var archive = try Archive.parse(gpa, io, diags, file_handles, obj.path, fh);
     defer archive.deinit(gpa);
 
-    const init_alive = if (is_static_lib) true else obj.must_link;
-
     for (archive.objects) |extracted| {
         const index: File.Index = @intCast(try files.addOne(gpa));
         files.set(index, .{ .object = extracted });
         const object = &files.items(.data)[index].object;
         object.index = index;
-        object.alive = init_alive;
+        object.alive = obj.must_link;
         try object.parseCommon(gpa, io, diags, obj.path, obj.file, target);
-        if (!is_static_lib)
-            try object.parse(gpa, io, diags, obj.path, obj.file, target, debug_fmt_strip, default_sym_version);
+        try object.parse(gpa, io, diags, obj.path, obj.file, target, debug_fmt_strip, default_sym_version);
         try objects.append(gpa, index);
     }
 }

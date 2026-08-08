@@ -992,6 +992,11 @@ fn addArchive(self: *MachO, lib: link.Input.Object, handle: File.HandleIndex, fa
     const tracy = trace(@src());
     defer tracy.end();
 
+    if (self.base.isStaticLib()) {
+        // Ignore static library inputs when generating a static library.
+        return;
+    }
+
     const gpa = self.base.comp.gpa;
 
     var archive: Archive = .{};
