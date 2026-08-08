@@ -8,6 +8,8 @@ const assert = std.debug.assert;
 const math = std.math;
 const mem = std.mem;
 const Alignment = std.mem.Alignment;
+const Slice = std.meta.Slice;
+const AbsorbSentinel = std.meta.AbsorbSentinel;
 
 pub const Error = error{OutOfMemory};
 pub const Log2Align = math.Log2Int(usize);
@@ -316,8 +318,10 @@ pub fn allocBytesAligned(
 /// `new_len` may be zero, in which case the allocation is freed.
 pub fn resize(self: Allocator, allocation: anytype, new_len: usize) bool {
     const slice_info = @typeInfo(@TypeOf(allocation)).pointer;
-    comptime assert(slice_info.size == .slice);
-    const T = slice_info.child;
+    const T = if (slice_info.size != .slice) comptime T: {
+        assert(slice_info.size == .one);
+        break :T @typeInfo(slice_info.child).array.child;
+    } else slice_info.child;
     if (new_len == 0) {
         self.free(allocation);
         return true;
@@ -354,10 +358,12 @@ pub fn resize(self: Allocator, allocation: anytype, new_len: usize) bool {
 /// `new_len` may be zero, in which case the allocation is freed.
 ///
 /// If the allocation's elements' type is zero bytes sized, `allocation.len` is set to `new_len`.
-pub fn remap(self: Allocator, allocation: anytype, new_len: usize) ?@TypeOf(allocation) {
+pub fn remap(self: Allocator, allocation: anytype, new_len: usize) ?Slice(AbsorbSentinel(@TypeOf(allocation))) {
     const slice_info = @typeInfo(@TypeOf(allocation)).pointer;
-    comptime assert(slice_info.size == .slice);
-    const T = slice_info.child;
+    const T = if (slice_info.size != .slice) comptime T: {
+        assert(slice_info.size == .one);
+        break :T @typeInfo(slice_info.child).array.child;
+    } else slice_info.child;
 
     if (new_len == 0) {
         self.free(allocation);
@@ -399,7 +405,7 @@ pub fn remap(self: Allocator, allocation: anytype, new_len: usize) ?@TypeOf(allo
 ///   do the realloc more efficiently than the caller
 /// * `resize` which returns `false` when the `Allocator` implementation cannot
 ///   change the size without relocating the allocation.
-pub fn realloc(self: Allocator, old_mem: anytype, new_n: usize) Error!@TypeOf(old_mem) {
+pub fn realloc(self: Allocator, old_mem: anytype, new_n: usize) Error!Slice(AbsorbSentinel(@TypeOf(old_mem))) {
     return self.reallocAdvanced(old_mem, new_n, @returnAddress());
 }
 
@@ -408,10 +414,12 @@ pub fn reallocAdvanced(
     old_mem: anytype,
     new_n: usize,
     return_address: usize,
-) Error!@TypeOf(old_mem) {
+) Error!Slice(AbsorbSentinel(@TypeOf(old_mem))) {
     const slice_info = @typeInfo(@TypeOf(old_mem)).pointer;
-    comptime assert(slice_info.size == .slice);
-    const T = slice_info.child;
+    const T = if (slice_info.size != .slice) comptime T: {
+        assert(slice_info.size == .one);
+        break :T @typeInfo(slice_info.child).array.child;
+    } else slice_info.child;
     if (old_mem.len == 0) {
         return self.allocAdvancedWithRetAddr(T, .fromByteUnitsOptional(slice_info.attrs.@"align"), new_n, return_address);
     }
@@ -446,7 +454,6 @@ pub fn reallocAdvanced(
 pub fn free(self: Allocator, memory: anytype) void {
     const slice_info = @typeInfo(@TypeOf(memory)).pointer;
     if (slice_info.size != .slice) {
-        // slicing with comptime-known start and end results in *[len]T, which may be free'd
         comptime assert(slice_info.size == .one and @typeInfo(slice_info.child) == .array);
     }
     const bytes: []u8 = @ptrCast(@constCast(mem.absorbSentinel(memory)));
@@ -590,4 +597,40 @@ test failing {
     // Expect very large allocations to fail at the implementation level and not in the interface
     try std.testing.expectError(error.OutOfMemory, f.alloc(u8, std.math.maxInt(usize)));
     try std.testing.expectError(error.OutOfMemory, f.allocSentinel(u8, std.math.maxInt(usize) - 1, 0));
+}
+
+test "free single-pointer to array" {
+    const allocator = std.testing.allocator;
+    {
+        const allocation = try allocator.alloc(u32, 128);
+        allocation[127] = 0;
+        const ptr: *[127:0]u32 = allocation[0..127 :0];
+        allocator.free(ptr);
+    }
+    {
+        const allocation = try allocator.alloc(u32, 128);
+        allocation[127] = 0;
+        const ptr: *[127:0]u32 = allocation[0..127 :0];
+        if (allocator.resize(ptr, 16)) {
+            allocator.free(ptr[0..16]);
+        } else allocator.free(ptr);
+    }
+    {
+        const allocation = try allocator.alloc(u32, 128);
+        allocation[127] = 0;
+        const ptr: *[127:0]u32 = allocation[0..127 :0];
+        if (allocator.remap(ptr, 16)) |new| {
+            allocator.free(new);
+        } else allocator.free(ptr);
+    }
+    {
+        const allocation = try allocator.alloc(u32, 128);
+        allocation[127] = 0;
+        const ptr: *[127:0]u32 = allocation[0..127 :0];
+        if (allocator.realloc(ptr, 16)) |new| {
+            allocator.free(new);
+        } else |_| {
+            allocator.free(allocation);
+        }
+    }
 }

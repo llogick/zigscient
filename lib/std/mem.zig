@@ -9,6 +9,7 @@ const assert = debug.assert;
 const math = std.math;
 const testing = std.testing;
 const Endian = std.lang.Endian;
+const AbsorbSentinel = std.meta.AbsorbSentinel;
 
 /// The standard library currently thoroughly depends on byte size
 /// being 8 bits.  (see the use of u8 throughout allocation code as
@@ -4738,22 +4739,28 @@ test "sliceAsBytes preserves pointer attributes" {
     try testing.expectEqual(in_attrs.@"align", out_attrs.@"align");
 }
 
-fn AbsorbSentinelReturnType(comptime Slice: type) type {
-    const info = @typeInfo(Slice).pointer;
-    assert(info.size == .slice);
-    return @Pointer(.slice, info.attrs, info.child, null);
-}
-
 /// If the provided slice is not sentinel terminated, do nothing and return that slice.
 /// If it is sentinel-terminated, return a non-sentinel-terminated slice with the
 /// length increased by one to include the absorbed sentinel element.
-pub fn absorbSentinel(slice: anytype) AbsorbSentinelReturnType(@TypeOf(slice)) {
+pub fn absorbSentinel(slice: anytype) AbsorbSentinel(@TypeOf(slice)) {
     const info = @typeInfo(@TypeOf(slice)).pointer;
-    comptime assert(info.size == .slice);
-    if (info.sentinel_ptr == null) {
-        return slice;
-    } else {
-        return slice.ptr[0 .. slice.len + 1];
+    switch (info.size) {
+        .slice => {
+            if (info.sentinel_ptr == null) {
+                return slice;
+            } else {
+                return slice.ptr[0 .. slice.len + 1];
+            }
+        },
+        .one => {
+            const child_info = @typeInfo(info.child).array;
+            if (child_info.sentinel_ptr == null) {
+                return slice;
+            } else {
+                return slice[0 .. child_info.len + 1];
+            }
+        },
+        else => unreachable,
     }
 }
 
@@ -4762,21 +4769,28 @@ test absorbSentinel {
         var buffer: [3:0]u8 = .{ 1, 2, 3 };
         const foo: [:0]const u8 = &buffer;
         const bar: []const u8 = &buffer;
+        const baz: *const [3:0]u8 = &buffer;
         try testing.expectEqual([]const u8, @TypeOf(absorbSentinel(foo)));
         try testing.expectEqual([]const u8, @TypeOf(absorbSentinel(bar)));
+        try testing.expectEqual(*const [4]u8, @TypeOf(absorbSentinel(baz)));
         try testing.expectEqualSlices(u8, &.{ 1, 2, 3, 0 }, absorbSentinel(foo));
         try testing.expectEqualSlices(u8, &.{ 1, 2, 3 }, absorbSentinel(bar));
+        try testing.expectEqualSlices(u8, &.{ 1, 2, 3, 0 }, absorbSentinel(baz));
     }
     {
         var buffer: [3:0]u8 = .{ 1, 2, 3 };
         const foo: [:0]u8 = &buffer;
         const bar: []u8 = &buffer;
+        const baz: *[3:0]u8 = &buffer;
         try testing.expectEqual([]u8, @TypeOf(absorbSentinel(foo)));
         try testing.expectEqual([]u8, @TypeOf(absorbSentinel(bar)));
+        try testing.expectEqual(*[4]u8, @TypeOf(absorbSentinel(baz)));
         var expected_foo = [_]u8{ 1, 2, 3, 0 };
         try testing.expectEqualSlices(u8, &expected_foo, absorbSentinel(foo));
         var expected_bar = [_]u8{ 1, 2, 3 };
         try testing.expectEqualSlices(u8, &expected_bar, absorbSentinel(bar));
+        var expected_baz = [_]u8{ 1, 2, 3, 0 };
+        try testing.expectEqualSlices(u8, &expected_baz, absorbSentinel(baz));
     }
 }
 
