@@ -2144,7 +2144,7 @@ pub fn dependencyLazy(b: *Build, name: []const u8, args: anytype) error{LazyDepe
     return dependencyResolved(b, name, entry, userInputOptionsFromArgs(b.graph.arena, args));
 }
 
-const PackageEntry = struct {
+pub const PackageEntry = struct {
     hash: []const u8,
     available: bool,
     build_root: []const u8,
@@ -2152,7 +2152,8 @@ const PackageEntry = struct {
     run_build: ?*const fn (*Build) void,
 };
 
-const package_map: std.StaticStringMap(PackageEntry) = blk: {
+/// Build system implementation detail.
+pub const package_map: std.StaticStringMap(PackageEntry) = blk: {
     const deps = @import("root").dependencies;
     const decl_names = @typeInfo(deps.packages).@"struct".decl_names;
     var kvs: [decl_names.len]struct { []const u8, PackageEntry } = undefined;

@@ -15,6 +15,8 @@ unlazy_deps: []String,
 system_integrations: []SystemIntegration,
 available_options: []AvailableOption,
 search_prefixes: []String,
+/// Index 0 always exists and is the root package.
+packages: []Package,
 extra: []u32,
 default_step: Step.Index,
 generated_files_len: u32,
@@ -30,6 +32,7 @@ pub const Header = extern struct {
     system_integrations_len: u32,
     available_options_len: u32,
     search_prefixes_len: u32,
+    packages_len: u32,
     extra_len: u32,
 
     default_step: Step.Index,
@@ -58,6 +61,7 @@ pub const Wip = struct {
     steps: std.ArrayList(Step) = .empty,
     path_deps: std.ArrayList(PathDep) = .empty,
     search_prefixes: std.ArrayList(String) = .empty,
+    packages: std.ArrayList(Package) = .empty,
     extra: std.ArrayList(u32) = .empty,
     next_generated_file_index: u32 = 0,
     cache_poison: bool = false,
@@ -139,6 +143,7 @@ pub const Wip = struct {
         wip.steps.deinit(gpa);
         wip.path_deps.deinit(gpa);
         wip.search_prefixes.deinit(gpa);
+        wip.packages.deinit(gpa);
         wip.extra.deinit(gpa);
         wip.* = undefined;
     }
@@ -158,6 +163,7 @@ pub const Wip = struct {
             .system_integrations_len = @intCast(wip.system_integrations.items.len),
             .available_options_len = @intCast(wip.available_options.items.len),
             .search_prefixes_len = @intCast(wip.search_prefixes.items.len),
+            .packages_len = @intCast(wip.packages.items.len),
             .extra_len = @intCast(wip.extra.items.len),
 
             .default_step = static.default_step,
@@ -175,6 +181,7 @@ pub const Wip = struct {
             @ptrCast(wip.system_integrations.items),
             @ptrCast(wip.available_options.items),
             @ptrCast(wip.search_prefixes.items),
+            @ptrCast(wip.packages.items),
             @ptrCast(wip.extra.items),
         };
         try w.writeVecAll(&buffers);
@@ -1603,30 +1610,28 @@ pub const OptionalGeneratedFileIndex = enum(u32) {
     }
 };
 
-pub const Package = struct {
+pub const Package = extern struct {
     dep_prefix: String,
     hash: String,
     root_path: String,
+    deps: Dep.List.Index,
 
     pub const Index = enum(u32) {
-        root = max_u32,
+        root,
         _,
 
-        /// Returns `null` for root package.
-        pub fn get(i: @This(), c: *const Configuration) ?Package {
-            if (i == .root) return null;
-            return extraData(c, Package, @backingInt(i));
+        pub fn ptr(i: @This(), c: *const Configuration) *const Package {
+            return &c.packages[@backingInt(i)];
         }
 
         pub fn depPrefixSlice(i: @This(), c: *const Configuration) [:0]const u8 {
-            const package = get(i, c) orelse return "";
-            return package.dep_prefix.slice(c);
+            return ptr(i, c).dep_prefix.slice(c);
         }
     };
 
     pub const OptionalIndex = enum(u32) {
-        none = max_u32 - 1,
-        root = max_u32,
+        root,
+        none = max_u32,
         _,
 
         pub fn init(i: Index) OptionalIndex {
@@ -1642,6 +1647,28 @@ pub const Package = struct {
                 _ => @fromBackingInt(@intCast(@backingInt(this))),
             };
         }
+    };
+
+    pub const Dep = extern struct {
+        name: String,
+        /// Must not be `.root`.
+        package: Package.Index,
+
+        pub const List = struct {
+            deps: Storage.LengthPrefixedList(Dep),
+
+            pub const Index = enum(u32) {
+                _,
+
+                pub fn get(this: @This(), c: *const Configuration) List {
+                    return extraData(c, List, @backingInt(this));
+                }
+
+                pub fn slice(this: @This(), c: *const Configuration) []const Dep {
+                    return get(this, c).deps.slice;
+                }
+            };
+        };
     };
 };
 
@@ -2127,27 +2154,18 @@ pub const OptionalCSourceLanguage = enum(u3) {
     objective_cpp,
     assembly,
     assembly_with_preprocessor,
+
     default,
 
     pub fn init(x: ?std.Build.Module.CSourceLanguage) @This() {
         return switch (x orelse return .default) {
-            .c => .c,
-            .cpp => .cpp,
-            .objective_c => .objective_c,
-            .objective_cpp => .objective_cpp,
-            .assembly => .assembly,
-            .assembly_with_preprocessor => .assembly_with_preprocessor,
+            inline else => |tag| @field(@This(), @tagName(tag)),
         };
     }
 
     pub fn get(this: @This()) ?std.Build.Module.CSourceLanguage {
         return switch (this) {
-            .c => .c,
-            .cpp => .cpp,
-            .objective_c => .objective_c,
-            .objective_cpp => .objective_cpp,
-            .assembly => .assembly,
-            .assembly_with_preprocessor => .assembly_with_preprocessor,
+            inline else => |tag| @field(std.Build.Module.CSourceLanguage, @tagName(tag)),
             .default => null,
         };
     }
@@ -2275,10 +2293,7 @@ pub const TargetQuery = struct {
 
         pub fn init(x: std.Target.Query.CpuModel) @This() {
             return switch (x) {
-                .native => .native,
-                .baseline => .baseline,
-                .determined_by_arch_os => .determined_by_arch_os,
-                .explicit => .explicit,
+                inline else => |_, tag| @field(@This(), @tagName(tag)),
             };
         }
     };
@@ -2336,71 +2351,13 @@ pub const TargetQuery = struct {
 
         pub fn init(x: ?std.Target.Abi) @This() {
             return switch (x orelse return .default) {
-                .none => .none,
-                .gnu => .gnu,
-                .gnuabin32 => .gnuabin32,
-                .gnuabi64 => .gnuabi64,
-                .gnueabi => .gnueabi,
-                .gnueabihf => .gnueabihf,
-                .gnuf32 => .gnuf32,
-                .gnusf => .gnusf,
-                .gnux32 => .gnux32,
-                .eabi => .eabi,
-                .eabihf => .eabihf,
-                .abin32 => .abin32,
-                .x32 => .x32,
-                .ilp32 => .ilp32,
-                .android => .android,
-                .androideabi => .androideabi,
-                .musl => .musl,
-                .muslabin32 => .muslabin32,
-                .muslabi64 => .muslabi64,
-                .musleabi => .musleabi,
-                .musleabihf => .musleabihf,
-                .muslf32 => .muslf32,
-                .muslsf => .muslsf,
-                .muslx32 => .muslx32,
-                .msvc => .msvc,
-                .itanium => .itanium,
-                .simulator => .simulator,
-                .ohos => .ohos,
-                .ohoseabi => .ohoseabi,
-                .call0 => .call0,
+                inline else => |tag| @field(@This(), @tagName(tag)),
             };
         }
 
         pub fn unwrap(this: @This()) ?std.Target.Abi {
             return switch (this) {
-                .none => .none,
-                .gnu => .gnu,
-                .gnuabin32 => .gnuabin32,
-                .gnuabi64 => .gnuabi64,
-                .gnueabi => .gnueabi,
-                .gnueabihf => .gnueabihf,
-                .gnuf32 => .gnuf32,
-                .gnusf => .gnusf,
-                .gnux32 => .gnux32,
-                .eabi => .eabi,
-                .eabihf => .eabihf,
-                .abin32 => .abin32,
-                .x32 => .x32,
-                .ilp32 => .ilp32,
-                .android => .android,
-                .androideabi => .androideabi,
-                .musl => .musl,
-                .muslabin32 => .muslabin32,
-                .muslabi64 => .muslabi64,
-                .musleabi => .musleabi,
-                .musleabihf => .musleabihf,
-                .muslf32 => .muslf32,
-                .muslsf => .muslsf,
-                .muslx32 => .muslx32,
-                .msvc => .msvc,
-                .itanium => .itanium,
-                .simulator => .simulator,
-                .ohos => .ohos,
-                .ohoseabi => .ohoseabi,
-                .call0 => .call0,
+                inline else => |tag| @field(std.Target.Abi, @tagName(tag)),
                 .default => null,
             };
         }
@@ -2472,132 +2429,13 @@ pub const TargetQuery = struct {
 
         pub fn init(x: ?std.Target.Cpu.Arch) @This() {
             return switch (x orelse return .default) {
-                .aarch64 => .aarch64,
-                .aarch64_be => .aarch64_be,
-                .alpha => .alpha,
-                .amdgcn => .amdgcn,
-                .arc => .arc,
-                .arceb => .arceb,
-                .arm => .arm,
-                .armeb => .armeb,
-                .avr => .avr,
-                .bpfeb => .bpfeb,
-                .bpfel => .bpfel,
-                .csky => .csky,
-                .ez80 => .ez80,
-                .hexagon => .hexagon,
-                .hppa => .hppa,
-                .hppa64 => .hppa64,
-                .kalimba => .kalimba,
-                .kvx => .kvx,
-                .lanai => .lanai,
-                .loongarch32 => .loongarch32,
-                .loongarch64 => .loongarch64,
-                .m68k => .m68k,
-                .m88k => .m88k,
-                .microblaze => .microblaze,
-                .microblazeel => .microblazeel,
-                .mips => .mips,
-                .mipsel => .mipsel,
-                .mips64 => .mips64,
-                .mips64el => .mips64el,
-                .msp430 => .msp430,
-                .nvptx => .nvptx,
-                .nvptx64 => .nvptx64,
-                .or1k => .or1k,
-                .powerpc => .powerpc,
-                .powerpcle => .powerpcle,
-                .powerpc64 => .powerpc64,
-                .powerpc64le => .powerpc64le,
-                .propeller => .propeller,
-                .riscv32 => .riscv32,
-                .riscv32be => .riscv32be,
-                .riscv64 => .riscv64,
-                .riscv64be => .riscv64be,
-                .s390x => .s390x,
-                .sh => .sh,
-                .sheb => .sheb,
-                .sparc => .sparc,
-                .sparc64 => .sparc64,
-                .spirv32 => .spirv32,
-                .spirv64 => .spirv64,
-                .thumb => .thumb,
-                .thumbeb => .thumbeb,
-                .ve => .ve,
-                .wasm32 => .wasm32,
-                .wasm64 => .wasm64,
-                .x86_16 => .x86_16,
-                .x86 => .x86,
-                .x86_64 => .x86_64,
-                .xcore => .xcore,
-                .xtensa => .xtensa,
-                .xtensaeb => .xtensaeb,
+                inline else => |tag| @field(@This(), @tagName(tag)),
             };
         }
 
         pub fn unwrap(this: @This()) ?std.Target.Cpu.Arch {
             return switch (this) {
-                .aarch64 => .aarch64,
-                .aarch64_be => .aarch64_be,
-                .alpha => .alpha,
-                .amdgcn => .amdgcn,
-                .arc => .arc,
-                .arceb => .arceb,
-                .arm => .arm,
-                .armeb => .armeb,
-                .avr => .avr,
-                .bpfeb => .bpfeb,
-                .bpfel => .bpfel,
-                .csky => .csky,
-                .ez80 => .ez80,
-                .hexagon => .hexagon,
-                .hppa => .hppa,
-                .hppa64 => .hppa64,
-                .kalimba => .kalimba,
-                .kvx => .kvx,
-                .lanai => .lanai,
-                .loongarch32 => .loongarch32,
-                .loongarch64 => .loongarch64,
-                .m68k => .m68k,
-                .m88k => .m88k,
-                .microblaze => .microblaze,
-                .microblazeel => .microblazeel,
-                .mips => .mips,
-                .mipsel => .mipsel,
-                .mips64 => .mips64,
-                .mips64el => .mips64el,
-                .msp430 => .msp430,
-                .nvptx => .nvptx,
-                .nvptx64 => .nvptx64,
-                .or1k => .or1k,
-                .powerpc => .powerpc,
-                .powerpcle => .powerpcle,
-                .powerpc64 => .powerpc64,
-                .powerpc64le => .powerpc64le,
-                .propeller => .propeller,
-                .riscv32 => .riscv32,
-                .riscv32be => .riscv32be,
-                .riscv64 => .riscv64,
-                .riscv64be => .riscv64be,
-                .s390x => .s390x,
-                .sh => .sh,
-                .sheb => .sheb,
-                .sparc => .sparc,
-                .sparc64 => .sparc64,
-                .spirv32 => .spirv32,
-                .spirv64 => .spirv64,
-                .thumb => .thumb,
-                .thumbeb => .thumbeb,
-                .ve => .ve,
-                .wasm32 => .wasm32,
-                .wasm64 => .wasm64,
-                .x86_16 => .x86_16,
-                .x86 => .x86,
-                .x86_64 => .x86_64,
-                .xcore => .xcore,
-                .xtensa => .xtensa,
-                .xtensaeb => .xtensaeb,
-
+                inline else => |tag| @field(std.Target.Cpu.Arch, @tagName(tag)),
                 .default => null,
             };
         }
@@ -2656,106 +2494,13 @@ pub const TargetQuery = struct {
 
         pub fn init(x: ?std.Target.Os.Tag) @This() {
             return switch (x orelse return .default) {
-                .freestanding => .freestanding,
-                .other => .other,
-                .contiki => .contiki,
-                .fuchsia => .fuchsia,
-                .hermit => .hermit,
-                .managarm => .managarm,
-                .haiku => .haiku,
-                .hurd => .hurd,
-                .illumos => .illumos,
-                .linux => .linux,
-                .plan9 => .plan9,
-                .rtems => .rtems,
-                .serenity => .serenity,
-                .dragonfly => .dragonfly,
-                .freebsd => .freebsd,
-                .netbsd => .netbsd,
-                .openbsd => .openbsd,
-                .driverkit => .driverkit,
-                .ios => .ios,
-                .maccatalyst => .maccatalyst,
-                .macos => .macos,
-                .tvos => .tvos,
-                .visionos => .visionos,
-                .watchos => .watchos,
-                .windows => .windows,
-                .uefi => .uefi,
-                .@"3ds" => .@"3ds",
-                .wiiu => .wiiu,
-                .@"switch" => .@"switch",
-                .psx => .psx,
-                .ps3 => .ps3,
-                .ps4 => .ps4,
-                .ps5 => .ps5,
-                .psp => .psp,
-                .vita => .vita,
-                .emscripten => .emscripten,
-                .wasi => .wasi,
-                .amdhsa => .amdhsa,
-                .amdpal => .amdpal,
-                .cuda => .cuda,
-                .mesa3d => .mesa3d,
-                .nvcl => .nvcl,
-                .opencl => .opencl,
-                .opengl => .opengl,
-                .vulkan => .vulkan,
-                .tios => .tios,
-                .ashetos => .ashetos,
+                inline else => |tag| @field(@This(), @tagName(tag)),
             };
         }
 
         pub fn unwrap(this: @This()) ?std.Target.Os.Tag {
             return switch (this) {
-                .freestanding => .freestanding,
-                .other => .other,
-                .contiki => .contiki,
-                .fuchsia => .fuchsia,
-                .hermit => .hermit,
-                .managarm => .managarm,
-                .haiku => .haiku,
-                .hurd => .hurd,
-                .illumos => .illumos,
-                .linux => .linux,
-                .plan9 => .plan9,
-                .rtems => .rtems,
-                .serenity => .serenity,
-                .dragonfly => .dragonfly,
-                .freebsd => .freebsd,
-                .netbsd => .netbsd,
-                .openbsd => .openbsd,
-                .driverkit => .driverkit,
-                .ios => .ios,
-                .maccatalyst => .maccatalyst,
-                .macos => .macos,
-                .tvos => .tvos,
-                .visionos => .visionos,
-                .watchos => .watchos,
-                .windows => .windows,
-                .uefi => .uefi,
-                .@"3ds" => .@"3ds",
-                .wiiu => .wiiu,
-                .@"switch" => .@"switch",
-                .psx => .psx,
-                .ps3 => .ps3,
-                .ps4 => .ps4,
-                .ps5 => .ps5,
-                .psp => .psp,
-                .vita => .vita,
-                .emscripten => .emscripten,
-                .wasi => .wasi,
-                .amdhsa => .amdhsa,
-                .amdpal => .amdpal,
-                .cuda => .cuda,
-                .mesa3d => .mesa3d,
-                .nvcl => .nvcl,
-                .opencl => .opencl,
-                .opengl => .opengl,
-                .vulkan => .vulkan,
-                .tios => .tios,
-                .ashetos => .ashetos,
-
+                inline else => |tag| @field(std.Target.Os.Tag, @tagName(tag)),
                 .default => null,
             };
         }
@@ -2776,30 +2521,13 @@ pub const TargetQuery = struct {
 
         pub fn init(x: ?std.Target.ObjectFormat) @This() {
             return switch (x orelse return .default) {
-                .c => .c,
-                .coff => .coff,
-                .elf => .elf,
-                .hex => .hex,
-                .macho => .macho,
-                .plan9 => .plan9,
-                .raw => .raw,
-                .spirv => .spirv,
-                .wasm => .wasm,
+                inline else => |tag| @field(@This(), @tagName(tag)),
             };
         }
 
         pub fn unwrap(this: @This()) ?std.Target.ObjectFormat {
             return switch (this) {
-                .c => .c,
-                .coff => .coff,
-                .elf => .elf,
-                .hex => .hex,
-                .macho => .macho,
-                .plan9 => .plan9,
-                .raw => .raw,
-                .spirv => .spirv,
-                .wasm => .wasm,
-
+                inline else => |tag| @field(std.Target.ObjectFormat, @tagName(tag)),
                 .default => null,
             };
         }
@@ -3476,6 +3204,7 @@ pub fn load(arena: Allocator, reader: *Io.Reader) LoadError!Configuration {
         .system_integrations = try arena.alloc(SystemIntegration, header.system_integrations_len),
         .available_options = try arena.alloc(AvailableOption, header.available_options_len),
         .search_prefixes = try arena.alloc(String, header.search_prefixes_len),
+        .packages = try arena.alloc(Package, header.packages_len),
         .extra = try arena.alloc(u32, header.extra_len),
         .default_step = header.default_step,
         .generated_files_len = header.generated_files_len,
@@ -3489,6 +3218,7 @@ pub fn load(arena: Allocator, reader: *Io.Reader) LoadError!Configuration {
         @ptrCast(result.system_integrations),
         @ptrCast(result.available_options),
         @ptrCast(result.search_prefixes),
+        @ptrCast(result.packages),
         @ptrCast(result.extra),
     };
     try reader.readVecAll(&vecs);

@@ -3381,17 +3381,19 @@ pub fn packagePath(
 ) Allocator.Error!Path {
     const c = &maker.scanned_config.configuration;
     const graph = maker.graph;
-    const package = package_index.get(c) orelse return .{
+
+    if (package_index == .root) return .{
         .root_dir = graph.build_root_directory,
         .sub_path = sub_path,
     };
+
     // Currently, neither configurer nor Maker is aware of the standard zig
     // package path, and the root path is stored as a bare string rather than
     // relative to a known base directory. Without changing that, we must
     // construct a cwd relative path here.
     return .{
         .root_dir = .cwd(),
-        .sub_path = try Dir.path.join(arena, &.{ package.root_path.slice(c), sub_path }),
+        .sub_path = try Dir.path.join(arena, &.{ package_index.ptr(c).root_path.slice(c), sub_path }),
     };
 }
 
@@ -4021,7 +4023,7 @@ fn confPathDepToCachePath(
             .root_dir = graph.build_root_directory,
             .sub_path = switch (path_dep.pkg.unwrap().?) {
                 .root => sub_path,
-                else => |index| try Dir.path.join(arena, &.{ index.get(c).?.root_path.slice(c), sub_path }),
+                else => |index| try Dir.path.join(arena, &.{ index.ptr(c).root_path.slice(c), sub_path }),
             },
         },
         .zig_lib => .{

@@ -10,7 +10,8 @@ const log = std.log;
 arena: Allocator,
 wc: *Configuration.Wip,
 module_map: std.array_hash_map.Auto(*std.Build.Module, Configuration.Module.Index) = .empty,
-package_map: std.array_hash_map.Auto(*std.Build, Configuration.Package.Index) = .empty,
+/// Keyed by package hash.
+package_map: std.array_hash_map.String(Configuration.Package.Index) = .empty,
 /// Index corresponds to `Configuration.steps` index.
 step_map: std.array_hash_map.Auto(*Step, void) = .empty,
 
@@ -20,6 +21,10 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
     const gpa = wc.gpa;
 
     var s: Serialize = .{ .wc = wc, .arena = arena };
+
+    // Serialize all of the packages first to seed the package_map, which is
+    // later used in calls to packageFromHash.
+    try s.addRootPackage(b);
 
     try wc.path_deps.ensureTotalCapacityPrecise(gpa, graph.configure_dependencies.items.len);
     for (
@@ -44,10 +49,10 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                 .relative => |r| try wc.addString(r.sub_path),
             },
             .pkg = switch (src.lazy_path) {
-                .src_path => |sp| .init(try s.builderToPackage(sp.owner)),
+                .src_path => |sp| .init(s.packageFromHash(sp.owner.pkg_hash)),
                 .generated => unreachable,
                 .cwd_relative, .relative => .none,
-                .dependency => |d| .init(try s.builderToPackage(d.dependency.builder)),
+                .dependency => |d| .init(s.packageFromHash(d.dependency.builder.pkg_hash)),
             },
         };
     }
@@ -84,7 +89,7 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
             try wc.steps.ensureTotalCapacity(gpa, s.step_map.entries.capacity);
             wc.steps.appendAssumeCapacity(.{
                 .name = try wc.addString(step.name),
-                .owner = try s.builderToPackage(step.owner),
+                .owner = s.packageFromHash(step.owner.pkg_hash),
                 .deps = deps,
                 .max_rss = .fromBytes(step.max_rss),
                 .extended = @fromBackingInt(@intCast(switch (step.tag) {
@@ -724,19 +729,64 @@ pub fn packageOptions(b: *std.Build, wc: *Configuration.Wip) Allocator.Error!voi
     }
 }
 
-fn builderToPackage(s: *Serialize, b: *std.Build) !Configuration.Package.Index {
-    if (b.pkg_hash.len == 0) return .root;
+fn addRootPackage(s: *Serialize, b: *std.Build) Allocator.Error!void {
     const arena = s.arena;
     const wc = s.wc;
-    const gop = try s.package_map.getOrPut(arena, b);
-    if (!gop.found_existing) {
-        gop.value_ptr.* = try wc.addExtra(Configuration.Package, .{
-            .hash = try wc.addString(b.pkg_hash),
-            .dep_prefix = try wc.addString(b.dep_prefix),
-            .root_path = try wc.addString(try b.root.toString(arena)),
-        });
-    }
-    return gop.value_ptr.*;
+
+    try wc.packages.append(wc.gpa, .{
+        .dep_prefix = .empty,
+        .hash = .empty,
+        .root_path = try wc.addString(try b.root.toString(arena)),
+        .deps = undefined,
+    });
+
+    const deps = try arena.alloc(Configuration.Package.Dep, b.available_deps.len);
+    for (deps, b.available_deps) |*dest, src| dest.* = try s.makePackageDep("", src[0], src[1]);
+
+    wc.packages.items[0].deps = try wc.addExtra(Configuration.Package.Dep.List, .{
+        .deps = .{ .slice = deps },
+    });
+}
+
+fn makePackageDep(s: *Serialize, parent_dep_prefix: []const u8, name: []const u8, hash: []const u8) Allocator.Error!Configuration.Package.Dep {
+    const arena = s.arena;
+    const wc = s.wc;
+
+    if (s.package_map.get(hash)) |index| return .{
+        .name = try wc.addString(name),
+        .package = index,
+    };
+
+    const entry = std.Build.package_map.get(hash) orelse unreachable;
+
+    const dep_prefix = try arena.print("{s}{s}.", .{ parent_dep_prefix, name });
+
+    const index: Configuration.Package.Index = @fromBackingInt(@intCast(wc.packages.items.len));
+    try s.package_map.put(arena, hash, index);
+
+    try wc.packages.append(wc.gpa, .{
+        .dep_prefix = try wc.addString(dep_prefix),
+        .hash = try wc.addString(hash),
+        .root_path = try wc.addString(entry.build_root),
+        .deps = undefined,
+    });
+
+    const deps = try arena.alloc(Configuration.Package.Dep, entry.deps.len);
+    for (deps, entry.deps) |*dest, src| dest.* = try s.makePackageDep(dep_prefix, src[0], src[1]);
+
+    wc.packages.items[@backingInt(index)].deps = try wc.addExtra(Configuration.Package.Dep.List, .{
+        .deps = .{ .slice = deps },
+    });
+
+    return .{
+        .name = try wc.addString(name),
+        .package = index,
+    };
+}
+
+fn packageFromHash(s: *Serialize, pkg_hash: []const u8) Configuration.Package.Index {
+    if (pkg_hash.len == 0) return .root;
+    return s.package_map.get(pkg_hash) orelse std.debug.panic("unrecognized package hash: {q}", .{pkg_hash});
 }
 
 fn addOptionalLazyPathEnum(s: *Serialize, lp: ?std.Build.LazyPath) !Configuration.LazyPath.OptionalIndex {
@@ -745,7 +795,7 @@ fn addOptionalLazyPathEnum(s: *Serialize, lp: ?std.Build.LazyPath) !Configuratio
         .src_path => |src_path| i: {
             const sub_path = try wc.addString(src_path.sub_path);
             break :i try wc.addExtraErased(Configuration.LazyPath.SourcePath, .{
-                .owner = try s.builderToPackage(src_path.owner),
+                .owner = s.packageFromHash(src_path.owner.pkg_hash),
                 .sub_path = sub_path,
             });
         },
@@ -773,7 +823,7 @@ fn addOptionalLazyPathEnum(s: *Serialize, lp: ?std.Build.LazyPath) !Configuratio
         .dependency => |dependency| i: {
             const sub_path = try wc.addString(dependency.sub_path);
             break :i try wc.addExtraErased(Configuration.LazyPath.SourcePath, .{
-                .owner = try s.builderToPackage(dependency.dependency.builder),
+                .owner = s.packageFromHash(dependency.dependency.builder.pkg_hash),
                 .sub_path = sub_path,
             });
         },
@@ -1233,7 +1283,7 @@ fn addModule(s: *Serialize, m: *std.Build.Module) !Configuration.Module.Index {
             .link_libcpp = .init(m.link_libcpp),
             .no_builtin = .init(m.no_builtin),
         },
-        .owner = try s.builderToPackage(m.owner),
+        .owner = s.packageFromHash(m.owner.pkg_hash),
         .root_source_file = try s.addOptionalLazyPathEnum(m.root_source_file),
         .import_table = .invalid,
         .resolved_target = try addOptionalResolvedTarget(wc, m.resolved_target),
