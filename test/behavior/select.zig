@@ -31,6 +31,20 @@ fn selectVectors() !void {
     _ = .{ &x, &y, &z };
     const xyz = @select(f32, x, y, z);
     try expect(mem.eql(f32, &@as([4]f32, xyz), &[4]f32{ 0.0, 312.1, -145.9, -3381.233 }));
+
+    var vec_u0: @Vector(4, u0) = @splat(0);
+    var mask_u0 = @Vector(4, bool){ true, false, true, false };
+    var mask_empty = @Vector(0, i32){};
+    var vec_empty = @Vector(0, i32){};
+    _ = .{ &vec_u0, &mask_u0, &mask_empty, &vec_empty };
+    const sel_u0 = @select(u0, mask_u0, vec_u0, vec_u0);
+    const sel_u0_undefined = @select(u0, mask_u0, undefined, undefined);
+    comptime if (sel_u0[0] != 0) unreachable;
+    comptime if (sel_u0_undefined[1] != 0) unreachable;
+    const sel_empty = @select(i32, mask_empty, vec_empty, vec_empty);
+    const sel_empty_undefined = @select(i32, @Vector(0, bool){}, undefined, undefined);
+    comptime if (@as(u0, @bitCast(sel_empty)) != 0) unreachable;
+    comptime if (@as(u0, @bitCast(sel_empty_undefined)) != 0) unreachable;
 }
 
 test "@select arrays" {

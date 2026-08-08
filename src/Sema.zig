@@ -23549,7 +23549,9 @@ fn analyzeShuffle(
         // `InternPool.Index` values using the known operands.
         for (mask_shuffle_two, mask_ip_index) |in, *out| {
             const val: Value = switch (in.unwrap()) {
-                .undef => try pt.undefValue(elem_ty),
+                // Special case zero bit types: there is no undefined value for OPV elements.
+                // Only affects the case where `!a_rt and !b_rt` since `a_coerced` and `b_coerced`'s types are also OPV for OPV elements.
+                .undef => try elem_ty.onePossibleValue(pt) orelse try pt.undefValue(elem_ty),
                 .a_elem => |idx| try maybe_a_val.?.elemValue(pt, idx),
                 .b_elem => |idx| try maybe_b_val.?.elemValue(pt, idx),
             };
@@ -23597,6 +23599,9 @@ fn zirSelect(sema: *Sema, block: *Block, extended: Zir.Inst.Extended.InstData) C
     });
     const a = try sema.coerce(block, vec_ty, sema.resolveInst(extra.a), a_src);
     const b = try sema.coerce(block, vec_ty, sema.resolveInst(extra.b), b_src);
+
+    // special case zero bit types
+    if (try vec_ty.onePossibleValue(pt)) |opv| return .fromValue(opv);
 
     const maybe_pred = sema.resolveValue(pred);
     const maybe_a = sema.resolveValue(a);

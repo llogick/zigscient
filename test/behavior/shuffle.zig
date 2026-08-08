@@ -170,3 +170,23 @@ test "@shuffle bool 2" {
     try S.doTheTest();
     try comptime S.doTheTest();
 }
+
+test "@shuffle u0" {
+    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
+    const S = struct {
+        fn doTheTest() !void {
+            var v: @Vector(4, u0) = @splat(0);
+            const mask = @Vector(4, i32){ undefined, 0, -1, 3 };
+            _ = .{ &v, &mask };
+            const res = @shuffle(u0, v, v, mask);
+            comptime if (!std.mem.eql(u0, &@as([4]u0, res), &[4]u0{ 0, 0, 0, 0 })) unreachable;
+        }
+    };
+    try S.doTheTest();
+    try comptime S.doTheTest();
+}
