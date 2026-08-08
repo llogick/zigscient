@@ -939,6 +939,8 @@ test "createDirPathOpen parent dirs do not exist" {
 }
 
 test "deleteDir" {
+    if (builtin.target.os.tag == .windows) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/35686
+
     try testWithAllSupportedPathTypes(struct {
         fn impl(ctx: *TestContext) !void {
             const io = ctx.io;
