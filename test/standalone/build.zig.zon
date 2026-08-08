@@ -187,9 +187,6 @@
         .posix = .{
             .path = "posix",
         },
-        .debug_io_color = .{
-            .path = "debug_io_color",
-        },
         .elf2 = .{
             .path = "elf2",
         },

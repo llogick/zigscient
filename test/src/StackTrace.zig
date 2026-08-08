@@ -1,10 +1,91 @@
+const StackTrace = @This();
+
+const builtin = @import("builtin");
+
+const std = @import("std");
+const Step = std.Build.Step;
+const OptimizeMode = std.lang.Optimize;
+const mem = std.mem;
+
+const stack_traces_cases = @import("../stack_traces.zig");
+
 b: *std.Build,
 step: *Step,
 test_filters: []const []const u8,
-targets: []const std.Build.ResolvedTarget,
+skip_non_native: bool,
 convert_exe: *std.Build.Step.Compile,
 
+pub const CaseParameters = struct {
+    target: std.Target.Query = .{},
+    optimize: std.builtin.OptimizeMode = .debug,
+    link_libc: ?bool = null,
+    use_llvm: ?bool = null,
+    use_lld: ?bool = null,
+    pie: ?bool = null,
+    /// To enable this coverage, one of two things needs to happen:
+    /// * The compiler needs to gain the ability to strip only debug info (not symbols)
+    /// * `std.Build.Step.ObjCopy` needs to be un-regressed
+    strip: ?bool = false,
+};
+
+const param_sets = [_]CaseParameters{
+    .{},
+    .{
+        .link_libc = true,
+    },
+    .{
+        .use_llvm = true,
+        .use_lld = true,
+    },
+    .{
+        .pie = true,
+    },
+    .{
+        .target = .{
+            .cpu_arch = .aarch64,
+            .os_tag = .windows,
+            .abi = .msvc,
+        },
+    },
+    .{
+        .target = .{
+            .cpu_arch = .x86_64,
+            .os_tag = .windows,
+            .abi = .gnu,
+        },
+    },
+    .{
+        .target = .{
+            .cpu_arch = .x86,
+            .os_tag = .windows,
+            .abi = .msvc,
+        },
+    },
+    .{
+        .target = .{
+            .cpu_arch = .aarch64,
+            .os_tag = .macos,
+        },
+    },
+    .{
+        .target = .{
+            .cpu_arch = .s390x,
+            .os_tag = .linux,
+            .abi = .none,
+        },
+    },
+    .{
+        .target = .{
+            .cpu_arch = .loongarch32,
+            .os_tag = .linux,
+            .abi = .none,
+        },
+    },
+};
+
 const Config = struct {
+    params: *const CaseParameters,
+    target: *const std.Target,
     name: []const u8,
     source: []const u8,
     /// Whether this test case expects to have unwind tables / frame pointers.
@@ -26,42 +107,37 @@ const Config = struct {
     expect_strip: []const u8,
 };
 
-pub fn addCase(self: *StackTrace, config: Config) void {
-    for (self.targets) |*target| {
-        addCaseTarget(
-            self,
-            config,
-            target,
-            if (target.query.isNative()) null else t: {
-                break :t target.query.zigTriple(self.b.graph.arena) catch @panic("OOM");
-            },
-        );
+pub fn addCases(self: *StackTrace) void {
+    const b = self.b;
+
+    for (&param_sets) |*params| {
+        const resolved_target = b.resolveTargetQuery(params.target);
+
+        if (self.skip_non_native and !resolved_target.query.isNative()) continue;
+
+        // To avoid redundant testing, skip cross-compilation targets matching the host.
+        if (resolved_target.result.os.tag == builtin.target.os.tag and
+            resolved_target.result.cpu.arch == builtin.target.cpu.arch)
+        {
+            continue;
+        }
+
+        stack_traces_cases.addCases(self, params, &resolved_target.result);
     }
 }
-fn addCaseTarget(
-    self: *StackTrace,
-    config: Config,
-    target: *const std.Build.ResolvedTarget,
-    triple: ?[]const u8,
-) void {
-    const both_backends = b: {
-        if (comptime builtin.cpu.arch.endian() == .big) break :b false; // https://github.com/ziglang/zig/issues/25961
-        break :b switch (target.result.cpu.arch) {
-            .x86_64 => switch (target.result.ofmt) {
-                .elf => !target.result.os.tag.isBSD() and target.result.os.tag != .illumos,
-                else => false,
-            },
-            else => false,
-        };
+
+/// Called from test/stack_traces.zig
+pub fn addCase(self: *StackTrace, config: Config) void {
+    const params = config.params;
+    const target = config.target;
+    const target_query = config.params.target;
+
+    const triple: ?[]const u8 = if (target_query.isNative()) null else t: {
+        break :t target_query.zigTriple(self.b.graph.arena) catch @panic("OOM");
     };
-    const both_pie = switch (target.result.os.tag) {
-        .fuchsia => false,
-        else => true,
-    };
-    const both_libc = !std.os.targetRequiresLibC(&target.result);
 
     // See `std.debug.StackIterator.fp_usability` logic.
-    const fp_usability: enum { useless, unsafe, safe, ideal } = switch (target.result.cpu.arch) {
+    const fp_usability: enum { useless, unsafe, safe, ideal } = switch (target.cpu.arch) {
         .alpha,
         .csky,
         .microblaze,
@@ -83,19 +159,14 @@ fn addCaseTarget(
         .sparc,
         .sparc64,
         => .ideal,
-        .aarch64 => if (target.result.os.tag.isDarwin()) .safe else .unsafe,
+        .aarch64 => if (target.os.tag.isDarwin()) .safe else .unsafe,
         else => .unsafe,
     };
-    const supports_unwind_tables = switch (target.result.os.tag) {
+    const supports_unwind_tables = switch (target.os.tag) {
         // x86-windows just has no way to do stack unwinding other then using frame pointers.
-        .windows => target.result.cpu.arch != .x86,
+        .windows => target.cpu.arch != .x86,
         else => true,
     };
-
-    const use_llvm_vals: []const bool = if (both_backends) &.{ true, false } else &.{true};
-    const pie_vals: []const ?bool = if (both_pie) &.{ true, false } else &.{null};
-    const link_libc_vals: []const ?bool = if (both_libc) &.{ true, false } else &.{null};
-    const strip_debug_vals: []const bool = &.{ true, false };
 
     const UnwindInfo = packed struct(u2) {
         tables: bool,
@@ -126,56 +197,39 @@ fn addCaseTarget(
         },
     };
 
-    for (use_llvm_vals) |use_llvm| {
-        for (pie_vals) |pie| {
-            for (link_libc_vals) |link_libc| {
-                for (strip_debug_vals) |strip_debug| {
-                    for (unwind_info_vals) |unwind_info| {
-                        if (unwind_info.tables and !supports_unwind_tables) continue;
-                        self.addCaseInstance(
-                            target,
-                            triple,
-                            config.name,
-                            config.source,
-                            use_llvm,
-                            pie,
-                            link_libc,
-                            strip_debug,
-                            !unwind_info.tables and supports_unwind_tables,
-                            !unwind_info.fp,
-                            config.expect_panic,
-                            if (strip_debug) config.expect_strip else config.expect,
-                        );
-                    }
-                }
-            }
-        }
+    for (unwind_info_vals) |unwind_info| {
+        if (unwind_info.tables and !supports_unwind_tables) continue;
+        const strip = params.strip orelse switch (params.optimize) {
+            .debug, .fast, .safe => false,
+            .small => true,
+        };
+        self.addCaseInstance(
+            .{ .result = target.*, .query = target_query },
+            triple,
+            config.name,
+            config.source,
+            params,
+            !unwind_info.tables and supports_unwind_tables,
+            !unwind_info.fp,
+            config.expect_panic,
+            if (strip) config.expect_strip else config.expect,
+        );
     }
 }
 
 fn addCaseInstance(
     self: *StackTrace,
-    target: *const std.Build.ResolvedTarget,
+    resolved_target: std.Build.ResolvedTarget,
     triple: ?[]const u8,
     name: []const u8,
     source: []const u8,
-    use_llvm: bool,
-    pie: ?bool,
-    link_libc: ?bool,
-    strip_debug: bool,
+    params: *const CaseParameters,
     strip_unwind: bool,
     omit_frame_pointer: bool,
     expect_panic: bool,
     expect_stderr: []const u8,
 ) void {
     const b = self.b;
-
-    if (strip_debug) {
-        // To enable this coverage, one of two things needs to happen:
-        // * The compiler needs to gain the ability to strip only debug info (not symbols)
-        // * `std.Build.Step.ObjCopy` needs to be un-regressed
-        return;
-    }
 
     if (strip_unwind) {
         // To enable this coverage, `std.Build.Step.ObjCopy` needs to be un-regressed and gain the
@@ -187,14 +241,28 @@ fn addCaseInstance(
         return;
     }
 
+    const backend_string = if (params.use_llvm == true)
+        " llvm"
+    else if (params.use_llvm == false)
+        " selfhosted"
+    else
+        "";
+
+    const strip_string = if (params.strip == true)
+        " strip"
+    else if (params.strip == false)
+        " unstripped"
+    else
+        "";
+
     const annotated_case_name = b.fmt("check {s} ({s}{s}{s}{s}{s}{s}{s}{s})", .{
         name,
         triple orelse "",
         if (triple != null) " " else "",
-        if (use_llvm) "llvm" else "selfhosted",
-        if (pie == true) " pie" else "",
-        if (link_libc == true) " libc" else "",
-        if (strip_debug) " strip" else "",
+        backend_string,
+        if (params.pie == true) " pie" else "",
+        if (params.link_libc == true) " libc" else "",
+        strip_string,
         if (strip_unwind) " no_unwind" else "",
         if (omit_frame_pointer) " no_fp" else "",
     });
@@ -211,24 +279,26 @@ fn addCaseInstance(
         .root_module = b.createModule(.{
             .root_source_file = source_zig,
             .optimize = .Debug,
-            .target = target.*,
+            .target = resolved_target,
             .omit_frame_pointer = omit_frame_pointer,
-            .link_libc = link_libc,
+            .link_libc = params.link_libc,
             .unwind_tables = if (strip_unwind) .none else null,
             // make panics single-threaded so that they don't include a thread ID
             .single_threaded = expect_panic,
         }),
-        .use_llvm = use_llvm,
+        .use_llvm = params.use_llvm,
+        .use_lld = params.use_lld,
     });
-    exe.pie = pie;
+    exe.pie = params.pie;
     exe.bundle_ubsan_rt = false;
 
     const run = b.addRunArtifact(exe);
+    run.skip_foreign_checks = true;
     run.removeEnvironmentVariable("CLICOLOR_FORCE");
     run.setEnvironmentVariable("NO_COLOR", "1");
     run.addCheck(.{ .expect_term = term: {
         if (!expect_panic) break :term .{ .exited = 0 };
-        if (target.result.os.tag == .windows) break :term .{ .exited = 3 };
+        if (resolved_target.result.os.tag == .windows) break :term .{ .exited = 3 };
         break :term .{ .signal = @fromBackingInt(@intCast(6)) };
     } });
     run.expectStdOutEqual("");
@@ -241,10 +311,3 @@ fn addCaseInstance(
 
     self.step.dependOn(&check_run.step);
 }
-
-const StackTrace = @This();
-const std = @import("std");
-const builtin = @import("builtin");
-const Step = std.Build.Step;
-const OptimizeMode = std.builtin.OptimizeMode;
-const mem = std.mem;

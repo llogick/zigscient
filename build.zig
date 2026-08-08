@@ -1767,8 +1767,8 @@ fn cfgLspServer(
         const run_tests = b.addRunArtifact(ls_tests);
         const run_src_tests = b.addRunArtifact(src_tests);
 
-        run_tests.skip_foreign_checks = target.result.cpu.arch.isWasm() and b.enable_wasmtime;
-        run_src_tests.skip_foreign_checks = target.result.cpu.arch.isWasm() and b.enable_wasmtime;
+        run_tests.skip_foreign_checks = target.result.cpu.arch.isWasm(); // and b.enable_wasmtime;
+        run_src_tests.skip_foreign_checks = target.result.cpu.arch.isWasm(); // and b.enable_wasmtime;
 
         // Setup dependencies of `zig build test`
         test_step.dependOn(&run_tests.step);

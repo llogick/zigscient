@@ -626,6 +626,13 @@ pub const Step = extern struct {
                 output_file,
                 output_directory,
                 passthru,
+                /// `prefix` contains the enabled string.
+                /// `suffix` contains the disabled string.
+                enable_darling,
+                enable_qemu,
+                enable_rosetta,
+                enable_wasmtime,
+                enable_wine,
             };
 
             pub const Index = IndexType(@This());

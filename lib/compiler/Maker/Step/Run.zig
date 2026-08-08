@@ -187,6 +187,11 @@ pub fn make(
                     man.hash.addListOfBytes(run_args);
                 }
             },
+            .enable_darling => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_darling, arg.prefix.value, arg.suffix.value),
+            .enable_qemu => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_qemu, arg.prefix.value, arg.suffix.value),
+            .enable_rosetta => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_rosetta, arg.prefix.value, arg.suffix.value),
+            .enable_wasmtime => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_wasmtime, arg.prefix.value, arg.suffix.value),
+            .enable_wine => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_wine, arg.prefix.value, arg.suffix.value),
         }
     }
 
@@ -349,6 +354,29 @@ pub fn make(
     // pass or fail based on the process termination. Here we free the memory since
     // the step has succeeded.
     step.clearFailedCommand(gpa);
+}
+
+fn thirdPartyToggle(
+    man_hash: ?*Cache.HashHelper,
+    argv_list: *std.ArrayList([]const u8),
+    conf: *const Configuration,
+    setting: bool,
+    enable: ?Configuration.String,
+    disable: ?Configuration.String,
+) void {
+    if (setting) {
+        if (enable) |string| {
+            const slice = string.slice(conf);
+            if (man_hash) |h| h.addBytesZ(slice);
+            argv_list.appendAssumeCapacity(slice);
+        }
+    } else {
+        if (disable) |string| {
+            const slice = string.slice(conf);
+            if (man_hash) |h| h.addBytesZ(slice);
+            argv_list.appendAssumeCapacity(slice);
+        }
+    }
 }
 
 /// Reads stdout of a Zig test process until a termination condition is reached:
@@ -1535,6 +1563,11 @@ pub fn rerunInFuzzMode(
             .output_file => unreachable,
             .output_directory => unreachable,
             .passthru => unreachable,
+            .enable_darling => thirdPartyToggle(null, &argv_list, conf, graph.enable_darling, arg.prefix.value, arg.suffix.value),
+            .enable_qemu => thirdPartyToggle(null, &argv_list, conf, graph.enable_qemu, arg.prefix.value, arg.suffix.value),
+            .enable_rosetta => thirdPartyToggle(null, &argv_list, conf, graph.enable_rosetta, arg.prefix.value, arg.suffix.value),
+            .enable_wasmtime => thirdPartyToggle(null, &argv_list, conf, graph.enable_wasmtime, arg.prefix.value, arg.suffix.value),
+            .enable_wine => thirdPartyToggle(null, &argv_list, conf, graph.enable_wine, arg.prefix.value, arg.suffix.value),
         }
     }
 

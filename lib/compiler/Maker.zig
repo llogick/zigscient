@@ -2166,7 +2166,7 @@ fn markFailedStepsDirty(maker: *Maker) void {
     for (all_steps) |step_index| {
         const step = maker.stepByIndex(step_index);
         switch (step.state) {
-            .dependency_failure, .failure, .skipped => _ = maker.invalidateResult(step),
+            .dependency_failure, .dependency_skipped, .failure, .skipped => _ = maker.invalidateResult(step),
             else => continue,
         }
     }
@@ -2388,7 +2388,7 @@ fn makeSteps(
             .precheck_unstarted => unreachable,
             .precheck_started => unreachable,
             .precheck_done => unreachable,
-            .dependency_failure => pending_count += 1,
+            .dependency_failure, .dependency_skipped => pending_count += 1,
             .success => success_count += 1,
             .skipped, .skipped_oom => skipped_count += 1,
             .failure => {
@@ -2636,10 +2636,14 @@ fn makeStep(
 
                 .failure,
                 .dependency_failure,
-                .skipped_oom,
                 => break .dependency_failure,
 
-                .success, .skipped => {},
+                .dependency_skipped,
+                .skipped_oom,
+                .skipped,
+                => break .dependency_skipped,
+
+                .success => {},
             }
         } else if (Step.make(step_index, maker, step_prog_node)) state: {
             break :state .success;
@@ -2658,11 +2662,12 @@ fn makeStep(
 
             .failure,
             .dependency_failure,
+            .dependency_skipped,
             .skipped_oom,
+            .skipped,
             => false,
 
             .success,
-            .skipped,
             => true,
         };
 
@@ -2679,7 +2684,7 @@ fn makeStep(
                 .precheck_done => unreachable,
                 .success => .success,
                 .failure, .dependency_failure => .failure,
-                .skipped => .skipped,
+                .dependency_skipped, .skipped => .skipped,
                 .skipped_oom => .skipped_oom,
             };
             serveBuildStepCompleted(
@@ -2830,6 +2835,12 @@ fn printStepStatus(maker: *Maker, step_index: Configuration.Step.Index, stderr: 
         .dependency_failure => {
             try stderr.setColor(.dim);
             try writer.writeAll(" transitive failure\n");
+            try stderr.setColor(.reset);
+        },
+
+        .dependency_skipped => {
+            try stderr.setColor(.dim);
+            try writer.writeAll(" transitive skip\n");
             try stderr.setColor(.reset);
         },
 
@@ -3079,6 +3090,7 @@ fn constructGraphAndCheckForDependencyLoop(
 
         // These don't happen until we actually run the step graph.
         .dependency_failure => unreachable,
+        .dependency_skipped => unreachable,
         .success => unreachable,
         .failure => unreachable,
         .skipped => unreachable,

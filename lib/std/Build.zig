@@ -45,17 +45,6 @@ debug_log_scopes: []const []const u8 = &.{},
 /// Set to 0 to disable stack collection.
 debug_stack_frames_count: u8 = 8,
 
-/// Experimental. Use system Darling installation to run cross compiled macOS build artifacts.
-enable_darling: bool = false,
-/// Use system QEMU installation to run cross compiled foreign architecture build artifacts.
-enable_qemu: bool = false,
-/// Darwin. Use Rosetta to run x86_64 macOS build artifacts on arm64 macOS.
-enable_rosetta: bool = false,
-/// Use system Wasmtime installation to run cross compiled wasm/wasi build artifacts.
-enable_wasmtime: bool = false,
-/// Use system Wine installation to run cross compiled Windows build artifacts.
-enable_wine: bool = false,
-
 dep_prefix: []const u8 = "",
 
 modules: std.array_hash_map.String(*Module),
@@ -388,11 +377,6 @@ fn createChild(
         .default_step = undefined,
         .top_level_steps = .{},
         .debug_log_scopes = parent.debug_log_scopes,
-        .enable_darling = parent.enable_darling,
-        .enable_qemu = parent.enable_qemu,
-        .enable_rosetta = parent.enable_rosetta,
-        .enable_wasmtime = parent.enable_wasmtime,
-        .enable_wine = parent.enable_wine,
         .dep_prefix = parent.fmt("{s}{s}.", .{ parent.dep_prefix, dep_name }),
         .modules = .empty,
         .named_writefiles = .empty,

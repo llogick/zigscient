@@ -1,7 +1,10 @@
 const std = @import("std");
+const Context = @import("tests.zig").ErrorTracesContext;
 
-pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.Os.Tag) void {
+pub fn addCases(cases: *Context, params: *const Context.CaseParameters, target: *const std.Target) void {
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "return",
         .source =
         \\pub fn main() !void {
@@ -17,6 +20,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "try return",
         .source =
         \\fn foo() !void {
@@ -44,6 +49,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
         },
     });
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "non-error return pops error trace",
         .source =
         \\fn bar() !void {
@@ -70,6 +77,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "continue in while loop",
         .source =
         \\fn foo() !void {
@@ -93,6 +102,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "for loop pops error return trace",
         .source =
         \\fn foo() !void { return error.FooError; }
@@ -123,6 +134,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "implicit continue in for loop pops stale error return trace",
         .source =
         \\fn foo() !void { return error.FooError; }
@@ -154,6 +167,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "while loop pops error return trace",
         .source =
         \\fn foo() !void { return error.FooError; }
@@ -186,6 +201,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "implicit continue in while loop pops stale error return trace",
         .source =
         \\fn foo() !void { return error.FooError; }
@@ -219,6 +236,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "try return + handled catch/if-else",
         .source =
         \\fn foo() !void {
@@ -251,6 +270,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "break from inline loop pops error return trace",
         .source =
         \\fn foo() !void { return error.FooBar; }
@@ -276,6 +297,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "catch and re-throw error",
         .source =
         \\fn foo() !void {
@@ -304,6 +327,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "errors stored in var do not contribute to error trace",
         .source =
         \\fn foo() !void {
@@ -328,6 +353,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "error stored in const has trace preserved for duration of block",
         .source =
         \\fn foo() !void { return error.TheSkyIsFalling; }
@@ -376,6 +403,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "error passed to function has its trace preserved for duration of the call",
         .source =
         \\pub fn expectError(expected_error: anyerror, actual_error: anyerror!void) !void {
@@ -418,6 +447,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "try return from within catch",
         .source =
         \\fn foo() !void {
@@ -455,6 +486,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "try return from within if-else",
         .source =
         \\fn foo() !void {
@@ -492,6 +525,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "try try return return",
         .source =
         \\fn foo() !void {
@@ -534,6 +569,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "error union switch with call operand",
         .source =
         \\pub fn main() !void {
@@ -579,6 +616,8 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
     });
 
     cases.addCase(.{
+        .params = params,
+        .target = target,
         .name = "trace through inline call",
         // The main function has two inline calls to ensure
         // that inlinees in PDBs are properly deduplicated.
@@ -595,7 +634,7 @@ pub fn addCases(cases: *@import("tests.zig").ErrorTracesContext, os: std.Target.
         \\}
         ,
         .expect_error = "ThisIsSoSad",
-        .expect_trace = switch (os) {
+        .expect_trace = switch (target.os.tag) {
             // LLVM doesn't emit column info in the binary annotations for inlinee callees in PDBs,
             // so our expected result is slightly different for Windows than on other operating
             // systems.

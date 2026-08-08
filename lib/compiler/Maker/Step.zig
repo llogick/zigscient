@@ -163,6 +163,9 @@ pub const State = enum {
     /// be re-evaluated.
     precheck_done,
     dependency_failure,
+    /// Handled exactly the same as `dependency_failure` except communicates
+    /// that the dependency didn't fail but rather was skipped.
+    dependency_skipped,
     success,
     failure,
     /// This state indicates that the step did not complete, however, it also did not fail,
