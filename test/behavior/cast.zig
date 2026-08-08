@@ -120,6 +120,7 @@ test "@floatFromInt" {
             try expect(@as(i32, @floor(f)) == k);
             try expect(@as(i32, @ceil(f)) == k);
             try expect(@as(i32, @trunc(f)) == k);
+            try expect(@as(i32, @trunc(@floor(f))) == k);
         }
     };
     try S.doTheTest();
@@ -197,6 +198,7 @@ test "@floatFromInt(f80)" {
             try expect(@as(Int, @floor(f)) == k);
             try expect(@as(Int, @ceil(f)) == k);
             try expect(@as(Int, @trunc(f)) == k);
+            try expect(@as(Int, @trunc(@floor(f))) == k);
         }
     };
     try S.doTheTest(i31);
