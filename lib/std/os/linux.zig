@@ -2058,8 +2058,8 @@ pub const F = struct {
         },
     };
 
-    pub const SETSIG = if (is_hppa or native_arch == .alpha) 13 else 11;
-    pub const GETSIG = if (is_hppa or native_arch == .alpha) 14 else 12;
+    pub const SETSIG = if (is_hppa) 13 else 10;
+    pub const GETSIG = if (is_hppa) 14 else 11;
 
     pub const SETOWN_EX = 15;
     pub const GETOWN_EX = 16;
