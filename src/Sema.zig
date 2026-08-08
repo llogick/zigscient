@@ -21186,7 +21186,10 @@ fn zirIntFromFloat(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileErro
     const dest_scalar_ty = dest_ty.scalarType(zcu);
     const operand_scalar_ty = operand_ty.scalarType(zcu);
 
-    _ = try sema.checkIntType(block, src, dest_scalar_ty);
+    switch (dest_scalar_ty.zigTypeTag(zcu)) {
+        .comptime_int, .int => {},
+        else => return sema.fail(block, src, "expected integer result type, found '{f}'", .{dest_scalar_ty.fmt(pt)}),
+    }
     try sema.checkFloatType(block, operand_src, operand_scalar_ty);
 
     if (sema.resolveValue(operand)) |operand_val| {
@@ -21362,7 +21365,10 @@ fn zirFloatFromInt(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileErro
     const dest_scalar_ty = dest_ty.scalarType(zcu);
     const operand_scalar_ty = operand_ty.scalarType(zcu);
 
-    try sema.checkFloatType(block, src, dest_scalar_ty);
+    switch (dest_scalar_ty.zigTypeTag(zcu)) {
+        .comptime_float, .float => {},
+        else => return sema.fail(block, src, "expected float result type, found '{f}'", .{dest_scalar_ty.fmt(pt)}),
+    }
     _ = try sema.checkIntType(block, operand_src, operand_scalar_ty);
 
     if (sema.resolveValue(operand)) |operand_val| {

@@ -8,6 +8,9 @@ export fn bar() void {
     _ = &a;
     _ = @as(u32, @floatFromInt(a));
 }
+export fn bar2() void {
+    _ = @as(comptime_int, @floatFromInt(2));
+}
 export fn baz() void {
     var a: u32 = 2;
     _ = &a;
@@ -22,6 +25,7 @@ export fn qux() void {
 // error
 //
 // :4:36: error: unable to cast runtime value to 'comptime_int'
-// :9:18: error: expected float type, found 'u32'
-// :14:32: error: expected float type, found 'u32'
-// :19:27: error: expected integer or vector, found 'f32'
+// :9:18: error: expected float result type, found 'u32'
+// :12:27: error: expected float result type, found 'comptime_int'
+// :17:32: error: expected float type, found 'u32'
+// :22:27: error: expected integer or vector, found 'f32'
