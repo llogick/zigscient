@@ -3654,7 +3654,7 @@ fn verifyParentSectionAttributes(
         parent.name(coff).toSlice(coff),
     });
 
-    inline for (comptime std.meta.fieldNames(ObjectSectionAttributes)) |field| {
+    inline for (@typeInfo(ObjectSectionAttributes).@"struct".field_names) |field| {
         if (@field(child_attrs, field) != @field(parent_attrs, field)) {
             err.addNote("flags.{s} was {d} in {s}, but {d} in {s}", .{
                 field,

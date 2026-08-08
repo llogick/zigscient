@@ -246,7 +246,7 @@ pub fn BitcodeWriter(comptime types: []const type) type {
 
                     try self.bitcode.writeBits(comptime abbrevId(Abbrev), abbrev_len);
 
-                    const field_names = comptime std.meta.fieldNames(Abbrev);
+                    const field_names = @typeInfo(Abbrev).@"struct".field_names;
 
                     // This abbreviation might only contain literals
                     if (field_names.len == 0) return;

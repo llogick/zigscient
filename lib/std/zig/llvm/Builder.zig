@@ -9517,7 +9517,7 @@ pub const Metadata = packed struct(u32) {
             nodes: anytype,
             w: *Writer,
         ) !void {
-            const names = comptime std.meta.fieldNames(@TypeOf(nodes));
+            const names = @typeInfo(@TypeOf(nodes)).@"struct".field_names;
 
             comptime var fmt_str: []const u8 = "{[distinct]s}{[node]s}(";
             inline for (names) |name| fmt_str = fmt_str ++ "{[" ++ name ++ "]f}";
@@ -13484,7 +13484,7 @@ fn metadataSimpleAssumeCapacity(self: *Builder, tag: Metadata.Tag, value: anytyp
         builder: *const Builder,
         pub fn hash(_: @This(), key: Key) u32 {
             var hasher = std.hash.Wyhash.init(std.hash.int(@backingInt(key.tag)));
-            inline for (comptime std.meta.fieldNames(@TypeOf(value))) |field_name| {
+            inline for (@typeInfo(@TypeOf(value)).@"struct".field_names) |field_name| {
                 hasher.update(std.mem.asBytes(&@field(key.value, field_name)));
             }
             return @truncate(hasher.final());

@@ -567,7 +567,7 @@ fn addCallIntrinsic(cg: *CodeGen, intrinsic: Mir.Intrinsic) error{OutOfMemory}!v
 /// Appends entries to `mir_extra` based on the type of `extra`.
 /// Returns the index into `mir_extra`
 fn addExtra(cg: *CodeGen, extra: anytype) error{OutOfMemory}!u32 {
-    const field_count = std.meta.fieldNames(@TypeOf(extra)).len;
+    const field_count = @typeInfo(@TypeOf(extra)).@"struct".field_names.len;
     try cg.mir_extra.ensureUnusedCapacity(cg.gpa, field_count);
     return cg.addExtraAssumeCapacity(extra);
 }

@@ -43,9 +43,9 @@ pub fn cmdTargets(
     {
         var root_obj = try serializer.beginStruct(.{});
 
-        try root_obj.field("arch", meta.fieldNames(Target.Cpu.Arch), .{});
-        try root_obj.field("os", meta.fieldNames(Target.Os.Tag), .{});
-        try root_obj.field("abi", meta.fieldNames(Target.Abi), .{});
+        try root_obj.field("arch", @typeInfo(Target.Cpu.Arch).@"enum".field_names, .{});
+        try root_obj.field("os", @typeInfo(Target.Os.Tag).@"enum".field_names, .{});
+        try root_obj.field("abi", @typeInfo(Target.Abi).@"enum".field_names, .{});
 
         {
             var libc_obj = try root_obj.beginTupleField("libc", .{});

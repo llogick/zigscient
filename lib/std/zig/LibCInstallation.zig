@@ -43,7 +43,7 @@ pub const FindError = error{
 pub fn parse(allocator: Allocator, io: Io, libc_file: []const u8, target: *const std.Target) !LibCInstallation {
     var self: LibCInstallation = .{};
 
-    const field_names = comptime std.meta.fieldNames(LibCInstallation);
+    const field_names = @typeInfo(LibCInstallation).@"struct".field_names;
     const FoundKey = struct {
         found: bool,
         allocated: ?[]u8,

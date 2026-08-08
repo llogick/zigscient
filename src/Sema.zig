@@ -34035,7 +34035,7 @@ pub fn getTmpAir(sema: Sema) Air {
 }
 
 pub fn addExtra(sema: *Sema, extra: anytype) Allocator.Error!u32 {
-    const field_count = std.meta.fieldNames(@TypeOf(extra)).len;
+    const field_count = @typeInfo(@TypeOf(extra)).@"struct".field_names.len;
     try sema.air_extra.ensureUnusedCapacity(sema.gpa, field_count);
     return sema.addExtraAssumeCapacity(extra);
 }

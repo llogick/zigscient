@@ -197,15 +197,17 @@ test containerLayout {
     try testing.expect(containerLayout(U3) == .@"extern");
 }
 
-/// Instead of this function, prefer to use e.g. `@typeInfo(foo).@"struct".decl_names`
-/// directly when you know what kind of type it is.
+/// Returns the list of declaration names of namespace types.
+///
+/// This function is only useful when the callsite does not know statically
+/// which kind of container it is.
 pub fn declarations(comptime T: type) []const [:0]const u8 {
     return switch (@typeInfo(T)) {
         .@"struct" => |info| info.decl_names,
         .@"enum" => |info| info.decl_names,
         .@"union" => |info| info.decl_names,
         .@"opaque" => |info| info.decl_names,
-        else => @compileError("Expected struct, enum, union, or opaque type, found '" ++ @typeName(T) ++ "'"),
+        else => comptime unreachable, // type lacks namespace
     };
 }
 
@@ -241,10 +243,13 @@ test declarations {
 }
 
 /// To be removed after Zig 0.17.0 is tagged.
-pub const declarationInfo = @compileError("Deprecated; use '@hasDecl' instead");
+pub const declarationInfo = @compileError("deprecated in favor of @hasDecl");
 /// To be removed after Zig 0.17.0 is tagged.
-pub const fields = @compileError("Deprecated; use 'fieldNames' and 'fieldTypes' instead");
+pub const fields = @compileError("deprecated in favor of @typeInfo");
 
+/// Deprecated in favor of `@typeInfo`.
+///
+/// To be removed after 0.17.0 is tagged.
 pub fn fieldInfo(comptime T: type, comptime field: FieldEnum(T)) switch (@typeInfo(T)) {
     .@"struct" => struct { name: [:0]const u8, type: type, attrs: Type.Struct.FieldAttributes },
     .@"union" => struct { name: [:0]const u8, type: type, attrs: Type.Union.FieldAttributes },
@@ -298,13 +303,16 @@ test fieldInfo {
     try testing.expect(comptime uf.type == u8);
 }
 
+/// Deprecated in favor of `@typeInfo`.
+///
+/// To be removed after 0.17.0 is tagged.
 pub fn fieldNames(comptime T: type) []const [:0]const u8 {
     return switch (@typeInfo(T)) {
         .@"struct" => |s| s.field_names,
         .@"union" => |u| u.field_names,
         .@"enum" => |e| e.field_names,
         .error_set => |es| es.error_names.?,
-        else => @compileError("Expected struct, union, error set or enum type, found '" ++ @typeName(T) ++ "'"),
+        else => comptime unreachable,
     };
 }
 
@@ -336,11 +344,14 @@ test fieldNames {
     try testing.expectEqualSlices(u8, u1names[1], "b");
 }
 
+/// Deprecated in favor of `@typeInfo`.
+///
+/// To be removed after 0.17.0 is tagged.
 pub fn fieldTypes(comptime T: type) []const type {
     return switch (@typeInfo(T)) {
         .@"struct" => |s| s.field_types,
         .@"union" => |u| u.field_types,
-        else => @compileError("Expected struct or union type, found '" ++ @typeName(T) ++ "'"),
+        else => comptime unreachable,
     };
 }
 

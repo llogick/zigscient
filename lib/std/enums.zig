@@ -33,7 +33,8 @@ pub fn fromInt(comptime E: type, integer: anytype) ?E {
 pub fn EnumFieldStruct(comptime E: type, comptime Data: type, comptime field_default: ?Data) type {
     @setEvalBranchQuota(@typeInfo(E).@"enum".field_names.len + eval_branch_quota_cushion);
     const default_ptr: ?*const anyopaque = if (field_default) |d| @ptrCast(&d) else null;
-    return @Struct(.auto, null, std.meta.fieldNames(E), &@splat(Data), &@splat(.{ .default_value_ptr = default_ptr }));
+    const field_names = @typeInfo(E).@"enum".field_names;
+    return @Struct(.auto, null, field_names, &@splat(Data), &@splat(.{ .default_value_ptr = default_ptr }));
 }
 
 /// Looks up the supplied field values in the given enum type.
@@ -454,7 +455,7 @@ pub fn EnumMap(comptime E: type, comptime V: type) type {
                     }
                 }
             } else {
-                inline for (std.meta.fieldNames(E)) |field_name| {
+                inline for (@typeInfo(E).@"enum".field_names) |field_name| {
                     const key = @field(E, field_name);
                     if (@field(init_values, field_name)) |*v| {
                         const i = comptime Indexer.indexOf(key);

@@ -1109,7 +1109,7 @@ pub fn option(b: *Build, comptime T: type, name_raw: []const u8, description_raw
     const type_id = comptime typeToEnum(T);
     const enum_options = if (type_id == .@"enum" or type_id == .enum_list) blk: {
         const EnumType = if (type_id == .enum_list) @typeInfo(T).pointer.child else T;
-        const field_names = comptime std.meta.fieldNames(EnumType);
+        const field_names = @typeInfo(EnumType).@"enum".field_names;
         var options = std.array_list.Managed([]const u8).initCapacity(b.allocator, field_names.len) catch @panic("OOM");
 
         inline for (field_names) |field_name| {
@@ -1420,7 +1420,7 @@ pub fn parseTargetQuery(options: std.Target.Query.ParseOptions) error{ParseFaile
                 \\available operating systems:
                 \\
             , .{diags.os_name.?});
-            inline for (comptime std.meta.fieldNames(Target.Os.Tag)) |field_name| {
+            inline for (@typeInfo(Target.Os.Tag).@"enum".field_names) |field_name| {
                 std.debug.print(" {s}\n", .{field_name});
             }
             return error.ParseFailed;
