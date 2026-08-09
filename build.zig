@@ -604,8 +604,36 @@ pub fn build(b: *std.Build) !void {
         .skip_llvm = skip_llvm,
         .max_rss = 100_000_000,
     }));
-    test_step.dependOn(tests.addStackTraceTests(b, test_filters, skip_non_native));
-    test_step.dependOn(tests.addErrorTraceTests(b, test_filters, optimize_modes, skip_non_native));
+    test_step.dependOn(tests.addStackTraceTests(b, .{
+        .test_filters = test_filters,
+        .test_target_filters = test_target_filters,
+        .test_extra_targets = test_extra_targets,
+        .optimize_modes = optimize_modes,
+        .skip_non_native = skip_non_native,
+        .skip_freebsd = skip_freebsd,
+        .skip_netbsd = skip_netbsd,
+        .skip_openbsd = skip_openbsd,
+        .skip_windows = skip_windows,
+        .skip_darwin = skip_darwin,
+        .skip_linux = skip_linux,
+        .skip_llvm = skip_llvm,
+        .skip_libc = skip_libc,
+    }));
+    test_step.dependOn(tests.addErrorTraceTests(b, .{
+        .test_filters = test_filters,
+        .test_target_filters = test_target_filters,
+        .test_extra_targets = test_extra_targets,
+        .optimize_modes = optimize_modes,
+        .skip_non_native = skip_non_native,
+        .skip_freebsd = skip_freebsd,
+        .skip_netbsd = skip_netbsd,
+        .skip_openbsd = skip_openbsd,
+        .skip_windows = skip_windows,
+        .skip_darwin = skip_darwin,
+        .skip_linux = skip_linux,
+        .skip_llvm = skip_llvm,
+        .skip_libc = skip_libc,
+    }));
     test_step.dependOn(tests.addCliTests(b));
     if (tests.addDebuggerTests(b, .{
         .test_filters = test_filters,

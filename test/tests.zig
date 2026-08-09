@@ -747,7 +747,6 @@ const module_test_targets = blk: {
                 .os_tag = .linux,
                 .abi = .abin32,
             },
-            .extra_target = true,
         },
         .{
             .target = .{
@@ -2379,7 +2378,7 @@ pub fn isNative(actual_target: *const std.Build.ResolvedTarget, host: *const std
     return true;
 }
 
-pub fn addStackTraceTests(b: *std.Build, test_filters: []const []const u8, skip_non_native: bool) *Step {
+pub fn addStackTraceTests(b: *std.Build, options: StackTracesContext.Options) *Step {
     const step = b.step("test-stack-traces", "Run the stack trace tests");
 
     const convert_exe = b.addExecutable(.{
@@ -2395,8 +2394,7 @@ pub fn addStackTraceTests(b: *std.Build, test_filters: []const []const u8, skip_
     stack_traces_context.* = .{
         .b = b,
         .step = step,
-        .test_filters = test_filters,
-        .skip_non_native = skip_non_native,
+        .options = options,
         .convert_exe = convert_exe,
     };
     stack_traces_context.addCases();
@@ -2404,12 +2402,7 @@ pub fn addStackTraceTests(b: *std.Build, test_filters: []const []const u8, skip_
     return step;
 }
 
-pub fn addErrorTraceTests(
-    b: *std.Build,
-    test_filters: []const []const u8,
-    optimize_modes: []const OptimizeMode,
-    skip_non_native: bool,
-) *Step {
+pub fn addErrorTraceTests(b: *std.Build, options: ErrorTracesContext.Options) *Step {
     const step = b.step("test-error-traces", "Run the error trace tests");
 
     const convert_exe = b.addExecutable(.{
@@ -2425,9 +2418,7 @@ pub fn addErrorTraceTests(
     error_traces_context.* = .{
         .b = b,
         .step = step,
-        .test_filters = test_filters,
-        .skip_non_native = skip_non_native,
-        .optimize_modes = optimize_modes,
+        .options = options,
         .convert_exe = convert_exe,
     };
     error_traces_context.addCases();
