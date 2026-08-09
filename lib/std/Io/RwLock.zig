@@ -27,10 +27,19 @@ const Count = @Int(.unsigned, @divFloor(@bitSizeOf(usize) - 1, 2));
 
 pub fn tryLock(rl: *RwLock, io: Io) bool {
     if (rl.mutex.tryLock()) {
+        // Unlike `lock`, this never registers in `writer_mask`, so holding the mutex does
+        // not stop a reader from taking the fast path; the CAS catches one that raced in
+        // after `state` was loaded.
         const state = @atomicLoad(usize, &rl.state, .seq_cst);
         if (state & reader_mask == 0) {
-            _ = @atomicRmw(usize, &rl.state, .Or, is_writing, .seq_cst);
-            return true;
+            _ = @cmpxchgStrong(
+                usize,
+                &rl.state,
+                state,
+                state | is_writing,
+                .seq_cst,
+                .seq_cst,
+            ) orelse return true;
         }
 
         rl.mutex.unlock(io);
@@ -61,7 +70,12 @@ pub fn lock(rl: *RwLock, io: Io) Io.Cancelable!void {
     if (state & reader_mask != 0)
         rl.semaphore.wait(io) catch |err| switch (err) {
             error.Canceled => {
-                rl.unlock(io);
+                // Clearing `is_writing` while still holding the mutex means the last reader
+                // either saw it set, and posts a permit only we can consume, or did not and
+                // never posts. A stale permit would let the next writer in past the readers.
+                const prev_state = @atomicRmw(usize, &rl.state, .And, ~is_writing, .seq_cst);
+                if (prev_state & reader_mask == 0) rl.semaphore.waitUncancelable(io);
+                rl.mutex.unlock(io);
                 return error.Canceled;
             },
         };
@@ -303,6 +317,78 @@ test "lock canceling" {
     try std.testing.expectEqual(error.Canceled, mfuture.cancel(io));
     rl.unlock(io);
     try testing.expectEqual(rl, Io.RwLock.init);
+}
+
+test "tryLock does not race with readers" {
+    if (builtin.single_threaded) return error.SkipZigTest;
+
+    const Context = struct {
+        rl: Io.RwLock,
+
+        fn reader(ctx: *@This(), io: Io) !void {
+            while (true) {
+                if (ctx.rl.tryLockShared(io)) ctx.rl.unlockShared(io);
+                try io.checkCancel();
+            }
+        }
+    };
+
+    var ctx: Context = .{ .rl = .init };
+    const io = testing.io;
+
+    var future = io.concurrent(Context.reader, .{ &ctx, io }) catch |err| switch (err) {
+        error.ConcurrencyUnavailable => return error.SkipZigTest,
+    };
+    defer future.cancel(io) catch {};
+
+    for (0..1000) |_| {
+        if (!ctx.rl.tryLock(io)) continue;
+        defer ctx.rl.unlock(io);
+        const state = @atomicLoad(usize, &ctx.rl.state, .seq_cst);
+        try testing.expectEqual(0, state & reader_mask);
+    }
+
+    try testing.expectEqual(0, ctx.rl.semaphore.permits);
+}
+
+test "canceled writer does not leak a semaphore permit" {
+    if (builtin.single_threaded) return error.SkipZigTest;
+
+    const Writer = struct {
+        fn lockUnlock(rl: *Io.RwLock, io: Io) Io.Cancelable!void {
+            try rl.lock(io);
+            rl.unlock(io);
+        }
+    };
+
+    const io = testing.io;
+
+    var rl: Io.RwLock = .init;
+
+    for (0..1000) |_| {
+        rl.lockSharedUncancelable(io);
+
+        var wfuture = io.concurrent(Writer.lockUnlock, .{ &rl, io }) catch |err| switch (err) {
+            error.ConcurrencyUnavailable => {
+                rl.unlockShared(io);
+                return error.SkipZigTest;
+            },
+        };
+        var rfuture = io.concurrent(Io.RwLock.unlockShared, .{ &rl, io }) catch |err| switch (err) {
+            error.ConcurrencyUnavailable => {
+                rl.unlockShared(io);
+                wfuture.await(io) catch {};
+                return error.SkipZigTest;
+            },
+        };
+
+        // Races the last reader's `post` against the writer's cancelation.
+        wfuture.cancel(io) catch {};
+        rfuture.await(io);
+
+        try testing.expectEqual(0, rl.state);
+        try testing.expectEqual(0, rl.semaphore.permits);
+    }
 }
 
 fn semaphoreLockCancel(rl: *Io.RwLock, io: Io) !void {
