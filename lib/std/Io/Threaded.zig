@@ -11230,7 +11230,10 @@ fn fileWriteFileStreaming(
         var off: std.os.linux.off_t = undefined;
         const off_ptr: ?*std.os.linux.off_t, const count: usize = switch (file_reader.mode) {
             .positional => o: {
-                const size = file_reader.getSize() catch return 0;
+                const size = file_reader.getSize() catch |err| switch (err) {
+                    error.Canceled => |e| return e,
+                    else => break :sf,
+                };
                 off = std.math.cast(std.os.linux.off_t, file_reader.pos) orelse return error.ReadFailed;
                 break :o .{ &off, @min(@backingInt(limit), size - file_reader.pos, max_count) };
             },
@@ -11579,7 +11582,10 @@ fn fileWriteFilePositional(
         if (file_reader.pos != 0) break :fcf;
         if (offset != 0) break :fcf;
         if (limit != .unlimited) break :fcf;
-        const size = file_reader.getSize() catch break :fcf;
+        const size = file_reader.getSize() catch |err| switch (err) {
+            error.Canceled => |e| return e,
+            else => break :fcf,
+        };
         if (header.len != 0 or reader_buffered.len != 0) {
             const n = try fileWritePositional(t, file, header, &.{limit.slice(reader_buffered)}, 1, offset);
             file_reader.interface.toss(n -| header.len);
