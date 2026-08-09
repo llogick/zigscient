@@ -162,7 +162,7 @@ pub const Tag = struct {
             .int => return universal(.integer, false),
             .@"enum" => |e| {
                 if (@hasDecl(T, "oids")) return Oid.asn1_tag;
-                return universal(if (e.is_exhaustive) .enumerated else .integer, false);
+                return universal(if (e.mode == .exhaustive) .enumerated else .integer, false);
             },
             .optional => |o| return fromZig(o.child),
             .null => return universal(.null, false),

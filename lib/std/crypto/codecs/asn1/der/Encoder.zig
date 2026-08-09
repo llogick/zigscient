@@ -21,6 +21,26 @@ pub fn any(self: *Encoder, val: anytype) !void {
     try self.anyTag(Tag.fromZig(T), val);
 }
 
+test any {
+    const Enum = enum(u8) {
+        x = 0,
+    };
+
+    try checkAnyEncoding(u16, 0, &.{ 0x02, 0x01, 0x00 });
+    try checkAnyEncoding(Enum, .x, &.{ 0x0a, 0x01, 0x00 });
+}
+
+fn checkAnyEncoding(T: type, value: T, expected: []const u8) !void {
+    var encoder: @This() = .init(std.testing.allocator);
+    defer encoder.deinit();
+
+    try encoder.any(value);
+    const encoded = try encoder.buffer.toOwnedSlice();
+    defer std.testing.allocator.free(encoded);
+
+    try std.testing.expectEqualSlices(u8, expected, encoded);
+}
+
 fn anyTag(self: *Encoder, tag_: Tag, val: anytype) !void {
     const T = @TypeOf(val);
     if (std.meta.hasFn(T, "encodeDer")) return try val.encodeDer(self);
