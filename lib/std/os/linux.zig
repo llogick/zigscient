@@ -1746,11 +1746,12 @@ pub fn close(fd: fd_t) usize {
 }
 
 pub const CLOSE_RANGE = packed struct(u32) {
+    _0: u1 = 0,
     /// Unshare the file descriptor table before closing file descriptors.
     UNSHARE: bool, // 0x00000001
     /// Set the FD_CLOEXEC bit instead of closing the file descriptor.
     CLOEXEC: bool, // 0x00000002
-    _: u30 = 0,
+    _: u29 = 0,
 };
 
 pub fn close_range(first: fd_t, last: fd_t, flags: CLOSE_RANGE) usize {
