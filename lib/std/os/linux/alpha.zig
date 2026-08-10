@@ -295,8 +295,8 @@ pub fn clone() callconv(.naked) u64 {
     // a0 = $16, a1 = $17, a2 = $18, a3 = $19,
     // a4 = $20, a5 = $21, sp = $30, v0 = $0
         \\ # Save function pointer and argument pointer on new thread stack
-        \\ ldi $1, -8
-        \\ and $17, $17, $1
+        \\ ldi $1, -16
+        \\ and $17, $1, $17
         \\ lda $17, -16($17)
         \\ stq $16, 0($17)
         \\ stq $19, 8($17)
@@ -323,16 +323,16 @@ pub fn clone() callconv(.naked) u64 {
         \\ .cfi_undefined $26
     );
     asm volatile (
-    // v0 = $0, t9 = $23, a0 = $16, ra = $26, sp = $30, fp = $15
+    // v0 = $0, a0 = $16, ra = $26, sp = $30, fp = $15, pv = $27
         \\ mov 0, $15
         \\
-        \\ ldq $23, 0($30)
+        \\ ldq $27, 0($30)
         \\ ldq $16, 8($30)
         \\ lda $30, 16($30)
-        \\ jsr $26, ($23)
+        \\ jsr $26, ($27)
         \\
         \\ mov $0, $16
-        \\ ldi $0, 1 # SYS_EXIT
+        \\ ldi $0, 1 # SYS_exit
         \\ callsys
     );
 }
@@ -341,7 +341,7 @@ pub fn restore() noreturn {
     asm volatile (
     // v0 = $0, a0 = $16, sp = $30
         \\ mov $30, $16
-        \\ ldi $0, 103 # SIGRETURN
+        \\ ldi $0, 103 # SYS_sigreturn
         \\ callsys
     );
 }
@@ -350,7 +350,7 @@ pub fn restore_rt() noreturn {
     asm volatile (
     // v0 = $0, a0 = $16, sp = $30
         \\ mov $30, $16
-        \\ ldi $0, 351 # RT_SIGRETURN
+        \\ ldi $0, 351 # SYS_rt_sigreturn
         \\ callsys
     );
 }

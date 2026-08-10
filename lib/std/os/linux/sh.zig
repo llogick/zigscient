@@ -167,8 +167,8 @@ pub fn clone() callconv(.naked) u32 {
         \\ mov #120, r3 ! SYS_clone
         \\ mov r6, r4
         \\ mov.l @r15, r6
-        \\ mov.l @(r15, 8), r7
-        \\ mov.l @(r15, 4), r0
+        \\ mov.l @(8, r15), r7
+        \\ mov.l @(4, r15), r0
         \\ trapa #31
         \\ or r0, r0
         \\ or r0, r0

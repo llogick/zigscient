@@ -261,10 +261,9 @@ pub fn setThreadPointer(addr: usize) void {
         },
         .alpha => {
             asm volatile (
-                \\ lda $16, 0(%[addr])
                 \\ wruniq
                 :
-                : [addr] "r" (addr),
+                : [addr] "{$16}" (addr),
             );
         },
         .arc, .arceb => {
@@ -282,7 +281,7 @@ pub fn setThreadPointer(addr: usize) void {
             assert(rc == 0);
         },
         .m68k => {
-            const rc = linux.syscall1(.set_thread_area, addr);
+            const rc = @call(.always_inline, linux.syscall1, .{ .set_thread_area, addr });
             assert(rc == 0);
         },
         .hexagon => {
@@ -295,9 +294,10 @@ pub fn setThreadPointer(addr: usize) void {
         .hppa => {
             asm volatile (
                 \\ ble 0xe0(%%sr2, %%r0)
+                \\  nop
                 :
-                : [addr] "={r26}" (addr),
-                : .{ .r29 = true });
+                : [addr] "{r26}" (addr),
+                : .{ .r31 = true });
         },
         .loongarch32, .loongarch64 => {
             asm volatile (
@@ -357,7 +357,7 @@ pub fn setThreadPointer(addr: usize) void {
         },
         .sh, .sheb => {
             asm volatile (
-                \\ ldc gbr, %[addr]
+                \\ ldc %[addr], gbr
                 :
                 : [addr] "r" (addr),
             );
@@ -417,7 +417,7 @@ pub fn getThreadPointer() usize {
             \\ move %[ret], $tp
             : [ret] "=r" (-> usize),
         ),
-        .m68k => linux.syscall1(.get_thread_area),
+        .m68k => linux.syscall0(.get_thread_area),
         .mips, .mipsel, .mips64, .mips64el => asm (
             \\ rdhwr %[ret], $29
             : [ret] "=r" (-> usize),
@@ -449,7 +449,7 @@ pub fn getThreadPointer() usize {
             : [ret] "=r" (-> usize),
         ),
         .sh, .sheb => asm (
-            \\ stc %[ret], gbr
+            \\ stc gbr, %[ret]
             : [ret] "=r" (-> usize),
         ),
         .sparc, .sparc64 => asm (

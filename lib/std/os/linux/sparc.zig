@@ -214,11 +214,11 @@ pub fn clone() callconv(.naked) u32 {
         \\
         \\ # Align, and add some extra space for the initial frame
         \\ and %%i1, -8, %%i1
-        \\ sub %%i1, 96 + 2047, %%o1
+        \\ sub %%i1, 96, %%o1
         \\
         \\ mov %%i4, %%o2
         \\ mov %%i5, %%o3
-        \\ ld [%%fp + 92 + 2047], %%o4
+        \\ ld [%%fp + 92], %%o4
         \\ t 0x10
         \\ bcs 1f
         \\  nop

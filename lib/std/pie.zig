@@ -83,7 +83,7 @@ inline fn getDynamicSymbol() [*]const elf.Dyn {
                 \\ add %[ret], pc
                 \\ b 2f
                 \\1:
-                \\ .word _DYNAMIC-1b
+                \\ .word _DYNAMIC - 1b
                 \\2:
                 : [ret] "=r" (-> [*]const elf.Dyn),
             ),
@@ -97,20 +97,29 @@ inline fn getDynamicSymbol() [*]const elf.Dyn {
             ),
             // The compiler is not required to load the GP register, so do it ourselves.
             .alpha => asm volatile (
+                \\ .weak _DYNAMIC
+                \\ .hidden _DYNAMIC
                 \\ br $29, 1f
                 \\1:
                 \\ ldgp $29, 0($29)
-                \\ ldq %[ret], -0x8000($29)
+                \\ ldah %[ret], _DYNAMIC($29) !gprelhigh
+                \\ lda %[ret], _DYNAMIC(%[ret]) !gprellow
                 : [ret] "=r" (-> [*]const elf.Dyn),
                 :
-                : .{ .r26 = true, .r29 = true }),
-            // The CSKY ABI requires the gb register to point to the GOT. Additionally, the first
-            // entry in the GOT is defined to hold the address of _DYNAMIC.
+                : .{ .r29 = true }),
             .csky => asm volatile (
-                \\ mov %[ret], gb
-                \\ ldw %[ret], %[ret]
+                \\ .weak _DYNAMIC
+                \\ .hidden _DYNAMIC
+                \\ grs %[ret], 1f
+                \\ br 2f
+                \\1:
+                \\ .long _DYNAMIC - 1b
+                \\2:
+                \\ ldw r12, (%[ret], 0)
+                \\ addu %[ret], %[ret], r12
                 : [ret] "=r" (-> [*]const elf.Dyn),
-            ),
+                :
+                : .{ .r12 = true }),
             .hexagon => asm volatile (
                 \\ .weak _DYNAMIC
                 \\ .hidden _DYNAMIC
@@ -143,12 +152,20 @@ inline fn getDynamicSymbol() [*]const elf.Dyn {
                 \\ .hidden _DYNAMIC
                 \\ lea _DYNAMIC - . - 8, %[ret]
                 \\ lea (%[ret], %%pc), %[ret]
-                : [ret] "=r" (-> [*]const elf.Dyn),
+                : [ret] "=a" (-> [*]const elf.Dyn),
             ),
             .microblaze, .microblazeel => asm volatile (
-                \\ lwi %[ret], r20, 0
+                \\ .weak _DYNAMIC
+                \\ .hidden _DYNAMIC
+                \\ mfs %[ret], rpc
+                \\ bri 1f
+                \\ .word _DYNAMIC - . + 8
+                \\1:
+                \\ lwi r18, %[ret], 8
+                \\ add %[ret], %[ret], r18
                 : [ret] "=r" (-> [*]const elf.Dyn),
-            ),
+                :
+                : .{ .r18 = true }),
             .mips, .mipsel => asm volatile (
                 \\ .weak _DYNAMIC
                 \\ .hidden _DYNAMIC
@@ -190,6 +207,7 @@ inline fn getDynamicSymbol() [*]const elf.Dyn {
                 \\ .weak _DYNAMIC
                 \\ .hidden _DYNAMIC
                 \\ l.jal 1f
+                \\  l.nop
                 \\ .word _DYNAMIC - .
                 \\1:
                 \\ l.lwz %[ret], 0(r9)
@@ -212,11 +230,13 @@ inline fn getDynamicSymbol() [*]const elf.Dyn {
             .powerpc64, .powerpc64le => asm volatile (
                 \\ .weak _DYNAMIC
                 \\ .hidden _DYNAMIC
+                \\ .balign 8
                 \\ bl 1f
+                \\ nop
                 \\ .quad _DYNAMIC - .
                 \\1:
                 \\ mflr %[ret]
-                \\ ld 4, 0(%[ret])
+                \\ ld 4, 4(%[ret])
                 \\ add %[ret], 4, %[ret]
                 : [ret] "=r" (-> [*]const elf.Dyn),
                 :
@@ -245,24 +265,25 @@ inline fn getDynamicSymbol() [*]const elf.Dyn {
                 \\ mov.l 1f, %[ret]
                 \\ add r0, %[ret]
                 \\ bra 2f
-                \\1:
+                \\  nop
                 \\ .balign 4
-                \\ .long DYNAMIC - .
+                \\1:
+                \\ .long _DYNAMIC - .
                 \\2:
                 : [ret] "=r" (-> [*]const elf.Dyn),
                 :
                 : .{ .r0 = true }),
-            // The compiler does not necessarily have any obligation to load the `l7` register (pointing
-            // to the GOT), so do it ourselves just in case.
             .sparc, .sparc64 => asm volatile (
-                \\ sethi %%hi(_GLOBAL_OFFSET_TABLE_ - 4), %%l7
+                \\ .weak _DYNAMIC
+                \\ .hidden _DYNAMIC
+                \\ sethi %%pc22(_DYNAMIC - 4), %[ret]
                 \\ call 1f
-                \\  add %%l7, %%lo(_GLOBAL_OFFSET_TABLE_ + 4), %%l7
+                \\  add %[ret], %%pc10(_DYNAMIC + 4), %[ret]
                 \\1:
-                \\ add %%l7, %%o7, %[ret]
+                \\ add %[ret], %%o7, %[ret]
                 : [ret] "=r" (-> [*]const elf.Dyn),
                 :
-                : .{ .l7 = true }),
+                : .{ .o7 = true }),
             .xtensa, .xtensaeb => asm volatile (
                 \\ .weak _DYNAMIC
                 \\ .hidden _DYNAMIC
@@ -274,7 +295,7 @@ inline fn getDynamicSymbol() [*]const elf.Dyn {
                 \\ .balign 4
                 \\ .word _DYNAMIC - .
                 \\1:
-                \\ add a0, a0, 1
+                \\ addi a0, a0, 1
                 \\ l32i a8, a0, 0
                 \\ add %[ret], a0, a8
                 : [ret] "=a" (-> [*]const elf.Dyn),

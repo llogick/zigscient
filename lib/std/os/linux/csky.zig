@@ -113,14 +113,14 @@ pub fn clone() callconv(.naked) u32 {
     // __clone(func, stack, flags, arg, ptid, tls, ctid)
     //         r0,   r1,    r2,    r3,  +0,   +4,  +8
     //
-    // syscall(SYS_clone, flags, stack, ptid, tls, ctid)
-    //         r7         r0,    r1,    r2,   r3,  r4
+    // syscall(SYS_clone, flags, stack, ptid, ctid, tls)
+    //         r7         r0,    r1,    r2,   r3,   r4
     asm volatile (
         \\ // Preserve callee-saved registers.
         \\ mov t0, r4
         \\ mov t1, r7
         \\
-        \\ andi r1, r1, -8
+        \\ andni r1, r1, 7
         \\
         \\ subi r1, 8
         \\ stw r0, (r1, 0)

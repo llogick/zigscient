@@ -142,81 +142,66 @@ pub fn clone() callconv(.naked) u32 {
     // syscall(SYS_clone, flags, stack, ptid, tls, ctid)
     //         eax,       ebx,   ecx,   edx,  esi, edi
     asm volatile (
-        \\  pushl %%ebp
-        \\  movl %%esp,%%ebp
-        \\  pushl %%ebx
-        \\  pushl %%esi
-        \\  pushl %%edi
-        \\  // Setup the arguments
-        \\  movl 16(%%ebp),%%ebx
-        \\  movl 12(%%ebp),%%ecx
-        \\  andl $-16,%%ecx
-        \\  subl $20,%%ecx
-        \\  movl 20(%%ebp),%%eax
-        \\  movl %%eax,4(%%ecx)
-        \\  movl 8(%%ebp),%%eax
-        \\  movl %%eax,0(%%ecx)
-        \\  movl 24(%%ebp),%%edx
-        \\  movl 28(%%ebp),%%esi
-        \\  movl 32(%%ebp),%%edi
-        \\  movl $120,%%eax // SYS_clone
-        \\  int $128
-        \\  testl %%eax,%%eax
-        \\  jz 1f
-        \\  popl %%edi
-        \\  popl %%esi
-        \\  popl %%ebx
-        \\  popl %%ebp
-        \\  retl
+        \\ pushl %%ebp
+        \\ movl %%esp,%%ebp
+        \\ pushl %%ebx
+        \\ pushl %%esi
+        \\ pushl %%edi
+        \\ // Setup the arguments
+        \\ movl 16(%%ebp),%%ebx
+        \\ movl 12(%%ebp),%%ecx
+        \\ andl $-16,%%ecx
+        \\ subl $20,%%ecx
+        \\ movl 20(%%ebp),%%eax
+        \\ movl %%eax,4(%%ecx)
+        \\ movl 8(%%ebp),%%eax
+        \\ movl %%eax,0(%%ecx)
+        \\ movl 24(%%ebp),%%edx
+        \\ movl 28(%%ebp),%%esi
+        \\ movl 32(%%ebp),%%edi
+        \\ movl $120,%%eax // SYS_clone
+        \\ int $128
+        \\ testl %%eax,%%eax
+        \\ jz 1f
+        \\ popl %%edi
+        \\ popl %%esi
+        \\ popl %%ebx
+        \\ popl %%ebp
+        \\ retl
         \\
         \\1:
     );
     if (builtin.unwind_tables != .none or !builtin.strip_debug_info) asm volatile (
-        \\  .cfi_undefined %%eip
+        \\ .cfi_undefined %%eip
     );
     asm volatile (
-        \\  xorl %%ebp,%%ebp
+        \\ xorl %%ebp,%%ebp
         \\
-        \\  popl %%eax
-        \\  calll *%%eax
-        \\  movl %%eax,%%ebx
-        \\  movl $1,%%eax // SYS_exit
-        \\  int $128
+        \\ popl %%eax
+        \\ calll *%%eax
+        \\ movl %%eax,%%ebx
+        \\ movl $1,%%eax // SYS_exit
+        \\ int $128
     );
 }
 
 pub fn restore() callconv(.naked) noreturn {
-    switch (builtin.zig_backend) {
-        .stage2_c => asm volatile (
-            \\ addl $4, %%esp
-            \\ movl %[number], %%eax
-            \\ int $0x80
-            :
-            : [number] "i" (@backingInt(SYS.sigreturn)),
-        ),
-        else => asm volatile (
-            \\ addl $4, %%esp
-            \\ int $0x80
-            :
-            : [number] "{eax}" (@backingInt(SYS.sigreturn)),
-        ),
-    }
+    asm volatile (
+        \\ addl $4, %%esp
+        \\ movl %[number], %%eax
+        \\ int $0x80
+        :
+        : [number] "i" (@backingInt(SYS.sigreturn)),
+    );
 }
 
 pub fn restore_rt() callconv(.naked) noreturn {
-    switch (builtin.zig_backend) {
-        .stage2_c => asm volatile (
-            \\ movl %[number], %%eax
-            \\ int $0x80
-            :
-            : [number] "i" (@backingInt(SYS.rt_sigreturn)),
-        ),
-        else => asm volatile (
-            \\ int $0x80
-            :
-            : [number] "{eax}" (@backingInt(SYS.rt_sigreturn)),
-        ),
-    }
+    asm volatile (
+        \\ movl %[number], %%eax
+        \\ int $0x80
+        :
+        : [number] "i" (@backingInt(SYS.rt_sigreturn)),
+    );
 }
 
 pub const VDSO = struct {

@@ -16,7 +16,7 @@ pub fn syscall0(
         \\ sc
         \\ bns+ 1f
         \\ neg 3, 3
-        \\ 1:
+        \\1:
         : [ret] "={r3}" (-> u32),
           [r0_out] "={r0}" (r0_out),
         : [number] "{r0}" (@backingInt(number)),
@@ -33,7 +33,7 @@ pub fn syscall1(
         \\ sc
         \\ bns+ 1f
         \\ neg 3, 3
-        \\ 1:
+        \\1:
         : [ret] "={r3}" (-> u32),
           [r0_out] "={r0}" (r0_out),
         : [number] "{r0}" (@backingInt(number)),
@@ -53,7 +53,7 @@ pub fn syscall2(
         \\ sc
         \\ bns+ 1f
         \\ neg 3, 3
-        \\ 1:
+        \\1:
         : [ret] "={r3}" (-> u32),
           [r0_out] "={r0}" (r0_out),
           [r4_out] "={r4}" (r4_out),
@@ -77,7 +77,7 @@ pub fn syscall3(
         \\ sc
         \\ bns+ 1f
         \\ neg 3, 3
-        \\ 1:
+        \\1:
         : [ret] "={r3}" (-> u32),
           [r0_out] "={r0}" (r0_out),
           [r4_out] "={r4}" (r4_out),
@@ -105,7 +105,7 @@ pub fn syscall4(
         \\ sc
         \\ bns+ 1f
         \\ neg 3, 3
-        \\ 1:
+        \\1:
         : [ret] "={r3}" (-> u32),
           [r0_out] "={r0}" (r0_out),
           [r4_out] "={r4}" (r4_out),
@@ -137,7 +137,7 @@ pub fn syscall5(
         \\ sc
         \\ bns+ 1f
         \\ neg 3, 3
-        \\ 1:
+        \\1:
         : [ret] "={r3}" (-> u32),
           [r0_out] "={r0}" (r0_out),
           [r4_out] "={r4}" (r4_out),
@@ -173,7 +173,7 @@ pub fn syscall6(
         \\ sc
         \\ bns+ 1f
         \\ neg 3, 3
-        \\ 1:
+        \\1:
         : [ret] "={r3}" (-> u32),
           [r0_out] "={r0}" (r0_out),
           [r4_out] "={r4}" (r4_out),
@@ -200,8 +200,9 @@ pub fn clone() callconv(.naked) u32 {
     asm volatile (
         \\ # store non-volatile regs r29, r30 on stack in order to put our
         \\ # start func and its arg there
-        \\ stwu 29, -16(1)
-        \\ stw 30, 4(1)
+        \\ stwu 1, -16(1)
+        \\ stw 29, 8(1)
+        \\ stw 30, 12(1)
         \\
         \\ # save r3 (func) into r29, and r6(arg) into r30
         \\ mr 29, 3
@@ -234,8 +235,8 @@ pub fn clone() callconv(.naked) u32 {
         \\
         \\ # if not 0, restore stack and return
         \\ beq cr7, 2f
-        \\ lwz 29, 0(1)
-        \\ lwz 30, 4(1)
+        \\ lwz 29, 8(1)
+        \\ lwz 30, 12(1)
         \\ addi 1, 1, 16
         \\ blr
         \\
@@ -247,7 +248,7 @@ pub fn clone() callconv(.naked) u32 {
     );
     asm volatile (
         \\ li 31, 0
-        \\ mtlr 0
+        \\ mtlr 31
         \\
         \\ #call funcptr: move arg (d) into r3
         \\ mr 3, 30
@@ -262,35 +263,21 @@ pub fn clone() callconv(.naked) u32 {
 }
 
 pub fn restore() callconv(.naked) noreturn {
-    switch (builtin.zig_backend) {
-        .stage2_c => asm volatile (
-            \\ li 0, %[number]
-            \\ sc
-            :
-            : [number] "i" (@backingInt(SYS.sigreturn)),
-        ),
-        else => asm volatile (
-            \\ sc
-            :
-            : [number] "{r0}" (@backingInt(SYS.sigreturn)),
-        ),
-    }
+    asm volatile (
+        \\ li 0, %[number]
+        \\ sc
+        :
+        : [number] "i" (@backingInt(SYS.sigreturn)),
+    );
 }
 
 pub fn restore_rt() callconv(.naked) noreturn {
-    switch (builtin.zig_backend) {
-        .stage2_c => asm volatile (
-            \\ li 0, %[number]
-            \\ sc
-            :
-            : [number] "i" (@backingInt(SYS.rt_sigreturn)),
-        ),
-        else => asm volatile (
-            \\ sc
-            :
-            : [number] "{r0}" (@backingInt(SYS.rt_sigreturn)),
-        ),
-    }
+    asm volatile (
+        \\ li 0, %[number]
+        \\ sc
+        :
+        : [number] "i" (@backingInt(SYS.rt_sigreturn)),
+    );
 }
 
 pub const VDSO = struct {

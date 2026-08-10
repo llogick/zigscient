@@ -116,40 +116,41 @@ pub fn clone() callconv(.naked) u64 {
     // syscall(SYS_clone, flags, stack, ptid, tls, ctid)
     //         a7         a0,    a1,    a2,   a3,  a4
     asm volatile (
-        \\    # Save func and arg to stack
-        \\    addi a1, a1, -16
-        \\    sd a0, 0(a1)
-        \\    sd a3, 8(a1)
+        \\ andi a1, a1, -16
+        \\ # Save func and arg to stack
+        \\ addi a1, a1, -16
+        \\ sd a0, 0(a1)
+        \\ sd a3, 8(a1)
         \\
-        \\    # Call SYS_clone
-        \\    mv a0, a2
-        \\    mv a2, a4
-        \\    mv a3, a5
-        \\    mv a4, a6
-        \\    li a7, 220 # SYS_clone
-        \\    ecall
+        \\ # Call SYS_clone
+        \\ mv a0, a2
+        \\ mv a2, a4
+        \\ mv a3, a5
+        \\ mv a4, a6
+        \\ li a7, 220 # SYS_clone
+        \\ ecall
         \\
-        \\    beqz a0, 1f
-        \\    # Parent
-        \\    ret
+        \\ beqz a0, 1f
+        \\ # Parent
+        \\ ret
         \\
-        \\    # Child
+        \\ # Child
         \\1:
     );
     if (builtin.unwind_tables != .none or !builtin.strip_debug_info) asm volatile (
-        \\    .cfi_undefined ra
+        \\ .cfi_undefined ra
     );
     asm volatile (
-        \\    mv fp, zero
-        \\    mv ra, zero
+        \\ mv fp, zero
+        \\ mv ra, zero
         \\
-        \\    ld a1, 0(sp)
-        \\    ld a0, 8(sp)
-        \\    jalr a1
+        \\ ld a1, 0(sp)
+        \\ ld a0, 8(sp)
+        \\ jalr a1
         \\
-        \\    # Exit
-        \\    li a7, 93 # SYS_exit
-        \\    ecall
+        \\ # Exit
+        \\ li a7, 93 # SYS_exit
+        \\ ecall
     );
 }
 

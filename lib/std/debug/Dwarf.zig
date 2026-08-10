@@ -1462,7 +1462,7 @@ pub fn ipRegNum(arch: std.Target.Cpu.Arch) ?u16 {
         .powerpc, .powerpcle, .powerpc64, .powerpc64le => 67,
         .riscv32, .riscv32be, .riscv64, .riscv64be => 65,
         .s390x => 65,
-        .sparc, .sparc64 => 32,
+        .sparc, .sparc64 => 65,
         .ve => 144,
         .x86 => 8,
         .x86_64 => 16,

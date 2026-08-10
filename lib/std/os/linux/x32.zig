@@ -125,54 +125,46 @@ pub fn syscall_lseek(
 
 pub fn clone() callconv(.naked) u32 {
     asm volatile (
-        \\      movl $0x40000038,%%eax // SYS_clone
-        \\      mov %%rdi,%%r11
-        \\      mov %%rdx,%%rdi
-        \\      mov %%r8,%%rdx
-        \\      mov %%r9,%%r8
-        \\      mov 8(%%rsp),%%r10d
-        \\      mov %%r11,%%r9
-        \\      and $-16,%%rsi
-        \\      sub $8,%%rsi
-        \\      mov %%rcx,(%%rsi)
-        \\      syscall
-        \\      test %%eax,%%eax
-        \\      jz 1f
-        \\      ret
+        \\ movl $0x40000038,%%eax // SYS_clone
+        \\ mov %%rdi,%%r11
+        \\ mov %%rdx,%%rdi
+        \\ mov %%r8,%%rdx
+        \\ mov %%r9,%%r8
+        \\ mov 8(%%rsp),%%r10d
+        \\ mov %%r11,%%r9
+        \\ and $-16,%%rsi
+        \\ sub $8,%%rsi
+        \\ mov %%rcx,(%%rsi)
+        \\ syscall
+        \\ test %%eax,%%eax
+        \\ jz 1f
+        \\ ret
         \\
         \\1:
     );
     if (builtin.unwind_tables != .none or !builtin.strip_debug_info) asm volatile (
-        \\      .cfi_undefined %%rip
+        \\ .cfi_undefined %%rip
     );
     asm volatile (
-        \\      xor %%ebp,%%ebp
+        \\ xor %%ebp,%%ebp
         \\
-        \\      pop %%rdi
-        \\      call *%%r9
-        \\      mov %%eax,%%edi
-        \\      movl $0x4000003c,%%eax // SYS_exit
-        \\      syscall
-        \\
+        \\ pop %%rdi
+        \\ call *%%r9
+        \\ mov %%eax,%%edi
+        \\ movl $0x4000003c,%%eax // SYS_exit
+        \\ syscall
     );
 }
 
 pub const restore = restore_rt;
 
 pub fn restore_rt() callconv(.naked) noreturn {
-    switch (builtin.zig_backend) {
-        .stage2_c => asm volatile (
-            \\ movl %[number], %%eax
-            \\ syscall
-            :
-            : [number] "i" (@backingInt(SYS.rt_sigreturn)),
-        ),
-        else => asm volatile (
-            \\ syscall
-            :
-            : [number] "{rax}" (@backingInt(SYS.rt_sigreturn)),
-        ),
-    }
+    asm volatile (
+        \\ movl %[number], %%eax
+        \\ syscall
+        :
+        : [number] "i" (@backingInt(SYS.rt_sigreturn)),
+    );
 }
 
 pub const time_t = i64;

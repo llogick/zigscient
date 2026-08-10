@@ -10,7 +10,6 @@ pub fn syscall0(
     return asm volatile (
         \\ syscall
         \\ beq $a3, $zero, 1f
-        \\ blez $v0, 1f
         \\ subu $v0, $zero, $v0
         \\1:
         : [ret] "={$2}" (-> u32),
@@ -25,7 +24,6 @@ pub fn syscall1(
     return asm volatile (
         \\ syscall
         \\ beq $a3, $zero, 1f
-        \\ blez $v0, 1f
         \\ subu $v0, $zero, $v0
         \\1:
         : [ret] "={$2}" (-> u32),
@@ -42,7 +40,6 @@ pub fn syscall2(
     return asm volatile (
         \\ syscall
         \\ beq $a3, $zero, 1f
-        \\ blez $v0, 1f
         \\ subu $v0, $zero, $v0
         \\1:
         : [ret] "={$2}" (-> u32),
@@ -61,7 +58,6 @@ pub fn syscall3(
     return asm volatile (
         \\ syscall
         \\ beq $a3, $zero, 1f
-        \\ blez $v0, 1f
         \\ subu $v0, $zero, $v0
         \\1:
         : [ret] "={$2}" (-> u32),
@@ -82,7 +78,6 @@ pub fn syscall4(
     return asm volatile (
         \\ syscall
         \\ beq $a3, $zero, 1f
-        \\ blez $v0, 1f
         \\ subu $v0, $zero, $v0
         \\1:
         : [ret] "={$2}" (-> u32),
@@ -111,7 +106,6 @@ pub fn syscall5(
         \\ syscall
         \\ addu $sp, $sp, 24
         \\ beq $a3, $zero, 1f
-        \\ blez $v0, 1f
         \\ subu $v0, $zero, $v0
         \\1:
         : [ret] "={$2}" (-> u32),
@@ -140,7 +134,6 @@ pub fn syscall6(
         \\ syscall
         \\ addu $sp, $sp, 24
         \\ beq $a3, $zero, 1f
-        \\ blez $v0, 1f
         \\ subu $v0, $zero, $v0
         \\1:
         : [ret] "={$2}" (-> u32),
@@ -172,7 +165,6 @@ pub fn syscall7(
         \\ syscall
         \\ addu $sp, $sp, 32
         \\ beq $a3, $zero, 1f
-        \\ blez $v0, 1f
         \\ subu $v0, $zero, $v0
         \\1:
         : [ret] "={$2}" (-> u32),
@@ -193,7 +185,6 @@ pub fn syscall_pipe(
     return asm volatile (
         \\ syscall
         \\ beq $a3, $zero, 1f
-        \\ blez $v0, 2f
         \\ subu $v0, $zero, $v0
         \\ b 2f
         \\1:
@@ -229,7 +220,6 @@ pub fn clone() callconv(.naked) u32 {
         \\ li $v0, 4120 # SYS_clone
         \\ syscall
         \\ beq $a3, $zero, 1f
-        \\ blez $v0, 2f
         \\ subu $v0, $zero, $v0
         \\ b 2f
         \\1:
