@@ -233,7 +233,7 @@ inline fn getDynamicSymbol() [*]const elf.Dyn {
                 \\ .balign 8
                 \\ bl 1f
                 \\ nop
-                \\ .quad _DYNAMIC - .
+                \\ .quad _DYNAMIC - . + 4
                 \\1:
                 \\ mflr %[ret]
                 \\ ld 4, 4(%[ret])
