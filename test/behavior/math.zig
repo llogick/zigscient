@@ -2691,3 +2691,10 @@ test "i96 operations" {
     try expect(12345678910111213 == Op_i96.do(.{ .b = .{ .inner = .{ .x = 1234567891011121314 }, .flag = true } }));
     try expect(1234567891021121314 == Op_i96.do(.{ .c = .{ .inner = .{ .x = 123456789101112131415 }, .flag = true } }));
 }
+
+test "zero returned from @mod matches zero in switch" {
+    try expect(switch (@mod(-2, 2)) {
+        0 => true,
+        else => false,
+    });
+}

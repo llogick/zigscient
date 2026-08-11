@@ -2674,7 +2674,7 @@ pub const Key = union(enum) {
                 const big_int = int.storage.toBigInt(&buffer);
 
                 std.hash.autoHash(&hasher, int.ty);
-                std.hash.autoHash(&hasher, big_int.positive);
+                std.hash.autoHash(&hasher, big_int.positive or big_int.eqlZero());
                 for (big_int.limbs) |limb| std.hash.autoHash(&hasher, limb);
                 return hasher.final();
             },
@@ -7684,7 +7684,7 @@ pub fn get(ip: *InternPool, gpa: Allocator, io: Io, tid: Zcu.PerThread.Id, key: 
                         return gop.put();
                     } else |_| {}
 
-                    const tag: Tag = if (big_int.positive) .int_positive else .int_negative;
+                    const tag: Tag = if (big_int.positive or big_int.eqlZero()) .int_positive else .int_negative;
                     try addInt(ip, gpa, io, tid, int.ty, tag, big_int.limbs);
                 },
                 inline .u64, .i64 => |x| {
@@ -7701,7 +7701,7 @@ pub fn get(ip: *InternPool, gpa: Allocator, io: Io, tid: Zcu.PerThread.Id, key: 
 
                     var buf: [2]Limb = undefined;
                     const big_int = BigIntMutable.init(&buf, x).toConst();
-                    const tag: Tag = if (big_int.positive) .int_positive else .int_negative;
+                    const tag: Tag = if (big_int.positive or big_int.eqlZero()) .int_positive else .int_negative;
                     try addInt(ip, gpa, io, tid, int.ty, tag, big_int.limbs);
                 },
             }
