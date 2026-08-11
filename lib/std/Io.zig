@@ -235,7 +235,6 @@ pub const VTable = struct {
     netListenUnix: *const fn (?*anyopaque, *const net.UnixAddress, net.UnixAddress.ListenOptions) net.UnixAddress.ListenError!net.Socket.Handle,
     netConnectUnix: *const fn (?*anyopaque, *const net.UnixAddress) net.UnixAddress.ConnectError!net.Socket.Handle,
     netSocketCreatePair: *const fn (?*anyopaque, net.Socket.CreatePairOptions) net.Socket.CreatePairError![2]net.Socket,
-    netSend: *const fn (?*anyopaque, net.Socket.Handle, []net.OutgoingMessage, net.SendFlags) struct { ?net.Socket.SendError, usize },
     netWrite: *const fn (?*anyopaque, dest: net.Socket.Handle, header: []const u8, data: []const []const u8, splat: usize) net.Stream.Writer.Error!usize,
     netWriteFile: *const fn (?*anyopaque, net.Socket.Handle, header: []const u8, *Io.File.Reader, Io.Limit) net.Stream.Writer.WriteFileError!usize,
     netClose: *const fn (?*anyopaque, sockets: []const net.Socket) void,
@@ -252,6 +251,7 @@ pub const Operation = union(enum) {
     /// other systems this tag is unreachable.
     device_io_control: DeviceIoControl,
     net_receive: NetReceive,
+    net_send: NetSend,
     net_read: NetRead,
 
     pub const Tag = @typeInfo(Operation).@"union".tag_type.?;
@@ -376,6 +376,49 @@ pub const Operation = union(enum) {
         } || Io.UnexpectedError;
 
         pub const Result = struct { ?net.Socket.ReceiveError, usize };
+    };
+
+    pub const NetSend = struct {
+        socket_handle: net.Socket.Handle,
+        messages: []net.OutgoingMessage,
+        flags: net.SendFlags,
+
+        pub const Error = error{
+            /// The socket type requires that message be sent atomically, and the
+            /// size of the message to be sent made this impossible. The message
+            /// was not transmitted, or was partially transmitted.
+            MessageOversize,
+            /// The output queue for a network interface was full. This generally indicates that the
+            /// interface has stopped sending, but may be caused by transient congestion. (Normally,
+            /// this does not occur in Linux. Packets are just silently dropped when a device queue
+            /// overflows.)
+            ///
+            /// This is also caused when there is not enough kernel memory available.
+            SystemResources,
+            /// No route to network.
+            NetworkUnreachable,
+            /// Network reached but no route to host.
+            HostUnreachable,
+            /// The local network interface used to reach the destination is offline.
+            NetworkDown,
+            /// The destination address is not listening. Can still occur for
+            /// connectionless messages.
+            ConnectionRefused,
+            /// Operating system or protocol does not support the address family.
+            AddressFamilyUnsupported,
+            /// Another TCP Fast Open is already in progress.
+            FastOpenAlreadyInProgress,
+            /// Network session was unexpectedly closed by recipient.
+            ConnectionResetByPeer,
+            /// Local end has been shut down on a connection-oriented socket, or
+            /// the socket was never connected.
+            SocketUnconnected,
+            /// An attempt was made to send to a network/broadcast address as
+            /// though it was a unicast address.
+            AccessDenied,
+        } || Io.UnexpectedError;
+
+        pub const Result = struct { ?net.Socket.SendError, usize };
     };
 
     pub const NetRead = struct {
@@ -2712,7 +2755,6 @@ pub const failing: std.Io = .{
         .netListenUnix = failingNetListenUnix,
         .netConnectUnix = failingNetConnectUnix,
         .netSocketCreatePair = failingNetSocketCreatePair,
-        .netSend = failingNetSend,
         .netWrite = failingNetWrite,
         .netWriteFile = failingNetWriteFile,
         .netClose = unreachableNetClose,
@@ -2860,6 +2902,7 @@ pub fn failingOperate(userdata: ?*anyopaque, operation: Operation) Cancelable!Op
         .file_write_streaming => .{ .file_write_streaming = error.InputOutput },
         .device_io_control => unreachable,
         .net_receive => .{ .net_receive = .{ error.NetworkDown, 0 } },
+        .net_send => .{ .net_send = .{ error.NetworkDown, 0 } },
         .net_read => .{ .net_read = error.NetworkDown },
     };
 }
@@ -3454,14 +3497,6 @@ pub fn failingNetSocketCreatePair(userdata: ?*anyopaque, options: net.Socket.Cre
     _ = userdata;
     _ = options;
     return error.OperationUnsupported;
-}
-
-pub fn failingNetSend(userdata: ?*anyopaque, handle: net.Socket.Handle, messages: []net.OutgoingMessage, flags: net.SendFlags) struct { ?net.Socket.SendError, usize } {
-    _ = userdata;
-    _ = handle;
-    _ = messages;
-    _ = flags;
-    return .{ error.NetworkDown, 0 };
 }
 
 pub fn failingNetWrite(userdata: ?*anyopaque, dest: net.Socket.Handle, header: []const u8, data: []const []const u8, splat: usize) net.Stream.Writer.Error!usize {

@@ -1951,10 +1951,6 @@ pub fn io(t: *Threaded) Io {
                 else => netWritePosix,
             },
             .netWriteFile = netWriteFile,
-            .netSend = switch (native_os) {
-                .windows => netSendWindows,
-                else => netSendPosix,
-            },
             .netInterfaceNameResolve = netInterfaceNameResolve,
             .netInterfaceName = netInterfaceName,
             .netLookup = netLookup,
@@ -2565,6 +2561,25 @@ fn operate(userdata: ?*anyopaque, operation: Io.Operation) Io.Cancelable!Io.Oper
             };
             break :o .{ null, 1 };
         } },
+        .net_send => |*o| return .{
+            .net_send = o: {
+                if (!have_networking) break :o .{ error.NetworkDown, 0 };
+                if (is_windows) break :o netSendWindows(t, o.socket_handle, o.messages, o.flags);
+                const send_err, const sent = netSendPosix(t, o.socket_handle, o.messages, o.flags, false);
+                if (send_err) |err| switch (err) {
+                    error.Canceled => |e| if (sent == 0) {
+                        return e;
+                    } else {
+                        // Leave the `error.Canceled` for later, but don't try to send any more messages.
+                        recancelInner();
+                        break :o .{ null, sent };
+                    },
+                    error.WouldBlock => unreachable,
+                    else => |e| break :o .{ e, sent },
+                };
+                break :o .{ null, sent };
+            },
+        },
         .net_read => |o| return .{
             .net_read = netRead(o.socket_handle, o.data) catch |err| switch (err) {
                 error.Canceled => |e| return e,
@@ -2622,6 +2637,14 @@ fn batchAwaitAsync(userdata: ?*anyopaque, b: *Io.Batch) Io.Cancelable!void {
                         poll_buffer[poll_len] = .{
                             .fd = o.socket_handle,
                             .events = posix.POLL.IN | posix.POLL.ERR,
+                            .revents = 0,
+                        };
+                        poll_len += 1;
+                    },
+                    .net_send => |*o| {
+                        poll_buffer[poll_len] = .{
+                            .fd = o.socket_handle,
+                            .events = posix.POLL.OUT | posix.POLL.ERR,
                             .revents = 0,
                         };
                         poll_len += 1;
@@ -2804,6 +2827,35 @@ fn batchAwaitConcurrent(userdata: ?*anyopaque, b: *Io.Batch, timeout: Io.Timeout
                         };
                         data_i += msg.data.len;
                     } else .{ null, o.message_buffer.len } };
+                    switch (b.completed.tail) {
+                        .none => b.completed.head = index,
+                        else => |tail_index| b.storage[tail_index.toIndex()].completion.node.next = index,
+                    }
+                    storage.* = .{ .completion = .{ .node = .{ .next = .none }, .result = result } };
+                    b.completed.tail = index;
+                },
+                .net_send => |*o| nb: {
+                    const result: Io.Operation.Result = .{
+                        .net_send = o: {
+                            const send_err, const sent = netSendPosix(t, o.socket_handle, o.messages, o.flags, true);
+                            if (send_err) |err| switch (err) {
+                                error.Canceled => |e| if (sent == 0) {
+                                    return e;
+                                } else {
+                                    // Leave the `error.Canceled` for later, but don't try to send any more messages.
+                                    recancelInner();
+                                    break :o .{ null, sent };
+                                },
+                                error.WouldBlock => {
+                                    if (sent != 0) break :o .{ null, sent };
+                                    try poll_storage.add(o.socket_handle, posix.POLL.OUT | posix.POLL.ERR);
+                                    break :nb;
+                                },
+                                else => |e| break :o .{ e, sent },
+                            };
+                            break :o .{ null, sent };
+                        },
+                    };
                     switch (b.completed.tail) {
                         .none => b.completed.head = index,
                         else => |tail_index| b.storage[tail_index.toIndex()].completion.node.next = index,
@@ -3007,6 +3059,7 @@ fn batchApc(
                 .file_write_streaming => .{ .file_write_streaming = ntWriteFileResult(iosb) },
                 .device_io_control => .{ .device_io_control = iosb.* },
                 .net_receive => unreachable,
+                .net_send => unreachable,
                 .net_read => unreachable,
             };
             storage.* = .{ .completion = .{ .node = .{ .next = .none }, .result = result } };
@@ -3214,6 +3267,13 @@ fn batchDrainSubmittedWindows(t: *Threaded, b: *Io.Batch, concurrency: bool) (Io
                 if (concurrency) return error.ConcurrencyUnavailable;
                 batchCompleteBlockingWindows(b, operation_userdata, .{
                     .net_receive = netReceiveWindows(t, o.socket_handle, o.message_buffer, o.data_buffer, o.flags),
+                });
+            },
+            .net_send => |*o| {
+                // TODO integrate with overlapped I/O or equivalent to avoid this error
+                if (concurrency) return error.ConcurrencyUnavailable;
+                batchCompleteBlockingWindows(b, operation_userdata, .{
+                    .net_send = netSendWindows(t, o.socket_handle, o.messages, o.flags),
                 });
             },
             .net_read => |*o| {
@@ -12866,13 +12926,13 @@ fn netReadWindows(socket_handle: net.Socket.Handle, data: [][]u8) net.Stream.Rea
 }
 
 fn netSendPosix(
-    userdata: ?*anyopaque,
+    t: *Threaded,
     socket_handle: net.Socket.Handle,
     messages: []net.OutgoingMessage,
     flags: net.SendFlags,
-) struct { ?net.Socket.SendError, usize } {
+    nonblocking: bool,
+) struct { ?(net.Socket.SendError || error{WouldBlock}), usize } {
     if (!have_networking) return .{ error.NetworkDown, 0 };
-    const t: *Threaded = @ptrCast(@alignCast(userdata));
 
     const posix_flags: u32 =
         @as(u32, if (@hasDecl(posix.MSG, "CONFIRM") and flags.confirm) posix.MSG.CONFIRM else 0) |
@@ -12880,6 +12940,7 @@ fn netSendPosix(
         @as(u32, if (@hasDecl(posix.MSG, "EOR") and flags.eor) posix.MSG.EOR else 0) |
         @as(u32, if (@hasDecl(posix.MSG, "OOB") and flags.oob) posix.MSG.OOB else 0) |
         @as(u32, if (@hasDecl(posix.MSG, "FASTOPEN") and flags.fastopen) posix.MSG.FASTOPEN else 0) |
+        @as(u32, if (@hasDecl(posix.MSG, "DONTWAIT") and nonblocking) posix.MSG.DONTWAIT else 0) |
         posix.MSG.NOSIGNAL;
 
     var i: usize = 0;
@@ -12895,13 +12956,12 @@ fn netSendPosix(
 }
 
 fn netSendWindows(
-    userdata: ?*anyopaque,
+    t: *Threaded,
     socket_handle: net.Socket.Handle,
     messages: []net.OutgoingMessage,
     flags: net.SendFlags,
 ) struct { ?net.Socket.SendError, usize } {
     if (!have_networking) return .{ error.NetworkDown, 0 };
-    const t: *Threaded = @ptrCast(@alignCast(userdata));
     for (messages, 0..) |*m, i| {
         t.netSendOneWindows(socket_handle, m, flags) catch |err| return .{ err, i };
     }
@@ -12953,7 +13013,7 @@ fn netSendOnePosix(
     socket_handle: net.Socket.Handle,
     message: *net.OutgoingMessage,
     flags: u32,
-) net.Socket.SendError!void {
+) (net.Socket.SendError || error{WouldBlock})!void {
     _ = t;
     var addr: PosixAddress = undefined;
     var iovec: posix.iovec_const = .{ .base = @constCast(message.data_ptr), .len = message.data_len };
@@ -12981,6 +13041,7 @@ fn netSendOnePosix(
                 continue;
             },
             .ACCES => return syscall.fail(error.AccessDenied),
+            .AGAIN => return syscall.fail(error.WouldBlock),
             .ALREADY => return syscall.fail(error.FastOpenAlreadyInProgress),
             .CONNRESET => return syscall.fail(error.ConnectionResetByPeer),
             .MSGSIZE => return syscall.fail(error.MessageOversize),
@@ -13008,7 +13069,7 @@ fn netSendManyPosix(
     socket_handle: net.Socket.Handle,
     messages: []net.OutgoingMessage,
     flags: u32,
-) net.Socket.SendError!usize {
+) (net.Socket.SendError || error{WouldBlock})!usize {
     var msg_buffer: [64]posix.system.mmsghdr = undefined;
     var addr_buffer: [msg_buffer.len]PosixAddress = undefined;
     var iovecs_buffer: [msg_buffer.len]posix.iovec = undefined;
@@ -13051,6 +13112,7 @@ fn netSendManyPosix(
                 continue;
             },
             .ACCES => return syscall.fail(error.AccessDenied),
+            .AGAIN => return syscall.fail(error.WouldBlock),
             .ALREADY => return syscall.fail(error.FastOpenAlreadyInProgress),
             .CONNRESET => return syscall.fail(error.ConnectionResetByPeer),
             .MSGSIZE => return syscall.fail(error.MessageOversize),
@@ -13063,7 +13125,6 @@ fn netSendManyPosix(
             .NOTCONN => return syscall.fail(error.SocketUnconnected),
             .NETDOWN => return syscall.fail(error.NetworkDown),
 
-            .AGAIN => |err| return syscall.errnoBug(err),
             .BADF => |err| return syscall.errnoBug(err), // File descriptor used after closed.
             .DESTADDRREQ => |err| return syscall.errnoBug(err), // The socket is not connection-mode, and no peer address is set.
             .FAULT => |err| return syscall.errnoBug(err), // An invalid user space address was specified for an argument.
@@ -14594,6 +14655,11 @@ fn lookupDns(
     };
 
     send: while (now_ts.nanoseconds < final_ts.nanoseconds) : (now_ts = clock.now(t_io)) {
+        const timeout: Io.Timeout = .{ .deadline = .{
+            .raw = now_ts.addDuration(attempt_duration),
+            .clock = clock,
+        } };
+
         const max_messages = queries_buffer.len * HostName.ResolvConf.max_nameservers;
         {
             var message_buffer: [max_messages]net.OutgoingMessage = undefined;
@@ -14609,13 +14675,13 @@ fn lookupDns(
                     message_i += 1;
                 }
             }
-            _ = netSendPosix(t, socket.handle, message_buffer[0..message_i], .{});
+            const send_err, _ = socket.sendManyTimeout(t_io, message_buffer[0..message_i], .{}, timeout);
+            if (send_err) |err| switch (err) {
+                error.Canceled => |e| return e,
+                error.Timeout => continue :send,
+                else => {},
+            };
         }
-
-        const timeout: Io.Timeout = .{ .deadline = .{
-            .raw = now_ts.addDuration(attempt_duration),
-            .clock = clock,
-        } };
 
         while (true) {
             var message_buffer: [max_messages]net.IncomingMessage = @splat(.init);
@@ -14652,12 +14718,11 @@ fn lookupDns(
                         if (answers_remaining == 0) break :send;
                     },
                     2 => {
-                        var retry_message: net.OutgoingMessage = .{
-                            .address = ns,
-                            .data_ptr = query.ptr,
-                            .data_len = query.len,
+                        socket.sendTimeout(t_io, ns, query, timeout) catch |err| switch (err) {
+                            error.Canceled => |e| return e,
+                            error.Timeout => continue :send,
+                            else => {},
                         };
-                        _ = netSendPosix(t, socket.handle, (&retry_message)[0..1], .{});
                         continue;
                     },
                     else => continue,

@@ -778,7 +778,6 @@ pub fn io(ev: *Evented) Io {
             .netListenUnix = netListenUnixUnavailable,
             .netConnectUnix = netConnectUnixUnavailable,
             .netSocketCreatePair = netSocketCreatePairUnavailable,
-            .netSend = netSendUnavailable,
             .netWrite = netWriteUnavailable,
             .netWriteFile = netWriteFileUnavailable,
             .netClose = netClose,
@@ -2107,6 +2106,12 @@ fn operate(userdata: ?*anyopaque, operation: Io.Operation) Io.Cancelable!Io.Oper
                 };
             },
         },
+        .net_send => |o| .{
+            .net_send = r: {
+                _ = o;
+                break :r .{ error.NetworkDown, 0 }; // TODO
+            },
+        },
         .net_read => |o| .{
             .net_read = r: {
                 _ = o;
@@ -2400,6 +2405,10 @@ fn batchDrainSubmitted(
                 _ = o;
                 @panic("TODO implement batchDrainSubmitted for net_receive");
             },
+            .net_send => |o| {
+                _ = o;
+                @panic("TODO implement batchDrainSubmitted for net_send");
+            },
             .net_read => |o| {
                 _ = o;
                 @panic("TODO implement batchDrainSubmitted for net_read");
@@ -2505,6 +2514,7 @@ fn batchDrainReady(batch: *Io.Batch) Io.Timeout.Error!void {
                 },
                 .device_io_control => unreachable,
                 .net_receive => @panic("TODO"),
+                .net_send => @panic("TODO"),
                 .net_read => @panic("TODO"),
             })) |result| {
                 switch (batch.completed.tail) {
@@ -5052,20 +5062,6 @@ fn netSocketCreatePairUnavailable(
     _ = userdata;
     _ = options;
     return error.OperationUnsupported;
-}
-
-fn netSendUnavailable(
-    userdata: ?*anyopaque,
-    handle: net.Socket.Handle,
-    messages: []net.OutgoingMessage,
-    flags: net.SendFlags,
-) struct { ?net.Socket.SendError, usize } {
-    const ev: *Evented = @ptrCast(@alignCast(userdata));
-    _ = ev;
-    _ = handle;
-    _ = messages;
-    _ = flags;
-    return .{ error.NetworkDown, 0 };
 }
 
 fn netReceive(

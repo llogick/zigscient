@@ -458,7 +458,6 @@ pub fn io(ev: *Evented) Io {
             .netListenUnix = netListenUnixUnavailable,
             .netConnectUnix = netConnectUnixUnavailable,
             .netSocketCreatePair = netSocketCreatePairUnavailable,
-            .netSend = netSendUnavailable,
             .netWrite = netWriteUnavailable,
             .netWriteFile = netWriteFileUnavailable,
             .netClose = netClose,
@@ -1713,6 +1712,7 @@ fn operate(userdata: ?*anyopaque, operation: Io.Operation) Io.Cancelable!Io.Oper
         },
         .device_io_control => |*o| return .{ .device_io_control = try deviceIoControl(o) },
         .net_receive => @panic("TODO implement net_receive operation"),
+        .net_send => @panic("TODO implement net_send operation"),
         .net_read => @panic("TODO implement net_read operation"),
     }
 }
@@ -4864,20 +4864,6 @@ fn netSocketCreatePairUnavailable(
     _ = userdata;
     _ = options;
     return error.OperationUnsupported;
-}
-
-fn netSendUnavailable(
-    userdata: ?*anyopaque,
-    handle: net.Socket.Handle,
-    messages: []net.OutgoingMessage,
-    flags: net.SendFlags,
-) struct { ?net.Socket.SendError, usize } {
-    const ev: *Evented = @ptrCast(@alignCast(userdata));
-    _ = ev;
-    _ = handle;
-    _ = messages;
-    _ = flags;
-    return .{ error.NetworkDown, 0 };
 }
 
 fn netWriteUnavailable(

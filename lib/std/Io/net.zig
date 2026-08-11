@@ -1088,52 +1088,73 @@ pub const Socket = struct {
         io.vtable.netClose(io.userdata, sockets);
     }
 
-    pub const SendError = error{
-        /// The socket type requires that message be sent atomically, and the
-        /// size of the message to be sent made this impossible. The message
-        /// was not transmitted, or was partially transmitted.
-        MessageOversize,
-        /// The output queue for a network interface was full. This generally indicates that the
-        /// interface has stopped sending, but may be caused by transient congestion. (Normally,
-        /// this does not occur in Linux. Packets are just silently dropped when a device queue
-        /// overflows.)
-        ///
-        /// This is also caused when there is not enough kernel memory available.
-        SystemResources,
-        /// No route to network.
-        NetworkUnreachable,
-        /// Network reached but no route to host.
-        HostUnreachable,
-        /// The local network interface used to reach the destination is offline.
-        NetworkDown,
-        /// The destination address is not listening. Can still occur for
-        /// connectionless messages.
-        ConnectionRefused,
-        /// Operating system or protocol does not support the address family.
-        AddressFamilyUnsupported,
-        /// Another TCP Fast Open is already in progress.
-        FastOpenAlreadyInProgress,
-        /// Network session was unexpectedly closed by recipient.
-        ConnectionResetByPeer,
-        /// Local end has been shut down on a connection-oriented socket, or
-        /// the socket was never connected.
-        SocketUnconnected,
-        /// An attempt was made to send to a network/broadcast address as
-        /// though it was a unicast address.
-        AccessDenied,
-    } || Io.UnexpectedError || Io.Cancelable;
+    pub const SendError = Io.Operation.NetSend.Error || Io.Cancelable;
 
     /// Transfers `data` to `dest`, connectionless, in one packet.
     pub fn send(s: *const Socket, io: Io, dest: *const IpAddress, data: []const u8) SendError!void {
         var message: OutgoingMessage = .{ .address = dest, .data_ptr = data.ptr, .data_len = data.len };
-        const err, const n = io.vtable.netSend(io.userdata, s.handle, (&message)[0..1], .{});
-        if (n != 1) return err.?;
+        const maybe_err, const count = (try io.operate(.{ .net_send = .{
+            .socket_handle = s.handle,
+            .messages = (&message)[0..1],
+            .flags = .{},
+        } })).net_send;
+        if (maybe_err) |err| {
+            assert(count == 0);
+            return err;
+        } else {
+            assert(count == 1);
+        }
         if (message.data_len != data.len) return error.MessageOversize;
     }
 
+    pub const SendTimeoutError = SendError || Io.Timeout.Error || Io.ConcurrentError;
+
+    pub fn sendTimeout(
+        s: *const Socket,
+        io: Io,
+        dest: *const IpAddress,
+        data: []const u8,
+        timeout: Io.Timeout,
+    ) SendTimeoutError!void {
+        var message: OutgoingMessage = .{ .address = dest, .data_ptr = data.ptr, .data_len = data.len };
+        const maybe_err, const count = (try io.operateTimeout(.{ .net_send = .{
+            .socket_handle = s.handle,
+            .messages = (&message)[0..1],
+            .flags = .{},
+        } }, timeout)).net_send;
+        if (maybe_err) |err| return err;
+        assert(1 == count);
+        if (message.data_len != data.len) return error.MessageOversize;
+    }
+
+    /// Deprecated; use `sendManyTimeout` with a timeout of `.none`.
+    ///
+    /// If this function returns an error, some (but not all) of `messages` may
+    /// still have been sent. This condition is not reported by this function,
+    /// but is reported by `sendManyTimeout`.
     pub fn sendMany(s: *const Socket, io: Io, messages: []OutgoingMessage, flags: SendFlags) SendError!void {
-        const err, const n = io.vtable.netSend(io.userdata, s.handle, messages, flags);
-        if (n != messages.len) return err.?;
+        const result = try io.operate(.{ .net_send = .{
+            .socket_handle = s.handle,
+            .messages = messages,
+            .flags = flags,
+        } });
+        const maybe_send_err, _ = result.net_send;
+        return maybe_send_err orelse {};
+    }
+
+    pub fn sendManyTimeout(
+        s: *const Socket,
+        io: Io,
+        messages: []OutgoingMessage,
+        flags: SendFlags,
+        timeout: Io.Timeout,
+    ) struct { ?SendTimeoutError, usize } {
+        const result = io.operateTimeout(.{ .net_send = .{
+            .socket_handle = s.handle,
+            .messages = messages,
+            .flags = flags,
+        } }, timeout) catch |err| return .{ err, 0 };
+        return result.net_send;
     }
 
     pub const ReceiveError = Io.Operation.NetReceive.Error || Io.Cancelable;
