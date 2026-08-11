@@ -1778,9 +1778,10 @@ pub const Condition = struct {
 
             epoch = cond.epoch.load(.acquire); // `.acquire` to ensure ordered before `state` laod
 
-            // Even on error, try to consume a pending signal first. Otherwise a race might
-            // cause a signal to get stuck in the state with no corresponding waiter.
-            {
+            // We were woken normally, so try to consume a pending signal. A signal takes
+            // priority over an expired deadline, so this is checked before the deadline
+            // below. On error we safely remove ourselves as a waiter and propagate the error.
+            if (result) |_| {
                 var prev_state = cond.state.load(.monotonic);
                 while (prev_state.signals > 0) {
                     prev_state = cond.state.cmpxchgWeak(prev_state, .{
@@ -1791,22 +1792,19 @@ pub const Condition = struct {
                         return;
                     };
                 }
+            } else |err| {
+                cond.deregister(io);
+                return err;
             }
 
-            // There are no more signals available; this was a spurious wakeup or an error. If it
-            // was an error, we will remove ourselves as a waiter and return that error. If a
-            // timeout was specified and the deadline has passed, we remove ourselves as a waiter
-            // and return `error.Timeout`. Otherwise, we'll loop back to the futex wait.
-            result catch |err| {
-                const prev_state = cond.state.fetchSub(.{ .waiters = 1, .signals = 0 }, .monotonic);
-                assert(prev_state.waiters > 0); // underflow caused by illegal state
-                return err;
-            };
+            // There are no signals available and no error; if a timeout was specified and
+            // the deadline has passed, remove ourselves as a waiter and return
+            // `error.Timeout`. Otherwise, this was a spurious wakeup: loop back to the
+            // futex wait.
             switch (deadline) {
                 .none => {},
                 .deadline => |d| if (d.untilNow(io).raw.nanoseconds >= 0) {
-                    const prev_state = cond.state.fetchSub(.{ .waiters = 1, .signals = 0 }, .monotonic);
-                    assert(prev_state.waiters > 0); // underflow caused by illegal state
+                    cond.deregister(io);
                     return error.Timeout;
                 },
                 .duration => unreachable,
@@ -1850,6 +1848,24 @@ pub const Condition = struct {
 
             // There are no more signals available; this was a spurious wakeup,
             // so we'll loop back to the futex wait.
+        }
+    }
+
+    fn deregister(cond: *Condition, io: Io) void {
+        var prev_state = cond.state.load(.monotonic);
+        while (true) {
+            const new_signals = @min(prev_state.signals, prev_state.waiters - 1);
+            prev_state = cond.state.cmpxchgWeak(prev_state, .{
+                .waiters = prev_state.waiters - 1,
+                .signals = new_signals,
+            }, .monotonic, .monotonic) orelse {
+                if (prev_state.signals > 0 and prev_state.signals < prev_state.waiters) {
+                    // We kept a signal we are not consuming; wake a remaining waiter for it.
+                    _ = cond.epoch.fetchAdd(1, .release);
+                    io.futexWake(u32, &cond.epoch.raw, 1);
+                }
+                return;
+            };
         }
     }
 
