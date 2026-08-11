@@ -316,9 +316,7 @@ const Eval = struct {
         while (true) {
             const header = client.receiveMessageWithMultiReader(mr, .none) catch |err| switch (err) {
                 error.Timeout => unreachable,
-                // If this panic triggers it might be helpful to rework this
-                // code to print the stderr from the abnormally terminated child.
-                error.EndOfStream => @panic("unexpected mid-message end of stream"),
+                error.EndOfStream => break,
                 else => |e| return e,
             };
             const body = client.in.take(header.bytes_len) catch unreachable;
