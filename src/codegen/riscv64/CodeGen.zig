@@ -58,6 +58,8 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
         .expand_add_safe,
         .expand_sub_safe,
         .expand_mul_safe,
+
+        .expand_array_to_vector,
     });
 }
 
@@ -1474,6 +1476,7 @@ fn genBody(func: *Func, body: []const Air.Inst.Index) InnerError!void {
 
             .slice           => try func.airSlice(inst),
             .array_to_slice  => try func.airArrayToSlice(inst),
+            .array_to_vector => unreachable, // legalize .expand_array_to_vector
 
             .slice_ptr       => try func.airSlicePtr(inst),
             .slice_len       => try func.airSliceLen(inst),

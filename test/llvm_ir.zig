@@ -136,6 +136,25 @@ pub fn addCases(cases: *tests.LlvmIrContext) void {
         "  %8 = zext i1 %4 to i8",
         "  store i8 %8, ptr %1, align 2",
     }, .{ .strip = true });
+
+    cases.addMatches("array to vector coercion is one vector load",
+        \\export fn entry(arr: *const [16]u8) @Vector(16, u8) {
+        \\    return arr.*;
+        \\}
+    , &.{
+        "load <16 x i8>, ptr",
+    }, .{});
+
+    cases.addMatches("array to vector coercion feeding overlapping shuffles",
+        \\export fn entry(a: *@Vector(8, u8), b: *@Vector(8, u8), src: [*]const u8) void {
+        \\    const q: @Vector(16, u8) = src[0..16].*;
+        \\    a.* = @shuffle(u8, q, undefined, @Vector(8, i32){ 0, 1, 2, 3, 4, 5, 6, 7 });
+        \\    b.* = @shuffle(u8, q, undefined, @Vector(8, i32){ 7, 8, 9, 10, 11, 12, 13, 14 });
+        \\}
+    , &.{
+        "load <16 x i8>, ptr",
+        "shufflevector <16 x i8>",
+    }, .{});
 }
 
 const std = @import("std");

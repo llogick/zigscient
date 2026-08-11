@@ -39,6 +39,7 @@ pub fn legalizeFeatures(_: *const std.Target) ?*const Air.Legalize.Features {
             .expand_packed_store = true,
             .expand_packed_agg_field_val = true,
             .expand_packed_aggregate_init = true,
+            .expand_array_to_vector = true,
 
             .scalarize_bit_cast_array = true,
             .scalarize_bit_cast_vector_non_elementwise = true,
@@ -2870,6 +2871,7 @@ fn genBodyInner(f: *Function, body: []const Air.Inst.Index) Error!void {
             .store_safe       => try airStore(f, inst, true),
             .struct_field_ptr => try airStructFieldPtr(f, inst),
             .array_to_slice   => try airArrayToSlice(f, inst),
+            .array_to_vector  => unreachable, // legalize .expand_array_to_vector
             .cmpxchg_weak     => try airCmpxchg(f, inst, "weak"),
             .cmpxchg_strong   => try airCmpxchg(f, inst, "strong"),
             .atomic_rmw       => try airAtomicRmw(f, inst),

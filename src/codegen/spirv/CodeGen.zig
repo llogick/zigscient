@@ -128,6 +128,8 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
         .expand_add_safe,
         .expand_sub_safe,
         .expand_mul_safe,
+
+        .expand_array_to_vector,
     });
 }
 
@@ -4429,6 +4431,7 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) Error!void {
             .not              => try cg.airNot(inst),
 
             .array_to_slice => try cg.airArrayToSlice(inst),
+            .array_to_vector => unreachable, // legalize .expand_array_to_vector
             .slice          => try cg.airSlice(inst),
             .aggregate_init => try cg.airAggregateInit(inst),
             .memcpy         => return cg.airMemcpy(inst),

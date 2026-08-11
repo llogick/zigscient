@@ -258,6 +258,7 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
         .work_group_size,
         .work_group_id,
         .spirv_runtime_array_len,
+        .array_to_vector,
         => unreachable,
         .ret_ptr => {
             const ty = air_data[@backingInt(air_inst_index)].ty;
@@ -6295,6 +6296,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
             }
             if (air.next()) |next_air_tag| continue :air_tag next_air_tag;
         },
+        .array_to_vector => unreachable, // legalize .expand_array_to_vector
         .array_to_slice => {
             if (isel.live_values.fetchRemove(air.inst_index)) |slice_vi| {
                 defer slice_vi.value.deref(isel);

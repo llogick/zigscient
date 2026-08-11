@@ -200,6 +200,8 @@ pub const Feature = enum {
     expand_packed_agg_field_val,
     /// Replace `aggregate_init` of a packed struct with a sequence of `shl_exact`, `bit_cast`, `int_cast`, and `bit_or`.
     expand_packed_aggregate_init,
+    /// Replace `array_to_vector` with an `array_elem_val` per element followed by an `aggregate_init`.
+    expand_array_to_vector,
 
     /// Replace all arithmetic operations on 16-bit floating-point types with calls to soft-float
     /// routines in compiler_rt, including `fptrunc`/`fpext`/`float_from_int`/`int_from_float`
@@ -863,6 +865,9 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .ptr_elem_ptr,
             .array_to_slice,
             => {},
+            .array_to_vector => if (l.features.has(.expand_array_to_vector)) {
+                continue :inst l.replaceInst(inst, .block, try l.arrayToVectorBlockPayload(inst));
+            },
             inline .reduce, .reduce_optimized => |air_tag| {
                 const reduce = l.air_instructions.items(.data)[@backingInt(inst)].reduce;
                 const vector_ty = l.typeOf(reduce.operand);
@@ -2950,6 +2955,48 @@ fn packedAggregateInitBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Erro
 
     return .{ .ty_pl = .{
         .ty = .fromType(agg_ty),
+        .payload = try l.addBlockBody(main_block.body()),
+    } };
+}
+
+fn arrayToVectorBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.Inst.Data {
+    const pt = l.pt;
+    const zcu = pt.zcu;
+    const gpa = zcu.gpa;
+
+    const orig_ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
+    const vec_ty = orig_ty_op.ty.toType();
+    const len: usize = @intCast(vec_ty.vectorLen(zcu));
+
+    var bfa_buf: [64 + 2]Air.Inst.Index = undefined;
+    var bfa_state: std.heap.BufferFirstAllocator = .init(@ptrCast(&bfa_buf), gpa);
+    const bfa = bfa_state.allocator();
+
+    const inst_buf = try bfa.alloc(Air.Inst.Index, len + 2);
+    defer bfa.free(inst_buf);
+
+    var main_block: Block = .init(inst_buf);
+    try l.air_instructions.ensureUnusedCapacity(gpa, inst_buf.len);
+    try l.air_extra.ensureUnusedCapacity(gpa, len);
+
+    const elems_start: u32 = @intCast(l.air_extra.items.len);
+    for (0..len) |elem_index| {
+        const index_ref: Air.Inst.Ref = .fromValue(try pt.intValue(.usize, elem_index));
+        const elem = main_block.addBinOp(l, .array_elem_val, orig_ty_op.operand, index_ref).toRef();
+        l.air_extra.appendAssumeCapacity(@backingInt(elem));
+    }
+
+    const result = main_block.add(l, .{
+        .tag = .aggregate_init,
+        .data = .{ .ty_pl = .{
+            .ty = .fromType(vec_ty),
+            .payload = elems_start,
+        } },
+    }).toRef();
+    main_block.addBr(l, orig_inst, result);
+
+    return .{ .ty_pl = .{
+        .ty = .fromType(vec_ty),
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }

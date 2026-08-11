@@ -748,6 +748,16 @@ pub const Inst = struct {
         /// Given a pointer to an array, return a slice.
         /// Uses the `ty_op` field.
         array_to_slice,
+        /// Given an array, return a vector with the same element type and length. A sentinel on
+        /// the operand type is not included in the result.
+        ///
+        /// Vectors have no well-defined in-memory layout, so only the backend can know whether
+        /// the array representation may be reinterpreted rather than copied element-by-element.
+        /// Backends which do not lower this directly can enable
+        /// `Air.Legalize.Feature.expand_array_to_vector`.
+        ///
+        /// Uses the `ty_op` field.
+        array_to_vector,
         /// Given a float operand, return the integer with the closest mathematical meaning.
         /// Uses the `ty_op` field.
         int_from_float,
@@ -1754,6 +1764,7 @@ pub fn typeOfIndex(air: *const Air, inst: Air.Inst.Index, ip: *const InternPool)
         .struct_field_ptr_index_2,
         .struct_field_ptr_index_3,
         .array_to_slice,
+        .array_to_vector,
         .int_from_float,
         .int_from_float_optimized,
         .int_from_float_safe,
@@ -2106,6 +2117,7 @@ pub fn mustLower(air: Air, inst: Air.Inst.Index, ip: *const InternPool) bool {
         .slice_elem_ptr,
         .ptr_elem_ptr,
         .array_to_slice,
+        .array_to_vector,
         .int_from_float,
         .int_from_float_optimized,
         .float_from_int,

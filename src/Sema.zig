@@ -30506,6 +30506,16 @@ fn coerceArrayLike(
         }
     }
 
+    // Matching element types means no per-element work, so let the backend lower the conversion.
+    if (dest_ty.isVector(zcu) and
+        inst_ty.zigTypeTag(zcu) == .array and
+        inst_ty.childType(zcu).toIntern() == dest_elem_ty.toIntern() and
+        sema.resolveValue(inst) == null)
+    {
+        try sema.requireRuntimeBlock(block, inst_src, null);
+        return block.addTyOp(.array_to_vector, dest_ty, inst);
+    }
+
     const element_vals = try sema.arena.alloc(InternPool.Index, dest_len);
     const element_refs = try sema.arena.alloc(Air.Inst.Ref, dest_len);
     var runtime_src: ?LazySrcLoc = null;

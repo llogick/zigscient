@@ -380,6 +380,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             .slice_elem_ptr,
             .ptr_elem_val,
             .array_to_slice,
+            .array_to_vector,
             .int_from_float,
             .int_from_float_optimized,
             .int_from_float_safe,

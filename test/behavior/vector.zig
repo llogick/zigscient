@@ -229,6 +229,204 @@ test "array to vector" {
     try comptime S.doTheTest();
 }
 
+test "array of abi-sized integer to vector of same type" {
+    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
+    const S = struct {
+        const one: u32 = 1;
+        const two: u32 = 2;
+
+        fn doTheTest() !void {
+            {
+                var arr: [8]u8 = .{ 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
+                const vec: @Vector(8, u8) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 0x01);
+                try expect(vec[1] == 0x23);
+                try expect(vec[2] == 0x45);
+                try expect(vec[3] == 0x67);
+                try expect(vec[4] == 0x89);
+                try expect(vec[5] == 0xAB);
+                try expect(vec[6] == 0xCD);
+                try expect(vec[7] == 0xEF);
+            }
+
+            {
+                var arr: [4]u16 = .{ 0x0123, 0x4567, 0x89AB, 0xCDEF };
+                const vec: @Vector(4, u16) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 0x0123);
+                try expect(vec[1] == 0x4567);
+                try expect(vec[2] == 0x89AB);
+                try expect(vec[3] == 0xCDEF);
+            }
+
+            {
+                var arr: [2]u32 = .{ 0x01234567, 0x89ABCDEF };
+                const vec: @Vector(2, u32) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 0x01234567);
+                try expect(vec[1] == 0x89ABCDEF);
+            }
+
+            {
+                var arr: [1]u64 = .{0x0123456789ABCDEF};
+                const vec: @Vector(1, u64) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 0x0123456789ABCDEF);
+            }
+
+            // Like the u16 case, but a non-power-of-two size.
+            {
+                var arr: [5]u16 = .{ 0x0123, 0x4567, 0x89AB, 0xCDEF, 0xDEAD };
+                const vec: @Vector(5, u16) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 0x0123);
+                try expect(vec[1] == 0x4567);
+                try expect(vec[2] == 0x89AB);
+                try expect(vec[3] == 0xCDEF);
+                try expect(vec[4] == 0xDEAD);
+            }
+
+            // Like the u32 case, but a non-power-of-two size.
+            {
+                var arr: [3]u32 = .{ 0x01234567, 0x89ABCDEF, 0xDEADBEEF };
+                const vec: @Vector(3, u32) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 0x01234567);
+                try expect(vec[1] == 0x89ABCDEF);
+                try expect(vec[2] == 0xDEADBEEF);
+            }
+
+            {
+                var arr: [2]*const u32 = .{ &one, &two };
+                const vec: @Vector(2, *const u32) = arr;
+                arr[0] = &two; // should not affect `vec`
+                try expect(vec[0] == &one);
+                try expect(vec[1] == &two);
+            }
+        }
+    };
+    try S.doTheTest();
+    try comptime S.doTheTest();
+}
+
+test "array of float to vector of same type" {
+    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest; // TODO
+
+    const S = struct {
+        fn doTheTest() !void {
+            {
+                var arr: [4]f16 = .{ 1.5, 2.5, 3.5, 4.5 };
+                const vec: @Vector(4, f16) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 1.5);
+                try expect(vec[1] == 2.5);
+                try expect(vec[2] == 3.5);
+                try expect(vec[3] == 4.5);
+            }
+
+            {
+                var arr: [4]f32 = .{ 1.5, 2.5, 3.5, 4.5 };
+                const vec: @Vector(4, f32) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 1.5);
+                try expect(vec[1] == 2.5);
+                try expect(vec[2] == 3.5);
+                try expect(vec[3] == 4.5);
+            }
+
+            {
+                var arr: [4]f64 = .{ 1.5, 2.5, 3.5, 4.5 };
+                const vec: @Vector(4, f64) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 1.5);
+                try expect(vec[1] == 2.5);
+                try expect(vec[2] == 3.5);
+                try expect(vec[3] == 4.5);
+            }
+
+            {
+                var arr: [2]f80 = .{ 1.5, 2.5 };
+                const vec: @Vector(2, f80) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 1.5);
+                try expect(vec[1] == 2.5);
+            }
+
+            {
+                var arr: [2]f128 = .{ 3.5, 4.5 };
+                const vec: @Vector(2, f128) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 3.5);
+                try expect(vec[1] == 4.5);
+            }
+        }
+    };
+    try S.doTheTest();
+    try comptime S.doTheTest();
+}
+
+test "array of non-abi-sized integer to vector of same type" {
+    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
+    const S = struct {
+        fn doTheTest() !void {
+            {
+                var arr: [5]bool = .{ false, true, false, true, true };
+                const vec: @Vector(5, bool) = arr;
+                arr[0] = true; // should not affect `vec`
+                try expect(vec[0] == false);
+                try expect(vec[1] == true);
+                try expect(vec[2] == false);
+                try expect(vec[3] == true);
+                try expect(vec[4] == true);
+            }
+
+            {
+                var arr: [4]u1 = .{ 1, 0, 1, 1 };
+                const vec: @Vector(4, u1) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 1);
+                try expect(vec[1] == 0);
+                try expect(vec[2] == 1);
+                try expect(vec[3] == 1);
+            }
+
+            {
+                var arr: [4]u3 = .{ 0, 3, 5, 7 };
+                const vec: @Vector(4, u3) = arr;
+                arr[0] = 1; // should not affect `vec`
+                try expect(vec[0] == 0);
+                try expect(vec[1] == 3);
+                try expect(vec[2] == 5);
+                try expect(vec[3] == 7);
+            }
+
+            {
+                var arr: [3]u24 = .{ 0x010203, 0x040506, 0xFF0000 };
+                const vec: @Vector(3, u24) = arr;
+                arr[0] = 0; // should not affect `vec`
+                try expect(vec[0] == 0x010203);
+                try expect(vec[1] == 0x040506);
+                try expect(vec[2] == 0xFF0000);
+            }
+        }
+    };
+    try S.doTheTest();
+    try comptime S.doTheTest();
+}
+
 test "array vector coercion - odd sizes" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO

@@ -78,6 +78,7 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
         .expand_packed_store,
         .expand_packed_agg_field_val,
         .expand_packed_aggregate_init,
+        .expand_array_to_vector,
     });
 }
 
@@ -104405,6 +104406,7 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 }
                 try ops[0].finish(inst, &.{ bin_op.lhs, bin_op.rhs }, &ops, cg);
             },
+            .array_to_vector => unreachable, // legalize .expand_array_to_vector
             .array_to_slice => {
                 const ty_op = air_datas[@backingInt(inst)].ty_op;
                 var ops = try cg.tempsFromOperands(inst, .{ty_op.operand});

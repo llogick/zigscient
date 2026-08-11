@@ -38,6 +38,7 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
         .expand_packed_store,
         .expand_packed_agg_field_val,
         .expand_packed_aggregate_init,
+        .expand_array_to_vector,
 
         .scalarize_add,
         .scalarize_add_optimized,
@@ -1753,6 +1754,7 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
 
         .array_elem_val => cg.airArrayElemVal(inst),
         .array_to_slice => cg.airArrayToSlice(inst),
+        .array_to_vector => unreachable, // legalize .expand_array_to_vector
         .alloc => cg.airAlloc(inst),
         .arg => cg.airArg(inst),
         .block => cg.airBlock(inst),

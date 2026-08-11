@@ -504,6 +504,7 @@ fn genBody(self: *FuncGen, body: []const Air.Inst.Index, coverage_point: Air.Cov
             .int_from_float_optimized_safe => unreachable, // handled by `legalizeFeatures`
 
             .array_to_slice => try self.airArrayToSlice(inst),
+            .array_to_vector => try self.airArrayToVector(inst),
             .float_from_int => try self.airFloatFromInt(inst),
             .cmpxchg_weak   => try self.airCmpxchg(inst, .weak),
             .cmpxchg_strong => try self.airCmpxchg(inst, .strong),
@@ -2025,6 +2026,48 @@ fn airArrayToSlice(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder
     const slice_llvm_ty = try o.lowerType(self.typeOfIndex(inst), .as_value);
     const operand = try self.resolveInst(ty_op.operand);
     return self.wip.buildAggregate(slice_llvm_ty, &.{ operand, len }, "");
+}
+
+fn airArrayToVector(fg: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value {
+    const o = fg.object;
+    const zcu = o.zcu;
+    const ty_op = fg.air.instructions.items(.data)[@backingInt(inst)].ty_op;
+    const array_ty = fg.typeOf(ty_op.operand);
+    const vector_ty = fg.typeOfIndex(inst);
+    const elem_ty = vector_ty.childType(zcu);
+    const operand = try fg.resolveInst(ty_op.operand);
+
+    assert(array_ty.arrayLen(zcu) == vector_ty.vectorLen(zcu));
+    assert(array_ty.childType(zcu).toIntern() == elem_ty.toIntern());
+    assert(isByRef(array_ty, zcu)); // the operand is runtime-known, so the array has runtime bits
+
+    // A by-ref vector is lowered as `[n x T]` with the same element representation as the array,
+    // so the operand is already the result.
+    if (isByRef(vector_ty, zcu)) return operand;
+
+    // LLVM lays `<n x T>` out as `n` consecutive `T`s, just like `[n]T`, so long as `T` is
+    // accessed as the same type it is used as; then this is one load.
+    if ((try o.lowerType(elem_ty, .memory_access)) == (try o.lowerType(elem_ty, .as_value)) and
+        // f80 has an unusual in-memory representation with padding bytes, so is
+        // not eligible for this optimization
+        !(elem_ty.isRuntimeFloat() and elem_ty.floatBits(zcu.getTarget()) == 80))
+    {
+        return fg.load(operand, array_ty.abiAlignment(zcu), vector_ty, .normal);
+    }
+
+    const llvm_usize = try o.lowerType(.usize, .as_value);
+    const elem_size = elem_ty.abiSize(zcu);
+    var vector = try o.builder.poisonValue(try o.lowerType(vector_ty, .as_value));
+    for (0..@intCast(vector_ty.vectorLen(zcu))) |elem_index| {
+        const elem_ptr = try fg.ptraddScaled(
+            operand,
+            try o.builder.intValue(llvm_usize, elem_index),
+            elem_size,
+        );
+        const elem = try fg.load(elem_ptr, .none, elem_ty, .normal);
+        vector = try fg.wip.insertElement(vector, elem, try o.builder.intValue(.i32, elem_index), "");
+    }
+    return vector;
 }
 
 fn airFloatFromInt(fg: *FuncGen, inst: Air.Inst.Index) TodoError!Builder.Value {
