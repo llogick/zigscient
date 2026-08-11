@@ -123,6 +123,22 @@ fn testIp4ParseAndRender(text: []const u8) !void {
     try testing.expectEqualStrings(text, without_port);
 }
 
+test "parse Ip4Address from IpAddress" {
+    try testIp4FromIpAddress("0.0.0.0:80", "0.0.0.0:80");
+    try testIp4FromIpAddress("255.255.255.255:0", "255.255.255.255:0");
+    try testIp4FromIpAddress("[::ffff:127.0.0.1]:80", "127.0.0.1:80");
+    try testIp4FromIpAddress("[::ffff:192.168.1.1]:443", "192.168.1.1:443");
+
+    try testing.expectEqual(null, net.Ip4Address.fromAny(try net.IpAddress.parseIp6("2001:db8::1", 443)));
+    try testing.expectEqual(null, net.Ip4Address.fromAny(try net.IpAddress.parseIp6("::c000:201", 80)));
+}
+
+fn testIp4FromIpAddress(any_address: []const u8, ip4_address: []const u8) !void {
+    const expected = try net.IpAddress.parseLiteral(ip4_address);
+    const actual = net.Ip4Address.fromAny(try net.IpAddress.parseLiteral(any_address)).?;
+    try testing.expectEqual(expected.ip4, actual);
+}
+
 test "resolve DNS" {
     const io = testing.io;
 

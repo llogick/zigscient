@@ -376,7 +376,7 @@ pub const Ip4Address = struct {
 
     /// Given an `IpAddress`, converts it to an `Ip4Address` directly, or from
     /// an IPv4-mapped IPv6 address, or returns `null`.
-    pub fn fromAny(addr: IpAddress) ?Ip6Address {
+    pub fn fromAny(addr: IpAddress) ?Ip4Address {
         return switch (addr) {
             .ip4 => |ip4| ip4,
             .ip6 => |ip6| fromIp6(ip6),
