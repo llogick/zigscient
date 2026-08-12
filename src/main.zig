@@ -434,9 +434,32 @@ pub fn mainArgs(
         },
         .targets => {
             dev.check(.targets_command);
+            const self_exe_path = switch (native_os) {
+                .wasi => {},
+                else => process.executablePathAlloc(io, arena) catch |err| fatal("unable to find zig self exe path: {t}", .{err}),
+            };
+            var dirs: std.zig.Directories = .init(
+                arena,
+                io,
+                EnvVar.ZIG_LIB_DIR.get(environ_map),
+                EnvVar.ZIG_GLOBAL_CACHE_DIR.get(environ_map),
+                .global,
+                preopens,
+                self_exe_path,
+                environ_map,
+                try std.zig.getResolvedCwd(io, arena),
+            );
+            defer dirs.deinit(io);
             const host = std.zig.resolveTargetQueryOrFatal(io, .{});
             var stdout_writer = Io.File.stdout().writer(io, &stdout_buffer);
-            try @import("print_targets.zig").cmdTargets(arena, io, cmd_args, &stdout_writer.interface, &host);
+            try @import("print_targets.zig").cmdTargets(
+                arena,
+                io,
+                &dirs,
+                cmd_args,
+                &stdout_writer.interface,
+                &host,
+            );
             return stdout_writer.interface.flush();
         },
         .version => {
@@ -446,16 +469,31 @@ pub fn mainArgs(
         },
         .env => {
             dev.check(.env_command);
+            const self_exe_path = switch (native_os) {
+                .wasi => args[0],
+                else => process.executablePathAlloc(io, arena) catch |err| fatal("unable to find zig self exe path: {t}", .{err}),
+            };
+            var dirs: std.zig.Directories = .init(
+                arena,
+                io,
+                EnvVar.ZIG_LIB_DIR.get(environ_map),
+                EnvVar.ZIG_GLOBAL_CACHE_DIR.get(environ_map),
+                .global,
+                preopens,
+                if (native_os != .wasi) self_exe_path,
+                environ_map,
+                try std.zig.getResolvedCwd(io, arena),
+            );
+            defer dirs.deinit(io);
             const host = std.zig.resolveTargetQueryOrFatal(io, .{});
             var stdout_writer = Io.File.stdout().writer(io, &stdout_buffer);
             try @import("print_env.zig").cmdEnv(
                 arena,
-                io,
                 &stdout_writer.interface,
-                args,
-                preopens,
                 &host,
                 environ_map,
+                &dirs,
+                self_exe_path,
             );
             return stdout_writer.interface.flush();
         },
@@ -976,7 +1014,10 @@ pub const CompilationState = struct {
     linker_nxcompat: bool = false,
     linker_dynamicbase: bool = true,
     linker_optimization: ?[]const u8 = null,
-    self_exe_path: []const u8 = undefined,
+    self_exe_path_or_argv0: switch (native_os) {
+        .wasi => void,
+        else => []const u8,
+    } = undefined,
     dirs: std.zig.Directories = undefined,
     linker_module_definition_file: ?[]const u8 = null,
     test_no_exec: bool = false,
@@ -3496,7 +3537,7 @@ pub fn buildOutputType(
         });
     }
 
-    cs.self_exe_path = switch (native_os) {
+    cs.self_exe_path_or_argv0 = switch (native_os) {
         .wasi => {},
         else => if (std.fs.path.isAbsolute(all_args[0])) all_args[0] else process.executablePathAlloc(io, arena) catch |err| fatal("unable to find zig self exe path: {t}", .{err}),
     };
@@ -3517,7 +3558,7 @@ pub fn buildOutputType(
             };
         },
         preopens,
-        cs.self_exe_path,
+        cs.self_exe_path_or_argv0,
         environ_map,
         cwd_path,
     );
@@ -3890,7 +3931,7 @@ pub fn buildOutputType(
         .thread_limit = thread_limit,
         .self_exe_path = switch (native_os) {
             .wasi => null,
-            else => cs.self_exe_path,
+            else => cs.self_exe_path_or_argv0,
         },
         .config = cs.create_module.resolved_options,
         .root_name = cs.root_name,
@@ -4132,9 +4173,14 @@ pub fn buildOutputType(
     }) {
         dev.checkAny(&.{ .run_command, .test_command });
 
+        cs.self_exe_path_or_argv0 = switch (native_os) {
+            .wasi => all_args[0], // Will error because of `!process.can_spawn`
+            else => cs.self_exe_path_or_argv0,
+        };
+
         if (cs.test_exec_args.items.len == 0 and target.ofmt == .c and emit_bin_resolved != .no) {
             // Default to using `zig run` to execute the produced .c code from `zig test`.
-            try cs.test_exec_args.appendSlice(arena, &.{ cs.self_exe_path, "run" });
+            try cs.test_exec_args.appendSlice(arena, &.{ cs.self_exe_path_or_argv0, "run" });
             // Skip passing `-ofmt`, we want the default for the target, not `.c` anymore.
 
             var prev_has_cflags = false;
@@ -4215,7 +4261,7 @@ pub fn buildOutputType(
             arena,
             io,
             cs.test_exec_args.items,
-            cs.self_exe_path,
+            cs.self_exe_path_or_argv0,
             arg_mode,
             target,
             &comp_destroyed,
@@ -4606,7 +4652,10 @@ fn serve(
     in: *Io.Reader,
     out: *Io.Writer,
     test_exec_args: []const ?[]const u8,
-    self_exe_path: ?[]const u8,
+    self_exe_path: switch (native_os) {
+        .wasi => void,
+        else => []const u8,
+    },
     arg_mode: ArgMode,
     all_args: []const []const u8,
     runtime_args_start: ?usize,
@@ -4719,7 +4768,7 @@ fn serve(
                         comp,
                         gpa,
                         test_exec_args,
-                        self_exe_path.?,
+                        self_exe_path,
                         arg_mode,
                         all_args,
                         runtime_args_start,
@@ -4904,9 +4953,8 @@ fn runOrTest(
         const cmd = try std.mem.join(arena, " ", argv.items);
         fatal("the following command failed to execve with '{t}':\n{s}", .{ err, cmd });
     } else if (!process.can_spawn) {
-        const cmd = try std.mem.join(arena, " ", argv.items);
-        fatal("the following command cannot be executed ({t} does not support spawning a child process):\n{s}", .{
-            native_os, cmd,
+        fatal("the following command cannot be executed ({t} does not support spawning a child process):\n{f}", .{
+            native_os, std.zig.SubprocessCommand{ .argv = argv.items },
         });
     }
     const term_result = (term: {
@@ -4986,13 +5034,21 @@ fn runOrTestHotSwap(
     comp: *Compilation,
     gpa: Allocator,
     test_exec_args: []const ?[]const u8,
-    self_exe_path: []const u8,
+    self_exe_path: switch (native_os) {
+        .wasi => void,
+        else => []const u8,
+    },
     arg_mode: ArgMode,
     all_args: []const []const u8,
     runtime_args_start: ?usize,
 ) !std.process.Child.Id {
     const io = comp.io;
     const lf = comp.bin_file.?;
+
+    const self_exe_path_or_argv0 = switch (native_os) {
+        .wasi => all_args[0], // Will error because of `!process.can_spawn`
+        else => self_exe_path,
+    };
 
     const exe_path = switch (builtin.target.os.tag) {
         // On Windows it seems impossible to perform an atomic rename of a file that is currently
@@ -5019,7 +5075,7 @@ fn runOrTestHotSwap(
         // when testing pass the zig_exe_path to argv
         if (arg_mode == .zig_test)
             try argv.appendSlice(&[_][]const u8{
-                exe_path, self_exe_path,
+                exe_path, self_exe_path_or_argv0,
             })
             // when running just pass the current exe
         else
@@ -5032,13 +5088,19 @@ fn runOrTestHotSwap(
                 try argv.append(a);
             } else {
                 try argv.appendSlice(&[_][]const u8{
-                    exe_path, self_exe_path,
+                    exe_path, self_exe_path_or_argv0,
                 });
             }
         }
     }
     if (runtime_args_start) |i| {
         try argv.appendSlice(all_args[i..]);
+    }
+
+    if (!process.can_spawn) {
+        fatal("the following command cannot be executed ({t} does not support spawning a child process):\n{f}", .{
+            native_os, std.zig.SubprocessCommand{ .argv = argv.items },
+        });
     }
 
     const child = try std.process.spawn(io, .{
@@ -5223,6 +5285,12 @@ fn jitCmdInner(
     lsp_doc_store: ?*lsp_server.DocumentStore,
     options: JitCmdOptions,
 ) !void {
+    if (!std.process.can_spawn) {
+        fatal("The {s} command cannot be executed ({t} does not support spawning a child process)", .{
+            options.cmd_name, native_os,
+        });
+    }
+
     const target_query: std.Target.Query = .{};
     const resolved_target: Module.ResolvedTarget = .{
         .result = std.zig.resolveTargetQueryOrFatal(io, target_query),
@@ -5413,13 +5481,6 @@ fn jitCmdInner(
         const err = process.replace(io, .{ .argv = child_argv.items, .environ_map = environ_map });
         const cmd = try std.mem.join(arena, " ", child_argv.items);
         fatal("the following command failed to execve with {t}:\n{s}", .{ err, cmd });
-    }
-
-    if (!process.can_spawn) {
-        const cmd = try std.mem.join(arena, " ", child_argv.items);
-        fatal("the following command cannot be executed ({t} does not support spawning a child process):\n{s}", .{
-            native_os, cmd,
-        });
     }
 
     const term = t: {

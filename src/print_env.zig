@@ -11,38 +11,12 @@ const Compilation = @import("Compilation.zig");
 
 pub fn cmdEnv(
     arena: Allocator,
-    io: Io,
     out: *std.Io.Writer,
-    args: []const []const u8,
-    preopens: std.process.Preopens,
     host: *const std.Target,
     environ_map: *std.process.Environ.Map,
+    dirs: *const std.zig.Directories,
+    self_exe_path: []const u8,
 ) !void {
-    const override_lib_dir: ?[]const u8 = EnvVar.ZIG_LIB_DIR.get(environ_map);
-    const override_global_cache_dir: ?[]const u8 = EnvVar.ZIG_GLOBAL_CACHE_DIR.get(environ_map);
-
-    const self_exe_path = switch (builtin.target.os.tag) {
-        .wasi => args[0],
-        else => std.process.executablePathAlloc(io, arena) catch |err| {
-            fatal("unable to find zig self exe path: {t}", .{err});
-        },
-    };
-
-    const cwd_path = try std.zig.getResolvedCwd(io, arena);
-
-    var dirs: std.zig.Directories = .init(
-        arena,
-        io,
-        override_lib_dir,
-        override_global_cache_dir,
-        .global,
-        preopens,
-        if (builtin.target.os.tag != .wasi) self_exe_path,
-        environ_map,
-        cwd_path,
-    );
-    defer dirs.deinit(io);
-
     const zig_lib_dir = dirs.zig_lib.path orelse "";
     const zig_std_dir = try dirs.zig_lib.join(arena, &.{"std"});
     const global_cache_dir = dirs.global_cache.path orelse "";

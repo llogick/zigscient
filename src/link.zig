@@ -1337,7 +1337,7 @@ pub const File = struct {
         // with 0o755 permissions, but it works appropriately if the system is configured
         // more leniently. As another data point, C's fopen seems to open files with the
         // 666 mode.
-        const executable_mode: Io.File.Permissions = if (builtin.target.os.tag == .windows)
+        const executable_mode: Io.File.Permissions = if (builtin.target.os.tag == .windows or std.posix.mode_t == u0)
             .default_file
         else
             .fromMode(0o777);
