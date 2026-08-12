@@ -1252,21 +1252,23 @@ pub const BranchHint = enum(u3) {
     unpredictable,
 };
 
-/// This enum is set by the compiler and communicates which compiler backend is
-/// used to produce machine code.
-/// Think carefully before deciding to observe this value. Nearly all code should
-/// be agnostic to the backend that implements the language. The use case
-/// to use this value is to **work around problems with compiler implementations.**
+/// This enum is set by the compiler and communicates which compiler
+/// implementation is used to produce machine code.
 ///
-/// Avoid failing the compilation if the compiler backend does not match a
-/// whitelist of backends; rather one should detect that a known problem would
-/// occur in a blacklist of backends.
+/// In theory, Zig code should be agnostic to the backend that implements the
+/// language. The only reason to observe this value is to **work around
+/// problems with compiler implementations.**
 ///
-/// The enum is nonexhaustive so that alternate Zig language implementations may
-/// choose a number as their tag (please use a random number generator rather
-/// than a "cute" number) and codebases can interact with these values even if
+/// A common pitful is failing the compilation if the compiler backend does not
+/// match a whitelist of backends; a more resilient strategy is to detect that
+/// a known problem would occur in a blacklist of backends.
+///
+/// The enum is nonexhaustive so that alternate Zig language implementations
+/// may choose a random number as their tag, thereby avoiding conflicts with
+/// other implementations, and codebases can interact with these values even if
 /// this upstream enum does not have a name for the number. Of course, upstream
-/// is happy to accept pull requests to add Zig implementations to this enum.
+/// is happy to accept patches to add additional Zig implementations to this
+/// enum.
 ///
 /// This data structure is part of the Zig language specification.
 pub const CompilerBackend = enum(u64) {
@@ -1283,6 +1285,7 @@ pub const CompilerBackend = enum(u64) {
     stage2_llvm = 2,
     /// The reference implementation self-hosted compiler of Zig, using the
     /// backend that generates C source code.
+    ///
     /// Note that one can observe whether the compilation will output C code
     /// directly with `object_format` value rather than the `compiler_backend` value.
     stage2_c = 3,

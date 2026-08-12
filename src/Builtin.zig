@@ -53,8 +53,6 @@ pub fn append(opts: @This(), buffer: *std.array_list.Managed(u8)) Allocator.Erro
     @setEvalBranchQuota(4000);
     try buffer.print(
         \\const std = @import("std");
-        \\/// Zig version. When writing code that supports multiple versions of Zig, prefer
-        \\/// feature detection (i.e. with `@hasDecl` or `@hasField`) over version checks.
         \\pub const zig_version = std.SemanticVersion.parse(zig_version_string) catch unreachable;
         \\pub const zig_version_string = "{s}";
         \\pub const zig_backend = std.lang.CompilerBackend.{f};
