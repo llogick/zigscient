@@ -5010,6 +5010,20 @@ fn cmpxchgWeakButNotAtomic(comptime T: type, ptr: *T, expected_value: T, new_val
       <p>Returns whether or not a {#link|Namespace#} has a declaration matching {#syntax#}name{#endsyntax#}.</p>
       {#code|test_hasDecl_builtin.zig#}
 
+      <p>Caution: using {#syntax#}@hasDecl{#endsyntax#} to implement
+      conditional compilation based on the presence or absence of declarations
+      in an API runs the risk of introducing dead code into the codebase,
+      unnoticed. For example, if the field is ever renamed, code which uses
+      {#syntax#}@hasDecl{#endsyntax#} will compile successfully while failing
+      to enable or disable an intended block of code. Even a simple a typo in
+      the field name passed to {#syntax#}@hasDecl{#endsyntax#} would go
+      unnoticed by the compiler. Thus, it is safer to use alternative methods
+      to check for the presence or absence of a particular declaration where
+      possible. For example, if the target operating system would indicate whether a particular
+      function is available, it more maintainable to check
+      {#syntax#}@import("builtin").target.os.tag{#endsyntax#} rather than
+      {#syntax#}@hasDecl{#endsyntax#}.</p>
+
       {#see_also|@hasField#}
       {#header_close#}
 
