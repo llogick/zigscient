@@ -10,8 +10,10 @@ const log = std.log;
 arena: Allocator,
 wc: *Configuration.Wip,
 module_map: std.array_hash_map.Auto(*std.Build.Module, Configuration.Module.Index) = .empty,
-/// Keyed by package hash.
-package_map: std.array_hash_map.String(Configuration.Package.Index) = .empty,
+/// Keyed by package hash. Index + 1 corresponds to `Configuration.packages` index.
+package_map: std.array_hash_map.String(void) = .empty,
+/// Index corresponds to `Configuration.package_instances` index.
+package_instance_map: std.array_hash_map.Auto(*std.Build, void) = .empty,
 /// Index corresponds to `Configuration.steps` index.
 step_map: std.array_hash_map.Auto(*Step, void) = .empty,
 
@@ -22,9 +24,28 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
 
     var s: Serialize = .{ .wc = wc, .arena = arena };
 
-    // Serialize all of the packages first to seed the package_map, which is
-    // later used in calls to packageFromHash.
-    try s.addRootPackage(b);
+    // Seed the package_map, which is later used when serializing package
+    // instances.
+    try s.traversePackages(b);
+
+    // Next, seed the package_instance_map, which is later used in calls to
+    // packageInstanceFromBuilder.
+
+    _ = try wc.package_instances.addManyAsSlice(gpa, 1 + b.graph.dependency_cache.count());
+    try s.package_instance_map.ensureTotalCapacity(arena, 1 + b.graph.dependency_cache.count());
+
+    // As serializing package instances also requires serializing the public
+    // modules of each one, we must first allocate an index for each package
+    // instance. Otherwise, addModule may access a package instance that hasn't
+    // been created yet with packageInstanceFromBuilder.
+
+    s.package_instance_map.putAssumeCapacityNoClobber(b, {});
+    var iter = b.graph.dependency_cache.valueIterator();
+    while (iter.next()) |dep| s.package_instance_map.putAssumeCapacityNoClobber(dep.*.builder, {});
+
+    try s.addPackageInstance(b);
+    var iter2 = b.graph.dependency_cache.valueIterator();
+    while (iter2.next()) |dep| try s.addPackageInstance(dep.*.builder);
 
     try wc.path_deps.ensureTotalCapacityPrecise(gpa, graph.configure_dependencies.items.len);
     for (
@@ -49,10 +70,10 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                 .relative => |r| try wc.addString(r.sub_path),
             },
             .pkg = switch (src.lazy_path) {
-                .src_path => |sp| .init(s.packageFromHash(sp.owner.pkg_hash)),
+                .src_path => |sp| .init(s.packageInstanceFromBuilder(sp.owner)),
                 .generated => unreachable,
                 .cwd_relative, .relative => .none,
-                .dependency => |d| .init(s.packageFromHash(d.dependency.builder.pkg_hash)),
+                .dependency => |d| .init(s.packageInstanceFromBuilder(d.dependency.builder)),
             },
         };
     }
@@ -89,7 +110,7 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
             try wc.steps.ensureTotalCapacity(gpa, s.step_map.entries.capacity);
             wc.steps.appendAssumeCapacity(.{
                 .name = try wc.addString(step.name),
-                .owner = s.packageFromHash(step.owner.pkg_hash),
+                .owner = s.packageInstanceFromBuilder(step.owner),
                 .deps = deps,
                 .max_rss = .fromBytes(step.max_rss),
                 .extended = @fromBackingInt(@intCast(switch (step.tag) {
@@ -729,7 +750,7 @@ pub fn packageOptions(b: *std.Build, wc: *Configuration.Wip) Allocator.Error!voi
     }
 }
 
-fn addRootPackage(s: *Serialize, b: *std.Build) Allocator.Error!void {
+fn traversePackages(s: *Serialize, b: *std.Build) Allocator.Error!void {
     const arena = s.arena;
     const wc = s.wc;
 
@@ -743,7 +764,7 @@ fn addRootPackage(s: *Serialize, b: *std.Build) Allocator.Error!void {
     const deps = try arena.alloc(Configuration.Package.Dep, b.available_deps.len);
     for (deps, b.available_deps) |*dest, src| dest.* = try s.makePackageDep("", src[0], src[1]);
 
-    wc.packages.items[0].deps = try wc.addExtra(Configuration.Package.Dep.List, .{
+    wc.packages.items[0].deps = try wc.addDeduped(Configuration.Package.Dep.List, .{
         .deps = .{ .slice = deps },
     });
 }
@@ -752,17 +773,17 @@ fn makePackageDep(s: *Serialize, parent_dep_prefix: []const u8, name: []const u8
     const arena = s.arena;
     const wc = s.wc;
 
-    if (s.package_map.get(hash)) |index| return .{
+    if (s.package_map.getIndex(hash)) |index| return .{
         .name = try wc.addString(name),
-        .package = index,
+        .package = @fromBackingInt(@intCast(index + 1)),
     };
+
+    const index: Configuration.Package.Index = @fromBackingInt(@intCast(wc.packages.items.len));
+    try s.package_map.put(arena, hash, {});
 
     const entry = std.Build.package_map.get(hash) orelse unreachable;
 
     const dep_prefix = try arena.print("{s}{s}.", .{ parent_dep_prefix, name });
-
-    const index: Configuration.Package.Index = @fromBackingInt(@intCast(wc.packages.items.len));
-    try s.package_map.put(arena, hash, index);
 
     try wc.packages.append(wc.gpa, .{
         .dep_prefix = try wc.addString(dep_prefix),
@@ -774,7 +795,7 @@ fn makePackageDep(s: *Serialize, parent_dep_prefix: []const u8, name: []const u8
     const deps = try arena.alloc(Configuration.Package.Dep, entry.deps.len);
     for (deps, entry.deps) |*dest, src| dest.* = try s.makePackageDep(dep_prefix, src[0], src[1]);
 
-    wc.packages.items[@backingInt(index)].deps = try wc.addExtra(Configuration.Package.Dep.List, .{
+    wc.packages.items[@backingInt(index)].deps = try wc.addDeduped(Configuration.Package.Dep.List, .{
         .deps = .{ .slice = deps },
     });
 
@@ -786,7 +807,111 @@ fn makePackageDep(s: *Serialize, parent_dep_prefix: []const u8, name: []const u8
 
 fn packageFromHash(s: *Serialize, pkg_hash: []const u8) Configuration.Package.Index {
     if (pkg_hash.len == 0) return .root;
-    return s.package_map.get(pkg_hash) orelse std.debug.panic("unrecognized package hash: {q}", .{pkg_hash});
+    return @fromBackingInt(@intCast(s.package_map.getIndex(pkg_hash).? + 1));
+}
+
+fn addPackageInstance(s: *Serialize, b: *std.Build) Allocator.Error!void {
+    const arena = s.arena;
+    const wc = s.wc;
+
+    const index = s.package_instance_map.getIndex(b).?;
+
+    const options = try arena.alloc(
+        Configuration.PackageInstance.UserInputOption.Index,
+        b.user_input_options.count(),
+    );
+
+    {
+        var i: usize = 0;
+        var iter = b.user_input_options.valueIterator();
+        while (iter.next()) |option| : (i += 1) {
+            options[i] = try wc.addExtra(Configuration.PackageInstance.UserInputOption, .{
+                .flags = .{
+                    .tag = .init(option.value),
+                    .used = option.used,
+                },
+                .name = try wc.addString(option.name),
+                .value = .{ .u = try s.makeUserValue(&option.value) },
+            });
+        }
+    }
+
+    const modules_keys = try arena.alloc(
+        []const u8,
+        b.modules.count(),
+    );
+    const modules_values = try arena.alloc(
+        Configuration.Module.Index,
+        b.modules.count(),
+    );
+
+    {
+        var i: usize = 0;
+        var iter = b.modules.iterator();
+        while (iter.next()) |entry| : (i += 1) {
+            modules_keys[i] = entry.key_ptr.*;
+            modules_values[i] = try s.addModule(entry.value_ptr.*);
+        }
+    }
+
+    wc.package_instances.items[index] = .{
+        .package = s.packageFromHash(b.pkg_hash),
+        .user_input_options = try wc.addDeduped(Configuration.PackageInstance.UserInputOption.List, .{
+            .options = .{ .slice = options },
+        }),
+        .modules = .{
+            .keys = try wc.addStringList(modules_keys),
+            .values = try wc.addDeduped(Configuration.Module.List, .{
+                .modules = .{ .slice = modules_values },
+            }),
+        },
+    };
+}
+
+fn makeUserValue(s: *Serialize, user_value: *const std.Build.UserValue) Allocator.Error!Configuration.PackageInstance.UserValue {
+    const arena = s.arena;
+    const wc = s.wc;
+
+    return switch (user_value.*) {
+        .flag => .flag,
+        .scalar => |str| .{ .scalar = try wc.addString(str) },
+        .list => |list| .{ .list = try wc.addStringList(list.items) },
+        .map => |map| add: {
+            const keys = try arena.alloc([]const u8, map.count());
+            const values = try arena.alloc(Configuration.PackageInstance.UserValue.Standalone.Index, map.count());
+
+            var i: usize = 0;
+            var iter = map.iterator();
+            while (iter.next()) |entry| : (i += 1) {
+                const value = try s.makeUserValue(entry.value_ptr.*);
+
+                keys[i] = entry.key_ptr.*;
+                values[i] = try wc.addDeduped(
+                    Configuration.PackageInstance.UserValue.Standalone,
+                    .{ .flags = .{ .tag = value }, .value = .{ .u = value } },
+                );
+            }
+
+            break :add .{ .map = try wc.addDeduped(
+                Configuration.PackageInstance.UserValue.Map,
+                .{
+                    .keys = try wc.addStringList(keys),
+                    .values = .{ .slice = values },
+                },
+            ) };
+        },
+        .lazy_path => |lp| .{ .lazy_path = try s.addLazyPath(lp) },
+        .lazy_path_list => |lp_list| add: {
+            const paths = try arena.alloc(Configuration.LazyPath.Index, lp_list.items.len);
+            for (paths, lp_list.items) |*dest, src| dest.* = try s.addLazyPath(src);
+            break :add .{ .lazy_path_list = .{ .slice = paths } };
+        },
+    };
+}
+
+fn packageInstanceFromBuilder(s: *Serialize, b: *std.Build) Configuration.PackageInstance.Index {
+    if (b.pkg_hash.len == 0) return .root;
+    return @fromBackingInt(@intCast(s.package_instance_map.getIndex(b).?));
 }
 
 fn addOptionalLazyPathEnum(s: *Serialize, lp: ?std.Build.LazyPath) !Configuration.LazyPath.OptionalIndex {
@@ -795,7 +920,7 @@ fn addOptionalLazyPathEnum(s: *Serialize, lp: ?std.Build.LazyPath) !Configuratio
         .src_path => |src_path| i: {
             const sub_path = try wc.addString(src_path.sub_path);
             break :i try wc.addExtraErased(Configuration.LazyPath.SourcePath, .{
-                .owner = s.packageFromHash(src_path.owner.pkg_hash),
+                .owner = s.packageInstanceFromBuilder(src_path.owner),
                 .sub_path = sub_path,
             });
         },
@@ -823,7 +948,7 @@ fn addOptionalLazyPathEnum(s: *Serialize, lp: ?std.Build.LazyPath) !Configuratio
         .dependency => |dependency| i: {
             const sub_path = try wc.addString(dependency.sub_path);
             break :i try wc.addExtraErased(Configuration.LazyPath.SourcePath, .{
-                .owner = s.packageFromHash(dependency.dependency.builder.pkg_hash),
+                .owner = s.packageInstanceFromBuilder(dependency.dependency.builder),
                 .sub_path = sub_path,
             });
         },
@@ -1252,7 +1377,7 @@ fn addModule(s: *Serialize, m: *std.Build.Module) !Configuration.Module.Index {
     const c_macros = try initStringList(s, m.c_macros.items);
     const export_symbol_names = try initStringList(s, m.export_symbol_names);
 
-    const module_index: Configuration.Module.Index = try wc.addExtra(Configuration.Module, .{
+    const module_index: Configuration.Module.Index = try wc.addDeduped(Configuration.Module, .{
         .flags = .{
             .optimize = .init(m.optimize),
             .strip = .init(m.strip),
@@ -1283,7 +1408,7 @@ fn addModule(s: *Serialize, m: *std.Build.Module) !Configuration.Module.Index {
             .link_libcpp = .init(m.link_libcpp),
             .no_builtin = .init(m.no_builtin),
         },
-        .owner = s.packageFromHash(m.owner.pkg_hash),
+        .owner = s.packageInstanceFromBuilder(m.owner),
         .root_source_file = try s.addOptionalLazyPathEnum(m.root_source_file),
         .import_table = .invalid,
         .resolved_target = try addOptionalResolvedTarget(wc, m.resolved_target),

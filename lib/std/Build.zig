@@ -272,7 +272,7 @@ const InitializedDepContext = struct {
     }
 };
 
-const UserInputOptionsMap = StringHashMap(UserInputOption);
+pub const UserInputOptionsMap = StringHashMap(UserInputOption);
 
 const AvailableOption = struct {
     name: []const u8,
@@ -282,13 +282,13 @@ const AvailableOption = struct {
     enum_options: ?[]const []const u8,
 };
 
-const UserInputOption = struct {
+pub const UserInputOption = struct {
     name: []const u8,
     value: UserValue,
     used: bool,
 };
 
-const UserValue = union(enum) {
+pub const UserValue = union(enum) {
     flag: void,
     scalar: []const u8,
     list: std.array_list.Managed([]const u8),
