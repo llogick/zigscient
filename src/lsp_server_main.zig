@@ -132,20 +132,18 @@ pub fn main(init: std.process.Init.Minimal) anyerror!u8 {
     log.info("{q}", .{cli_opts.argv0});
     log.info("", .{});
 
-    if (self_file_path == null) log.warn("Could not determine path to self; Only minimal Build System support available.", .{});
-
-    var config_manager: ls_kit.settings_handler.Manager = try .init(bscs.io, bscs.gpa, &environ_map, self_file_path);
-    defer config_manager.deinit();
+    var settman: ls_kit.settings_handler.Manager = try .init(bscs.io, bscs.gpa, &environ_map, self_file_path);
+    defer settman.deinit();
 
     const server: *ls_kit.Server = try .create(.{
         .io = bscs.io,
         .allocator = bscs.gpa,
         .transport = jsonio,
-        .config_manager = &config_manager,
+        .config_manager = &settman,
     });
     defer server.destroy();
 
-    try ls_kit.settings_handler.loadConfiguration(bscs.io, bscs.gpa, &environ_map, server, cli_opts.settings_file_path);
+    try settman.loadValues(server, cli_opts.settings_file_path);
     try ls_kit.settings_handler.resolveConfiguration(server);
 
     try server.loop();

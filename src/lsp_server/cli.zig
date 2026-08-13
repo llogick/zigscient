@@ -163,7 +163,7 @@ fn cmdEnv(
     };
     defer if (local_config_dir) |path| allocator.free(path);
 
-    var config_result = try ls_kit.settings_handler.loadConfigFromSystem(io, allocator, environ_map);
+    var config_result = try ls_kit.settings_handler.loadFromSystem(io, allocator, environ_map);
     defer config_result.deinit(allocator);
 
     const settings_file_path: ?[]const u8 = switch (config_result) {

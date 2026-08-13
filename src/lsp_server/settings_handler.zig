@@ -17,7 +17,7 @@ pub const Manager = struct {
     environ_map: *std.process.Environ.Map,
     config: Settings,
     self_file_path: ?[]const u8,
-    zig_exe: ?struct {
+    zig_info: ?struct {
         /// Same as `Manager.config.zig_exe_path.?`
         path: []const u8,
         version: std.SemanticVersion,
@@ -61,7 +61,7 @@ pub const Manager = struct {
             .allocator = allocator,
             .environ_map = environ_map,
             .self_file_path = self_file_path,
-            .zig_exe = null,
+            .zig_info = null,
             .zig_lib_dir = null,
             .global_cache_dir = null,
             .bss_check = .pending,
@@ -99,6 +99,59 @@ pub const Manager = struct {
         lsp_configuration,
     };
 
+    pub fn loadValues(
+        settman: *Manager,
+        server: *Server,
+        maybe_config_path: ?[]const u8,
+    ) error{ Canceled, OutOfMemory }!void {
+        const tracy_zone = tracy.trace(@src());
+        defer tracy_zone.end();
+
+        var arena: std.heap.ArenaAllocator = .init(settman.allocator);
+        defer arena.deinit();
+        var config: Settings = .{};
+
+        blk: {
+            var result = if (maybe_config_path) |settings_file_path|
+                try loadFromFile(settman.io, settman.allocator, settings_file_path)
+            else
+                try loadFromSystem(settman.io, settman.allocator, settman.environ_map);
+            defer result.deinit(settman.allocator);
+
+            switch (result) {
+                .success => |*ok| {
+                    log.info("$ Loaded {q}.", .{ok.path});
+                    config = ok.values;
+                    arena.state = ok.arena;
+                    ok.arena = .{};
+                },
+                .failure => |payload| {
+                    const message = try payload.toMessage(settman.allocator) orelse break :blk;
+                    defer settman.allocator.free(message);
+                    server.showMessage(.Error, "Failed to load configuration options:\n{s}", .{message});
+                },
+                .not_found => {},
+            }
+        }
+
+        if (config.global_cache_path == null) blk: {
+            if (builtin.target.os.tag == .wasi) {
+                // will default to `/cache`
+                break :blk;
+            }
+
+            const cache_dir_path = try known_folders.getPath(settman.io, settman.allocator, settman.environ_map, .cache) orelse {
+                server.showMessage(.Error, "Failed to resolve global cache directory", .{});
+                break :blk;
+            };
+            defer settman.allocator.free(cache_dir_path);
+
+            config.global_cache_path = try std.fs.path.join(arena.allocator(), &.{ cache_dir_path, "zig" });
+        }
+
+        try server.config_manager.setConfiguration2(.frontend, &config);
+    }
+
     /// Does not resolve or validate config options until `resolveConfiguration` has been called.
     pub fn setConfiguration(
         manager: *Manager,
@@ -130,7 +183,7 @@ pub const Manager = struct {
     }
 
     pub const ResolveConfigurationResult = struct {
-        did_change: DidConfigChange,
+        did_change: DidChange,
         messages: [][]const u8,
 
         pub fn deinit(result: *ResolveConfigurationResult, allocator: std.mem.Allocator) void {
@@ -194,7 +247,7 @@ pub const Manager = struct {
                 break :unresolved_zig;
             };
 
-            manager.zig_exe = .{
+            manager.zig_info = .{
                 .path = exe_path,
                 .version = zig_version,
                 .env = zig_env,
@@ -203,8 +256,8 @@ pub const Manager = struct {
 
         if (config.zig_lib_path == null) blk: {
             if (!std.process.can_spawn) break :blk;
-            const zig_exe = manager.zig_exe orelse break :blk;
-            const zig_lib_dir = zig_exe.env.lib_dir orelse break :blk;
+            const zig_info = manager.zig_info orelse break :blk;
+            const zig_lib_dir = zig_info.env.lib_dir orelse break :blk;
 
             if (std.fs.path.isAbsolute(zig_lib_dir)) {
                 config.zig_lib_path = try arena.dupe(u8, zig_lib_dir);
@@ -264,23 +317,23 @@ pub const Manager = struct {
             comptime unreachable;
         }
 
-        brunner: {
-            if (!std.process.can_spawn or builtin.is_test) break :brunner;
-            const zig_exe = manager.zig_exe orelse break :brunner;
+        bss_check: {
+            if (!std.process.can_spawn or builtin.is_test) break :bss_check;
+            const zig_info = manager.zig_info orelse break :bss_check;
             if (manager.self_file_path == null) {
                 manager.bss_check = .failure_self_exe_path_null;
-                break :brunner;
+                break :bss_check;
             }
-            manager.bss_check = if (@import("build_runner/check.zig").isBuildRunnerSupported(zig_exe.version)) .success else .failure_unsupported_zig_version;
+            manager.bss_check = if (@import("build_runner/check.zig").isBuildRunnerSupported(zig_info.version)) .success else .failure_unsupported_zig_version;
         }
 
         if (config.builtin_path == null) blk: {
             if (!std.process.can_spawn) break :blk;
-            const zig_exe = manager.zig_exe orelse break :blk;
+            const zig_info = manager.zig_info orelse break :blk;
             const global_cache_dir = manager.global_cache_dir orelse break :blk;
 
             const argv = [_][]const u8{
-                zig_exe.path,
+                zig_info.path,
                 "build-exe",
                 "--show-builtin",
             };
@@ -317,7 +370,7 @@ pub const Manager = struct {
             config.builtin_path = try global_cache_dir.join(arena, &.{"default_builtin_source.zig"});
         }
 
-        var did_change: DidConfigChange = .{};
+        var did_change: DidChange = .{};
 
         inline for (comptime std.meta.fieldNames(Settings), comptime std.meta.fieldTypes(Settings)) |field_name, field_type| {
             const old_value = &@field(manager.config, field_name);
@@ -578,7 +631,7 @@ pub const UnresolvedConfig = blk: {
 };
 
 /// A packed struct where every field name is copied from `Settings` but the field type is `bool`.
-pub const DidConfigChange = @Struct(
+pub const DidChange = @Struct(
     .@"packed",
     null,
     std.meta.fieldNames(Settings),
@@ -588,10 +641,10 @@ pub const DidConfigChange = @Struct(
 
 // TODO
 
-const LoadConfigResult = union(enum) {
+const Result = union(enum) {
     success: struct {
-        config: Settings,
-        config_arena: std.heap.ArenaAllocator.State,
+        values: Settings,
+        arena: std.heap.ArenaAllocator.State,
         /// file path of the config.json
         path: []const u8,
     },
@@ -611,10 +664,10 @@ const LoadConfigResult = union(enum) {
     },
     not_found,
 
-    pub fn deinit(self: *LoadConfigResult, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *Result, allocator: std.mem.Allocator) void {
         switch (self.*) {
             .success => |*config_with_path| {
-                config_with_path.config_arena.promote(allocator).deinit();
+                config_with_path.arena.promote(allocator).deinit();
                 allocator.free(config_with_path.path);
             },
             .failure => |*payload| {
@@ -625,7 +678,7 @@ const LoadConfigResult = union(enum) {
     }
 };
 
-fn loadConfigFromFile(io: std.Io, allocator: std.mem.Allocator, file_path: []const u8) error{ Canceled, OutOfMemory }!LoadConfigResult {
+fn loadFromFile(io: std.Io, allocator: std.mem.Allocator, file_path: []const u8) error{ Canceled, OutOfMemory }!Result {
     const file_buf = std.Io.Dir.cwd().readFileAlloc(io, file_path, allocator, .limited(16 * 1024 * 1024)) catch |err| switch (err) {
         error.FileNotFound => return .not_found,
         error.Canceled, error.OutOfMemory => |e| return e,
@@ -680,13 +733,13 @@ fn loadConfigFromFile(io: std.Io, allocator: std.mem.Allocator, file_path: []con
     };
 
     return .{ .success = .{
-        .config = config,
-        .config_arena = arena_allocator.state,
+        .values = config,
+        .arena = arena_allocator.state,
         .path = try allocator.dupe(u8, file_path),
     } };
 }
 
-pub fn loadConfigFromSystem(io: std.Io, allocator: std.mem.Allocator, environ_map: *const std.process.Environ.Map) error{ Canceled, OutOfMemory }!LoadConfigResult {
+pub fn loadFromSystem(io: std.Io, allocator: std.mem.Allocator, environ_map: *const std.process.Environ.Map) error{ Canceled, OutOfMemory }!Result {
     if (builtin.target.os.tag == .wasi) return .not_found;
 
     for (
@@ -702,7 +755,7 @@ pub fn loadConfigFromSystem(io: std.Io, allocator: std.mem.Allocator, environ_ma
             const config_path = try std.fs.path.join(allocator, &.{ folder_path, sub, "zls.json" });
             defer allocator.free(config_path);
 
-            const result = try loadConfigFromFile(io, allocator, config_path);
+            const result = try loadFromFile(io, allocator, config_path);
             switch (result) {
                 .success, .failure => return result,
                 .not_found => continue,
@@ -717,61 +770,6 @@ const DocumentStore = @import("DocumentStore.zig");
 const build_options = @import("build_options");
 const build_runner_shared = @import("build_runner/shared.zig");
 const BuildOnSaveSupport = build_runner_shared.BuildOnSaveSupport;
-
-pub fn loadConfiguration(
-    io: std.Io,
-    allocator: std.mem.Allocator,
-    environ_map: *const std.process.Environ.Map,
-    server: *Server,
-    maybe_config_path: ?[]const u8,
-) error{ Canceled, OutOfMemory }!void {
-    const tracy_zone = tracy.trace(@src());
-    defer tracy_zone.end();
-
-    var config_arena: std.heap.ArenaAllocator = .init(allocator);
-    defer config_arena.deinit();
-    var config: Settings = .{};
-
-    blk: {
-        var config_result = if (maybe_config_path) |config_path|
-            try loadConfigFromFile(io, allocator, config_path)
-        else
-            try loadConfigFromSystem(io, allocator, environ_map);
-        defer config_result.deinit(allocator);
-
-        switch (config_result) {
-            .success => |*config_with_path| {
-                log.info("$ Loaded {q}.", .{config_with_path.path});
-                config = config_with_path.config;
-                config_arena.state = config_with_path.config_arena;
-                config_with_path.config_arena = .{};
-            },
-            .failure => |payload| {
-                const message = try payload.toMessage(allocator) orelse break :blk;
-                defer allocator.free(message);
-                server.showMessage(.Error, "Failed to load configuration options:\n{s}", .{message});
-            },
-            .not_found => {},
-        }
-    }
-
-    if (config.global_cache_path == null) blk: {
-        if (builtin.target.os.tag == .wasi) {
-            // will default to `/cache`
-            break :blk;
-        }
-
-        const cache_dir_path = try known_folders.getPath(io, allocator, environ_map, .cache) orelse {
-            server.showMessage(.Error, "Failed to resolve global cache directory", .{});
-            break :blk;
-        };
-        defer allocator.free(cache_dir_path);
-
-        config.global_cache_path = try std.fs.path.join(config_arena.allocator(), &.{ cache_dir_path, "zig" });
-    }
-
-    try server.config_manager.setConfiguration2(.frontend, &config);
-}
 
 pub fn resolveConfiguration(server: *Server) error{ Canceled, OutOfMemory }!void {
     var result = try server.config_manager.resolveConfiguration(server.allocator);
@@ -857,7 +855,7 @@ pub fn resolveConfiguration(server: *Server) error{ Canceled, OutOfMemory }!void
         if (server.status != .initialized) break :check;
 
         // TODO there should a way to suppress this message
-        if (server.config_manager.zig_exe == null) {
+        if (server.config_manager.zig_info == null) {
             server.showMessage(.Warning, "zig executable could not be found", .{});
         } else if (server.config_manager.zig_lib_dir == null) {
             server.showMessage(.Warning, "zig standard library directory could not be resolved", .{});
@@ -877,7 +875,7 @@ pub fn resolveConfiguration(server: *Server) error{ Canceled, OutOfMemory }!void
                 );
             },
             .failure_unsupported_zig_version => {
-                const zig_version = server.config_manager.zig_exe.?.version;
+                const zig_version = server.config_manager.zig_info.?.version;
 
                 server.showMessage(
                     .Warning,
@@ -898,8 +896,8 @@ pub fn resolveConfiguration(server: *Server) error{ Canceled, OutOfMemory }!void
             log.warn("'enable_build_on_save' is ignored because it is not supported by {s}", .{server.client_capabilities.client_name orelse "your editor"});
         } else if (server.status == .initialized and server.config_manager.bss_check != .success) {
             log.warn("'enable_build_on_save' is ignored because the Build System check failed", .{});
-        } else if (server.status == .initialized and server.config_manager.zig_exe != null) {
-            switch (BuildOnSaveSupport.isSupportedRuntime(server.config_manager.zig_exe.?.version)) {
+        } else if (server.status == .initialized and server.config_manager.zig_info != null) {
+            switch (BuildOnSaveSupport.isSupportedRuntime(server.config_manager.zig_info.?.version)) {
                 .supported => {},
                 .invalid_linux_kernel_version => |*utsname_release| log.warn("Build-On-Save cannot run in watch mode because the Linux version '{s}' could not be parsed", .{std.mem.sliceTo(utsname_release, 0)}),
                 .unsupported_linux_kernel_version => |kernel_version| log.warn("Build-On-Save cannot run in watch mode because it is not supported by Linux '{f}' (requires at least {f})", .{ kernel_version, BuildOnSaveSupport.minimum_linux_version }),
