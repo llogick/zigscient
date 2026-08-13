@@ -5015,12 +5015,12 @@ fn cmpxchgWeakButNotAtomic(comptime T: type, ptr: *T, expected_value: T, new_val
       in an API runs the risk of introducing dead code into the codebase,
       unnoticed. For example, if the field is ever renamed, code which uses
       {#syntax#}@hasDecl{#endsyntax#} will compile successfully while failing
-      to enable or disable an intended block of code. Even a simple a typo in
+      to enable or disable an intended block of code. Even a simple typo in
       the field name passed to {#syntax#}@hasDecl{#endsyntax#} would go
       unnoticed by the compiler. Thus, it is safer to use alternative methods
       to check for the presence or absence of a particular declaration where
       possible. For example, if the target operating system would indicate whether a particular
-      function is available, it more maintainable to check
+      function is available, it is more maintainable to check
       {#syntax#}@import("builtin").target.os.tag{#endsyntax#} rather than
       {#syntax#}@hasDecl{#endsyntax#}.</p>
 
