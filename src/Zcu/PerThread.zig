@@ -3612,7 +3612,7 @@ fn lockAndClearFileCompileError(pt: Zcu.PerThread, file_index: Zcu.File.Index, f
 /// Called from `Compilation.update`, after everything is done, just before
 /// reporting compile errors. In this function we emit exported symbol collision
 /// errors and communicate exported symbols to the linker backend.
-pub fn processExports(pt: Zcu.PerThread) !void {
+pub fn processExports(pt: Zcu.PerThread) (Allocator.Error || Io.Cancelable)!void {
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
 
@@ -3621,169 +3621,72 @@ pub fn processExports(pt: Zcu.PerThread) !void {
         return;
     }
 
-    // First, construct a mapping of every exported value and Nav to the indices of all its different exports.
-    var nav_exports: std.array_hash_map.Auto(InternPool.Nav.Index, std.ArrayList(Zcu.Export.Index)) = .empty;
-    var uav_exports: std.array_hash_map.Auto(InternPool.Index, std.ArrayList(Zcu.Export.Index)) = .empty;
-    defer {
-        for (nav_exports.values()) |*exports| {
-            exports.deinit(gpa);
-        }
-        nav_exports.deinit(gpa);
-        for (uav_exports.values()) |*exports| {
-            exports.deinit(gpa);
-        }
-        uav_exports.deinit(gpa);
-    }
-
-    // We note as a heuristic:
-    // * It is rare to export a value.
-    // * It is rare for one Nav to be exported multiple times.
-    // So, this ensureTotalCapacity serves as a reasonable (albeit very approximate) optimization.
-    try nav_exports.ensureTotalCapacity(gpa, zcu.single_exports.count() + zcu.multi_exports.count());
+    var alive_exports: std.ArrayList(Zcu.Export.Index) = .empty;
+    defer alive_exports.deinit(gpa);
 
     const unit_references = try zcu.resolveReferences();
 
+    try alive_exports.ensureUnusedCapacity(gpa, zcu.single_exports.count());
     for (zcu.single_exports.keys(), zcu.single_exports.values()) |exporter, export_idx| {
-        const exp = export_idx.ptr(zcu);
-        if (!unit_references.contains(exporter)) {
-            // This export might already have been sent to the linker on a previous update, in which case we need to delete it.
-            // The linker export API should be modified to eliminate this call. #23616
-            if (zcu.comp.bin_file) |lf| {
-                if (zcu.llvm_object == null) {
-                    lf.deleteExport(exp.exported, exp.opts.name);
-                }
-            }
-            continue;
-        }
-        const value_ptr, const found_existing = switch (exp.exported) {
-            .nav => |nav| gop: {
-                const gop = try nav_exports.getOrPut(gpa, nav);
-                break :gop .{ gop.value_ptr, gop.found_existing };
-            },
-            .uav => |uav| gop: {
-                const gop = try uav_exports.getOrPut(gpa, uav);
-                break :gop .{ gop.value_ptr, gop.found_existing };
-            },
-        };
-        if (!found_existing) value_ptr.* = .empty;
-        try value_ptr.append(gpa, export_idx);
+        if (!unit_references.contains(exporter)) continue;
+        alive_exports.appendAssumeCapacity(export_idx);
     }
 
     for (zcu.multi_exports.keys(), zcu.multi_exports.values()) |exporter, info| {
-        const exports = zcu.all_exports.items[info.index..][0..info.len];
-        if (!unit_references.contains(exporter)) {
-            // This export might already have been sent to the linker on a previous update, in which case we need to delete it.
-            // The linker export API should be modified to eliminate this loop. #23616
-            if (zcu.comp.bin_file) |lf| {
-                if (zcu.llvm_object == null) {
-                    for (exports) |exp| {
-                        lf.deleteExport(exp.exported, exp.opts.name);
-                    }
-                }
-            }
-            continue;
+        if (!unit_references.contains(exporter)) continue;
+        try alive_exports.ensureUnusedCapacity(gpa, info.len);
+        for (0..info.len) |off| {
+            const export_idx: Zcu.Export.Index = @fromBackingInt(@intCast(info.index + off));
+            alive_exports.appendAssumeCapacity(export_idx);
         }
-        for (exports, info.index..) |exp, export_idx| {
-            const value_ptr, const found_existing = switch (exp.exported) {
-                .nav => |nav| gop: {
-                    const gop = try nav_exports.getOrPut(gpa, nav);
-                    break :gop .{ gop.value_ptr, gop.found_existing };
-                },
-                .uav => |uav| gop: {
-                    const gop = try uav_exports.getOrPut(gpa, uav);
-                    break :gop .{ gop.value_ptr, gop.found_existing };
-                },
-            };
-            if (!found_existing) value_ptr.* = .empty;
-            try value_ptr.append(gpa, @fromBackingInt(@intCast(export_idx)));
+    }
+
+    // Detect export name collisions
+    {
+        var exports_by_name: std.array_hash_map.Auto(
+            InternPool.NullTerminatedString,
+            Zcu.Export.Index,
+        ) = .empty;
+        defer exports_by_name.deinit(gpa);
+
+        try exports_by_name.ensureUnusedCapacity(gpa, alive_exports.items.len);
+
+        for (alive_exports.items) |export_index| {
+            const exp = export_index.ptr(zcu);
+            const gop = exports_by_name.getOrPutAssumeCapacity(exp.opts.name);
+            if (gop.found_existing) {
+                const existing_exp = gop.value_ptr.*.ptr(zcu);
+                try zcu.failed_exports.ensureUnusedCapacity(gpa, 1);
+                const msg = try Zcu.ErrorMsg.create(
+                    gpa,
+                    exp.src,
+                    "exported symbol collision: {f}",
+                    .{exp.opts.name.fmt(&zcu.intern_pool)},
+                );
+                errdefer msg.destroy(gpa);
+                try zcu.errNote(existing_exp.src, msg, "other symbol here", .{});
+                zcu.failed_exports.putAssumeCapacityNoClobber(export_index, msg);
+            } else {
+                gop.value_ptr.* = export_index;
+            }
         }
     }
 
     // If there are compile errors, we won't call `updateExports`. Not only would it be redundant
     // work, but the linker may not have seen an exported `Nav` due to a compile error, so linker
     // implementations would have to handle that case. This early return avoids that.
-    const skip_linker_work = zcu.comp.anyErrors();
-
-    // Map symbol names to `Export` for name collision detection.
-    var symbol_exports: SymbolExports = .{};
-    defer symbol_exports.deinit(gpa);
-
-    for (nav_exports.keys(), nav_exports.values()) |exported_nav, exports_list| {
-        const exported: Zcu.Exported = .{ .nav = exported_nav };
-        try pt.processExportsInner(&symbol_exports, exported, exports_list.items, skip_linker_work);
-    }
-
-    for (uav_exports.keys(), uav_exports.values()) |exported_uav, exports_list| {
-        const exported: Zcu.Exported = .{ .uav = exported_uav };
-        try pt.processExportsInner(&symbol_exports, exported, exports_list.items, skip_linker_work);
-    }
-}
-
-const SymbolExports = std.array_hash_map.Auto(InternPool.NullTerminatedString, Zcu.Export.Index);
-
-fn processExportsInner(
-    pt: Zcu.PerThread,
-    symbol_exports: *SymbolExports,
-    exported: Zcu.Exported,
-    export_indices: []const Zcu.Export.Index,
-    skip_linker_work: bool,
-) error{ OutOfMemory, Canceled }!void {
-    const zcu = pt.zcu;
-    const gpa = zcu.gpa;
-    const ip = &zcu.intern_pool;
-
-    for (export_indices) |export_idx| {
-        const new_export = export_idx.ptr(zcu);
-        const gop = try symbol_exports.getOrPut(gpa, new_export.opts.name);
-        if (gop.found_existing) {
-            new_export.status = .failed_retryable;
-            try zcu.failed_exports.ensureUnusedCapacity(gpa, 1);
-            const msg = try Zcu.ErrorMsg.create(gpa, new_export.src, "exported symbol collision: {f}", .{
-                new_export.opts.name.fmt(ip),
-            });
-            errdefer msg.destroy(gpa);
-            const other_export = gop.value_ptr.ptr(zcu);
-            try zcu.errNote(other_export.src, msg, "other symbol here", .{});
-            zcu.failed_exports.putAssumeCapacityNoClobber(export_idx, msg);
-            new_export.status = .failed;
-        } else {
-            gop.value_ptr.* = export_idx;
-        }
-    }
-
-    switch (exported) {
-        .nav => |nav_index| if (failed: {
-            const nav = ip.getNav(nav_index);
-            if (zcu.failed_codegen.contains(nav_index)) break :failed true;
-            if (nav.analysis != null) {
-                const unit: AnalUnit = .wrap(.{ .nav_val = nav_index });
-                if (zcu.failed_analysis.contains(unit)) break :failed true;
-                if (zcu.transitive_failed_analysis.contains(unit)) break :failed true;
-            }
-            const val: Value = switch ((nav.resolved orelse break :failed true).value) {
-                .none => break :failed true,
-                else => |val| .fromInterned(val),
-            };
-            // If the value is a function, we also need to check if that function succeeded analysis.
-            if (val.typeOf(zcu).zigTypeTag(zcu) == .@"fn") {
-                const func_unit = AnalUnit.wrap(.{ .func = val.toIntern() });
-                if (zcu.failed_analysis.contains(func_unit)) break :failed true;
-                if (zcu.transitive_failed_analysis.contains(func_unit)) break :failed true;
-            }
-            break :failed false;
-        }) {
-            // This `Nav` is failed, so was never sent to codegen. There should be a compile error.
-            assert(skip_linker_work);
-        },
-        .uav => {},
-    }
-
-    if (skip_linker_work) return;
+    if (zcu.comp.anyErrors()) return;
 
     if (zcu.llvm_object) |llvm_object| {
-        try zcu.handleUpdateExports(export_indices, llvm_object.updateExports(exported, export_indices));
+        llvm_object.updateExports(alive_exports.items) catch |err| switch (err) {
+            else => |e| return e,
+            error.AlreadyReported => {},
+        };
     } else if (zcu.comp.bin_file) |lf| {
-        try zcu.handleUpdateExports(export_indices, lf.updateExports(pt, exported, export_indices));
+        lf.updateExports(pt, alive_exports.items) catch |err| switch (err) {
+            else => |e| return e,
+            error.AlreadyReported => {},
+        };
     }
 }
 

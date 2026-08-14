@@ -788,7 +788,6 @@ pub const File = struct {
         }
     }
 
-    /// May be called before or after updateExports for any given Nav.
     /// Asserts that the ZCU is not using the LLVM backend.
     fn updateNav(base: *File, pt: Zcu.PerThread, nav_index: InternPool.Nav.Index) Error!void {
         assert(base.comp.zcu.?.llvm_object == null);
@@ -831,7 +830,6 @@ pub const File = struct {
         }
     }
 
-    /// May be called before or after updateExports for any given Decl.
     /// The active tag of `mir` is determined by the backend used for the module this function is in.
     /// Never called when LLVM is codegenning the ZCU.
     fn updateFunc(
@@ -971,15 +969,16 @@ pub const File = struct {
         }
     }
 
-    /// This is called for every exported thing. `exports` is almost always
-    /// a list of size 1, meaning that `exported` is exported once. However, it is possible
-    /// to export the same thing with multiple different symbol names (aliases).
-    /// May be called before or after updateDecl for any given Decl.
+    /// This is called once per update, before `flush`.
+    ///
+    /// `export_indices` contains the index of every export from the ZCU which should be performed
+    /// on this update. "Removal" of exports is signaled implicitly by the export being in this
+    /// slice on one update but not the next.
+    ///
     /// Never called when LLVM is codegenning the ZCU.
     pub fn updateExports(
         base: *File,
         pt: Zcu.PerThread,
-        exported: Zcu.Exported,
         export_indices: []const Zcu.Export.Index,
     ) Error!void {
         assert(base.comp.zcu.?.llvm_object == null);
@@ -992,7 +991,7 @@ pub const File = struct {
             .plan9 => unreachable,
             inline else => |tag| {
                 dev.check(tag.devFeature());
-                return @as(*tag.Type(), @fieldParentPtr("base", base)).updateExports(pt, exported, export_indices);
+                return @as(*tag.Type(), @fieldParentPtr("base", base)).updateExports(pt, export_indices);
             },
         }
     }
@@ -1067,28 +1066,6 @@ pub const File = struct {
             inline else => |tag| {
                 dev.check(tag.devFeature());
                 return @as(*tag.Type(), @fieldParentPtr("base", base)).getUavVAddr(decl_val, reloc_info);
-            },
-        }
-    }
-
-    /// Never called when LLVM is codegenning the ZCU.
-    pub fn deleteExport(
-        base: *File,
-        exported: Zcu.Exported,
-        name: InternPool.NullTerminatedString,
-    ) void {
-        assert(base.comp.zcu.?.llvm_object == null);
-
-        switch (base.tag) {
-            .lld => unreachable,
-            .plan9 => unreachable,
-
-            .spirv,
-            => {},
-
-            inline else => |tag| {
-                dev.check(tag.devFeature());
-                return @as(*tag.Type(), @fieldParentPtr("base", base)).deleteExport(exported, name);
             },
         }
     }

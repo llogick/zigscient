@@ -3102,18 +3102,9 @@ pub fn updateLineNumber(self: *MachO, pt: Zcu.PerThread, ti_id: InternPool.Track
 pub fn updateExports(
     self: *MachO,
     pt: Zcu.PerThread,
-    exported: Zcu.Exported,
     export_indices: []const Zcu.Export.Index,
 ) link.Error!void {
-    return self.getZigObject().?.updateExports(self, pt, exported, export_indices);
-}
-
-pub fn deleteExport(
-    self: *MachO,
-    exported: Zcu.Exported,
-    name: InternPool.NullTerminatedString,
-) void {
-    return self.getZigObject().?.deleteExport(self, exported, name);
+    return self.getZigObject().?.updateExports(self, pt, export_indices);
 }
 
 pub fn freeNav(self: *MachO, nav: InternPool.Nav.Index) void {

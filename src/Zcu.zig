@@ -760,14 +760,6 @@ pub const Export = struct {
     opts: Options,
     src: LazySrcLoc,
     exported: Exported,
-    status: enum {
-        in_progress,
-        failed,
-        /// Indicates that the failure was due to a temporary issue, such as an I/O error
-        /// when writing to the output file. Retrying the export may succeed.
-        failed_retryable,
-        complete,
-    },
 
     pub const Options = struct {
         name: InternPool.NullTerminatedString,
@@ -3831,13 +3823,8 @@ pub fn resetUnit(zcu: *Zcu, unit: AnalUnit) void {
             }
             break :exports;
         };
-        for (zcu.all_exports.items[base..][0..len], base..) |exp, exp_index_usize| {
+        for (base..base + len) |exp_index_usize| {
             const exp_index: Export.Index = @fromBackingInt(@intCast(exp_index_usize));
-            if (zcu.llvm_object) |llvm_object| {
-                _ = llvm_object; // TODO: delete exports from LLVM
-            } else if (zcu.comp.bin_file) |lf| {
-                lf.deleteExport(exp.exported, exp.opts.name);
-            }
             if (zcu.failed_exports.fetchSwapRemove(exp_index)) |failed_kv| {
                 failed_kv.value.destroy(gpa);
             }
@@ -4006,25 +3993,6 @@ pub fn errNote(
 /// analyzed.
 pub fn getTarget(zcu: *const Zcu) *const Target {
     return &zcu.root_mod.resolved_target.result;
-}
-
-pub fn handleUpdateExports(
-    zcu: *Zcu,
-    export_indices: []const Export.Index,
-    result: link.Error!void,
-) (Allocator.Error || Io.Cancelable)!void {
-    const gpa = zcu.gpa;
-    result catch |err| switch (err) {
-        else => |e| return e,
-        error.AlreadyReported => {
-            const export_idx = export_indices[0];
-            const new_export = export_idx.ptr(zcu);
-            new_export.status = .failed_retryable;
-            try zcu.failed_exports.ensureUnusedCapacity(gpa, 1);
-            const msg = try ErrorMsg.create(gpa, new_export.src, "unable to export: {s}", .{@errorName(err)});
-            zcu.failed_exports.putAssumeCapacityNoClobber(export_idx, msg);
-        },
-    };
 }
 
 pub fn addGlobalAssembly(zcu: *Zcu, unit: AnalUnit, source: []const u8) !void {

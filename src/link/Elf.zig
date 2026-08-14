@@ -1685,22 +1685,13 @@ pub fn updateContainerType(
 pub fn updateExports(
     self: *Elf,
     pt: Zcu.PerThread,
-    exported: Zcu.Exported,
     export_indices: []const Zcu.Export.Index,
 ) link.Error!void {
-    return self.zigObjectPtr().?.updateExports(self, pt, exported, export_indices);
+    return self.zigObjectPtr().?.updateExports(self, pt, export_indices);
 }
 
 pub fn updateLineNumber(self: *Elf, pt: Zcu.PerThread, ti_id: InternPool.TrackedInst.Index) link.Error!void {
     return self.zigObjectPtr().?.updateLineNumber(pt, ti_id);
-}
-
-pub fn deleteExport(
-    self: *Elf,
-    exported: Zcu.Exported,
-    name: InternPool.NullTerminatedString,
-) void {
-    return self.zigObjectPtr().?.deleteExport(self, exported, name);
 }
 
 fn checkDuplicates(self: *Elf) !void {

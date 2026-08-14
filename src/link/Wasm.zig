@@ -3,11 +3,11 @@
 //! performed without any knowledge of functions and globals provided by the
 //! Zcu. If there is no Zcu, effectively all linking is done in `prelink`.
 //!
-//! `updateFunc`, `updateNav`, `updateExports`, and `deleteExport` are handled
-//! by merely tracking references to the relevant functions and globals. All
-//! the linking logic between objects and Zcu happens in `flush`. Many
-//! components of the final output are computed on-the-fly at this time rather
-//! than being precomputed and stored separately.
+//! `updateFunc`, `updateNav`, and `updateExports` are handled by merely
+//! tracking references to the relevant functions and globals. All the linking
+//! logic between objects and Zcu happens in `flush`. Many components of the
+//! final output are computed on-the-fly at this time rather than being
+//! precomputed and stored separately.
 
 const Wasm = @This();
 const Archive = @import("Wasm/Archive.zig");
@@ -219,9 +219,9 @@ data_imports_len_prelink: u32 = 0,
 /// objects.
 ///
 /// During the Zcu phase, entries are not deleted from this table
-/// because doing so would be irreversible when a `deleteExport` call is
-/// handled. However, entries are added during the Zcu phase when extern
-/// functions are passed to `updateNav`.
+/// because doing so would be irreversible when an export is deleted.
+/// However, entries are added during the Zcu phase when extern functions
+/// are passed to `updateNav`.
 ///
 /// `flush` gets a copy of this table, and then Zcu exports are applied to
 /// remove elements from the table, and the remainder are either undefined
@@ -232,9 +232,9 @@ function_imports: std.array_hash_map.Auto(String, FunctionImportId) = .empty,
 /// objects.
 ///
 /// During the Zcu phase, entries are not deleted from this table
-/// because doing so would be irreversible when a `deleteExport` call is
-/// handled. However, entries are added during the Zcu phase when extern
-/// functions are passed to `updateNav`.
+/// because doing so would be irreversible when an export is deleted.
+/// However, entries are added during the Zcu phase when extern functions
+/// are passed to `updateNav`.
 ///
 /// `flush` gets a copy of this table, and then Zcu exports are applied to
 /// remove elements from the table, and the remainder are either undefined
@@ -3744,62 +3744,45 @@ pub fn updateLineNumber(wasm: *Wasm, pt: Zcu.PerThread, ti_id: InternPool.Tracke
     }
 }
 
-pub fn deleteExport(
-    wasm: *Wasm,
-    exported: Zcu.Exported,
-    name: InternPool.NullTerminatedString,
-) void {
-    const zcu = wasm.base.comp.zcu.?;
-    const ip = &zcu.intern_pool;
-    const name_slice = name.toSlice(ip);
-    const export_name = wasm.getExistingString(name_slice).?;
-    switch (exported) {
-        .nav => |nav_index| {
-            log.debug("deleteExport '{s}' nav={d}", .{ name_slice, @backingInt(nav_index) });
-            assert(wasm.nav_exports.swapRemove(.{ .nav_index = nav_index, .name = export_name }));
-        },
-        .uav => |uav_index| assert(wasm.uav_exports.swapRemove(.{ .uav_index = uav_index, .name = export_name })),
-    }
-}
-
 pub fn updateExports(
     wasm: *Wasm,
     pt: Zcu.PerThread,
-    exported: Zcu.Exported,
     export_indices: []const Zcu.Export.Index,
 ) !void {
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
     const ip = &zcu.intern_pool;
     const is_obj = wasm.base.comp.config.output_mode == .Obj;
-    switch (exported) {
-        .nav => {}, // handled in updateNav
-        .uav => |uav_index| { // export may be the only reference
-            const zds: ZcuDataStarts = .init(wasm);
-            if (is_obj) {
-                const gop = try wasm.uavs_obj.getOrPut(gpa, uav_index);
-                if (!gop.found_existing) gop.value_ptr.* = undefined;
-            } else {
-                const gop = try wasm.uavs_exe.getOrPut(gpa, uav_index);
-                if (!gop.found_existing) gop.value_ptr.* = .{
-                    .code = undefined,
-                    .count = 0,
-                };
-                gop.value_ptr.count += 1;
-            }
-            try zds.finish(wasm, pt);
-        },
-    }
+
+    wasm.nav_exports.clearRetainingCapacity();
+    wasm.uav_exports.clearRetainingCapacity();
+
     for (export_indices) |export_idx| {
         const exp = export_idx.ptr(zcu);
         const name_slice = exp.opts.name.toSlice(ip);
         const name = try wasm.internString(name_slice);
-        switch (exported) {
+        switch (exp.exported) {
             .nav => |nav_index| {
                 log.debug("updateExports '{s}' nav={d}", .{ name_slice, @backingInt(nav_index) });
                 try wasm.nav_exports.put(gpa, .{ .nav_index = nav_index, .name = name }, export_idx);
             },
-            .uav => |uav_index| try wasm.uav_exports.put(gpa, .{ .uav_index = uav_index, .name = name }, export_idx),
+            .uav => |uav_index| {
+                // Lower the UAV, as the export may be the only reference.
+                const zds: ZcuDataStarts = .init(wasm);
+                if (is_obj) {
+                    const gop = try wasm.uavs_obj.getOrPut(gpa, uav_index);
+                    if (!gop.found_existing) gop.value_ptr.* = undefined;
+                } else {
+                    const gop = try wasm.uavs_exe.getOrPut(gpa, uav_index);
+                    if (!gop.found_existing) gop.value_ptr.* = .{
+                        .code = undefined,
+                        .count = 0,
+                    };
+                    gop.value_ptr.count += 1;
+                }
+                try zds.finish(wasm, pt);
+                try wasm.uav_exports.put(gpa, .{ .uav_index = uav_index, .name = name }, export_idx);
+            },
         }
     }
 }

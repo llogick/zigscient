@@ -5893,10 +5893,6 @@ pub fn flush(
 
     const comp = coff.base.comp;
 
-    // TODO: When https://github.com/ziglang/zig/issues/23617 is in,
-    //       this should be set after updateExports instead
-    coff.exports_complete = true;
-
     while (try coff.resolve(tid)) {}
     while (try coff.idle(tid)) {}
 
@@ -7374,30 +7370,38 @@ fn virtualSlide(coff: *Coff, start_section_index: usize, start_rva: u32) !void {
 pub fn updateExports(
     coff: *Coff,
     pt: Zcu.PerThread,
-    exported: Zcu.Exported,
     export_indices: []const Zcu.Export.Index,
 ) link.Error!void {
+    // TODO: delete old exports from first/second linker member table
+    // TODO: delete old exports from symbol table inside section
     const diags = &coff.base.comp.link_diags;
-    return coff.updateExportsInner(pt, exported, export_indices) catch |err| switch (err) {
-        error.MappedFileIo => return diags.fail(
-            "failed to write output file: {t}",
-            .{coff.mf.io_err.?},
-        ),
-        else => |e| return e,
-    };
+    var alias_syms: std.array_hash_map.Auto(Symbol.Index, Symbol.Index) = .empty;
+    defer alias_syms.deinit(coff.base.comp.gpa);
+    for (export_indices) |export_index| {
+        coff.updateExportInner(pt, export_index, &alias_syms) catch |err| switch (err) {
+            error.MappedFileIo => return diags.fail(
+                "failed to write output file: {t}",
+                .{coff.mf.io_err.?},
+            ),
+            else => |e| return e,
+        };
+    }
+    coff.exports_complete = true;
 }
-fn updateExportsInner(
+fn updateExportInner(
     coff: *Coff,
     pt: Zcu.PerThread,
-    exported: Zcu.Exported,
-    export_indices: []const Zcu.Export.Index,
+    export_index: Zcu.Export.Index,
+    alias_syms: *std.array_hash_map.Auto(Symbol.Index, Symbol.Index),
 ) !void {
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
     const ip = &zcu.intern_pool;
 
-    try coff.symbols.ensureUnusedCapacity(gpa, export_indices.len);
-    const exported_si: Symbol.Index = switch (exported) {
+    const exp = export_index.ptr(zcu);
+
+    try coff.symbols.ensureUnusedCapacity(gpa, 1);
+    const exported_si: Symbol.Index = switch (exp.exported) {
         .nav => |nav| try coff.navSymbol(zcu, nav),
         .uav => |uav| @fromBackingInt(@intCast(@backingInt(try coff.lowerUav(
             pt,
@@ -7405,7 +7409,7 @@ fn updateExportsInner(
             Type.fromInterned(ip.typeOf(uav)).abiAlignment(zcu),
         )))),
     };
-    switch (exported) {
+    switch (exp.exported) {
         .nav => |nav| log.debug("updateExports({f}) = {d}", .{ ip.getNav(nav).fqn.fmt(ip), exported_si }),
         .uav => |uav| log.debug("updateExports(@as({f}, {f})) = {d}", .{
             Type.fromInterned(ip.typeOf(uav)).fmt(pt),
@@ -7419,154 +7423,137 @@ fn updateExportsInner(
     const machine = coff.targetLoad(&coff.headerPtr().machine);
     const exported_ni = exported_si.node(coff);
     const exported_sym = exported_si.get(coff);
-    var prev_alias_si = exported_si;
 
-    for (export_indices) |export_index| {
-        const @"export" = export_index.ptr(zcu);
-        const name = @"export".opts.name.toSlice(ip);
+    const @"export" = export_index.ptr(zcu);
+    const name = @"export".opts.name.toSlice(ip);
 
-        // TODO: add an errMsg if this conflicts with an existing symbol
-        const export_si = try coff.globalSymbol(.{ .name = name });
-        const export_sym = export_si.get(coff);
-        export_sym.ni = exported_ni;
-        export_sym.rva = exported_sym.rva;
-        export_sym.section_number = exported_sym.section_number;
-        if (@"export".opts.linkage == .weak and !coff.isImage()) {
-            // exported_si needs to be ahead of export_si in the symbol table,
-            // so that its sti is known when creating the weak external aux entry
-            try coff.pendingSymbolTableEntry(exported_si);
-            export_sym.flags.weak_external_strat = .alias;
-            export_sym.setValue(.{ .weak_alias_si = exported_si });
-        }
-        defer export_si.applyTargetRelocs(coff, .none) catch unreachable;
-
-        // The last symbol in the alias list holds the size
-        const prev_alias_sym = prev_alias_si.get(coff);
-        switch (prev_alias_sym.flags.extra_tag) {
-            .size => export_sym.setExtra(.{ .size = prev_alias_sym.extra.size }),
-            // This export should have been deleted
-            .next_alias_si => assert(prev_alias_sym.extra.next_alias_si == export_si),
-            else => unreachable,
-        }
-
-        prev_alias_sym.setExtra(.{ .next_alias_si = export_si });
-        prev_alias_si = export_si;
-
-        if (!coff.isImage()) continue;
-
-        const entries_ctx = ExportTable.Adapter{ .coff = coff };
-        const gop = try coff.export_table.entries.getOrPutAdapted(
-            gpa,
-            name,
-            entries_ctx,
-        );
-
-        if (!gop.found_existing) {
-            errdefer _ = coff.export_table.entries.pop();
-
-            const export_count = coff.export_table.entries.count();
-            if (export_count > std.math.maxInt(@FieldType(std.coff.ExportDirectoryTable, "number_of_entries")))
-                return coff.base.comp.link_diags.fail("exceeded maximum number of exports", .{});
-
-            const name_index: u32 = @intCast(coff.export_table.name_table_ni.location(&coff.mf).resolve(&coff.mf)[1]);
-            const new_name_table_size = name_index + name.len + 1;
-            if (new_name_table_size > std.math.maxInt(@FieldType(ExportTable.Entry, "name_index")))
-                return coff.base.comp.link_diags.fail("exports name table limit reached", .{});
-
-            try coff.export_table.name_table_ni.resize(&coff.mf, gpa, new_name_table_size);
-
-            const name_table_slice = coff.export_table.name_table_ni.slice(&coff.mf);
-            @memcpy(name_table_slice[name_index..][0 .. name.len + 1], name[0 .. name.len + 1]);
-
-            // If the new name sorts after the current tail of the sorted list, we don't need to re-sort
-            {
-                const ordinal_table_slice = coff.exportOrdinalTableSlice();
-                if (ordinal_table_slice.len > 0 and !coff.export_table.pending_sort) {
-                    const tail_index: ExportTable.Ordinal =
-                        @fromBackingInt(@intCast(ordinal_table_slice[ordinal_table_slice.len - 1].unbiased_ordinal));
-                    const tail_entry = tail_index.get(coff);
-                    const tail_name = name_table_slice[tail_entry.name_index..][0..tail_entry.name_len];
-                    coff.export_table.pending_sort = std.mem.lessThan(u8, name, tail_name);
-                }
-            }
-
-            const edt = coff.exportDirectoryTable();
-            coff.targetStore(&edt.number_of_names, @intCast(export_count));
-            edt.number_of_entries = edt.number_of_names;
-
-            // TODO: These should all be resized ahead of time to fit all exports
-            //       after https://github.com/ziglang/zig/issues/23616
-            try coff.export_table.export_address_table_si.node(coff).resize(
-                &coff.mf,
-                gpa,
-                export_count * @sizeOf(std.coff.ExportAddressTableEntry),
-            );
-
-            try coff.export_table.name_pointer_table_ni.resize(
-                &coff.mf,
-                gpa,
-                export_count * @sizeOf(std.coff.ExportNamePointerTableEntry),
-            );
-
-            try coff.export_table.ordinal_table_ni.resize(
-                &coff.mf,
-                gpa,
-                export_count * @sizeOf(std.coff.ExportOrdinalTableEntry),
-            );
-
-            coff.targetStore(
-                &coff.exportNamePointerTableSlice()[gop.index].name_rva,
-                @intCast(coff.computeNodeRva(coff.export_table.name_table_ni) + name_index),
-            );
-            coff.targetStore(
-                &coff.exportOrdinalTableSlice()[gop.index].unbiased_ordinal,
-                @intCast(gop.index),
-            );
-
-            gop.value_ptr.* = .{
-                .si = export_si,
-                .name_index = @intCast(name_index),
-                .name_len = @intCast(name.len),
-                .export_address_table_ri = @fromBackingInt(@intCast(coff.relocs.items.len)),
-            };
-
-            try coff.addReloc(
-                coff.export_table.export_address_table_si,
-                @intCast(@sizeOf(std.coff.ExportAddressTableEntry) * gop.index),
-                export_si,
-                .{ .known = 0 },
-                switch (machine) {
-                    else => |tag| @panic(@tagName(tag)),
-                    .AMD64 => .{ .AMD64 = .ADDR32NB },
-                    .I386 => .{ .I386 = .DIR32NB },
-                },
-            );
-        } else {
-            gop.value_ptr.si = export_si;
-            const reloc = gop.value_ptr.*.export_address_table_ri.get(coff);
-            reloc.target = export_si;
-        }
+    // TODO: add an errMsg if this conflicts with an existing symbol
+    const export_si = try coff.globalSymbol(.{ .name = name });
+    const export_sym = export_si.get(coff);
+    export_sym.ni = exported_ni;
+    export_sym.rva = exported_sym.rva;
+    export_sym.section_number = exported_sym.section_number;
+    if (@"export".opts.linkage == .weak and !coff.isImage()) {
+        // exported_si needs to be ahead of export_si in the symbol table,
+        // so that its sti is known when creating the weak external aux entry
+        try coff.pendingSymbolTableEntry(exported_si);
+        export_sym.flags.weak_external_strat = .alias;
+        export_sym.setValue(.{ .weak_alias_si = exported_si });
     }
-}
+    defer export_si.applyTargetRelocs(coff, .none) catch unreachable;
 
-pub fn deleteExport(
-    coff: *Coff,
-    exported: Zcu.Exported,
-    name: InternPool.NullTerminatedString,
-) void {
-    const zcu = coff.base.comp.zcu.?;
-    const ip = &zcu.intern_pool;
-
-    const exported_si: Symbol.Index = switch (exported) {
-        .nav => |nav| coff.navs.get(nav).?,
-        .uav => |uav| coff.uavs.get(uav).?,
+    const prev_alias_si: Symbol.Index = si: {
+        const gop = try alias_syms.getOrPut(gpa, exported_si);
+        const prev_alias_si = if (gop.found_existing) gop.value_ptr.* else exported_si;
+        gop.value_ptr.* = export_si;
+        break :si prev_alias_si;
     };
 
-    const name_slice = name.toSlice(ip);
-    log.debug("deleteExport({s}, {d})", .{ name_slice, exported_si });
+    // The last symbol in the alias list holds the size
+    const prev_alias_sym = prev_alias_si.get(coff);
+    switch (prev_alias_sym.flags.extra_tag) {
+        .size => export_sym.setExtra(.{ .size = prev_alias_sym.extra.size }),
+        // This export should have been deleted
+        .next_alias_si => assert(prev_alias_sym.extra.next_alias_si == export_si),
+        else => unreachable,
+    }
 
-    // TODO: Delete from first / second linker member table
-    // TODO: Delete from symbol table inside section
+    prev_alias_sym.setExtra(.{ .next_alias_si = export_si });
+
+    if (!coff.isImage()) return;
+
+    const entries_ctx = ExportTable.Adapter{ .coff = coff };
+    const gop = try coff.export_table.entries.getOrPutAdapted(
+        gpa,
+        name,
+        entries_ctx,
+    );
+
+    if (!gop.found_existing) {
+        errdefer _ = coff.export_table.entries.pop();
+
+        const export_count = coff.export_table.entries.count();
+        if (export_count > std.math.maxInt(@FieldType(std.coff.ExportDirectoryTable, "number_of_entries")))
+            return coff.base.comp.link_diags.fail("exceeded maximum number of exports", .{});
+
+        const name_index: u32 = @intCast(coff.export_table.name_table_ni.location(&coff.mf).resolve(&coff.mf)[1]);
+        const new_name_table_size = name_index + name.len + 1;
+        if (new_name_table_size > std.math.maxInt(@FieldType(ExportTable.Entry, "name_index")))
+            return coff.base.comp.link_diags.fail("exports name table limit reached", .{});
+
+        try coff.export_table.name_table_ni.resize(&coff.mf, gpa, new_name_table_size);
+
+        const name_table_slice = coff.export_table.name_table_ni.slice(&coff.mf);
+        @memcpy(name_table_slice[name_index..][0 .. name.len + 1], name[0 .. name.len + 1]);
+
+        // If the new name sorts after the current tail of the sorted list, we don't need to re-sort
+        {
+            const ordinal_table_slice = coff.exportOrdinalTableSlice();
+            if (ordinal_table_slice.len > 0 and !coff.export_table.pending_sort) {
+                const tail_index: ExportTable.Ordinal =
+                    @fromBackingInt(@intCast(ordinal_table_slice[ordinal_table_slice.len - 1].unbiased_ordinal));
+                const tail_entry = tail_index.get(coff);
+                const tail_name = name_table_slice[tail_entry.name_index..][0..tail_entry.name_len];
+                coff.export_table.pending_sort = std.mem.lessThan(u8, name, tail_name);
+            }
+        }
+
+        const edt = coff.exportDirectoryTable();
+        coff.targetStore(&edt.number_of_names, @intCast(export_count));
+        edt.number_of_entries = edt.number_of_names;
+
+        // TODO: These should all be resized ahead of time to fit all exports
+        //       after https://github.com/ziglang/zig/issues/23616
+        try coff.export_table.export_address_table_si.node(coff).resize(
+            &coff.mf,
+            gpa,
+            export_count * @sizeOf(std.coff.ExportAddressTableEntry),
+        );
+
+        try coff.export_table.name_pointer_table_ni.resize(
+            &coff.mf,
+            gpa,
+            export_count * @sizeOf(std.coff.ExportNamePointerTableEntry),
+        );
+
+        try coff.export_table.ordinal_table_ni.resize(
+            &coff.mf,
+            gpa,
+            export_count * @sizeOf(std.coff.ExportOrdinalTableEntry),
+        );
+
+        coff.targetStore(
+            &coff.exportNamePointerTableSlice()[gop.index].name_rva,
+            @intCast(coff.computeNodeRva(coff.export_table.name_table_ni) + name_index),
+        );
+        coff.targetStore(
+            &coff.exportOrdinalTableSlice()[gop.index].unbiased_ordinal,
+            @intCast(gop.index),
+        );
+
+        gop.value_ptr.* = .{
+            .si = export_si,
+            .name_index = @intCast(name_index),
+            .name_len = @intCast(name.len),
+            .export_address_table_ri = @fromBackingInt(@intCast(coff.relocs.items.len)),
+        };
+
+        try coff.addReloc(
+            coff.export_table.export_address_table_si,
+            @intCast(@sizeOf(std.coff.ExportAddressTableEntry) * gop.index),
+            export_si,
+            .{ .known = 0 },
+            switch (machine) {
+                else => |tag| @panic(@tagName(tag)),
+                .AMD64 => .{ .AMD64 = .ADDR32NB },
+                .I386 => .{ .I386 = .DIR32NB },
+            },
+        );
+    } else {
+        gop.value_ptr.si = export_si;
+        const reloc = gop.value_ptr.*.export_address_table_ri.get(coff);
+        reloc.target = export_si;
+    }
 }
 
 fn dumpStderr(coff: *Coff, tid: Zcu.PerThread.Id) !void {

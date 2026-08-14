@@ -219,24 +219,20 @@ pub fn updateNav(linker: *Linker, pt: Zcu.PerThread, nav: InternPool.Nav.Index) 
 pub fn updateExports(
     linker: *Linker,
     pt: Zcu.PerThread,
-    exported: Zcu.Exported,
     export_indices: []const Zcu.Export.Index,
-) !void {
+) link.Error!void {
     const zcu = pt.zcu;
     const ip = &zcu.intern_pool;
     const gpa = linker.base.comp.gpa;
-    const nav_index = switch (exported) {
-        .nav => |nav| nav,
-        .uav => |uav| {
-            _ = uav;
-            @panic("TODO: implement Linker linker code for exporting a constant value");
-        },
-    };
-    const nav_ty = ip.getNav(nav_index).resolved.?.type;
-    if (ip.isFunctionType(nav_ty)) {
-        const cc = Type.fromInterned(nav_ty).fnCallingConvention(zcu);
-        for (export_indices) |export_idx| {
-            const exp = export_idx.ptr(zcu);
+    for (export_indices) |exp_index| {
+        const exp = exp_index.ptr(zcu);
+        const nav_index = switch (exp.exported) {
+            .nav => |nav| nav,
+            .uav => @panic("TODO: implement Linker linker code for exporting a constant value"),
+        };
+        const nav_ty = ip.getNav(nav_index).resolved.?.type;
+        if (ip.isFunctionType(nav_ty)) {
+            const cc = Type.fromInterned(nav_ty).fnCallingConvention(zcu);
             try linker.entry_points.append(gpa, .{
                 .nav = nav_index,
                 .name = exp.opts.name.toSlice(ip),

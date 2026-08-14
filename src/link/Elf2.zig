@@ -8287,33 +8287,35 @@ fn flushMovedPltSection(elf: *Elf, which: enum { plt, plt_sec, got_plt }, old_ad
 pub fn updateExports(
     elf: *Elf,
     pt: Zcu.PerThread,
-    exported: Zcu.Exported,
     export_indices: []const Zcu.Export.Index,
 ) link.Error!void {
     const diags = &elf.base.comp.link_diags;
-    return elf.updateExportsInner(pt, exported, export_indices) catch |err| switch (err) {
-        else => |e| return e,
-        error.MappedFileIo => return diags.fail("failed to write output file: {t}", .{elf.mf.io_err.?}),
-    };
+    for (export_indices) |export_index| {
+        elf.updateExportInner(pt, export_index) catch |err| switch (err) {
+            else => |e| return e,
+            error.MappedFileIo => return diags.fail("failed to write output file: {t}", .{elf.mf.io_err.?}),
+        };
+    }
 }
-fn updateExportsInner(
+fn updateExportInner(
     elf: *Elf,
     pt: Zcu.PerThread,
-    exported: Zcu.Exported,
-    export_indices: []const Zcu.Export.Index,
+    export_index: Zcu.Export.Index,
 ) Error!void {
     const zcu = pt.zcu;
     const ip = &zcu.intern_pool;
 
-    switch (exported) {
+    const @"export" = export_index.ptr(zcu);
+
+    switch (@"export".exported) {
         .nav => |nav| log.debug("updateExports({f})", .{ip.getNav(nav).fqn.fmt(ip)}),
         .uav => |uav| log.debug("updateExports(@as({f}, {f}))", .{
             Type.fromInterned(ip.typeOf(uav)).fmt(pt),
             Value.fromInterned(uav).fmtValue(pt),
         }),
     }
-    try elf.ensureUnusedSymbolCapacity(@intCast(export_indices.len), .maybe_global);
-    const exported_lsi: Symbol.LocalIndex, const @"type": std.elf.STT = switch (exported) {
+    try elf.ensureUnusedSymbolCapacity(1, .maybe_global);
+    const exported_lsi: Symbol.LocalIndex, const @"type": std.elf.STT = switch (@"export".exported) {
         .nav => |nav| .{
             (try elf.navMapIndex(zcu, nav)).symbol(elf),
             elf.navType(ip.getNav(nav).resolved.?),
@@ -8331,50 +8333,42 @@ fn updateExportsInner(
             .fromSection(elf.targetLoad(&exported_sym.shndx)),
         },
     };
-    for (export_indices) |export_index| {
-        const @"export" = export_index.ptr(zcu);
-        const name = @"export".opts.name.toSlice(ip);
-        _ = elf.addGlobalSymbolAssumeCapacity(.{
-            .node = .none,
-            .name = try .string(elf, name),
-            .value = value,
-            .size = @intCast(size),
-            .type = @"type",
-            .bind = switch (@"export".opts.linkage) {
-                .strong => .strong,
-                .weak => .weak,
-                .internal => return elf.base.comp.link_diags.fail("TODO(Elf2): '.internal' linkage", .{}),
-                .link_once => return elf.base.comp.link_diags.fail("TODO(Elf2): '.link_once' linkage", .{}),
-            },
-            .visibility = switch (@"export".opts.visibility) {
-                .default => .DEFAULT,
-                .hidden => .HIDDEN,
-                .protected => .PROTECTED,
-            },
-            .shndx = shndx,
-        }) catch |err| switch (err) {
-            error.MultipleDefinitions => {
-                // HACK: because we currently don't/can't delete these exports, we would typically
-                // get these errors on every non-initial incremental update. Hack around that by
-                // only emitting this error if the symbol we're conflicting with comes from an input
-                // section (as opposed to the ZCU).
-                const conflicting_global = elf.globalByName(try elf.string(.strtab, name)).?;
-                const conflicting_node = conflicting_global.symtab_index.ptr(elf).node;
-                if (elf.getNode(conflicting_node) == .input_section) {
-                    return elf.base.comp.link_diags.fail(
-                        "multiple definitions of '{s}'",
-                        .{name},
-                    );
-                }
-            },
-        };
-    }
-}
 
-pub fn deleteExport(elf: *Elf, exported: Zcu.Exported, name: InternPool.NullTerminatedString) void {
-    _ = elf;
-    _ = exported;
-    _ = name;
+    const name = @"export".opts.name.toSlice(ip);
+    _ = elf.addGlobalSymbolAssumeCapacity(.{
+        .node = .none,
+        .name = try .string(elf, name),
+        .value = value,
+        .size = @intCast(size),
+        .type = @"type",
+        .bind = switch (@"export".opts.linkage) {
+            .strong => .strong,
+            .weak => .weak,
+            .internal => return elf.base.comp.link_diags.fail("TODO(Elf2): '.internal' linkage", .{}),
+            .link_once => return elf.base.comp.link_diags.fail("TODO(Elf2): '.link_once' linkage", .{}),
+        },
+        .visibility = switch (@"export".opts.visibility) {
+            .default => .DEFAULT,
+            .hidden => .HIDDEN,
+            .protected => .PROTECTED,
+        },
+        .shndx = shndx,
+    }) catch |err| switch (err) {
+        error.MultipleDefinitions => {
+            // HACK: because we currently don't/can't delete these exports, we would typically
+            // get these errors on every non-initial incremental update. Hack around that by
+            // only emitting this error if the symbol we're conflicting with comes from an input
+            // section (as opposed to the ZCU).
+            const conflicting_global = elf.globalByName(try elf.string(.strtab, name)).?;
+            const conflicting_node = conflicting_global.symtab_index.ptr(elf).node;
+            if (elf.getNode(conflicting_node) == .input_section) {
+                return elf.base.comp.link_diags.fail(
+                    "multiple definitions of '{s}'",
+                    .{name},
+                );
+            }
+        },
+    };
 }
 
 fn dumpStderr(elf: *Elf, tid: Zcu.PerThread.Id) !void {

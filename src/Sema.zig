@@ -5674,7 +5674,6 @@ fn zirExport(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!void
         .opts = options,
         .src = src,
         .exported = target,
-        .status = .in_progress,
     });
 }
 
@@ -5722,7 +5721,6 @@ pub fn analyzeExportSelfNav(
         .opts = .{ .name = name },
         .src = src,
         .exported = .{ .nav = export_nav },
-        .status = .in_progress,
     });
 }
 

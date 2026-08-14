@@ -1441,42 +1441,45 @@ pub const Object = struct {
 
     pub fn updateExports(
         o: *Object,
-        exported: Zcu.Exported,
         export_indices: []const Zcu.Export.Index,
     ) link.Error!void {
         const zcu = o.zcu;
         const ip = &zcu.intern_pool;
-        const ty: Type, const llvm_ptr: Builder.Constant = switch (exported) {
-            .nav => |nav| exp: {
-                const nav_ty: Type = .fromInterned(ip.getNav(nav).resolved.?.type);
-                const nav_ref = try o.lowerNavRef(nav);
-                break :exp .{ nav_ty, nav_ref };
-            },
-            .uav => |uav| exp: {
-                const uav_ty = Value.fromInterned(uav).typeOf(zcu);
-                const uav_ref = try o.lowerUavRef(
-                    uav,
-                    uav_ty.abiAlignment(zcu).toLlvm(),
-                    target_util.defaultAddressSpace(zcu.getTarget(), .global_constant),
-                );
-                break :exp .{ uav_ty, uav_ref };
-            },
-        };
-        switch (llvm_ptr.unwrap()) {
-            .global => |global| return o.updateExportedGlobal(global, ty, export_indices),
-            .constant => @panic("LLVM TODO: export zero-bit value"),
+        for (export_indices) |export_index| {
+            const ty: Type, const llvm_ptr: Builder.Constant = switch (export_index.ptr(zcu).exported) {
+                .nav => |nav| exp: {
+                    const nav_ty: Type = .fromInterned(ip.getNav(nav).resolved.?.type);
+                    const nav_ref = try o.lowerNavRef(nav);
+                    break :exp .{ nav_ty, nav_ref };
+                },
+                .uav => |uav| exp: {
+                    const uav_ty = Value.fromInterned(uav).typeOf(zcu);
+                    const uav_ref = try o.lowerUavRef(
+                        uav,
+                        uav_ty.abiAlignment(zcu).toLlvm(),
+                        target_util.defaultAddressSpace(zcu.getTarget(), .global_constant),
+                    );
+                    break :exp .{ uav_ty, uav_ref };
+                },
+            };
+            switch (llvm_ptr.unwrap()) {
+                .global => |global| try o.addGlobalExport(global, ty, export_index),
+                .constant => @panic("LLVM TODO: export zero-bit value"),
+            }
         }
     }
 
-    fn updateExportedGlobal(
+    fn addGlobalExport(
         o: *Object,
         llvm_global: Builder.Global.Index,
         ty: Type,
-        export_indices: []const Zcu.Export.Index,
+        export_index: Zcu.Export.Index,
     ) link.Error!void {
         const zcu = o.zcu;
         const comp = zcu.comp;
         const ip = &zcu.intern_pool;
+
+        const exp = export_index.ptr(zcu);
 
         // If we're on COFF and linking with LLD, the linker cares about our exports to determine the subsystem in use.
         coff_export_flags: {
@@ -1488,23 +1491,20 @@ pub const Object = struct {
             };
             if (ty.zigTypeTag(zcu) != .@"fn") break :coff_export_flags;
             const flags = &coff.lld_export_flags;
-            for (export_indices) |export_index| {
-                const name = export_index.ptr(zcu).opts.name;
-                if (name.eqlSlice("main", ip)) flags.c_main = true;
-                if (name.eqlSlice("WinMain", ip)) flags.winmain = true;
-                if (name.eqlSlice("wWinMain", ip)) flags.wwinmain = true;
-                if (name.eqlSlice("WinMainCRTStartup", ip)) flags.winmain_crt_startup = true;
-                if (name.eqlSlice("wWinMainCRTStartup", ip)) flags.wwinmain_crt_startup = true;
-                if (name.eqlSlice("DllMainCRTStartup", ip)) flags.dllmain_crt_startup = true;
-                if (name.eqlSlice("_DllMainCRTStartup", ip)) flags.dllmain_crt_startup = true;
-            }
+            if (exp.opts.name.eqlSlice("main", ip)) flags.c_main = true;
+            if (exp.opts.name.eqlSlice("WinMain", ip)) flags.winmain = true;
+            if (exp.opts.name.eqlSlice("wWinMain", ip)) flags.wwinmain = true;
+            if (exp.opts.name.eqlSlice("WinMainCRTStartup", ip)) flags.winmain_crt_startup = true;
+            if (exp.opts.name.eqlSlice("wWinMainCRTStartup", ip)) flags.wwinmain_crt_startup = true;
+            if (exp.opts.name.eqlSlice("DllMainCRTStartup", ip)) flags.dllmain_crt_startup = true;
+            if (exp.opts.name.eqlSlice("_DllMainCRTStartup", ip)) flags.dllmain_crt_startup = true;
         }
 
-        // If the first export specifies a linksection, set the exported variable's section to that
-        // one. This is kind of a hack because `std.lang.ExportOptions.section` doesn't actually
-        // make much sense: the linksection should be associated with the declaration itself rather
-        // than some particular symbol it is exported as!
-        if (export_indices[0].ptr(zcu).opts.section.toSlice(ip)) |section_slice| {
+        // If the export specifies a linksection, set the exported variable's section to that one.
+        // This is kind of a hack because `std.lang.ExportOptions.section` doesn't actually make
+        // much sense: the linksection should be associated with the declaration itself rather than
+        // some particular symbol it is exported as!
+        if (exp.opts.section.toSlice(ip)) |section_slice| {
             const variable = &llvm_global.ptrConst(&o.builder).kind.variable;
             variable.setSection(try o.builder.string(section_slice), &o.builder);
         }
@@ -1519,29 +1519,54 @@ pub const Object = struct {
         // TODO: we currently do not delete old exports. To do that we'll need to track which
         // globals actually *are* exports.
 
-        for (export_indices, 0..) |export_idx, export_i| {
-            const exp = export_idx.ptr(zcu);
-            const exp_name = try o.builder.strtabString(exp.opts.name.toSlice(ip));
+        const exp_name = try o.builder.strtabString(exp.opts.name.toSlice(ip));
 
-            // Our goal is to make an alias with the name `exp_name`, but if that name is already
-            // taken by some existing global, we need to figure out what to do with that existing
-            // global.
-            //
-            // The name, aliasee, and type will be set within this block. Other properties of the
-            // alias will be set below.
-            const alias_global: Builder.Global.Index = global: {
+        // Our goal is to make an alias with the name `exp_name`, but if that name is already
+        // taken by some existing global, we need to figure out what to do with that existing
+        // global.
+        //
+        // The name, aliasee, and type will be set within this block. Other properties of the
+        // alias will be set below.
+        const alias_global: Builder.Global.Index = global: {
 
-                // WORKAROUND (see https://github.com/llvm/llvm-project/issues/213504, https://github.com/llvm/llvm-project/issues/214835)
-                // For NVPTX, LLVM throws "NVPTX aliasee must be a non-kernel function definition" if we try to alias a kernel
-                // On AMDGCN, LLVM does not generate an alias for the kernel descriptor symbol on associated functions
-                // To solve these, we rename the global
-                if (workaround_alias_bugs and export_i == 0) {
-                    try llvm_global.rename(exp_name, &o.builder);
-                    break :global llvm_global;
-                }
+            // WORKAROUND (see https://github.com/llvm/llvm-project/issues/213504, https://github.com/llvm/llvm-project/issues/214835)
+            // For NVPTX, LLVM throws "NVPTX aliasee must be a non-kernel function definition" if we try to alias a kernel
+            // On AMDGCN, LLVM does not generate an alias for the kernel descriptor symbol on associated functions
+            // To solve these, we rename the global
+            if (workaround_alias_bugs) {
+                try llvm_global.rename(exp_name, &o.builder);
+                break :global llvm_global;
+            }
 
-                const existing_global = o.builder.getGlobal(exp_name) orelse {
-                    // There is no existing global with this name, so make a new alias.
+            const existing_global = o.builder.getGlobal(exp_name) orelse {
+                // There is no existing global with this name, so make a new alias.
+                const alias = try o.builder.addAlias(
+                    exp_name,
+                    llvm_global_ty,
+                    llvm_global.ptrConst(&o.builder).addr_space,
+                    llvm_global.toConst(),
+                );
+                break :global alias.ptrConst(&o.builder).global;
+            };
+            // There is an existing global with this name, so we can't just create an alias. We
+            // need to figure out what to do with the existing global instead.
+            switch (existing_global.ptrConst(&o.builder).kind) {
+                .alias => |alias| {
+                    // We can just repurpose the existing alias.
+                    alias.setAliasee(llvm_global.toConst(), &o.builder);
+                    alias.ptrConst(&o.builder).global.ptr(&o.builder).type = llvm_global.typeOf(&o.builder);
+                    alias.ptrConst(&o.builder).global.ptr(&o.builder).addr_space = llvm_global.ptrConst(&o.builder).addr_space;
+                    break :global existing_global;
+                },
+                .variable, .function => {
+                    // This must be an extern, which is no good to us---we need an alias. The
+                    // extern should refer to the value we're exporting, so replace it with the
+                    // exported value. That will free up the name for us to create a new alias.
+                    // We need to make a new global which is an alias. Replace this existing one
+                    // with the target global, making the name available and fixing references
+                    // to this global to point to the target.
+                    try existing_global.replace(llvm_global, &o.builder);
+                    // The name is now free, so create an alias.
                     const alias = try o.builder.addAlias(
                         exp_name,
                         llvm_global_ty,
@@ -1549,58 +1574,28 @@ pub const Object = struct {
                         llvm_global.toConst(),
                     );
                     break :global alias.ptrConst(&o.builder).global;
-                };
-                // There is an existing global with this name, so we can't just create an alias. We
-                // need to figure out what to do with the existing global instead.
-                switch (existing_global.ptrConst(&o.builder).kind) {
-                    .alias => |alias| {
-                        // We can just repurpose the existing alias.
-                        alias.setAliasee(llvm_global.toConst(), &o.builder);
-                        alias.ptrConst(&o.builder).global.ptr(&o.builder).type = llvm_global.typeOf(&o.builder);
-                        alias.ptrConst(&o.builder).global.ptr(&o.builder).addr_space = llvm_global.ptrConst(&o.builder).addr_space;
-                        break :global existing_global;
-                    },
-                    .variable, .function => {
-                        // This must be an extern, which is no good to us---we need an alias. The
-                        // extern should refer to the value we're exporting, so replace it with the
-                        // exported value. That will free up the name for us to create a new alias.
-                        // We need to make a new global which is an alias. Replace this existing one
-                        // with the target global, making the name available and fixing references
-                        // to this global to point to the target.
-                        try existing_global.replace(llvm_global, &o.builder);
-                        // The name is now free, so create an alias.
-                        const alias = try o.builder.addAlias(
-                            exp_name,
-                            llvm_global_ty,
-                            llvm_global.ptrConst(&o.builder).addr_space,
-                            llvm_global.toConst(),
-                        );
-                        break :global alias.ptrConst(&o.builder).global;
-                    },
-                    .replaced => unreachable, // a replaced global would have lost the name `exp_name`
-                }
-            };
+                },
+                .replaced => unreachable, // a replaced global would have lost the name `exp_name`
+            }
+        };
 
-            // Now for a bit of setup which
+        // We need the alias to *not* be `unnamed_addr` to ensure that the alias address equals
+        // the address of the original global.
+        alias_global.setUnnamedAddr(.default, &o.builder);
 
-            // We need the alias to *not* be `unnamed_addr` to ensure that the alias address equals
-            // the address of the original global.
-            alias_global.setUnnamedAddr(.default, &o.builder);
-
-            if (comp.config.dll_export_fns and exp.opts.visibility != .hidden)
-                alias_global.setDllStorageClass(.dllexport, &o.builder);
-            alias_global.setLinkage(switch (exp.opts.linkage) {
-                .internal => if (o.builder.strip) .private else .internal, // we still did useful work in replacing an existing symbol if there was one
-                .strong => .external,
-                .weak => .weak_odr,
-                .link_once => .linkonce_odr,
-            }, &o.builder);
-            alias_global.setVisibility(switch (exp.opts.visibility) {
-                .default => .default,
-                .hidden => .hidden,
-                .protected => .protected,
-            }, &o.builder);
-        }
+        if (comp.config.dll_export_fns and exp.opts.visibility != .hidden)
+            alias_global.setDllStorageClass(.dllexport, &o.builder);
+        alias_global.setLinkage(switch (exp.opts.linkage) {
+            .internal => if (o.builder.strip) .private else .internal, // we still did useful work in replacing an existing symbol if there was one
+            .strong => .external,
+            .weak => .weak_odr,
+            .link_once => .linkonce_odr,
+        }, &o.builder);
+        alias_global.setVisibility(switch (exp.opts.visibility) {
+            .default => .default,
+            .hidden => .hidden,
+            .protected => .protected,
+        }, &o.builder);
     }
 
     pub fn updateContainerType(o: *Object, pt: Zcu.PerThread, ty: InternPool.Index, success: bool) Allocator.Error!void {

@@ -1228,58 +1228,62 @@ const Flush = struct {
 pub fn updateExports(
     c: *C,
     pt: Zcu.PerThread,
-    exported: Zcu.Exported,
     export_indices: []const Zcu.Export.Index,
 ) Allocator.Error!void {
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
 
+    c.exported_navs.clearRetainingCapacity();
+    c.exported_uavs.clearRetainingCapacity();
+
     var arena: std.heap.ArenaAllocator = .init(gpa);
     defer arena.deinit();
 
-    var dg: codegen.DeclGen = .{
-        .gpa = gpa,
-        .arena = arena.allocator(),
-        .pt = pt,
-        .mod = zcu.root_mod,
-        .owner_nav = .none,
-        .is_naked_fn = false,
-        .expected_block = null,
-        .ctype_deps = .empty,
-        .uavs = .empty,
-    };
-    defer {
-        assert(dg.uavs.count() == 0);
-        dg.ctype_deps.deinit(gpa);
+    var by_exported: std.array_hash_map.Auto(Zcu.Exported, std.ArrayList(Zcu.Export.Index)) = .empty;
+    try by_exported.ensureUnusedCapacity(arena.allocator(), export_indices.len);
+
+    for (export_indices) |exp_index| {
+        const exported = exp_index.ptr(zcu).exported;
+        const gop = by_exported.getOrPutAssumeCapacity(exported);
+        if (!gop.found_existing) {
+            gop.value_ptr.* = .empty;
+        }
+        try gop.value_ptr.append(arena.allocator(), exp_index);
     }
 
-    const code: String = code: {
-        var aw: std.Io.Writer.Allocating = .fromArrayList(gpa, &c.string_bytes);
-        defer c.string_bytes = aw.toArrayList();
-        const start = aw.written().len;
-        codegen.genExports(&dg, &aw.writer, exported, export_indices) catch |err| switch (err) {
-            error.WriteFailed => return error.OutOfMemory,
-            error.OutOfMemory => |e| return e,
+    for (by_exported.keys(), by_exported.values()) |exported, *exports_of_this| {
+        var dg: codegen.DeclGen = .{
+            .gpa = gpa,
+            .arena = arena.allocator(),
+            .pt = pt,
+            .mod = zcu.root_mod,
+            .owner_nav = .none,
+            .is_naked_fn = false,
+            .expected_block = null,
+            .ctype_deps = .empty,
+            .uavs = .empty,
         };
-        break :code .{
-            .start = @intCast(start),
-            .len = @intCast(aw.written().len - start),
+        defer {
+            assert(dg.uavs.count() == 0);
+            dg.ctype_deps.deinit(gpa);
+        }
+        const code: String = code: {
+            var aw: std.Io.Writer.Allocating = .fromArrayList(gpa, &c.string_bytes);
+            defer c.string_bytes = aw.toArrayList();
+            const start = aw.written().len;
+            codegen.genExports(&dg, &aw.writer, exported, exports_of_this.items) catch |err| switch (err) {
+                error.WriteFailed => return error.OutOfMemory,
+                error.OutOfMemory => |e| return e,
+            };
+            break :code .{
+                .start = @intCast(start),
+                .len = @intCast(aw.written().len - start),
+            };
         };
-    };
-    switch (exported) {
-        .nav => |nav| try c.exported_navs.put(gpa, nav, code),
-        .uav => |uav| try c.exported_uavs.put(gpa, uav, code),
-    }
-}
-
-pub fn deleteExport(
-    self: *C,
-    exported: Zcu.Exported,
-    _: InternPool.NullTerminatedString,
-) void {
-    switch (exported) {
-        .nav => |nav| _ = self.exported_navs.swapRemove(nav),
-        .uav => |uav| _ = self.exported_uavs.swapRemove(uav),
+        switch (exported) {
+            .nav => |nav| try c.exported_navs.put(gpa, nav, code),
+            .uav => |uav| try c.exported_uavs.put(gpa, uav, code),
+        }
     }
 }
 
