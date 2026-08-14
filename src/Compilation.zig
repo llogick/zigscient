@@ -487,8 +487,13 @@ pub const Path = struct {
         assert(fs.path.isAbsolute(sub_path));
         if (!std.mem.startsWith(u8, sub_path, cwd_path)) return sub_path;
         if (sub_path.len == cwd_path.len) return "."; // the strings are equal
-        if (sub_path[cwd_path.len] != fs.path.sep) return sub_path; // last component before cwd differs
-        return sub_path[cwd_path.len + 1 ..]; // remove '/path/to/cwd/' prefix
+        const path_sep_index = path_sep_index: {
+            // cwd is just a root, e.g. / or C:\
+            if (cwd_path[cwd_path.len - 1] == fs.path.sep) break :path_sep_index cwd_path.len - 1;
+            if (sub_path[cwd_path.len] != fs.path.sep) return sub_path; // last component before cwd differs
+            break :path_sep_index cwd_path.len;
+        };
+        return sub_path[path_sep_index + 1 ..]; // remove '/path/to/cwd/' prefix
     }
 
     /// From an unresolved path (which can be made of multiple not-yet-joined strings), construct a
@@ -675,8 +680,13 @@ pub const Path = struct {
         if (!mem.startsWith(u8, inner.sub_path, outer.sub_path)) return .no;
         if (inner.sub_path.len == outer.sub_path.len) return .no;
         if (outer.sub_path.len == 0) return .{ .yes = inner.sub_path };
-        if (inner.sub_path[outer.sub_path.len] != fs.path.sep) return .no;
-        return .{ .yes = inner.sub_path[outer.sub_path.len + 1 ..] };
+        const path_sep_index = path_sep_index: {
+            // outer is just a root, e.g. / or C:\
+            if (outer.sub_path[outer.sub_path.len - 1] == fs.path.sep) break :path_sep_index outer.sub_path.len - 1;
+            if (inner.sub_path[outer.sub_path.len] != fs.path.sep) return .no;
+            break :path_sep_index outer.sub_path.len;
+        };
+        return .{ .yes = inner.sub_path[path_sep_index + 1 ..] };
     }
 
     /// Returns whether this `Path` is illegal to have as a user-imported `Zcu.File` (including
