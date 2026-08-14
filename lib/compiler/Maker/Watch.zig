@@ -49,7 +49,10 @@ const Os = switch (builtin.os.tag) {
         poll_fds: std.array_hash_map.Auto(MountId, posix.pollfd),
 
         const MountId = i32;
-        const HandleTable = std.array_hash_map.Custom(FileHandle, struct { mount_id: MountId, reaction_set: ReactionSet }, FileHandle.Adapter, false);
+        const HandleTable = std.array_hash_map.Custom(FileHandle, struct {
+            mount_id: MountId,
+            reaction_set: ReactionSet,
+        }, FileHandle.Adapter, false);
 
         const fan_mask: std.os.linux.fanotify.MarkMask = .{
             .CLOSE_WRITE = true,
@@ -81,7 +84,7 @@ const Os = switch (builtin.os.tag) {
             }
 
             fn destroy(lfh: FileHandle, gpa: Allocator) void {
-                const ptr: [*]u8 = @ptrCast(lfh.handle);
+                const ptr: [*]align(@alignOf(std.os.linux.file_handle)) u8 = @ptrCast(@alignCast(lfh.handle));
                 const allocated_slice = ptr[0 .. @sizeOf(std.os.linux.file_handle) + lfh.handle.handle_bytes];
                 return gpa.free(allocated_slice);
             }
@@ -121,6 +124,24 @@ const Os = switch (builtin.os.tag) {
             };
         }
 
+        fn deinit(w: *Watch) void {
+            const gpa = w.maker.gpa;
+
+            for (w.os.handle_table.keys(), w.os.handle_table.values()) |fh, *reaction| {
+                fh.destroy(gpa);
+                reaction.reaction_set.deinit(gpa);
+            }
+            w.os.handle_table.deinit(gpa);
+
+            for (w.os.poll_fds.values()) |pollfd| {
+                Io.Threaded.closeFd(pollfd.fd);
+            }
+            w.os.poll_fds.deinit(gpa);
+
+            w.dir_table.deinit(gpa);
+            w.* = undefined;
+        }
+
         fn getDirHandle(gpa: Allocator, path: std.Build.Cache.Path, mount_id: *MountId) !FileHandle {
             var file_handle_buffer: [@sizeOf(std.os.linux.file_handle) + 128]u8 align(@alignOf(std.os.linux.file_handle)) = undefined;
             var buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -152,10 +173,8 @@ const Os = switch (builtin.os.tag) {
                 }) {
                     assert(meta[0].vers == M.VERSION);
                     if (meta[0].mask.Q_OVERFLOW) {
-                        any_dirty = true;
-                        std.log.warn("file system watch queue overflowed; falling back to fstat", .{});
-                        markAllFilesDirty(w);
-                        return true;
+                        std.log.warn("file system watch queue overflowed; reconfiguring", .{});
+                        return error.MustReconfigure;
                     }
                     const fid: *align(1) fanotify.event_info_fid = @ptrCast(meta + 1);
                     switch (fid.hdr.info_type) {
@@ -166,9 +185,9 @@ const Os = switch (builtin.os.tag) {
                             const lfh: FileHandle = .{ .handle = file_handle };
                             if (w.os.handle_table.getPtr(lfh)) |value| {
                                 if (value.reaction_set.getPtr(".")) |glob_set|
-                                    any_dirty = markStepSetDirty(maker, glob_set, any_dirty);
+                                    any_dirty = try markStepSetDirty(maker, glob_set, any_dirty);
                                 if (value.reaction_set.getPtr(file_name)) |step_set|
-                                    any_dirty = markStepSetDirty(maker, step_set, any_dirty);
+                                    any_dirty = try markStepSetDirty(maker, step_set, any_dirty);
                             }
                         },
                         else => |t| std.log.warn("unexpected fanotify event '{t}'", .{t}),
@@ -304,8 +323,11 @@ const Os = switch (builtin.os.tag) {
             if (events_len == 0)
                 return .timeout;
             for (w.os.poll_fds.values()) |poll_fd| {
-                if (poll_fd.revents & std.posix.POLL.IN == std.posix.POLL.IN and try markDirtySteps(w, poll_fd.fd))
+                if (poll_fd.revents & std.posix.POLL.IN == std.posix.POLL.IN and
+                    try markDirtySteps(w, poll_fd.fd))
+                {
                     return .dirty;
+                }
             }
             return .clean;
         }
@@ -361,7 +383,7 @@ const Os = switch (builtin.os.tag) {
                 }
             }
 
-            fn notifyApc(apc_context: ?*anyopaque, iosb: *windows.IO_STATUS_BLOCK, _: windows.ULONG) align(std.Io.Threaded.apc_align) callconv(.winapi) void {
+            fn notifyApc(apc_context: ?*anyopaque, iosb: *windows.IO_STATUS_BLOCK, _: windows.ULONG) align(Io.Threaded.apc_align) callconv(.winapi) void {
                 const w: *Watch = @ptrCast(@alignCast(apc_context));
                 const dir: *Directory = @fieldParentPtr("iosb", iosb);
                 assert(iosb.u.Status != .PENDING);
@@ -481,6 +503,18 @@ const Os = switch (builtin.os.tag) {
             };
         }
 
+        fn deinit(w: *Watch) void {
+            const gpa = w.maker.gpa;
+
+            for (w.os.handle_table.keys()) |dir| {
+                dir.deinit(gpa, w);
+            }
+            w.os.handle_table.deinit(gpa);
+
+            w.dir_table.deinit(gpa);
+            w.* = undefined;
+        }
+
         fn getFileId(handle: windows.HANDLE) !FileId {
             var file_id: FileId = undefined;
             var io_status: windows.IO_STATUS_BLOCK = undefined;
@@ -521,10 +555,8 @@ const Os = switch (builtin.os.tag) {
             var any_dirty = false;
             const bytes_returned = dir.iosb.Information;
             if (bytes_returned == 0) {
-                std.log.warn("file system watch queue overflowed; falling back to fstat", .{});
-                markAllFilesDirty(w);
-                try dir.startListening(w);
-                return true;
+                std.log.warn("file system watch queue overflowed; reconfiguring", .{});
+                return error.MustReconfigure;
             }
             var file_name_buf: [std.fs.max_path_bytes]u8 = undefined;
             var offset: usize = 0;
@@ -532,9 +564,9 @@ const Os = switch (builtin.os.tag) {
                 const notify: *windows.FILE.NOTIFY.INFORMATION = @ptrCast(@alignCast(&dir.buffer[offset]));
                 const file_name = file_name_buf[0..std.unicode.wtf16LeToWtf8(&file_name_buf, notify.fileName())];
                 if (dir.reaction_set.getPtr(".")) |glob_set|
-                    any_dirty = markStepSetDirty(maker, glob_set, any_dirty);
+                    any_dirty = try markStepSetDirty(maker, glob_set, any_dirty);
                 if (dir.reaction_set.getPtr(file_name)) |step_set|
-                    any_dirty = markStepSetDirty(maker, step_set, any_dirty);
+                    any_dirty = try markStepSetDirty(maker, step_set, any_dirty);
                 if (notify.NextEntryOffset == 0)
                     break;
 
@@ -693,6 +725,21 @@ const Os = switch (builtin.os.tag) {
             };
         }
 
+        fn deinit(w: *Watch) void {
+            const gpa = w.maker.gpa;
+
+            for (w.os.handles.items(.rs), w.os.handles.items(.dir_fd)) |*rs, dir_fd| {
+                rs.deinit(gpa);
+                Io.Threaded.closeFd(dir_fd);
+            }
+            w.os.handles.deinit(gpa);
+
+            Io.Threaded.closeFd(w.os.kq_fd);
+
+            w.dir_table.deinit(gpa);
+            w.* = undefined;
+        }
+
         fn update(w: *Watch, steps: []const Configuration.Step.Index) !void {
             const maker = w.maker;
             const gpa = maker.gpa;
@@ -711,7 +758,7 @@ const Os = switch (builtin.os.tag) {
                                     fatal("failed to open directory {f}: {t}", .{ path, err });
                                 };
                             // Empirically the dir has to stay open or else no events are triggered.
-                            errdefer if (!skip_open_dir) std.Io.Threaded.closeFd(dir_fd);
+                            errdefer if (!skip_open_dir) Io.Threaded.closeFd(dir_fd);
                             const changes = [1]posix.Kevent{.{
                                 .ident = @bitCast(@as(isize, dir_fd)),
                                 .filter = std.c.EVFILT.VNODE,
@@ -811,7 +858,7 @@ const Os = switch (builtin.os.tag) {
                     };
                     const filtered_changes = if (i == handles.len - 1) changes[0..1] else &changes;
                     _ = try Io.Kqueue.kevent(w.os.kq_fd, filtered_changes, &.{}, null);
-                    if (path.sub_path.len != 0) std.Io.Threaded.closeFd(dir_fd);
+                    if (path.sub_path.len != 0) Io.Threaded.closeFd(dir_fd);
 
                     w.dir_table.swapRemoveAt(i);
                     handles.swapRemove(i);
@@ -828,12 +875,12 @@ const Os = switch (builtin.os.tag) {
             var n = try Io.Kqueue.kevent(w.os.kq_fd, &.{}, &event_buffer, timeout.toTimespec(&timespec_buffer));
             if (n == 0) return .timeout;
             const reaction_sets = w.os.handles.items(.rs);
-            var any_dirty = markDirtySteps(maker, reaction_sets, event_buffer[0..n], false);
+            var any_dirty = try markDirtySteps(maker, reaction_sets, event_buffer[0..n], false);
             timespec_buffer = .{ .sec = 0, .nsec = 0 };
             while (n == event_buffer.len) {
                 n = try Io.Kqueue.kevent(w.os.kq_fd, &.{}, &event_buffer, &timespec_buffer);
                 if (n == 0) break;
-                any_dirty = markDirtySteps(maker, reaction_sets, event_buffer[0..n], any_dirty);
+                any_dirty = try markDirtySteps(maker, reaction_sets, event_buffer[0..n], any_dirty);
             }
             return if (any_dirty) .dirty else .clean;
         }
@@ -843,7 +890,7 @@ const Os = switch (builtin.os.tag) {
             reaction_sets: []ReactionSet,
             events: []const std.c.Kevent,
             start_any_dirty: bool,
-        ) bool {
+        ) !bool {
             var any_dirty = start_any_dirty;
             for (events) |event| {
                 const index: usize = @intCast(event.udata);
@@ -851,13 +898,13 @@ const Os = switch (builtin.os.tag) {
                 // If we knew the basename of the changed file, here we would
                 // mark only the step set dirty, and possibly the glob set:
                 //if (reaction_set.getPtr(".")) |glob_set|
-                //    any_dirty = markStepSetDirty(maker, glob_set, any_dirty);
+                //    any_dirty = try markStepSetDirty(maker, glob_set, any_dirty);
                 //if (reaction_set.getPtr(file_name)) |step_set|
-                //    any_dirty = markStepSetDirty(maker, step_set, any_dirty);
+                //    any_dirty = try markStepSetDirty(maker, step_set, any_dirty);
                 // However we don't know the file name so just mark all the
                 // sets dirty for this directory.
                 for (reaction_set.values()) |*step_set| {
-                    any_dirty = markStepSetDirty(maker, step_set, any_dirty);
+                    any_dirty = try markStepSetDirty(maker, step_set, any_dirty);
                 }
             }
             return any_dirty;
@@ -874,6 +921,12 @@ const Os = switch (builtin.os.tag) {
                 .generation = undefined,
                 .maker = maker,
             };
+        }
+        fn deinit(w: *Watch) void {
+            const gpa = w.maker.gpa;
+            const io = w.maker.graph.io;
+            w.os.fse.deinit(gpa, io);
+            w.* = undefined;
         }
         fn update(w: *Watch, steps: []const Configuration.Step.Index) !void {
             try w.os.fse.setPaths(w.maker, steps);
@@ -915,31 +968,11 @@ pub const Match = struct {
     };
 };
 
-fn markAllFilesDirty(w: *Watch) void {
-    const maker = w.maker;
-
-    for (switch (builtin.os.tag) {
-        .windows => w.os.handle_table.keys(),
-        else => w.os.handle_table.values(),
-    }) |item| {
-        const reaction_set = switch (builtin.os.tag) {
-            .linux, .windows => item.reaction_set,
-            else => item,
-        };
-        for (reaction_set.values()) |step_set| {
-            for (step_set.keys()) |step_index| {
-                const step = maker.stepByIndex(step_index);
-                _ = maker.invalidateResult(step);
-            }
-        }
-    }
-}
-
-fn markStepSetDirty(maker: *Maker, step_set: *StepSet, any_dirty: bool) bool {
+fn markStepSetDirty(maker: *Maker, step_set: *StepSet, any_dirty: bool) error{MustReconfigure}!bool {
     var this_any_dirty = false;
     for (step_set.keys()) |step_index| {
         const step = maker.stepByIndex(step_index);
-        if (maker.invalidateResult(step)) this_any_dirty = true;
+        if (try maker.invalidateResult(step)) this_any_dirty = true;
     }
     return any_dirty or this_any_dirty;
 }
@@ -984,6 +1017,11 @@ pub const WaitResult = enum {
     clean,
 };
 
+/// May return `error.MustReconfigure`.
 pub fn wait(w: *Watch, timeout: Timeout) !WaitResult {
     return Os.wait(w, timeout);
+}
+
+pub fn deinit(w: *Watch) void {
+    Os.deinit(w);
 }

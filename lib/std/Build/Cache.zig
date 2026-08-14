@@ -1,7 +1,7 @@
-//! Manages `zig-cache` directories.
-//! This is not a general-purpose cache. It is designed to be fast and simple,
-//! not to withstand attacks using specially-crafted input.
-
+//! Tracks metadata of file inputs associated with Zig compiler and build
+//! system artifacts in order to determine whether those artifacts must be
+//! produced again, or may be retrieved from the cache directory on the
+//! filesystem.
 const Cache = @This();
 const builtin = @import("builtin");
 
@@ -1236,19 +1236,32 @@ pub const Manifest = struct {
 
     /// Obtain only the data needed to maintain a lock on the manifest file.
     /// The `Manifest` remains safe to deinit.
+    ///
     /// Don't forget to call `writeManifest` before this!
     pub fn toOwnedLock(self: *Manifest) Lock {
         defer self.manifest_file = null;
         return .{ .manifest_file = self.manifest_file.? };
     }
 
+    pub fn takeFiles(man: *Manifest) Files {
+        defer man.files = .empty;
+        return man.files;
+    }
+
+    pub fn freeFiles(gpa: Allocator, files: *Files) void {
+        for (files.keys()) |*file| file.deinit(gpa);
+        files.deinit(gpa);
+    }
+
     /// Releases the manifest file and frees any memory the Manifest was using.
     /// `Manifest.hit` must be called first.
+    ///
     /// Don't forget to call `writeManifest` before this!
-    pub fn deinit(self: *Manifest) void {
-        const io = self.cache.io;
+    pub fn deinit(man: *Manifest) void {
+        const io = man.cache.io;
+        const gpa = man.cache.gpa;
 
-        if (self.manifest_file) |file| {
+        if (man.manifest_file) |file| {
             if (builtin.os.tag == .windows) {
                 // See Lock.release for why this is required on Windows
                 file.unlock(io);
@@ -1256,10 +1269,8 @@ pub const Manifest = struct {
 
             file.close(io);
         }
-        for (self.files.keys()) |*file| {
-            file.deinit(self.cache.gpa);
-        }
-        self.files.deinit(self.cache.gpa);
+        freeFiles(gpa, &man.files);
+        man.* = undefined;
     }
 
     pub fn populateFileSystemInputs(man: *Manifest, buf: *std.ArrayList(u8)) Allocator.Error!void {

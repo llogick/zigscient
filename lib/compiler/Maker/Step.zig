@@ -781,12 +781,20 @@ pub fn writeManifestAndWatch(s: *Step, maker: *Maker, man: *Cache.Manifest) !voi
     try setWatchInputsFromManifest(s, maker, man);
 }
 
-fn setWatchInputsFromManifest(s: *Step, maker: *Maker, man: *Cache.Manifest) !void {
+pub fn setWatchInputsFromManifest(s: *Step, maker: *Maker, man: *Cache.Manifest) !void {
+    return setWatchInputsFromManifestFiles(s, maker, &man.files, man.cache.prefixes());
+}
+
+pub fn setWatchInputsFromManifestFiles(
+    s: *Step,
+    maker: *Maker,
+    files: *const Cache.Manifest.Files,
+    prefixes: []const Cache.Directory,
+) !void {
     const graph = maker.graph;
     const arena = graph.arena; // TODO don't leak into process arena
-    const prefixes = man.cache.prefixes();
     clearWatchInputs(s, maker);
-    for (man.files.keys()) |file| {
+    for (files.keys()) |file| {
         // The file path data is freed when the cache manifest is cleaned up at the end of `make`.
         const sub_path = try arena.dupe(u8, file.prefixed_path.sub_path);
         try addWatchInputFromPath(s, maker, .{

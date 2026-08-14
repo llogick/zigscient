@@ -5478,6 +5478,7 @@ fn jitCmdInner(
     }
 
     if (process.can_replace and options.capture == null) {
+        _ = try io.lockStderr(&.{}, .no_color);
         const err = process.replace(io, .{ .argv = child_argv.items, .environ_map = environ_map });
         const cmd = try std.mem.join(arena, " ", child_argv.items);
         fatal("the following command failed to execve with {t}:\n{s}", .{ err, cmd });

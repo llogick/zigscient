@@ -46,6 +46,8 @@ since_event: FSEventStreamEventId,
 
 cwd_path: []const u8,
 
+must_reconfigure: bool,
+
 /// All of the symbols we pull from the `dlopen`ed CoreServices framework. If any of these symbols
 /// is not present, `init` will close the framework and return an error.
 const ResolvedSymbols = struct {
@@ -104,13 +106,15 @@ pub fn init(cwd_path: []const u8) error{ OpenFrameworkFailed, MissingCoreService
         // to notice any changes which happened during said work.
         .since_event = resolved_symbols.FSEventsGetCurrentEventId(),
         .cwd_path = cwd_path,
+        .must_reconfigure = false,
     };
 }
 
 pub fn deinit(fse: *FsEvents, gpa: Allocator, io: Io) void {
+    _ = io;
     fse.waiting_semaphore.as_object().release();
     fse.dispatch_queue.as_object().release();
-    fse.core_services.close(io);
+    fse.core_services.close();
 
     gpa.free(fse.watch_roots);
     fse.watch_paths.deinit(gpa);
@@ -211,7 +215,7 @@ pub fn setPaths(fse: *FsEvents, maker: *Maker, steps: []const std.Build.Configur
     }
 }
 
-pub fn wait(fse: *FsEvents, maker: *Maker, timeout_ns: ?u64) error{ OutOfMemory, StartFailed }!Watch.WaitResult {
+pub fn wait(fse: *FsEvents, maker: *Maker, timeout_ns: ?u64) error{ OutOfMemory, StartFailed, MustReconfigure }!Watch.WaitResult {
     if (fse.watch_roots.len == 0) @panic("nothing to watch");
     const gpa = maker.gpa;
 
@@ -285,6 +289,7 @@ pub fn wait(fse: *FsEvents, maker: *Maker, timeout_ns: ?u64) error{ OutOfMemory,
         const ns = timeout_ns orelse break :timeout .FOREVER;
         break :timeout .time(.NOW, @intCast(ns));
     });
+    if (fse.must_reconfigure) return error.MustReconfigure;
     return switch (result) {
         0 => .dirty,
         else => .timeout,
@@ -355,13 +360,23 @@ fn eventCallback(
             false => {
                 if (fse.watch_paths.get(event_path)) |steps| {
                     assert(steps.len > 0);
-                    if (invalidateSteps(maker, steps)) any_dirty = true;
+                    if (invalidateSteps(maker, steps) catch |err| switch (err) {
+                        error.MustReconfigure => {
+                            fse.must_reconfigure = true;
+                            break;
+                        },
+                    }) any_dirty = true;
                 }
                 if (std.fs.path.dirname(event_path)) |event_dirname| {
                     // Modifying '/foo/bar' triggers the watch on '/foo'.
                     if (fse.watch_paths.get(event_dirname)) |steps| {
                         assert(steps.len > 0);
-                        if (invalidateSteps(maker, steps)) any_dirty = true;
+                        if (invalidateSteps(maker, steps) catch |err| switch (err) {
+                            error.MustReconfigure => {
+                                fse.must_reconfigure = true;
+                                break;
+                            },
+                        }) any_dirty = true;
                     }
                 }
             },
@@ -374,13 +389,18 @@ fn eventCallback(
                 const changed_path = std.fs.path.dirname(event_path) orelse event_path;
                 for (fse.watch_paths.keys(), fse.watch_paths.values()) |watching_path, steps| {
                     if (dirStartsWith(watching_path, changed_path)) {
-                        if (invalidateSteps(maker, steps)) any_dirty = true;
+                        if (invalidateSteps(maker, steps) catch |err| switch (err) {
+                            error.MustReconfigure => {
+                                fse.must_reconfigure = true;
+                                break;
+                            },
+                        }) any_dirty = true;
                     }
                 }
             },
         }
     }
-    if (any_dirty) {
+    if (any_dirty or fse.must_reconfigure) {
         fse.since_event = rs.FSEventStreamGetLatestEventId(stream);
         _ = fse.waiting_semaphore.signal();
     }
@@ -392,11 +412,11 @@ fn dirStartsWith(path: []const u8, prefix: []const u8) bool {
     return true; // `path` is `/foo/bar/...`, `prefix` is `/foo/bar`
 }
 
-fn invalidateSteps(maker: *Maker, steps: []const std.Build.Configuration.Step.Index) bool {
+fn invalidateSteps(maker: *Maker, steps: []const std.Build.Configuration.Step.Index) !bool {
     var any_dirty = false;
     for (steps) |step_index| {
         const step = maker.stepByIndex(step_index);
-        if (maker.invalidateResult(step)) any_dirty = true;
+        if (try maker.invalidateResult(step)) any_dirty = true;
     }
     return any_dirty;
 }
