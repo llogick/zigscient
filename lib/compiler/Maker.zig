@@ -705,7 +705,7 @@ pub fn main(init: process.Init.Minimal) !void {
 
     var web_server_allocation: AvoidableWebServer = undefined;
     const web_server: ?*AvoidableWebServer = if (webui_listen) |listen_address| ws: {
-        if (watch) fatal("using '--webui' and '--watch' together is not yet supported; consider omitting '--watch' in favour of the web UI \"Rebuild\" button", .{});
+        if (watch_flag) fatal("using '--webui' and '--watch' together is not yet supported; consider omitting '--watch' in favour of the web UI \"Rebuild\" button", .{});
         if (builtin.single_threaded) fatal("--webui is not yet supported on single-threaded hosts", .{});
         web_server_allocation = .init(.{
             .graph = &graph,
