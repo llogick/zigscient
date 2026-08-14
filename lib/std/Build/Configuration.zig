@@ -22,7 +22,7 @@ packages: []Package,
 /// Unlike `packages`, each item corresponds to a `std.Build`, which is a
 /// package that was instantiated by running its build script with specific
 /// input options.
-package_instances: []PackageInstance,
+package_instances: []Package.Instance,
 extra: []u32,
 default_step: Step.Index,
 generated_files_len: u32,
@@ -69,7 +69,7 @@ pub const Wip = struct {
     path_deps: std.ArrayList(PathDep) = .empty,
     search_prefixes: std.ArrayList(String) = .empty,
     packages: std.ArrayList(Package) = .empty,
-    package_instances: std.ArrayList(PackageInstance) = .empty,
+    package_instances: std.ArrayList(Package.Instance) = .empty,
     extra: std.ArrayList(u32) = .empty,
     next_generated_file_index: u32 = 0,
     cache_poison: bool = false,
@@ -494,7 +494,7 @@ pub const AvailableOption = extern struct {
 
 pub const Step = extern struct {
     name: String,
-    owner: PackageInstance.Index,
+    owner: Package.Instance.Index,
     deps: Deps.Index,
     max_rss: MaxRss,
     extended: Storage.Extended(Flags, union(Tag) {
@@ -1544,7 +1544,7 @@ pub const LazyPath = union(@This().Tag) {
 
     pub const SourcePath = struct {
         flags: @This().Flags = .{},
-        owner: PackageInstance.Index,
+        owner: Package.Instance.Index,
         sub_path: String,
 
         pub const Flags = packed struct(u32) {
@@ -1675,122 +1675,48 @@ pub const Package = extern struct {
             };
         };
     };
-};
 
-pub const PackageInstance = extern struct {
-    package: Package.Index,
-    user_input_options: UserInputOption.List.Index,
-    modules: PublicModules,
+    pub const Instance = extern struct {
+        package: Package.Index,
+        modules: PublicModules,
 
-    pub const UserInputOption = struct {
-        flags: Flags,
-        name: String,
-        value: Storage.FlagUnion(.flags, .tag, UserValue),
-
-        pub const Flags = packed struct(u32) {
-            tag: UserValue.Tag,
-            used: bool,
-            _: u28 = 0,
+        pub const PublicModules = extern struct {
+            keys: StringList,
+            values: Module.List.Index,
         };
 
-        pub const List = struct {
-            options: Storage.LengthPrefixedList(UserInputOption.Index),
+        pub const Index = enum(u32) {
+            root,
+            _,
 
-            pub const Index = enum(u32) {
-                _,
+            pub fn ptr(this: @This(), c: *const Configuration) *const Package.Instance {
+                return &c.package_instances[@backingInt(this)];
+            }
 
-                pub fn get(this: @This(), c: *const Configuration) List {
-                    return extraData(c, List, @backingInt(this));
-                }
-
-                pub fn slice(this: @This(), c: *const Configuration) []const UserInputOption.Index {
-                    return this.get(c).options.slice;
-                }
-            };
-        };
-
-        pub const Index = IndexType(@This());
-    };
-
-    pub const UserValue = union(Tag) {
-        flag,
-        scalar: String,
-        list: StringList,
-        map: Map.Index,
-        lazy_path: LazyPath.Index,
-        lazy_path_list: Storage.LengthPrefixedList(LazyPath.Index),
-
-        pub const Standalone = struct {
-            flags: Flags,
-            value: Storage.FlagUnion(.flags, .tag, UserValue),
-
-            pub const Flags = packed struct(u32) {
-                tag: UserValue.Tag,
-                _: u29 = 0,
-            };
-
-            pub const Index = IndexType(@This());
-        };
-
-        pub const Tag = enum(u3) {
-            flag,
-            scalar,
-            list,
-            map,
-            lazy_path,
-            lazy_path_list,
-
-            pub fn init(uv: @typeInfo(std.Build.UserValue).@"union".tag_type.?) @This() {
-                return switch (uv) {
-                    inline else => |tag| @field(@This(), @tagName(tag)),
-                };
+            pub fn package(this: @This(), c: *const Configuration) Package.Index {
+                return this.ptr(c).package;
             }
         };
 
-        pub const Map = struct {
-            keys: StringList,
-            values: Storage.LengthPrefixedList(UserValue.Standalone.Index),
+        pub const OptionalIndex = enum(u32) {
+            root,
+            none = max_u32,
+            _,
 
-            pub const Index = IndexType(@This());
+            pub fn init(i: Instance.Index) Instance.OptionalIndex {
+                const result: Instance.OptionalIndex = @fromBackingInt(@intCast(@backingInt(i)));
+                assert(result != .none);
+                return result;
+            }
+
+            pub fn unwrap(this: @This()) ?Instance.Index {
+                return switch (this) {
+                    .none => null,
+                    .root => .root,
+                    _ => @fromBackingInt(@intCast(@backingInt(this))),
+                };
+            }
         };
-    };
-
-    pub const PublicModules = extern struct {
-        keys: StringList,
-        values: Module.List.Index,
-    };
-
-    pub const Index = enum(u32) {
-        root,
-        _,
-
-        pub fn ptr(this: @This(), c: *const Configuration) *const PackageInstance {
-            return &c.package_instances[@backingInt(this)];
-        }
-
-        pub fn package(this: @This(), c: *const Configuration) Package.Index {
-            return this.ptr(c).package;
-        }
-    };
-
-    pub const OptionalIndex = enum(u32) {
-        root,
-        none = max_u32,
-        _,
-
-        pub fn init(i: Index) OptionalIndex {
-            const result: OptionalIndex = @fromBackingInt(@intCast(@backingInt(i)));
-            assert(result != .none);
-            return result;
-        }
-
-        pub fn unwrap(this: @This()) ?Index {
-            return switch (this) {
-                .none => null,
-                .root => .root,
-                _ => @fromBackingInt(@intCast(@backingInt(this))),
-            };
-        }
     };
 };
 
@@ -1798,7 +1724,7 @@ pub const Module = struct {
     flags: Flags,
     flags2: Flags2,
     import_table: ImportTable.Index,
-    owner: PackageInstance.Index,
+    owner: Package.Instance.Index,
     root_source_file: LazyPath.OptionalIndex,
     resolved_target: ResolvedTarget.OptionalIndex,
     c_macros: Storage.FlagLengthPrefixedList(.flags, .c_macros, String),
@@ -2041,7 +1967,7 @@ pub const OptionalStringList = enum(u32) {
 pub const PathDep = extern struct {
     flags: Flags,
     sub: String,
-    pkg: PackageInstance.OptionalIndex,
+    pkg: Package.Instance.OptionalIndex,
 
     pub const Flags = packed struct(u32) {
         mode: Mode,
@@ -3307,7 +3233,7 @@ pub fn load(arena: Allocator, reader: *Io.Reader) LoadError!Configuration {
         .available_options = try arena.alloc(AvailableOption, header.available_options_len),
         .search_prefixes = try arena.alloc(String, header.search_prefixes_len),
         .packages = try arena.alloc(Package, header.packages_len),
-        .package_instances = try arena.alloc(PackageInstance, header.package_instances_len),
+        .package_instances = try arena.alloc(Package.Instance, header.package_instances_len),
         .extra = try arena.alloc(u32, header.extra_len),
         .default_step = header.default_step,
         .generated_files_len = header.generated_files_len,

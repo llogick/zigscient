@@ -3444,7 +3444,7 @@ pub fn generatedPath(maker: *const Maker, index: Configuration.GeneratedFileInde
 pub fn packagePath(
     maker: *const Maker,
     arena: Allocator,
-    inst_index: Configuration.PackageInstance.Index,
+    inst_index: Configuration.Package.Instance.Index,
     sub_path: []const u8,
 ) Allocator.Error!Path {
     const c = &maker.scanned_config.configuration;

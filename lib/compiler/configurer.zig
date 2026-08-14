@@ -86,11 +86,15 @@ pub fn main(init: process.Init.Minimal) !void {
             if (mem.findScalar(u8, option_contents, '=')) |name_end| {
                 const option_name = option_contents[0..name_end];
                 const option_value = option_contents[name_end + 1 ..];
-                if (try builder.addUserInputOption(option_name, option_value))
-                    fatal("  access the help menu with 'zig build -h'", .{});
+                if (try builder.addUserInputOption(option_name, option_value)) {
+                    log.info("to access the help menu: zig build -h", .{});
+                    process.exit(1);
+                }
             } else {
-                if (try builder.addUserInputFlag(option_contents))
-                    fatal("  access the help menu with 'zig build -h'", .{});
+                if (try builder.addUserInputFlag(option_contents)) {
+                    log.info("to access the help menu: zig build -h", .{});
+                    process.exit(1);
+                }
             }
         } else if (mem.cutPrefix(u8, arg, "-fsys=")) |name| {
             try graph.system_integration_options.put(arena, name, .user_enabled);
@@ -133,8 +137,25 @@ pub fn main(init: process.Init.Minimal) !void {
 
     builder.runPackageScript(root);
 
-    if (builder.validateUserInputDidItFail()) {
-        fatal("  access the help menu with 'zig build -h'", .{});
+    // Even though the root package's user input options are not serialized,
+    // this is done for consistency, since the rest of the dependency tree
+    // sorts user_input_options before calling validateUserInputDidItFail,
+    // which has user-visible behavior (the order of errors reported).
+    std.Build.PackageOptions.sort(&builder.user_input_options);
+
+    // Make sure the package actually provides all the arguments specified.
+    for (builder.user_input_options.keys()) |name| {
+        if (!builder.available_options_map.contains(name)) {
+            log.err("invalid option: {q}", .{name});
+            builder.invalid_user_input = true;
+        }
+    }
+    if (builder.invalid_user_input) {
+        for (builder.available_options_map.keys(), builder.available_options_map.values()) |name, *available| {
+            log.info("available option: {q}: {s}", .{ name, available.description });
+        }
+        log.info("to access the help menu: zig build -h", .{});
+        process.exit(1);
     }
 
     try Serialize.packageOptions(builder, &graph.wip_configuration);
