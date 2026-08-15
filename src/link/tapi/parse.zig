@@ -631,7 +631,7 @@ const Parser = struct {
         assert(raw[0] == '\'' and raw[raw.len - 1] == '\'');
 
         const raw_no_quotes = raw[1 .. raw.len - 1];
-        try node.string_value.ensureTotalCapacity(self.allocator, raw_no_quotes.len);
+        try node.string_value.ensureUnusedCapacity(self.allocator, raw_no_quotes.len);
 
         var state: enum {
             start,
@@ -665,7 +665,7 @@ const Parser = struct {
         assert(raw[0] == '"' and raw[raw.len - 1] == '"');
 
         const raw_no_quotes = raw[1 .. raw.len - 1];
-        try node.string_value.ensureTotalCapacity(self.allocator, raw_no_quotes.len);
+        try node.string_value.ensureUnusedCapacity(self.allocator, raw_no_quotes.len);
 
         var state: enum {
             start,
