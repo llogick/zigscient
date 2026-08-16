@@ -2243,6 +2243,7 @@ pub fn requiresLibC(target: *const Target) bool {
         .dragonfly,
         .haiku,
         .serenity,
+        .emscripten,
         => true,
 
         // Android API levels prior to 29 did not have native TLS support. For these API levels, TLS
@@ -2274,7 +2275,6 @@ pub fn requiresLibC(target: *const Target) bool {
         .hermit,
         .hurd,
         .wasi,
-        .emscripten,
         .uefi,
         .opencl,
         .opengl,
