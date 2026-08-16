@@ -31,16 +31,19 @@ const bindings = if (build_options.have_llvm)
 else
     @compileError("LLVM unavailable");
 
-pub fn legalizeFeatures(_: *const std.Target) ?*const Air.Legalize.Features {
-    return comptime &.initMany(&.{
-        .expand_int_from_float_safe,
-        .expand_int_from_float_optimized_safe,
+pub fn legalizeFeatures(target: *const std.Target) ?*const Air.Legalize.Features {
+    return switch (target.cpu.arch.endian()) {
+        inline else => |endian| comptime &.init(.{
+            .expand_int_from_float_safe = true,
+            .expand_int_from_float_optimized_safe = true,
 
-        .scalarize_bit_cast_array,
-        // Needed because LLVM's `bitcast` on vectors is endian-specific unless the source and dest
-        // types are vectors with equal length (hence also with equal bits-per-element).
-        .scalarize_bit_cast_vector_non_elementwise,
-    });
+            .scalarize_bit_cast_array = true,
+            // LLVM's `bitcast` on vectors places element 0 in the least significant bits on
+            // little-endian targets, which matches our semantics; but it does the opposite on
+            // big-endian targets, so in that case we need to scalarize.
+            .scalarize_bit_cast_vector_non_elementwise = endian != .little,
+        }),
+    };
 }
 
 fn subArchName(target: *const std.Target, comptime family: std.Target.Cpu.Arch.Family, mappings: anytype) ?[]const u8 {
