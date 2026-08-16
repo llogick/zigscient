@@ -847,7 +847,7 @@ pub const Object = struct {
                 return diags.fail("emitting without libllvm not implemented", .{});
             }
 
-            initializeLLVMTarget(comp.root_mod.resolved_target.result.cpu.arch);
+            initializeLLVMTarget(io, comp.root_mod.resolved_target.result.cpu.arch);
 
             const context: *bindings.Context = .create();
             errdefer context.dispose();
@@ -4811,7 +4811,14 @@ const struct_layout_version = 2;
 //       https://github.com/llvm/llvm-project/issues/56585/ is fixed
 pub const optional_layout_version = 3;
 
-pub fn initializeLLVMTarget(arch: std.Target.Cpu.Arch) void {
+var target_registry_mutex: std.Io.Mutex = .init;
+
+pub fn initializeLLVMTarget(io: Io, arch: std.Target.Cpu.Arch) void {
+    // Repeated initialization is safe, as targets which have already been registered will be skipped.
+    // It is however the client's responsibility to synchronize registry access.
+    target_registry_mutex.lockUncancelable(io);
+    defer target_registry_mutex.unlock(io);
+
     switch (arch) {
         .aarch64, .aarch64_be => {
             bindings.LLVMInitializeAArch64Target();

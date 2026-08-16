@@ -341,7 +341,7 @@ fn linkAsArchive(lld: *Lld, arena: Allocator) link.Error!void {
     const llvm_bindings = @import("../codegen/llvm/bindings.zig");
     const llvm = @import("../codegen/llvm.zig");
     const target = &comp.root_mod.resolved_target.result;
-    llvm.initializeLLVMTarget(target.cpu.arch);
+    llvm.initializeLLVMTarget(comp.io, target.cpu.arch);
     var err_file_index: usize = undefined;
     var err_msg: [*:0]u8 = undefined;
     if (llvm_bindings.WriteArchive(
