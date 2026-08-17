@@ -3290,13 +3290,11 @@ pub const gnu_hash = struct {
 
     /// Calculate the hash value for a name
     pub fn calculate(name: []const u8) u32 {
-        var hash: u32 = 5381;
-
+        var h: u32 = 5381;
         for (name) |char| {
-            hash = (hash << 5) +% hash +% char;
+            h = (h << 5) +% h +% char;
         }
-
-        return hash;
+        return h;
     }
 
     test calculate {
@@ -3306,6 +3304,52 @@ pub const gnu_hash = struct {
         try std.testing.expectEqual(0xbac212a0, calculate("syscall"));
         try std.testing.expectEqual(0x8ae9f18e, calculate("flapenguin.me"));
     }
+};
+
+/// Things for the `SHT.HASH` section type.
+///
+/// Resources:
+/// * https://refspecs.linuxfoundation.org/elf/gabi4+/ch5.dynamic.html#hash
+/// * https://flapenguin.me/elf-dt-hash
+/// * https://github.com/IBM/s390x-abi
+pub const hash = struct {
+    pub fn calculate(name: []const u8) u32 {
+        var h: u32 = 0;
+        for (name) |c| {
+            h = (h << 4) +% c;
+            const g = h & 0xF000_0000;
+            h = (h ^ (g >> 24)) & ~g;
+        }
+        return h;
+    }
+
+    /// The header of a `SHT.HASH` section on most architectures. Immediately followed by:
+    /// * `buckets: [nbucket]u32`
+    /// * `chains: [nchain]u32`
+    ///
+    /// The bucket for a symbol named `name` is `std.elf.hash.calculate(name) % nbuckets`.
+    ///
+    /// `buckets[b]` is the index of the first symbol in bucket `b`. If bucket `b` is empty then the
+    /// value is 0 (`STN_UNDEF`).
+    ///
+    /// `chain[sym_index]` is the index of the next symbol in the same bucket as `sym_index`. If
+    /// `sym_index` is the last symbol in its bucket then the value is 0 (`STN_UNDEF`).
+    ///
+    /// See also `Header64`.
+    pub const Header32 = extern struct {
+        nbucket: u32,
+        nchain: u32,
+    };
+
+    /// The header of a `SHT.HASH` section on alpha and s390x. Immediately followed by:
+    /// * `buckets: [nbucket]u64`
+    /// * `chains: [nchain]u64`
+    ///
+    /// See also `Header32`.
+    pub const Header64 = extern struct {
+        nbucket: u64,
+        nchain: u64,
+    };
 };
 
 pub const EhdrFlags = packed union(Word) {

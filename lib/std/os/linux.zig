@@ -2135,7 +2135,10 @@ pub fn flock(fd: fd_t, operation: i32) usize {
     return syscall2(.flock, @as(u32, @bitCast(fd)), @as(u32, @bitCast(operation)));
 }
 
-pub const Elf_Symndx = if (native_arch == .s390x) u64 else u32;
+pub const Elf_Symndx = switch (native_arch) {
+    .alpha, .s390x => u64,
+    else => u32,
+};
 
 // We must follow the C calling convention when we call into the VDSO
 const VdsoClockGettime = *align(1) const fn (clockid_t, *timespec) callconv(.c) usize;

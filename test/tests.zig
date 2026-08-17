@@ -26,6 +26,7 @@ const ModuleTestTarget = struct {
     single_threaded: ?bool = null,
     use_llvm: ?bool = null,
     use_lld: ?bool = null,
+    new_linker: ?bool = null,
     pic: ?bool = null,
     strip: ?bool = null,
     function_sections: ?bool = null,
@@ -1287,6 +1288,34 @@ const module_test_targets = blk: {
                 .abi = .gnux32,
             },
             .link_libc = true,
+        },
+        .{
+            .target = .{
+                .cpu_arch = .x86_64,
+                .os_tag = .linux,
+            },
+            .new_linker = true,
+            .skip_modules = &.{ "compiler-rt", "behavior" }, // '@export' with '.internal' linkage
+        },
+        .{
+            .target = .{
+                .cpu_arch = .x86_64,
+                .os_tag = .linux,
+                .abi = .musl,
+            },
+            .link_libc = true,
+            .new_linker = true,
+            .skip_modules = &.{ "compiler-rt", "behavior" }, // '@export' with '.internal' linkage
+        },
+        .{
+            .target = .{
+                .cpu_arch = .x86_64,
+                .os_tag = .linux,
+                .abi = .gnu,
+            },
+            .link_libc = true,
+            .new_linker = true,
+            .skip_modules = &.{ "compiler-rt", "behavior" }, // '@export' with '.internal' linkage
         },
 
         // Darwin Targets
@@ -2821,6 +2850,7 @@ fn addOneModuleTest(
         .zig_lib_dir = b.path("lib"),
     });
     these_tests.linkage = test_target.linkage;
+    these_tests.use_new_linker = test_target.new_linker;
     // https://codeberg.org/ziglang/zig/issues/31701
     if (!(mem.eql(u8, options.name, "compiler-rt") or mem.eql(u8, options.name, "libc"))) {
         if (options.no_builtin) these_tests.root_module.no_builtin = true;
@@ -2847,7 +2877,11 @@ fn addOneModuleTest(
         "-selfhosted"
     else
         "";
-    const use_lld = if (test_target.use_lld == false) "-no-lld" else "";
+    const linker_suffix: []const u8 = s: {
+        if (test_target.new_linker == true) break :s "-new-linker";
+        if (test_target.use_lld == false) break :s "-no-lld";
+        break :s "";
+    };
     const linkage_name = if (test_target.linkage) |linkage| switch (linkage) {
         inline else => |t| "-" ++ @tagName(t),
     } else "";
@@ -2863,7 +2897,7 @@ fn addOneModuleTest(
         libc_suffix,
         single_threaded_suffix,
         backend_suffix,
-        use_lld,
+        linker_suffix,
         linkage_name,
         use_pic,
     });

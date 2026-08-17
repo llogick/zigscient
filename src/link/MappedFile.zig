@@ -856,19 +856,20 @@ fn resizeNode(
         ni.setLocationAssumeCapacity(mf, old_offset, new_size);
         return;
     }
-    if (is_linux and !mf.flags.fallocate_insert_range_unsupported and
-        node.flags.alignment.order(mf.flags.block_size).compare(.gte))
     insert_range: {
+        if (!is_linux) break :insert_range;
+        if (mf.flags.fallocate_insert_range_unsupported) break :insert_range;
+
+        // We need the node to be aligned to `mf.flags.block_size` in the file in order to use this
+        // fast path. It is not sufficient to check `node.flags.alignment`, because that doesn't
+        // necessarily mean that all *parent* nodes are equally aligned; instead we must compute the
+        // actual file offset.
         const range_file_offset = ni.fileLocation(mf, false).offset + old_size;
         const range_size = node.flags.alignment.forward(
             @intCast(requested_size +| requested_size / growth_factor),
         ) - old_size;
-
-        // If this node is being realigned, its current state might not
-        // meet the requirements for fallocate
-        if (!mf.flags.block_size.check(@intCast(range_file_offset)) or
-            !mf.flags.block_size.check(@intCast(range_size)))
-            break :insert_range;
+        if (!mf.flags.block_size.check(@intCast(range_file_offset))) break :insert_range;
+        if (!mf.flags.block_size.check(@intCast(range_size))) break :insert_range;
 
         mf.memory_map.write(io) catch |err| switch (err) {
             error.WouldBlock => return error.Unexpected, // file was not opened as non-blocking
@@ -1022,9 +1023,10 @@ fn resizeNode(
                 }
                 try mf.ensureCapacityForSetLocation(gpa);
                 if (parent.last != first_floating_ni) {
-                    first_floating.prev = parent.last;
+                    const old_last = parent.last;
+                    first_floating.prev = old_last;
                     parent.last = first_floating_ni;
-                    try parent.last.setNext(gpa, first_floating_ni, mf);
+                    try old_last.setNext(gpa, first_floating_ni, mf);
                     try last_fixed_ni.setNext(gpa, first_floating.next, mf);
                     switch (first_floating.next) {
                         .none => {},
@@ -1208,9 +1210,11 @@ fn moveRange(mf: *MappedFile, old_file_offset: u64, new_file_offset: u64, size: 
     // make a copy of this node at the new location
     try mf.copyRange(old_file_offset, new_file_offset, size);
     // delete the copy of this node at the old location
-    if (is_linux and !mf.flags.fallocate_punch_hole_unsupported and
-        size >= mf.flags.block_size.toByteUnits() * 2 - 1) while (true)
-        switch (linux.errno(linux.fallocate(
+    if (is_linux and
+        !mf.flags.fallocate_punch_hole_unsupported and
+        size >= mf.flags.block_size.toByteUnits() * 2 - 1)
+    {
+        while (true) switch (linux.errno(linux.fallocate(
             mf.memory_map.file.handle,
             linux.FALLOC.FL_PUNCH_HOLE | linux.FALLOC.FL_KEEP_SIZE,
             @intCast(old_file_offset),
@@ -1224,13 +1228,14 @@ fn moveRange(mf: *MappedFile, old_file_offset: u64, new_file_offset: u64, size: 
             .NOSPC => return error.NoSpaceLeft,
             .NOSYS, .OPNOTSUPP => {
                 mf.flags.fallocate_punch_hole_unsupported = true;
-                break;
+                break; // fall back to slow path
             },
             .PERM => return error.PermissionDenied,
             .SPIPE => return error.Unseekable,
             .TXTBSY => return error.FileBusy,
             else => |e| return std.posix.unexpectedErrno(e),
         };
+    }
     @memset(mf.memory_map.memory[@intCast(old_file_offset)..][0..@intCast(size)], 0);
 }
 

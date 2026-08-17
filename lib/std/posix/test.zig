@@ -64,42 +64,33 @@ const have_dl_phdr_info = posix.system.dl_phdr_info != void;
 const dl_phdr_info = if (have_dl_phdr_info) posix.dl_phdr_info else anyopaque;
 
 const IterFnError = error{
-    MissingPtLoadSegment,
-    MissingLoad,
+    MissingLoadSegment,
+    MissingEhdrLoadSegment,
     BadElfMagic,
-    FailedConsistencyCheck,
+    PhnumMismatch,
 };
 
 fn iter_fn(info: *dl_phdr_info, size: usize, counter: *usize) IterFnError!void {
     _ = size;
     // Count how many libraries are loaded
-    counter.* += @as(usize, 1);
+    counter.* += 1;
 
-    // The image should contain at least a PT.LOAD segment
-    if (info.phnum < 1) return error.MissingPtLoadSegment;
+    // The image should contain at least one loadable segment
+    if (info.phnum < 1) return error.MissingLoadSegment;
 
-    // Quick & dirty validation of the phdr pointers, make sure we're not
-    // pointing to some random gibberish
-    var i: usize = 0;
-    var found_load = false;
-    while (i < info.phnum) : (i += 1) {
-        const phdr = info.phdr[i];
-
+    // For some quick and dirty validation, find the phdr which contains the ELF
+    // header, and check it makes sense.
+    for (info.phdr[0..info.phnum]) |phdr| {
         if (phdr.type != .LOAD) continue;
-
-        const reloc_addr = info.addr + phdr.vaddr;
-        // Find the ELF header
-        const elf_header = @as(*elf.Ehdr, @ptrFromInt(reloc_addr - phdr.offset));
-        // Validate the magic
-        if (!mem.eql(u8, elf_header.e_ident[0..4], elf.MAGIC)) return error.BadElfMagic;
-        // Consistency check
-        if (elf_header.e_phnum != info.phnum) return error.FailedConsistencyCheck;
-
-        found_load = true;
+        if (phdr.offset != 0) continue;
+        // This segment holds the ELF header at the start
+        const ehdr: *elf.Ehdr = @ptrFromInt(info.addr + phdr.vaddr);
+        if (!mem.eql(u8, ehdr.e_ident[0..4], elf.MAGIC)) return error.BadElfMagic;
+        if (ehdr.e_phnum != info.phnum) return error.PhnumMismatch;
         break;
+    } else {
+        return error.MissingEhdrLoadSegment;
     }
-
-    if (!found_load) return error.MissingLoad;
 }
 
 test "dl_iterate_phdr" {
