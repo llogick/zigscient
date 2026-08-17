@@ -7995,14 +7995,14 @@ fn appendConstraints(
 fn intrinsicsAllowed(kind: enum { compiler_rt, libc }, scalar_ty: Type, target: *const std.Target) bool {
     if (!scalar_ty.isRuntimeFloat()) return true;
     const bits = scalar_ty.floatBits(target);
-    // Since upstream musl/msvc do not actually define the *f128 functions, llvm decides
-    // that it is a much better idea to just emit a call to the entirely wrong function as
-    // a fallback.  We wouldn't want any linker errors when trying to perform an operation
-    // that isn't actually implemented anywhere, now would we!
-    if (bits == 128 and target.cpu.arch.isX86() and !target.abi.isGnu()) return switch (kind) {
-        .compiler_rt => true,
-        .libc => false,
-    };
+    switch (kind) {
+        .compiler_rt => {},
+        // Since upstream musl/msvc do not actually define the *f128 functions, llvm decides
+        // that it is a much better idea to just emit a call to the entirely wrong function as
+        // a fallback.  We wouldn't want any linker errors when trying to perform an operation
+        // that isn't actually implemented anywhere, now would we!
+        .libc => if (bits == 128 and target.cpu.arch.isX86() and !target.abi.isGnu()) return false,
+    }
     return switch (std.zig.target.compilerRtFloatAbi(target, bits)) {
         .hard => true,
         .soft => false,
