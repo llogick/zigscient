@@ -1100,6 +1100,7 @@ const StackIterator = union(enum) {
                 const ret_addr = di.unwindFrame(io, unwind_context) catch |err| {
                     const pc = unwind_context.pc;
                     const fp = unwind_context.getFp();
+                    unwind_context.deinit();
                     it.* = .{ .fp = fp };
                     return .{ .switch_to_fp = .{
                         .address = pc,
