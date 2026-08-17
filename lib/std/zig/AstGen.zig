@@ -3489,10 +3489,10 @@ fn assignDestructureMaybeDecls(
                     // Typed alloc
                     const type_inst = try typeExpr(gz, scope, type_node);
                     const ptr = if (align_inst == .none) ptr: {
-                        const tag: Zir.Inst.Tag = if (is_const)
-                            .alloc
-                        else if (this_variable_comptime)
+                        const tag: Zir.Inst.Tag = if (this_variable_comptime)
                             .alloc_comptime_mut
+                        else if (is_const)
+                            .alloc
                         else
                             .alloc_mut;
                         break :ptr try gz.addUnNode(tag, type_inst, node);

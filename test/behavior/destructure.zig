@@ -27,14 +27,16 @@ test "destructure with comptime syntax" {
         fn doTheTest() !void {
             {
                 comptime var x: f32 = undefined;
-                comptime x, const y, var z = .{ 0.5, 123, 456 }; // z is a comptime var
+                comptime x, const y, var z, const w: u32 = .{ 0.5, 123, 456, 789 }; // z is a comptime var
                 _ = &z;
 
                 comptime assert(@TypeOf(y) == comptime_int);
                 comptime assert(@TypeOf(z) == comptime_int);
+                comptime assert(@TypeOf(w) == u32);
                 comptime assert(x == 0.5);
                 comptime assert(y == 123);
                 comptime assert(z == 456);
+                comptime assert(w == 789);
             }
             {
                 var w: u8, var x: u8 = .{ 1, 2 };
