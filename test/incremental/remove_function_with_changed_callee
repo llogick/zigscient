@@ -1,0 +1,50 @@
+#update=initial version
+#file=main.zig
+const std = @import("std");
+const io = std.Io.Threaded.global_single_threaded.io();
+
+const A = enum(u32) {
+    zero,
+    one,
+};
+
+fn foo() !void {
+    try bar(.zero);
+}
+
+fn bar(a: A) !void {
+    const msg = switch (a) {
+        .zero => "0",
+        .one => "1",
+    };
+    try std.Io.File.stdout().writeStreamingAll(io, msg);
+}
+
+pub fn main() !void {
+    try foo();
+}
+#expect_stdout="0"
+#update=remove foo and change bar wasm function type
+#file=main.zig
+//! This update must preserve `bar` `InternPool.Index` value, while changing its wasm function type.
+//! If `foo` code is preserved in the binary without any changes, wasm type checking will fail.
+const std = @import("std");
+const io = std.Io.Threaded.global_single_threaded.io();
+
+const A = enum(u64) {
+    zero,
+    one,
+};
+
+fn bar(a: A) !void {
+    const msg = switch (a) {
+        .zero => "0",
+        .one => "1",
+    };
+    try std.Io.File.stdout().writeStreamingAll(io, msg);
+}
+
+pub fn main() !void {
+    try bar(.one);
+}
+#expect_stdout="1"

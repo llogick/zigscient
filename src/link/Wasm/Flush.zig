@@ -249,6 +249,7 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
     };
     const is_obj = comp.config.output_mode == .Obj;
     const allow_undefined = is_obj or wasm.import_symbols;
+    const zcu_references = if (comp.zcu) |zcu| try zcu.resolveReferences() else null;
 
     const entry_name = if (wasm.entry_resolution.isNavOrUnresolved(wasm)) wasm.entry_name else .none;
 
@@ -1223,6 +1224,14 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
                         try emitTagIndexFunction(wasm, binary_bytes, ip_index);
                     },
                     else => {
+                        if (!zcu_references.?.contains(.wrap(.{ .func = ip_index }))) {
+                            try binary_bytes.appendSlice(gpa, &.{
+                                0, // no locals
+                                @backingInt(std.wasm.Opcode.@"unreachable"),
+                                @backingInt(std.wasm.Opcode.end),
+                            });
+                            continue;
+                        }
                         const func = i.value(wasm).function;
                         const mir: Mir = .{
                             .instructions = wasm.mir_instructions.slice().subslice(func.instructions_off, func.instructions_len),

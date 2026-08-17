@@ -3754,9 +3754,6 @@ pub fn updateExports(
     const ip = &zcu.intern_pool;
     const is_obj = wasm.base.comp.config.output_mode == .Obj;
 
-    wasm.nav_exports.clearRetainingCapacity();
-    wasm.uav_exports.clearRetainingCapacity();
-
     for (export_indices) |export_idx| {
         const exp = export_idx.ptr(zcu);
         const name_slice = exp.opts.name.toSlice(ip);

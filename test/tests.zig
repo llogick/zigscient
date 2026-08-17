@@ -2266,8 +2266,7 @@ const incremental_targets: []const []const u8 = &.{
     "x86_64-linux-selfhosted",
     // https://codeberg.org/ziglang/zig/issues/31773
     //"x86_64-windows-selfhosted",
-    // https://codeberg.org/ziglang/zig/issues/31810
-    //"wasm32-wasi-selfhosted",
+    "wasm32-wasi-selfhosted",
 };
 
 fn compatible32bitArch(host: *const std.Target) ?std.Target.Cpu.Arch {
@@ -3282,7 +3281,12 @@ pub fn addDebuggerTests(b: *std.Build, options: DebuggerContext.Options) ?*Step 
     return step;
 }
 
-pub fn addIncrementalTests(b: *std.Build, test_step: *Step, test_filters: []const []const u8) !void {
+pub fn addIncrementalTests(
+    b: *std.Build,
+    test_step: *Step,
+    test_filters: []const []const u8,
+    test_target_filters: []const []const u8,
+) !void {
     const io = b.graph.io;
 
     const incr_check = b.addExecutable(.{
@@ -3317,6 +3321,12 @@ pub fn addIncrementalTests(b: *std.Build, test_step: *Step, test_filters: []cons
         b.dependOnFileContents(b.path(b.pathJoin(&.{ "test", "incremental", entry.path })));
 
         for (incremental_targets) |target_str| {
+            if (test_target_filters.len > 0) {
+                for (test_target_filters) |filter| {
+                    if (std.mem.find(u8, target_str, filter) != null) break;
+                } else continue;
+            }
+
             const run = b.addRunArtifact(incr_check);
             run.setName(b.fmt("incr-check {s} '{s}'", .{ target_str, entry.basename }));
 
