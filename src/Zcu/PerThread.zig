@@ -3436,7 +3436,7 @@ fn analyzeFuncBodyInner(
         sema.air_instructions.appendAssumeCapacity(.{
             .tag = .arg,
             .data = .{ .arg = .{
-                .ty = .fromIntern(param_ty.toIntern()),
+                .ty = param_ty,
                 .zir_param_index = @intCast(zir_param_index),
             } },
         });

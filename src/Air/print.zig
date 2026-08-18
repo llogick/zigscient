@@ -396,20 +396,20 @@ const Writer = struct {
 
     fn writeArg(w: *Writer, s: *std.Io.Writer, inst: Air.Inst.Index) Error!void {
         const arg = w.air.instructions.items(.data)[@backingInt(inst)].arg;
-        try w.writeType(s, arg.ty.toType());
+        try w.writeType(s, arg.ty);
         try s.print(", {d}", .{arg.zir_param_index});
     }
 
     fn writeTyOp(w: *Writer, s: *std.Io.Writer, inst: Air.Inst.Index) Error!void {
         const ty_op = w.air.instructions.items(.data)[@backingInt(inst)].ty_op;
-        try w.writeType(s, ty_op.ty.toType());
+        try w.writeType(s, ty_op.ty);
         try s.writeAll(", ");
         try w.writeOperand(s, inst, 0, ty_op.operand);
     }
 
     fn writeBlock(w: *Writer, s: *std.Io.Writer, tag: Air.Inst.Tag, inst: Air.Inst.Index) Error!void {
         const ty_pl = w.air.instructions.items(.data)[@backingInt(inst)].ty_pl;
-        try w.writeType(s, ty_pl.ty.toType());
+        try w.writeType(s, ty_pl.ty);
 
         const body = switch (tag) {
             .block => w.air.unwrapBlock(inst).body,
@@ -457,7 +457,7 @@ const Writer = struct {
     fn writeAggregateInit(w: *Writer, s: *std.Io.Writer, inst: Air.Inst.Index) Error!void {
         const zcu = w.pt.zcu;
         const ty_pl = w.air.instructions.items(.data)[@backingInt(inst)].ty_pl;
-        const vector_ty = ty_pl.ty.toType();
+        const vector_ty = ty_pl.ty;
         const len = @as(usize, @intCast(vector_ty.arrayLen(zcu)));
         const elements = @as([]const Air.Inst.Ref, @ptrCast(w.air.extra.items[ty_pl.payload..][0..len]));
 
@@ -491,7 +491,7 @@ const Writer = struct {
         const ty_pl = data[@backingInt(inst)].ty_pl;
         const extra = w.air.extraData(Air.Bin, ty_pl.payload).data;
 
-        const inst_ty = data[@backingInt(inst)].ty_pl.ty.toType();
+        const inst_ty = data[@backingInt(inst)].ty_pl.ty;
         try w.writeType(s, inst_ty);
         try s.writeAll(", ");
         try w.writeOperand(s, inst, 0, extra.lhs);
@@ -617,7 +617,7 @@ const Writer = struct {
     fn writeRuntimeNavPtr(w: *Writer, s: *std.Io.Writer, inst: Air.Inst.Index) Error!void {
         const ip = &w.pt.zcu.intern_pool;
         const ty_nav = w.air.instructions.items(.data)[@backingInt(inst)].ty_nav;
-        try w.writeType(s, .fromInterned(ty_nav.ty));
+        try w.writeType(s, ty_nav.ty);
         try s.print(", '{f}'", .{ip.getNav(ty_nav.nav).fqn.fmt(ip)});
     }
 
@@ -808,7 +808,7 @@ const Writer = struct {
         try w.writeOperand(s, inst, 0, unwrapped_try.error_union_ptr);
 
         try s.writeAll(", ");
-        try w.writeType(s, unwrapped_try.error_union_payload_ptr_ty.toType());
+        try w.writeType(s, unwrapped_try.error_union_payload_ptr_ty);
         if (w.skip_body) return s.writeAll(", ...");
         try s.writeAll(", {\n");
         const old_indent = w.indent;

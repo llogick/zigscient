@@ -343,7 +343,7 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
             // big tombs
             .aggregate_init => {
                 const ty_pl = data[@backingInt(inst)].ty_pl;
-                const aggregate_ty = ty_pl.ty.toType();
+                const aggregate_ty = ty_pl.ty;
                 const len = @as(usize, @intCast(aggregate_ty.arrayLenIp(ip)));
                 const elements = @as([]const Air.Inst.Ref, @ptrCast(self.air.extra.items[ty_pl.payload..][0..len]));
 
@@ -453,7 +453,7 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
             },
             .block, .dbg_inline_block => |tag| {
                 const ty_pl = data[@backingInt(inst)].ty_pl;
-                const block_ty = ty_pl.ty.toType();
+                const block_ty = ty_pl.ty;
                 const block_body = switch (tag) {
                     .block => self.air.unwrapBlock(inst).body,
                     .dbg_inline_block => self.air.unwrapDbgBlock(inst).body,

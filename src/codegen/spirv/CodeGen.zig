@@ -7064,7 +7064,7 @@ fn airFieldParentPtr(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     const ty_pl = cg.air.instructions.items(.data)[@backingInt(inst)].ty_pl;
     const extra = cg.air.extraData(Air.FieldParentPtr, ty_pl.payload).data;
 
-    const parent_ptr_ty = ty_pl.ty.toType();
+    const parent_ptr_ty = ty_pl.ty;
     const parent_ty = parent_ptr_ty.childType(zcu);
     const result_ty_id = try cg.resolveType(parent_ptr_ty, .indirect);
 

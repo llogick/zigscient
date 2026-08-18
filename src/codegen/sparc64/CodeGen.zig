@@ -2650,7 +2650,7 @@ fn airWrapErrUnionErr(self: *Self, inst: Air.Inst.Index) !void {
     const zcu = pt.zcu;
     const ty_op = self.air.instructions.items(.data)[@backingInt(inst)].ty_op;
     const result: MCValue = if (self.liveness.isUnused(inst)) .dead else result: {
-        const error_union_ty = ty_op.ty.toType();
+        const error_union_ty = ty_op.ty;
         const payload_ty = error_union_ty.errorUnionPayload(zcu);
         const mcv = try self.resolveInst(ty_op.operand);
         if (!payload_ty.hasRuntimeBits(zcu)) break :result mcv;

@@ -1591,7 +1591,7 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
         .int_cast => {
             const ty_op = cg.air.instructions.items(.data)[@backingInt(inst)].ty_op;
 
-            const dest_ty = ty_op.ty.toType();
+            const dest_ty = ty_op.ty;
             const operand = try cg.resolveInst(ty_op.operand);
             const src_ty = cg.typeOf(ty_op.operand);
 
@@ -1620,7 +1620,7 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
             const ty_op = cg.air.instructions.items(.data)[@backingInt(inst)].ty_op;
 
             const operand = try cg.resolveInst(ty_op.operand);
-            const dest_ty = ty_op.ty.toType();
+            const dest_ty = ty_op.ty;
             const src_ty = cg.typeOf(ty_op.operand);
 
             if (dest_ty.zigTypeTag(zcu) == .vector or src_ty.zigTypeTag(zcu) == .vector) {
@@ -2385,7 +2385,7 @@ fn airLoad(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     const zcu = pt.zcu;
     const ty_op = cg.air.instructions.items(.data)[@backingInt(inst)].ty_op;
     const operand = try cg.resolveInst(ty_op.operand);
-    const elem_ty = ty_op.ty.toType();
+    const elem_ty = ty_op.ty;
     const ptr_ty = cg.typeOf(ty_op.operand);
     const ptr_info = ptr_ty.ptrInfo(zcu);
 
@@ -6176,7 +6176,7 @@ fn airWrapErrUnionErr(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     const ty_op = cg.air.instructions.items(.data)[@backingInt(inst)].ty_op;
 
     const operand = try cg.resolveInst(ty_op.operand);
-    const err_ty = ty_op.ty.toType();
+    const err_ty = ty_op.ty;
     const pl_ty = err_ty.errorUnionPayload(zcu);
 
     const result = result: {
@@ -6402,7 +6402,7 @@ fn airSliceElemPtr(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     const ty_pl = cg.air.instructions.items(.data)[@backingInt(inst)].ty_pl;
     const bin_op = cg.air.extraData(Air.Bin, ty_pl.payload).data;
 
-    const elem_ty = ty_pl.ty.toType().childType(zcu);
+    const elem_ty = ty_pl.ty.childType(zcu);
     const elem_size = elem_ty.abiSize(zcu);
 
     const slice = try cg.resolveInst(bin_op.lhs);
@@ -6441,7 +6441,7 @@ fn airArrayToSlice(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
 
     const operand = try cg.resolveInst(ty_op.operand);
     const array_ty = cg.typeOf(ty_op.operand).childType(zcu);
-    const slice_ty = ty_op.ty.toType();
+    const slice_ty = ty_op.ty;
 
     // create a slice on the stack
     const slice_local = try cg.allocStack(slice_ty);
@@ -6489,7 +6489,7 @@ fn airPtrElemPtr(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     const bin_op = cg.air.extraData(Air.Bin, ty_pl.payload).data;
 
     const ptr_ty = cg.typeOf(bin_op.lhs);
-    const elem_ty = ty_pl.ty.toType().childType(zcu);
+    const elem_ty = ty_pl.ty.childType(zcu);
     const elem_size = elem_ty.abiSize(zcu);
 
     const ptr = try cg.resolveInst(bin_op.lhs);
@@ -7499,7 +7499,7 @@ fn airErrorSetHasValue(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     const ty_op = cg.air.instructions.items(.data)[@backingInt(inst)].ty_op;
 
     const operand = try cg.resolveInst(ty_op.operand);
-    const error_set_ty = ty_op.ty.toType();
+    const error_set_ty = ty_op.ty;
     const result = try cg.allocLocal(Type.bool);
 
     const names = error_set_ty.errorSetNames(zcu);

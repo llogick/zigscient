@@ -470,7 +470,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .shl_with_overflow,
             => |air_tag| if (l.features.has(comptime .scalarize(air_tag))) {
                 const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
-                if (ty_pl.ty.toType().fieldType(0, zcu).isVector(zcu)) {
+                if (ty_pl.ty.fieldType(0, zcu).isVector(zcu)) {
                     continue :inst l.replaceInst(inst, .block, try l.scalarizeOverflowBlockPayload(inst));
                 }
             },
@@ -527,27 +527,27 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .trunc,
             => |air_tag| if (l.features.has(comptime .scalarize(air_tag))) {
                 const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
-                if (ty_op.ty.toType().isVector(zcu)) {
+                if (ty_op.ty.isVector(zcu)) {
                     continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .ty_op));
                 }
             },
             .abs => {
                 const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
-                switch (l.wantScalarizeOrSoftFloat(.abs, ty_op.ty.toType())) {
+                switch (l.wantScalarizeOrSoftFloat(.abs, ty_op.ty)) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .ty_op)),
                     .soft_float => continue :inst try l.compilerRtCall(
                         inst,
-                        softFloatFunc(.abs, ty_op.ty.toType(), zcu),
+                        softFloatFunc(.abs, ty_op.ty, zcu),
                         &.{ty_op.operand},
-                        ty_op.ty.toType(),
+                        ty_op.ty,
                     ),
                 }
             },
             .fptrunc => {
                 const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 const src_ty = l.typeOf(ty_op.operand);
-                const dest_ty = ty_op.ty.toType();
+                const dest_ty = ty_op.ty;
                 if (src_ty.zigTypeTag(zcu) == .vector) {
                     if (l.features.has(.scalarize_fptrunc) or
                         l.wantSoftFloatScalar(src_ty.childType(zcu)) or
@@ -562,7 +562,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .fpext => {
                 const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 const src_ty = l.typeOf(ty_op.operand);
-                const dest_ty = ty_op.ty.toType();
+                const dest_ty = ty_op.ty;
                 if (src_ty.zigTypeTag(zcu) == .vector) {
                     if (l.features.has(.scalarize_fpext) or
                         l.wantSoftFloatScalar(src_ty.childType(zcu)) or
@@ -580,14 +580,14 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .ty_op)),
                     .soft_float => switch (try l.softIntFromFloat(inst)) {
-                        .call => |func| continue :inst try l.compilerRtCall(inst, func, &.{ty_op.operand}, ty_op.ty.toType()),
+                        .call => |func| continue :inst try l.compilerRtCall(inst, func, &.{ty_op.operand}, ty_op.ty),
                         .block_payload => |data| continue :inst l.replaceInst(inst, .block, data),
                     },
                 }
             },
             .float_from_int => {
                 const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
-                const dest_ty = ty_op.ty.toType();
+                const dest_ty = ty_op.ty;
                 switch (l.wantScalarizeOrSoftFloat(.float_from_int, dest_ty)) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .ty_op)),
@@ -630,7 +630,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                 continue :inst l.replaceInst(inst, .int_cast, .{ .ty_op = ty_op });
             } else if (l.features.has(.scalarize_int_cast_safe)) {
                 const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
-                if (ty_op.ty.toType().isVector(zcu)) {
+                if (ty_op.ty.isVector(zcu)) {
                     continue :inst l.replaceInst(inst, .block, try l.scalarizeBlockPayload(inst, .ty_op));
                 }
             },
@@ -875,7 +875,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                     switch (vector_ty.vectorLen(zcu)) {
                         0 => unreachable,
                         1 => continue :inst l.replaceInst(inst, .bit_cast, .{ .ty_op = .{
-                            .ty = .fromType(vector_ty.childType(zcu)),
+                            .ty = vector_ty.childType(zcu),
                             .operand = reduce.operand,
                         } }),
                         else => {},
@@ -893,7 +893,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             },
             .splat => if (l.features.has(.splat_one_elem_to_bit_cast)) {
                 const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
-                switch (ty_op.ty.toType().vectorLen(zcu)) {
+                switch (ty_op.ty.vectorLen(zcu)) {
                     0 => unreachable,
                     1 => continue :inst l.replaceInst(inst, .bit_cast, .{ .ty_op = .{
                         .ty = ty_op.ty,
@@ -904,7 +904,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             },
             .shuffle_one => {
                 const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
-                switch (l.wantScalarizeOrSoftFloat(.shuffle_one, ty_pl.ty.toType())) {
+                switch (l.wantScalarizeOrSoftFloat(.shuffle_one, ty_pl.ty)) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeShuffleOneBlockPayload(inst)),
                     .soft_float => unreachable, // the operand is not a scalar
@@ -912,7 +912,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             },
             .shuffle_two => {
                 const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
-                switch (l.wantScalarizeOrSoftFloat(.shuffle_two, ty_pl.ty.toType())) {
+                switch (l.wantScalarizeOrSoftFloat(.shuffle_two, ty_pl.ty)) {
                     .none => {},
                     .scalarize => continue :inst l.replaceInst(inst, .block, try l.scalarizeShuffleTwoBlockPayload(inst)),
                     .soft_float => unreachable, // the operand is not a scalar
@@ -946,7 +946,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             => {},
             .aggregate_init => if (l.features.has(.expand_packed_aggregate_init)) {
                 const ty_pl = l.air_instructions.items(.data)[@backingInt(inst)].ty_pl;
-                const agg_ty = ty_pl.ty.toType();
+                const agg_ty = ty_pl.ty;
                 switch (agg_ty.zigTypeTag(zcu)) {
                     else => {},
                     .@"union" => unreachable,
@@ -962,7 +962,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                                 if (field_bits == struct_bits) {
                                     // Just bitcast this field.
                                     continue :inst l.replaceInst(inst, .bit_cast, .{ .ty_op = .{
-                                        .ty = .fromType(agg_ty),
+                                        .ty = agg_ty,
                                         .operand = @fromBackingInt(@intCast(l.air_extra.items[ty_pl.payload + field_index])),
                                     } });
                                 }
@@ -1152,7 +1152,7 @@ fn scalarizeBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, form: Scalariz
             const elem_block_inst = loop.block.add(l, .{
                 .tag = .block,
                 .data = .{ .ty_pl = .{
-                    .ty = .fromType(res_elem_ty),
+                    .ty = res_elem_ty,
                     .payload = undefined,
                 } },
             });
@@ -1182,7 +1182,7 @@ fn scalarizeBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, form: Scalariz
         const elem_ptr = loop.block.add(l, .{
             .tag = .ptr_elem_ptr,
             .data = .{ .ty_pl = .{
-                .ty = .fromType(try pt.singleMutPtrType(res_elem_ty)),
+                .ty = try pt.singleMutPtrType(res_elem_ty),
                 .payload = try l.addExtra(Air.Bin, .{
                     .lhs = result_ptr,
                     .rhs = index_val,
@@ -1223,7 +1223,7 @@ fn scalarizeBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, form: Scalariz
     try loop.finish(l);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(res_ty),
+        .ty = res_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -1303,7 +1303,7 @@ fn scalarizeShuffleOneBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Erro
     main_block.addBr(l, orig_inst, result_val);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(shuffle.result_ty),
+        .ty = shuffle.result_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -1409,7 +1409,7 @@ fn scalarizeShuffleTwoBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Erro
     main_block.addBr(l, orig_inst, result_val);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(shuffle.result_ty),
+        .ty = shuffle.result_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -1478,7 +1478,7 @@ fn addScalarizedShuffle(
     const main_block_inst = parent_block.add(l, .{
         .tag = .block,
         .data = .{ .ty_pl = .{
-            .ty = .void_type,
+            .ty = .void,
             .payload = undefined,
         } },
     });
@@ -1532,7 +1532,7 @@ fn scalarizeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?
 
     const ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
 
-    const dest_ty = ty_op.ty.toType();
+    const dest_ty = ty_op.ty;
     const operand_ty = l.typeOf(ty_op.operand);
 
     // We exit this block only if the scalarization is actually necessary. Otherwise we will return
@@ -1677,7 +1677,7 @@ fn scalarizeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?
         const uint_block_inst = main_block.add(l, .{
             .tag = .block,
             .data = .{ .ty_pl = .{
-                .ty = .fromType(uint_ty),
+                .ty = uint_ty,
                 .payload = undefined,
             } },
         });
@@ -1746,7 +1746,7 @@ fn scalarizeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?
             .bit_cast_safe => main_block.add(l, .{
                 .tag = .bit_cast_safe,
                 .data = .{ .ty_op = .{
-                    .ty = .fromType(dest_ty),
+                    .ty = dest_ty,
                     .operand = uint_val,
                 } },
             }).toRef(),
@@ -1761,7 +1761,7 @@ fn scalarizeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?
         const result = main_block.add(l, .{
             .tag = .aggregate_init,
             .data = .{ .ty_pl = .{
-                .ty = .fromType(dest_ty),
+                .ty = dest_ty,
                 .payload = @intCast(aggregate_init_payload_start),
             } },
         }).toRef();
@@ -1814,7 +1814,7 @@ fn scalarizeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?
                 const elem_ptr = loop.block.add(l, .{
                     .tag = .ptr_elem_ptr,
                     .data = .{ .ty_pl = .{
-                        .ty = .fromType(try pt.singleMutPtrType(elem_ty)),
+                        .ty = try pt.singleMutPtrType(elem_ty),
                         .payload = try l.addExtra(Air.Bin, .{
                             .lhs = result_ptr,
                             .rhs = index_val,
@@ -1860,7 +1860,7 @@ fn scalarizeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?
     }
 
     return .{ .ty_pl = .{
-        .ty = .fromType(dest_ty),
+        .ty = dest_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -1942,14 +1942,14 @@ fn scalarizeOverflowBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!
     const elem_result = loop.block.add(l, .{
         .tag = orig.tag,
         .data = .{ .ty_pl = .{
-            .ty = .fromType(scalar_tuple_ty),
+            .ty = scalar_tuple_ty,
             .payload = try l.addExtra(Air.Bin, .{ .lhs = lhs, .rhs = rhs }),
         } },
     }).toRef();
     const int_elem = loop.block.add(l, .{
         .tag = .agg_field_val,
         .data = .{ .ty_pl = .{
-            .ty = .fromType(scalar_int_ty),
+            .ty = scalar_int_ty,
             .payload = try l.addExtra(Air.StructField, .{
                 .struct_operand = elem_result,
                 .field_index = 0,
@@ -1959,7 +1959,7 @@ fn scalarizeOverflowBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!
     const overflow_elem = loop.block.add(l, .{
         .tag = .agg_field_val,
         .data = .{ .ty_pl = .{
-            .ty = .u1_type,
+            .ty = .u1,
             .payload = try l.addExtra(Air.StructField, .{
                 .struct_operand = elem_result,
                 .field_index = 1,
@@ -2006,7 +2006,7 @@ fn scalarizeOverflowBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!
     try loop.finish(l);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(vec_tuple_ty),
+        .ty = vec_tuple_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -2133,7 +2133,7 @@ fn scalarizeReduceBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, optimize
     try loop.finish(l);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(scalar_ty),
+        .ty = scalar_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -2144,7 +2144,7 @@ fn safeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?Air.I
     const ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
 
     const operand_ref = ty_op.operand;
-    const dest_ty = ty_op.ty.toType();
+    const dest_ty = ty_op.ty;
 
     if (dest_ty.zigTypeTag(zcu) != .@"enum" or
         dest_ty.isNonexhaustiveEnum(zcu) or
@@ -2188,7 +2188,7 @@ fn safeBitcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?Air.I
     try condbr.finish(l);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(dest_ty),
+        .ty = dest_ty,
         .payload = try l.addBlockBody(block.body()),
     } };
 }
@@ -2200,7 +2200,7 @@ fn safeIntcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?Air.I
 
     const operand_ref = ty_op.operand;
     const operand_ty = l.typeOf(operand_ref);
-    const dest_ty = ty_op.ty.toType();
+    const dest_ty = ty_op.ty;
 
     const is_vector = operand_ty.zigTypeTag(zcu) == .vector;
     const operand_scalar_ty = operand_ty.scalarType(zcu);
@@ -2324,7 +2324,7 @@ fn safeIntcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?Air.I
     const cast_inst = cur_block.add(l, .{
         .tag = .int_cast,
         .data = .{ .ty_op = .{
-            .ty = Air.internedToRef(dest_ty.toIntern()),
+            .ty = dest_ty,
             .operand = operand_ref,
         } },
     });
@@ -2359,7 +2359,7 @@ fn safeIntcastBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!?Air.I
     assert(condbr_idx != 0); // should have already returned `null`
     for (condbr_buf[0..condbr_idx]) |*condbr| try condbr.finish(l);
     return .{ .ty_pl = .{
-        .ty = Air.internedToRef(dest_ty.toIntern()),
+        .ty = dest_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -2371,7 +2371,7 @@ fn safeIntFromFloatBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, optimiz
 
     const operand_ref = ty_op.operand;
     const operand_ty = l.typeOf(operand_ref);
-    const dest_ty = ty_op.ty.toType();
+    const dest_ty = ty_op.ty;
 
     const is_vector = operand_ty.zigTypeTag(zcu) == .vector;
     const dest_scalar_ty = dest_ty.scalarType(zcu);
@@ -2453,7 +2453,7 @@ fn safeIntFromFloatBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, optimiz
     const cast_inst = condbr.else_block.add(l, .{
         .tag = if (optimized) .int_from_float_optimized else .int_from_float,
         .data = .{ .ty_op = .{
-            .ty = Air.internedToRef(dest_ty.toIntern()),
+            .ty = dest_ty,
             .operand = operand_ref,
         } },
     });
@@ -2468,7 +2468,7 @@ fn safeIntFromFloatBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, optimiz
     try condbr.finish(l);
 
     return .{ .ty_pl = .{
-        .ty = Air.internedToRef(dest_ty.toIntern()),
+        .ty = dest_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -2505,7 +2505,7 @@ fn safeArithmeticBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, overflow_
     const overflow_op_inst = main_block.add(l, .{
         .tag = overflow_op_tag,
         .data = .{ .ty_pl = .{
-            .ty = Air.internedToRef(overflow_tuple_ty.toIntern()),
+            .ty = overflow_tuple_ty,
             .payload = try l.addExtra(Air.Bin, .{
                 .lhs = bin_op.lhs,
                 .rhs = bin_op.rhs,
@@ -2515,7 +2515,7 @@ fn safeArithmeticBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, overflow_
     const overflow_bits_inst = main_block.add(l, .{
         .tag = .agg_field_val,
         .data = .{ .ty_pl = .{
-            .ty = Air.internedToRef(overflow_bits_ty.toIntern()),
+            .ty = overflow_bits_ty,
             .payload = try l.addExtra(Air.StructField, .{
                 .struct_operand = overflow_op_inst.toRef(),
                 .field_index = 1,
@@ -2539,7 +2539,7 @@ fn safeArithmeticBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, overflow_
     const result_inst = condbr.else_block.add(l, .{
         .tag = .agg_field_val,
         .data = .{ .ty_pl = .{
-            .ty = Air.internedToRef(operand_ty.toIntern()),
+            .ty = operand_ty,
             .payload = try l.addExtra(Air.StructField, .{
                 .struct_operand = overflow_op_inst.toRef(),
                 .field_index = 0,
@@ -2558,7 +2558,7 @@ fn safeArithmeticBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index, overflow_
 
     try condbr.finish(l);
     return .{ .ty_pl = .{
-        .ty = Air.internedToRef(operand_ty.toIntern()),
+        .ty = operand_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -2608,7 +2608,7 @@ fn divCeilBlockPayload(
 
             _ = main_block.stealRemainingCapacity();
             return .{ .ty_pl = .{
-                .ty = .fromType(operand_ty),
+                .ty = operand_ty,
                 .payload = try l.addBlockBody(main_block.body()),
             } };
         },
@@ -2707,7 +2707,7 @@ fn divCeilBlockPayload(
 
             _ = main_block.stealRemainingCapacity();
             return .{ .ty_pl = .{
-                .ty = .fromType(operand_ty),
+                .ty = operand_ty,
                 .payload = try l.addBlockBody(main_block.body()),
             } };
         },
@@ -2721,7 +2721,7 @@ fn packedLoadBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.Ins
     const zcu = pt.zcu;
 
     const orig_ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
-    const res_ty = orig_ty_op.ty.toType();
+    const res_ty = orig_ty_op.ty;
     const res_int_ty = try pt.intType(.unsigned, @intCast(res_ty.bitSize(zcu)));
     const ptr_ty = l.typeOf(orig_ty_op.operand);
     const ptr_info = ptr_ty.ptrInfo(zcu);
@@ -2740,14 +2740,14 @@ fn packedLoadBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.Ins
             .operand = res_block.addBitCast(l, res_ty, res_block.add(l, .{
                 .tag = .trunc,
                 .data = .{ .ty_op = .{
-                    .ty = Air.internedToRef(res_int_ty.toIntern()),
+                    .ty = res_int_ty,
                     .operand = res_block.add(l, .{
                         .tag = .shr,
                         .data = .{ .bin_op = .{
                             .lhs = res_block.add(l, .{
                                 .tag = .load,
                                 .data = .{ .ty_op = .{
-                                    .ty = Air.internedToRef(load_ty.toIntern()),
+                                    .ty = load_ty,
                                     .operand = res_block.addPtrCast(l, load_ptr_ty: {
                                         var load_ptr_info = ptr_info;
                                         load_ptr_info.child = load_ty.toIntern();
@@ -2768,7 +2768,7 @@ fn packedLoadBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.Ins
         } },
     });
     return .{ .ty_pl = .{
-        .ty = Air.internedToRef(res_ty.toIntern()),
+        .ty = res_ty,
         .payload = try l.addBlockBody(res_block.body()),
     } };
 }
@@ -2811,7 +2811,7 @@ fn packedStoreBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.In
                                 .lhs = res_block.add(l, .{
                                     .tag = .load,
                                     .data = .{ .ty_op = .{
-                                        .ty = Air.internedToRef(load_store_ty.toIntern()),
+                                        .ty = load_store_ty,
                                         .operand = backing_ptr,
                                     } },
                                 }).toRef(),
@@ -2843,7 +2843,7 @@ fn packedStoreBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.In
                                 .lhs = res_block.add(l, .{
                                     .tag = .int_cast,
                                     .data = .{ .ty_op = .{
-                                        .ty = Air.internedToRef(load_store_ty.toIntern()),
+                                        .ty = load_store_ty,
                                         .operand = res_block.addBitCast(l, operand_int_ty, orig_bin_op.rhs),
                                     } },
                                 }).toRef(),
@@ -2866,7 +2866,7 @@ fn packedStoreBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.In
         });
     }
     return .{ .ty_pl = .{
-        .ty = .void_type,
+        .ty = .void,
         .payload = try l.addBlockBody(res_block.body()),
     } };
 }
@@ -2876,7 +2876,7 @@ fn packedStructFieldValBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Err
 
     const orig_ty_pl = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_pl;
     const orig_extra = l.extraData(Air.StructField, orig_ty_pl.payload).data;
-    const field_ty = orig_ty_pl.ty.toType();
+    const field_ty = orig_ty_pl.ty;
     const agg_ty = l.typeOf(orig_extra.struct_operand);
 
     const agg_bits: u16 = @intCast(agg_ty.bitSize(zcu));
@@ -2899,7 +2899,7 @@ fn packedStructFieldValBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Err
     main_block.addBr(l, orig_inst, field_val);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(field_ty),
+        .ty = field_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -2909,7 +2909,7 @@ fn packedAggregateInitBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Erro
     const gpa = zcu.gpa;
 
     const orig_ty_pl = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_pl;
-    const agg_ty = orig_ty_pl.ty.toType();
+    const agg_ty = orig_ty_pl.ty;
     const agg_field_count = agg_ty.structFieldCount(zcu);
     var opv_field_count: u32 = 0;
     for (0..agg_field_count) |field_idx| {
@@ -2954,7 +2954,7 @@ fn packedAggregateInitBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Erro
     main_block.addBr(l, orig_inst, result);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(agg_ty),
+        .ty = agg_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -2965,7 +2965,7 @@ fn arrayToVectorBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.
     const gpa = zcu.gpa;
 
     const orig_ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
-    const vec_ty = orig_ty_op.ty.toType();
+    const vec_ty = orig_ty_op.ty;
     const len: usize = @intCast(vec_ty.vectorLen(zcu));
 
     var bfa_buf: [64 + 2]Air.Inst.Index = undefined;
@@ -2989,14 +2989,14 @@ fn arrayToVectorBlockPayload(l: *Legalize, orig_inst: Air.Inst.Index) Error!Air.
     const result = main_block.add(l, .{
         .tag = .aggregate_init,
         .data = .{ .ty_pl = .{
-            .ty = .fromType(vec_ty),
+            .ty = vec_ty,
             .payload = elems_start,
         } },
     }).toRef();
     main_block.addBr(l, orig_inst, result);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(vec_ty),
+        .ty = vec_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -3080,7 +3080,7 @@ const Block = struct {
         return b.add(l, .{
             .tag = tag,
             .data = .{ .ty_op = .{
-                .ty = .fromType(ty),
+                .ty = ty,
                 .operand = operand,
             } },
         });
@@ -3146,7 +3146,7 @@ const Block = struct {
             return b.add(l, .{
                 .tag = if (opts.optimized) .cmp_vector_optimized else .cmp_vector,
                 .data = .{ .ty_pl = .{
-                    .ty = Air.internedToRef(bool_vec_ty.toIntern()),
+                    .ty = bool_vec_ty,
                     .payload = try l.addExtra(Air.VectorCmp, .{
                         .lhs = lhs,
                         .rhs = rhs,
@@ -3194,7 +3194,7 @@ const Block = struct {
         if (result_ty.toIntern() != operand_ty.toIntern()) return b.add(l, .{
             .tag = .bit_cast,
             .data = .{ .ty_op = .{
-                .ty = .fromType(result_ty),
+                .ty = result_ty,
                 .operand = operand,
             } },
         }).toRef();
@@ -3221,7 +3221,7 @@ const Block = struct {
         if (result_ty.toIntern() != operand_ty.toIntern()) return b.add(l, .{
             .tag = .ptr_cast,
             .data = .{ .ty_op = .{
-                .ty = .fromType(result_ty),
+                .ty = result_ty,
                 .operand = operand,
             } },
         }).toRef();
@@ -3343,7 +3343,7 @@ const Loop = struct {
             .inst = parent_block.add(l, .{
                 .tag = .loop,
                 .data = .{ .ty_pl = .{
-                    .ty = .noreturn_type,
+                    .ty = .noreturn,
                     .payload = undefined,
                 } },
             }),
@@ -3466,7 +3466,7 @@ fn compilerRtCall(
     main_block.addBr(l, orig_inst, casted_result);
 
     return l.replaceInst(orig_inst, .block, .{ .ty_pl = .{
-        .ty = .fromType(result_ty),
+        .ty = result_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } });
 }
@@ -3522,7 +3522,7 @@ fn softFloatFromInt(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
     const target = zcu.getTarget();
 
     const ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
-    const dest_ty = ty_op.ty.toType();
+    const dest_ty = ty_op.ty;
     const src_ty = l.typeOf(ty_op.operand);
 
     const src_info = src_ty.intInfo(zcu);
@@ -3568,7 +3568,7 @@ fn softFloatFromInt(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
         main_block.addBr(l, orig_inst, casted_result);
 
         return .{ .block_payload = .{ .ty_pl = .{
-            .ty = .fromType(dest_ty),
+            .ty = dest_ty,
             .payload = try l.addBlockBody(main_block.body()),
         } } };
     }
@@ -3602,7 +3602,7 @@ fn softFloatFromInt(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
     main_block.addBr(l, orig_inst, casted_result);
 
     return .{ .block_payload = .{ .ty_pl = .{
-        .ty = .fromType(dest_ty),
+        .ty = dest_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } } };
 }
@@ -3616,7 +3616,7 @@ fn softIntFromFloat(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
 
     const ty_op = l.air_instructions.items(.data)[@backingInt(orig_inst)].ty_op;
     const src_ty = l.typeOf(ty_op.operand);
-    const dest_ty = ty_op.ty.toType();
+    const dest_ty = ty_op.ty;
 
     const dest_info = dest_ty.intInfo(zcu);
     const float_off: u32 = switch (src_ty.floatBits(target)) {
@@ -3658,7 +3658,7 @@ fn softIntFromFloat(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
         main_block.addBr(l, orig_inst, casted_val);
 
         return .{ .block_payload = .{ .ty_pl = .{
-            .ty = .fromType(dest_ty),
+            .ty = dest_ty,
             .payload = try l.addBlockBody(main_block.body()),
         } } };
     }
@@ -3682,7 +3682,7 @@ fn softIntFromFloat(l: *Legalize, orig_inst: Air.Inst.Index) Error!union(enum) {
     main_block.addBr(l, orig_inst, result_val);
 
     return .{ .block_payload = .{ .ty_pl = .{
-        .ty = .fromType(dest_ty),
+        .ty = dest_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } } };
 }
@@ -3767,7 +3767,7 @@ fn softFloatNegBlockPayload(
     main_block.addBr(l, orig_inst, result);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(float_ty),
+        .ty = float_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -3801,7 +3801,7 @@ fn softFloatDivTruncFloorCeilBlockPayload(
     main_block.addBr(l, orig_inst, casted_result);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(float_ty),
+        .ty = float_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -3841,7 +3841,7 @@ fn softFloatModBlockPayload(
     try condbr.finish(l);
 
     return .{ .ty_pl = .{
-        .ty = .fromType(float_ty),
+        .ty = float_ty,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }
@@ -3864,7 +3864,7 @@ fn softFloatCmpBlockPayload(
     main_block.addBr(l, orig_inst, result);
 
     return .{ .ty_pl = .{
-        .ty = .bool_type,
+        .ty = .bool,
         .payload = try l.addBlockBody(main_block.body()),
     } };
 }

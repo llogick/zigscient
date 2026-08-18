@@ -1164,7 +1164,7 @@ fn airRetLoad(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!void {
 fn airCVaArg(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value {
     const ty_op = self.air.instructions.items(.data)[@backingInt(inst)].ty_op;
     const list = try self.resolveInst(ty_op.operand);
-    const arg_ty = ty_op.ty.toType();
+    const arg_ty = ty_op.ty;
     const llvm_arg_ty = try self.object.lowerType(arg_ty, .as_value);
 
     return self.wip.vaArg(list, llvm_arg_ty, "");
@@ -1175,7 +1175,7 @@ fn airCVaCopy(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Valu
     const zcu = o.zcu;
     const ty_op = self.air.instructions.items(.data)[@backingInt(inst)].ty_op;
     const src_list = try self.resolveInst(ty_op.operand);
-    const va_list_ty = ty_op.ty.toType();
+    const va_list_ty = ty_op.ty;
 
     const dest_list = try self.buildZigAlloca(va_list_ty, .none);
 
@@ -2393,11 +2393,11 @@ fn airFieldParentPtr(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Build
 
     const field_ptr = try self.resolveInst(extra.field_ptr);
 
-    const parent_ty = ty_pl.ty.toType().childType(zcu);
+    const parent_ty = ty_pl.ty.childType(zcu);
     const field_offset = parent_ty.structFieldOffset(extra.field_index, zcu);
     if (field_offset == 0) return field_ptr;
 
-    const res_ty = try o.lowerType(ty_pl.ty.toType(), .as_value);
+    const res_ty = try o.lowerType(ty_pl.ty, .as_value);
     const llvm_usize = try o.lowerType(.usize, .as_value);
 
     const field_ptr_int = try self.wip.cast(.ptrtoint, field_ptr, llvm_usize, "");
@@ -3191,7 +3191,7 @@ fn airSaveErrReturnTraceIndex(self: *FuncGen, inst: Air.Inst.Index) Allocator.Er
     const zcu = self.object.zcu;
 
     const ty_pl = self.air.instructions.items(.data)[@backingInt(inst)].ty_pl;
-    const struct_ty = ty_pl.ty.toType();
+    const struct_ty = ty_pl.ty;
     const field_index = ty_pl.payload;
 
     assert(self.err_ret_trace != .none);
@@ -5902,7 +5902,7 @@ fn airErrorSetHasValue(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Bui
     const ip = &zcu.intern_pool;
     const ty_op = self.air.instructions.items(.data)[@backingInt(inst)].ty_op;
     const operand = try self.resolveInst(ty_op.operand);
-    const error_set_ty = ty_op.ty.toType();
+    const error_set_ty = ty_op.ty;
 
     const names = error_set_ty.errorSetNames(zcu);
     const valid_block = try self.wip.block(@intCast(names.len), "Valid");

@@ -661,7 +661,7 @@ fn analyzeInst(
         },
         .aggregate_init => {
             const ty_pl = inst_datas[@backingInt(inst)].ty_pl;
-            const aggregate_ty = ty_pl.ty.toType();
+            const aggregate_ty = ty_pl.ty;
             const len = @as(usize, @intCast(aggregate_ty.arrayLenIp(ip)));
             const elements = @as([]const Air.Inst.Ref, @ptrCast(a.air.extra.items[ty_pl.payload..][0..len]));
 

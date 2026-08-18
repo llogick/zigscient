@@ -121,7 +121,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             .bit_cast, .bit_cast_safe => {
                 const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
-                const result_ty = ty_op.ty.toType();
+                const result_ty = ty_op.ty;
                 // Enums are allowed here even if their backing type is implicit.
                 if (!operand_ty.hasBitRepresentation(zcu) and operand_ty.zigTypeTag(zcu) != .@"enum") {
                     return verify.fail("bad operand type");
@@ -136,7 +136,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             .ptr_cast => {
                 const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
-                const result_ty = ty_op.ty.toType();
+                const result_ty = ty_op.ty;
                 const operand_scalar_ty = operand_ty.scalarType(zcu);
                 const result_scalar_ty = result_ty.scalarType(zcu);
                 if (operand_ty.isSliceAtRuntime(zcu)) {
@@ -154,7 +154,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             .ptr_from_int => {
                 const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
-                const result_ty = ty_op.ty.toType();
+                const result_ty = ty_op.ty;
                 const operand_scalar_ty = operand_ty.scalarType(zcu);
                 const result_scalar_ty = result_ty.scalarType(zcu);
                 if (operand_scalar_ty.toIntern() != .usize_type) return verify.fail("bad operand type");
@@ -165,7 +165,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             .int_from_ptr => {
                 const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
-                const result_ty = ty_op.ty.toType();
+                const result_ty = ty_op.ty;
                 const operand_scalar_ty = operand_ty.scalarType(zcu);
                 const result_scalar_ty = result_ty.scalarType(zcu);
                 if (!operand_scalar_ty.isPtrAtRuntime(zcu)) return verify.fail("bad operand type");
@@ -176,7 +176,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             .error_cast => {
                 const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
-                const result_ty = ty_op.ty.toType();
+                const result_ty = ty_op.ty;
                 switch (operand_ty.zigTypeTag(zcu)) {
                     else => return verify.fail("bad operand type"),
                     .error_union => {
@@ -195,7 +195,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             .error_from_int => {
                 const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
-                const result_ty = ty_op.ty.toType();
+                const result_ty = ty_op.ty;
                 if (!operand_ty.isUnsignedInt(zcu)) return verify.fail("bad operand type");
                 if (operand_ty.bitSize(zcu) != zcu.errorSetBits()) return verify.fail("bad operand bit size");
                 if (result_ty.zigTypeTag(zcu) != .error_set) return verify.fail("bad result type");
@@ -203,7 +203,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             .int_from_error => {
                 const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
-                const result_ty = ty_op.ty.toType();
+                const result_ty = ty_op.ty;
                 if (operand_ty.zigTypeTag(zcu) != .error_set) return verify.fail("bad operand type");
                 if (!result_ty.isUnsignedInt(zcu)) return verify.fail("bad result type");
                 if (result_ty.bitSize(zcu) != zcu.errorSetBits()) return verify.fail("bad result bit size");
@@ -211,7 +211,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
             .union_from_enum => {
                 const ty_op = data[@backingInt(inst)].ty_op;
                 const operand_ty = air.typeOf(ty_op.operand, ip);
-                const result_ty = ty_op.ty.toType();
+                const result_ty = ty_op.ty;
                 if (operand_ty.zigTypeTag(zcu) != .@"enum") return verify.fail("bad operand type");
                 if (result_ty.zigTypeTag(zcu) != .@"union") return verify.fail("bad result type");
                 const union_tag_ty = result_ty.unionTagType(zcu) orelse return verify.fail("union type is not tagged");
@@ -222,7 +222,7 @@ fn body(verify: *Verify, body_insts: []const Air.Inst.Index) Error!void {
                 const ty_pl = data[@backingInt(inst)].ty_pl;
                 const bin_op = air.extraData(Air.Bin, ty_pl.payload).data;
                 const ptr_ty = air.typeOf(bin_op.lhs, ip);
-                const result_ty = ty_pl.ty.toType();
+                const result_ty = ty_pl.ty;
                 if (ptr_ty.zigTypeTag(zcu) != .pointer) return verify.fail("bad pointer type");
                 if (result_ty.zigTypeTag(zcu) != .pointer) return verify.fail("bad result type");
                 const ptr_info = ptr_ty.ptrInfo(zcu);
