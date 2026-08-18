@@ -133,6 +133,7 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                                 .import_symbols = c.import_symbols,
                                 .import_table = c.import_table,
                                 .export_table = c.export_table,
+                                .growable_table = c.growable_table,
                                 .shared_memory = c.shared_memory,
                                 .link_eh_frame_hdr = c.link_eh_frame_hdr,
                                 .link_emit_relocs = c.link_emit_relocs,

@@ -953,6 +953,7 @@ pub const Step = extern struct {
             import_symbols: bool,
             import_table: bool,
             export_table: bool,
+            growable_table: bool,
             shared_memory: bool,
             link_eh_frame_hdr: bool,
             link_emit_relocs: bool,
@@ -968,7 +969,6 @@ pub const Step = extern struct {
             force_load_objc: bool,
             discard_local_symbols: bool,
             mingw_unicode_entry_point: bool,
-            _: u1 = 0,
         };
 
         pub const Flags2 = packed struct(u32) {

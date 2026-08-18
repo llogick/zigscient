@@ -166,6 +166,8 @@ const Wasm = struct {
     import_table: bool,
     /// When true, will export the function table to the host environment.
     export_table: bool,
+    /// When true, remove maximum size from function table, allowing table to grow.
+    growable_table: bool,
     /// When defined, sets the initial memory size of the memory.
     initial_memory: ?u64,
     /// When defined, sets the maximum memory size of the memory.
@@ -190,6 +192,7 @@ const Wasm = struct {
             },
             .import_table = options.import_table,
             .export_table = options.export_table,
+            .growable_table = options.growable_table,
             .initial_memory = options.initial_memory,
             .max_memory = options.max_memory,
             .global_base = options.global_base,
@@ -1463,6 +1466,10 @@ fn wasmLink(lld: *Lld, arena: Allocator) !void {
         if (wasm.export_table) {
             assert(!wasm.import_table);
             try argv.append("--export-table");
+        }
+
+        if (wasm.growable_table) {
+            try argv.append("--growable-table");
         }
 
         // For wasm-ld we only need to specify '--no-gc-sections' when the user explicitly

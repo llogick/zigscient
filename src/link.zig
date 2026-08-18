@@ -444,6 +444,7 @@ pub const File = struct {
         import_symbols: bool,
         import_table: bool,
         export_table: bool,
+        growable_table: bool,
         initial_memory: ?u64,
         max_memory: ?u64,
         object_host_name: ?[]const u8,

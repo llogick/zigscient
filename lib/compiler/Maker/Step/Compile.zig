@@ -767,6 +767,7 @@ fn lowerZigArgs(
     try addBool(gpa, zig_args, "--import-symbols", conf_comp.flags.import_symbols);
     try addBool(gpa, zig_args, "--import-table", conf_comp.flags.import_table);
     try addBool(gpa, zig_args, "--export-table", conf_comp.flags.export_table);
+    try addBool(gpa, zig_args, "--growable-table", conf_comp.flags.growable_table);
     try addBool(gpa, zig_args, "--shared-memory", conf_comp.flags.shared_memory);
 
     {

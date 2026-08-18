@@ -75,6 +75,8 @@ initial_memory: ?u64,
 max_memory: ?u64,
 /// When true, will export the function table to the host environment.
 export_table: bool,
+/// When true, remove maximum size from function table, allowing table to grow.
+growable_table: bool,
 /// Output name of the file
 name: []const u8,
 /// List of relocatable files to be linked into the final binary.
@@ -1535,7 +1537,7 @@ pub const TableImport = extern struct {
             return switch (unpack(r)) {
                 .unresolved => unreachable,
                 .__indirect_function_table => .{
-                    .flags = .{ .has_max = true, .is_shared = false },
+                    .flags = .{ .has_max = !wasm.growable_table, .is_shared = false },
                     .min = @intCast(wasm.flush_buffer.indirect_function_table.entries.len + 1),
                     .max = @intCast(wasm.flush_buffer.indirect_function_table.entries.len + 1),
                 },
@@ -3381,6 +3383,7 @@ pub fn createEmpty(
         .string_table = .empty,
         .string_bytes = .empty,
         .export_table = options.export_table,
+        .growable_table = options.growable_table,
         .import_symbols = options.import_symbols,
         .export_symbol_names = options.export_symbol_names,
         .global_base = options.global_base,

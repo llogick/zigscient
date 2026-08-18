@@ -45,6 +45,7 @@ import_symbols: bool = false,
 /// (WebAssembly) import function table from the host environment
 import_table: bool = false,
 export_table: bool = false,
+growable_table: bool = false,
 initial_memory: ?u64 = null,
 max_memory: ?u64 = null,
 shared_memory: bool = false,
