@@ -4753,10 +4753,13 @@ fn ehdrType(elf: *const Elf) EhdrType {
 fn targetPtrSize(elf: *const Elf) u8 {
     return elf.identClass().size();
 }
+/// Page alignment for the target platform.
+/// Usually this returns the maximum page size supported on the
+/// target to maximize compatibility but there can be exceptions.
 fn targetPageAlign(elf: *const Elf) std.mem.Alignment {
     return .fromByteUnits(switch (elf.ehdrMachine()) {
         .AARCH64 => 0x10000,
-        .LOONGARCH => 0x4000,
+        .LOONGARCH => 0x10000,
         .PPC64 => 0x10000,
         .RISCV => 0x1000,
         .SPARCV9 => 0x100000,
