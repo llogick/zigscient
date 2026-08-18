@@ -2064,7 +2064,7 @@ fn cmdInit(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
             return process.cleanExit(io);
         },
         .minimal => {
-            Templates.writeSimpleFile(io, Package.Manifest.basename,
+            Templates.writeSimpleFile(io, Io.Dir.cwd(), Package.Manifest.basename,
                 \\.{{
                 \\    .name = .{s},
                 \\    .version = "0.0.1",
@@ -2081,7 +2081,7 @@ fn cmdInit(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
                 else => fatal("failed to create {q}: {t}", .{ Package.Manifest.basename, err }),
                 error.PathAlreadyExists => fatal("refusing to overwrite {q}", .{Package.Manifest.basename}),
             };
-            Templates.writeSimpleFile(io, default_build_zig_basename,
+            Templates.writeSimpleFile(io, Io.Dir.cwd(), default_build_zig_basename,
                 \\const std = @import("std");
                 \\
                 \\pub fn build(b: *std.Build) void {{
@@ -3896,10 +3896,11 @@ fn loadManifest(
             0,
         ) catch |err| switch (err) {
             error.FileNotFound => {
-                Templates.writeSimpleFile(io, Package.Manifest.basename,
+                Templates.writeSimpleFile(io, options.dir, Package.Manifest.basename,
                     \\.{{
                     \\    .name = .{s},
-                    \\    .version = "{s}",
+                    \\    .version = "0.0.1",
+                    \\    .minimum_zig_version = "{s}",
                     \\    .paths = .{{""}},
                     \\    .fingerprint = 0x{x},
                     \\}}
@@ -4057,8 +4058,8 @@ const Templates = struct {
         };
     }
 
-    fn writeSimpleFile(io: Io, file_name: []const u8, comptime format: []const u8, args: anytype) !void {
-        const f = try Io.Dir.cwd().createFile(io, file_name, .{ .exclusive = true });
+    fn writeSimpleFile(io: Io, dir: Io.Dir, file_name: []const u8, comptime format: []const u8, args: anytype) !void {
+        const f = try dir.createFile(io, file_name, .{ .exclusive = true });
         defer f.close(io);
         var buf: [4096]u8 = undefined;
         var fw = f.writer(io, &buf);
