@@ -1602,7 +1602,7 @@ pub const Elf32_auxv_t = extern struct {
     },
 };
 pub const Elf64_auxv_t = extern struct {
-    a_type: u64,
+    a_type: if (native_os == .netbsd or native_os == .openbsd) u32 else u64,
     a_un: extern union {
         a_val: u64,
     },
