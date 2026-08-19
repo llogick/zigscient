@@ -588,7 +588,7 @@ fn lowerZigArgs(
             }
         }
 
-        if (total_linker_objects == 0) {
+        if (total_linker_objects == 0 and !curate) {
             return step.fail(maker, "the linker needs one or more objects to link", .{});
         }
 
