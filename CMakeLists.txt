@@ -691,7 +691,7 @@ add_custom_command(
 
 set(BUILD_COMPILER_RT_ARGS
   "${PROJECT_SOURCE_DIR}/lib"
-  build-obj -ofmt=c -OReleaseSmall
+  build-obj -ofmt=c -lc -OReleaseSmall
   --name compiler_rt
   -femit-bin="${ZIG_COMPILER_RT_C_SOURCE}"
   -target "${ZIG_HOST_TARGET_TRIPLE}"
