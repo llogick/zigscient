@@ -20,7 +20,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: master
+          version: "0.17.0-dev.1471+ff10b90bc"
 
       - name: Run zig build test-fmt
         run: ZIG_DEBUG_MAKER=TRUE ZIG_LIB_DIR=./lib zig build test-fmt
