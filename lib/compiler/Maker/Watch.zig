@@ -233,7 +233,6 @@ const Os = switch (builtin.os.tag) {
                                     fd_gop.value_ptr.* = .{
                                         .fd = fan_fd,
                                         .events = std.posix.POLL.IN,
-                                        .revents = undefined,
                                     };
                                 }
                                 break :blk fd_gop.value_ptr.*.fd;

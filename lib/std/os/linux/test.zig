@@ -423,7 +423,7 @@ test "timerfd" {
         else => @panic("test failed"),
     }
 
-    var fds: [1]std.posix.pollfd = .{.{ .fd = tfd, .events = linux.POLL.IN, .revents = 0 }};
+    var fds: [1]std.posix.pollfd = .{.{ .fd = tfd, .events = linux.POLL.IN }};
     try expectEqual(@as(usize, 1), try std.posix.poll(&fds, -1)); // -1 => infinite waiting
 
     const git = rc: {

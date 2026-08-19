@@ -4303,12 +4303,12 @@ pub const pollfd = switch (native_os) {
     .serenity => extern struct {
         fd: fd_t,
         events: c_short,
-        revents: c_short,
+        revents: c_short = undefined,
     },
     else => extern struct {
         fd: fd_t,
         events: i16,
-        revents: i16,
+        revents: i16 = undefined,
     },
 };
 pub const rlim_t = switch (native_os) {

@@ -2618,7 +2618,6 @@ fn batchAwaitAsync(userdata: ?*anyopaque, b: *Io.Batch) Io.Cancelable!void {
                         poll_buffer[poll_len] = .{
                             .fd = o.file.handle,
                             .events = posix.POLL.IN | posix.POLL.ERR,
-                            .revents = 0,
                         };
                         poll_len += 1;
                     },
@@ -2626,7 +2625,6 @@ fn batchAwaitAsync(userdata: ?*anyopaque, b: *Io.Batch) Io.Cancelable!void {
                         poll_buffer[poll_len] = .{
                             .fd = o.file.handle,
                             .events = posix.POLL.OUT | posix.POLL.ERR,
-                            .revents = 0,
                         };
                         poll_len += 1;
                     },
@@ -2634,7 +2632,6 @@ fn batchAwaitAsync(userdata: ?*anyopaque, b: *Io.Batch) Io.Cancelable!void {
                         poll_buffer[poll_len] = .{
                             .fd = o.file.handle,
                             .events = posix.POLL.OUT | posix.POLL.IN | posix.POLL.ERR,
-                            .revents = 0,
                         };
                         poll_len += 1;
                     },
@@ -2642,7 +2639,6 @@ fn batchAwaitAsync(userdata: ?*anyopaque, b: *Io.Batch) Io.Cancelable!void {
                         poll_buffer[poll_len] = .{
                             .fd = o.socket_handle,
                             .events = posix.POLL.IN | posix.POLL.ERR,
-                            .revents = 0,
                         };
                         poll_len += 1;
                     },
@@ -2650,7 +2646,6 @@ fn batchAwaitAsync(userdata: ?*anyopaque, b: *Io.Batch) Io.Cancelable!void {
                         poll_buffer[poll_len] = .{
                             .fd = o.socket_handle,
                             .events = posix.POLL.OUT | posix.POLL.ERR,
-                            .revents = 0,
                         };
                         poll_len += 1;
                     },
@@ -2658,7 +2653,6 @@ fn batchAwaitAsync(userdata: ?*anyopaque, b: *Io.Batch) Io.Cancelable!void {
                         poll_buffer[poll_len] = .{
                             .fd = o.socket_handle,
                             .events = posix.POLL.IN | posix.POLL.ERR,
-                            .revents = 0,
                         };
                         poll_len += 1;
                     },
@@ -2666,7 +2660,6 @@ fn batchAwaitAsync(userdata: ?*anyopaque, b: *Io.Batch) Io.Cancelable!void {
                         poll_buffer[poll_len] = .{
                             .fd = o.socket_handle,
                             .events = posix.POLL.OUT | posix.POLL.ERR,
-                            .revents = 0,
                         };
                         poll_len += 1;
                     },
@@ -2811,7 +2804,6 @@ fn batchAwaitConcurrent(userdata: ?*anyopaque, b: *Io.Batch, timeout: Io.Timeout
             storage.slice[len] = .{
                 .fd = fd,
                 .events = events,
-                .revents = 0,
             };
             storage.len = len + 1;
         }
