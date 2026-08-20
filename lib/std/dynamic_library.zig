@@ -198,7 +198,6 @@ pub const ElfDynLib = struct {
     // - DT_RUNPATH of the calling binary is not used as a search path
     // - /etc/ld.so.cache is not read
     fn resolveFromName(io: Io, path_or_name: []const u8, LD_LIBRARY_PATH: ?[]const u8) !Io.File {
-        // If filename contains a slash ("/"), then it is interpreted as a (relative or absolute) pathname
         if (std.mem.findScalarPos(u8, path_or_name, 0, '/')) |_| {
             return Io.Dir.cwd().openFile(io, path_or_name, .{});
         }
@@ -214,9 +213,10 @@ pub const ElfDynLib = struct {
             }
         }
 
-        // Lastly the directories /lib and /usr/lib are searched (in this exact order)
         if (resolveFromParent(io, "/lib", path_or_name)) |file| return file;
+        if (resolveFromParent(io, "/lib64", path_or_name)) |file| return file;
         if (resolveFromParent(io, "/usr/lib", path_or_name)) |file| return file;
+        if (resolveFromParent(io, "/usr/lib64", path_or_name)) |file| return file;
         return error.FileNotFound;
     }
 
