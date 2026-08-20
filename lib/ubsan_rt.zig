@@ -647,6 +647,7 @@ fn exportHandlerWithAbort(
 }
 
 const can_build_ubsan = switch (builtin.zig_backend) {
+    .stage2_loongarch,
     .stage2_powerpc,
     .stage2_riscv64,
     => false,

@@ -359,6 +359,15 @@ set(ZIG_STAGE2_SOURCES
     src/codegen/llvm.zig
     src/codegen/llvm/bindings.zig
     src/codegen/loongarch/abi.zig
+    src/codegen/loongarch/encoding.zig
+    src/codegen/loongarch/decode_tree.zon
+    src/codegen/loongarch/inst_formats.zon
+    src/codegen/loongarch/Assemble.zig
+    src/codegen/loongarch/Disassemble.zig
+    src/codegen/loongarch/Mir.zig
+    src/codegen/loongarch/bits.zig
+    src/codegen/loongarch/Select.zig
+    src/codegen/loongarch.zig
     src/codegen/s390x/abi.zig
     src/crash_report.zig
     src/dev.zig

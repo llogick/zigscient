@@ -498,6 +498,7 @@ threadlocal var panic_stage: usize = 0;
 const use_trap_panic = switch (builtin.zig_backend) {
     .stage2_aarch64,
     .stage2_arm,
+    .stage2_loongarch,
     .stage2_powerpc,
     .stage2_riscv64,
     .stage2_spirv,

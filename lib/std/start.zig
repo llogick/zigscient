@@ -180,7 +180,10 @@ fn _start() callconv(.naked) noreturn {
             .csky => ".cfi_undefined lr",
             .hexagon => ".cfi_undefined r31",
             .kvx => ".cfi_undefined r14",
-            .loongarch32, .loongarch64 => ".cfi_undefined 1",
+            .loongarch32, .loongarch64 => if (builtin.zig_backend == .stage2_loongarch)
+                ""
+            else
+                ".cfi_undefined 1",
             .m68k => ".cfi_undefined %%pc",
             .m88k => ".cfi_undefined %%r1",
             .microblaze, .microblazeel => "", // No CFI support.
@@ -215,6 +218,32 @@ fn _start() callconv(.naked) noreturn {
     // kernel is usually good about upholding the ABI guarantees, the same cannot be said of dynamic
     // linkers; musl's ldso, for example, opts to not align the stack when invoking the dynamic
     // linker explicitly.
+    if (builtin.zig_backend == .stage2_loongarch) {
+        // TODO: need "X" constraint support
+        asm volatile (switch (native_arch) {
+                .loongarch32 =>
+                \\ move $fp, $zero
+                \\ move $ra, $zero
+                \\ move $a0, $sp
+                \\ srli.w $sp, $sp, 4
+                \\ slli.w $sp, $sp, 4
+                \\ jirl $ra, %[posixCallMainAndExit], 0
+                ,
+                .loongarch64 =>
+                \\ move $fp, $zero
+                \\ move $ra, $zero
+                \\ move $a0, $sp
+                \\ bstrins.d $sp, $zero, 3, 0
+                \\ jirl $ra, %[posixCallMainAndExit], 0
+                ,
+                else => unreachable,
+            }
+            :
+            : [posixCallMainAndExit] "r" (&posixCallMainAndExit),
+            : .{ .r1 = true, .r4 = true, .r22 = true });
+        unreachable;
+    }
+
     asm volatile (switch (native_arch) {
             .x86_64 =>
             \\ xorl %%ebp, %%ebp

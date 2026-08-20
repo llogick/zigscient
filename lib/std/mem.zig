@@ -736,6 +736,7 @@ test lessThan {
 const use_vectors = switch (builtin.zig_backend) {
     // These backends don't support vectors yet.
     .stage2_aarch64,
+    .stage2_loongarch,
     .stage2_powerpc,
     .stage2_riscv64,
     => false,

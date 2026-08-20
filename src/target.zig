@@ -853,6 +853,7 @@ pub fn supportsThreads(target: *const std.Target, backend: std.lang.CompilerBack
     _ = target;
     return switch (backend) {
         .stage2_aarch64 => false,
+        .stage2_loongarch => false,
         else => true,
     };
 }
@@ -914,6 +915,7 @@ pub fn zigBackend(target: *const std.Target, use_llvm: bool) std.lang.CompilerBa
     return switch (target.cpu.arch) {
         .aarch64, .aarch64_be => .stage2_aarch64,
         .arm, .armeb, .thumb, .thumbeb => .stage2_arm,
+        .loongarch32, .loongarch64 => .stage2_loongarch,
         .powerpc, .powerpcle, .powerpc64, .powerpc64le => .stage2_powerpc,
         .riscv64 => .stage2_riscv64,
         .sparc64 => .stage2_sparc64,
@@ -950,7 +952,7 @@ pub inline fn backendSupportsFeature(backend: std.lang.CompilerBackend, comptime
             else => false,
         },
         .field_reordering => switch (backend) {
-            .stage2_aarch64, .stage2_c, .stage2_llvm, .stage2_x86_64, .stage2_wasm => true,
+            .stage2_aarch64, .stage2_c, .stage2_llvm, .stage2_loongarch, .stage2_x86_64, .stage2_wasm => true,
             else => false,
         },
         .separate_thread => switch (backend) {

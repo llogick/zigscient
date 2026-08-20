@@ -23,6 +23,7 @@ const Alignment = InternPool.Alignment;
 const dev = @import("dev.zig");
 
 pub const aarch64 = @import("codegen/aarch64.zig");
+pub const loongarch = @import("codegen/loongarch.zig");
 
 pub const Error = link.Error;
 
@@ -33,6 +34,7 @@ fn devFeatureForBackend(backend: std.lang.CompilerBackend) dev.Feature {
         .stage2_arm => .arm_backend,
         .stage2_c => .c_backend,
         .stage2_llvm => .llvm_backend,
+        .stage2_loongarch => .loongarch_backend,
         .stage2_powerpc => unreachable,
         .stage2_riscv64 => .riscv64_backend,
         .stage2_sparc64 => .sparc64_backend,
@@ -51,6 +53,7 @@ fn importBackend(comptime backend: std.lang.CompilerBackend) type {
         .stage2_arm => unreachable,
         .stage2_c => @import("codegen/c.zig"),
         .stage2_llvm => @import("codegen/llvm.zig"),
+        .stage2_loongarch => loongarch,
         .stage2_powerpc => unreachable,
         .stage2_riscv64 => @import("codegen/riscv64/CodeGen.zig"),
         .stage2_sparc64 => @import("codegen/sparc64/CodeGen.zig"),
@@ -71,6 +74,7 @@ pub fn legalizeFeatures(pt: Zcu.PerThread, nav_index: InternPool.Nav.Index) ?*co
         .stage2_wasm,
         .stage2_x86_64,
         .stage2_aarch64,
+        .stage2_loongarch,
         .stage2_x86,
         .stage2_riscv64,
         .stage2_sparc64,
@@ -87,7 +91,7 @@ pub fn wantsLiveness(pt: Zcu.PerThread, nav_index: InternPool.Nav.Index) bool {
     const target = &zcu.navFileScope(nav_index).mod.?.resolved_target.result;
     return switch (target_util.zigBackend(target, zcu.comp.config.use_llvm)) {
         else => true,
-        .stage2_aarch64 => false,
+        .stage2_aarch64, .stage2_loongarch => false,
     };
 }
 
@@ -96,6 +100,7 @@ pub fn wantsLiveness(pt: Zcu.PerThread, nav_index: InternPool.Nav.Index) bool {
 /// union of all MIR types. The active tag is known from the backend in use; see `AnyMir.tag`.
 pub const AnyMir = union {
     aarch64: if (dev.env.supports(.aarch64_backend)) @import("codegen/aarch64/Mir.zig") else noreturn,
+    loongarch: if (dev.env.supports(.loongarch_backend)) @import("codegen/loongarch/Mir.zig") else noreturn,
     riscv64: if (dev.env.supports(.riscv64_backend)) @import("codegen/riscv64/Mir.zig") else noreturn,
     sparc64: if (dev.env.supports(.sparc64_backend)) @import("codegen/sparc64/Mir.zig") else noreturn,
     x86_64: if (dev.env.supports(.x86_64_backend)) @import("codegen/x86_64/Mir.zig") else noreturn,
@@ -106,6 +111,7 @@ pub const AnyMir = union {
     pub inline fn tag(comptime backend: std.lang.CompilerBackend) []const u8 {
         return switch (backend) {
             .stage2_aarch64 => "aarch64",
+            .stage2_loongarch => "loongarch",
             .stage2_riscv64 => "riscv64",
             .stage2_sparc64 => "sparc64",
             .stage2_x86_64 => "x86_64",
@@ -122,6 +128,7 @@ pub const AnyMir = union {
         switch (backend) {
             else => unreachable,
             inline .stage2_aarch64,
+            .stage2_loongarch,
             .stage2_riscv64,
             .stage2_sparc64,
             .stage2_x86_64,
@@ -151,6 +158,7 @@ pub fn generateFunction(
     switch (target_util.zigBackend(target, false)) {
         else => unreachable,
         inline .stage2_aarch64,
+        .stage2_loongarch,
         .stage2_riscv64,
         .stage2_sparc64,
         .stage2_x86_64,
@@ -194,6 +202,7 @@ pub fn emitFunction(
     switch (target_util.zigBackend(target, zcu.comp.config.use_llvm)) {
         else => unreachable,
         inline .stage2_aarch64,
+        .stage2_loongarch,
         .stage2_riscv64,
         .stage2_sparc64,
         .stage2_x86_64,
@@ -1292,4 +1301,5 @@ pub fn flattenType(items_buf: []FlattenedItem, ty: Type, zcu: *Zcu, opts: struct
 
 test {
     _ = aarch64;
+    _ = loongarch;
 }

@@ -1,0 +1,9 @@
+# loongarch-opcodes removed these instructions as their encodings
+# collide with csrxchg/gcsrxchg.
+# They are added back here to support assembler and disassembler
+# as decode_tree.zig has supported generating decode-trees for these
+# colliding encodings.
+04000000 csrrd                  DUk14           @primary
+04000032 csrwr                  DUk14           @primary
+05000000 gcsrrd                 DUk14           @lvz
+05000032 gcsrwr                 DUk14           @lvz
