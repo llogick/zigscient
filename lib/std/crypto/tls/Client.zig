@@ -338,18 +338,13 @@ pub fn init(input: *Reader, output: *Writer, options: Options) InitError!Client 
     var cleartext_fragment_end: usize = 0;
     var cleartext_bufs: [2][tls.max_ciphertext_inner_record_len]u8 = undefined;
     fragment: while (true) {
-        // Ensure the input buffer pointer is stable in this scope.
-        input.rebase(tls.max_ciphertext_record_len) catch |err| switch (err) {
-            error.EndOfStream => {}, // We have assurance the remainder of stream can be buffered.
-            error.ReadFailed => |e| return e,
-        };
-        const record_header = input.peek(tls.record_header_len) catch |err| switch (err) {
+        const record_header = (input.takeArray(tls.record_header_len) catch |err| switch (err) {
             error.EndOfStream => return error.TlsConnectionTruncated,
             error.ReadFailed => |e| return e,
-        };
-        const record_ct = input.takeEnumNonexhaustive(tls.ContentType, .big) catch unreachable; // already peeked
-        input.toss(2); // legacy_version
-        const record_len = input.takeInt(u16, .big) catch unreachable; // already peeked
+        }).*;
+        const record_ct: tls.ContentType = @fromBackingInt(record_header[0]);
+        // record_header[1..3] is legacy_version
+        const record_len = mem.readInt(u16, record_header[3..5], .big);
         if (record_len > tls.max_ciphertext_len) return error.TlsRecordOverflow;
         const record_buffer = input.take(record_len) catch |err| switch (err) {
             error.EndOfStream => return error.TlsConnectionTruncated,
@@ -379,7 +374,7 @@ pub fn init(input: *Reader, output: *Writer, options: Options) InitError!Client 
                             const operand: V = pad ++ @as([8]u8, @bitCast(@byteSwap(read_seq)));
                             break :nonce @as(V, pv.server_handshake_iv) ^ operand;
                         };
-                        P.AEAD.decrypt(cleartext, ciphertext, auth_tag, record_header, nonce, pv.server_handshake_key) catch
+                        P.AEAD.decrypt(cleartext, ciphertext, auth_tag, &record_header, nonce, pv.server_handshake_key) catch
                             return error.TlsBadRecordMac;
                         // TODO use scalar, non-slice version
                         const trimmed_len = mem.trimEnd(u8, cleartext, "\x00").len;
