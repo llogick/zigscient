@@ -2487,7 +2487,7 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
                 const operands: []const Air.Inst.Ref = @ptrCast(isel.air.extra.items[extra.end..][0 .. extra.data.flags.outputs_len + extra.data.inputs_len]);
 
                 for (operands) |operand| if (operand != .none) try isel.analyzeUse(operand);
-                if (ty_pl.ty != .void_type) try isel.def_order.putNoClobber(gpa, air_inst_index, {});
+                if (ty_pl.ty.ip_index != .void_type) try isel.def_order.putNoClobber(gpa, air_inst_index, {});
             },
             .not,
             .clz,
@@ -2630,7 +2630,7 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
             },
             .aggregate_init => {
                 const ty_pl = air_data[@backingInt(air_inst_index)].ty_pl;
-                const elements: []const Air.Inst.Ref = @ptrCast(isel.air.extra.items[ty_pl.payload..][0..@intCast(ty_pl.ty.toType().arrayLen(zcu))]);
+                const elements: []const Air.Inst.Ref = @ptrCast(isel.air.extra.items[ty_pl.payload..][0..@intCast(ty_pl.ty.arrayLen(zcu))]);
 
                 for (elements) |element| try isel.analyzeUse(element);
                 try isel.def_order.putNoClobber(gpa, air_inst_index, {});
@@ -2664,9 +2664,9 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
                     .block => Air.Block,
                     .dbg_inline_block => Air.DbgInlineBlock,
                 }, ty_pl.payload);
-                const result_ty = ty_pl.ty.toInterned().?;
+                const result_ty = ty_pl.ty;
 
-                if (result_ty == .noreturn_type) {
+                if (result_ty.ip_index == .noreturn_type) {
                     try isel.analyze(@ptrCast(isel.air.extra.items[extra.end..][0..extra.data.body_len]));
                     break;
                 }
@@ -2676,7 +2676,7 @@ pub fn analyze(isel: *Select, air_body: []const Air.Inst.Index) !void {
                 const block_entry = isel.active_blocks.pop().?;
                 assert(block_entry.key == air_inst_index);
 
-                if (result_ty != .void_type) try isel.def_order.putNoClobber(gpa, air_inst_index, {});
+                if (result_ty.ip_index != .void_type) try isel.def_order.putNoClobber(gpa, air_inst_index, {});
             },
             .call,
             .call_always_tail,
@@ -3118,14 +3118,14 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
             .dbg_inline_block => {
                 const ty_pl = air.data(air.inst_index).ty_pl;
                 const extra = isel.air.extraData(Air.DbgInlineBlock, ty_pl.payload);
-                try isel.block(air.inst_index, ty_pl.ty.toType(), @ptrCast(
+                try isel.block(air.inst_index, ty_pl.ty, @ptrCast(
                     isel.air.extra.items[extra.end..][0..extra.data.body_len],
                 ));
             },
             .block => {
                 const ty_pl = air.data(air.inst_index).ty_pl;
                 const extra = isel.air.extraData(Air.Block, ty_pl.payload);
-                try isel.block(air.inst_index, ty_pl.ty.toType(), @ptrCast(
+                try isel.block(air.inst_index, ty_pl.ty, @ptrCast(
                     isel.air.extra.items[extra.end..][0..extra.data.body_len],
                 ));
             },
@@ -3578,7 +3578,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
 
                 const ty_op = air.data(air.inst_index).ty_op;
                 const src_vi = try isel.use(ty_op.operand);
-                const ty = ty_op.ty.toType();
+                const ty = ty_op.ty;
                 switch (ty.zigTypeTag(zcu)) {
                     .bool => {
                         // boolean not
@@ -3621,7 +3621,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
 
                 const ty_op = air.data(air.inst_index).ty_op;
                 const src_vi = try isel.use(ty_op.operand);
-                const src_ty = ty_op.ty.toType();
+                const src_ty = ty_op.ty;
                 const src_bits = src_ty.bitSize(zcu);
                 try res_vi.value.reextendAdvanced(
                     isel,
@@ -3691,7 +3691,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
             => if (isel.live_values.fetchRemove(air.inst_index)) |dst_vi| unused: {
                 defer dst_vi.value.deref(isel);
                 const ty_op = air.data(air.inst_index).ty_op;
-                const dst_ty = ty_op.ty.toType();
+                const dst_ty = ty_op.ty;
                 const dst_tag = dst_ty.zigTypeTag(zcu);
                 const src_ty = isel.air.typeOf(ty_op.operand, ip);
                 const src_tag = src_ty.zigTypeTag(zcu);
@@ -3964,7 +3964,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                 defer dst_vi.value.deref(isel);
 
                 const ty_op = air.data(air.inst_index).ty_op;
-                const dst_ty = ty_op.ty.toType();
+                const dst_ty = ty_op.ty;
                 const dst_int_info = dst_ty.intInfo(zcu);
                 const src_ty = isel.air.typeOf(ty_op.operand, ip);
                 const src_int_info = src_ty.intInfo(zcu);
@@ -4154,7 +4154,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
 
                 const ty_pl = air.data(air.inst_index).ty_pl;
                 const bin_op = isel.air.extraData(Air.Bin, ty_pl.payload).data;
-                const elem_size = ty_pl.ty.toType().childType(zcu).abiSize(zcu);
+                const elem_size = ty_pl.ty.childType(zcu).abiSize(zcu);
 
                 const slice_vi = try isel.use(bin_op.lhs);
                 const base_ptr_mat = try slice_vi.mat(isel, .{
@@ -4173,7 +4173,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
 
                 const ty_pl = air.data(air.inst_index).ty_pl;
                 const bin_op = isel.air.extraData(Air.Bin, ty_pl.payload).data;
-                const elem_size = ty_pl.ty.toType().childType(zcu).abiSize(zcu);
+                const elem_size = ty_pl.ty.childType(zcu).abiSize(zcu);
 
                 const base_vi = try isel.use(bin_op.lhs);
                 const base_ptr_mat = try base_vi.mat(isel, .{
@@ -4196,7 +4196,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
 
                 const ty_pl = air.data(air.inst_index).ty_pl;
                 const bin_op = isel.air.extraData(Air.Bin, ty_pl.payload).data;
-                const elem_size = ty_pl.ty.toType().childType(zcu).abiSize(zcu);
+                const elem_size = ty_pl.ty.childType(zcu).abiSize(zcu);
 
                 const base_vi = try isel.use(bin_op.lhs);
                 const base_mat = try base_vi.matIntRegZeroExt(isel);
@@ -4266,7 +4266,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                 if (isel.live_values.fetchRemove(air.inst_index)) |payload_ptr_vi| unused: {
                     defer payload_ptr_vi.value.deref(isel);
 
-                    const payload_offset = codegen.errUnionPayloadOffset(unwrapped_try.error_union_payload_ptr_ty.toType().childType(zcu), zcu);
+                    const payload_offset = codegen.errUnionPayloadOffset(unwrapped_try.error_union_payload_ptr_ty.childType(zcu), zcu);
                     if (payload_offset == 0) {
                         try payload_ptr_vi.value.defMove(isel, unwrapped_try.error_union_ptr);
                     } else {
@@ -4307,7 +4307,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                 defer agg_vi.value.deref(isel);
 
                 const ty_pl = air.data(air.inst_index).ty_pl;
-                const agg_ty = ty_pl.ty.toType();
+                const agg_ty = ty_pl.ty;
                 switch (ip.indexToKey(agg_ty.toIntern())) {
                     .array_type => |array_type| {
                         const elem_ty = ZigType.fromInterned(array_type.child);
@@ -4380,7 +4380,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                 const extra = isel.air.extraData(Air.StructField, ty_pl.payload).data;
                 switch (codegen.fieldOffset(
                     isel.air.typeOf(extra.struct_operand, ip),
-                    ty_pl.ty.toType(),
+                    ty_pl.ty,
                     extra.field_index,
                     zcu,
                 )) {
@@ -4403,7 +4403,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                 const ty_op = air.data(air.inst_index).ty_op;
                 switch (codegen.fieldOffset(
                     isel.air.typeOf(ty_op.operand, ip),
-                    ty_op.ty.toType(),
+                    ty_op.ty,
                     switch (air_tag) {
                         else => unreachable,
                         .struct_field_ptr_index_0 => 0,
@@ -4429,7 +4429,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                 const ty_pl = air.data(air.inst_index).ty_pl;
                 const extra = isel.air.extraData(Air.StructField, ty_pl.payload).data;
                 const agg_ty = isel.air.typeOf(extra.struct_operand, ip);
-                const field_ty = ty_pl.ty.toType();
+                const field_ty = ty_pl.ty;
 
                 const field_bit_offset, const field_bit_size, const is_packed = switch (agg_ty.containerLayout(zcu)) {
                     .auto, .@"extern" => .{
@@ -4476,7 +4476,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
 
                 const ty_pl = air.data(air.inst_index).ty_pl;
                 const extra = isel.air.extraData(Air.UnionInit, ty_pl.payload).data;
-                const union_ty = ty_pl.ty.toType();
+                const union_ty = ty_pl.ty;
                 const loaded_union = ip.loadUnionType(union_ty.toIntern());
                 const union_layout = ZigType.getUnionLayout(loaded_union, zcu);
 
@@ -4549,7 +4549,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                 defer opt_vi.value.deref(isel);
 
                 const ty_op = air.data(air.inst_index).ty_op;
-                if (ty_op.ty.toType().optionalReprIsPayload(zcu)) {
+                if (ty_op.ty.optionalReprIsPayload(zcu)) {
                     try opt_vi.value.defMove(isel, ty_op.operand);
                     break :unused;
                 }
@@ -4568,7 +4568,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                 const ty_pl = air.data(air.inst_index).ty_pl;
                 const extra = isel.air.extraData(Air.FieldParentPtr, ty_pl.payload).data;
                 switch (codegen.fieldOffset(
-                    ty_pl.ty.toType(),
+                    ty_pl.ty,
                     isel.air.typeOf(extra.field_ptr, ip),
                     extra.field_index,
                     zcu,
@@ -4592,7 +4592,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                     isel,
                     try error_union_vi.partExact(
                         isel,
-                        codegen.errUnionPayloadOffset(ty_op.ty.toType(), zcu),
+                        codegen.errUnionPayloadOffset(ty_op.ty, zcu),
                         payload_vi.value.size(isel),
                     ),
                 );
@@ -4616,7 +4616,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                 defer error_union_vi.value.deref(isel);
 
                 const ty_op = air.data(air.inst_index).ty_op;
-                const error_union_ty = ty_op.ty.toType();
+                const error_union_ty = ty_op.ty;
                 const error_union_info = ip.indexToKey(error_union_ty.toIntern()).error_union_type;
                 const error_set_ty: ZigType = .fromInterned(error_union_info.error_set_type);
                 const payload_ty: ZigType = .fromInterned(error_union_info.payload_type);
@@ -4639,7 +4639,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
                 defer error_union_vi.value.deref(isel);
 
                 const ty_op = air.data(air.inst_index).ty_op;
-                const error_union_ty = ty_op.ty.toType();
+                const error_union_ty = ty_op.ty;
                 const error_union_info = ip.indexToKey(error_union_ty.toIntern()).error_union_type;
                 const error_set_ty: ZigType = .fromInterned(error_union_info.error_set_type);
                 const payload_ty: ZigType = .fromInterned(error_union_info.payload_type);
@@ -4658,7 +4658,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory,
             .errunion_payload_ptr_set => if (isel.live_values.fetchRemove(air.inst_index)) |payload_ptr_vi| unused: {
                 defer payload_ptr_vi.value.deref(isel);
                 const ty_op = air.data(air.inst_index).ty_op;
-                const payload_ty = ty_op.ty.toType().childType(zcu);
+                const payload_ty = ty_op.ty.childType(zcu);
                 const eu_ty = isel.air.typeOf(ty_op.operand, ip).childType(zcu);
                 const error_set_size = eu_ty.errorUnionSet(zcu).abiSize(zcu);
 

@@ -92,7 +92,7 @@ pub fn generate(
     for (air_main_body) |air_inst_index| {
         if (air.instructions.items(.tag)[@backingInt(air_inst_index)] != .arg) break;
         const arg = air.instructions.items(.data)[@backingInt(air_inst_index)].arg;
-        const param_ty = arg.ty.toType();
+        const param_ty = arg.ty;
         if (arg.zir_param_index >= named_params_len)
             assert(func_type.is_var_args);
         const param_vi1 = try cc_it1.resolve(param_ty, false) orelse unreachable;
