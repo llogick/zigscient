@@ -400,6 +400,7 @@ pub const Path = struct {
         global_cache,
         /// `sub_path` is relative to the local cache directory on `Compilation`.
         local_cache,
+        build_root,
         /// `sub_path` is not relative to any of the roots listed above.
         /// It is resolved starting with `Directories.cwd`; so it is an absolute path on most
         /// targets, but cwd-relative on WASI. We do not make it cwd-relative on other targets
@@ -437,11 +438,12 @@ pub const Path = struct {
         const dir = switch (p.root) {
             .none => {
                 const cwd_sub_path = absToCwdRelative(p.sub_path, dirs.cwd);
-                return .{ Io.Dir.cwd(), cwd_sub_path };
+                return .{ Io.Dir.cwd(), if (cwd_sub_path.len == 0) "." else cwd_sub_path };
             },
             .zig_lib => dirs.zig_lib.handle,
             .global_cache => dirs.global_cache.handle,
             .local_cache => dirs.local_cache.handle,
+            .build_root => dirs.build_root.handle,
         };
         if (p.sub_path.len == 0) return .{ dir, "." };
         assert(!fs.path.isAbsolute(p.sub_path));
@@ -457,19 +459,18 @@ pub const Path = struct {
         comp: *Compilation,
         pub fn format(f: Formatter, w: *Writer) Writer.Error!void {
             const root_path: []const u8 = switch (f.p.root) {
-                .zig_lib => f.comp.dirs.zig_lib.path orelse ".",
-                .global_cache => f.comp.dirs.global_cache.path orelse ".",
-                .local_cache => f.comp.dirs.local_cache.path orelse ".",
+                .zig_lib => f.comp.dirs.zig_lib.path orelse "",
+                .global_cache => f.comp.dirs.global_cache.path orelse "",
+                .local_cache => f.comp.dirs.local_cache.path orelse "",
+                .build_root => f.comp.dirs.build_root.path orelse "",
                 .none => {
-                    const cwd_sub_path = absToCwdRelative(f.p.sub_path, f.comp.dirs.cwd);
-                    try w.writeAll(cwd_sub_path);
+                    try w.writeAll(absToCwdRelative(f.p.sub_path, f.comp.dirs.cwd));
                     return;
                 },
             };
-            assert(root_path.len != 0);
             try w.writeAll(root_path);
             if (f.p.sub_path.len > 0) {
-                try w.writeByte(fs.path.sep);
+                if (root_path.len != 0) try w.writeByte(fs.path.sep);
                 try w.writeAll(f.p.sub_path);
             }
         }
@@ -477,16 +478,16 @@ pub const Path = struct {
 
     /// Given the `sub_path` of a `Path` with `Path.root == .none`, attempts to convert
     /// the (absolute) path to a cwd-relative path. Otherwise, returns the absolute path
-    /// unmodified. The returned string is never empty: "" is converted to ".".
+    /// unmodified. The returned string is never "."; empty string will be returned instead.
     fn absToCwdRelative(sub_path: []const u8, cwd_path: []const u8) []const u8 {
         if (builtin.target.os.tag == .wasi) {
-            if (sub_path.len == 0) return ".";
+            if (sub_path.len == 0) return "";
             assert(!fs.path.isAbsolute(sub_path));
             return sub_path;
         }
         assert(fs.path.isAbsolute(sub_path));
         if (!std.mem.startsWith(u8, sub_path, cwd_path)) return sub_path;
-        if (sub_path.len == cwd_path.len) return "."; // the strings are equal
+        if (sub_path.len == cwd_path.len) return ""; // the strings are equal
         const path_sep_index = path_sep_index: {
             // cwd is just a root, e.g. / or C:\
             if (cwd_path[cwd_path.len - 1] == fs.path.sep) break :path_sep_index cwd_path.len - 1;
@@ -506,10 +507,11 @@ pub const Path = struct {
         // so that we prefer `.root = .local_cache` over `.root = .zig_lib`. The easiest way to do
         // this is simply to prioritize the longest root path.
         const PathAndRoot = struct { ?[]const u8, Root };
-        var roots: [3]PathAndRoot = .{
+        var roots: [4]PathAndRoot = .{
             .{ dirs.zig_lib.path, .zig_lib },
             .{ dirs.global_cache.path, .global_cache },
             .{ dirs.local_cache.path, .local_cache },
+            .{ dirs.build_root.path, .build_root },
         };
         // This must be a stable sort, because the global and local cache directories may be the same, in
         // which case we need to make a consistent choice.
@@ -584,6 +586,7 @@ pub const Path = struct {
                 .zig_lib => dirs.zig_lib.path orelse "",
                 .global_cache => dirs.global_cache.path orelse "",
                 .local_cache => dirs.local_cache.path orelse "",
+                .build_root => dirs.build_root.path orelse "",
                 .none => "",
             },
             sub_path,
@@ -606,6 +609,7 @@ pub const Path = struct {
                 .zig_lib => dirs.zig_lib.path orelse "",
                 .global_cache => dirs.global_cache.path orelse "",
                 .local_cache => dirs.local_cache.path orelse "",
+                .build_root => dirs.build_root.path orelse "",
                 .none => "",
             },
             p.sub_path,
@@ -625,6 +629,7 @@ pub const Path = struct {
                 .zig_lib => dirs.zig_lib.path orelse "",
                 .global_cache => dirs.global_cache.path orelse "",
                 .local_cache => dirs.local_cache.path orelse "",
+                .build_root => dirs.build_root.path orelse "",
                 .none => "",
             },
             p.sub_path,
@@ -638,11 +643,12 @@ pub const Path = struct {
             .zig_lib => dirs.zig_lib,
             .global_cache => dirs.global_cache,
             .local_cache => dirs.local_cache,
+            .build_root => dirs.build_root,
             else => {
                 const cwd_sub_path = absToCwdRelative(p.sub_path, dirs.cwd);
                 return .{
                     .root_dir = .cwd(),
-                    .sub_path = cwd_sub_path,
+                    .sub_path = if (cwd_sub_path.len == 0) null else cwd_sub_path,
                 };
             },
         };
@@ -656,18 +662,15 @@ pub const Path = struct {
     /// This should not be used for most of the compiler pipeline, but is useful when emitting
     /// paths from the compilation (e.g. in debug info), because they will not depend on the cwd.
     /// The returned path is owned by the caller and allocated into `gpa`.
-    pub fn toAbsolute(p: Path, dirs: std.zig.Directories, gpa: Allocator) Allocator.Error![]u8 {
+    pub fn toAbsolute(p: Path, dirs: *const std.zig.Directories, gpa: Allocator) Allocator.Error![]u8 {
         const root_path: []const u8 = switch (p.root) {
             .zig_lib => dirs.zig_lib.path orelse "",
             .global_cache => dirs.global_cache.path orelse "",
             .local_cache => dirs.local_cache.path orelse "",
+            .build_root => dirs.build_root.path orelse "",
             .none => "",
         };
-        return fs.path.resolve(gpa, &.{
-            dirs.cwd,
-            root_path,
-            p.sub_path,
-        });
+        return fs.path.resolve(gpa, &.{ dirs.cwd, root_path, p.sub_path });
     }
 
     pub fn isNested(inner: Path, outer: Path) union(enum) {
@@ -699,6 +702,66 @@ pub const Path = struct {
             .yes => true,
             .no, .different_roots => false,
         };
+    }
+
+    pub fn addToCacheManifestPostHit(p: Path, man: *Cache.Manifest, dirs: *const std.zig.Directories) !void {
+        comptime assert(0 == @backingInt(std.zig.Server.Message.PathPrefix.cwd));
+        comptime assert(1 == @backingInt(std.zig.Server.Message.PathPrefix.zig_lib));
+        comptime assert(2 == @backingInt(std.zig.Server.Message.PathPrefix.local_cache));
+        comptime assert(3 == @backingInt(std.zig.Server.Message.PathPrefix.global_cache));
+        comptime assert(4 == @backingInt(std.zig.Server.Message.PathPrefix.build_root));
+        comptime assert(@typeInfo(std.zig.Server.Message.PathPrefix).@"enum".field_names.len == 5);
+        const gpa = man.cache.gpa;
+        const prefixed_path: Cache.PrefixedPath = .{
+            .prefix = switch (p.root) {
+                .none => {
+                    const path = try p.toAbsolute(dirs, gpa);
+                    defer gpa.free(path);
+                    return man.addFilePost(path);
+                },
+                .zig_lib => 1,
+                .local_cache => 2,
+                .global_cache => 3,
+                .build_root => 4,
+            },
+            .sub_path = try gpa.dupe(u8, p.sub_path),
+        };
+        var keep = false;
+        defer if (!keep) gpa.free(prefixed_path.sub_path);
+        keep = try man.addPrefixedPathPost(prefixed_path);
+    }
+
+    pub fn addToCacheManifestPostHitContents(
+        p: Path,
+        man: *Cache.Manifest,
+        dirs: *const std.zig.Directories,
+        bytes: []const u8,
+        stat: Cache.File.Stat,
+    ) !void {
+        comptime assert(0 == @backingInt(std.zig.Server.Message.PathPrefix.cwd));
+        comptime assert(1 == @backingInt(std.zig.Server.Message.PathPrefix.zig_lib));
+        comptime assert(2 == @backingInt(std.zig.Server.Message.PathPrefix.local_cache));
+        comptime assert(3 == @backingInt(std.zig.Server.Message.PathPrefix.global_cache));
+        comptime assert(4 == @backingInt(std.zig.Server.Message.PathPrefix.build_root));
+        comptime assert(@typeInfo(std.zig.Server.Message.PathPrefix).@"enum".field_names.len == 5);
+        const gpa = man.cache.gpa;
+        const prefixed_path: Cache.PrefixedPath = .{
+            .prefix = switch (p.root) {
+                .none => {
+                    const path = try p.toAbsolute(dirs, gpa);
+                    defer gpa.free(path);
+                    return man.addFilePostContents(path, bytes, stat);
+                },
+                .zig_lib => 1,
+                .local_cache => 2,
+                .global_cache => 3,
+                .build_root => 4,
+            },
+            .sub_path = try gpa.dupe(u8, p.sub_path),
+        };
+        var keep = false;
+        defer if (!keep) gpa.free(prefixed_path.sub_path);
+        keep = try man.addPrefixedPathPostContents(prefixed_path, bytes, stat);
     }
 };
 
@@ -1281,7 +1344,7 @@ pub const cache_helpers = struct {
     }
 
     pub fn hashCSource(self: *Cache.Manifest, c_source: CSourceFile) !void {
-        _ = try self.addFile(c_source.src_path, null);
+        _ = try self.addFilePath(.initCwd(c_source.src_path), null);
         // Hash the extra flags, with special care to call addFile for file parameters.
         // TODO this logic can likely be improved by utilizing clang_options_data.zig.
         const file_args = [_][]const u8{"-include"};
@@ -1292,7 +1355,7 @@ pub const cache_helpers = struct {
             for (file_args) |file_arg| {
                 if (mem.eql(u8, file_arg, arg) and arg_i + 1 < c_source.extra_flags.len) {
                     arg_i += 1;
-                    _ = try self.addFile(c_source.extra_flags[arg_i], null);
+                    _ = try self.addFilePath(.initCwd(c_source.extra_flags[arg_i]), null);
                 }
             }
         }
@@ -1351,7 +1414,7 @@ pub const CacheMode = enum {
 pub const ParentWholeCache = struct {
     manifest: *Cache.Manifest,
     mutex: *std.Io.Mutex,
-    prefix_map: [4]u8,
+    prefix_map: [5]u8,
 };
 
 const CacheUse = union(CacheMode) {
@@ -1469,8 +1532,8 @@ pub const CreateOptions = struct {
     stack_report: bool = false,
     link_eh_frame_hdr: bool = false,
     link_emit_relocs: bool = false,
-    linker_script: ?[]const u8 = null,
-    version_script: ?[]const u8 = null,
+    linker_script: ?Cache.Path = null,
+    version_script: ?Cache.Path = null,
     linker_allow_undefined_version: bool = false,
     linker_enable_new_dtags: ?bool = null,
     soname: ?[]const u8 = null,
@@ -1549,7 +1612,7 @@ pub const CreateOptions = struct {
     /// (Darwin) Install name of the dylib
     install_name: ?[]const u8 = null,
     /// (Darwin) Path to entitlements file
-    entitlements: ?[]const u8 = null,
+    entitlements: ?Cache.Path = null,
     /// (Darwin) size of the __PAGEZERO segment
     pagezero_size: ?u64 = null,
     /// (Darwin) set minimum space for future expansion of the load commands
@@ -1618,15 +1681,7 @@ pub const CreateOptions = struct {
     };
 };
 
-fn addModuleTableToCacheHash(
-    zcu: *Zcu,
-    arena: Allocator,
-    hash: *Cache.HashHelper,
-    hash_type: union(enum) { path_bytes, files: *Cache.Manifest },
-) error{
-    OutOfMemory,
-    Unexpected,
-}!void {
+fn addModuleTableToCacheHash(zcu: *Zcu, hash: *Cache.HashHelper) error{ OutOfMemory, Unexpected }!void {
     assert(zcu.module_roots.count() != 0); // module_roots is populated
 
     for (zcu.module_roots.keys(), zcu.module_roots.values()) |mod, opt_mod_root_file| {
@@ -1635,17 +1690,9 @@ fn addModuleTableToCacheHash(
             if (zcu.fileByIndex(mod_root_file).is_builtin) continue; // redundant
         }
         cache_helpers.addModule(hash, mod);
-        switch (hash_type) {
-            .path_bytes => {
-                hash.add(mod.root.root);
-                hash.addBytes(mod.root.sub_path);
-                hash.addBytes(mod.root_src_path);
-            },
-            .files => |man| if (mod.root_src_path.len != 0) {
-                const root_src_path = try mod.root.toCachePath(zcu.comp.dirs).join(arena, mod.root_src_path);
-                _ = try man.addFilePath(root_src_path, null);
-            },
-        }
+        hash.add(mod.root.root);
+        hash.addBytes(mod.root.sub_path);
+        hash.addBytes(mod.root_src_path);
         hash.addListOfBytes(mod.deps.keys());
     }
 }
@@ -1931,6 +1978,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
         }
 
         const error_limit = options.error_limit orelse (std.math.maxInt(u16) - 1);
+        const main_mod = options.main_mod orelse options.root_mod;
 
         // We put everything into the cache hash that *cannot be modified
         // during an incremental update*. For example, one cannot change the
@@ -1949,11 +1997,17 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
             },
             .cwd = options.dirs.cwd,
         };
-        // These correspond to std.zig.Server.Message.PathPrefix.
+        comptime assert(0 == @backingInt(std.zig.Server.Message.PathPrefix.cwd));
+        comptime assert(1 == @backingInt(std.zig.Server.Message.PathPrefix.zig_lib));
+        comptime assert(2 == @backingInt(std.zig.Server.Message.PathPrefix.local_cache));
+        comptime assert(3 == @backingInt(std.zig.Server.Message.PathPrefix.global_cache));
+        comptime assert(4 == @backingInt(std.zig.Server.Message.PathPrefix.build_root));
+        comptime assert(@typeInfo(std.zig.Server.Message.PathPrefix).@"enum".field_names.len == 5);
         cache.addPrefix(.{ .path = null, .handle = Io.Dir.cwd() });
         cache.addPrefix(options.dirs.zig_lib);
         cache.addPrefix(options.dirs.local_cache);
         cache.addPrefix(options.dirs.global_cache);
+        cache.addPrefix(options.dirs.build_root);
         errdefer cache.manifest_dir.close(io);
 
         // This is shared hasher state common to zig source and all C source files.
@@ -1989,7 +2043,6 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
         cache.hash.add(options.emit_docs != .no);
         // TODO audit this and make sure everything is in it
 
-        const main_mod = options.main_mod orelse options.root_mod;
         const comp = try arena.create(Compilation);
         const opt_zcu: ?*Zcu = if (have_zcu) blk: {
             // Pre-open the directory handles for cached ZIR code so that it does not need
@@ -2271,7 +2324,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                 // likely different compilations and therefore this would be likely to
                 // cause cache hits.
                 if (comp.zcu) |zcu| {
-                    try addModuleTableToCacheHash(zcu, arena, &hash, .path_bytes);
+                    try addModuleTableToCacheHash(zcu, &hash);
                 } else {
                     cache_helpers.addModule(&hash, options.root_mod);
                 }
@@ -2747,7 +2800,7 @@ pub fn update(comp: *Compilation, main_progress_node: std.Progress.Node) UpdateE
 
     // If using the whole caching strategy, we check for *everything* up front, including
     // C source files.
-    log.debug("Compilation.update for {s}, CacheMode.{s}", .{ comp.root_name, @tagName(comp.cache_use) });
+    log.debug("Compilation.update for {s}, CacheMode.{t}", .{ comp.root_name, comp.cache_use });
     switch (comp.cache_use) {
         .none => |none| {
             assert(none.tmp_artifact_directory == null);
@@ -2756,7 +2809,9 @@ pub fn update(comp: *Compilation, main_progress_node: std.Progress.Node) UpdateE
                 const tmp_dir_sub_path = "tmp" ++ fs.path.sep_str ++ std.fmt.hex(tmp_dir_rand_int);
                 const path = try comp.dirs.local_cache.join(arena, &.{tmp_dir_sub_path});
                 const handle = comp.dirs.local_cache.handle.createDirPathOpen(io, tmp_dir_sub_path, .{}) catch |err| {
-                    return comp.setMiscFailure(.open_output, "failed to create output directory '{s}': {t}", .{ path, err });
+                    return comp.setMiscFailure(.open_output, "failed to create output directory {q}: {t}", .{
+                        path, err,
+                    });
                 };
                 break :d .{ .path = path, .handle = handle };
             };
@@ -2769,7 +2824,7 @@ pub fn update(comp: *Compilation, main_progress_node: std.Progress.Node) UpdateE
 
             man = comp.cache_parent.obtain();
             whole.cache_manifest = &man;
-            try addNonIncrementalStuffToCacheManifest(comp, arena, &man);
+            try addNonIncrementalStuffToCacheManifest(comp, &man);
 
             // Under `--time-report`, ignore cache hits; do the work anyway for those juicy numbers.
             const ignore_hit = comp.time_report != null;
@@ -3120,6 +3175,7 @@ pub fn appendFileSystemInput(comp: *Compilation, path: Compilation.Path) Allocat
         .zig_lib => comp.dirs.zig_lib,
         .global_cache => comp.dirs.global_cache,
         .local_cache => comp.dirs.local_cache,
+        .build_root => comp.dirs.build_root,
         .none => .cwd(),
     };
     const prefix: u8 = for (prefixes, 1..) |prefix_dir, i| {
@@ -3127,8 +3183,8 @@ pub fn appendFileSystemInput(comp: *Compilation, path: Compilation.Path) Allocat
             break @intCast(i);
         }
     } else std.debug.panic(
-        "missing prefix directory '{s}' ('{f}') for '{s}'",
-        .{ @tagName(path.root), want_prefix_dir, path.sub_path },
+        "missing prefix directory {t} ('{f}') for {q}",
+        .{ path.root, want_prefix_dir, path.sub_path },
     );
 
     // There may be concurrent calls to this function from C object workers and/or the main thread.
@@ -3320,15 +3376,15 @@ fn renameTmpIntoCache(
 /// anything from the link cache manifest.
 pub const link_hash_implementation_version = 14;
 
-fn addNonIncrementalStuffToCacheManifest(
-    comp: *Compilation,
-    arena: Allocator,
-    man: *Cache.Manifest,
-) !void {
+fn addNonIncrementalStuffToCacheManifest(comp: *Compilation, man: *Cache.Manifest) !void {
     comptime assert(link_hash_implementation_version == 14);
 
     if (comp.zcu) |zcu| {
-        try addModuleTableToCacheHash(zcu, arena, &man.hash, .{ .files = man });
+        // No need to hash the actual file contents here because it is
+        // redundant with the logic in `PerThread.update` which iterates over
+        // `zcu.alive_files` and adds those files discovered via `@import` to
+        // the whole cache manifest.
+        try addModuleTableToCacheHash(zcu, &man.hash);
 
         // Synchronize with other matching comments: ZigOnlyHashStuff
         man.hash.addListOfBytes(comp.test_filters);
@@ -3342,7 +3398,7 @@ fn addNonIncrementalStuffToCacheManifest(
     try link.hashInputs(man, comp.link_inputs);
 
     for (comp.c_objects.items) |c_object| {
-        _ = try man.addFile(c_object.src.src_path, null);
+        _ = try man.addFilePath(.initCwd(c_object.src.src_path), null);
         man.hash.addOptional(c_object.src.ext);
         man.hash.addListOfBytes(c_object.src.extra_flags);
     }
@@ -3350,11 +3406,11 @@ fn addNonIncrementalStuffToCacheManifest(
     for (comp.win32_resources.items) |win32_resource| {
         switch (win32_resource.src) {
             .rc => |rc_src| {
-                _ = try man.addFile(rc_src.src_path, null);
+                _ = try man.addFilePath(.initCwd(rc_src.src_path), null);
                 man.hash.addListOfBytes(rc_src.extra_flags);
             },
             .manifest => |manifest_path| {
-                _ = try man.addFile(manifest_path, null);
+                _ = try man.addFilePath(.initCwd(manifest_path), null);
             },
         }
     }
@@ -3386,8 +3442,8 @@ fn addNonIncrementalStuffToCacheManifest(
 
     const opts = comp.cache_use.whole.lf_open_opts;
 
-    try man.addOptionalFile(opts.linker_script);
-    try man.addOptionalFile(opts.version_script);
+    try man.addOptionalFilePath(opts.linker_script);
+    try man.addOptionalFilePath(opts.version_script);
     man.hash.add(opts.allow_undefined_version);
     man.hash.addOptional(opts.enable_new_dtags);
 
@@ -3446,7 +3502,7 @@ fn addNonIncrementalStuffToCacheManifest(
 
     // Mach-O specific stuff
     try link.File.MachO.hashAddFrameworks(man, opts.frameworks);
-    try man.addOptionalFile(opts.entitlements);
+    try man.addOptionalFilePath(opts.entitlements);
     man.hash.addOptional(opts.pagezero_size);
     man.hash.addOptional(opts.headerpad_size);
     man.hash.add(opts.headerpad_max_install_names);
@@ -5288,6 +5344,7 @@ fn buildMingwCrtFile(comp: *Compilation, crt_file: mingw.CrtFile, prog_node: std
 fn buildMingwImportLib(comp: *Compilation, lib_name: []const u8, is_prelink: bool, prog_node: std.Progress.Node) void {
     if (comp.zcu != null and comp.zcu.?.lsp_document_store != null) return;
     const crt_file_path = mingw.buildImportLib(comp, lib_name, prog_node) catch |err| switch (err) {
+        error.AlreadyReported => return,
         // TODO: This isn't actually true for self-hosted
         // In the non-prelink case we will end up putting foo.lib onto the linker line and letting the linker
         // use its library paths to look for libraries and report any problems.
@@ -5301,7 +5358,7 @@ fn buildMingwImportLib(comp: *Compilation, lib_name: []const u8, is_prelink: boo
         // TODO Surface more error details.
         else => |e| return comp.lockAndSetMiscFailure(
             .windows_import_lib,
-            "unable to generate mingw DLL import .lib file for {s}: {t}",
+            "generating mingw DLL import .lib file for {s} failed: {t}",
             .{ lib_name, e },
         ),
     };
@@ -5828,7 +5885,7 @@ fn updateWin32Resource(comp: *Compilation, win32_resource: *Win32Resource, win32
     // the XML data as a RT_MANIFEST resource. This means we can skip preprocessing,
     // include paths, CLI options, etc.
     if (win32_resource.src == .manifest) {
-        _ = try man.addFile(src_path, null);
+        _ = try man.addFilePath(.initCwd(src_path), null);
 
         const rc_basename = try std.fmt.allocPrint(arena, "{s}.rc", .{src_basename});
         const res_basename = try std.fmt.allocPrint(arena, "{s}.res", .{src_basename});
@@ -5921,7 +5978,7 @@ fn updateWin32Resource(comp: *Compilation, win32_resource: *Win32Resource, win32
     // We now know that we're compiling an .rc file
     const rc_src = win32_resource.src.rc;
 
-    _ = try man.addFile(rc_src.src_path, null);
+    _ = try man.addFilePath(.initCwd(rc_src.src_path), null);
     man.hash.addListOfBytes(rc_src.extra_flags);
 
     const rc_basename_noext = src_basename[0 .. src_basename.len - fs.path.extension(src_basename).len];
@@ -7331,6 +7388,7 @@ fn buildOutputFromZig(
                 1, // zig lib dir is the same
                 3, // local cache is mapped to global cache
                 3, // global cache is the same
+                0, // build root is not provided
             },
         },
         .incremental, .none => null,

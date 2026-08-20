@@ -637,6 +637,8 @@ pub fn main(init: process.Init.Minimal) !void {
     comptime assert(1 == @backingInt(std.zig.Server.Message.PathPrefix.zig_lib));
     comptime assert(2 == @backingInt(std.zig.Server.Message.PathPrefix.local_cache));
     comptime assert(3 == @backingInt(std.zig.Server.Message.PathPrefix.global_cache));
+    comptime assert(4 == @backingInt(std.zig.Server.Message.PathPrefix.build_root));
+    comptime assert(@typeInfo(std.zig.Server.Message.PathPrefix).@"enum".field_names.len == 5);
 
     graph.cache.hash.addBytes(builtin.zig_version_string);
 
@@ -1164,6 +1166,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
         graph.zig_exe, "build-exe", //
         "--cache-dir", graph.local_cache_root.path orelse ".", //
         "--global-cache-dir", graph.global_cache_root.path orelse ".", //
+        "--build-root", graph.build_root_directory.path orelse ".", //
         "--zig-lib-dir", graph.zig_lib_directory.path orelse ".", //
         "--name", configurer_exe_name, //
         "-fsingle-threaded", //
@@ -1458,7 +1461,6 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
 
             if (config_man) |man| {
                 if (try man.hit(compile_prog_node)) {
-                    log.debug("configuration cache hit", .{});
                     const digest = man.final();
                     const path: Path = .{
                         .root_dir = graph.local_cache_root,
@@ -1468,6 +1470,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
                     break :cp .{ path, man.toOwnedLock() };
                 }
             }
+            try graph.handleVerbose(null, null, build_configurer_argv.items);
             const configure_exe_path: Path = if (std.zig.buildExeSubprocess(gpa, io, .{
                 .argv = build_configurer_argv.items,
                 .cache_root = graph.local_cache_root,

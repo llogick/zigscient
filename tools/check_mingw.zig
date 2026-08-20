@@ -71,11 +71,11 @@ pub fn main(init: std.process.Init) !void {
                 var pp: Preprocessor = .{
                     .io = io,
                     .arena = pp_arena,
-                    .include_dir = mingw_include_path,
+                    .include_dir = .initCwd(mingw_include_path),
                     .target = target,
                 };
 
-                pp.preprocess(file_path) catch |err| {
+                pp.preprocess(.initCwd(file_path)) catch |err| {
                     std.log.err("error preprocessing file {s} for target {t}: {t}", .{ entry.path, target.cpu.arch, err });
                     fail = true;
                     continue;

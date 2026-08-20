@@ -135,6 +135,7 @@ pub const Message = struct {
         zig_lib,
         local_cache,
         global_cache,
+        build_root,
     };
 
     /// Trailing:

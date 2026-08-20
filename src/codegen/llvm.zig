@@ -481,7 +481,7 @@ pub const Object = struct {
                 // way already, but here we throw all that sweet information
                 // into the garbage can by converting into absolute paths. What
                 // a terrible tragedy.
-                const compile_unit_dir = try zcu.main_mod.root.toAbsolute(comp.dirs, arena);
+                const compile_unit_dir = try zcu.main_mod.root.toAbsolute(&comp.dirs, arena);
 
                 const debug_file = try builder.debugFile(
                     try builder.metadataString(comp.root_name),
@@ -1701,6 +1701,7 @@ pub const Object = struct {
             .zig_lib => dirs.zig_lib.path,
             .global_cache => dirs.global_cache.path,
             .local_cache => dirs.local_cache.path,
+            .build_root => dirs.build_root.path,
             .none => null,
         };
 

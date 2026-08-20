@@ -697,9 +697,10 @@ fn lowerZigArgs(
         zig_args.appendAssumeCapacity(libc_file);
     }
 
-    (try zig_args.addManyAsArray(gpa, 4)).* = .{
+    (try zig_args.addManyAsArray(gpa, 6)).* = .{
         "--cache-dir",        graph.local_cache_root.path orelse ".",
         "--global-cache-dir", graph.global_cache_root.path orelse ".",
+        "--build-root",       graph.build_root_directory.path orelse ".",
     };
 
     try zig_args.ensureUnusedCapacity(gpa, 1);

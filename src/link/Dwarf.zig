@@ -4735,7 +4735,7 @@ fn flushWriterError(dwarf: *Dwarf, pt: Zcu.PerThread) (UpdateError || Writer.Err
     }
 
     for (dwarf.mods.keys(), dwarf.mods.values()) |mod, *mod_info| {
-        const root_dir_path = try mod.root.toAbsolute(zcu.comp.dirs, dwarf.gpa);
+        const root_dir_path = try mod.root.toAbsolute(&zcu.comp.dirs, dwarf.gpa);
         defer dwarf.gpa.free(root_dir_path);
         mod_info.root_dir_path = try dwarf.debug_line_str.addString(dwarf, root_dir_path);
     }

@@ -656,6 +656,13 @@ fn zigProcessUpdate(step_index: Configuration.Step.Index, maker: *Maker, zp: *Zi
                             };
                             try addWatchInputFromPath(s, maker, path, Dir.path.basename(sub_path));
                         },
+                        .build_root => {
+                            const path: Path = .{
+                                .root_dir = graph.build_root_directory,
+                                .sub_path = sub_path_dirname,
+                            };
+                            try addWatchInputFromPath(s, maker, path, Dir.path.basename(sub_path));
+                        },
                     }
                 }
             },

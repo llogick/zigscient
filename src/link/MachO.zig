@@ -127,7 +127,7 @@ frameworks: []const Framework,
 /// TODO: unify with soname
 install_name: ?[]const u8,
 /// Path to entitlements file.
-entitlements: ?[]const u8,
+entitlements: ?Path,
 compatibility_version: ?std.SemanticVersion,
 /// Entry name
 entry_name: ?[]const u8,
@@ -580,7 +580,7 @@ pub fn flush(
         var codesig = CodeSignature.init(self.getPageSize());
         codesig.code_directory.ident = fs.path.basename(self.base.emit.sub_path);
         if (self.entitlements) |path| codesig.addEntitlements(gpa, io, path) catch |err|
-            return diags.fail("failed to add entitlements from {s}: {t}", .{ path, err });
+            return diags.fail("failed to add entitlements from {f}: {t}", .{ path, err });
         try self.writeCodeSignaturePadding(&codesig);
         break :blk codesig;
     } else null;

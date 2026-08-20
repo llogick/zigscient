@@ -4,6 +4,7 @@ const Allocator = std.mem.Allocator;
 const Token = Tokenizer.Token;
 const mem = std.mem;
 const assert = std.debug.assert;
+const Path = std.Build.Cache.Path;
 
 test {
     _ = Tokenizer;
@@ -25,15 +26,15 @@ pub const Source = struct {
     pub const generated: Source.Id = std.math.maxInt(usize);
     pub const Id = usize;
     id: Id = generated,
-    path: []const u8,
+    path: Path,
     buf: []const u8,
 };
 
-sources: std.array_hash_map.String(Source) = .empty,
+sources: std.array_hash_map.Custom(Path, Source, Path.TableAdapter, false) = .empty,
 
 arena: Allocator,
 io: std.Io,
-include_dir: []const u8,
+include_dir: Path,
 
 top_expansion_buf: ExpandBuf = .empty,
 add_expansion_nl: usize = 0,
@@ -132,7 +133,7 @@ fn defineBuiltin(pp: *Preprocessor, name: []const u8) !void {
     });
 }
 
-pub fn preprocess(pp: *Preprocessor, file_path: []const u8) !void {
+pub fn preprocess(pp: *Preprocessor, file_path: Path) !void {
     const source = try pp.addSourceFromPath(file_path);
     try pp.preprocessFile(source);
 }
@@ -789,13 +790,9 @@ fn makeGeneratedToken(
     return pasted_token;
 }
 
-fn findInclude(
-    pp: *Preprocessor,
-    filename: []const u8,
-    includer_token: Token,
-) !?Source {
+fn findInclude(pp: *Preprocessor, filename: []const u8, includer_token: Token) !?Source {
     const other_file = pp.sources.values()[includer_token.source].path;
-    const dir = std.fs.path.dirname(other_file) orelse ".";
+    const dir: Path = other_file.dirname() orelse .cwd();
     if (try pp.checkIncludeDir(filename, dir)) |res| return res;
 
     return pp.checkIncludeDir(filename, pp.include_dir);
@@ -804,31 +801,24 @@ fn findInclude(
 fn checkIncludeDir(
     pp: *Preprocessor,
     include_path: []const u8,
-    include_dir: []const u8,
+    include_dir: Path,
 ) !?Source {
-    const format = "{s}{c}{s}";
     var bfa_buf: [1024]u8 = undefined;
     var bfa_state: std.heap.BufferFirstAllocator = .init(&bfa_buf, pp.arena);
     const bfa = bfa_state.allocator();
-    const header_path = try std.fmt.allocPrint(bfa, format, .{
-        include_dir,
-        std.fs.path.sep,
-        include_path,
-    });
-    defer bfa.free(header_path);
-
+    const header_path = try include_dir.join(bfa, include_path);
     return pp.addSourceFromPath(header_path) catch |err| switch (err) {
         error.OutOfMemory => |e| return e,
         else => return null,
     };
 }
 
-pub fn addSourceFromPath(pp: *Preprocessor, path: []const u8) !Source {
+pub fn addSourceFromPath(pp: *Preprocessor, path: Path) !Source {
     if (pp.sources.get(path)) |src| return src;
     try pp.sources.ensureUnusedCapacity(pp.arena, 1);
 
-    const contents = try std.Io.Dir.cwd().readFileAlloc(pp.io, path, pp.arena, .limited(std.math.maxInt(u32)));
-    const duped_path = try pp.arena.dupe(u8, path);
+    const contents = try path.root_dir.handle.readFileAlloc(pp.io, path.sub_path, pp.arena, .limited(std.math.maxInt(u32)));
+    const duped_path = try path.clone(pp.arena);
 
     const src: Source = .{
         .buf = contents,

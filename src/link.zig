@@ -461,8 +461,8 @@ pub const File = struct {
         allow_undefined_version: bool,
         enable_new_dtags: ?bool,
         subsystem: ?std.zig.Subsystem,
-        linker_script: ?[]const u8,
-        version_script: ?[]const u8,
+        linker_script: ?Path,
+        version_script: ?Path,
         soname: ?[]const u8,
         print_gc_sections: bool,
         print_icf_sections: bool,
@@ -493,7 +493,7 @@ pub const File = struct {
         /// Install name for the dylib
         install_name: ?[]const u8,
         /// Path to entitlements file
-        entitlements: ?[]const u8,
+        entitlements: ?Path,
         /// size of the __PAGEZERO segment
         pagezero_size: ?u64,
         /// Set minimum space for future expansion of the load commands

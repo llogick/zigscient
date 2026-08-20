@@ -1283,14 +1283,20 @@ pub const Directories = struct {
     /// `local_cache.path` is resolved (`resolvePath`) or `null` for cwd.
     /// This may be the same as `global_cache`.
     local_cache: Cache.Directory,
+    /// The directory that contains build.zig. This path is provided by the
+    /// build system, when the build system is used, otherwise, it is `null`
+    /// for cwd.
+    build_root: Cache.Directory,
 
     pub fn deinit(dirs: *Directories, io: Io) void {
         // The local and global caches could be the same.
         const close_local = dirs.local_cache.handle.handle != dirs.global_cache.handle.handle;
+        const close_build_root = dirs.build_root.handle.handle != Io.Dir.cwd().handle;
 
         dirs.global_cache.handle.close(io);
         if (close_local) dirs.local_cache.handle.close(io);
         dirs.zig_lib.handle.close(io);
+        if (close_build_root) dirs.build_root.handle.close(io);
     }
 
     /// Returns a `Directories` where `local_cache` is replaced with `global_cache`, intended for
@@ -1302,6 +1308,7 @@ pub const Directories = struct {
             .zig_lib = dirs.zig_lib,
             .global_cache = dirs.global_cache,
             .local_cache = dirs.global_cache,
+            .build_root = dirs.build_root,
         };
     }
 
@@ -1311,12 +1318,10 @@ pub const Directories = struct {
         global,
     };
 
-    /// Uses `std.process.fatal` on error conditions.
-    pub fn init(
-        arena: Allocator,
-        io: Io,
+    pub const InitOptions = struct {
         override_zig_lib: ?[]const u8,
         override_global_cache: ?[]const u8,
+        build_root: ?[]const u8,
         local_cache_strat: LocalCacheStrategy,
         preopens: std.process.Preopens,
         self_exe_path: switch (builtin.target.os.tag) {
@@ -1325,27 +1330,37 @@ pub const Directories = struct {
         },
         environ_map: *const std.process.Environ.Map,
         cwd: []const u8,
-    ) Directories {
+    };
+
+    /// Uses `std.process.fatal` on error conditions.
+    pub fn init(arena: Allocator, io: Io, options: InitOptions) Directories {
         const wasi = builtin.target.os.tag == .wasi;
+        const cwd = options.cwd;
 
         const zig_lib: Cache.Directory = d: {
-            if (override_zig_lib) |path| break :d openUnresolved(arena, io, cwd, path, .@"zig lib");
-            if (wasi) break :d getPreopen(preopens, "/lib");
-            break :d findZigLibDirFromSelfExe(arena, io, cwd, self_exe_path) catch |err| {
-                fatal("unable to find zig installation directory from executable path {q}: {t}", .{ self_exe_path, err });
+            if (options.override_zig_lib) |path| break :d openUnresolved(arena, io, cwd, path, .@"zig lib");
+            if (wasi) break :d getPreopen(options.preopens, "/lib");
+            break :d findZigLibDirFromSelfExe(arena, io, cwd, options.self_exe_path) catch |err| {
+                fatal("unable to find zig installation directory from executable path {q}: {t}", .{
+                    options.self_exe_path, err,
+                });
             };
         };
+        const build_root: Cache.Directory = if (options.build_root) |s|
+            openUnresolved(arena, io, cwd, s, .@"build root")
+        else
+            .cwd();
 
         const global_cache: Cache.Directory = d: {
-            if (override_global_cache) |path| break :d openUnresolved(arena, io, cwd, path, .@"global cache");
-            if (wasi) break :d getPreopen(preopens, "/cache");
-            const path = resolveGlobalCacheDir(arena, environ_map) catch |err| {
+            if (options.override_global_cache) |path| break :d openUnresolved(arena, io, cwd, path, .@"global cache");
+            if (wasi) break :d getPreopen(options.preopens, "/cache");
+            const path = resolveGlobalCacheDir(arena, options.environ_map) catch |err| {
                 fatal("unable to resolve zig cache directory: {t}", .{err});
             };
             break :d openUnresolved(arena, io, cwd, path, .@"global cache");
         };
 
-        const local_cache = getLocalCacheDirectory(arena, io, cwd, global_cache, local_cache_strat);
+        const local_cache = getLocalCacheDirectory(arena, io, cwd, global_cache, options.local_cache_strat);
 
         if (mem.eql(u8, zig_lib.path orelse "", global_cache.path orelse "")) {
             fatal("zig lib directory '{f}' cannot be equal to global cache directory '{f}'", .{ zig_lib, global_cache });
@@ -1359,6 +1374,7 @@ pub const Directories = struct {
             .zig_lib = zig_lib,
             .global_cache = global_cache,
             .local_cache = local_cache,
+            .build_root = build_root,
         };
     }
 
@@ -1395,14 +1411,14 @@ pub const Directories = struct {
         io: Io,
         cwd: []const u8,
         unresolved_path: []const u8,
-        thing: enum { @"zig lib", @"global cache", @"local cache" },
+        thing: enum { @"zig lib", @"global cache", @"local cache", @"build root" },
     ) Cache.Directory {
         const path = resolvePath(arena, cwd, &.{unresolved_path}) catch |err| {
             fatal("unable to resolve {t} directory: {t}", .{ thing, err });
         };
         const nonempty_path = if (path.len == 0) "." else path;
         const handle_or_err = switch (thing) {
-            .@"zig lib" => Dir.cwd().openDir(io, nonempty_path, .{}),
+            .@"zig lib", .@"build root" => Dir.cwd().openDir(io, nonempty_path, .{}),
             .@"global cache", .@"local cache" => Dir.cwd().createDirPathOpen(io, nonempty_path, .{}),
         };
         return .{

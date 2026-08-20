@@ -75,8 +75,8 @@ pub const Elf = struct {
     entry_name: ?[]const u8,
     hash_style: HashStyle,
     image_base: u64,
-    linker_script: ?[]const u8,
-    version_script: ?[]const u8,
+    linker_script: ?Cache.Path,
+    version_script: ?Cache.Path,
     sort_section: ?SortSection,
     print_icf_sections: bool,
     print_map: bool,
@@ -930,7 +930,7 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
 
         if (elf.linker_script) |linker_script| {
             try argv.append("-T");
-            try argv.append(linker_script);
+            try argv.append(try linker_script.toString(arena));
         }
 
         if (elf.sort_section) |how| {
@@ -1086,7 +1086,7 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
             }
             if (elf.version_script) |version_script| {
                 try argv.append("-version-script");
-                try argv.append(version_script);
+                try argv.append(try version_script.toString(arena));
             }
             if (elf.allow_undefined_version) {
                 try argv.append("--undefined-version");
