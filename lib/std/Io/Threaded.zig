@@ -13982,7 +13982,7 @@ fn netLookupFallible(
             .DNS_ERROR_INVALID_NAME_CHAR,
             .DNS_ERROR_RECORD_DOES_NOT_EXIST,
             => return error.UnknownHostName,
-            .TIMEOUT => return error.Timeout,
+            .TIMEOUT => return error.NameServerFailure,
             else => |err| return windows.unexpectedError(err),
         }
     }

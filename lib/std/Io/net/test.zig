@@ -173,7 +173,6 @@ test "resolve DNS" {
         }) catch |err| switch (err) {
             error.UnknownHostName => return error.SkipZigTest,
             error.NameServerFailure => return error.SkipZigTest,
-            error.Timeout => return error.SkipZigTest,
             else => |e| return e,
         };
 
