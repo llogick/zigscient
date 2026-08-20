@@ -154,7 +154,6 @@ pub fn seekBy(r: *Reader, offset: i64) SeekError!void {
                     return err;
                 };
             }
-            r.interface.tossBuffered();
         },
         .failure => return r.seek_err.?,
     }
