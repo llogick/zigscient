@@ -3073,7 +3073,7 @@ const Parser = struct {
         return blk_0: {
             const pos_0 = p.i;
             if (blk_1: {
-                if (std.mem.startsWith(u8, p.source[p.i..], "\xef\xbb\xbf")) {
+                if (std.mem.startsWith(u8, p.source[p.i..], "ï»¿")) {
                     p.i += 3;
                     break :blk_1 true;
                 }
@@ -3145,7 +3145,7 @@ const Parser = struct {
         return blk_0: {
             const pos_0 = p.i;
             if (blk_1: {
-                if (std.mem.startsWith(u8, p.source[p.i..], "\xf4")) {
+                if (std.mem.startsWith(u8, p.source[p.i..], "ô")) {
                     p.i += 1;
                     break :blk_1 true;
                 }
@@ -3201,7 +3201,7 @@ const Parser = struct {
         return blk_0: {
             const pos_0 = p.i;
             if (blk_1: {
-                if (std.mem.startsWith(u8, p.source[p.i..], "\xf0")) {
+                if (std.mem.startsWith(u8, p.source[p.i..], "ð")) {
                     p.i += 1;
                     break :blk_1 true;
                 }
@@ -3257,7 +3257,7 @@ const Parser = struct {
         return blk_0: {
             const pos_0 = p.i;
             if (blk_1: {
-                if (std.mem.startsWith(u8, p.source[p.i..], "\xed")) {
+                if (std.mem.startsWith(u8, p.source[p.i..], "í")) {
                     p.i += 1;
                     break :blk_1 true;
                 }
@@ -3313,7 +3313,7 @@ const Parser = struct {
         return blk_0: {
             const pos_0 = p.i;
             if (blk_1: {
-                if (std.mem.startsWith(u8, p.source[p.i..], "\xe0")) {
+                if (std.mem.startsWith(u8, p.source[p.i..], "à")) {
                     p.i += 1;
                     break :blk_1 true;
                 }

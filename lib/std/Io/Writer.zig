@@ -584,36 +584,41 @@ pub fn writeAll(w: *Writer, bytes: []const u8) Error!void {
 /// required, otherwise the digit following ':' is interpreted as **width**.
 ///
 /// **specifier** supports:
-/// - `x` and `X`: numeric value in hexadecimal notation, or string in hexadecimal bytes
-/// - `s`:
+/// - "x" and "X": numeric value in hexadecimal notation, or string in hexadecimal bytes
+/// - "s":
 ///   - for pointer-to-many and C pointers of u8, print as a C-string using zero-termination
 ///   - for slices of u8, print the entire slice as a string without zero-termination
-/// - `t`:
+/// - "t":
 ///   - for enums and tagged unions: prints the tag name
 ///   - for error sets: prints the error name
-/// - `b64`: string as standard base64
-/// - `e`: floating point value in scientific notation
-/// - `d`: numeric value in decimal notation
-/// - `b`: integer value in binary notation
-/// - `o`: integer value in octal notation
-/// - `c`: integer as an ASCII character. Integer type must have 8 bits at max.
-/// - `u`: integer as an UTF-8 sequence. Integer type must have 21 bits at max.
-/// - `B`: bytes in SI units (decimal)
-/// - `Bi`: bytes in IEC units (binary)
-/// - `?`: optional value as either the unwrapped value, or `null`; may be
+/// - "b64": string as standard base64
+/// - "e": floating point value in scientific notation
+/// - "d": numeric value in decimal notation
+/// - "b": integer value in binary notation
+/// - "o": integer value in octal notation
+/// - "c": integer as an ASCII character. Integer type must have 8 bits at max.
+/// - "u": integer as an UTF-8 sequence. Integer type must have 21 bits at max.
+/// - "B": bytes in SI units (decimal)
+/// - "Bi": bytes in IEC units (binary)
+/// - "?": optional value as either the unwrapped value, or `null`; may be
 ///   followed by a format specifier for the underlying value.
-/// - `!`: error union value as either the unwrapped value, or the formatted
+/// - "!": error union value as either the unwrapped value, or the formatted
 ///   error value; may be followed by a format specifier for the underlying
 ///   value.
-/// - `*`: the address of the value instead of the value itself.
-/// - `any`: a value of any type using its default format.
-/// - `f`: delegates to the `format` method of the type, passing `*Writer` and
+/// - "*": the address of the value instead of the value itself.
+/// - "any": a value of any type using its default format.
+/// - "f": delegates to the `format` method of the type, passing `*Writer` and
 ///   expecting `Error!void` returned.
-///
-/// A user type may be a struct, vector, union or enum type.
+/// - "q": prints as a double-quote escaped string. Inside the double-quoted
+///   string, everything is passed through unmodified, except for the following
+///   transformations:
+///   - escaped: '\n', '\r', '\t', '\\', '"'
+///   - hex-encoded: ASCII control characters
+/// - "qf": delegates to the `format` method of the type, while double-quote
+///   escaping.
 ///
 /// Literal curly braces can be escaped in the format string via doubling, e.g.
-/// `{{` or `}}`.
+/// "{{" or "}}".
 pub fn print(w: *Writer, comptime fmt: []const u8, args: anytype) Error!void {
     const ArgsType = @TypeOf(args);
     const args_type_info = @typeInfo(ArgsType);
@@ -1228,6 +1233,18 @@ pub fn printValue(
                     .int, .comptime_int => return w.printByteSize(value, .binary, options),
                     .@"struct" => return value.formatByteSize(w, .binary),
                     else => invalidFmtError(fmt, value),
+                },
+                else => {},
+            },
+            'q' => switch (fmt[1]) {
+                'f' => {
+                    try w.writeByte('"');
+                    var buffer: [64]u8 = undefined;
+                    var escaping_writer: std.zig.StringEscapeWriter = .init(w, &buffer);
+                    try value.format(&escaping_writer.writer);
+                    try escaping_writer.writer.flush();
+                    try w.writeByte('"');
+                    return;
                 },
                 else => {},
             },
@@ -2141,6 +2158,11 @@ test "printFloat with comptime_float" {
 test "{q} format string" {
     const data: []const u8 = "i\tlike\"cheese\x00\x05cheese";
     try testing.expectFmt("hello \"i\\tlike\\\"cheese\\x00\\x05cheese\" world", "hello {q} world", .{data});
+}
+
+test "{qf} format string" {
+    const data: []const u8 = "😎";
+    try testing.expectFmt("hello \"@\\\"😎\\\"\" world", "hello {qf} world", .{std.zig.fmtId(data)});
 }
 
 fn testPrintIntCase(expected: []const u8, value: anytype, base: u8, case: std.fmt.Case, options: std.fmt.Options) !void {

@@ -267,17 +267,14 @@ const Generator = struct {
                 const bytes = g.p.strings.items[literal.off..][0..literal.len];
                 try g.w.print(
                     \\blk_{d}: {{
-                    \\if (std.mem.startsWith(u8, p.source[p.i..], "
-                , .{suffix});
-                try std.zig.stringEscape(bytes, g.w);
-                try g.w.print(
-                    \\")) {{
+                    \\if (std.mem.startsWith(u8, p.source[p.i..], {q})) {{
+                    \\
                     \\p.i += {d};
                     \\    break :blk_{d} true;
                     \\}}
                     \\break :blk_{d} false;
                     \\}}
-                , .{ bytes.len, suffix, suffix });
+                , .{ suffix, bytes, bytes.len, suffix, suffix });
             },
             .class => |ranges| {
                 try g.w.writeAll("(p.i < p.source.len and switch (p.source[p.i]) {");

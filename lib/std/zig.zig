@@ -538,20 +538,82 @@ test fmtChar {
 }
 
 /// Print the string as escaped contents of a double quoted string.
+///
+/// The following transformations are made:
+/// * escaped: '\n', '\r', '\t', '\\', '"'
+/// * hex-encoded: ascii control characters
+///
+/// Everything else is passed through unmodified.
 pub fn stringEscape(bytes: []const u8, w: *Writer) Writer.Error!void {
+    _ = try stringEscapeCounting(bytes, w);
+}
+
+pub fn stringEscapeCounting(bytes: []const u8, w: *Writer) Writer.Error!usize {
+    var n: usize = 0;
     for (bytes) |byte| switch (byte) {
-        '\n' => try w.writeAll("\\n"),
-        '\r' => try w.writeAll("\\r"),
-        '\t' => try w.writeAll("\\t"),
-        '\\' => try w.writeAll("\\\\"),
-        '"' => try w.writeAll("\\\""),
-        ' ', '!', '#'...'[', ']'...'~' => try w.writeByte(byte),
-        else => {
+        '\t' => {
+            try w.writeAll("\\t");
+            n += 2;
+        },
+        '\n' => {
+            try w.writeAll("\\n");
+            n += 2;
+        },
+        '\r' => {
+            try w.writeAll("\\r");
+            n += 2;
+        },
+        '\\' => {
+            try w.writeAll("\\\\");
+            n += 2;
+        },
+        '"' => {
+            try w.writeAll("\\\"");
+            n += 2;
+        },
+        0...8, 11, 12, 14...0x1f, 0x7f => {
             try w.writeAll("\\x");
             try w.printInt(byte, 16, .lower, .{ .width = 2, .fill = '0' });
+            n += 4;
+        },
+        else => {
+            try w.writeByte(byte);
+            n += 1;
         },
     };
+    return n;
 }
+
+pub const StringEscapeWriter = struct {
+    out: *Writer,
+    writer: Writer,
+
+    pub fn init(out: *Writer, buffer: []u8) @This() {
+        return .{
+            .out = out,
+            .writer = .{
+                .vtable = &.{ .drain = @This().drain },
+                .buffer = buffer,
+            },
+        };
+    }
+
+    fn drain(w: *Writer, data: []const []const u8, splat: usize) Io.Writer.Error!usize {
+        const sew: *StringEscapeWriter = @alignCast(@fieldParentPtr("writer", w));
+        const out = sew.out;
+        _ = try stringEscapeCounting(w.buffered(), out);
+        w.end = 0;
+        var n: usize = 0;
+        for (data[0 .. data.len - 1]) |bytes| {
+            n += try stringEscapeCounting(bytes, out);
+        }
+        const pattern = data[data.len - 1];
+        for (0..splat) |_| {
+            n += try stringEscapeCounting(pattern, out);
+        }
+        return n;
+    }
+};
 
 /// Print as escaped contents of a single-quoted string.
 pub fn charEscape(codepoint: u21, w: *Writer) Writer.Error!void {
