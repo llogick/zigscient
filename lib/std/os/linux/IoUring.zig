@@ -1230,7 +1230,7 @@ pub fn register_file_alloc_range(self: *IoUring, offset: u32, len: u32) !void {
         self.fd,
         .REGISTER_FILE_ALLOC_RANGE,
         @ptrCast(range),
-        @as(u32, @sizeOf(linux.io_uring_file_index_range)),
+        0,
     );
 
     return handle_registration_result(res);
