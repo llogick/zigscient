@@ -780,8 +780,8 @@ pub const Inst = struct {
         reduce,
         /// Same as `reduce` with optimized float mode.
         reduce_optimized,
-        /// Given an integer, bool, float, or pointer operand, return a vector with all elements
-        /// equal to the scalar value.
+        /// Given an operand, return a vector or array with all elements equal to the operand.
+        /// For a sentinel-terminated array, the sentinel is derived from the result type.
         /// Uses the `ty_op` field.
         splat,
         /// Constructs a vector by selecting elements from a single vector based on a mask. Each

@@ -23273,13 +23273,7 @@ fn zirSplat(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.I
     try sema.requireRuntimeBlock(block, src, scalar_src);
 
     switch (dest_ty.zigTypeTag(zcu)) {
-        .array => {
-            const elems = try sema.arena.alloc(Air.Inst.Ref, len + @intFromBool(maybe_sentinel != null));
-            @memset(elems[0..len], scalar);
-            if (maybe_sentinel) |s| elems[len] = Air.internedToRef(s.toIntern());
-            return block.addAggregateInit(dest_ty, elems);
-        },
-        .vector => return block.addTyOp(.splat, dest_ty, scalar),
+        .vector, .array => return block.addTyOp(.splat, dest_ty, scalar),
         else => unreachable,
     }
 }

@@ -30,6 +30,28 @@ fn testMemsetArray() !void {
     }
 }
 
+test "@memset preserves array sentinel" {
+    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
+    try testMemsetArraySentinel();
+    try comptime testMemsetArraySentinel();
+}
+
+fn testMemsetArraySentinel() !void {
+    var value: u32 = 42;
+    _ = &value;
+    var array: [3:0]u32 = .{ 1, 2, 3 };
+
+    @memset(&array, value);
+
+    try expect(array[0] == value);
+    try expect(array[1] == value);
+    try expect(array[2] == value);
+    try expect(array[3] == 0);
+}
+
 test "@memset on slices" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest;

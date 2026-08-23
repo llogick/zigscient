@@ -8,6 +8,7 @@ pub const Select = @import("aarch64/Select.zig");
 pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
     return comptime &.initMany(&.{
         .expand_bit_cast_safe,
+        .expand_array_splat,
         .expand_array_to_vector,
     });
 }

@@ -200,6 +200,8 @@ pub const Feature = enum {
     expand_packed_agg_field_val,
     /// Replace `aggregate_init` of a packed struct with a sequence of `shl_exact`, `bit_cast`, `int_cast`, and `bit_or`.
     expand_packed_aggregate_init,
+    /// Replace `splat` of an array with an `aggregate_init`.
+    expand_array_splat,
     /// Replace `array_to_vector` with an `array_elem_val` per element followed by an `aggregate_init`.
     expand_array_to_vector,
 
@@ -891,15 +893,27 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
                     .soft_float => unreachable, // the operand is not a scalar
                 }
             },
-            .splat => if (l.features.has(.splat_one_elem_to_bit_cast)) {
+            .splat => {
                 const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
-                switch (ty_op.ty.vectorLen(zcu)) {
-                    0 => unreachable,
-                    1 => continue :inst l.replaceInst(inst, .bit_cast, .{ .ty_op = .{
-                        .ty = ty_op.ty,
-                        .operand = ty_op.operand,
-                    } }),
-                    else => {},
+                switch (ty_op.ty.zigTypeTag(zcu)) {
+                    .vector => switch (ty_op.ty.vectorLen(zcu)) {
+                        0 => unreachable,
+                        1 => continue :inst l.replaceInst(inst, .bit_cast, .{ .ty_op = .{
+                            .ty = ty_op.ty,
+                            .operand = ty_op.operand,
+                        } }),
+                        else => {},
+                    },
+                    .array => if (l.features.has(.expand_array_splat)) {
+                        const len: usize = @intCast(ty_op.ty.arrayLen(zcu));
+                        const elems_start: u32 = @intCast(l.air_extra.items.len);
+                        try l.air_extra.appendNTimes(l.pt.zcu.gpa, @backingInt(ty_op.operand), len);
+                        continue :inst l.replaceInst(inst, .aggregate_init, .{ .ty_pl = .{
+                            .ty = ty_op.ty,
+                            .payload = elems_start,
+                        } });
+                    },
+                    else => unreachable,
                 }
             },
             .shuffle_one => {

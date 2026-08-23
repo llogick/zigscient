@@ -78,6 +78,7 @@ pub fn legalizeFeatures(_: *const std.Target) *const Air.Legalize.Features {
         .expand_packed_store,
         .expand_packed_agg_field_val,
         .expand_packed_aggregate_init,
+        .expand_array_splat,
         .expand_array_to_vector,
     });
 }

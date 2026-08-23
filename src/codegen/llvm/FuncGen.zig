@@ -5590,8 +5590,36 @@ fn airMemset(self: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error
         .slice => null,
         .many, .c => unreachable,
     });
+    const len_bytes = try self.sliceOrArrayLenInBytes(dest_slice, ptr_ty);
 
-    if (allow_byte_memset) if (bin_op.rhs.toInterned()) |elem_ip_index| {
+    try self.lowerMemset(
+        dest_ptr,
+        dest_ptr_align,
+        bin_op.rhs,
+        elem_ty,
+        len_bytes,
+        access_kind,
+        safety,
+        allow_byte_memset,
+    );
+    return .none;
+}
+
+fn lowerMemset(
+    self: *FuncGen,
+    dest_ptr: Builder.Value,
+    dest_ptr_align: InternPool.Alignment,
+    elem_ref: Air.Inst.Ref,
+    elem_ty: Type,
+    len_bytes: Builder.Value,
+    access_kind: Builder.MemoryAccessKind,
+    safety: bool,
+    allow_byte_memset: bool,
+) Allocator.Error!void {
+    const o = self.object;
+    const zcu = o.zcu;
+
+    if (allow_byte_memset) if (elem_ref.toInterned()) |elem_ip_index| {
         const elem_val: Value = .fromInterned(elem_ip_index);
         if (elem_val.isUndef(zcu)) {
             // Even if safety is disabled, we still emit a memset to undefined since it conveys
@@ -5601,20 +5629,19 @@ fn airMemset(self: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error
                 try o.builder.intValue(.i8, 0xaa)
             else
                 try o.builder.undefValue(.i8);
-            const len = try self.sliceOrArrayLenInBytes(dest_slice, ptr_ty);
             _ = try self.wip.callMemSet(
                 dest_ptr,
                 dest_ptr_align.toLlvm(),
                 fill_byte,
-                len,
+                len_bytes,
                 access_kind,
                 self.disable_intrinsics,
             );
             const owner_mod = self.ownerModule();
             if (safety and owner_mod.valgrind) {
-                try self.valgrindMarkUndef(dest_ptr, len);
+                try self.valgrindMarkUndef(dest_ptr, len_bytes);
             }
-            return .none;
+            return;
         }
 
         // Test if the element value is compile-time known to be a
@@ -5623,20 +5650,19 @@ fn airMemset(self: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error
         // intrinsic can be used.
         if (try elem_val.hasRepeatedByteRepr(zcu)) |byte_val| {
             const fill_byte = try o.builder.intValue(.i8, byte_val);
-            const len = try self.sliceOrArrayLenInBytes(dest_slice, ptr_ty);
             _ = try self.wip.callMemSet(
                 dest_ptr,
                 dest_ptr_align.toLlvm(),
                 fill_byte,
-                len,
+                len_bytes,
                 access_kind,
                 self.disable_intrinsics,
             );
-            return .none;
+            return;
         }
     };
 
-    const value = try self.resolveInst(bin_op.rhs);
+    const value = try self.resolveInst(elem_ref);
     const elem_abi_size = elem_ty.abiSize(zcu);
 
     intrinsic: {
@@ -5660,16 +5686,15 @@ fn airMemset(self: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error
             break :intrinsic;
         };
         // Great, we can use the intrinsic!
-        const len = try self.sliceOrArrayLenInBytes(dest_slice, ptr_ty);
         _ = try self.wip.callMemSet(
             dest_ptr,
             dest_ptr_align.toLlvm(),
             fill_byte,
-            len,
+            len_bytes,
             access_kind,
             self.disable_intrinsics,
         );
-        return .none;
+        return;
     }
 
     // non-byte-sized element. lower with a loop. something like this:
@@ -5693,15 +5718,7 @@ fn airMemset(self: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error
     const body_block = try self.wip.block(1, "InlineMemsetBody");
     const end_block = try self.wip.block(1, "InlineMemsetEnd");
 
-    const end_ptr = switch (ptr_ty.ptrSize(zcu)) {
-        .slice => try self.ptraddScaled(
-            dest_ptr,
-            try self.wip.extractValue(dest_slice, &.{1}, ""),
-            elem_abi_size,
-        ),
-        .one => try self.ptraddConst(dest_ptr, ptr_ty.childType(zcu).abiSize(zcu)),
-        .many, .c => unreachable,
-    };
+    const end_ptr = try self.ptraddScaled(dest_ptr, len_bytes, 1);
     _ = try self.wip.br(loop_block);
 
     self.wip.cursor = .{ .block = loop_block };
@@ -5718,7 +5735,7 @@ fn airMemset(self: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error
 
     self.wip.cursor = .{ .block = end_block };
     it_ptr.finish(&.{ next_ptr, dest_ptr }, &.{ body_block, entry_block }, &self.wip);
-    return .none;
+    return;
 }
 
 fn airMemcpy(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value {
@@ -5980,10 +5997,45 @@ fn airErrorName(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Va
 }
 
 fn airSplat(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value {
+    const o = self.object;
+    const zcu = o.zcu;
     const ty_op = self.air.instructions.items(.data)[@backingInt(inst)].ty_op;
-    const scalar = try self.resolveInst(ty_op.operand);
-    const vector_ty = self.typeOfIndex(inst);
-    return self.wip.splatVector(try self.object.lowerType(vector_ty, .as_value), scalar, "");
+    const result_ty = self.typeOfIndex(inst);
+    switch (result_ty.zigTypeTag(zcu)) {
+        .vector => {
+            const scalar = try self.resolveInst(ty_op.operand);
+            return self.wip.splatVector(try o.lowerType(result_ty, .as_value), scalar, "");
+        },
+        .array => {
+            assert(isByRef(result_ty, zcu));
+
+            const result_ptr = try self.buildZigAlloca(result_ty, .none);
+            const array_info = result_ty.arrayInfo(zcu);
+            const elem_size = array_info.elem_type.abiSize(zcu);
+            const len_bytes = array_info.len * elem_size;
+            const len_bytes_llvm = try o.builder.intValue(try o.lowerType(.usize, .as_value), len_bytes);
+
+            try self.lowerMemset(
+                result_ptr,
+                result_ty.abiAlignment(zcu),
+                ty_op.operand,
+                array_info.elem_type,
+                len_bytes_llvm,
+                .normal,
+                false,
+                !self.needMemsetWorkaround(len_bytes),
+            );
+
+            if (array_info.sentinel) |sent_val| {
+                const sent_ptr = try self.ptraddConst(result_ptr, len_bytes);
+                const sent_elem = try self.resolveValue(sent_val);
+                try self.store(sent_ptr, .none, sent_elem.toValue(), array_info.elem_type, .normal);
+            }
+
+            return result_ptr;
+        },
+        else => unreachable,
+    }
 }
 
 fn airSelect(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value {

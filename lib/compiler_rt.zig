@@ -602,6 +602,8 @@ inline fn negXi2(comptime T: type, a: T) T {
 }
 
 fn memsetSmallPowerOf2(d: [*]u8, b: u8, comptime size: usize) void {
+    @disableIntrinsics();
+
     if (size > @sizeOf(usize)) {
         d[0..size].* = @splat(b);
     } else {
@@ -619,6 +621,8 @@ fn shortMemset(
     b: u8,
     len: usize,
 ) void {
+    @disableIntrinsics();
+
     if (log_min + 1 != log_max) {
         const mid = (log_min + log_max) / 2;
         if (len > 1 << mid) {
@@ -635,6 +639,8 @@ fn shortMemset(
 }
 
 fn fastMemset(dest: ?[*]u8, c: c_int, len: usize) callconv(.c) ?[*]u8 {
+    @disableIntrinsics();
+
     const b: u8 = @truncate(@as(c_uint, @bitCast(c)));
     const n = std.simd.suggestVectorLength(u8) orelse @sizeOf(usize);
 
@@ -668,6 +674,8 @@ fn fastMemset(dest: ?[*]u8, c: c_int, len: usize) callconv(.c) ?[*]u8 {
 }
 
 fn smallMemset(dest: ?[*]u8, c: c_int, len: usize) callconv(.c) ?[*]u8 {
+    @disableIntrinsics();
+
     const b: u8 = @truncate(@as(c_uint, @bitCast(c)));
 
     if (len != 0) {

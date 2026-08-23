@@ -39,6 +39,7 @@ pub fn legalizeFeatures(_: *const std.Target) ?*const Air.Legalize.Features {
             .expand_packed_store = true,
             .expand_packed_agg_field_val = true,
             .expand_packed_aggregate_init = true,
+            .expand_array_splat = true,
             .expand_array_to_vector = true,
 
             .scalarize_bit_cast_array = true,
