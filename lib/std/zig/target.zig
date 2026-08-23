@@ -143,6 +143,31 @@ pub fn canBuildLibC(target: *const std.Target) bool {
     return false;
 }
 
+pub fn hurdTupleSimple(
+    allocator: Allocator,
+    arch: std.Target.Cpu.Arch,
+    abi: std.Target.Abi,
+) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}-{s}", .{ @tagName(arch), @tagName(abi) });
+}
+
+pub fn hurdTuple(allocator: Allocator, target: *const std.Target) ![]u8 {
+    return hurdTupleSimple(allocator, target.cpu.arch, target.abi);
+}
+
+pub fn linuxTripleSimple(
+    allocator: Allocator,
+    arch: std.Target.Cpu.Arch,
+    os_tag: std.Target.Os.Tag,
+    abi: std.Target.Abi,
+) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}-{s}-{s}", .{ @tagName(arch), @tagName(os_tag), @tagName(abi) });
+}
+
+pub fn linuxTriple(allocator: Allocator, target: *const std.Target) ![]u8 {
+    return linuxTripleSimple(allocator, target.cpu.arch, target.os.tag, target.abi);
+}
+
 /// Returns the subdirectory triple to be used to find the correct glibc for the given `arch`, `os`,
 /// and `abi` in an installation directory created by glibc's `build-many-glibcs.py` script.
 ///
@@ -162,8 +187,8 @@ pub fn glibcRuntimeTriple(
     }
 
     return switch (os) {
-        .hurd => std.Target.hurdTupleSimple(allocator, arch, abi),
-        .linux => std.Target.linuxTripleSimple(allocator, arch, os, abi),
+        .hurd => hurdTupleSimple(allocator, arch, abi),
+        .linux => linuxTripleSimple(allocator, arch, os, abi),
         else => unreachable,
     };
 }
@@ -179,7 +204,7 @@ pub fn muslRuntimeTriple(
 ) Allocator.Error![]const u8 {
     assert(abi.isMusl());
 
-    return std.Target.linuxTripleSimple(allocator, arch, .linux, abi);
+    return linuxTripleSimple(allocator, arch, .linux, abi);
 }
 
 pub fn osArchName(target: *const std.Target) [:0]const u8 {

@@ -303,9 +303,14 @@ pub fn selfHostedBackendIsAsRobustAsLlvm(target: *const std.Target) bool {
             // https://github.com/ziglang/zig/issues/25699
             return false;
         }
-        if (target.os.tag.isBSD()) {
-            // Self-hosted linker needs work: https://github.com/ziglang/zig/issues/24341
-            return false;
+        // Self-hosted linker needs work: https://github.com/ziglang/zig/issues/24341
+        switch (target.os.tag) {
+            .dragonfly,
+            .freebsd,
+            .netbsd,
+            .openbsd,
+            => return false,
+            else => {},
         }
         return switch (target.ofmt) {
             .elf, .macho => true,

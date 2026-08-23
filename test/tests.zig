@@ -3041,7 +3041,15 @@ pub fn wouldUseLlvm(use_llvm: ?bool, query: std.Target.Query, optimize_mode: Opt
     switch (cpu_arch) {
         .x86_64 => {
             if (std.Target.ptrBitWidth_arch_abi(cpu_arch, query.abi orelse .none) != 64) return true;
-            if (os_tag.isBSD() or os_tag == .illumos) return true;
+            if (os_tag == .illumos) return true;
+            switch (os_tag) {
+                .dragonfly,
+                .freebsd,
+                .netbsd,
+                .openbsd,
+                => return true,
+                else => {},
+            }
             return switch (ofmt) {
                 .elf, .macho => return false,
                 else => return true,

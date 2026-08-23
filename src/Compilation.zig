@@ -6584,7 +6584,7 @@ pub fn addCCArgs(
         try argv.append("-integrated-as");
     }
 
-    const llvm_triple = try @import("codegen/llvm.zig").targetTriple(arena, target);
+    const llvm_triple = try std.zig.llvm.Builder.tripleForTarget(arena, target);
     try argv.appendSlice(&[_][]const u8{ "-target", llvm_triple });
 
     if (target.cpu.arch.isThumb()) {

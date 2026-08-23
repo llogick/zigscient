@@ -89,6 +89,7 @@ pub const Os = struct {
             };
         }
 
+        /// Deprecated; to be removed in 0.18.0. Check for relevant tags instead.
         pub inline fn isBSD(tag: Tag) bool {
             return tag.isDarwin() or switch (tag) {
                 .freebsd, .openbsd, .netbsd, .dragonfly => true,
@@ -1109,7 +1110,7 @@ pub fn toElfMachine(target: *const Target) std.elf.EM {
         .riscv32, .riscv32be, .riscv64, .riscv64be => .RISCV,
         .s390x => .S390,
         .sh, .sheb => .SH,
-        .sparc => if (target.cpu.has(.sparc, .v9)) .SPARC32PLUS else .SPARC,
+        .sparc => if (target.cpu.hasAny(.sparc, &.{ .v8plus, .v9 })) .SPARC32PLUS else .SPARC,
         .sparc64 => .SPARCV9,
         .ve => .VE,
         .x86_16, .x86 => .@"386",
@@ -1509,7 +1510,10 @@ pub const Cpu = struct {
             };
         }
 
-        pub inline fn isAARCH64(arch: Arch) bool {
+        /// Deprecated; to be removed in 0.18.0. Use `isAarch64` instead.
+        pub const isAARCH64 = isAarch64;
+
+        pub inline fn isAarch64(arch: Arch) bool {
             return switch (arch) {
                 .aarch64, .aarch64_be => true,
                 else => false,
@@ -1537,14 +1541,20 @@ pub const Cpu = struct {
             };
         }
 
-        pub inline fn isLoongArch(arch: Arch) bool {
+        /// Deprecated; to be removed in 0.18.0. Use `isLoongarch` instead.
+        pub const isLoongArch = isLoongarch;
+
+        pub inline fn isLoongarch(arch: Arch) bool {
             return switch (arch) {
                 .loongarch32, .loongarch64 => true,
                 else => false,
             };
         }
 
-        pub inline fn isRISCV(arch: Arch) bool {
+        /// Deprecated; to be removed in 0.18.0. Use `isRiscv` instead.
+        pub const isRISCV = isRiscv;
+
+        pub inline fn isRiscv(arch: Arch) bool {
             return arch.isRiscv32() or arch.isRiscv64();
         }
 
@@ -1569,50 +1579,74 @@ pub const Cpu = struct {
             };
         }
 
-        pub inline fn isMIPS(arch: Arch) bool {
-            return arch.isMIPS32() or arch.isMIPS64();
+        /// Deprecated; to be removed in 0.18.0. Use `isMips` instead.
+        pub const isMIPS = isMips;
+
+        pub inline fn isMips(arch: Arch) bool {
+            return arch.isMips32() or arch.isMips64();
         }
 
-        pub inline fn isMIPS32(arch: Arch) bool {
+        /// Deprecated; to be removed in 0.18.0. Use `isMips32` instead.
+        pub const isMIPS32 = isMips32;
+
+        pub inline fn isMips32(arch: Arch) bool {
             return switch (arch) {
                 .mips, .mipsel => true,
                 else => false,
             };
         }
 
-        pub inline fn isMIPS64(arch: Arch) bool {
+        /// Deprecated; to be removed in 0.18.0. Use `isMips64` instead.
+        pub const isMIPS64 = isMips64;
+
+        pub inline fn isMips64(arch: Arch) bool {
             return switch (arch) {
                 .mips64, .mips64el => true,
                 else => false,
             };
         }
 
-        pub inline fn isPowerPC(arch: Arch) bool {
-            return arch.isPowerPC32() or arch.isPowerPC64();
+        /// Deprecated; to be removed in 0.18.0. Use `isPowerpc` instead.
+        pub const isPowerPC = isPowerpc;
+
+        pub inline fn isPowerpc(arch: Arch) bool {
+            return arch.isPowerpc32() or arch.isPowerpc64();
         }
 
-        pub inline fn isPowerPC32(arch: Arch) bool {
+        /// Deprecated; to be removed in 0.18.0. Use `isPowerpc32` instead.
+        pub const isPowerPC32 = isPowerpc32;
+
+        pub inline fn isPowerpc32(arch: Arch) bool {
             return switch (arch) {
                 .powerpc, .powerpcle => true,
                 else => false,
             };
         }
 
-        pub inline fn isPowerPC64(arch: Arch) bool {
+        /// Deprecated; to be removed in 0.18.0. Use `isPowerpc64` instead.
+        pub const isPowerPC64 = isPowerpc64;
+
+        pub inline fn isPowerpc64(arch: Arch) bool {
             return switch (arch) {
                 .powerpc64, .powerpc64le => true,
                 else => false,
             };
         }
 
-        pub inline fn isSPARC(arch: Arch) bool {
+        /// Deprecated; to be removed in 0.18.0. Use `isSparc` instead.
+        pub const isSPARC = isSparc;
+
+        pub inline fn isSparc(arch: Arch) bool {
             return switch (arch) {
                 .sparc, .sparc64 => true,
                 else => false,
             };
         }
 
-        pub inline fn isSpirV(arch: Arch) bool {
+        /// Deprecated; to be removed in 0.18.0. Use `isSpirv` instead.
+        pub const isSpirV = isSpirv;
+
+        pub inline fn isSpirv(arch: Arch) bool {
             return switch (arch) {
                 .spirv32, .spirv64 => true,
                 else => false,
@@ -2145,18 +2179,22 @@ pub fn zigTriple(target: *const Target, allocator: Allocator) Allocator.Error![]
     return Query.fromTarget(target).zigTriple(allocator);
 }
 
+/// Deprecated; to be removed in 0.18.0. Use `std.zig.target.hurdTupleSimple` instead.
 pub fn hurdTupleSimple(allocator: Allocator, arch: Cpu.Arch, abi: Abi) ![]u8 {
     return std.fmt.allocPrint(allocator, "{s}-{s}", .{ @tagName(arch), @tagName(abi) });
 }
 
+/// Deprecated; to be removed in 0.18.0. Use `std.zig.target.hurdTuple` instead.
 pub fn hurdTuple(target: *const Target, allocator: Allocator) ![]u8 {
     return hurdTupleSimple(allocator, target.cpu.arch, target.abi);
 }
 
+/// Deprecated; to be removed in 0.18.0. Use `std.zig.target.linuxTripleSimple` instead.
 pub fn linuxTripleSimple(allocator: Allocator, arch: Cpu.Arch, os_tag: Os.Tag, abi: Abi) ![]u8 {
     return std.fmt.allocPrint(allocator, "{s}-{s}-{s}", .{ @tagName(arch), @tagName(os_tag), @tagName(abi) });
 }
 
+/// Deprecated; to be removed in 0.18.0. Use `std.zig.target.linuxTriple` instead.
 pub fn linuxTriple(target: *const Target, allocator: Allocator) ![]u8 {
     return linuxTripleSimple(allocator, target.cpu.arch, target.os.tag, target.abi);
 }
