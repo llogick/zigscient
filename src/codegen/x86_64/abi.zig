@@ -122,19 +122,17 @@ pub fn classifyWindows(init_ty: Type, zcu: *Zcu, target: *const std.Target, ctx:
             1, 2, 4, 8 => .integer,
             else => switch (ty.zigTypeTag(zcu)) {
                 .int => .win_i128,
-                .@"struct", .@"union" => if (ty.containerLayout(zcu) == .@"packed")
-                    .win_i128
-                else
-                    .memory,
+                .@"struct", .@"union" => if (ty.containerLayout(zcu) != .@"packed" or
+                    target.cpu.has(.x86, .soft_float)) .memory else .win_i128,
                 else => .memory,
             },
         },
         .noreturn => unreachable,
         .float => switch (ty.floatBits(target)) {
-            16, 32, 64 => .sse,
-            80 => .memory,
-            128 => .win_i128,
             else => unreachable,
+            16, 32, 64 => if (target.cpu.has(.x86, .soft_float)) .integer else .sse,
+            80 => .memory,
+            128 => if (target.cpu.has(.x86, .soft_float)) .memory else .win_i128,
         },
         .vector => {
             const len = ty.vectorLen(zcu);
@@ -183,6 +181,7 @@ pub fn classifyWindows(init_ty: Type, zcu: *Zcu, target: *const std.Target, ctx:
 /// the beginning of the array; unused slots are filled with .none.
 pub fn classifySystemV(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Context) [8]Class {
     switch (ty.zigTypeTag(zcu)) {
+        else => unreachable,
         .void => return Class.zero_bit,
         .bool => return Class.one_integer,
         .noreturn => unreachable,
@@ -195,7 +194,12 @@ pub fn classifySystemV(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
             if (bits <= 64 * 4) return Class.four_integers;
             return Class.stack;
         },
-        .float => switch (ty.floatBits(target)) {
+        .float => if (target.cpu.has(.x86, .soft_float)) switch (ty.floatBits(target)) {
+            else => unreachable,
+            16, 32, 64 => return Class.one_integer,
+            80, 128 => return Class.two_integers,
+        } else switch (ty.floatBits(target)) {
+            else => unreachable,
             16 => {
                 if (ctx == .other) return Class.stack;
                 // TODO clang doesn't allow __fp16 as .ret or .arg
@@ -203,15 +207,14 @@ pub fn classifySystemV(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
             },
             32 => return Class.f32,
             64 => return Class.f64,
-            // "Arguments of types __float128, _Decimal128 and __m128 are
-            // split into two halves.  The least significant ones belong
-            // to class SSE, the most significant one to class SSEUP."
-            128 => return Class.f128,
             // "The 64-bit mantissa of arguments of type long double
             // belongs to class X87, the 16-bit exponent plus 6 bytes
             // of padding belongs to class X87UP."
             80 => return Class.f80,
-            else => unreachable,
+            // "Arguments of types __float128, _Decimal128 and __m128 are
+            // split into two halves.  The least significant ones belong
+            // to class SSE, the most significant one to class SSEUP."
+            128 => return Class.f128,
         },
         .pointer => switch (ty.ptrSize(zcu)) {
             .slice => return Class.two_integers,
@@ -341,7 +344,6 @@ pub fn classifySystemV(ty: Type, zcu: *Zcu, target: *const std.Target, ctx: Cont
             if (ty_size <= 16) return Class.two_integers;
             return Class.stack;
         },
-        else => unreachable,
     }
 }
 
