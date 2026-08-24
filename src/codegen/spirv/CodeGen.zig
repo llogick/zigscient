@@ -8824,6 +8824,7 @@ fn airAssembly(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
                     notes[i] = try Zcu.ErrorMsg.init(zcu.gpa, src_loc, "{s}", .{ass.errors.items[i].msg});
                 }
 
+                msg.notes = notes;
                 break :msg msg;
             };
             return zcu.codegenFailMsg(cg.owner_nav, msg);
