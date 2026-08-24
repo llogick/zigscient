@@ -11,10 +11,8 @@ const Foo = struct {
 test "@hasDecl" {
     try expect(@hasDecl(Foo, "blah"));
 
-    // Even though `hi` is private, @hasDecl returns true because this test is
-    // in the same file scope as Foo. It would return false if Foo was declared
-    // in a different file.
-    try expect(@hasDecl(Foo, "hi"));
+    // @hasDecl returns false for private declarations.
+    try expect(!@hasDecl(Foo, "hi"));
 
     // @hasDecl is for declarations; not fields.
     try expect(!@hasDecl(Foo, "nope"));

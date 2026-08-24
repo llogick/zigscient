@@ -5977,7 +5977,7 @@ fn lookupIdentifier(sema: *Sema, block: *Block, name: InternPool.NullTerminatedS
     var namespace = block.namespace;
     while (true) {
         if (try sema.lookupInNamespace(block, namespace, name)) |lookup| {
-            assert(lookup.accessible);
+            assert(lookup.accessible == .public or lookup.accessible == .private_same_file);
             return lookup.nav;
         }
         namespace = zcu.namespacePtr(namespace).parent.unwrap() orelse break;
@@ -5993,9 +5993,7 @@ fn lookupInNamespace(
     ident_name: InternPool.NullTerminatedString,
 ) CompileError!?struct {
     nav: InternPool.Nav.Index,
-    /// If `false`, the declaration is in a different file and is not `pub`.
-    /// We still return the declaration for better error reporting.
-    accessible: bool,
+    accessible: enum { public, private_same_file, private },
 } {
     const pt = sema.pt;
     const zcu = pt.zcu;
@@ -6025,12 +6023,12 @@ fn lookupInNamespace(
     if (namespace.pub_decls.getKeyAdapted(ident_name, adapter)) |nav_index| {
         return .{
             .nav = nav_index,
-            .accessible = true,
+            .accessible = .public,
         };
     } else if (namespace.priv_decls.getKeyAdapted(ident_name, adapter)) |nav_index| {
         return .{
             .nav = nav_index,
-            .accessible = src_file == namespace.file_scope,
+            .accessible = if (src_file == namespace.file_scope) .private_same_file else .private,
         };
     }
 
@@ -12879,7 +12877,7 @@ fn zirHasDecl(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air
 
     const namespace = container_type.getNamespace(zcu).unwrap() orelse return .bool_false;
     if (try sema.lookupInNamespace(block, namespace, decl_name)) |lookup| {
-        if (lookup.accessible) {
+        if (lookup.accessible == .public) {
             return .bool_true;
         }
     }
@@ -26927,7 +26925,7 @@ fn namespaceLookup(
     const zcu = pt.zcu;
     const gpa = sema.gpa;
     if (try sema.lookupInNamespace(block, namespace, decl_name)) |lookup| {
-        if (!lookup.accessible) {
+        if (lookup.accessible == .private) {
             return sema.failWithOwnedErrorMsg(block, msg: {
                 const msg = try sema.errMsg(src, "'{f}' is not marked 'pub'", .{
                     decl_name.fmt(&zcu.intern_pool),

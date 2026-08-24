@@ -4,7 +4,7 @@ const expect = std.testing.expect;
 
 const Foo = @import("hasdecl/foo.zig");
 
-const Bar = struct {
+pub const Bar = struct {
     nope: i32,
 
     const hi = 1;
@@ -18,7 +18,7 @@ test "@hasDecl" {
     try expect(!@hasDecl(Foo, "private_thing"));
     try expect(!@hasDecl(Foo, "no_thing"));
 
-    try expect(@hasDecl(Bar, "hi"));
+    try expect(!@hasDecl(Bar, "hi"));
     try expect(@hasDecl(Bar, "blah"));
     try expect(!@hasDecl(Bar, "nope"));
 }
@@ -26,10 +26,10 @@ test "@hasDecl" {
 test "@hasDecl using a sliced string literal" {
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
 
-    try expect(@hasDecl(@This(), "std") == true);
-    try expect(@hasDecl(@This(), "std"[0..0]) == false);
-    try expect(@hasDecl(@This(), "std"[0..1]) == false);
-    try expect(@hasDecl(@This(), "std"[0..2]) == false);
-    try expect(@hasDecl(@This(), "std"[0..3]) == true);
-    try expect(@hasDecl(@This(), "std"[0..]) == true);
+    try expect(@hasDecl(@This(), "Bar") == true);
+    try expect(@hasDecl(@This(), "Bar"[0..0]) == false);
+    try expect(@hasDecl(@This(), "Bar"[0..1]) == false);
+    try expect(@hasDecl(@This(), "Bar"[0..2]) == false);
+    try expect(@hasDecl(@This(), "Bar"[0..3]) == true);
+    try expect(@hasDecl(@This(), "Bar"[0..]) == true);
 }
