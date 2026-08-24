@@ -165,7 +165,7 @@ pub fn detectFromBuilding(arena: Allocator, zig_lib_dir: Path, target: *const st
 
     const generic_name = libCGenericName(target);
     // Some architecture families are handled by the same set of headers.
-    const arch_name = if (target.isMuslLibC() or target.isWasiLibC())
+    const arch_name = if (target.isMuslLibC())
         std.zig.target.muslArchNameHeaders(target.cpu.arch)
     else if (target.isGnuLibC())
         std.zig.target.glibcArchNameHeaders(target.cpu.arch)

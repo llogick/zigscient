@@ -40,7 +40,6 @@ const Zcu = @import("../Zcu.zig");
 const codegen = @import("../codegen.zig");
 const link = @import("../link.zig");
 const trace = @import("../tracy.zig").trace;
-const wasi_libc = @import("../libs/wasi_libc.zig");
 const Value = @import("../Value.zig");
 
 base: link.File,

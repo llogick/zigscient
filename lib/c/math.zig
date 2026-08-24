@@ -31,7 +31,7 @@ comptime {
         symbol(&math.snan(c_longdouble), "__SNANL");
     }
 
-    if (builtin.target.isMinGW() or builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
+    if (builtin.target.isMinGW() or builtin.target.isMuslLibC()) {
         symbol(&frexpf, "frexpf");
         symbol(&frexpl, "frexpl");
         symbol(&hypotf, "hypotf");
@@ -42,14 +42,14 @@ comptime {
         symbol(&rintl, "rintl");
     }
 
-    if ((builtin.target.isMinGW() and @sizeOf(f64) != @sizeOf(c_longdouble)) or builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
+    if ((builtin.target.isMinGW() and @sizeOf(f64) != @sizeOf(c_longdouble)) or builtin.target.isMuslLibC()) {
         symbol(&atanl, "atanl");
         symbol(&copysignl, "copysignl");
         symbol(&fdiml, "fdiml");
         symbol(&nanl, "nanl");
     }
 
-    if ((builtin.target.isMinGW() and builtin.cpu.arch == .x86) or builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
+    if ((builtin.target.isMinGW() and builtin.cpu.arch == .x86) or builtin.target.isMuslLibC()) {
         symbol(&acosf, "acosf");
         symbol(&atanf, "atanf");
         symbol(&coshf, "coshf");
@@ -57,7 +57,7 @@ comptime {
         symbol(&tanhf, "tanhf");
     }
 
-    if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
+    if (builtin.target.isMuslLibC()) {
         symbol(&acos, "acos");
         symbol(&acoshf, "acoshf");
         symbol(&asin, "asin");

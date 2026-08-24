@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const symbol = @import("../c.zig").symbol;
 
 comptime {
-    if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
+    if (builtin.target.isMuslLibC()) {
         symbol(&insque, "insque");
         symbol(&remque, "remque");
     }

@@ -103,7 +103,6 @@ pub const available_libcs = [_]ArchOsAbi{
     .{ .arch = .sparc64, .os = .linux, .abi = .gnu, .os_ver = .{ .major = 2, .minor = 1, .patch = 19 } },
     .{ .arch = .sparc64, .os = .netbsd, .abi = .none, .os_ver = .{ .major = 1, .minor = 4, .patch = 0 } },
     .{ .arch = .sparc64, .os = .openbsd, .abi = .none, .os_ver = .{ .major = 3, .minor = 0, .patch = 0 } },
-    .{ .arch = .wasm32, .os = .wasi, .abi = .musl },
     .{ .arch = .x86, .os = .freebsd, .abi = .none },
     .{ .arch = .x86, .os = .linux, .abi = .gnu, .glibc_triple = "i686-linux-gnu" },
     .{ .arch = .x86, .os = .linux, .abi = .musl },
@@ -241,7 +240,6 @@ pub fn muslArchName(arch: std.Target.Cpu.Arch, abi: std.Target.Abi) [:0]const u8
             .riscv32 => "riscv32",
             .riscv64 => "riscv64",
             .s390x => "s390x",
-            .wasm32, .wasm64 => "wasm",
             .x86 => "i386",
             .x86_64 => "x86_64",
             else => unreachable,
@@ -396,19 +394,6 @@ pub fn isLibCLibName(target: *const std.Target, name: []const u8) bool {
             return true;
         if (eqlIgnoreCase(ignore_case, name, "xnet"))
             return true;
-
-        if (target.os.tag == .wasi) {
-            if (eqlIgnoreCase(ignore_case, name, "setjmp"))
-                return true;
-            if (eqlIgnoreCase(ignore_case, name, "wasi-emulated-getpid"))
-                return true;
-            if (eqlIgnoreCase(ignore_case, name, "wasi-emulated-mman"))
-                return true;
-            if (eqlIgnoreCase(ignore_case, name, "wasi-emulated-process-clocks"))
-                return true;
-            if (eqlIgnoreCase(ignore_case, name, "wasi-emulated-signal"))
-                return true;
-        }
     }
 
     if (target.os.tag.isDarwin()) {

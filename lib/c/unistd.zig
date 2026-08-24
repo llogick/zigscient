@@ -51,11 +51,8 @@ comptime {
 
         symbol(&execveLinux, "execve");
     }
-    if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
+    if (builtin.target.isMuslLibC()) {
         symbol(&swab, "swab");
-    }
-    if (builtin.target.isWasiLibC()) {
-        symbol(&closeWasi, "close");
     }
 }
 
@@ -247,14 +244,4 @@ fn close(fd: std.c.fd_t) callconv(.c) c_int {
 
 fn posix_close(fd: std.c.fd_t, _: c_int) callconv(.c) c_int {
     return close(fd);
-}
-
-fn closeWasi(fd: std.c.fd_t) callconv(.c) c_int {
-    switch (std.os.wasi.fd_close(fd)) {
-        .SUCCESS => return 0,
-        else => |e| {
-            std.c._errno().* = @backingInt(e);
-            return -1;
-        },
-    }
 }

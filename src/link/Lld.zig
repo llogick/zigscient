@@ -1565,18 +1565,6 @@ fn wasmLink(lld: *Lld, arena: Allocator) !void {
             (comp.config.output_mode == .Lib and comp.config.link_mode == .dynamic);
 
         if (comp.config.link_libc and is_exe_or_dyn_lib) {
-            if (target.os.tag == .wasi) {
-                try argv.append(try comp.crtFileAsString(
-                    arena,
-                    wasi_libc.execModelCrtFileFullName(comp.config.wasi_exec_model),
-                ));
-                try argv.append(try comp.crtFileAsString(arena, "libc.a"));
-            }
-
-            if (comp.zigc_static_lib) |zigc| {
-                try argv.append(try zigc.full_object_path.toString(arena));
-            }
-
             if (comp.config.link_libcpp) {
                 try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
                 try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
@@ -1706,7 +1694,6 @@ const freebsd = @import("../libs/freebsd.zig");
 const glibc = @import("../libs/glibc.zig");
 const netbsd = @import("../libs/netbsd.zig");
 const openbsd = @import("../libs/openbsd.zig");
-const wasi_libc = @import("../libs/wasi_libc.zig");
 const link = @import("../link.zig");
 const lldMain = @import("../main.zig").lldMain;
 const target_util = @import("../target.zig");

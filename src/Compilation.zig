@@ -30,7 +30,6 @@ const openbsd = @import("libs/openbsd.zig");
 const mingw = @import("libs/mingw.zig");
 const libunwind = @import("libs/libunwind.zig");
 const libcxx = @import("libs/libcxx.zig");
-const wasi_libc = @import("libs/wasi_libc.zig");
 const clangMain = @import("main.zig").clangMain;
 pub const Zcu = @import("Zcu.zig");
 const Sema = @import("Sema.zig");
@@ -297,8 +296,6 @@ const QueuedJobs = struct {
     freebsd_crt_file: [@typeInfo(freebsd.CrtFile).@"enum".field_names.len]bool = @splat(false),
     netbsd_crt_file: [@typeInfo(netbsd.CrtFile).@"enum".field_names.len]bool = @splat(false),
     openbsd_crt_file: [@typeInfo(openbsd.CrtFile).@"enum".field_names.len]bool = @splat(false),
-    /// one of WASI libc static objects
-    wasi_libc_crt_file: [@typeInfo(wasi_libc.CrtFile).@"enum".field_names.len]bool = @splat(false),
     /// one of the mingw-w64 static objects
     mingw_crt_file: [@typeInfo(mingw.CrtFile).@"enum".field_names.len]bool = @splat(false),
     /// all of the glibc shared objects
@@ -1220,7 +1217,6 @@ pub const MiscTask = enum {
     libtsan,
     libubsan,
     libfuzzer,
-    wasi_libc_crt_file,
     compiler_rt,
     libzigc,
     link_depfile,
@@ -1232,10 +1228,6 @@ pub const MiscTask = enum {
     @"musl Scrt1.o",
     @"musl libc.a",
     @"musl libc.so",
-
-    @"wasi crt1-reactor.o",
-    @"wasi crt1-command.o",
-    @"wasi libc.a",
 
     @"glibc Scrt1.o",
     @"glibc libc_nonshared.a",
@@ -2509,11 +2501,6 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                     }
 
                     comp.queued_jobs.openbsd_shared_objects = true;
-                } else if (target.isWasiLibC()) {
-                    if (!std.zig.target.canBuildLibC(target)) return diag.fail(.cross_libc_unavailable);
-
-                    comp.queued_jobs.wasi_libc_crt_file[@backingInt(wasi_libc.execModelCrtFile(comp.config.wasi_exec_model))] = true;
-                    comp.queued_jobs.wasi_libc_crt_file[@backingInt(wasi_libc.CrtFile.libc_a)] = true;
                 } else if (target.isMinGW()) {
                     if (!std.zig.target.canBuildLibC(target)) return diag.fail(.cross_libc_unavailable);
 
@@ -4611,13 +4598,6 @@ fn dispatchPrelinkWork(comp: *Compilation, main_progress_node: std.Progress.Node
         }
     }
 
-    for (0..@typeInfo(wasi_libc.CrtFile).@"enum".field_names.len) |i| {
-        if (comp.queued_jobs.wasi_libc_crt_file[i]) {
-            const tag: wasi_libc.CrtFile = @fromBackingInt(@intCast(i));
-            prelink_group.async(io, buildWasiLibcCrtFile, .{ comp, tag, main_progress_node });
-        }
-    }
-
     for (0..@typeInfo(mingw.CrtFile).@"enum".field_names.len) |i| {
         if (comp.queued_jobs.mingw_crt_file[i]) {
             const tag: mingw.CrtFile = @fromBackingInt(@intCast(i));
@@ -5374,17 +5354,6 @@ fn buildMingwImportLib(comp: *Compilation, lib_name: []const u8, is_prelink: boo
             "unable to queue prelink task for mingw import lib {f}: {t}",
             .{ crt_file_path, err },
         );
-}
-
-fn buildWasiLibcCrtFile(comp: *Compilation, crt_file: wasi_libc.CrtFile, prog_node: std.Progress.Node) void {
-    if (wasi_libc.buildCrtFile(comp, crt_file, prog_node)) |_| {
-        comp.queued_jobs.wasi_libc_crt_file[@backingInt(crt_file)] = false;
-    } else |err| switch (err) {
-        error.AlreadyReported => return,
-        else => comp.lockAndSetMiscFailure(.wasi_libc_crt_file, "unable to build WASI libc {s}: {s}", .{
-            @tagName(crt_file), @errorName(err),
-        }),
-    }
 }
 
 fn buildLibUnwind(comp: *Compilation, prog_node: std.Progress.Node) void {

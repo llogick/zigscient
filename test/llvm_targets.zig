@@ -290,12 +290,10 @@ const targets = [_]std.Target.Query{
 
     .{ .cpu_arch = .wasm32, .os_tag = .emscripten, .abi = .none },
     .{ .cpu_arch = .wasm32, .os_tag = .freestanding, .abi = .none },
-    .{ .cpu_arch = .wasm32, .os_tag = .wasi, .abi = .musl },
     .{ .cpu_arch = .wasm32, .os_tag = .wasi, .abi = .none },
 
     .{ .cpu_arch = .wasm64, .os_tag = .emscripten, .abi = .none },
     .{ .cpu_arch = .wasm64, .os_tag = .freestanding, .abi = .none },
-    .{ .cpu_arch = .wasm64, .os_tag = .wasi, .abi = .musl },
     .{ .cpu_arch = .wasm64, .os_tag = .wasi, .abi = .none },
 
     .{ .cpu_arch = .x86, .os_tag = .freestanding, .abi = .none },

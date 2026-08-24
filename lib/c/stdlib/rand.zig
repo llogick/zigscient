@@ -3,7 +3,7 @@ const std = @import("std");
 const symbol = @import("../../c.zig").symbol;
 
 comptime {
-    if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
+    if (builtin.target.isMuslLibC()) {
         symbol(&rand, "rand");
         symbol(&srand, "srand");
         symbol(&rand_r, "rand_r");

@@ -267,7 +267,6 @@ pub const want_float_exceptions = !builtin.cpu.arch.isWasm();
 ///   arm-linux-musleabihf => true
 ///   arm-linux-gnueabihf => true
 ///   arm-linux-eabihf => false
-///   wasm32-wasi-musl => false
 ///   wasm32-freestanding-none => false
 ///   x86_64-windows-gnu => true
 ///   x86_64-windows-msvc => true

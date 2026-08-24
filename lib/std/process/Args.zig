@@ -14,11 +14,7 @@ vector: Vector,
 /// queried and heap-allocated at runtime.
 pub const Vector = switch (native_os) {
     .windows => []const u16, // WTF-16 encoded
-    .wasi => switch (builtin.link_libc) {
-        false => void,
-        true => []const [*:0]const u8,
-    },
-    .freestanding, .other => void,
+    .wasi, .freestanding, .other => void,
     else => []const [*:0]const u8,
 };
 
@@ -26,7 +22,7 @@ pub const Vector = switch (native_os) {
 pub const Iterator = struct {
     const Inner = switch (native_os) {
         .windows => Windows,
-        .wasi => if (builtin.link_libc) Posix else Wasi,
+        .wasi => Wasi,
         else => Posix,
     };
 
@@ -44,7 +40,7 @@ pub const Iterator = struct {
 
     /// You must deinitialize iterator's internal buffers by calling `deinit` when done.
     pub fn initAllocator(a: Args, gpa: Allocator) InitError!Iterator {
-        if (native_os == .wasi and !builtin.link_libc) {
+        if (native_os == .wasi) {
             return .{ .inner = try .init(gpa) };
         }
         if (native_os == .windows) {
@@ -73,7 +69,7 @@ pub const Iterator = struct {
     /// `initAllocator` function.
     pub fn deinit(it: *Iterator) void {
         // Unless we're targeting WASI or Windows, this is a no-op.
-        if (native_os == .wasi and !builtin.link_libc) it.inner.deinit();
+        if (native_os == .wasi) it.inner.deinit();
         if (native_os == .windows) it.inner.deinit();
     }
 
@@ -504,7 +500,7 @@ pub fn toSlice(a: Args, arena: Allocator) ToSliceError![]const [:0]const u8 {
         }
 
         return result_slice_list;
-    } else if (native_os == .wasi and !builtin.link_libc) {
+    } else if (native_os == .wasi) {
         var count: usize = undefined;
         var buf_size: usize = undefined;
 

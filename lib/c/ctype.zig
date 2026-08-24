@@ -3,8 +3,8 @@ const std = @import("std");
 const symbol = @import("../c.zig").symbol;
 
 comptime {
-    if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
-        // Functions specific to musl and wasi-libc.
+    if (builtin.target.isMuslLibC()) {
+        // Functions specific to musl.
         symbol(&isalnum, "isalnum");
         symbol(&isalpha, "isalpha");
         symbol(&isblank, "isblank");

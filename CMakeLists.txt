@@ -457,7 +457,6 @@ set(ZIG_STAGE2_SOURCES
     src/register_manager.zig
     src/target.zig
     src/tracy.zig
-    src/libs/wasi_libc.zig
 )
 
 if(MSVC)

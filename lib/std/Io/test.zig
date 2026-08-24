@@ -135,9 +135,6 @@ test "File.setLength" {
 }
 
 test "legacy setLength" {
-    // https://github.com/ziglang/zig/issues/20747 (open fd does not have write permission)
-    if (builtin.os.tag == .wasi and builtin.link_libc) return error.SkipZigTest;
-
     const io = testing.io;
 
     var tmp = tmpDir(.{});
@@ -629,10 +626,6 @@ test "randomSecure" {
 test "memory mapping" {
     if (builtin.cpu.arch == .hexagon) return error.SkipZigTest; // mmap returned EINVAL
     if (builtin.cpu.arch.isSPARC()) return error.SkipZigTest; // mmap returned EINVAL
-    if (builtin.os.tag == .wasi and builtin.link_libc) {
-        // https://github.com/ziglang/zig/issues/20747 (open fd does not have write permission)
-        return error.SkipZigTest;
-    }
 
     const io = testing.io;
 

@@ -13,4 +13,5 @@ pub fn main() void {
 }
 
 // run
+// target=native
 // link_libc=true

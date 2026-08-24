@@ -201,11 +201,6 @@ test "cancel blocked read from pipe" {
 }
 
 test "memory mapping fallback" {
-    if (builtin.os.tag == .wasi and builtin.link_libc) {
-        // https://github.com/ziglang/zig/issues/20747 (open fd does not have write permission)
-        return error.SkipZigTest;
-    }
-
     var threaded: std.Io.Threaded = .init(std.testing.allocator, .{
         .argv0 = .empty,
         .environ = .empty,

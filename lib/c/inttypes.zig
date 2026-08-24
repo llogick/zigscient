@@ -7,8 +7,8 @@ const imaxdiv_t = std.c.imaxdiv_t;
 const symbol = @import("../c.zig").symbol;
 
 comptime {
-    if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
-        // Functions specific to musl and wasi-libc.
+    if (builtin.target.isMuslLibC()) {
+        // Functions specific to musl.
         symbol(&imaxabs, "imaxabs");
         symbol(&imaxdiv, "imaxdiv");
     }

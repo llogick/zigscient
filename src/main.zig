@@ -26,7 +26,6 @@ pub const tracy = @import("tracy.zig");
 pub const Compilation = @import("Compilation.zig");
 const link = @import("link.zig");
 const build_options = @import("build_options");
-const wasi_libc = @import("libs/wasi_libc.zig");
 const target_util = @import("target.zig");
 pub const crash_report = @import("crash_report.zig");
 const Zcu = @import("Zcu.zig");

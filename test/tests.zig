@@ -1616,14 +1616,6 @@ const module_test_targets = blk: {
                 .abi = .none,
             },
         },
-        .{
-            .target = .{
-                .cpu_arch = .wasm32,
-                .os_tag = .wasi,
-                .abi = .musl,
-            },
-            .link_libc = true,
-        },
 
         // Windows Targets
 
@@ -2048,25 +2040,6 @@ const c_abi_targets = blk: {
                 .os_tag = .linux,
                 .abi = .muslx32,
             },
-        },
-
-        // WASI Targets
-
-        .{
-            .target = .{
-                .cpu_arch = .wasm32,
-                .os_tag = .wasi,
-                .abi = .musl,
-            },
-        },
-        .{
-            .target = .{
-                .cpu_arch = .wasm32,
-                .os_tag = .wasi,
-                .abi = .musl,
-            },
-            .use_llvm = false,
-            .use_lld = false,
         },
 
         // Windows Targets
@@ -3631,11 +3604,6 @@ const libc_test_nsz_targets: []const std.Target.Query = &.{
     .{
         .cpu_arch = .s390x,
         .os_tag = .linux,
-        .abi = .musl,
-    },
-    .{
-        .cpu_arch = .wasm32,
-        .os_tag = .wasi,
         .abi = .musl,
     },
     .{

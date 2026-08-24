@@ -8,7 +8,7 @@ const Lcg = std.Random.lcg.Wrapping(u48);
 const symbol = @import("../../c.zig").symbol;
 
 comptime {
-    if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
+    if (builtin.target.isMuslLibC()) {
         symbol(&erand48, "erand48");
         symbol(&jrand48, "jrand48");
         symbol(&nrand48, "nrand48");

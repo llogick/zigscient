@@ -6,7 +6,7 @@ const c = std.c;
 const symbol = @import("../c.zig").symbol;
 
 comptime {
-    if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC() or builtin.target.isMinGW()) {
+    if (builtin.target.isMuslLibC() or builtin.target.isMinGW()) {
         symbol(&pthread_spin_init, "pthread_spin_init");
         symbol(&pthread_spin_destroy, "pthread_spin_destroy");
         symbol(&pthread_spin_trylock, "pthread_spin_trylock");

@@ -10,7 +10,6 @@ pub const Options = struct {
     optimize_modes: []const std.builtin.Optimize,
     test_filters: []const []const u8,
     test_target_filters: []const []const u8,
-    skip_wasm: bool,
     max_rss: u64,
 };
 
@@ -18,7 +17,6 @@ const TestCase = struct {
     name: []const u8,
     src_file: std.Build.LazyPath,
     additional_src_file: ?std.Build.LazyPath,
-    supports_wasi_libc: bool,
 };
 
 pub const LibcTestCaseOption = struct {
@@ -28,7 +26,6 @@ pub const LibcTestCaseOption = struct {
 pub fn addLibcTestCase(
     libc: *Libc,
     path: []const u8,
-    supports_wasi_libc: bool,
     options: LibcTestCaseOption,
 ) void {
     const graph = libc.b.graph;
@@ -39,7 +36,6 @@ pub fn addLibcTestCase(
         .name = name,
         .src_file = libc.libc_test_src_path.path(libc.b, path),
         .additional_src_file = if (options.additional_src_file) |additional_src_file| libc.libc_test_src_path.path(libc.b, additional_src_file) else null,
-        .supports_wasi_libc = supports_wasi_libc,
     }) catch @panic("OOM");
 }
 
@@ -48,8 +44,6 @@ pub fn addTarget(libc: *const Libc, target: std.Build.ResolvedTarget) void {
         if (m == .debug) break true;
     } else false;
     if (!want_debug) return;
-
-    if (libc.options.skip_wasm and target.query.cpu_arch != null and target.query.cpu_arch.?.isWasm()) return;
 
     if (libc.options.test_target_filters.len > 0) {
         const triple_txt = target.query.zigTriple(libc.b.allocator) catch @panic("OOM");
@@ -81,9 +75,6 @@ pub fn addTarget(libc: *const Libc, target: std.Build.ResolvedTarget) void {
     });
 
     for (libc.test_cases.items) |*test_case| {
-        if (target.result.isWasiLibC() and !test_case.supports_wasi_libc)
-            continue;
-
         const annotated_case_name = libc.b.fmt("run libc-test {s}", .{test_case.name});
         for (libc.options.test_filters) |test_filter| {
             if (std.mem.find(u8, annotated_case_name, test_filter)) |_| break;
@@ -95,8 +86,6 @@ pub fn addTarget(libc: *const Libc, target: std.Build.ResolvedTarget) void {
             .link_libc = true,
         });
         mod.addIncludePath(common);
-        if (target.result.isWasiLibC())
-            mod.addCMacro("_WASI_EMULATED_SIGNAL", "");
         mod.addCSourceFile(.{
             .file = test_case.src_file,
             .flags = &.{"-fno-builtin"},

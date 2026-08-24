@@ -12,8 +12,8 @@ comptime {
     _ = @import("stdlib/rand.zig");
     _ = @import("stdlib/drand48.zig");
 
-    if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
-        // Functions specific to musl and wasi-libc.
+    if (builtin.target.isMuslLibC()) {
+        // Functions specific to musl.
         symbol(&abs, "abs");
         symbol(&labs, "labs");
         symbol(&llabs, "llabs");

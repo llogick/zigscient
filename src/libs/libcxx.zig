@@ -195,9 +195,6 @@ pub fn buildLibCxx(comp: *Compilation, prog_node: std.Progress.Node) BuildError!
     var c_source_files = try std.array_list.Managed(Compilation.CSourceFile).initCapacity(arena, libcxx_files.len);
 
     for (libcxx_files) |cxx_src| {
-        // These don't compile on WASI due to e.g. `fchmod` usage.
-        if (std.mem.startsWith(u8, cxx_src, "src/filesystem/") and target.os.tag == .wasi)
-            continue;
         if (std.mem.startsWith(u8, cxx_src, "src/support/win32/") and target.os.tag != .windows)
             continue;
 
@@ -211,11 +208,6 @@ pub fn buildLibCxx(comp: *Compilation, prog_node: std.Progress.Node) BuildError!
         try cflags.append("-D_LIBCPP_BUILDING_LIBRARY");
         try cflags.append("-DLIBCXX_BUILDING_LIBCXXABI");
         try cflags.append("-D_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER");
-
-        if (target.os.tag == .wasi) {
-            try cflags.append("-fno-exceptions");
-        }
-
         try cflags.append("-fvisibility=hidden");
         try cflags.append("-fvisibility-inlines-hidden");
 
@@ -386,10 +378,7 @@ pub fn buildLibCxxAbi(comp: *Compilation, prog_node: std.Progress.Node) BuildErr
     for (libcxxabi_files) |cxxabi_src| {
         if (!comp.config.any_non_single_threaded and std.mem.eql(u8, cxxabi_src, "src/cxa_thread_atexit.cpp"))
             continue;
-        if (target.os.tag == .wasi and
-            (std.mem.eql(u8, cxxabi_src, "src/cxa_exception.cpp") or std.mem.eql(u8, cxxabi_src, "src/cxa_personality.cpp")))
-            continue;
-        if (target.os.tag != .wasi and std.mem.eql(u8, cxxabi_src, "src/cxa_noexception.cpp"))
+        if (std.mem.eql(u8, cxxabi_src, "src/cxa_noexception.cpp"))
             continue;
 
         var cflags = std.array_list.Managed([]const u8).init(arena);
@@ -406,10 +395,6 @@ pub fn buildLibCxxAbi(comp: *Compilation, prog_node: std.Progress.Node) BuildErr
         if (target.abi.isGnu()) {
             if (target.os.tag != .linux or !(target.os.versionRange().gnuLibCVersion().?.order(.{ .major = 2, .minor = 18, .patch = 0 }) == .lt))
                 try cflags.append("-DHAVE___CXA_THREAD_ATEXIT_IMPL");
-        }
-
-        if (target.os.tag == .wasi) {
-            try cflags.append("-fno-exceptions");
         }
 
         try cflags.append("-fvisibility=hidden");
@@ -519,9 +504,7 @@ pub fn addCxxArgs(
     try cflags.append("-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS");
     try cflags.append("-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS");
     try cflags.append("-D_LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS=0");
-    try cflags.append(try std.fmt.allocPrint(arena, "-D_LIBCPP_HAS_FILESYSTEM={d}", .{
-        @as(u1, if (target.os.tag == .wasi) 0 else 1),
-    }));
+    try cflags.append("-D_LIBCPP_HAS_FILESYSTEM");
     try cflags.append("-D_LIBCPP_HAS_RANDOM_DEVICE");
     try cflags.append("-D_LIBCPP_HAS_LOCALIZATION");
     try cflags.append("-D_LIBCPP_HAS_UNICODE");

@@ -890,14 +890,8 @@ test "file operations on directories" {
                 },
             }
 
-            if (native_os == .wasi and builtin.link_libc) {
-                // wasmtime unexpectedly succeeds here, see https://github.com/ziglang/zig/issues/20747
-                const handle = try ctx.dir.openFile(io, test_dir_name, .{ .mode = .read_write });
-                handle.close(io);
-            } else {
-                // Note: The `.mode = .read_write` is necessary to ensure the error occurs on all platforms.
-                try expectError(error.IsDir, ctx.dir.openFile(io, test_dir_name, .{ .mode = .read_write }));
-            }
+            // Note: The `.mode = .read_write` is necessary to ensure the error occurs on all platforms.
+            try expectError(error.IsDir, ctx.dir.openFile(io, test_dir_name, .{ .mode = .read_write }));
 
             {
                 const handle = try ctx.dir.openFile(io, test_dir_name, .{ .allow_directory = true, .mode = .read_only });
@@ -2765,7 +2759,7 @@ test "hard link with different directories" {
 }
 
 test "stat smoke test" {
-    if (native_os == .wasi and !builtin.link_libc) return error.SkipZigTest;
+    if (native_os == .wasi) return error.SkipZigTest;
 
     const io = testing.io;
 

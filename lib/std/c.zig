@@ -11,7 +11,6 @@ const assert = std.debug.assert;
 const page_size = std.heap.page_size_min;
 const linux = std.os.linux;
 const emscripten = std.os.emscripten;
-const wasi = std.os.wasi;
 const windows = std.os.windows;
 const ws2_32 = std.os.windows.ws2_32;
 const darwin = @import("c/darwin.zig");
@@ -80,7 +79,6 @@ pub fn errno(rc: anytype) E {
 pub const ino_t = switch (native_os) {
     .linux => linux.ino_t,
     .emscripten => emscripten.ino_t,
-    .wasi => wasi.inode_t,
     .windows => windows.LARGE_INTEGER,
     .haiku => i64,
     // https://github.com/SerenityOS/serenity/blob/b98f537f117b341788023ab82e0c11ca9ae29a57/Kernel/API/POSIX/sys/types.h#L38
@@ -96,7 +94,7 @@ pub const off_t = switch (native_os) {
 
 /// For use with `utimensat` and `futimens`.
 pub const UTIME = switch (native_os) {
-    .dragonfly, .freebsd, .illumos, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos, .wasi => struct {
+    .dragonfly, .freebsd, .illumos, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => struct {
         pub const NOW: timespec = .{ .sec = 0, .nsec = -1 };
         pub const OMIT: timespec = .{ .sec = 0, .nsec = -2 };
     },
@@ -120,25 +118,6 @@ pub const UTIME = switch (native_os) {
 pub const timespec = switch (native_os) {
     .linux => linux.timespec,
     .emscripten => emscripten.timespec,
-    // lib/libc/include/wasm-wasi-musl/__struct_timespec.h
-    .wasi => extern struct {
-        sec: time_t,
-        nsec: c_long,
-
-        pub fn fromTimestamp(tm: wasi.timestamp_t) timespec {
-            const sec: wasi.timestamp_t = tm / 1_000_000_000;
-            const nsec = tm - sec * 1_000_000_000;
-            return .{
-                .sec = @as(time_t, @intCast(sec)),
-                .nsec = @as(isize, @intCast(nsec)),
-            };
-        }
-
-        pub fn toTimestamp(ts: timespec) wasi.timestamp_t {
-            return @as(wasi.timestamp_t, @intCast(ts.sec * 1_000_000_000)) +
-                @as(wasi.timestamp_t, @intCast(ts.nsec));
-        }
-    },
     // https://github.com/SerenityOS/serenity/blob/0a78056453578c18e0a04a0b45ebfb1c96d59005/Kernel/API/POSIX/time.h#L17-L20
     .dragonfly, .freebsd, .netbsd, .openbsd, .illumos, .haiku, .serenity, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos, .windows => extern struct {
         sec: time_t,
@@ -149,7 +128,6 @@ pub const timespec = switch (native_os) {
 
 pub const dev_t = switch (native_os) {
     .emscripten => emscripten.dev_t,
-    .wasi => wasi.device_t,
     .openbsd, .haiku, .illumos, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => i32,
     // glibc and musl define dev_t as u64, while in Linux kernel it is u32.
     // https://github.com/SerenityOS/serenity/blob/b98f537f117b341788023ab82e0c11ca9ae29a57/Kernel/API/POSIX/sys/types.h#L43
@@ -163,14 +141,12 @@ pub const mode_t = switch (native_os) {
     .openbsd, .haiku, .netbsd, .illumos, .windows => u32,
     // https://github.com/SerenityOS/serenity/blob/b98f537f117b341788023ab82e0c11ca9ae29a57/Kernel/API/POSIX/sys/types.h#L44
     .freebsd, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos, .dragonfly, .serenity => u16,
-    .wasi => if (builtin.link_libc) u32 else u0, // WASI libc emulates mode.
     else => u0,
 };
 
 pub const nlink_t = switch (native_os) {
     .linux => linux.nlink_t,
     .emscripten => emscripten.nlink_t,
-    .wasi => c_ulonglong,
     // https://github.com/SerenityOS/serenity/blob/b98f537f117b341788023ab82e0c11ca9ae29a57/Kernel/API/POSIX/sys/types.h#L45
     .freebsd, .serenity => u64,
     .openbsd, .netbsd, .dragonfly, .illumos, .windows => u32,
@@ -196,7 +172,6 @@ pub const gid_t = switch (native_os) {
 pub const blksize_t = switch (native_os) {
     .linux => linux.blksize_t,
     .emscripten => emscripten.blksize_t,
-    .wasi => c_long,
     // https://github.com/SerenityOS/serenity/blob/b98f537f117b341788023ab82e0c11ca9ae29a57/Kernel/API/POSIX/sys/types.h#L42
     .serenity => u64,
     else => i32,
@@ -254,7 +229,6 @@ pub const group = switch (native_os) {
 pub const blkcnt_t = switch (native_os) {
     .linux => linux.blkcnt_t,
     .emscripten => emscripten.blkcnt_t,
-    .wasi => c_longlong,
     // https://github.com/SerenityOS/serenity/blob/b98f537f117b341788023ab82e0c11ca9ae29a57/Kernel/API/POSIX/sys/types.h#L41
     .serenity => u64,
     else => i64,
@@ -262,7 +236,6 @@ pub const blkcnt_t = switch (native_os) {
 
 pub const fd_t = switch (native_os) {
     .linux => linux.fd_t,
-    .wasi => wasi.fd_t,
     .windows => windows.HANDLE,
     .serenity => c_int,
     else => i32,
@@ -293,7 +266,6 @@ pub const timerfd_clockid_t = switch (native_os) {
 pub const CLOCK = clockid_t;
 pub const clockid_t = switch (native_os) {
     .linux, .emscripten => linux.clockid_t,
-    .wasi => wasi.clockid_t,
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => enum(u32) {
         REALTIME = 0,
         MONOTONIC = 6,
@@ -386,7 +358,6 @@ pub const CPU_COUNT = switch (native_os) {
 pub const E = switch (native_os) {
     .linux => linux.E,
     .emscripten => emscripten.E,
-    .wasi => wasi.errno_t,
     .windows => enum(u16) {
         /// No error occurred.
         SUCCESS = 0,
@@ -845,13 +816,6 @@ pub const Elf_Symndx = switch (native_os) {
 pub const F = switch (native_os) {
     .linux => linux.F,
     .emscripten => emscripten.F,
-    .wasi => struct {
-        // Match `F_*` constants from lib/libc/include/wasm-wasi-musl/__header_fcntl.h
-        pub const GETFD = 1;
-        pub const SETFD = 2;
-        pub const GETFL = 3;
-        pub const SETFL = 4;
-    },
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => struct {
         /// duplicate file descriptor
         pub const DUPFD = 0;
@@ -1323,7 +1287,7 @@ pub const IOV_MAX = switch (native_os) {
     .linux => linux.IOV_MAX,
     .emscripten => emscripten.IOV_MAX,
     // https://github.com/SerenityOS/serenity/blob/098af0f846a87b651731780ff48420205fd33754/Kernel/API/POSIX/sys/uio.h#L16
-    .openbsd, .haiku, .illumos, .wasi, .serenity => 1024,
+    .openbsd, .haiku, .illumos, .serenity => 1024,
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => 16,
     .dragonfly, .netbsd, .freebsd => KERN.IOV_MAX,
     else => {},
@@ -1854,7 +1818,6 @@ pub const NAME_MAX = switch (native_os) {
 pub const PATH_MAX = switch (native_os) {
     .linux => linux.PATH_MAX,
     .emscripten => emscripten.PATH_MAX,
-    .wasi => 4096,
     .windows => 260,
     .openbsd, .haiku, .dragonfly, .netbsd, .illumos, .freebsd, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos, .serenity => 1024,
     else => {},
@@ -1863,15 +1826,6 @@ pub const PATH_MAX = switch (native_os) {
 pub const POLL = switch (native_os) {
     .linux => linux.POLL,
     .emscripten => emscripten.POLL,
-    .wasi => struct {
-        pub const RDNORM = 0x1;
-        pub const WRNORM = 0x2;
-        pub const IN = RDNORM;
-        pub const OUT = WRNORM;
-        pub const ERR = 0x1000;
-        pub const HUP = 0x2000;
-        pub const NVAL = 0x4000;
-    },
     .windows => ws2_32.POLL,
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => struct {
         pub const IN = 0x001;
@@ -2042,45 +1996,6 @@ pub const RLIM = switch (native_os) {
 pub const S = switch (native_os) {
     .linux => linux.S,
     .emscripten => emscripten.S,
-    .wasi => struct {
-        // Match `S_*` constants from lib/libc/include/wasm-wasi-musl/__mode_t.h
-        pub const IFBLK = 0x6000;
-        pub const IFCHR = 0x2000;
-        pub const IFDIR = 0x4000;
-        pub const IFIFO = 0x1000;
-        pub const IFLNK = 0xa000;
-        pub const IFMT = IFBLK | IFCHR | IFDIR | IFIFO | IFLNK | IFREG | IFSOCK;
-        pub const IFREG = 0x8000;
-        pub const IFSOCK = 0xc000;
-
-        pub fn ISBLK(m: u32) bool {
-            return m & IFMT == IFBLK;
-        }
-
-        pub fn ISCHR(m: u32) bool {
-            return m & IFMT == IFCHR;
-        }
-
-        pub fn ISDIR(m: u32) bool {
-            return m & IFMT == IFDIR;
-        }
-
-        pub fn ISFIFO(m: u32) bool {
-            return m & IFMT == IFIFO;
-        }
-
-        pub fn ISLNK(m: u32) bool {
-            return m & IFMT == IFLNK;
-        }
-
-        pub fn ISREG(m: u32) bool {
-            return m & IFMT == IFREG;
-        }
-
-        pub fn ISSOCK(m: u32) bool {
-            return m & IFMT == IFSOCK;
-        }
-    },
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => struct {
         pub const IFMT = 0o170000;
 
@@ -2736,11 +2651,6 @@ pub const _SC = if (builtin.abi.isAndroid()) enum(c_int) {
 pub const SEEK = switch (native_os) {
     .linux => linux.SEEK,
     .emscripten => emscripten.SEEK,
-    .wasi => struct {
-        pub const SET: wasi.whence_t = .SET;
-        pub const CUR: wasi.whence_t = .CUR;
-        pub const END: wasi.whence_t = .END;
-    },
     // https://github.com/SerenityOS/serenity/blob/808ce594db1f2190e5212a250e900bde2ffe710b/Kernel/API/POSIX/stdio.h#L15-L17
     .openbsd, .haiku, .netbsd, .freebsd, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos, .windows, .serenity => struct {
         pub const SET = 0;
@@ -4263,7 +4173,7 @@ pub const in6_pktinfo = switch (native_os) {
 };
 pub const itimerspec = switch (native_os) {
     .linux => linux.itimerspec,
-    .dragonfly, .freebsd, .netbsd, .openbsd, .haiku, .illumos, .windows, .wasi => extern struct {
+    .dragonfly, .freebsd, .netbsd, .openbsd, .haiku, .illumos, .windows => extern struct {
         interval: timespec,
         value: timespec,
     },
@@ -4510,7 +4420,7 @@ comptime {
 pub const nfds_t = switch (native_os) {
     .linux => linux.nfds_t,
     .emscripten => emscripten.nfds_t,
-    .haiku, .illumos, .wasi => usize,
+    .haiku, .illumos => usize,
     .windows => c_ulong,
     .openbsd, .dragonfly, .netbsd, .freebsd, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => u32,
     // https://github.com/SerenityOS/serenity/blob/265764ff2fec038855193296588a887fc322d76a/Kernel/API/POSIX/poll.h#L32
@@ -7247,15 +7157,14 @@ pub const time_t = switch (native_os) {
     .emscripten => emscripten.time_t,
     .freebsd, .haiku => if (native_arch == .x86) c_int else c_longlong,
     // https://github.com/SerenityOS/serenity/blob/b98f537f117b341788023ab82e0c11ca9ae29a57/Kernel/API/POSIX/sys/types.h#L47
-    // lib/libc/include/wasm-wasi-musl/__typedef_time_t.h
-    .netbsd, .openbsd, .serenity, .wasi => c_longlong,
+    .netbsd, .openbsd, .serenity => c_longlong,
     else => void,
 };
 pub const suseconds_t = switch (native_os) {
     .dragonfly, .freebsd, .openbsd, .illumos => c_long,
     .netbsd, .haiku, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => c_int,
     // https://github.com/SerenityOS/serenity/blob/b98f537f117b341788023ab82e0c11ca9ae29a57/Kernel/API/POSIX/sys/types.h#L49
-    .serenity, .wasi => c_longlong,
+    .serenity => c_longlong,
     else => void,
 };
 
@@ -7267,7 +7176,7 @@ pub const timeval = switch (native_os) {
         usec: c_long,
     },
     // https://github.com/SerenityOS/serenity/blob/6b6eca0631c893c5f8cfb8274cdfe18e2d0637c0/Kernel/API/POSIX/sys/time.h#L15-L18
-    .dragonfly, .freebsd, .netbsd, .openbsd, .haiku, .illumos, .serenity, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos, .wasi => extern struct {
+    .dragonfly, .freebsd, .netbsd, .openbsd, .haiku, .illumos, .serenity, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => extern struct {
         /// seconds
         sec: time_t,
         /// microseconds
@@ -7279,7 +7188,7 @@ pub const timezone = switch (native_os) {
     .linux => linux.timezone,
     .emscripten => emscripten.timezone,
     // https://github.com/SerenityOS/serenity/blob/ba776390b5878ec0be1a9e595a3471a6cfe0a0cf/Userland/Libraries/LibC/sys/time.h#L19-L22
-    .dragonfly, .freebsd, .netbsd, .openbsd, .haiku, .illumos, .serenity, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos, .windows, .wasi => extern struct {
+    .dragonfly, .freebsd, .netbsd, .openbsd, .haiku, .illumos, .serenity, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos, .windows => extern struct {
         minuteswest: c_int,
         dsttime: c_int,
     },
@@ -7293,14 +7202,6 @@ pub const user_desc = switch (native_os) {
 pub const utsname = switch (native_os) {
     .linux => linux.utsname,
     .emscripten => emscripten.utsname,
-    .wasi => extern struct {
-        sysname: [64:0]u8,
-        nodename: [64:0]u8,
-        release: [64:0]u8,
-        version: [64:0]u8,
-        machine: [64:0]u8,
-        domainname: [64:0]u8,
-    },
     .illumos => extern struct {
         sysname: [256:0]u8,
         nodename: [256:0]u8,
@@ -7338,7 +7239,7 @@ pub const _errno = switch (native_os) {
         else => private.__errno_location,
     },
     .emscripten => private.__errno_location,
-    .wasi, .dragonfly => private.errnoFromThreadLocal,
+    .dragonfly => private.errnoFromThreadLocal,
     .windows => private._errno,
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos, .freebsd => private.__error,
     .illumos => private.___errno,
@@ -7857,65 +7758,6 @@ pub const dl_iterate_phdr_callback = *const fn (info: *dl_phdr_info, size: usize
 
 pub const Stat = switch (native_os) {
     .emscripten => emscripten.Stat,
-    .wasi => extern struct {
-        // Match wasi-libc's `struct stat` in lib/libc/include/wasm-wasi-musl/__struct_stat.h
-        dev: dev_t,
-        ino: ino_t,
-        nlink: nlink_t,
-        mode: mode_t,
-        uid: uid_t,
-        gid: gid_t,
-        __pad0: c_uint = 0,
-        rdev: dev_t,
-        size: off_t,
-        blksize: blksize_t,
-        blocks: blkcnt_t,
-        atim: timespec,
-        mtim: timespec,
-        ctim: timespec,
-        __reserved: [3]c_longlong = [3]c_longlong{ 0, 0, 0 },
-
-        pub fn atime(self: @This()) timespec {
-            return self.atim;
-        }
-
-        pub fn mtime(self: @This()) timespec {
-            return self.mtim;
-        }
-
-        pub fn ctime(self: @This()) timespec {
-            return self.ctim;
-        }
-
-        pub fn fromFilestat(st: wasi.filestat_t) Stat {
-            return .{
-                .dev = st.dev,
-                .ino = st.ino,
-                .mode = switch (st.filetype) {
-                    .UNKNOWN => 0,
-                    .BLOCK_DEVICE => S.IFBLK,
-                    .CHARACTER_DEVICE => S.IFCHR,
-                    .DIRECTORY => S.IFDIR,
-                    .REGULAR_FILE => S.IFREG,
-                    .SOCKET_DGRAM => S.IFSOCK,
-                    .SOCKET_STREAM => S.IFIFO,
-                    .SYMBOLIC_LINK => S.IFLNK,
-                    _ => 0,
-                },
-                .nlink = st.nlink,
-                .size = @intCast(st.size),
-                .atim = timespec.fromTimestamp(st.atim),
-                .mtim = timespec.fromTimestamp(st.mtim),
-                .ctim = timespec.fromTimestamp(st.ctim),
-
-                .uid = 0,
-                .gid = 0,
-                .rdev = 0,
-                .blksize = 0,
-                .blocks = 0,
-            };
-        }
-    },
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => extern struct {
         dev: i32,
         mode: u16,
@@ -8623,19 +8465,6 @@ pub const AT = switch (native_os) {
         pub const STATX_DONT_SYNC = 0x4000;
         pub const RECURSIVE = 0x8000;
     },
-    .wasi => struct {
-        // Match `AT_*` constants in lib/libc/include/wasm-wasi-musl/__header_fcntl.h
-        pub const EACCESS = 0x0;
-        pub const SYMLINK_NOFOLLOW = 0x1;
-        pub const SYMLINK_FOLLOW = 0x2;
-        pub const REMOVEDIR = 0x4;
-        /// When linking libc, we follow their convention and use -2 for current working directory.
-        /// However, without libc, Zig does a different convention: it assumes the
-        /// current working directory is the first preopen. This behavior can be
-        /// overridden with a public function called `wasi_cwd` in the root source
-        /// file.
-        pub const FDCWD: fd_t = if (builtin.link_libc) -2 else 3;
-    },
     // https://github.com/SerenityOS/serenity/blob/2808b0376406a40e31293bb3bcb9170374e90506/Kernel/API/POSIX/fcntl.h#L49-L52
     .serenity => struct {
         pub const FDCWD = -100;
@@ -8670,28 +8499,6 @@ pub const O = switch (native_os) {
         /// This is typically invalid without also setting `DIRECTORY`.
         TMPFILE: bool = false,
         _: u9 = 0,
-    },
-    .wasi => packed struct(u32) {
-        // Match `O_*` bits from lib/libc/include/wasm-wasi-musl/__header_fcntl.h
-        APPEND: bool = false,
-        DSYNC: bool = false,
-        NONBLOCK: bool = false,
-        RSYNC: bool = false,
-        SYNC: bool = false,
-        _5: u7 = 0,
-        CREAT: bool = false,
-        DIRECTORY: bool = false,
-        EXCL: bool = false,
-        TRUNC: bool = false,
-        _16: u8 = 0,
-        NOFOLLOW: bool = false,
-        EXEC: bool = false,
-        read: bool = false,
-        SEARCH: bool = false,
-        write: bool = false,
-        // O_CLOEXEC, O_TTY_ININT, O_NOCTTY are 0 in wasi-musl, so they're silently
-        // ignored in C code.  Thus no mapping in Zig.
-        _: u3 = 0,
     },
     .illumos => packed struct(u32) {
         ACCMODE: std.posix.ACCMODE = .RDONLY,
@@ -9131,7 +8938,7 @@ pub const V = switch (native_os) {
         STATUS,
         ERASE2,
     },
-    .emscripten, .wasi => enum {
+    .emscripten => enum {
         INTR,
         QUIT,
         ERASE,
@@ -9180,7 +8987,7 @@ pub const NCCS = switch (native_os) {
     .haiku => 11,
     .illumos => 19,
     // https://github.com/SerenityOS/serenity/blob/d277cdfd4c7ed21d5248a83217ae03b9f890c3c8/Kernel/API/POSIX/termios.h#L15
-    .emscripten, .wasi, .serenity => 32,
+    .emscripten, .serenity => 32,
     else => void,
 };
 
@@ -9222,7 +9029,7 @@ pub const termios = switch (native_os) {
         lflag: tc_lflag_t,
         cc: [NCCS]cc_t,
     },
-    .emscripten, .wasi => extern struct {
+    .emscripten => extern struct {
         iflag: tc_iflag_t,
         oflag: tc_oflag_t,
         cflag: tc_cflag_t,
@@ -9325,7 +9132,7 @@ pub const tc_iflag_t = switch (native_os) {
         _: u16 = 0,
     },
     // https://github.com/SerenityOS/serenity/blob/d277cdfd4c7ed21d5248a83217ae03b9f890c3c8/Kernel/API/POSIX/termios.h#L52-L66
-    .emscripten, .wasi, .serenity => packed struct(u32) {
+    .emscripten, .serenity => packed struct(u32) {
         IGNBRK: bool = false,
         BRKINT: bool = false,
         IGNPAR: bool = false,
@@ -9418,7 +9225,7 @@ pub const tc_oflag_t = switch (native_os) {
         _: u14 = 0,
     },
     // https://github.com/SerenityOS/serenity/blob/d277cdfd4c7ed21d5248a83217ae03b9f890c3c8/Kernel/API/POSIX/termios.h#L69-L97
-    .haiku, .wasi, .emscripten, .serenity => packed struct(u32) {
+    .haiku, .emscripten, .serenity => packed struct(u32) {
         OPOST: bool = false,
         OLCUC: bool = false,
         ONLCR: bool = false,
@@ -9566,7 +9373,7 @@ pub const tc_cflag_t = switch (native_os) {
         CRTSXOFF: bool = false,
         CRTSCTS: bool = false,
     },
-    .wasi, .emscripten => packed struct(u32) {
+    .emscripten => packed struct(u32) {
         _0: u4 = 0,
         CSIZE: CSIZE = .CS5,
         CSTOPB: bool = false,
@@ -9702,7 +9509,7 @@ pub const tc_lflag_t = switch (native_os) {
         IEXTEN: bool = false,
         _: u16 = 0,
     },
-    .wasi, .emscripten => packed struct(u32) {
+    .emscripten => packed struct(u32) {
         ISIG: bool = false,
         ICANON: bool = false,
         _2: u1 = 0,
@@ -9886,7 +9693,7 @@ pub const speed_t = switch (native_os) {
         B4000000 = 31,
     },
     // https://github.com/SerenityOS/serenity/blob/d277cdfd4c7ed21d5248a83217ae03b9f890c3c8/Kernel/API/POSIX/termios.h#L111-L159
-    .emscripten, .wasi, .serenity => enum(u32) {
+    .emscripten, .serenity => enum(u32) {
         B0 = 0o0000000,
         B50 = 0o0000001,
         B75 = 0o0000002,
@@ -9923,7 +9730,7 @@ pub const speed_t = switch (native_os) {
     else => void,
 };
 
-pub const whence_t = if (native_os == .wasi) std.os.wasi.whence_t else c_int;
+pub const whence_t = c_int;
 
 pub const sig_atomic_t = switch (native_os) {
     // https://github.com/SerenityOS/serenity/blob/ec492a1a0819e6239ea44156825c4ee7234ca3db/Kernel/API/POSIX/signal.h#L20
@@ -10881,7 +10688,7 @@ pub const gettimeofday = switch (native_os) {
 };
 
 pub const mlock = switch (native_os) {
-    .windows, .wasi => {},
+    .windows => {},
     else => private.mlock,
 };
 
@@ -10891,7 +10698,7 @@ pub const mlock2 = switch (native_os) {
 };
 
 pub const munlock = switch (native_os) {
-    .windows, .wasi => {},
+    .windows => {},
     else => private.munlock,
 };
 
@@ -11042,7 +10849,7 @@ pub const sf_hdtr = switch (native_os) {
 };
 
 pub const flock = switch (native_os) {
-    .windows, .wasi => {},
+    .windows => {},
     else => private.flock,
 };
 
@@ -11521,7 +11328,7 @@ pub extern "c" fn pthread_get_name_np(thread: pthread_t, name: [*:0]u8, len: usi
 
 pub const TIMER = switch (native_os) {
     .linux, .emscripten => std.os.linux.TIMER,
-    .openbsd, .netbsd, .wasi, .windows, .freebsd, .serenity => packed struct(u32) {
+    .openbsd, .netbsd, .windows, .freebsd, .serenity => packed struct(u32) {
         ABSTIME: bool,
         _: u31 = 0,
     },
@@ -11529,12 +11336,12 @@ pub const TIMER = switch (native_os) {
 };
 
 pub const clock_nanosleep = switch (native_os) {
-    .linux, .emscripten, .netbsd, .wasi, .windows, .freebsd, .serenity => private.clock_nanosleep,
+    .linux, .emscripten, .netbsd, .windows, .freebsd, .serenity => private.clock_nanosleep,
     else => {},
 };
 
 pub const ioctl = switch (native_os) {
-    .windows, .wasi => {},
+    .windows => {},
     else => private.ioctl,
 };
 

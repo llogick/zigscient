@@ -6,7 +6,7 @@ const c = std.c;
 comptime {
     symbol(&strndup, "strndup");
 
-    if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
+    if (builtin.target.isMuslLibC()) {
         // memcpy implemented in compiler_rt
         // memmove implemented in compiler_rt
         // memset implemented in compiler_rt
@@ -53,7 +53,7 @@ comptime {
         symbol(&__strcoll_l, "strcoll_l");
         symbol(&__strxfrm_l, "strxfrm_l");
 
-        // These symbols are not in the public ABI of musl/wasi. However they depend on these exports internally.
+        // These symbols are not in the public ABI of musl. However it depends on these exports internally.
         symbol(&stpcpy, "__stpcpy");
         symbol(&stpncpy, "__stpncpy");
         symbol(&strchrnul, "__strchrnul");

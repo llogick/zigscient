@@ -5,7 +5,7 @@ const builtin = @import("builtin");
 
 pub fn main(init: std.process.Init.Minimal) !void {
     if (builtin.target.os.tag == .windows) return;
-    if (builtin.target.os.tag == .wasi and !builtin.link_libc) return;
+    if (builtin.target.os.tag == .wasi) return;
 
     const environ = init.environ;
 

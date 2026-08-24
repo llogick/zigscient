@@ -24,7 +24,7 @@ test {
 
 /// Whether to use libc for the POSIX API layer.
 const use_libc = builtin.link_libc or switch (native_os) {
-    .windows, .wasi => true,
+    .windows => true,
     else => false,
 };
 
@@ -54,6 +54,7 @@ else switch (native_os) {
         // https://github.com/pspdev/newlib/blob/9e0a073634ad73e8e088f2e071c55a9fe5d39709/newlib/libc/sys/psp/sys/dirent.h#L19
         pub const NAME_MAX = 255;
     },
+    .wasi => @import("posix/wasi.zig"),
     else => struct {
         pub const pid_t = void;
         pub const pollfd = void;
@@ -443,7 +444,7 @@ pub const OpenError = std.Io.File.OpenError || error{WouldBlock};
 pub fn openat(dir_fd: fd_t, file_path: []const u8, flags: O, mode: mode_t) OpenError!fd_t {
     if (native_os == .windows) {
         @compileError("Windows does not support POSIX; use Windows-specific API or cross-platform std.fs API");
-    } else if (native_os == .wasi and !builtin.link_libc) {
+    } else if (native_os == .wasi) {
         @compileError("use std.Io instead");
     }
     const file_path_c = try toPosixPath(file_path);
@@ -459,7 +460,7 @@ pub fn openat(dir_fd: fd_t, file_path: []const u8, flags: O, mode: mode_t) OpenE
 pub fn openatZ(dir_fd: fd_t, file_path: [*:0]const u8, flags: O, mode: mode_t) OpenError!fd_t {
     if (native_os == .windows) {
         @compileError("Windows does not support POSIX; use Windows-specific API or cross-platform std.fs API");
-    } else if (native_os == .wasi and !builtin.link_libc) {
+    } else if (native_os == .wasi) {
         return openat(dir_fd, mem.sliceTo(file_path, 0), flags, mode);
     }
 

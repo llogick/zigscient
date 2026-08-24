@@ -8,7 +8,7 @@ const symbol = @import("../c.zig").symbol;
 const c = std.c;
 
 comptime {
-    if (builtin.target.isMuslLibC() or builtin.target.isWasiLibC()) {
+    if (builtin.target.isMuslLibC()) {
         symbol(&wmemchr, "wmemchr");
         symbol(&wmemcmp, "wmemcmp");
         symbol(&wmemcpy, "wmemcpy");

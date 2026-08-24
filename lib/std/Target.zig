@@ -950,7 +950,7 @@ pub const Abi = enum {
             .psx => .eabi,
             .psp => .eabihf,
             .vita => .eabihf,
-            .wasi, .emscripten => .musl,
+            .emscripten => .musl,
 
             .ashetos => .eabi,
 
@@ -981,6 +981,7 @@ pub const Abi = enum {
             .opengl,
             .vulkan,
             .tios,
+            .wasi,
             => .none,
         };
     }
@@ -2288,10 +2289,6 @@ pub inline fn isOpenBSDLibC(target: *const Target) bool {
         .none, .eabi, .eabihf => target.os.tag == .openbsd,
         else => false,
     };
-}
-
-pub inline fn isWasiLibC(target: *const Target) bool {
-    return target.os.tag == .wasi and target.abi.isMusl();
 }
 
 /// Does this target require linking libc? This may be the case if the target has an unstable
