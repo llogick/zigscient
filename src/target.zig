@@ -313,7 +313,8 @@ pub fn selfHostedBackendIsAsRobustAsLlvm(target: *const std.Target) bool {
             else => {},
         }
         return switch (target.ofmt) {
-            .elf, .macho => true,
+            .elf => true,
+            .macho => false, // https://codeberg.org/ziglang/zig/issues/35267
             else => false,
         };
     }

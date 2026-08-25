@@ -3051,7 +3051,8 @@ pub fn wouldUseLlvm(use_llvm: ?bool, query: std.Target.Query, optimize_mode: Opt
                 else => {},
             }
             return switch (ofmt) {
-                .elf, .macho => return false,
+                .elf => return false,
+                .macho => return true, // https://codeberg.org/ziglang/zig/issues/35267
                 else => return true,
             };
         },
