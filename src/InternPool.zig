@@ -5989,17 +5989,6 @@ pub const Alignment = enum(u6) {
         return n + 1;
     }
 
-    pub fn toStdMem(a: Alignment) std.mem.Alignment {
-        assert(a != .none);
-        return @fromBackingInt(@intCast(@backingInt(a)));
-    }
-
-    pub fn fromStdMem(a: std.mem.Alignment) Alignment {
-        const r: Alignment = @fromBackingInt(@intCast(@backingInt(a)));
-        assert(r != .none);
-        return r;
-    }
-
     pub fn toLlvm(a: Alignment) std.zig.llvm.Builder.Alignment {
         return @fromBackingInt(@intCast(@backingInt(a)));
     }

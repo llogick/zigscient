@@ -185,7 +185,6 @@ fn mainServer(init: std.process.Init.Minimal) !void {
                     .environ = init.environ,
                 });
                 defer io_instance.deinit();
-                const io = io_instance.io();
 
                 const mode: fuzz_abi.LimitKind = @fromBackingInt(@intCast(try server.receiveBody_u8()));
                 const amount_or_instance = try server.receiveBody_u64();
@@ -208,7 +207,7 @@ fn mainServer(init: std.process.Init.Minimal) !void {
                     .indexes = test_indexes,
                     .server = &server,
                     .gpa = gpa,
-                    .io = io,
+                    .threaded_io = &io_instance,
                     .input_poller = undefined,
                 };
 
@@ -422,7 +421,7 @@ var fuzz_runner: if (builtin.fuzz) struct {
     indexes: []u32,
     server: *std.zig.Server,
     gpa: std.mem.Allocator,
-    io: Io,
+    threaded_io: *Io.Threaded,
     input_poller: Io.Future(Io.Cancelable!void),
 
     comptime {
@@ -442,6 +441,12 @@ var fuzz_runner: if (builtin.fuzz) struct {
         });
         defer if (testing.allocator_instance.deinit() != 0) std.process.exit(1);
         is_fuzz_test = false;
+
+        testing.io_instance = .init(testing.allocator, .{
+            .argv0 = fuzz_runner.threaded_io.argv0,
+            .environ = fuzz_runner.threaded_io.environ.process_environ,
+        });
+        defer testing.io_instance.deinit();
 
         builtin.test_functions[fuzz_runner.indexes[i]].func() catch |err| switch (err) {
             error.SkipZigTest => return,
@@ -473,7 +478,8 @@ var fuzz_runner: if (builtin.fuzz) struct {
 
     export fn runner_start_input_poller() void {
         @disableInstrumentation();
-        const future = fuzz_runner.io.concurrent(inputPoller, .{}) catch |e| switch (e) {
+        const io = fuzz_runner.threaded_io.io();
+        const future = io.concurrent(inputPoller, .{}) catch |e| switch (e) {
             error.ConcurrencyUnavailable => @panic("failed to spawn concurrent fuzz input poller"),
         };
         fuzz_runner.input_poller = future;
@@ -481,17 +487,20 @@ var fuzz_runner: if (builtin.fuzz) struct {
 
     export fn runner_stop_input_poller() void {
         @disableInstrumentation();
-        assert(fuzz_runner.input_poller.cancel(fuzz_runner.io) == error.Canceled);
+        const io = fuzz_runner.threaded_io.io();
+        assert(fuzz_runner.input_poller.cancel(io) == error.Canceled);
     }
 
     export fn runner_futex_wait(ptr: *const u32, expected: u32) bool {
         @disableInstrumentation();
-        return fuzz_runner.io.futexWait(u32, ptr, expected) == error.Canceled;
+        const io = fuzz_runner.threaded_io.io();
+        return io.futexWait(u32, ptr, expected) == error.Canceled;
     }
 
     export fn runner_futex_wake(ptr: *const u32, waiters: u32) void {
         @disableInstrumentation();
-        fuzz_runner.io.futexWake(u32, ptr, waiters);
+        const io = fuzz_runner.threaded_io.io();
+        io.futexWake(u32, ptr, waiters);
     }
 
     fn inputPoller() Io.Cancelable!void {
