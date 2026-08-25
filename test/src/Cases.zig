@@ -444,8 +444,6 @@ fn addFromDirInner(
                     const output = try manifest.trailingSplit(ctx.arena);
                     case.addCompareOutput(src, output);
                 },
-                .translate_c => @panic("c_frontend specified for compile case"),
-                .run_translated_c => @panic("c_frontend specified for compile case"),
                 .cli => @panic("TODO cli tests"),
             }
         }
@@ -675,7 +673,7 @@ const TestManifestConfigDefaults = struct {
         if (std.mem.eql(u8, key, "backend")) {
             return "auto";
         } else if (std.mem.eql(u8, key, "target")) {
-            if (@"type" == .@"error" or @"type" == .translate_c or @"type" == .run_translated_c) {
+            if (@"type" == .@"error") {
                 return "native";
             }
             return comptime blk: {
@@ -702,8 +700,6 @@ const TestManifestConfigDefaults = struct {
                 .@"error" => "Obj",
                 .run => "Exe",
                 .compile => "Obj",
-                .translate_c => "Obj",
-                .run_translated_c => "Obj",
                 .cli => @panic("TODO test harness for CLI tests"),
             };
         } else if (std.mem.eql(u8, key, "emit_asm")) {
@@ -770,8 +766,6 @@ const TestManifest = struct {
         run,
         cli,
         compile,
-        translate_c,
-        run_translated_c,
     };
 
     const TrailingIterator = struct {
@@ -840,10 +834,6 @@ const TestManifest = struct {
                 break :blk .cli;
             } else if (std.mem.eql(u8, raw, "compile")) {
                 break :blk .compile;
-            } else if (std.mem.eql(u8, raw, "translate-c")) {
-                break :blk .translate_c;
-            } else if (std.mem.eql(u8, raw, "run-translated-c")) {
-                break :blk .run_translated_c;
             } else {
                 std.log.warn("unknown test case type requested: {s}", .{raw});
                 return error.UnknownTestCaseType;
