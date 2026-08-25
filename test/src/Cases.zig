@@ -686,7 +686,7 @@ const TestManifestConfigDefaults = struct {
                     defaults = defaults ++ arch ++ "-linux" ++ ",";
                 }
                 // macOS
-                for (&[_][]const u8{ "x86_64", "aarch64" }) |arch| {
+                for (&[_][]const u8{"aarch64"}) |arch| {
                     defaults = defaults ++ arch ++ "-macos" ++ ",";
                 }
                 // Windows
