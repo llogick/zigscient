@@ -241,8 +241,8 @@ fn lowerZigArgs(
     try addBool(gpa, zig_args, "-ffuzz", fuzz);
 
     {
-        var is_linking_libc = conf_comp.flags3.is_linking_libc;
-        var is_linking_libcpp = conf_comp.flags3.is_linking_libcpp;
+        var is_linking_libc = false;
+        var is_linking_libcpp = false;
 
         // Stores system libraries that have already been seen for at least one
         // module, along with any C compiler arguments that need to be passed

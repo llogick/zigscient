@@ -3459,7 +3459,7 @@ const AutoIndentingStream = struct {
     /// Sets current indentation level to be the same as that of the last pushSpace.
     pub fn enableSpaceMode(ais: *AutoIndentingStream, space: Space) void {
         if (ais.space_stack.items.len == 0) return;
-        const curr = ais.space_stack.getLast().?;
+        const curr = ais.space_stack.last().?;
         if (curr.space != space) return;
         ais.space_mode = curr.indent_count;
     }
@@ -3470,7 +3470,7 @@ const AutoIndentingStream = struct {
 
     pub fn lastSpaceModeIndent(ais: *AutoIndentingStream) usize {
         if (ais.space_stack.items.len == 0) return 0;
-        return ais.space_stack.getLast().?.indent_count * ais.indent_delta;
+        return ais.space_stack.last().?.indent_count * ais.indent_delta;
     }
 
     /// Push default indentation

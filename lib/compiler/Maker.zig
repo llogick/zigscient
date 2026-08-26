@@ -2782,7 +2782,7 @@ fn makeStep(
             maker.available_rss += max_rss;
             dispatch_set.ensureUnusedCapacity(gpa, maker.memory_blocked_steps.items.len) catch
                 @panic("TODO eliminate memory allocation here");
-            while (maker.memory_blocked_steps.getLast()) |candidate_index| {
+            while (maker.memory_blocked_steps.last()) |candidate_index| {
                 const candidate_max_rss = candidate_index.ptr(c).max_rss.toBytes();
                 if (maker.available_rss < candidate_max_rss) break;
                 assert(maker.memory_blocked_steps.pop() == candidate_index);

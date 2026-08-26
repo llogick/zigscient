@@ -225,7 +225,10 @@ pub fn findNative(gpa: Allocator, io: Io, args: FindNativeOptions) FindError!Lib
         try self.findNativeIncludeDirPosix(gpa, io, args);
         switch (builtin.target.os.tag) {
             .freebsd, .netbsd, .openbsd, .dragonfly => self.crt_dir = try gpa.dupe(u8, "/usr/lib"),
-            .linux => try self.findNativeCrtDirPosix(gpa, io, args),
+            .linux => {
+                try self.findNativeCrtDirPosix(gpa, io, args);
+                try self.findNativeGccDirPosix(gpa, io, args);
+            },
             else => {},
         }
     } else {
@@ -760,26 +763,36 @@ pub const CrtBasenames = struct {
             .linux => switch (mode) {
                 .dynamic_lib => .{
                     .crti = "crti.o",
+                    .crtbegin = "crtbeginS.o",
+                    .crtend = "crtendS.o",
                     .crtn = "crtn.o",
                 },
                 .dynamic_exe => .{
                     .crt0 = "crt1.o",
                     .crti = "crti.o",
+                    .crtbegin = "crtbegin.o",
+                    .crtend = "crtend.o",
                     .crtn = "crtn.o",
                 },
                 .dynamic_pie => .{
                     .crt0 = "Scrt1.o",
                     .crti = "crti.o",
+                    .crtbegin = "crtbeginS.o",
+                    .crtend = "crtendS.o",
                     .crtn = "crtn.o",
                 },
                 .static_exe => .{
                     .crt0 = "crt1.o",
                     .crti = "crti.o",
+                    .crtbegin = "crtbegin.o",
+                    .crtend = "crtend.o",
                     .crtn = "crtn.o",
                 },
                 .static_pie => .{
                     .crt0 = "rcrt1.o",
                     .crti = "crti.o",
+                    .crtbegin = "crtbeginS.o",
+                    .crtend = "crtendS.o",
                     .crtn = "crtn.o",
                 },
             },
@@ -994,6 +1007,7 @@ pub fn resolveCrtPaths(
         .root_dir = Cache.Directory.cwd(),
         .sub_path = lci.crt_dir orelse return error.LibCInstallationMissingCrtDir,
     };
+
     switch (target.os.tag) {
         .dragonfly => {
             const gccv: []const u8 = if (target.os.version_range.semver.isAtLeast(.{
@@ -1015,7 +1029,7 @@ pub fn resolveCrtPaths(
                 .crtn = if (crt_basenames.crtn) |basename| try crt_dir_path.join(arena, basename) else null,
             };
         },
-        .haiku, .serenity => {
+        .haiku, .serenity, .linux => {
             const gcc_dir_path: Path = .{
                 .root_dir = Cache.Directory.cwd(),
                 .sub_path = lci.gcc_dir orelse return error.LibCInstallationMissingCrtDir,

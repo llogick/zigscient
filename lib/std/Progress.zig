@@ -1354,7 +1354,7 @@ fn computeRedraw(io: Io, serialized_buffer: *Serialized.Buffer) !struct { []u8, 
                         buf[i..][0..progress_pulsing.len].* = progress_pulsing.*;
                         i += progress_pulsing.len;
                     } else {
-                        const percent = completed_items * 100 / estimated_total;
+                        const percent = @as(u64, completed_items) * 100 / estimated_total;
                         if (std.fmt.bufPrint(buf[i..], @"progress_normal {d}", .{percent})) |b| {
                             i += b.len;
                         } else |_| {}
@@ -1373,7 +1373,7 @@ fn computeRedraw(io: Io, serialized_buffer: *Serialized.Buffer) !struct { []u8, 
                         buf[i..][0..progress_pulsing_error.len].* = progress_pulsing_error.*;
                         i += progress_pulsing_error.len;
                     } else {
-                        const percent = completed_items * 100 / estimated_total;
+                        const percent = @as(u64, completed_items) * 100 / estimated_total;
                         if (std.fmt.bufPrint(buf[i..], @"progress_error {d}", .{percent})) |b| {
                             i += b.len;
                         } else |_| {}

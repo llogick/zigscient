@@ -221,11 +221,6 @@ expect_errors: ?ExpectedCompileErrors = null,
 /// `std.math.maxInt(u16)`. Overrides the argument passed to `zig build`.
 error_limit: ?u32 = null,
 
-/// Computed during make().
-is_linking_libc: bool = false,
-/// Computed during make().
-is_linking_libcpp: bool = false,
-
 /// Enables coverage instrumentation that is only useful if you are using third
 /// party fuzzers that depend on it. Otherwise, slows down the instrumented
 /// binary with unnecessary function calls.

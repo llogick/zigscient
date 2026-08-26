@@ -696,7 +696,7 @@ fn fuzzAgainstArrayList(_: void, smith: *std.testing.Smith) anyerror!void {
                 try q.ensureTotalCapacityPrecise(q_gpa, q.len + growth);
             },
         }
-        try testing.expectEqual(l.getLast(), q.back());
+        try testing.expectEqual(l.last(), q.back());
         try testing.expectEqual(
             if (l.items.len > 0) l.items[0] else null,
             q.front(),

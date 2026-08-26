@@ -361,7 +361,7 @@ fn parseCNumLit(mt: *MacroTranslator) ParseError!ZigNode {
                 return error.ParseError;
             },
         });
-        if (bytes.getLast().? == '.') {
+        if (bytes.last().? == '.') {
             bytes.appendAssumeCapacity('0');
         } else if (mem.findAny(u8, bytes.items, ".eEpP") == null) {
             bytes.appendSliceAssumeCapacity(".0");

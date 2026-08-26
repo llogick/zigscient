@@ -2115,6 +2115,7 @@ pub const Cpu = struct {
                     else => generic(arch),
                 },
                 .powerpc64 => switch (os.tag) {
+                    .linux, .freebsd => &powerpc.cpu.pwr8,
                     .openbsd => &powerpc.cpu.pwr9,
                     else => generic(arch),
                 },

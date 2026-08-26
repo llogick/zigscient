@@ -420,6 +420,7 @@ test "receiving arbitrary http headers from the client" {
 }
 
 test "general client/server API coverage" {
+    if (builtin.os.tag == .netbsd) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/36649
     if (builtin.os.tag == .openbsd) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/30806
 
     const io = std.testing.io;

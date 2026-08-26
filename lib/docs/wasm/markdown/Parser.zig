@@ -209,7 +209,7 @@ pub fn feedLine(p: *Parser, line: []const u8) Allocator.Error!void {
     } else p.pending_blocks.items.len;
 
     const in_code_block = p.pending_blocks.items.len > 0 and
-        p.pending_blocks.getLast().?.tag == .code_block;
+        p.pending_blocks.last().?.tag == .code_block;
     const code_block_end = in_code_block and
         first_unmatched + 1 == p.pending_blocks.items.len;
     // New blocks cannot be started if we are actively inside a code block or
@@ -225,7 +225,7 @@ pub fn feedLine(p: *Parser, line: []const u8) Allocator.Error!void {
     if (maybe_block_start == null and
         !isBlank(rest_line) and
         p.pending_blocks.items.len > 0 and
-        p.pending_blocks.getLast().?.tag == .paragraph)
+        p.pending_blocks.last().?.tag == .paragraph)
     {
         try p.addScratchStringLine(mem.trimStart(u8, rest_line, " \t"));
         return;
@@ -236,7 +236,7 @@ pub fn feedLine(p: *Parser, line: []const u8) Allocator.Error!void {
     // paragraphs.
     if (maybe_block_start != null and
         p.pending_blocks.items.len > 0 and
-        p.pending_blocks.getLast().?.tag == .paragraph)
+        p.pending_blocks.last().?.tag == .paragraph)
     {
         try p.closeLastBlock();
     }
@@ -259,7 +259,7 @@ pub fn feedLine(p: *Parser, line: []const u8) Allocator.Error!void {
     // Do not append the end of a code block (```) as textual content.
     if (code_block_end) return;
 
-    const can_accept = if (p.pending_blocks.getLast()) |last_pending_block|
+    const can_accept = if (p.pending_blocks.last()) |last_pending_block|
         last_pending_block.canAccept()
     else
         .blocks;
@@ -273,7 +273,7 @@ pub fn feedLine(p: *Parser, line: []const u8) Allocator.Error!void {
             // loose, since we might just be looking at a blank line after the
             // end of the last item in the list. The final determination will be
             // made when appending the next child of the list or list item.
-            const maybe_containing_list_index = if (p.pending_blocks.items.len > 0 and p.pending_blocks.getLast().?.tag == .list_item)
+            const maybe_containing_list_index = if (p.pending_blocks.items.len > 0 and p.pending_blocks.last().?.tag == .list_item)
                 p.pending_blocks.items.len - 2
             else
                 null;
@@ -368,7 +368,7 @@ const BlockStart = struct {
 };
 
 fn appendBlockStart(p: *Parser, block_start: BlockStart) !void {
-    if (p.pending_blocks.getLast()) |last_pending_block| {
+    if (p.pending_blocks.last()) |last_pending_block| {
         // Close the last block if it is a list and the new block is not a list item
         // or not of the same marker type.
         const should_close_list = last_pending_block.tag == .list and
@@ -383,7 +383,7 @@ fn appendBlockStart(p: *Parser, block_start: BlockStart) !void {
         }
     }
 
-    if (p.pending_blocks.getLast()) |last_pending_block| {
+    if (p.pending_blocks.last()) |last_pending_block| {
         // If the last block is a list or list item, check for tightness based
         // on the last line.
         const maybe_containing_list = switch (last_pending_block.tag) {
@@ -401,7 +401,7 @@ fn appendBlockStart(p: *Parser, block_start: BlockStart) !void {
     // Start a new list if the new block is a list item and there is no
     // containing list yet.
     if (block_start.tag == .list_item and
-        (p.pending_blocks.items.len == 0 or p.pending_blocks.getLast().?.tag != .list))
+        (p.pending_blocks.items.len == 0 or p.pending_blocks.last().?.tag != .list))
     {
         try p.pending_blocks.append(p.allocator, .{
             .tag = .list,
@@ -417,7 +417,7 @@ fn appendBlockStart(p: *Parser, block_start: BlockStart) !void {
 
     if (block_start.tag == .table_row) {
         // Likewise, table rows start a table implicitly.
-        if (p.pending_blocks.items.len == 0 or p.pending_blocks.getLast().?.tag != .table) {
+        if (p.pending_blocks.items.len == 0 or p.pending_blocks.last().?.tag != .table) {
             try p.pending_blocks.append(p.allocator, .{
                 .tag = .table,
                 .data = .{ .table = .{
@@ -429,7 +429,7 @@ fn appendBlockStart(p: *Parser, block_start: BlockStart) !void {
             });
         }
 
-        const current_row = p.scratch_extra.items.len - p.pending_blocks.getLast().?.extra_start;
+        const current_row = p.scratch_extra.items.len - p.pending_blocks.last().?.extra_start;
         if (current_row <= 1) {
             var buffer: [max_table_columns]Node.TableCellAlignment = undefined;
             const table_row = &block_start.data.table_row;
@@ -441,7 +441,7 @@ fn appendBlockStart(p: *Parser, block_start: BlockStart) !void {
                     // We need to go back and mark the header row and its column
                     // alignments.
                     const datas = p.nodes.items(.data);
-                    const header_data = datas[p.scratch_extra.getLast().?];
+                    const header_data = datas[p.scratch_extra.last().?];
                     for (p.extraChildren(header_data.container.children), 0..) |header_cell, i| {
                         const alignment = if (i < alignments.len) alignments[i] else .unset;
                         const cell_data = &datas[@backingInt(header_cell)].table_cell;

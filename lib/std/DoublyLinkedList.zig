@@ -109,7 +109,7 @@ pub fn prepend(list: *DoublyLinkedList, new_node: *Node) void {
 ///
 /// Arguments:
 ///     node: Pointer to the node to be removed.
-pub fn remove(list: *DoublyLinkedList, node: *Node) void {
+pub fn remove(list: *DoublyLinkedList, node: *const Node) void {
     if (node.prev) |prev_node| {
         // Intermediate node.
         prev_node.next = node.next;

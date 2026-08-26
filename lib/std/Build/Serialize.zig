@@ -169,8 +169,6 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                                 .linkage = .init(c.linkage),
                             },
                             .flags3 = .{
-                                .is_linking_libc = c.is_linking_libc,
-                                .is_linking_libcpp = c.is_linking_libcpp,
                                 .version = c.version != null,
                                 .compress_debug_sections = c.compress_debug_sections,
                                 .initial_memory = c.initial_memory != null,
