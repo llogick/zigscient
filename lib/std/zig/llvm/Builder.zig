@@ -295,6 +295,7 @@ pub fn tripleForTarget(allocator: Allocator, target: *const std.Target) ![]const
         .@"3ds",
         .wiiu,
         .@"switch",
+        .gba,
         .ashetos,
         => "unknown",
     };

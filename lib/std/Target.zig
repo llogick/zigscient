@@ -51,6 +51,7 @@ pub const Os = struct {
         @"3ds",
         wiiu,
         @"switch",
+        gba,
 
         psx,
         ps3,
@@ -167,6 +168,7 @@ pub const Os = struct {
                 .ps3,
                 .ps4,
                 .ps5,
+                .gba,
 
                 .emscripten,
 
@@ -407,6 +409,7 @@ pub const Os = struct {
                 .ps3,
                 .ps4,
                 .ps5,
+                .gba,
 
                 .emscripten,
 
@@ -933,6 +936,7 @@ pub const Abi = enum {
             .uefi => .msvc,
             .@"3ds" => .eabihf,
             .wiiu => .eabihf,
+            .gba => .eabi,
             .psx => .eabi,
             .psp => .eabihf,
             .vita => .eabihf,
@@ -2071,10 +2075,12 @@ pub const Cpu = struct {
                 .arm => switch (os.tag) {
                     .@"3ds" => &arm.cpu.mpcore,
                     .vita => &arm.cpu.cortex_a9,
+                    .gba => &arm.cpu.arm7tdmi,
                     else => &arm.cpu.baseline,
                 },
                 .thumb => switch (os.tag) {
                     .vita => &arm.cpu.cortex_a9,
+                    .gba => &arm.cpu.arm7tdmi,
                     else => &arm.cpu.baseline,
                 },
                 .armeb, .thumbeb => &arm.cpu.baseline,
@@ -2306,6 +2312,7 @@ pub fn requiresLibC(target: *const Target) bool {
         .ps3,
         .ps4,
         .ps5,
+        .gba,
         .psp,
         .vita,
         .mesa3d,
@@ -2474,6 +2481,7 @@ pub const DynamicLinker = struct {
             .@"3ds",
             .wiiu,
             .@"switch",
+            .gba,
 
             .emscripten,
             .wasi,
@@ -2913,6 +2921,7 @@ pub const DynamicLinker = struct {
             .@"3ds",
             .wiiu,
             .@"switch",
+            .gba,
 
             .psx,
             .psp,
@@ -3490,6 +3499,13 @@ pub fn cTypeBitSize(target: *const Target, c_type: CType) ?u16 {
             .int, .uint, .float => return 32,
             .long, .ulong, .longlong, .ulonglong, .double => return 64,
             .longdouble => return 128,
+        },
+
+        .gba => switch (c_type) {
+            .char => return 8,
+            .short, .ushort => return 16,
+            .int, .uint, .long, .ulong, .float => return 32,
+            .longlong, .ulonglong, .double, .longdouble => return 64,
         },
 
         .psx => switch (c_type) {

@@ -79,6 +79,7 @@ comptime {
             .@"3ds",
             .wiiu,
             .@"switch",
+            .gba,
 
             .psx,
             .psp,

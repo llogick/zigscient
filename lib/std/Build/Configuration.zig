@@ -2401,6 +2401,7 @@ pub const TargetQuery = struct {
         @"3ds",
         wiiu,
         @"switch",
+        gba,
         psx,
         ps3,
         ps4,
