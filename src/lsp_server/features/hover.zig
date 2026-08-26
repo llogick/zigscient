@@ -631,8 +631,6 @@ fn lookupNav(
     markup_kind: types.MarkupKind,
     // offset_encoding: offsets.Encoding,
 ) Analyser.Error!?[]const u8 {
-    if (true) return null;
-
     const tree = &handle.tree;
     // this can't tell the diff between the fn decl and it's first param
     const nodes = try ast.nodesOverlappingIndex(arena, tree, source_index);
@@ -642,18 +640,19 @@ fn lookupNav(
     handle.computed_data.lock.lockSharedUncancelable(ds.io);
     defer handle.computed_data.lock.unlockShared(ds.io);
 
-    const compilation = handle.computed_data.compilation orelse return null;
+    const build = handle.computed_data.build orelse return null;
+    const compilation = build.compilation orelse return null;
 
     if (!compilation.mutex.tryLock()) return null;
     defer compilation.mutex.unlock(ds.io);
 
-    if (!compilation.has_completed_once) return null;
+    if (!build.has_completed_once) return null;
 
-    const zcu = compilation.instance.?.zcu orelse return null;
+    const zcu = compilation.zcu orelse return null;
 
     const ip = zcu.intern_pool;
-    const Ip = DocumentStore.Compilation.InternPool;
-    const Zcu = DocumentStore.Compilation.Zcu;
+    const Ip = Compilation.InternPool;
+    const Zcu = Compilation.Zcu;
 
     for (ip.locals, 0..) |_, tid| {
         const navs = ip.getLocalShared(@fromBackingInt(@intCast(tid))).navs.acquire();
@@ -661,11 +660,10 @@ fn lookupNav(
         if (nav_reprs.len == 0) continue;
         for (
             nav_reprs.items(.analysis_zir_index),
-            nav_reprs.items(.bits),
+            // nav_reprs.items(.bits),
             0..,
-        ) |opt_zir_index, bits, index| {
+        ) |opt_zir_index, index| {
             const zir_index = opt_zir_index.unwrap() orelse continue;
-            if (bits.status == .unresolved) continue;
             const resolved = zir_index.resolveFull(&ip) orelse continue;
             // std.log.err("got resolved", .{});
             const file = zcu.fileByIndex(resolved.file);
@@ -682,36 +680,27 @@ fn lookupNav(
             // std.log.err("src_node {} vs nodes[0] {}", .{ src_node, nodes[0] });
             if (src_node != nodes[0]) continue;
             const nav: Ip.Nav = nav_reprs.get(index).unpack();
+            const resolved_nav = nav.resolved orelse return null;
 
-            switch (nav.status) {
-                .unresolved => unreachable,
-                .type_resolved => {},
-                .fully_resolved => |r| {
-                    var output: std.ArrayList(u8) = .empty;
+            var output: std.ArrayList(u8) = .empty;
 
-                    if (markup_kind == .markdown) {
-                        try output.print(arena, "```zig\n\n", .{});
-                    }
-
-                    const pt: Zcu.PerThread = .activate(zcu, @fromBackingInt(@intCast(tid)));
-                    defer pt.deactivate();
-                    const v = Zcu.Value.fromInterned(r.val);
-                    try output.print(arena, "fqn: {f}\n", .{nav.fqn.fmt(&ip)});
-                    try output.print(arena, "val: {f}\n", .{v.fmtValue(pt)});
-                    try output.print(arena, "typ: {f}\n", .{v.typeOf(zcu).fmt(pt)});
-                    // const alignment = nav.getAlignment();
-                    // if (alignment != .none) try output.print(arena, "align({t})\n", .{alignment});
-                    // const link_section = nav.getLinkSection();
-                    // if (link_section != .none) try output.print(arena, "linksection: {s}\n", .{link_section.toSlice(&ip) orelse ""});
-                    // const addr_space = nav.getAddrspace();
-                    // if (addr_space != .generic) try output.print(arena, "address_space: {t}\n", .{addr_space});
-
-                    if (markup_kind == .markdown) {
-                        try output.print(arena, "```\n", .{});
-                    }
-                    return output.items;
-                },
+            if (markup_kind == .markdown) {
+                try output.print(arena, "```zig\n\n", .{});
             }
+
+            const active = zcu.activate(@fromBackingInt(@intCast(tid)));
+            defer active.deactivate();
+
+            const val = Zcu.Value.fromInterned(resolved_nav.value);
+
+            try output.print(arena, "fqn: {f}\n", .{nav.fqn.fmt(&ip)});
+            try output.print(arena, "val: {f}\n", .{val.fmtValue(active.pt)});
+            try output.print(arena, "typ: {f}\n", .{val.typeOf(zcu).fmt(active.pt)});
+
+            if (markup_kind == .markdown) {
+                try output.print(arena, "```\n", .{});
+            }
+            return output.items;
         }
     }
     return null;
