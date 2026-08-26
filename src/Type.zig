@@ -524,9 +524,22 @@ pub fn print(ty: Type, writer: *std.Io.Writer, pt: Zcu.PerThread, ctx: ?*Compari
         },
         .inferred_error_set_type => |func_index| {
             const func_nav = ip.getNav(zcu.funcInfo(func_index).owner_nav);
-            try writer.print("@typeInfo(@typeInfo(@TypeOf({f})).@\"fn\".return_type.?).error_union.error_set", .{
-                func_nav.fqn.fmt(ip),
-            });
+            switch (ip.funcIesResolvedUnordered(func_index)) {
+                .none, .anyerror_type => try writer.print("@typeInfo(@typeInfo(@TypeOf({f})).@\"fn\".return_type.?).error_union.error_set", .{
+                    func_nav.fqn.fmt(ip),
+                }),
+                else => |t| {
+                    const nts_names = ip.indexToKey(t).error_set_type.names.get(ip);
+                    if (nts_names.len != 0) {
+                        try writer.writeAll("error {");
+                        for (nts_names, 0..) |err_name, i| {
+                            if (i != 0) try writer.writeByte(',');
+                            try writer.print("{f}", .{err_name.fmt(ip)});
+                        }
+                        try writer.writeAll("}");
+                    }
+                },
+            }
         },
         .error_set_type => |error_set_type| {
             const NullTerminatedString = InternPool.NullTerminatedString;
