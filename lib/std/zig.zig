@@ -601,19 +601,34 @@ pub const StringEscapeWriter = struct {
     fn drain(w: *Writer, data: []const []const u8, splat: usize) Io.Writer.Error!usize {
         const sew: *StringEscapeWriter = @alignCast(@fieldParentPtr("writer", w));
         const out = sew.out;
-        _ = try stringEscapeCounting(w.buffered(), out);
+        try stringEscape(w.buffered(), out);
         w.end = 0;
         var n: usize = 0;
         for (data[0 .. data.len - 1]) |bytes| {
-            n += try stringEscapeCounting(bytes, out);
+            try stringEscape(bytes, out);
+            n += bytes.len;
         }
         const pattern = data[data.len - 1];
         for (0..splat) |_| {
-            n += try stringEscapeCounting(pattern, out);
+            try stringEscape(pattern, out);
+            n += pattern.len;
         }
         return n;
     }
 };
+
+test StringEscapeWriter {
+    const bytes = "\x7f\t\n\r\\\"abc";
+    const escaped = "\\x7f\\t\\n\\r\\\\\\\"abc";
+
+    var out_buf: [escaped.len]u8 = undefined;
+    var out: Io.Writer = .fixed(&out_buf);
+    var w: StringEscapeWriter = .init(&out, &.{});
+
+    const n = try w.writer.write(bytes);
+    try std.testing.expectEqual(bytes.len, n);
+    try std.testing.expectEqualStrings(escaped, out.buffered());
+}
 
 /// Print as escaped contents of a single-quoted string.
 pub fn charEscape(codepoint: u21, w: *Writer) Writer.Error!void {
