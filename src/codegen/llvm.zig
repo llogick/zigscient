@@ -327,7 +327,7 @@ pub const Object = struct {
             b.module_asm.appendSliceAssumeCapacity(assembly);
             b.module_asm.appendAssumeCapacity('\n');
         }
-        if (b.module_asm.getLast()) |last| {
+        if (b.module_asm.last()) |last| {
             if (last != '\n') try b.module_asm.append(gpa, '\n');
         }
     }

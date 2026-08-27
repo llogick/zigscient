@@ -445,7 +445,7 @@ fn classifySystemVArray(
     const field_classes = std.mem.sliceTo(&classifySystemV(array_ty.childType(zcu), zcu, target, .other), .none);
     var byte_offset = starting_byte_offset;
     const elem_size = array_ty.childType(zcu).abiSize(zcu);
-    for (0..@intCast(array_ty.arrayLen(zcu))) |_| {
+    for (0..@intCast(array_ty.arrayLenIncludingSentinel(zcu))) |_| {
         for (result[@intCast(byte_offset / 8)..][0..field_classes.len], field_classes) |*result_class, field_class|
             result_class.* = result_class.combineSystemV(field_class);
         byte_offset += elem_size;

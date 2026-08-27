@@ -2154,7 +2154,7 @@ fn gen(
 
         const epilogue = if (self.epilogue_relocs.items.len > 0) epilogue: {
             var last_inst: Mir.Inst.Index = @intCast(self.mir_instructions.len - 1);
-            while (self.epilogue_relocs.getLast() == last_inst) {
+            while (self.epilogue_relocs.last() == last_inst) {
                 self.epilogue_relocs.items.len -= 1;
                 self.mir_instructions.set(last_inst, .{
                     .tag = .pseudo,
@@ -176981,7 +176981,7 @@ fn lowerBlock(self: *CodeGen, inst: Air.Inst.Index, body: []const Air.Inst.Index
     defer block_data.value.deinit(self.gpa);
     if (block_data.value.relocs.items.len > 0) {
         var last_inst: Mir.Inst.Index = @intCast(self.mir_instructions.len - 1);
-        while (block_data.value.relocs.getLast() == last_inst) {
+        while (block_data.value.relocs.last() == last_inst) {
             block_data.value.relocs.items.len -= 1;
             self.mir_instructions.set(last_inst, .{
                 .tag = .pseudo,

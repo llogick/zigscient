@@ -45,14 +45,7 @@ pub fn classifyType(ty: Type, context: Context, zcu: *Zcu) Class {
             128 => return .pointer,
         },
         .pointer, .optional => return .simple,
-        .array => switch (ty.arrayLen(zcu)) {
-            0 => return .none,
-            1 => switch (context) {
-                .ret => {},
-                .arg => return classifyType(ty.childType(zcu), context, zcu),
-            },
-            else => {},
-        },
+        .array => {},
         .@"struct", .@"union" => |tag| switch (ty.containerLayout(zcu)) {
             .auto => unreachable,
             .@"extern" => switch (context) {

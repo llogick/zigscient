@@ -12178,9 +12178,7 @@ pub const CallAbiIterator = struct {
                 const loaded_struct = ip.loadStructType(ty.toIntern());
                 switch (loaded_struct.layout) {
                     .auto, .@"extern" => {},
-                    .@"packed" => continue :type_key .{
-                        .int_type = ip.indexToKey(loaded_struct.packed_backing_int_type).int_type,
-                    },
+                    .@"packed" => continue :type_key ip.indexToKey(loaded_struct.packed_backing_int_type),
                 }
                 const size = wip_vi.size(isel);
                 if (size <= 16 * 4) homogeneous_aggregate: {
@@ -12302,9 +12300,7 @@ pub const CallAbiIterator = struct {
                 }
             },
             .opaque_type, .func_type => continue :type_key .{ .simple_type = .anyopaque },
-            .enum_type => continue :type_key .{
-                .int_type = ip.indexToKey(ip.loadEnumType(ty.toIntern()).int_tag_type).int_type,
-            },
+            .enum_type => continue :type_key ip.indexToKey(ip.loadEnumType(ty.toIntern()).int_tag_type),
             .error_set_type,
             .inferred_error_set_type,
             => continue :type_key .{ .simple_type = .anyerror },

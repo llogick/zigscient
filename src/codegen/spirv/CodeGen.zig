@@ -7284,7 +7284,7 @@ fn structuredBreak(cg: *CodeGen, target_block: Id) !void {
     if (cg.block_terminated) return;
 
     const gpa = cg.gpa;
-    const sblock = cg.block_stack.getLast().?;
+    const sblock = cg.block_stack.last().?;
     const merge_block = switch (sblock.*) {
         .selection => |*merge| blk: {
             const merge_label = cg.allocId();
@@ -7451,7 +7451,7 @@ fn lowerBlock(cg: *CodeGen, inst: Air.Inst.Index, body: []const Air.Inst.Index) 
         .operand_2 = this_block,
     });
 
-    const sblock = cg.block_stack.getLast().?;
+    const sblock = cg.block_stack.last().?;
 
     if (ty.isNoReturn(zcu)) {
         // If this block is noreturn, this instruction is the last of a block,

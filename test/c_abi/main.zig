@@ -16103,24 +16103,44 @@ test "struct f32, f32, f32, f32, f32" {
     c_test_struct_f32_f32_f32_f32_f32();
 }
 
+const Struct_void_f32 = extern struct {
+    _: void = {},
+    a: f32,
+};
+
+export fn zig_ret_struct_void_f32() Struct_void_f32 {
+    return .{ .a = 1 };
+}
+export fn zig_struct_void_f32(s: Struct_void_f32, i: usize) void {
+    expect(s.a == 2) catch @panic("test failure");
+    expect(i == 3) catch @panic("test failure");
+}
+
+extern fn c_ret_struct_void_f32() Struct_void_f32;
+extern fn c_struct_void_f32(Struct_void_f32, usize) void;
+extern fn c_test_struct_void_f32() void;
+
+test "struct void, f32" {
+    if (builtin.cpu.arch.isMIPS64()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
+    if (builtin.cpu.arch == .x86 and builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const s = c_ret_struct_void_f32();
+    try expect(s.a == 4);
+    c_struct_void_f32(.{ .a = 5 }, 6);
+    c_test_struct_void_f32();
+}
+
 const Struct_array_1_f32 = extern struct {
     a: [1]f32,
 };
 
-comptime {
-    skip: {
-        if (builtin.cpu.arch.isWasm()) break :skip;
-
-        _ = struct {
-            export fn zig_ret_struct_array_1_f32() Struct_array_1_f32 {
-                return .{ .a = .{1} };
-            }
-            export fn zig_struct_array_1_f32(s: Struct_array_1_f32, i: usize) void {
-                expect(s.a[0] == 2) catch @panic("test failure");
-                expect(i == 3) catch @panic("test failure");
-            }
-        };
-    }
+export fn zig_ret_struct_array_1_f32() Struct_array_1_f32 {
+    return .{ .a = .{1} };
+}
+export fn zig_struct_array_1_f32(s: Struct_array_1_f32, i: usize) void {
+    expect(s.a[0] == 2) catch @panic("test failure");
+    expect(i == 3) catch @panic("test failure");
 }
 
 extern fn c_ret_struct_array_1_f32() Struct_array_1_f32;
@@ -16133,8 +16153,6 @@ test "struct [1]f32" {
     if (builtin.cpu.arch.isMIPS64()) return error.SkipZigTest;
     if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
     if (builtin.cpu.arch.isRISCV()) return error.SkipZigTest;
-    if (builtin.cpu.arch == .s390x) return error.SkipZigTest;
-    if (builtin.cpu.arch.isWasm()) return error.SkipZigTest;
 
     const s = c_ret_struct_array_1_f32();
     try expect(s.a[0] == 4);
@@ -16276,6 +16294,191 @@ test "struct [5]f32" {
     try expect(s.a[4] == 16);
     c_struct_array_5_f32(.{ .a = .{ 17, 18, 19, 20, 21 } }, 22);
     c_test_struct_array_5_f32();
+}
+
+const Struct_array_0_sentinel_f32 = extern struct {
+    a: [0:0x1e1]f32,
+};
+
+export fn zig_ret_struct_array_0_sentinel_f32() Struct_array_0_sentinel_f32 {
+    return .{ .a = .{} };
+}
+export fn zig_struct_array_0_sentinel_f32(s: Struct_array_0_sentinel_f32, i: usize) void {
+    var sentinel_index: usize = 0;
+    _ = &sentinel_index;
+    expect(s.a[sentinel_index] == 0x1e1) catch @panic("test failure");
+    expect(i == 1) catch @panic("test failure");
+}
+
+extern fn c_ret_struct_array_0_sentinel_f32() Struct_array_0_sentinel_f32;
+extern fn c_struct_array_0_sentinel_f32(Struct_array_0_sentinel_f32, usize) void;
+extern fn c_test_struct_array_0_sentinel_f32() void;
+
+test "struct [0:sentinel]f32" {
+    if (builtin.cpu.arch.isAARCH64()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isArm()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isMIPS64()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isRISCV()) return error.SkipZigTest;
+
+    var sentinel_index: usize = 0;
+    _ = &sentinel_index;
+    const s = c_ret_struct_array_0_sentinel_f32();
+    try expect(s.a[sentinel_index] == 0x1e1);
+    c_struct_array_0_sentinel_f32(.{ .a = .{} }, 2);
+    c_test_struct_array_0_sentinel_f32();
+}
+
+const Struct_array_1_sentinel_f32 = extern struct {
+    a: [1:0x1e1]f32,
+};
+
+export fn zig_ret_struct_array_1_sentinel_f32() Struct_array_1_sentinel_f32 {
+    return .{ .a = .{1} };
+}
+export fn zig_struct_array_1_sentinel_f32(s: Struct_array_1_sentinel_f32, i: usize) void {
+    var sentinel_index: usize = 1;
+    _ = &sentinel_index;
+    expect(s.a[0] == 2) catch @panic("test failure");
+    expect(s.a[sentinel_index] == 0x1e1) catch @panic("test failure");
+    expect(i == 3) catch @panic("test failure");
+}
+
+extern fn c_ret_struct_array_1_sentinel_f32() Struct_array_1_sentinel_f32;
+extern fn c_struct_array_1_sentinel_f32(Struct_array_1_sentinel_f32, usize) void;
+extern fn c_test_struct_array_1_sentinel_f32() void;
+
+test "struct [1:sentinel]f32" {
+    if (builtin.cpu.arch.isAARCH64()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isArm()) return error.SkipZigTest;
+    if (builtin.cpu.arch == .loongarch64 and builtin.abi.float() == .hard) return error.SkipZigTest;
+    if (builtin.cpu.arch.isMIPS64()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isRISCV()) return error.SkipZigTest;
+
+    var sentinel_index: usize = 1;
+    _ = &sentinel_index;
+    const s = c_ret_struct_array_1_sentinel_f32();
+    try expect(s.a[0] == 4);
+    try expect(s.a[sentinel_index] == 0x1e1);
+    c_struct_array_1_sentinel_f32(.{ .a = .{5} }, 6);
+    c_test_struct_array_1_sentinel_f32();
+}
+
+const Struct_array_2_sentinel_f32 = extern struct {
+    a: [2:0x1e1]f32,
+};
+
+export fn zig_ret_struct_array_2_sentinel_f32() Struct_array_2_sentinel_f32 {
+    return .{ .a = .{ 1, 2 } };
+}
+export fn zig_struct_array_2_sentinel_f32(s: Struct_array_2_sentinel_f32, i: usize) void {
+    var sentinel_index: usize = 2;
+    _ = &sentinel_index;
+    expect(s.a[0] == 3) catch @panic("test failure");
+    expect(s.a[1] == 4) catch @panic("test failure");
+    expect(s.a[sentinel_index] == 0x1e1) catch @panic("test failure");
+    expect(i == 5) catch @panic("test failure");
+}
+
+extern fn c_ret_struct_array_2_sentinel_f32() Struct_array_2_sentinel_f32;
+extern fn c_struct_array_2_sentinel_f32(Struct_array_2_sentinel_f32, usize) void;
+extern fn c_test_struct_array_2_sentinel_f32() void;
+
+test "struct [2:sentinel]f32" {
+    if (builtin.cpu.arch.isAARCH64()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isArm()) return error.SkipZigTest;
+    if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
+    if (builtin.cpu.arch.isMIPS64()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
+
+    var sentinel_index: usize = 2;
+    _ = &sentinel_index;
+    const s = c_ret_struct_array_2_sentinel_f32();
+    try expect(s.a[0] == 6);
+    try expect(s.a[1] == 7);
+    try expect(s.a[sentinel_index] == 0x1e1);
+    c_struct_array_2_sentinel_f32(.{ .a = .{ 8, 9 } }, 10);
+    c_test_struct_array_2_sentinel_f32();
+}
+
+const Struct_array_3_sentinel_f32 = extern struct {
+    a: [3:0x1e1]f32,
+};
+
+export fn zig_ret_struct_array_3_sentinel_f32() Struct_array_3_sentinel_f32 {
+    return .{ .a = .{ 1, 2, 3 } };
+}
+export fn zig_struct_array_3_sentinel_f32(s: Struct_array_3_sentinel_f32, i: usize) void {
+    var sentinel_index: usize = 3;
+    _ = &sentinel_index;
+    expect(s.a[0] == 4) catch @panic("test failure");
+    expect(s.a[1] == 5) catch @panic("test failure");
+    expect(s.a[2] == 6) catch @panic("test failure");
+    expect(s.a[sentinel_index] == 0x1e1) catch @panic("test failure");
+    expect(i == 7) catch @panic("test failure");
+}
+
+extern fn c_ret_struct_array_3_sentinel_f32() Struct_array_3_sentinel_f32;
+extern fn c_struct_array_3_sentinel_f32(Struct_array_3_sentinel_f32, usize) void;
+extern fn c_test_struct_array_3_sentinel_f32() void;
+
+test "struct [3:sentinel]f32" {
+    if (builtin.cpu.arch.isAARCH64()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isArm()) return error.SkipZigTest;
+    if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
+    if (builtin.cpu.arch.isMIPS64()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
+
+    var sentinel_index: usize = 3;
+    _ = &sentinel_index;
+    const s = c_ret_struct_array_3_sentinel_f32();
+    try expect(s.a[0] == 8);
+    try expect(s.a[1] == 9);
+    try expect(s.a[2] == 10);
+    try expect(s.a[sentinel_index] == 0x1e1);
+    c_struct_array_3_sentinel_f32(.{ .a = .{ 11, 12, 13 } }, 14);
+    c_test_struct_array_3_sentinel_f32();
+}
+
+const Struct_array_4_sentinel_f32 = extern struct {
+    a: [4:0x1e1]f32,
+};
+
+export fn zig_ret_struct_array_4_sentinel_f32() Struct_array_4_sentinel_f32 {
+    return .{ .a = .{ 1, 2, 3, 4 } };
+}
+export fn zig_struct_array_4_sentinel_f32(s: Struct_array_4_sentinel_f32, i: usize) void {
+    var sentinel_index: usize = 4;
+    _ = &sentinel_index;
+    expect(s.a[0] == 5) catch @panic("test failure");
+    expect(s.a[1] == 6) catch @panic("test failure");
+    expect(s.a[2] == 7) catch @panic("test failure");
+    expect(s.a[3] == 8) catch @panic("test failure");
+    expect(s.a[sentinel_index] == 0x1e1) catch @panic("test failure");
+    expect(i == 9) catch @panic("test failure");
+}
+
+extern fn c_ret_struct_array_4_sentinel_f32() Struct_array_4_sentinel_f32;
+extern fn c_struct_array_4_sentinel_f32(Struct_array_4_sentinel_f32, usize) void;
+extern fn c_test_struct_array_4_sentinel_f32() void;
+
+test "struct [4:sentinel]f32" {
+    if (builtin.cpu.arch.isArm()) return error.SkipZigTest;
+    if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
+    if (builtin.cpu.arch.isMIPS64()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
+
+    var sentinel_index: usize = 4;
+    _ = &sentinel_index;
+    const s = c_ret_struct_array_4_sentinel_f32();
+    try expect(s.a[0] == 10);
+    try expect(s.a[1] == 11);
+    try expect(s.a[2] == 12);
+    try expect(s.a[3] == 13);
+    try expect(s.a[sentinel_index] == 0x1e1);
+    c_struct_array_4_sentinel_f32(.{ .a = .{ 14, 15, 16, 17 } }, 18);
+    c_test_struct_array_4_sentinel_f32();
 }
 
 const Struct_f32a8 = extern struct {
@@ -16579,20 +16782,12 @@ const Struct_array_1_f64 = extern struct {
     a: [1]f64,
 };
 
-comptime {
-    skip: {
-        if (builtin.cpu.arch.isWasm()) break :skip;
-
-        _ = struct {
-            export fn zig_ret_struct_array_1_f64() Struct_array_1_f64 {
-                return .{ .a = .{1} };
-            }
-            export fn zig_struct_array_1_f64(s: Struct_array_1_f64, i: usize) void {
-                expect(s.a[0] == 2) catch @panic("test failure");
-                expect(i == 3) catch @panic("test failure");
-            }
-        };
-    }
+export fn zig_ret_struct_array_1_f64() Struct_array_1_f64 {
+    return .{ .a = .{1} };
+}
+export fn zig_struct_array_1_f64(s: Struct_array_1_f64, i: usize) void {
+    expect(s.a[0] == 2) catch @panic("test failure");
+    expect(i == 3) catch @panic("test failure");
 }
 
 extern fn c_ret_struct_array_1_f64() Struct_array_1_f64;
@@ -16605,8 +16800,6 @@ test "struct [1]f64" {
     if (builtin.cpu.arch.isMIPS64()) return error.SkipZigTest;
     if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
     if (builtin.cpu.arch.isRISCV()) return error.SkipZigTest;
-    if (builtin.cpu.arch == .s390x) return error.SkipZigTest;
-    if (builtin.cpu.arch.isWasm()) return error.SkipZigTest;
 
     const s = c_ret_struct_array_1_f64();
     try expect(s.a[0] == 4);
@@ -16748,6 +16941,36 @@ test "struct [5]f64" {
     try expect(s.a[4] == 16);
     c_struct_array_5_f64(.{ .a = .{ 17, 18, 19, 20, 21 } }, 22);
     c_test_struct_array_5_f64();
+}
+
+const Union_f64 = extern union {
+    a: f64,
+};
+
+export fn zig_ret_union_f64() Union_f64 {
+    return .{ .a = 1 };
+}
+export fn zig_union_f64(s: Union_f64, i: usize) void {
+    expect(s.a == 2) catch @panic("test failure");
+    expect(i == 3) catch @panic("test failure");
+}
+
+extern fn c_ret_union_f64() Union_f64;
+extern fn c_union_f64(Union_f64, usize) void;
+extern fn c_test_union_f64() void;
+
+test "union f64" {
+    if (builtin.cpu.arch.isArm() and builtin.abi.float() == .soft) return error.SkipZigTest;
+    if (builtin.cpu.arch.isMIPS()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isRiscv32()) return error.SkipZigTest;
+    if (builtin.cpu.arch == .s390x) return error.SkipZigTest;
+    if (builtin.cpu.arch == .x86 and builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const s = c_ret_union_f64();
+    try expect(s.a == 4);
+    c_union_f64(.{ .a = 5 }, 6);
+    c_test_union_f64();
 }
 
 const Struct_u32_Union_u32_u32u32 = extern struct {

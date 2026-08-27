@@ -95,7 +95,7 @@ const Classifier = struct {
                 var class: Class = .ignored;
                 const elem_ty = ty.childType(c.zcu);
                 const elem_class = c.classifyType(elem_ty);
-                for (0..std.math.lossyCast(usize, ty.arrayLen(c.zcu))) |_| {
+                for (0..std.math.lossyCast(usize, ty.arrayLenIncludingSentinel(c.zcu))) |_| {
                     class = class.combineMember(elem_class, elem_ty);
                     if (class == .address) break;
                 }

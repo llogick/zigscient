@@ -21,7 +21,7 @@ pub fn main(init: std.process.Init) !void {
     }
     if (maker_args.items.len < 1) try maker_args.append(arena, "zig");
     if (maker_args.items.len < 2) try maker_args.append(arena, "build");
-    if (!std.mem.eql(u8, maker_args.last().?.*, "--listen=-")) try maker_args.append(arena, "--listen=-");
+    if (!std.mem.eql(u8, maker_args.last().?, "--listen=-")) try maker_args.append(arena, "--listen=-");
 
     log.debug("cmd: {f}", .{std.zig.SubprocessCommand{
         .argv = maker_args.items,

@@ -71,20 +71,35 @@ pub fn classifyTypeForLlvm(ty: Type, zcu: *const Zcu) LlvmClass {
         },
         .@"struct" => {
             const struct_type = zcu.typeToStruct(ty).?;
-            if (struct_type.layout == .@"packed") {
-                return .{ .direct = ty };
+            switch (struct_type.layout) {
+                .auto => unreachable,
+                .@"packed" => return .{ .direct = ty },
+                .@"extern" => {},
             }
-            if (struct_type.field_types.len > 1) {
-                // The struct type is non-scalar.
-                return .indirect;
-            }
-            const field_ty = Type.fromInterned(struct_type.field_types.get(ip)[0]);
-            const explicit_align = struct_type.field_aligns.getOrNone(ip, 0);
-            if (explicit_align != .none) {
-                if (explicit_align.compareStrict(.gt, field_ty.abiAlignment(zcu)))
+            var opt_single_field_ty: ?Type = null;
+            for (struct_type.field_types.get(ip), 0..) |field_ty_index, field_index| {
+                const field_ty: Type = .fromInterned(field_ty_index);
+                if (!field_ty.hasRuntimeBits(zcu)) continue;
+
+                if (opt_single_field_ty != null) {
                     return .indirect;
+                }
+
+                const field_align = struct_type.field_aligns.getOrNone(ip, field_index);
+                if (field_align != .none and field_align.compareStrict(.gt, field_ty.abiAlignment(zcu))) {
+                    return .indirect;
+                }
+                opt_single_field_ty = field_ty;
             }
-            return classifyTypeForLlvm(field_ty, zcu);
+            const single_field_ty = opt_single_field_ty.?;
+            if (single_field_ty.zigTypeTag(zcu) == .array) {
+                switch (single_field_ty.arrayLenIncludingSentinel(zcu)) {
+                    0 => unreachable,
+                    1 => return classifyTypeForLlvm(single_field_ty.childType(zcu), zcu),
+                    else => {},
+                }
+            }
+            return classifyTypeForLlvm(single_field_ty, zcu);
         },
         .@"union" => {
             const union_obj = zcu.typeToUnion(ty).?;
@@ -95,6 +110,13 @@ pub fn classifyTypeForLlvm(ty: Type, zcu: *const Zcu) LlvmClass {
             assert(layout.tag_size == 0);
             if (union_obj.field_types.len > 1) return .indirect;
             const first_field_ty = Type.fromInterned(union_obj.field_types.get(ip)[0]);
+            if (first_field_ty.zigTypeTag(zcu) == .array) {
+                switch (first_field_ty.arrayLenIncludingSentinel(zcu)) {
+                    0 => unreachable,
+                    1 => return classifyTypeForLlvm(first_field_ty.childType(zcu), zcu),
+                    else => {},
+                }
+            }
             return classifyTypeForLlvm(first_field_ty, zcu);
         },
         .error_union,
