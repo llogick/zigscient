@@ -2341,6 +2341,7 @@ pub const TargetQuery = struct {
         sheb,
         sparc,
         sparc64,
+        spork8,
         spirv32,
         spirv64,
         thumb,

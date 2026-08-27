@@ -4393,6 +4393,7 @@ pub fn toLlvmCallConvTag(cc_tag: std.lang.CallingConvention.Tag, target: *const 
         .spirv_vertex,
         .spirv_task,
         .spirv_mesh,
+        .spork8,
         => null,
     };
 }
@@ -4720,6 +4721,7 @@ pub fn initializeLLVMTarget(io: Io, arch: std.Target.Cpu.Arch) void {
         .propeller,
         .sh,
         .sheb,
+        .spork8,
         .x86_16,
         .xtensaeb,
         => unreachable,

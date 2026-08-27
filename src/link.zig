@@ -673,6 +673,7 @@ pub const File = struct {
                 });
             },
             .plan9 => unreachable,
+            .spork8 => dev.check(.spork8_linker),
         }
     }
 
@@ -750,6 +751,7 @@ pub const File = struct {
             },
             .c, .spirv => dev.checkAny(&.{ .c_linker, .spirv_linker }),
             .plan9 => unreachable,
+            .spork8 => dev.check(.spork8_linker),
         }
     }
 
@@ -1025,6 +1027,7 @@ pub const File = struct {
             .spirv => unreachable,
             .wasm => unreachable,
             .plan9 => unreachable,
+            .spork8 => unreachable,
             inline else => |tag| {
                 dev.check(tag.devFeature());
                 return @as(*tag.Type(), @fieldParentPtr("base", base)).getNavVAddr(pt, nav_index, reloc_info);
@@ -1047,6 +1050,7 @@ pub const File = struct {
             .spirv => unreachable,
             .wasm => unreachable,
             .plan9 => unreachable,
+            .spork8 => unreachable,
             inline else => |tag| {
                 dev.check(tag.devFeature());
                 return @as(*tag.Type(), @fieldParentPtr("base", base)).lowerUav(pt, decl_val, decl_align);
@@ -1064,6 +1068,7 @@ pub const File = struct {
             .spirv => unreachable,
             .wasm => unreachable,
             .plan9 => unreachable,
+            .spork8 => unreachable,
             inline else => |tag| {
                 dev.check(tag.devFeature());
                 return @as(*tag.Type(), @fieldParentPtr("base", base)).getUavVAddr(decl_val, reloc_info);
@@ -1088,6 +1093,7 @@ pub const File = struct {
             .spirv,
             .plan9,
             .lld,
+            .spork8,
             => return .unimplemented,
             inline else => |tag| {
                 dev.check(tag.devFeature());
@@ -1266,6 +1272,7 @@ pub const File = struct {
         c,
         wasm,
         spirv,
+        spork8,
         plan9,
         lld,
 
@@ -1280,6 +1287,7 @@ pub const File = struct {
                 .spirv => SpirV,
                 .lld => Lld,
                 .plan9 => comptime unreachable,
+                .spork8 => Spork8,
             };
         }
 
@@ -1293,7 +1301,10 @@ pub const File = struct {
                 .c => .c,
                 .spirv => .spirv,
                 .hex => @panic("TODO implement hex object format"),
-                .raw => @panic("TODO implement raw object format"),
+                // This may seem surprising at first, but with a little massaging, the spork8 linker
+                // could and probably should be generalized into a "raw linker" which is used to output
+                // bare machine code for any architecture for which a corresponding backend exists.
+                .raw => .spork8,
             };
         }
 
@@ -1373,6 +1384,7 @@ pub const File = struct {
     pub const Lld = @import("link/Lld.zig");
     pub const C = @import("link/C.zig");
     pub const Coff2 = @import("link/Coff.zig");
+    pub const Spork8 = @import("link/Spork8.zig");
     pub const Elf = @import("link/Elf.zig");
     pub const Elf2 = @import("link/Elf2.zig");
     pub const MachO = @import("link/MachO.zig");

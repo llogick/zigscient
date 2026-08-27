@@ -38,6 +38,7 @@ fn devFeatureForBackend(backend: std.lang.CompilerBackend) dev.Feature {
         .stage2_powerpc => unreachable,
         .stage2_riscv64 => .riscv64_backend,
         .stage2_sparc64 => .sparc64_backend,
+        .zsf_spork8 => .spork8_backend,
         .stage2_spirv => .spirv_backend,
         .stage2_wasm => .wasm_backend,
         .stage2_x86 => .x86_backend,
@@ -58,6 +59,7 @@ fn importBackend(comptime backend: std.lang.CompilerBackend) type {
         .stage2_riscv64 => @import("codegen/riscv64/CodeGen.zig"),
         .stage2_sparc64 => @import("codegen/sparc64/CodeGen.zig"),
         .stage2_spirv => @import("codegen/spirv/CodeGen.zig"),
+        .zsf_spork8 => @import("codegen/spork8/CodeGen.zig"),
         .stage2_wasm => @import("codegen/wasm/CodeGen.zig"),
         .stage2_x86, .stage2_x86_64 => @import("codegen/x86_64/CodeGen.zig"),
         _ => unreachable,
@@ -78,6 +80,7 @@ pub fn legalizeFeatures(pt: Zcu.PerThread, nav_index: InternPool.Nav.Index) ?*co
         .stage2_x86,
         .stage2_riscv64,
         .stage2_sparc64,
+        .zsf_spork8,
         .stage2_spirv,
         => |backend| {
             dev.check(devFeatureForBackend(backend));
@@ -107,6 +110,7 @@ pub const AnyMir = union {
     wasm: if (dev.env.supports(.wasm_backend)) @import("codegen/wasm/Mir.zig") else noreturn,
     c: if (dev.env.supports(.c_backend)) @import("codegen/c.zig").Mir else noreturn,
     spirv: if (dev.env.supports(.spirv_backend)) @import("codegen/spirv/Mir.zig") else noreturn,
+    spork8: if (dev.env.supports(.spork8_backend)) @import("codegen/spork8/Mir.zig") else noreturn,
 
     pub inline fn tag(comptime backend: std.lang.CompilerBackend) []const u8 {
         return switch (backend) {
@@ -118,6 +122,7 @@ pub const AnyMir = union {
             .stage2_wasm => "wasm",
             .stage2_c => "c",
             .stage2_spirv => "spirv",
+            .zsf_spork8 => "spork8",
             else => unreachable,
         };
     }
@@ -135,6 +140,7 @@ pub const AnyMir = union {
             .stage2_wasm,
             .stage2_c,
             .stage2_spirv,
+            .zsf_spork8,
             => |backend_ct| @field(mir, tag(backend_ct)).deinit(gpa),
         }
     }
@@ -164,6 +170,7 @@ pub fn generateFunction(
         .stage2_x86_64,
         .stage2_wasm,
         .stage2_c,
+        .zsf_spork8,
         .stage2_spirv,
         => |backend| {
             dev.check(devFeatureForBackend(backend));
