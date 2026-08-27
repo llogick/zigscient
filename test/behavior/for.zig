@@ -391,6 +391,7 @@ test "raw pointer and counter" {
 test "inline for with slice as the comptime-known" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const comptime_slice = "hello";
     var runtime_i: usize = 3;

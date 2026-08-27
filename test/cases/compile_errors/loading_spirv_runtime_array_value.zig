@@ -19,5 +19,5 @@ export fn main2() callconv(.kernel) void {
 // backend=selfhosted
 // target=spirv32-vulkan
 //
-// :10:15: error: cannot load SPIR-V runtime array value
-// :15:12: error: cannot load SPIR-V runtime array value
+// :10:18: error: cannot load SPIR-V runtime array value
+// :15:10: error: cannot load SPIR-V runtime array value

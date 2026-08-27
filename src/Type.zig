@@ -3158,7 +3158,8 @@ pub fn validateExtern(ty: Type, position: ExternPosition, zcu: *const Zcu) bool 
 
         .spirv => switch (position) {
             .struct_field, .union_field => true,
-            .ret_ty, .param_ty, .element, .other => !ty.isSpirvRuntimeArray(zcu),
+            .ret_ty, .param_ty, .element => !ty.isSpirvRuntimeArray(zcu),
+            .other => !ty.isSpirvRuntimeArray(zcu) or zcu.getTarget().cpu.has(.spirv, .runtime_descriptor_array),
         },
 
         .pointer => {

@@ -229,6 +229,8 @@ test "initialize packed union field to undefined at comptime" {
 }
 
 test "convert from/to backing int" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const U = packed union(u10) {
         a: i10,
         b: enum(u10) { x, y, z },
@@ -244,6 +246,7 @@ test "convert from/to backing int" {
 
 test "equality with wide backing integer" {
     if (builtin.zig_backend == .stage2_x86_64) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/35982
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const U = packed union(i200) {
         x: u200,

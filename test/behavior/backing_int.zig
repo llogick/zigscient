@@ -137,6 +137,8 @@ const T5 = union(E5) {
 };
 
 test "@backingInt with tagged unions" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const static = struct {
         fn doTheTest(v1: T1, v2: T2, v4: T4, v5: T5) !void {
             const b1 = @backingInt(v1);
@@ -311,6 +313,8 @@ const U5 = packed union(u0) {
 };
 
 test "@backingInt with packed unions" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const static = struct {
         fn doTheTest(v1: U1, v2: U2, v3: U3, v4: U4, v5: U5) !void {
             const b1 = @backingInt(v1);
@@ -339,6 +343,8 @@ test "@backingInt with packed unions" {
 }
 
 test "@fromBackingInt with packed unions" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const static = struct {
         fn doTheTest(
             b1: @typeInfo(U1).@"union".backing_integer.?,

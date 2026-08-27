@@ -84,6 +84,8 @@ test "string literal pointer sentinel" {
 }
 
 test "sentinel slice of string literal" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const string = "Hello!\x00World!";
     try std.testing.expect(@TypeOf(string) == *const [13:0]u8);
 

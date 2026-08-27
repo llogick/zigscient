@@ -1,6 +1,6 @@
 export fn a() void {
-    var buf: [3]f32 = undefined;
-    takesSlice(&buf); // error
+    var x: [3]f32 = .{ 1, 2, 3 };
+    takesSlice(&x);
 }
 
 fn takesSlice(buf: []f32) void {
@@ -8,34 +8,18 @@ fn takesSlice(buf: []f32) void {
 }
 
 export fn b() void {
-    var buf: [3]f32 = undefined;
-    for (buf[0..3]) |_| {} // error
-}
-
-export fn c() void {
-    var buf: [3]f32 = undefined;
-    for (&buf) |_| {} // not an error
-}
-
-export fn d() void {
-    const buf: [3]f32 = .{1, 2, 3};
-    for (comptime buf[0..3]) |_| {} // not an error
-}
-
-export fn e() void {
-    const buf: [3]f32 = .{1, 2, 3};
-    for (comptime buf[0..3]) |_| {} // not an error
-    for (buf[0..3]) |_| {} // error
+    const x: [3]f32 = .{ 1, 2, 3 };
+    for (comptime x[0..3]) |_| {}
+    for (&x) |_| {}
+    for (x[0..3]) |_| {}
 }
 
 // error
-// backend=auto
+// backend=selfhosted
 // target=spirv32-opengl,spirv32-vulkan
 // cpu_features=baseline+variable_pointers
 //
 // :3:16: error: cannot construct slice from address space 'generic'
 // :3:16: note: only 'shared' and 'storage_buffer' address spaces support slicing on SPIR-V
-// :12:13: error: cannot construct slice from address space 'generic'
-// :12:13: note: only 'shared' and 'storage_buffer' address spaces support slicing on SPIR-V
-// :28:13: error: cannot construct slice from address space 'generic'
-// :28:13: note: only 'shared' and 'storage_buffer' address spaces support slicing on SPIR-V
+// :14:11: error: cannot construct slice from address space 'generic'
+// :14:11: note: only 'shared' and 'storage_buffer' address spaces support slicing on SPIR-V

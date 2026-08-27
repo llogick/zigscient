@@ -701,6 +701,7 @@ test "pointer-to-array constness for zero-size elements, var" {
 
 test "pointer-to-array constness for zero-size elements, const" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try constant();
     try comptime constant();

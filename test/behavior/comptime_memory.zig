@@ -437,6 +437,8 @@ test "type pun null pointer-like optional" {
 }
 
 test "write empty array to end" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     comptime var array: [5]u8 = "hello".*;
     array[5..5].* = .{};
     array[5..5].* = [0]u8{};

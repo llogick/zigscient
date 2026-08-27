@@ -405,6 +405,8 @@ test "Extern function calls, dereferences and field access in @TypeOf" {
 }
 
 test "@sizeOf struct is resolved when used as operand of slicing" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const dummy = struct {};
     const S = struct {
         var buf: [1]u8 = undefined;

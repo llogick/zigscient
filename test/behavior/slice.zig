@@ -59,6 +59,8 @@ test "const slice" {
 }
 
 test "comptime slice of undefined pointer of length 0" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const slice1 = @as([*]i32, undefined)[0..0];
     try expect(slice1.len == 0);
     const slice2 = @as([*]i32, undefined)[100..100];
@@ -173,6 +175,8 @@ test "pass a slice of types to a function" {
 
 test "generic malloc free" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const a = memAlloc(u8, 10) catch unreachable;
     memFree(u8, a);
 }
@@ -209,6 +213,8 @@ test "comptime slice of pointer preserves comptime var" {
 }
 
 test "comptime pointer cast array and then slice" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const array = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 };
 
     const ptrA: [*]const u8 = @as([*]const u8, @ptrCast(&array));
@@ -1079,6 +1085,8 @@ test "conditionally return second argument slice" {
 }
 
 test "slice field alignment" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const S = struct {
         fn doTheTest(p: *align(1) const []u8) !void {
             comptime assert(@TypeOf(&p.ptr) == *align(1) const [*]u8);

@@ -10,4 +10,4 @@ comptime {
 // backend=selfhosted
 // target=spirv32-vulkan
 //
-// :1:45: error: "flat" decoration requires "input" or "output" address space
+// :1:52: error: "flat" decoration requires "input" or "output" address space

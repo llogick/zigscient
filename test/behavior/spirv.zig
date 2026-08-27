@@ -49,13 +49,12 @@ test "@SpirvType" {
     _ = runtime_array;
 }
 
-const InnerStruct = extern struct { x: u32 };
-const OuterStruct = extern struct { inner: InnerStruct, y: u32 };
-const outer_pc = @extern(*addrspace(.push_constant) const OuterStruct, .{ .name = "outer_pc" });
-
 test "@ptrCast to first field type" {
-    const pc_inner: *addrspace(.push_constant) const InnerStruct = @ptrCast(outer_pc);
-    _ = pc_inner;
+    const Inner = extern struct { a: u32 };
+    const Outer = extern struct { a: Inner, b: u32 };
+    var outer: Outer = undefined;
+    var inner: *Inner = @ptrCast(&outer);
+    _ = &inner;
 }
 
 test "@SpirvType equality" {

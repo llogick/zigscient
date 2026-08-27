@@ -11,6 +11,7 @@ export fn a() void {
 }
 
 // error
+// backend=selfhosted
 // target=spirv32-vulkan
 //
 // :9:13: error: value with non-mergable pointer type '*i32' depends on runtime control flow

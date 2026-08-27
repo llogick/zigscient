@@ -334,6 +334,17 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
                         break :msg msg;
                     });
                 }
+
+                const elem_ty: Type = field_ty.childType(zcu);
+                if (elem_ty.zigTypeTag(zcu) == .spirv) {
+                    return sema.failWithOwnedErrorMsg(&block, msg: {
+                        const msg = try sema.errMsg(field_ty_src, "cannot embed SPIR-V type '{f}' in struct", .{elem_ty.fmt(pt)});
+                        errdefer msg.destroy(gpa);
+                        try sema.errNote(field_ty_src, msg, "opaque types have unknown size", .{});
+                        try sema.addDeclaredHereNote(msg, field_ty);
+                        break :msg msg;
+                    });
+                }
             } else {
                 return sema.failWithOwnedErrorMsg(&block, msg: {
                     const msg = try sema.errMsg(field_ty_src, "cannot directly embed SPIR-V type '{f}' in struct", .{field_ty.fmt(pt)});

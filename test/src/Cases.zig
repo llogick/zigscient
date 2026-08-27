@@ -389,11 +389,12 @@ fn addFromDirInner(
             const resolved_target = b.resolveTargetQuery(target_query);
             const target = &resolved_target.result;
             for (backends) |backend| {
-                if (backend == .selfhosted and
-                    target.cpu.arch != .aarch64 and target.cpu.arch != .wasm32 and target.cpu.arch != .x86_64 and target.cpu.arch != .spirv64)
-                {
-                    // Other backends don't support new liveness format
-                    continue;
+                if (backend == .selfhosted) {
+                    switch (target.cpu.arch) {
+                        .aarch64, .wasm32, .x86_64, .spirv64, .spirv32 => {},
+                        // Other backends don't support new liveness format
+                        else => continue,
+                    }
                 }
 
                 if (backend == .selfhosted and target.cpu.arch == .aarch64) {

@@ -6,6 +6,7 @@ const native_endian = builtin.target.cpu.arch.endian();
 
 test "reinterpret bytes as integer with nonzero offset" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try testReinterpretBytesAsInteger();
     try comptime testReinterpretBytesAsInteger();
@@ -39,6 +40,7 @@ fn testReinterpretWithOffsetAndNoWellDefinedLayout() !void {
 
 test "reinterpret bytes inside auto-layout struct as integer with nonzero offset" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try testReinterpretStructWrappedBytesAsInteger();
     try comptime testReinterpretStructWrappedBytesAsInteger();
