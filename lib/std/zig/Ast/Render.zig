@@ -728,17 +728,7 @@ fn renderExpression(r: *Render, node: Ast.Node.Index, space: Space) Error!void {
 
             try renderToken(r, error_token, .none);
 
-            if (lbrace + 1 == rbrace) {
-                // There is nothing between the braces so render condensed: `error{}`
-                try renderToken(r, lbrace, .none);
-                return renderToken(r, rbrace, space);
-            } else if (lbrace + 2 == rbrace and tree.tokenTag(lbrace + 1) == .identifier) {
-                // There is exactly one member and no trailing comma or
-                // comments, so render without surrounding spaces: `error{Foo}`
-                try renderToken(r, lbrace, .none);
-                try renderIdentifier(r, lbrace + 1, .none, .eagerly_unquote); // identifier
-                return renderToken(r, rbrace, space);
-            } else if (!isOneLineErrorSetDecl(tree, lbrace, rbrace)) {
+            if (!isOneLineErrorSetDecl(tree, lbrace, rbrace)) {
                 // Render each member on a new line.
                 try ais.pushIndent(.normal);
                 try renderToken(r, lbrace, .newline);
@@ -763,14 +753,24 @@ fn renderExpression(r: *Render, node: Ast.Node.Index, space: Space) Error!void {
                 ais.popIndent();
                 return renderToken(r, rbrace, space);
             } else {
-                // Render each member on one line.
-                try renderToken(r, lbrace, .space);
-                var i = lbrace + 1;
-                while (i < rbrace) : (i += 1) {
-                    switch (tree.tokenTag(i)) {
-                        .identifier => try renderIdentifier(r, i, .comma_space, .eagerly_unquote),
-                        .comma => {},
-                        else => unreachable,
+                if (lbrace + 1 == rbrace) {
+                    // There is nothing between the braces so render condensed: `error{}`
+                    try renderToken(r, lbrace, .none);
+                } else if (lbrace + 2 == rbrace) {
+                    // There is exactly one member and no trailing comma or
+                    // comments, so render without surrounding spaces: `error{Foo}`
+                    try renderToken(r, lbrace, .none);
+                    try renderIdentifier(r, lbrace + 1, .none, .eagerly_unquote); // identifier
+                } else {
+                    // Render each member on one line.
+                    try renderToken(r, lbrace, .space);
+                    var i = lbrace + 1;
+                    while (i < rbrace) : (i += 1) {
+                        switch (tree.tokenTag(i)) {
+                            .identifier => try renderIdentifier(r, i, .comma_space, .eagerly_unquote),
+                            .comma => {},
+                            else => unreachable,
+                        }
                     }
                 }
                 return renderToken(r, rbrace, space);

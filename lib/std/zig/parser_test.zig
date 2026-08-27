@@ -6821,6 +6821,59 @@ test "zig fmt: error set with extra newline before comma" {
     );
 }
 
+test "zig fmt: error set with only comment" {
+    try testCanonical(
+        \\const E = error{
+        \\    // line comment
+        \\};
+        \\
+    );
+}
+
+test "zig fmt: error set with only one identifier and one comment" {
+    try testTransform(
+        \\const A = error{
+        \\    // line comment
+        \\    X,
+        \\};
+        \\
+        \\const B = error{
+        \\// line comment
+        \\X};
+        \\
+        \\const C = error{
+        \\    /// doc comment
+        \\    X,
+        \\};
+        \\
+        \\const D = error{
+        \\/// doc comment
+        \\X};
+        \\
+    ,
+        \\const A = error{
+        \\    // line comment
+        \\    X,
+        \\};
+        \\
+        \\const B = error{
+        \\    // line comment
+        \\    X,
+        \\};
+        \\
+        \\const C = error{
+        \\    /// doc comment
+        \\    X,
+        \\};
+        \\
+        \\const D = error{
+        \\    /// doc comment
+        \\    X,
+        \\};
+        \\
+    );
+}
+
 test "zig fmt: extern container in tuple" {
     try testCanonical(
         \\const T = struct {
