@@ -1601,6 +1601,7 @@ pub fn addSourceFromOwnedBuffer(comp: *Compilation, path: []const u8, buf: []u8,
         var list: std.ArrayList(u8) = .{
             .items = contents[0..i],
             .capacity = contents.len,
+            .pointer_stability = .{},
         };
         contents = try list.toOwnedSlice(comp.gpa);
     }

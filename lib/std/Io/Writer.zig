@@ -2475,6 +2475,7 @@ pub fn unreachableRebase(w: *Writer, preserve: usize, capacity: usize) Error!voi
 
 pub fn fromArrayList(array_list: *ArrayList(u8)) Writer {
     defer array_list.* = .empty;
+    array_list.pointer_stability.assertUnlocked();
     return .{
         .vtable = &.{
             .drain = fixedDrain,
@@ -2490,6 +2491,7 @@ pub fn toArrayList(w: *Writer) ArrayList(u8) {
     const result: ArrayList(u8) = .{
         .items = w.buffer[0..w.end],
         .capacity = w.buffer.len,
+        .pointer_stability = .{},
     };
     w.buffer = &.{};
     w.end = 0;
@@ -2739,6 +2741,7 @@ pub const Allocating = struct {
         const result: std.array_list.Aligned(u8, alignment) = .{
             .items = @alignCast(w.buffer[0..w.end]),
             .capacity = w.buffer.len,
+            .pointer_stability = .{},
         };
         w.buffer = &.{};
         w.end = 0;
