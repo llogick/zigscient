@@ -12995,8 +12995,12 @@ fn zirShl(
     const scalar_rhs_ty = rhs_ty.scalarType(zcu);
 
     // AstGen currently forces the rhs of `<<` to coerce to the correct type before the `.shl` instruction, so
-    // we already know `scalar_rhs_ty` is valid for `.shl` -- we only need to validate for `.shl_sat`.
-    if (air_tag == .shl_sat) _ = try sema.checkIntType(block, rhs_src, scalar_rhs_ty);
+    // we already know `scalar_rhs_ty` is valid for `.shl`; likewise the lhs is validated when its
+    // `typeof_log2_int_type` is evaluated. `.shl_sat` gets neither coercion, so validate both operands here.
+    if (air_tag == .shl_sat) {
+        _ = try sema.log2IntType(block, lhs_ty, lhs_src);
+        _ = try sema.checkIntType(block, rhs_src, scalar_rhs_ty);
+    }
 
     const maybe_lhs_val = sema.resolveValue(lhs);
     const maybe_rhs_val = sema.resolveValue(rhs);
