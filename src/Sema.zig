@@ -8775,6 +8775,9 @@ fn checkReturnTypeAndCallConv(
             if (mesh.max_vertices == 0 or mesh.max_primitives == 0) {
                 return sema.fail(block, callconv_src, "mesh shader 'max_vertices' and 'max_primitives' must be at least 1", .{});
             }
+            if (mesh.x == 0 or mesh.y == 0 or mesh.z == 0) {
+                return sema.fail(block, callconv_src, "mesh shader workgroup dimensions must be at least 1", .{});
+            }
             if (!target.cpu.has(.spirv, .mesh_shading_ext)) {
                 return sema.fail(block, callconv_src, "calling convention '{t}' requires the 'mesh_shading_ext' feature", .{@"callconv"});
             }

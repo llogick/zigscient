@@ -549,6 +549,9 @@ pub const CallingConvention = union(enum(u8)) {
         stage_output: StageOutput = .output_triangles,
         max_primitives: u32 = 1,
         max_vertices: u32 = 3,
+        x: u32,
+        y: u32,
+        z: u32,
     };
 
     /// Returns the array of `std.Target.Cpu.Arch` to which this `CallingConvention` applies.

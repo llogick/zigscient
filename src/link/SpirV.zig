@@ -759,6 +759,10 @@ fn emitEntryPoints(
                 });
                 try execution_modes_section.emit(gpa, .OpExecutionMode, .{
                     .entry_point = final_id,
+                    .mode = .{ .local_size = .{ .x_size = mesh.x, .y_size = mesh.y, .z_size = mesh.z } },
+                });
+                try execution_modes_section.emit(gpa, .OpExecutionMode, .{
+                    .entry_point = final_id,
                     .mode = switch (mesh.stage_output) {
                         .output_points => .output_points,
                         .output_lines => .output_lines_ext,

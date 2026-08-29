@@ -1,7 +1,7 @@
 const F1 = fn () callconv(.{ .spirv_fragment = .{} }) void;
 const F2 = fn () callconv(.spirv_vertex) void;
 const F3 = fn () callconv(.{ .spirv_task = .{ .x = 1, .y = 1, .z = 1 } }) void;
-const F4 = fn () callconv(.{ .spirv_mesh = .{} }) void;
+const F4 = fn () callconv(.{ .spirv_mesh = .{ .x = 1, .y = 1, .z = 1 } }) void;
 export fn entry1() void {
     const a: F1 = undefined;
     _ = a;

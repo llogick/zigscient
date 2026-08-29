@@ -5188,7 +5188,7 @@ pub const Tag = enum(u8) {
                 param_comptime_bits: ?[]u32,
                 param_noalias_bits: ?[]u32,
                 spirv_kernel_options: ?extern struct { x: u32, y: u32, z: u32 },
-                spirv_mesh_options: ?extern struct { max_primitives: u32, max_vertices: u32 },
+                spirv_mesh_options: ?extern struct { max_primitives: u32, max_vertices: u32, x: u32, y: u32, z: u32 },
                 param_types: []Index,
             },
             .config = .{
@@ -9095,6 +9095,9 @@ pub fn getFuncType(
         .spirv_mesh => |mesh| extra.appendSliceAssumeCapacity(.{&.{
             mesh.max_primitives,
             mesh.max_vertices,
+            mesh.x,
+            mesh.y,
+            mesh.z,
         }}),
         else => {},
     };
@@ -12582,10 +12585,10 @@ const PackedCallingConvention = packed struct(u18) {
         };
     }
 
-    fn extraLen(cc: PackedCallingConvention) u2 {
+    fn extraLen(cc: PackedCallingConvention) u3 {
         return switch (cc.tag) {
             .spirv_kernel, .spirv_task => 3,
-            .spirv_mesh => 2,
+            .spirv_mesh => 5,
             else => 0,
         };
     }
@@ -12641,6 +12644,9 @@ const PackedCallingConvention = packed struct(u18) {
                         .stage_output = @fromBackingInt(@intCast(cc.extra)),
                         .max_primitives = trailing[0],
                         .max_vertices = trailing[1],
+                        .x = trailing[2],
+                        .y = trailing[3],
+                        .z = trailing[4],
                     },
                     else => comptime unreachable,
                 },
