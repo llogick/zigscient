@@ -1975,13 +1975,8 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
 
             const nav_ty_id = try cg.resolveType(nav_ty, .indirect);
             const decl_ptr_ty_id = try cg.ptrType(nav_ty_id, storage_class);
-            switch (nav_ty.zigTypeTag(zcu)) {
-                .@"struct", .@"union" => {
-                    if (cg.needsLayout(nav.resolved.?.@"addrspace", nav_ty)) {
-                        try cg.block_var_ids.put(gpa, spv_decl.result_id, {});
-                    }
-                },
-                else => {},
+            if (cg.needsLayout(nav.resolved.?.@"addrspace", nav_ty)) {
+                try cg.block_var_ids.put(gpa, spv_decl.result_id, {});
             }
             if (decl_ptr_ty_id == ty_id) return spv_decl.result_id;
             switch (target.os.tag) {
@@ -6764,16 +6759,8 @@ fn ptrElemPtr(cg: *CodeGen, ptr_ty: Type, ptr_id: Id, index_id: Id) !Id {
     const zcu = cg.zcu;
     // Construct new pointer type for the resulting pointer
     const as = ptr_ty.ptrAddressSpace(zcu);
-    const child_ty = ptr_ty.childType(zcu);
     const is_single_ptr = ptr_ty.isSinglePointer(zcu);
-    const elem_is_block = switch (as) {
-        .uniform, .storage_buffer => switch (child_ty.zigTypeTag(cg.zcu)) {
-            .array => is_single_ptr,
-            .spirv => is_single_ptr and child_ty.isSpirvRuntimeArray(cg.zcu),
-            else => false,
-        },
-        else => false,
-    };
+    const elem_is_block = cg.block_var_ids.contains(ptr_id);
     const elem_ty_id = try cg.pointeeType(as, ptr_ty.indexableElem(zcu), elem_is_block);
     const elem_ptr_ty_id = try cg.ptrType(elem_ty_id, cg.storageClass(as));
     if (is_single_ptr) {

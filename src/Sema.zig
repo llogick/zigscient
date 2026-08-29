@@ -22734,6 +22734,8 @@ fn checkLogicalPtrCast(
     const zcu = pt.zcu;
     const src_info = operand_ty.ptrInfo(zcu);
     const dest_info = dest_ty.ptrInfo(zcu);
+    const src_child: Type = .fromInterned(src_info.child);
+    const dest_child: Type = .fromInterned(dest_info.child);
 
     if (block.isComptime() or block.is_typeof) return;
     switch (zcu.getTarget().os.tag) {
@@ -22741,8 +22743,9 @@ fn checkLogicalPtrCast(
         else => return,
     }
     if (src_info.flags.address_space == .physical_storage_buffer) return;
+    if (!dest_child.hasRuntimeBits(zcu)) return;
 
-    var cur: Type = .fromInterned(src_info.child);
+    var cur = src_child;
     while (cur.toIntern() != dest_info.child) {
         cur = switch (cur.zigTypeTag(zcu)) {
             .array, .vector => cur.childType(zcu),
@@ -22757,10 +22760,7 @@ fn checkLogicalPtrCast(
         } orelse return sema.failWithOwnedErrorMsg(block, msg: {
             const msg = try sema.errMsg(src, "cannot cast pointer '{f}' to '{f}'", .{ operand_ty.fmt(pt), dest_ty.fmt(pt) });
             errdefer msg.destroy(sema.gpa);
-            try sema.errNote(src, msg, "'{f}' must appear at offset 0 inside '{f}'", .{
-                Type.fromInterned(dest_info.child).fmt(pt),
-                Type.fromInterned(src_info.child).fmt(pt),
-            });
+            try sema.errNote(src, msg, "'{f}' must appear at offset 0 inside '{f}'", .{ dest_child.fmt(pt), src_child.fmt(pt) });
             break :msg msg;
         });
     }
