@@ -383,7 +383,7 @@ const attributes = struct {
             write_only,
             none,
 
-            const opts = struct {
+            pub const opts = struct {
                 const enum_kind = .identifier;
             };
         },
@@ -454,7 +454,7 @@ const attributes = struct {
             strftime,
             strfmon,
 
-            const opts = struct {
+            pub const opts = struct {
                 const enum_kind = .identifier;
             };
         },
@@ -500,7 +500,7 @@ const attributes = struct {
                 BND32, BND64,
                 // zig fmt: on
 
-            const opts = struct {
+            pub const opts = struct {
                 const enum_kind = .identifier;
             };
         },
@@ -560,7 +560,7 @@ const attributes = struct {
             @"little-endian",
             @"big-endian",
 
-            const opts = struct {
+            pub const opts = struct {
                 const enum_kind = .string;
             };
         },
@@ -577,7 +577,7 @@ const attributes = struct {
             notinbranch,
             inbranch,
 
-            const opts = struct {
+            pub const opts = struct {
                 const enum_kind = .string;
             };
         } = null,
@@ -587,7 +587,7 @@ const attributes = struct {
         arg: enum {
             nomitigation,
 
-            const opts = struct {
+            pub const opts = struct {
                 const enum_kind = .identifier;
             };
         },
@@ -613,7 +613,7 @@ const attributes = struct {
             @"initial-exec",
             @"local-exec",
 
-            const opts = struct {
+            pub const opts = struct {
                 const enum_kind = .string;
             };
         },
@@ -642,7 +642,7 @@ const attributes = struct {
             internal,
             protected,
 
-            const opts = struct {
+            pub const opts = struct {
                 const enum_kind = .string;
             };
         },
@@ -671,7 +671,7 @@ const attributes = struct {
             @"all-arg",
             @"all-gpr-arg",
 
-            const opts = struct {
+            pub const opts = struct {
                 const enum_kind = .string;
             };
         },
@@ -689,7 +689,7 @@ const attributes = struct {
             nullable_result,
             unspecified,
 
-            const opts = struct {
+            pub const opts = struct {
                 const enum_kind = .identifier;
             };
         },
@@ -700,7 +700,7 @@ const attributes = struct {
             aapcs,
             @"aapcs-vfp",
 
-            const opts = struct {
+            pub const opts = struct {
                 const enum_kind = .string;
             };
         },
