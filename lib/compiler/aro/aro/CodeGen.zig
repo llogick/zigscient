@@ -17,7 +17,7 @@ const QualType = @import("TypeStore.zig").QualType;
 const Value = @import("Value.zig");
 
 const WipSwitch = struct {
-    cases: Cases = .{},
+    cases: Cases = .empty,
     default: ?Ir.Ref = null,
     size: u64,
 

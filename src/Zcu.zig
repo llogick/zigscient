@@ -103,7 +103,7 @@ single_exports: std.array_hash_map.Auto(AnalUnit, Export.Index) = .empty,
 multi_exports: std.array_hash_map.Auto(AnalUnit, extern struct {
     index: u32,
     len: u32,
-}) = .{},
+}) = .empty,
 
 /// Key is the digest returned by `Builtin.hash`; value is the corresponding module.
 builtin_modules: std.array_hash_map.Auto(Cache.BinDigest, *Module) = .empty,
@@ -3092,7 +3092,7 @@ pub fn loadZirCache(gpa: Allocator, io: Io, cache_file: Io.File) !Zir {
 }
 
 pub fn loadZirCacheBody(gpa: Allocator, header: Zir.Header, cache_br: *Io.Reader) !Zir {
-    var instructions: std.MultiArrayList(Zir.Inst) = .{};
+    var instructions: std.MultiArrayList(Zir.Inst) = .empty;
     errdefer instructions.deinit(gpa);
 
     try instructions.setCapacity(gpa, header.instructions_len);

@@ -66,7 +66,7 @@ arg_index: usize,
 stack_align: Alignment,
 
 /// MIR Instructions
-mir_instructions: std.MultiArrayList(Mir.Inst) = .{},
+mir_instructions: std.MultiArrayList(Mir.Inst) = .empty,
 /// MIR extra data
 mir_extra: std.ArrayList(u32) = .empty,
 
@@ -1490,7 +1490,7 @@ fn airCondBr(self: *Self, inst: Air.Inst.Index) !void {
 
     self.stack.deinit(self.gpa);
     self.stack = parent_stack;
-    parent_stack = .{};
+    parent_stack = .empty;
 
     self.next_stack_offset = parent_next_stack_offset;
     self.register_manager.free_registers = parent_free_registers;

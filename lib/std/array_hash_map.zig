@@ -87,7 +87,7 @@ pub fn Custom(
     return struct {
         /// It is permitted to access this field directly.
         /// After any modification to the keys, consider calling `reIndex`.
-        entries: DataList = .{},
+        entries: DataList = .empty,
 
         /// When entries length is less than `linear_scan_max`, this remains `null`.
         /// Once entries length grows big enough, this field is allocated. There is
@@ -100,7 +100,7 @@ pub fn Custom(
 
         /// A map containing no keys or values.
         pub const empty: Self = .{
-            .entries = .{},
+            .entries = .empty,
             .index_header = null,
         };
 
@@ -165,7 +165,7 @@ pub fn Custom(
         const Oom = Allocator.Error;
 
         pub fn init(gpa: Allocator, key_list: []const K, value_list: []const V) Oom!Self {
-            var self: Self = .{};
+            var self: Self = .empty;
             errdefer self.deinit(gpa);
             try self.reinit(gpa, key_list, value_list);
             return self;
@@ -836,7 +836,7 @@ pub fn Custom(
             return self.cloneContext(gpa, undefined);
         }
         pub fn cloneContext(self: Self, gpa: Allocator, ctx: Context) Oom!Self {
-            var other: Self = .{};
+            var other: Self = .empty;
             other.entries = try self.entries.clone(gpa);
             errdefer other.entries.deinit(gpa);
 

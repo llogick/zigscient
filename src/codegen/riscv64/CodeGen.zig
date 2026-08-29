@@ -78,7 +78,7 @@ func_index: InternPool.Index,
 fn_type: Type,
 arg_index: usize,
 
-mir_instructions: std.MultiArrayList(Mir.Inst) = .{},
+mir_instructions: std.MultiArrayList(Mir.Inst) = .empty,
 
 owner: Owner,
 
@@ -112,19 +112,19 @@ vtype: ?bits.VType,
 blocks: std.AutoHashMapUnmanaged(Air.Inst.Index, BlockData) = .empty,
 register_manager: RegisterManager = .{},
 
-const_tracking: ConstTrackingMap = .{},
-inst_tracking: InstTrackingMap = .{},
+const_tracking: ConstTrackingMap = .empty,
+inst_tracking: InstTrackingMap = .empty,
 
-frame_allocs: std.MultiArrayList(FrameAlloc) = .{},
+frame_allocs: std.MultiArrayList(FrameAlloc) = .empty,
 free_frame_indices: std.array_hash_map.Auto(FrameIndex, void) = .empty,
-frame_locs: std.MultiArrayList(Mir.FrameLoc) = .{},
+frame_locs: std.MultiArrayList(Mir.FrameLoc) = .empty,
 
 loops: std.AutoHashMapUnmanaged(Air.Inst.Index, struct {
     /// The state to restore before branching.
     state: State,
     /// The branch target.
     jmp_target: Mir.Inst.Index,
-}) = .{},
+}) = .empty,
 
 /// Debug field, used to find bugs in the compiler.
 air_bookkeeping: @TypeOf(air_bookkeeping_init) = air_bookkeeping_init,

@@ -17,16 +17,16 @@ atoms_indexes: std.ArrayList(Atom.Index) = .empty,
 atoms_extra: std.ArrayList(u32) = .empty,
 
 /// Table of tracked LazySymbols.
-lazy_syms: LazySymbolTable = .{},
+lazy_syms: LazySymbolTable = .empty,
 
 /// Table of tracked Navs.
-navs: NavTable = .{},
+navs: NavTable = .empty,
 
 /// Table of tracked Uavs.
-uavs: UavTable = .{},
+uavs: UavTable = .empty,
 
 /// TLV initializers indexed by Atom.Index.
-tlv_initializers: TlvInitializerTable = .{},
+tlv_initializers: TlvInitializerTable = .empty,
 
 /// A table of relocations.
 relocs: RelocationTable = .empty,

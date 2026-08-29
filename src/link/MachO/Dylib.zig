@@ -5,7 +5,7 @@ index: File.Index,
 file_handle: File.HandleIndex,
 tag: enum { dylib, tbd },
 
-exports: std.MultiArrayList(Export) = .{},
+exports: std.MultiArrayList(Export) = .empty,
 strtab: std.ArrayList(u8) = .empty,
 id: ?Id = null,
 ordinal: u16 = 0,

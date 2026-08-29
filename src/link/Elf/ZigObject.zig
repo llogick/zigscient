@@ -8,7 +8,7 @@ data: std.ArrayList(u8) = .empty,
 basename: []const u8,
 index: File.Index,
 
-symtab: std.MultiArrayList(ElfSym) = .{},
+symtab: std.MultiArrayList(ElfSym) = .empty,
 strtab: StringTable = .{},
 symbols: std.ArrayList(Symbol) = .empty,
 symbols_extra: std.ArrayList(u32) = .empty,
@@ -30,16 +30,16 @@ output_ar_state: Archive.ArState = .{},
 dwarf: ?Dwarf = null,
 
 /// Table of tracked LazySymbols.
-lazy_syms: LazySymbolTable = .{},
+lazy_syms: LazySymbolTable = .empty,
 
 /// Table of tracked `Nav`s.
-navs: NavTable = .{},
+navs: NavTable = .empty,
 
 /// TLS variables indexed by Atom.Index.
-tls_variables: TlsTable = .{},
+tls_variables: TlsTable = .empty,
 
 /// Table of tracked `Uav`s.
-uavs: UavTable = .{},
+uavs: UavTable = .empty,
 
 debug_info_section_dirty: bool = false,
 debug_abbrev_section_dirty: bool = false,

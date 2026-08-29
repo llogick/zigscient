@@ -1360,7 +1360,7 @@ fn lowerBlock(
 
     const have_block_result = inst_ty.hasRuntimeBits(zcu);
 
-    var breaks: BreakList = if (have_block_result) .{ .list = .{} } else .{ .len = 0 };
+    var breaks: BreakList = if (have_block_result) .{ .list = .empty } else .{ .len = 0 };
     defer if (have_block_result) breaks.list.deinit(self.gpa);
 
     const parent_bb = try self.wip.block(0, "Block");

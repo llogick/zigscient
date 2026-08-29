@@ -14,7 +14,7 @@ d_sym: ?DebugSymbols = null,
 /// A list of all input files.
 /// Index of each input file also encodes the priority or precedence of one input file
 /// over another.
-files: std.MultiArrayList(File.Entry) = .{},
+files: std.MultiArrayList(File.Entry) = .empty,
 /// Long-lived list of all file descriptors.
 /// We store them globally rather than per actual File so that we can re-use
 /// one file handle per every object file within an archive.
@@ -25,7 +25,7 @@ objects: std.ArrayList(File.Index) = .empty,
 dylibs: std.ArrayList(File.Index) = .empty,
 
 segments: std.ArrayList(macho.segment_command_64) = .empty,
-sections: std.MultiArrayList(Section) = .{},
+sections: std.MultiArrayList(Section) = .empty,
 /// Populated by `allocateSections`.
 header_size: ?u32 = null,
 

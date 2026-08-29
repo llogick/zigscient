@@ -38,8 +38,8 @@ index: File.Index,
 in_archive: ?InArchive = null,
 
 header: ?macho.mach_header_64 = null,
-sections: std.MultiArrayList(Section) = .{},
-symtab: std.MultiArrayList(Nlist) = .{},
+sections: std.MultiArrayList(Section) = .empty,
+symtab: std.MultiArrayList(Nlist) = .empty,
 strtab: std.ArrayList(u8) = .empty,
 
 symbols: std.ArrayList(Symbol) = .empty,

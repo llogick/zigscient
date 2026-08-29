@@ -227,7 +227,7 @@ pub fn MultiArrayList(comptime T: type) type {
         /// The caller owns the returned memory. Empties this MultiArrayList.
         pub fn toOwnedSlice(self: *Self) Slice {
             const result = self.slice();
-            self.* = .{};
+            self.* = .empty;
             return result;
         }
 
@@ -496,7 +496,7 @@ pub fn MultiArrayList(comptime T: type) type {
 
         pub fn clearAndFree(self: *Self, gpa: Allocator) void {
             gpa.free(self.allocatedBytes());
-            self.* = .{};
+            self.* = .empty;
         }
 
         /// Reduce length to `new_len`.

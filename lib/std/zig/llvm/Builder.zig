@@ -1429,7 +1429,7 @@ pub const Type = enum(u32) {
     }
 
     pub fn isSized(self: Type, builder: *const Builder) Allocator.Error!bool {
-        var visited: IsSizedVisited = .{};
+        var visited: IsSizedVisited = .empty;
         defer visited.deinit(builder.gpa);
         const result = try self.isSizedVisited(&visited, builder);
         return result;
@@ -14710,7 +14710,7 @@ pub fn toBitcode(self: *Builder, allocator: Allocator, producer: Producer) bitco
         var attributes_set: std.array_hash_map.Auto(struct {
             attributes: Attributes,
             index: u32,
-        }, void) = .{};
+        }, void) = .empty;
         defer attributes_set.deinit(self.gpa);
 
         // PARAMATTR_GROUP_BLOCK

@@ -1,6 +1,6 @@
 index: File.Index,
 
-sections: std.MultiArrayList(Section) = .{},
+sections: std.MultiArrayList(Section) = .empty,
 atoms: std.ArrayList(Atom) = .empty,
 atoms_indexes: std.ArrayList(Atom.Index) = .empty,
 atoms_extra: std.ArrayList(u32) = .empty,

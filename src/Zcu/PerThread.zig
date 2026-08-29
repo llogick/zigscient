@@ -837,7 +837,7 @@ fn updateZirRefs(pt: Zcu.PerThread) (Io.Cancelable || Allocator.Error)!void {
             try updated_files.putNoClobber(gpa, file_index, .{
                 .file = file,
                 // We intentionally don't map any instructions here; that's the point, the whole file is outdated!
-                .inst_map = .{},
+                .inst_map = .empty,
             });
             continue;
         }
@@ -857,7 +857,7 @@ fn updateZirRefs(pt: Zcu.PerThread) (Io.Cancelable || Allocator.Error)!void {
         assert(!gop.found_existing);
         gop.value_ptr.* = .{
             .file = file,
-            .inst_map = .{},
+            .inst_map = .empty,
         };
         try Zcu.mapOldZirToNew(gpa, old_zir, new_zir, &gop.value_ptr.inst_map);
     }

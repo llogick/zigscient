@@ -144,7 +144,7 @@ values: ValueTable = .empty,
 blocks: std.array_hash_map.Auto(Air.Inst.Index, struct {
     label: u32,
     value: WValue,
-}) = .{},
+}) = .empty,
 /// Maps `loop` instructions to their label. `br` to here repeats the loop.
 loops: std.AutoHashMapUnmanaged(Air.Inst.Index, u32) = .empty,
 /// The index of the current argument.

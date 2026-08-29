@@ -21,7 +21,7 @@ tree: *const Ast,
 /// The set of nodes which, given the choice, must expose a result pointer to
 /// sub-expressions. See `AstRlAnnotate` for details.
 nodes_need_rl: *const AstRlAnnotate.RlNeededSet,
-instructions: std.MultiArrayList(Zir.Inst) = .{},
+instructions: std.MultiArrayList(Zir.Inst) = .empty,
 extra: ArrayList(u32) = .empty,
 string_bytes: ArrayList(u8) = .empty,
 /// Tracks the current byte offset within the source file.

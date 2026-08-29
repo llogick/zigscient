@@ -179,7 +179,7 @@ pub const Renderer = struct {
     gpa: Allocator,
     obj: *Object,
     ir: *const Ir,
-    errors: ErrorList = .{},
+    errors: ErrorList = .empty,
 
     pub const ErrorList = std.StringArrayHashMapUnmanaged([]const u8);
 

@@ -110,12 +110,12 @@ const Os = switch (builtin.os.tag) {
 
         fn init(maker: *Maker) !Watch {
             return .{
-                .dir_table = .{},
+                .dir_table = .empty,
                 .dir_count = 0,
                 .os = switch (builtin.os.tag) {
                     .linux => .{
-                        .handle_table = .{},
-                        .poll_fds = .{},
+                        .handle_table = .empty,
+                        .poll_fds = .empty,
                     },
                     else => {},
                 },
@@ -248,7 +248,7 @@ const Os = switch (builtin.os.tag) {
                                 _ = w.dir_table.pop();
                             } else {
                                 assert(dh_gop.index == gop.index);
-                                dh_gop.value_ptr.* = .{ .mount_id = mount_id, .reaction_set = .{} };
+                                dh_gop.value_ptr.* = .{ .mount_id = mount_id, .reaction_set = .empty };
                                 posix.fanotify_mark(fan_fd, .{
                                     .ADD = true,
                                     .ONLYDIR = true,
@@ -261,7 +261,7 @@ const Os = switch (builtin.os.tag) {
                     };
                     for (files.items) |basename| {
                         const gop = try reaction_set.getOrPut(gpa, basename);
-                        if (!gop.found_existing) gop.value_ptr.* = .{};
+                        if (!gop.found_existing) gop.value_ptr.* = .empty;
                         try gop.value_ptr.put(gpa, step_index, w.generation);
                     }
                 }
@@ -488,7 +488,7 @@ const Os = switch (builtin.os.tag) {
 
         fn init(maker: *Maker) !Watch {
             return .{
-                .dir_table = .{},
+                .dir_table = .empty,
                 .dir_count = 0,
                 .os = switch (builtin.os.tag) {
                     .windows => .{
@@ -610,7 +610,7 @@ const Os = switch (builtin.os.tag) {
                     };
                     for (files.items) |basename| {
                         const gop = try dir.reaction_set.getOrPut(gpa, basename);
-                        if (!gop.found_existing) gop.value_ptr.* = .{};
+                        if (!gop.found_existing) gop.value_ptr.* = .empty;
                         try gop.value_ptr.put(gpa, step_index, w.generation);
                     }
                 }
@@ -713,7 +713,7 @@ const Os = switch (builtin.os.tag) {
 
         fn init(maker: *Maker) !Watch {
             return .{
-                .dir_table = .{},
+                .dir_table = .empty,
                 .dir_count = 0,
                 .os = .{
                     .kq_fd = try Io.Kqueue.createFileDescriptor(),
@@ -769,7 +769,7 @@ const Os = switch (builtin.os.tag) {
                             _ = try Io.Kqueue.kevent(w.os.kq_fd, &changes, &.{}, null);
                             assert(handles.len == gop.index);
                             try handles.append(gpa, .{
-                                .rs = .{},
+                                .rs = .empty,
                                 .dir_fd = if (skip_open_dir) -1 else dir_fd,
                             });
                         }
@@ -778,7 +778,7 @@ const Os = switch (builtin.os.tag) {
                     };
                     for (files.items) |basename| {
                         const gop = try reaction_set.getOrPut(gpa, basename);
-                        if (!gop.found_existing) gop.value_ptr.* = .{};
+                        if (!gop.found_existing) gop.value_ptr.* = .empty;
                         try gop.value_ptr.put(gpa, step_index, w.generation);
                     }
                 }

@@ -32,7 +32,7 @@
 /// The root node of the trie.
 root: ?Node.Index = null,
 buffer: std.ArrayList(u8) = .empty,
-nodes: std.MultiArrayList(Node) = .{},
+nodes: std.MultiArrayList(Node) = .empty,
 edges: std.ArrayList(Edge) = .empty,
 
 /// Insert a symbol into the trie, updating the prefixes in the process.

@@ -44,7 +44,7 @@ gpa: Allocator,
 /// This arena will be cleared when the sema is destroyed.
 arena: Allocator,
 code: Zir,
-air_instructions: std.MultiArrayList(Air.Inst) = .{},
+air_instructions: std.MultiArrayList(Air.Inst) = .empty,
 air_extra: std.ArrayList(u32) = .empty,
 /// Maps ZIR to AIR.
 inst_map: InstMap = .{},
@@ -161,7 +161,7 @@ const MaybeComptimeAlloc = struct {
     stores: std.MultiArrayList(struct {
         inst: Air.Inst.Index,
         src: LazySrcLoc,
-    }) = .{},
+    }) = .empty,
 };
 
 const ComptimeAlloc = struct {
@@ -214,7 +214,7 @@ pub const InferredErrorSet = struct {
     /// All currently known errors that this error set contains. This includes
     /// direct additions via `return error.Foo;`, and possibly also errors that
     /// are returned from any dependent functions.
-    errors: NameMap = .{},
+    errors: NameMap = .empty,
     /// Other inferred error sets which this inferred error set should include.
     inferred_error_sets: std.array_hash_map.Auto(InternPool.Index, void) = .empty,
     /// The regular error set created by resolving this inferred error set.
@@ -363,7 +363,7 @@ pub const Block = struct {
     /// function type.
     /// This memory is allocated by a parent `Sema` in the temporary arena, and is
     /// used to add a `func_instance` into the `InternPool`.
-    params: std.MultiArrayList(Param) = .{},
+    params: std.MultiArrayList(Param) = .empty,
 
     label: ?*Label = null,
     inlining: ?*Inlining,
@@ -3038,7 +3038,7 @@ fn zirErrorSetDecl(
     const inst_data = sema.code.instructions.items(.data)[@backingInt(inst)].pl_node;
     const extra = sema.code.extraData(Zir.Inst.ErrorSetDecl, inst_data.payload_index);
 
-    var names: InferredErrorSet.NameMap = .{};
+    var names: InferredErrorSet.NameMap = .empty;
     try names.ensureUnusedCapacity(sema.arena, extra.data.fields_len);
 
     var extra_index: u32 = @intCast(extra.end);
@@ -8442,7 +8442,7 @@ fn resolveGenericBody(
 
     // Make sure any nested param instructions don't clobber our work.
     const prev_params = block.params;
-    block.params = .{};
+    block.params = .empty;
     defer {
         block.params = prev_params;
     }
@@ -9112,7 +9112,7 @@ fn zirParam(
     const param_ty: Type = if (extra.data.type.is_generic) .generic_poison else ty: {
         // Make sure any nested param instructions don't clobber our work.
         const prev_params = block.params;
-        block.params = .{};
+        block.params = .empty;
         defer {
             block.params = prev_params;
         }
@@ -11546,7 +11546,7 @@ fn validateSwitchBlock(
                         );
                     }
 
-                    var names: InferredErrorSet.NameMap = .{};
+                    var names: InferredErrorSet.NameMap = .empty;
                     try names.ensureUnusedCapacity(sema.arena, error_names.len);
                     for (error_names.get(ip)) |error_name| {
                         if (seen.errors.contains(error_name)) continue;
@@ -12181,7 +12181,7 @@ fn analyzeSwitchCaptures(
                     break :payload_ref try sema.errorCastUnchecked(case_block, capture_err_ty, loaded_operand);
                 },
                 .item_refs => |item_refs| {
-                    var names: InferredErrorSet.NameMap = .{};
+                    var names: InferredErrorSet.NameMap = .empty;
                     try names.ensureUnusedCapacity(sema.arena, item_refs.len);
                     for (item_refs) |item_ref| {
                         const item_val = sema.resolveValue(item_ref).?;
@@ -34515,7 +34515,7 @@ fn errorSetMerge(sema: *Sema, lhs: Type, rhs: Type) !Type {
     const arena = sema.arena;
     const lhs_names = lhs.errorSetNames(pt.zcu);
     const rhs_names = rhs.errorSetNames(pt.zcu);
-    var names: InferredErrorSet.NameMap = .{};
+    var names: InferredErrorSet.NameMap = .empty;
     try names.ensureUnusedCapacity(arena, lhs_names.len);
 
     for (0..lhs_names.len) |lhs_index| {

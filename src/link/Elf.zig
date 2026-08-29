@@ -22,7 +22,7 @@ ptr_width: PtrWidth,
 
 /// A list of all input files.
 /// First index is a special "null file". Order is otherwise not observed.
-files: std.MultiArrayList(File.Entry) = .{},
+files: std.MultiArrayList(File.Entry) = .empty,
 /// Long-lived list of all file descriptors.
 /// We store them globally rather than per actual File so that we can re-use
 /// one file handle per every object file within an archive.
@@ -33,7 +33,7 @@ objects: std.ArrayList(File.Index) = .empty,
 shared_objects: std.array_hash_map.String(File.Index) = .empty,
 
 /// List of all output sections and their associated metadata.
-sections: std.MultiArrayList(Section) = .{},
+sections: std.MultiArrayList(Section) = .empty,
 /// File offset into the shdr table.
 shdr_table_offset: ?u64 = null,
 
