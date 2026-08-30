@@ -677,25 +677,7 @@ const TestManifestConfigDefaults = struct {
             if (@"type" == .@"error") {
                 return "native";
             }
-            return comptime blk: {
-                var defaults: []const u8 = "";
-                // TODO should we only return "mainstream" targets by default here?
-                // TODO we should also specify ABIs explicitly as the backends are
-                // getting more and more complete
-                // Linux
-                for (&[_][]const u8{ "x86_64", "arm", "aarch64" }) |arch| {
-                    defaults = defaults ++ arch ++ "-linux" ++ ",";
-                }
-                // macOS
-                for (&[_][]const u8{"aarch64"}) |arch| {
-                    defaults = defaults ++ arch ++ "-macos" ++ ",";
-                }
-                // Windows
-                defaults = defaults ++ "x86_64-windows" ++ ",";
-                // Wasm
-                defaults = defaults ++ "wasm32-wasi";
-                break :blk defaults;
-            };
+            return "native,wasm32-wasi";
         } else if (std.mem.eql(u8, key, "output_mode")) {
             return switch (@"type") {
                 .@"error" => "Obj",
