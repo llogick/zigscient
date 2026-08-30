@@ -648,7 +648,10 @@ pub const Node = extern struct {
             _, const current_size = ni.location(mf).resolve(mf);
             if (current_size >= min_size) return;
             const new_size = ni.alignment(mf).forward(min_size +| min_size / growth_factor);
-            try mf.growNode(gpa, ni, new_size, .minimum);
+            try mf.growNode(gpa, ni, new_size, .{
+                .exact_size = false,
+                .move_footers = true,
+            });
             mf.updateWriters();
         }
 
@@ -664,7 +667,10 @@ pub const Node = extern struct {
             switch (std.math.order(size, old_size)) {
                 .lt => try mf.shrinkLeafNode(gpa, ni, size),
                 .eq => {}, // `old_size` must be well-aligned, so `size` is too
-                .gt => try mf.growNode(gpa, ni, size, .exact),
+                .gt => try mf.growNode(gpa, ni, size, .{
+                    .exact_size = true,
+                    .move_footers = false, // irrelevant, since we have no footers
+                }),
             }
             mf.updateWriters();
         }
@@ -935,7 +941,10 @@ fn addNode(mf: *MappedFile, gpa: Allocator, opts: struct {
 
     try mf.realignNode(gpa, new_ni, opts.add_options.alignment);
     if (opts.add_options.size > 0) {
-        try mf.growNode(gpa, new_ni, opts.add_options.size, .exact);
+        try mf.growNode(gpa, new_ni, opts.add_options.size, .{
+            .exact_size = true,
+            .move_footers = false, // irrelevant, since we have no footers
+        });
     }
     mf.updateWriters();
 
@@ -1070,12 +1079,21 @@ fn shrinkLeafNode(
     }
 }
 
-const GrowMode = enum { exact, minimum };
+const GrowOptions = struct {
+    /// If `true`, the node size must be set to exactly the given size.
+    ///
+    /// If `false`, the given size is a minimum, and the actual new node size may be larger.
+    exact_size: bool,
+    /// If `true`, footers within the resized node will be moved forwards to its new end.
+    ///
+    /// If `false`, footers will all remain at their current offsets (so the nodes are in a
+    /// temporarily invalid state), and moving them is the responsibility of the *caller*.
+    move_footers: bool,
+};
 
-/// Increases the size of a node. If `grow_mode` is `.exact`, the new size will be exactly `new_size`.
-/// If `grow_mode` is `.minimum`, the new size will be greater than or equal to `new_size`.
+/// Increases the size of a node.
 ///
-/// Asserts that `new_size` is aligned to `ni.alignment(mf)` (even if `grow_mode` is `.minimum`!).
+/// Asserts that `new_size` is aligned to `ni.alignment(mf)`, even if `!grow_options.exact_size`.
 ///
 /// Asserts that `new_size` is greater than the current size of `ni`.
 fn growNode(
@@ -1083,7 +1101,7 @@ fn growNode(
     gpa: Allocator,
     ni: Node.Index,
     new_size: u64,
-    grow_mode: GrowMode,
+    grow_options: GrowOptions,
 ) Error!void {
     mf.nodes_lock.assertUnlocked();
 
@@ -1098,7 +1116,7 @@ fn growNode(
     const parent_ni = node.parent.unwrap() orelse {
         assert(ni == .root);
 
-        if (try mf.growNodeViaInsertRange(gpa, ni, new_size, grow_mode)) {
+        if (try mf.growNodeViaInsertRange(gpa, ni, new_size, grow_options)) {
             return;
         }
 
@@ -1120,21 +1138,23 @@ fn growNode(
         };
         try mf.ensureTotalCapacityPrecise(@intCast(new_size));
         try ni.setLocation(mf, gpa, old_offset, new_size);
-        // We need to move any footers to be at the *new* end of the file.
-        if (ni.firstFooter(mf).unwrap()) |first_footer_ni| {
-            const old_footers_offset, _ = first_footer_ni.location(mf).resolve(mf);
-            const footers_size = old_size - old_footers_offset;
-            try mf.moveRange(
-                old_footers_offset,
-                old_footers_offset + (new_size - old_size),
-                footers_size,
-            );
-            // Also update the footers' locations.
-            var cur_ni = first_footer_ni;
-            while (true) {
-                const old_footer_offset, const footer_size = cur_ni.location(mf).resolve(mf);
-                try cur_ni.setLocation(mf, gpa, old_footer_offset + (new_size - old_size), footer_size);
-                cur_ni = cur_ni.next(mf).unwrap() orelse break;
+        if (grow_options.move_footers) {
+            // We need to move any footers to be at the *new* end of the file.
+            if (ni.firstFooter(mf).unwrap()) |first_footer_ni| {
+                const old_footers_offset, _ = first_footer_ni.location(mf).resolve(mf);
+                const footers_size = old_size - old_footers_offset;
+                try mf.moveRange(
+                    old_footers_offset,
+                    old_footers_offset + (new_size - old_size),
+                    footers_size,
+                );
+                // Also update the footers' locations.
+                var cur_ni = first_footer_ni;
+                while (true) {
+                    const old_footer_offset, const footer_size = cur_ni.location(mf).resolve(mf);
+                    try cur_ni.setLocation(mf, gpa, old_footer_offset + (new_size - old_size), footer_size);
+                    cur_ni = cur_ni.next(mf).unwrap() orelse break;
+                }
             }
         }
         return;
@@ -1142,7 +1162,7 @@ fn growNode(
 
     switch (node.flags.position) {
         .header => {
-            if (try mf.growNodeViaInsertRange(gpa, ni, new_size, grow_mode)) {
+            if (try mf.growNodeViaInsertRange(gpa, ni, new_size, grow_options)) {
                 return;
             }
 
@@ -1163,7 +1183,13 @@ fn growNode(
             const old_headers_size = last_header_offset + last_header_size;
 
             // This is the first footer *inside* of `ni`.
-            const first_sub_footer_oni = ni.firstFooter(mf);
+            const first_sub_footer_oni: Node.Index.Optional = footer: {
+                if (!grow_options.move_footers) {
+                    // Pretend there are no footers so as to not move them.
+                    break :footer .none;
+                }
+                break :footer ni.firstFooter(mf);
+            };
             const sub_footers_size = size: {
                 const first_sub_footer_ni = first_sub_footer_oni.unwrap() orelse break :size 0;
                 const first_sub_footer_offset, _ = first_sub_footer_ni.location(mf).resolve(mf);
@@ -1215,92 +1241,264 @@ fn growNode(
             return;
         },
         .floating => {
-            try mf.growFloatingNodeWithAlignment(gpa, ni, null, new_size, grow_mode);
+            try mf.growFloatingNodeWithAlignment(gpa, ni, null, new_size, grow_options);
         },
         .footer => {
-            if (try mf.growNodeViaInsertRange(gpa, ni, new_size, grow_mode)) {
+            if (try mf.growNodeViaInsertRange(gpa, ni, new_size, grow_options)) {
                 return;
             }
 
-            try mf.ensureAdditionalFooterCapacity(gpa, parent_ni, new_size - old_size);
-
-            const first_footer_ni: Node.Index = first_footer: {
-                var footer_ni = ni;
-                while (true) {
-                    const prev_ni = footer_ni.prev(mf).unwrap() orelse break;
-                    if (prev_ni.position(mf) != .footer) break;
-                    footer_ni = prev_ni;
-                }
-                break :first_footer footer_ni;
-            };
-
             // This is the first footer *inside* of `ni` (unrelated to the fact that `ni` is itself
-            // a footer within its parent).
-            const first_sub_footer_oni = ni.firstFooter(mf);
-            const sub_footers_size = size: {
-                const first_sub_footer_ni = first_sub_footer_oni.unwrap() orelse break :size 0;
-                const first_sub_footer_offset, _ = first_sub_footer_ni.location(mf).resolve(mf);
-                break :size old_size - first_sub_footer_offset;
+            // a footer within its parent). We'll need this later in any case, so just find it now.
+            const first_sub_footer_oni: Node.Index.Optional = footer: {
+                if (!grow_options.move_footers) {
+                    // Pretend there are no nested footers so as to not move them.
+                    break :footer .none;
+                }
+                break :footer ni.firstFooter(mf);
             };
 
-            _, const parent_size = parent_ni.location(mf).resolve(mf);
+            // We have two different strategies for growing a footer node, with different advantages
+            // and disadvantages; so first we must decide which to use.
+            const strat: union(enum) {
+                /// Expand into pre-footer padding space in the parent node (growing the parent if
+                /// necessary). This strategy has the benefit that it can reclaim padding bytes in
+                /// the parent, but it has the disadvantage that it requires moving this node's
+                /// existing content backwards in the file, which may be expensive (particularly
+                /// since the src and dest ranges are likely to overlap).
+                grow_backwards,
 
-            const old_footers_size = parent_size - first_footer_ni.location(mf).resolve(mf)[0];
-            const new_footers_size = old_footers_size - old_size + new_size;
-
-            // Shift ourselves, and any footer before us, backwards. Unlike header nodes, this node
-            // itself needs to shift its contents, because our offset was shifted backwards by
-            // `new_size - old_size`, and the added bytes should go at the end of this footer node.
-            // However, if we *contain* any footer nodes, they need to stay at the end of `ni`, so
-            // we *shouldn't* shift *that* data.
-            const old_footers_start = parent_size - old_footers_size;
-            const new_footers_start = parent_size - new_footers_size;
-            const end_offset = node.location().resolve(mf)[0] + old_size;
-            const parent_file_offset = parent_ni.fileLocation(mf, false).offset;
-            try mf.moveRange(
-                parent_file_offset + old_footers_start,
-                parent_file_offset + new_footers_start,
-                end_offset - old_footers_start - sub_footers_size,
-            );
-
-            // Update our own offset and size:
-            try ni.setLocation(mf, gpa, end_offset - new_size, new_size);
-
-            // Any footers inside of us have had their offsets changed due to us growing:
-            if (first_sub_footer_oni.unwrap()) |first_sub_footer_ni| {
-                var cur_ni = first_sub_footer_ni;
-                while (true) {
-                    const old_sub_footer_offset, const sub_footer_size = cur_ni.location(mf).resolve(mf);
-                    try cur_ni.setLocation(
-                        mf,
-                        gpa,
-                        old_sub_footer_offset + (new_size - old_size),
-                        sub_footer_size,
-                    );
-                    cur_ni = cur_ni.next(mf).unwrap() orelse break;
+                /// Grow the parent node with `GrowOptions.move_footers` set to `false`, and
+                /// implicitly grow ourselves into the newly available space. This usually requires
+                /// a lot less moving of bytes, but never reclaims unused space before the parent's
+                /// footers, and is sometimes straight-up impossible.
+                grow_parent_at_end: struct {
+                    add_size: u64,
+                    exact_size: bool,
+                },
+            } = strat: {
+                // If this node is small, the move overhead is trivial, so prefer `.grow_backwards`
+                // to avoid unnecessary growth of the parent node.
+                if (old_size <= mf.flags.block_size.toByteUnits() * 2) {
+                    break :strat .grow_backwards;
                 }
-            }
 
-            // Finally, update the offsets of every footer before us:
-            if (node.prev.unwrap()) |prev_ni| {
-                var maybe_footer_ni = prev_ni;
-                while (true) {
-                    switch (maybe_footer_ni.position(mf)) {
-                        .header, .floating => break,
-                        .footer => {},
+                // It may also be worth doing `.grow_backwards` if the parent has a *lot* of space
+                // we could grow into. More specifically, if "free space we can grow into" makes up
+                // a significant proportion of the parent's total size, then that implies the parent
+                // has quite poor utilization of space, *and* that we can significantly improve that
+                // statistic by growing into that space.
+                if (old_size + mf.availableFooterCapacity(parent_ni) >= new_size) {
+                    break :strat .grow_backwards;
+                }
+
+                if (grow_options.exact_size) {
+                    const add_size = new_size - old_size;
+                    if (parent_ni.alignment(mf).check(add_size)) {
+                        break :strat .{ .grow_parent_at_end = .{
+                            .add_size = add_size,
+                            .exact_size = true,
+                        } };
+                    } else {
+                        // We *can't* ask the parent to grow by this much, so we have no choice.
+                        break :strat .grow_backwards;
                     }
-                    const moved_footer_offset, const moved_footer_size = maybe_footer_ni.location(mf).resolve(mf);
-                    try maybe_footer_ni.setLocation(
+                }
+
+                if (parent_ni.alignment(mf).compare(.lt, node.flags.alignment)) {
+                    // Because the parent's alignment is less than our own, if we gave them the
+                    // freedom to pick a size, they might choose one which results in *us* having a
+                    // size incompatible with our alignment. Therefore, to prevent that, we need to
+                    // request an *exact* size from the parent in this case.
+                    break :strat .{ .grow_parent_at_end = .{
+                        .add_size = new_size - old_size,
+                        .exact_size = true,
+                    } };
+                }
+
+                // The parent's alignment is greater than or equal to our own, so we only need to
+                // give the parent a *minimum* size (although we need to ensure it matches their
+                // alignment since it could be greater than our own).
+                break :strat .{ .grow_parent_at_end = .{
+                    .add_size = parent_ni.alignment(mf).forward(new_size - old_size),
+                    .exact_size = false,
+                } };
+            };
+
+            switch (strat) {
+                .grow_backwards => {
+                    // First, we might need to grow the parent to make enough space.
+                    {
+                        const available_size = mf.availableFooterCapacity(parent_ni);
+                        if (old_size + available_size < new_size) {
+                            _, const old_parent_size: u64 = parent_ni.location(mf).resolve(mf);
+                            const min_parent_size = old_parent_size + (new_size - old_size - available_size);
+                            const new_parent_size = parent_ni.alignment(mf).forward(
+                                min_parent_size +| min_parent_size / growth_factor,
+                            );
+                            try mf.growNode(gpa, parent_ni, new_parent_size, .{
+                                .exact_size = false,
+                                .move_footers = true,
+                            });
+                            assert(old_size + mf.availableFooterCapacity(parent_ni) >= new_size);
+                        }
+                    }
+
+                    // Now we need to grow! To do that, we must move `ni` itself, and every footer
+                    // before it in `parent_ni`, backwards. Unlike header nodes, `ni` is included in
+                    // the shift, because the bytes we're adding need to go at the *end* of `ni`
+                    // rather than its start.
+
+                    // This is the same as `parent_ni.firstFooter(mf)`, it's just more efficient to
+                    // start at `ni` than to start at `parent_ni.last(mf)`.
+                    const first_parent_footer_ni: Node.Index = first_footer: {
+                        var footer_ni = ni;
+                        while (true) {
+                            const prev_ni = footer_ni.prev(mf).unwrap() orelse break;
+                            if (prev_ni.position(mf) != .footer) break;
+                            footer_ni = prev_ni;
+                        }
+                        break :first_footer footer_ni;
+                    };
+
+                    const shift = new_size - old_size;
+
+                    // Update our own offset and size:
+                    try ni.setLocation(
                         mf,
                         gpa,
-                        moved_footer_offset + old_size - new_size,
-                        moved_footer_size,
+                        node.location().resolve(mf)[0] - shift,
+                        new_size,
                     );
-                    maybe_footer_ni = maybe_footer_ni.prev(mf).unwrap() orelse break;
-                }
-            }
 
-            return;
+                    // Any footers *inside* of `ni` have had their offsets changed, because they are
+                    // now positioned at the *new* end of `ni`:
+                    {
+                        var footer_oni = first_sub_footer_oni;
+                        while (footer_oni.unwrap()) |footer_ni| : (footer_oni = footer_ni.next(mf)) {
+                            const old_footer_offset, const footer_size = footer_ni.location(mf).resolve(mf);
+                            try footer_ni.setLocation(mf, gpa, old_footer_offset + shift, footer_size);
+                        }
+                    }
+
+                    // Any footers *before* `ni` (in `parent_ni`) have been shifted backwards. We'll
+                    // also be moving their actual bytes in a moment, so track whether they have
+                    // content (if nothing does then we'll be able to skip the `moveRange`). That
+                    // flag is initially whether `ni` has content because we're shifting our own
+                    // bytes backwards too.
+                    var moved_has_content: bool = node.flags.has_content;
+                    {
+                        var footer_ni = first_parent_footer_ni;
+                        while (footer_ni != ni) : (footer_ni = footer_ni.next(mf).unwrap().?) {
+                            moved_has_content = moved_has_content or footer_ni.get(mf).flags.has_content;
+                            const old_footer_offset, const footer_size = footer_ni.location(mf).resolve(mf);
+                            try footer_ni.setLocation(mf, gpa, old_footer_offset - shift, footer_size);
+                        }
+                    }
+
+                    if (moved_has_content) {
+                        // We moved at least one thing containing initialized bytes, so we need to
+                        // move the actual data. However, we should *not* move the bytes of any
+                        // nested footers inside of `ni`, because they've been "moved" to the end
+                        // of our new size, which is the same file location as before.
+                        const sub_footers_size = size: {
+                            const first_sub_footer_ni = first_sub_footer_oni.unwrap() orelse break :size 0;
+                            const first_sub_footer_offset, _ = first_sub_footer_ni.location(mf).resolve(mf);
+                            break :size new_size - first_sub_footer_offset;
+                        };
+                        const new_offset: u64, _ = node.location().resolve(mf);
+                        const new_footers_offset: u64, _ = first_parent_footer_ni.location(mf).resolve(mf);
+                        const parent_file_offset = parent_ni.fileLocation(mf, false).offset;
+                        try mf.moveRange(
+                            parent_file_offset + new_footers_offset + shift,
+                            parent_file_offset + new_footers_offset,
+                            (new_offset - new_footers_offset) + // accounts for every footer before `ni`
+                                (old_size - sub_footers_size), // accounts for `ni` itself, excluding nested footers
+                        );
+                    }
+                },
+                .grow_parent_at_end => |grow_parent| {
+                    _, const old_parent_size: u64 = parent_ni.location(mf).resolve(mf);
+                    try mf.growNode(gpa, parent_ni, old_parent_size + grow_parent.add_size, .{
+                        .exact_size = grow_parent.exact_size,
+                        .move_footers = false,
+                    });
+                    _, const new_parent_size: u64 = parent_ni.location(mf).resolve(mf);
+                    const shift = new_parent_size - old_parent_size;
+
+                    // Here's what we have left to do:
+                    //
+                    // * Increase our own size by `shift` to absorb the added space.
+                    //
+                    // * If there are any footers *inside* `ni`, increase their offsets by `shift`.
+                    //
+                    // * If there are any footers *after* `ni` (inside `parent_ni`), increase their
+                    //   offsets by `shift`.
+                    //
+                    // * Do a `moveRange` corresponding to those offset changes. This is a single
+                    //   range which starts at the footers *inside* `ni`.
+
+                    const actual_new_size = old_size + shift;
+                    if (grow_options.exact_size) {
+                        assert(actual_new_size == new_size);
+                    }
+
+                    try ni.setLocation(
+                        mf,
+                        gpa,
+                        node.location().resolve(mf)[0],
+                        actual_new_size,
+                    );
+
+                    // This will track whether any node with a changed offset actually contains
+                    // initialized bytes. If not, there'll be no need to call `moveRange`.
+                    var moved_has_content: bool = false;
+
+                    // Set any nested footers' offsets (and include them in `moved_has_content`).
+                    {
+                        var footer_oni = first_sub_footer_oni;
+                        while (footer_oni.unwrap()) |footer_ni| : (footer_oni = footer_ni.next(mf)) {
+                            assert(footer_ni.position(mf) == .footer);
+                            moved_has_content = moved_has_content or footer_ni.get(mf).flags.has_content;
+                            const footer_old_offset: u64, const footer_size: u64 = footer_ni.location(mf).resolve(mf);
+                            try footer_ni.setLocation(mf, gpa, footer_old_offset + shift, footer_size);
+                        }
+                    }
+
+                    // Now set offsets for footers after `ni` inside of `parent_ni`.
+                    {
+                        var footer_oni = ni.next(mf);
+                        while (footer_oni.unwrap()) |footer_ni| : (footer_oni = footer_ni.next(mf)) {
+                            assert(footer_ni.position(mf) == .footer);
+                            moved_has_content = moved_has_content or footer_ni.get(mf).flags.has_content;
+                            const footer_old_offset: u64, const footer_size: u64 = footer_ni.location(mf).resolve(mf);
+                            try footer_ni.setLocation(mf, gpa, footer_old_offset + shift, footer_size);
+                        }
+                    }
+
+                    if (moved_has_content) {
+                        // We moved at least one footer containing initialized bytes, so we need to
+                        // move the actual data. Compute how big the footers inside `ni` are...
+                        const sub_footers_size: u64 = size: {
+                            const first_sub_footer_ni = first_sub_footer_oni.unwrap() orelse break :size 0;
+                            const first_sub_footer_offset, _ = first_sub_footer_ni.location(mf).resolve(mf);
+                            // `actual_new_size` is used here since we already updated the nested footers' offsets above.
+                            break :size actual_new_size - first_sub_footer_offset;
+                        };
+                        // ...and how big the footers *after* `ni`, inside `parent_ni`, are...
+                        const post_footers_size: u64 = old_parent_size - (old_offset + old_size);
+                        // ...and move them both.
+                        const parent_file_off = parent_ni.fileLocation(mf, false).offset;
+                        const total_move_size = sub_footers_size + post_footers_size;
+                        assert(total_move_size != 0);
+                        try mf.moveRange(
+                            parent_file_off + old_parent_size - total_move_size,
+                            parent_file_off + new_parent_size - total_move_size,
+                            total_move_size,
+                        );
+                    }
+                },
+            }
         },
     }
 }
@@ -1320,7 +1518,7 @@ fn growFloatingNodeWithAlignment(
     ni: Node.Index,
     new_alignment: ?Alignment,
     new_size: u64,
-    grow_mode: GrowMode,
+    grow_options: GrowOptions,
 ) Error!void {
     mf.nodes_lock.assertUnlocked();
 
@@ -1347,27 +1545,29 @@ fn growFloatingNodeWithAlignment(
         }
         // Great, we can grow this node without changing its offset or moving any siblings.
         try ni.setLocation(mf, gpa, old_offset, new_size);
-        // If we have any footers, we need to move them to the end of our new size, and update their
-        // offsets accordingly.
-        if (ni.firstFooter(mf).unwrap()) |first_footer_ni| {
-            var cur_ni = first_footer_ni;
-            var footers_have_content = false;
-            while (true) {
-                footers_have_content = footers_have_content or cur_ni.get(mf).flags.has_content;
-                const old_footer_offset, const footer_size = cur_ni.location(mf).resolve(mf);
-                try cur_ni.setLocation(mf, gpa, old_footer_offset + (new_size - old_size), footer_size);
-                cur_ni = cur_ni.next(mf).unwrap() orelse break;
-            }
-            if (footers_have_content) {
-                const parent_file_off = parent_ni.fileLocation(mf, false).offset;
-                // This gets the *new* offset because we already updated the offsets above.
-                const new_footers_offset, _ = first_footer_ni.location(mf).resolve(mf);
-                const footers_size = new_size - new_footers_offset;
-                try mf.moveRange(
-                    parent_file_off + old_offset + old_size - footers_size,
-                    parent_file_off + old_offset + new_size - footers_size,
-                    footers_size,
-                );
+        if (grow_options.move_footers) {
+            // If we have any footers, we need to move them to the end of our new size, and update
+            // their offsets accordingly.
+            if (ni.firstFooter(mf).unwrap()) |first_footer_ni| {
+                var cur_ni = first_footer_ni;
+                var footers_have_content = false;
+                while (true) {
+                    footers_have_content = footers_have_content or cur_ni.get(mf).flags.has_content;
+                    const old_footer_offset, const footer_size = cur_ni.location(mf).resolve(mf);
+                    try cur_ni.setLocation(mf, gpa, old_footer_offset + (new_size - old_size), footer_size);
+                    cur_ni = cur_ni.next(mf).unwrap() orelse break;
+                }
+                if (footers_have_content) {
+                    const parent_file_off = parent_ni.fileLocation(mf, false).offset;
+                    // This gets the *new* offset because we already updated the offsets above.
+                    const new_footers_offset, _ = first_footer_ni.location(mf).resolve(mf);
+                    const footers_size = new_size - new_footers_offset;
+                    try mf.moveRange(
+                        parent_file_off + old_offset + old_size - footers_size,
+                        parent_file_off + old_offset + new_size - footers_size,
+                        footers_size,
+                    );
+                }
             }
         }
         return;
@@ -1444,11 +1644,14 @@ fn growFloatingNodeWithAlignment(
             // that, let's first try the Linux "insert range" fast path. We didn't try it before now
             // because it would have been more efficient to just move ourselves into existing space.
             //
-            // If we were given a custom alignment, we cannot pass `grow_mode` directly into the
+            // If we were given a custom alignment, we need to set `GrowOptions.exact_size` for the
             // "insert range" path, because that function is unaware of `new_alignment`.
-            const sub_grow_mode: GrowMode = if (new_alignment == null) grow_mode else .exact;
+            const insert_range_grow_options: GrowOptions = .{
+                .exact_size = grow_options.exact_size or new_alignment != null,
+                .move_footers = grow_options.move_footers,
+            };
             if (alignment.check(old_offset) and
-                try mf.growNodeViaInsertRange(gpa, ni, new_size, sub_grow_mode))
+                try mf.growNodeViaInsertRange(gpa, ni, new_size, insert_range_grow_options))
             {
                 // The Linux fast path did our job for us!
                 return;
@@ -1458,7 +1661,10 @@ fn growFloatingNodeWithAlignment(
             const new_parent_size = parent_ni.alignment(mf).forward(
                 min_parent_size +| min_parent_size / growth_factor,
             );
-            try mf.growNode(gpa, parent_ni, new_parent_size, .minimum);
+            try mf.growNode(gpa, parent_ni, new_parent_size, .{
+                .exact_size = false,
+                .move_footers = true,
+            });
         }
 
         break :new_loc .{
@@ -1471,6 +1677,10 @@ fn growFloatingNodeWithAlignment(
 
     // Footers need to move to a different place than the rest of our content.
     const footers_size: u64, const footers_have_content: bool = footers: {
+        if (!grow_options.move_footers) {
+            // Pretend there are no footers so as to not move them.
+            break :footers .{ 0, false };
+        }
         const first_footer_ni = ni.firstFooter(mf).unwrap() orelse {
             break :footers .{ 0, false };
         };
@@ -1525,15 +1735,14 @@ fn growFloatingNodeWithAlignment(
 /// If this strategy is inapplicable or unsuitable for this operation, this function returns `false`
 /// without changing any nodes' locations or invalidating any slices.
 ///
-/// Otherwise, this function grows `ni` to `new_size`, updates the location of `ni` and every node
-/// whose offset has changed, and returns `true`. Like in `growNode`, if `grow_mode` is `.minimum`,
-/// the actual new size of `ni` may be greater than `new_size`.
+/// Otherwise, this function grows `ni` to `new_size` (maybe larger if `!grow_options.exact_size`),
+/// updates the location of `ni` and every node whose offset has changed, and returns `true`.
 fn growNodeViaInsertRange(
     mf: *MappedFile,
     gpa: Allocator,
     ni: Node.Index,
     new_size: u64,
-    grow_mode: GrowMode,
+    grow_options: GrowOptions,
 ) Error!bool {
     if (!is_linux or mf.flags.fallocate_insert_range_unsupported) {
         return false;
@@ -1541,43 +1750,22 @@ fn growNodeViaInsertRange(
 
     _, const old_size = ni.location(mf).resolve(mf);
 
-    // We don't compute the size of the range yet, because depending on `grow_mode` we might want to
-    // bump it based on our sibling and parent nodes' alignments. However, we can do an early check
-    // for cases where we should obviously exit.
-    const requested_range_size = new_size - old_size;
-    if (!mf.flags.block_size.check(requested_range_size)) {
-        // The requested size isn't exactly aligned.
-        switch (grow_mode) {
-            .exact => return false,
-            .minimum => {
-                // We can still choose to allow it by increasing the size a bit, but we shouldn't do
-                // that if it would *significantly* increase the requested size.
-                const block_size = mf.flags.block_size.toByteUnits();
-                if (requested_range_size < block_size * 2) {
-                    // Bumping this size up to the next block boundary would be a quite significant
-                    // increase; let's not do it.
-                    return false;
-                }
-            },
-        }
-    }
-    // If `grow_mode` is exact, we will use exactly this size, but if it is `.minimum`, we may bump
-    // the size a little more.
+    // We don't compute the size of the range yet, because depending on `grow_options` we might want
+    // to bump it based on our sibling and parent nodes' alignments. However, we can do an early
+    // check for cases where we should obviously exit.
     const min_range_size: u64 = s: {
-        const exact_size = new_size - old_size;
-        if (mf.flags.block_size.check(exact_size)) {
-            break :s exact_size;
+        const requested_size = new_size - old_size;
+        if (mf.flags.block_size.check(requested_size)) {
+            break :s requested_size;
         }
-        switch (grow_mode) {
-            .exact => return false,
-            .minimum => if (exact_size >= mf.flags.block_size.toByteUnits() * 2) {
-                // We're growing by at least a few blocks, so allow ourselves to bump the size
-                // slightly to give it the needed alignment.
-                break :s mf.flags.block_size.forward(exact_size);
-            } else {
-                return false;
-            },
+        if (!grow_options.exact_size and
+            requested_size >= mf.flags.block_size.toByteUnits() * 2)
+        {
+            // We're growing by at least a few blocks, so allow ourselves to bump the size
+            // slightly to give it the needed alignment.
+            break :s mf.flags.block_size.forward(requested_size);
         }
+        return false;
     };
     assert(min_range_size > 0);
     assert(mf.flags.block_size.check(min_range_size));
@@ -1592,14 +1780,17 @@ fn growNodeViaInsertRange(
             }
             break :range_file_offset range_file_offset;
         };
-        const first_footer_oni = ni.firstFooter(mf);
-        const footers_size: u64 = if (first_footer_oni.unwrap()) |first_footer_ni| size: {
+        const pre_footer_oni: Node.Index.Optional, const footers_size: u64 = footers: {
+            if (!grow_options.move_footers) {
+                // Pretend there are no footers so as to not move them.
+                break :footers .{ .wrap(last_ni), 0 };
+            }
+            const first_footer_ni = ni.firstFooter(mf).unwrap() orelse {
+                break :footers .{ .wrap(last_ni), 0 };
+            };
             const first_footer_offset, _ = first_footer_ni.location(mf).resolve(mf);
-            break :size old_size - first_footer_offset;
-        } else 0;
-        const pre_footer_oni: Node.Index.Optional = if (first_footer_oni.unwrap()) |first_footer_ni| pre_footer: {
-            break :pre_footer first_footer_ni.prev(mf);
-        } else .wrap(last_ni);
+            break :footers .{ first_footer_ni.prev(mf), old_size - first_footer_offset };
+        };
         const pre_footer_end: u64 = if (pre_footer_oni.unwrap()) |pre_footer_ni| end: {
             const pre_footer_off, const pre_footer_size = pre_footer_ni.location(mf).resolve(mf);
             break :end pre_footer_off + pre_footer_size;
@@ -1649,22 +1840,18 @@ fn growNodeViaInsertRange(
         }
         // Traversal done. We didn't hit `max_moved_nodes`, so now we can use the computed alignment
         // requirement to figure out whether we're actually going to insert a range.
-        if (need_range_align.check(requested_range_size)) {
-            break :range_size requested_range_size;
+        if (need_range_align.check(min_range_size)) {
+            break :range_size min_range_size;
         }
-        // Perhaps we're allowed to grow by more than `requested_range_size`?
-        switch (grow_mode) {
-            .exact => return false,
-            .minimum => {
-                const candidate_range_size = need_range_align.forward(min_range_size);
-                // Allow growing by up to 50% more than was requested.
-                if (candidate_range_size <= requested_range_size +| requested_range_size / 2) {
-                    break :range_size candidate_range_size;
-                } else {
-                    return false;
-                }
-            },
+        // Perhaps we're allowed to grow by more than `min_range_size`?
+        const candidate_range_size = need_range_align.forward(min_range_size);
+        if (!grow_options.exact_size and
+            // Allow growing by up to 50% more than was requested.
+            candidate_range_size <= min_range_size +| min_range_size / 2)
+        {
+            break :range_size candidate_range_size;
         }
+        return false;
     };
 
     // This `range_size` is compatible with everyone's alignment requirements, and we won't move too
@@ -1742,13 +1929,15 @@ fn growNodeViaInsertRange(
         cur_ni = cur_ni.parent(mf).unwrap() orelse break;
     }
 
-    // The only thing left is to update the offsets of any footers inside of `ni`.
-    if (ni.firstFooter(mf).unwrap()) |first_footer_ni| {
-        var footer_ni = first_footer_ni;
-        while (true) {
-            const old_footer_offset, const footer_size = footer_ni.location(mf).resolve(mf);
-            try footer_ni.setLocation(mf, gpa, old_footer_offset + range_size, footer_size);
-            footer_ni = footer_ni.next(mf).unwrap() orelse break;
+    if (grow_options.move_footers) {
+        // The only thing left is to update the offsets of any footers inside of `ni`.
+        if (ni.firstFooter(mf).unwrap()) |first_footer_ni| {
+            var footer_ni = first_footer_ni;
+            while (true) {
+                const old_footer_offset, const footer_size = footer_ni.location(mf).resolve(mf);
+                try footer_ni.setLocation(mf, gpa, old_footer_offset + range_size, footer_size);
+                footer_ni = footer_ni.next(mf).unwrap() orelse break;
+            }
         }
     }
 
@@ -1802,7 +1991,10 @@ fn ensureAdditionalHeaderCapacity(
             const new_parent_size = parent_ni.alignment(mf).forward(
                 min_parent_size +| min_parent_size / growth_factor,
             );
-            try mf.growNode(gpa, parent_ni, new_parent_size, .minimum);
+            try mf.growNode(gpa, parent_ni, new_parent_size, .{
+                .exact_size = false,
+                .move_footers = true,
+            });
         }
         return;
     };
@@ -1884,7 +2076,10 @@ fn ensureAdditionalHeaderCapacity(
         const new_parent_size = parent_ni.alignment(mf).forward(
             min_parent_size +| min_parent_size / growth_factor,
         );
-        try mf.growNode(gpa, parent_ni, new_parent_size, .minimum);
+        try mf.growNode(gpa, parent_ni, new_parent_size, .{
+            .exact_size = false,
+            .move_footers = true,
+        });
     }
 
     if (moving_has_content) {
@@ -1914,48 +2109,27 @@ fn ensureAdditionalHeaderCapacity(
     }
 }
 
-/// Ensures that `parent_ni` has at least `extra_capacity` padding bytes preceding its current
-/// footers, so that the footers can grow into that space.
-fn ensureAdditionalFooterCapacity(
-    mf: *MappedFile,
-    gpa: Allocator,
-    parent_ni: Node.Index,
-    extra_capacity: u64,
-) Error!void {
-    // This is way easier than the header case, because we don't need to actually move anything; we
-    // just need to expand the parent if there isn't space, and that will add padding after the
-    // parent's floating children, which is exactly where we want it.
-
+/// Returns how many padding bytes `parent_ni` currently has directly preceding its footers, which
+/// footers can therefore grow into.
+fn availableFooterCapacity(mf: *const MappedFile, parent_ni: Node.Index) u64 {
     const first_footer_oni = parent_ni.firstFooter(mf);
 
-    _, const parent_size = parent_ni.location(mf).resolve(mf);
-
-    const footers_size: u64 = footers_size: {
-        const first_footer_ni = first_footer_oni.unwrap() orelse break :footers_size 0;
+    const before_footers_oni: Node.Index.Optional, const footers_off: u64 = footers: {
+        const first_footer_ni = first_footer_oni.unwrap() orelse {
+            _, const parent_size = parent_ni.location(mf).resolve(mf);
+            break :footers .{ parent_ni.last(mf), parent_size };
+        };
         const first_footer_off, _ = first_footer_ni.location(mf).resolve(mf);
-        break :footers_size parent_size - first_footer_off;
+        break :footers .{ first_footer_ni.prev(mf), first_footer_off };
     };
 
     const header_and_floating_end: u64 = end: {
-        const before_footers_oni = if (first_footer_oni.unwrap()) |first_footer_ni| before_footers: {
-            break :before_footers first_footer_ni.prev(mf);
-        } else before_footers: {
-            break :before_footers parent_ni.last(mf);
-        };
         const before_footers_ni = before_footers_oni.unwrap() orelse break :end 0;
         const offset, const size = before_footers_ni.location(mf).resolve(mf);
         break :end offset + size;
     };
 
-    assert(header_and_floating_end + footers_size <= parent_size);
-
-    const min_parent_size = header_and_floating_end + footers_size + extra_capacity;
-    if (parent_size < min_parent_size) {
-        const new_parent_size = parent_ni.alignment(mf).forward(
-            min_parent_size +| min_parent_size / growth_factor,
-        );
-        try mf.growNode(gpa, parent_ni, new_parent_size, .minimum);
-    }
+    return footers_off - header_and_floating_end;
 }
 
 fn removeNodesFromChildList(
@@ -2049,7 +2223,7 @@ fn realignNode(
     mf: *MappedFile,
     gpa: Allocator,
     ni: Node.Index,
-    new_alignment: Alignment,
+    new_align: Alignment,
 ) Error!void {
     mf.nodes_lock.assertUnlocked();
 
@@ -2057,30 +2231,25 @@ fn realignNode(
 
     if (ni == .root or ni.position(mf) != .floating) {
         // Only this node's size is aligned, not its offset.
-        if (!new_alignment.check(old_size)) {
-            assert(new_alignment.compare(.gt, ni.alignment(mf)));
-            try mf.growNode(
-                gpa,
-                ni,
-                new_alignment.forward(old_size),
-                .exact, // because `growNode` is not aware that the size needs to match `new_alignment`
-            );
+        if (!new_align.check(old_size)) {
+            assert(new_align.compare(.gt, ni.alignment(mf)));
+            try mf.growNode(gpa, ni, new_align.forward(old_size), .{
+                .exact_size = true, // because `growNode` is not aware that the size needs to match `new_align`
+                .move_footers = true,
+            });
         }
     } else {
         // This is a floating node, so its size and offset are both aligned.
-        if (!new_alignment.check(old_offset) or !new_alignment.check(old_size)) {
-            assert(new_alignment.compare(.gt, ni.alignment(mf)));
-            try mf.growFloatingNodeWithAlignment(
-                gpa,
-                ni,
-                new_alignment,
-                new_alignment.forward(old_size),
-                .minimum,
-            );
+        if (!new_align.check(old_offset) or !new_align.check(old_size)) {
+            assert(new_align.compare(.gt, ni.alignment(mf)));
+            try mf.growFloatingNodeWithAlignment(gpa, ni, new_align, new_align.forward(old_size), .{
+                .exact_size = false,
+                .move_footers = true,
+            });
         }
     }
 
-    ni.get(mf).flags.alignment = new_alignment;
+    ni.get(mf).flags.alignment = new_align;
 }
 
 fn updateWriters(mf: *MappedFile) void {

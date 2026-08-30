@@ -24,6 +24,7 @@ base: link.File,
 options: link.File.OpenOptions,
 mf: MappedFile,
 ni: Node.Known,
+archive: ?Archive,
 nodes: std.MultiArrayList(Node),
 /// Does not contain an item for `SHN_UNDEF`.
 shdrs: std.ArrayList(Section),
@@ -200,19 +201,39 @@ input_prog_node: std.Progress.Node,
 const Error = link.Error || error{MappedFileIo};
 
 const Node = union(enum) {
+    /// Only used when emitting a static library.
+    ///
+    /// Contains a header node which is an `.archive_header`.
+    ///
+    /// Contains the following footer nodes:
+    /// * One `.archive_input_member` for each external input in the archive
+    /// * One `.archive_elf_member_header` containing the `ar_hdr` for the ZCU
+    /// * One `.elf` containing the ZCU's actual ELF object
+    ///
+    /// Padding between the headers and footers is absorbed into the "//" member (whose actual
+    /// content is in the `.archive_header` node).
     archive,
-    /// This includes the archive magic and long file member.
+    /// Only used when emitting a static library.
+    ///
+    /// Contains the archive magic (`ARMAG`), as well as the `ar_hdr` and content for the long file
+    /// name string table member ("//").
     archive_header,
-    /// This is a footer of the `.elf` node, and contains the next archive entry's file header.
-    archive_elf_footer,
+    /// Only used when emitting a static library.
+    ///
+    /// Contains the `ar_hdr` and content for one non-ZCU archive member (external link input). Also
+    /// includes the single byte '\n' padding at the end of this archive member, if necessary.
+    archive_input_member: InputIndex,
+    /// Only used when emitting a static library.
+    ///
+    /// Contains the `ar_hdr` for the `.elf` node.
+    archive_elf_member_header,
+
     elf,
     ehdr,
     shdr,
     segment: u32,
     /// The section '.plt' may contain relocations via `elf.plt_first_symbol_reloc`.
     section: Section.Index,
-    /// Only valid for static libraries, represents one non-zcu archive member.
-    input_member: InputIndex,
     /// May contain relocations.
     input_section: InputSection.Index,
     /// Value is the name of a global which has an entry in `elf.copied_globals`, so, a global for
@@ -402,6 +423,15 @@ const InputSection = struct {
             return isi.ptrConst(elf).node;
         }
     };
+};
+
+const Archive = struct {
+    ni: MappedFile.Node.Index,
+    header_ni: MappedFile.Node.Index,
+    elf_member_header_ni: MappedFile.Node.Index,
+
+    elf_member_too_big: bool,
+    strtab_member_too_big: bool,
 };
 
 const Section = struct {
@@ -2954,13 +2984,13 @@ pub fn symbolForAtom(elf: *Elf, atom: link.File.AtomId) link.File.SymbolId {
     const lsi: Symbol.LocalIndex = switch (elf.getNode(Node.fromAtom(atom))) {
         .archive,
         .archive_header,
-        .archive_elf_footer,
+        .archive_input_member,
+        .archive_elf_member_header,
         .elf,
         .ehdr,
         .shdr,
         .segment,
         .section,
-        .input_member,
         .input_section,
         .copied_global,
         => unreachable,
@@ -3364,6 +3394,7 @@ fn create(
             .data_rel_ro = undefined,
             .tls = .none,
         },
+        .archive = null,
         .nodes = .empty,
         .shdrs = .empty,
         .phdrs = .empty,
@@ -3558,51 +3589,58 @@ fn initHeaders(
             .EXEC, .DYN => {},
         }
         var phnum: u32 = 0;
-        break :ph .{ .{
-            .phdr = phndx: {
-                defer phnum += 1;
-                break :phndx phnum;
+        break :ph .{
+            .{
+                .phdr = phndx: {
+                    defer phnum += 1;
+                    break :phndx phnum;
+                },
+                .interp = if (maybe_interp) |_| phndx: {
+                    defer phnum += 1;
+                    break :phndx phnum;
+                } else undefined,
+                .rodata = phndx: {
+                    defer phnum += 1;
+                    break :phndx phnum;
+                },
+                .text = phndx: {
+                    defer phnum += 1;
+                    break :phndx phnum;
+                },
+                .plt = if (plt.got_plt == null) phndx: {
+                    defer phnum += 1;
+                    break :phndx phnum;
+                } else undefined,
+                // `data` must be assigned after all other loadable segments so that it has the greatest
+                // phndx of any loadable segment. This is so that `targetSegmentLoadAddressRestrictions`
+                // can be obeyed (specifically, the `.data_last` restriction, needed on SPARC).
+                .data = phndx: {
+                    defer phnum += 1;
+                    break :phndx phnum;
+                },
+                .tls = if (comp.config.any_non_single_threaded) phndx: {
+                    defer phnum += 1;
+                    break :phndx phnum;
+                } else undefined,
+                .dynamic = if (have_dynamic_section) phndx: {
+                    defer phnum += 1;
+                    break :phndx phnum;
+                } else undefined,
+                .relro = phndx: {
+                    defer phnum += 1;
+                    break :phndx phnum;
+                },
+                .gnu_stack = phndx: {
+                    defer phnum += 1;
+                    break :phndx phnum;
+                },
             },
-            .interp = if (maybe_interp) |_| phndx: {
-                defer phnum += 1;
-                break :phndx phnum;
-            } else undefined,
-            .rodata = phndx: {
-                defer phnum += 1;
-                break :phndx phnum;
-            },
-            .text = phndx: {
-                defer phnum += 1;
-                break :phndx phnum;
-            },
-            .data = phndx: {
-                defer phnum += 1;
-                break :phndx phnum;
-            },
-            .plt = if (plt.got_plt == null) phndx: {
-                defer phnum += 1;
-                break :phndx phnum;
-            } else undefined,
-            .tls = if (comp.config.any_non_single_threaded) phndx: {
-                defer phnum += 1;
-                break :phndx phnum;
-            } else undefined,
-            .dynamic = if (have_dynamic_section) phndx: {
-                defer phnum += 1;
-                break :phndx phnum;
-            } else undefined,
-            .relro = phndx: {
-                defer phnum += 1;
-                break :phndx phnum;
-            },
-            .gnu_stack = phndx: {
-                defer phnum += 1;
-                break :phndx phnum;
-            },
-        }, phnum };
+            // (I don't actually want the trailing comma below, but a `zig fmt` bug forces it.)
+            phnum,
+        };
     };
 
-    const expected_nodes_len = @as(usize, if (is_archive) 3 else 0) + // .archive, .archive_header, .archive_elf_footer
+    const expected_nodes_len = @as(usize, if (is_archive) 3 else 0) + // .archive, .archive_header, .archive_elf_member_header
         3 + // `.elf`, `.ehdr`, and `.shdr` nodes
         (shnum - 1) + // -1 because the SHN_UNDEF shdr does not have a `.section` node
         (phnum -| 1); // -1 because the GNU_STACK phdr does not have a `.segment` node
@@ -3619,11 +3657,14 @@ fn initHeaders(
         const archive_ni: MappedFile.Node.Index = .root;
 
         const archive_header_ni = try archive_ni.addOnlyHeaderChild(&elf.mf, gpa, .{
-            .size = std.elf.ARMAG.len + @sizeOf(std.elf.ar_hdr) * 2,
-            .alignment = .@"2",
-            .next_moved = true,
-            .bubbles_moved = false,
+            // We intentionally do not set `.alignment = .@"2"` here, because the string table data
+            // in this node does not need to have an aligned length. (This node's offset is aligned
+            // regardless by virtue of it being a header.)
+            .size = std.elf.ARMAG.len + @sizeOf(std.elf.ar_hdr),
+            // The archive header uses 'next_moved' events to resize the "//" member, so that it
+            // absorbs all padding between `archive_header_ni` and the actual object file members.
             .enable_next_moved = true,
+            .next_moved = true,
         });
         elf.nodes.appendAssumeCapacity(.archive_header);
         const archive_header_slice = archive_header_ni.slice(&elf.mf);
@@ -3635,23 +3676,47 @@ fn initHeaders(
             .ar_uid = @splat(' '),
             .ar_gid = @splat(' '),
             .ar_mode = @splat(' '),
-            .ar_size = @splat(' '),
+            .ar_size = undefined, // populated by `flushNextMoved` for `archive_header_ni`
             .ar_fmag = std.elf.ARFMAG.*,
         };
 
-        elf.ni.elf = try archive_ni.addFloatingChild(&elf.mf, gpa, .{
+        elf.ni.elf = try archive_ni.addOnlyFooterChild(&elf.mf, gpa, .{
             .alignment = node_block_align.max(.@"2"),
-            .next_moved = true,
             .bubbles_moved = false,
-            .enable_next_moved = true,
+            .resized = true, // ensure that this node's `ar_hdr.ar_size` is updated at least once
         });
         elf.nodes.appendAssumeCapacity(.elf);
 
-        _ = try elf.ni.elf.addOnlyFooterChild(&elf.mf, gpa, .{
+        const elf_ar_hdr_ni = try archive_ni.addFooterChildBefore(&elf.mf, gpa, .wrap(elf.ni.elf), .{
             .alignment = .@"2",
             .size = @sizeOf(std.elf.ar_hdr),
         });
-        elf.nodes.appendAssumeCapacity(.archive_elf_footer);
+        elf.nodes.appendAssumeCapacity(.archive_elf_member_header);
+
+        // Must be populated before we call `populateArchiveMemberName` below.
+        elf.archive = .{
+            .ni = archive_ni,
+            .header_ni = archive_header_ni,
+            .elf_member_header_ni = elf_ar_hdr_ni,
+
+            .elf_member_too_big = false,
+            .strtab_member_too_big = false,
+        };
+
+        const elf_ar_hdr: *std.elf.ar_hdr = @ptrCast(elf_ar_hdr_ni.slice(&elf.mf));
+        elf_ar_hdr.* = .{
+            .ar_name = undefined, // populated below
+            .ar_date = "0           ".*,
+            .ar_uid = "0     ".*,
+            .ar_gid = "0     ".*,
+            .ar_mode = "644     ".*,
+            .ar_size = undefined, // populated by `flushResized` for the `.elf` node
+            .ar_fmag = std.elf.ARFMAG.*,
+        };
+        const zcu_member_name = try std.fmt.allocPrint(gpa, "{s}_zcu.o", .{comp.root_name});
+        defer gpa.free(zcu_member_name);
+        // After this call returns, `elf_ar_hdr` is invalidated.
+        try elf.populateArchiveMemberName(elf_ar_hdr, zcu_member_name);
     } else {
         elf.ni.elf = .root;
         elf.nodes.appendAssumeCapacity(.elf);
@@ -4092,33 +4157,44 @@ fn initHeaders(
             .addralign = addr_align,
             .entsize = @intCast(addr_align.toByteUnits()),
         });
-        if (plt.got_plt) |got_plt| {
-            const got_plt_segment_ni = if (elf.options.z_now) elf.ni.data_rel_ro else elf.ni.data;
-            elf.shndx.got_plt = try elf.addSection(got_plt_segment_ni, .{
-                .name = ".got.plt",
-                .type = .PROGBITS,
-                .flags = .{ .WRITE = true, .ALLOC = true },
-                .size = got_plt.header_entries * elf.targetPtrSize(),
-                .addralign = addr_align,
-                .entsize = @intCast(addr_align.toByteUnits()),
-            });
-            elf.shndx.plt = try elf.addSection(elf.ni.text, .{
-                .name = ".plt",
-                .type = .PROGBITS,
-                .flags = .{ .ALLOC = true, .EXECINSTR = true },
-                .size = plt.entry_size * plt.header_entries,
-                .addralign = plt.@"align",
-                .node_align = node_block_align,
-            });
-        } else {
-            elf.shndx.plt = try elf.addSection(elf.phdrs.items[phndx.plt].unwrap().?, .{
-                .name = ".plt",
-                .type = .PROGBITS,
-                .flags = .{ .ALLOC = true, .WRITE = true, .EXECINSTR = true },
-                .size = plt.entry_size * plt.header_entries,
-                .addralign = plt.@"align",
-                .node_align = node_block_align,
-            });
+        {
+            const init_plt_size = plt.entry_size * plt.header_entries;
+            if (plt.got_plt) |got_plt| {
+                const got_plt_segment_ni = if (elf.options.z_now) elf.ni.data_rel_ro else elf.ni.data;
+                elf.shndx.got_plt = try elf.addSection(got_plt_segment_ni, .{
+                    .name = ".got.plt",
+                    .type = .PROGBITS,
+                    .flags = .{ .WRITE = true, .ALLOC = true },
+                    .size = got_plt.header_entries * elf.targetPtrSize(),
+                    .addralign = addr_align,
+                    .entsize = @intCast(addr_align.toByteUnits()),
+                });
+                elf.shndx.plt = try elf.addSection(elf.ni.text, .{
+                    .name = ".plt",
+                    .type = .PROGBITS,
+                    .flags = .{ .ALLOC = true, .EXECINSTR = true },
+                    .size = plt.@"align".forward(init_plt_size),
+                    .addralign = plt.@"align",
+                    .node_align = node_block_align,
+                });
+            } else {
+                elf.shndx.plt = try elf.addSection(elf.phdrs.items[phndx.plt].unwrap().?, .{
+                    .name = ".plt",
+                    .type = .PROGBITS,
+                    .flags = .{ .ALLOC = true, .WRITE = true, .EXECINSTR = true },
+                    .size = plt.@"align".forward(init_plt_size),
+                    .addralign = plt.@"align",
+                    .node_align = node_block_align,
+                });
+            }
+            // And the award for most annoying PLT requirement goes to SPARC, which decided that the
+            // whole table should have a greater alignment than the size of the individual entries,
+            // hence this bullshit:
+            if (plt.@"align".forward(init_plt_size) != init_plt_size) {
+                switch (elf.shdrPtr(elf.shndx.plt)) {
+                    inline else => |shdr| elf.targetStore(&shdr.size, init_plt_size),
+                }
+            }
         }
         if (plt.plt_sec != null) elf.shndx.plt_sec = try elf.addSection(elf.ni.text, .{
             .name = ".plt.sec",
@@ -4358,6 +4434,12 @@ fn initHeaders(
                 assert(elf.targetLoad(&shdr.size) == elf.got.count() * @sizeOf(Addr));
             },
         }
+        if (elf.shndx.dynamic != .UNDEF) {
+            try elf.shndx.rela_dyn.relaEnsureAdditionalCapacity(elf, elf.got.count());
+        }
+        for (0..elf.got.count()) |got_index| {
+            elf.updateGotEntry(got_index);
+        }
 
         // Create any always-provided linker-defined symbols. The symbols marking the `INIT_ARRAY`/
         // `FINI_ARRAY`/`PREINIT_ARRAY` sections are instead created by `createInitFiniArraySection`
@@ -4539,6 +4621,22 @@ fn initHeaders(
             break :str try elf.string(.dynstr, slice);
         },
     };
+
+    if (@"type" != .REL) switch (elf.targetSegmentLoadAddressRestrictions()) {
+        .none => {},
+        .data_last => switch (elf.phdrSlice()) {
+            inline else => |phdr| {
+                // Ensure that the segment after `.data` (if any) is not a loadable segment.
+                const next_phndx = phndx.data + 1;
+                if (next_phndx < phdr.len) {
+                    switch (elf.targetLoad(&phdr[next_phndx].type)) {
+                        .NULL, .LOAD => unreachable, // data segment should be the last loadable segment
+                        else => {},
+                    }
+                }
+            },
+        },
+    };
 }
 
 pub fn startProgress(elf: *Elf, prog_node: std.Progress.Node) void {
@@ -4573,12 +4671,12 @@ fn getNodeShndx(elf: *const Elf, ni: MappedFile.Node.Index) Section.Index {
     return switch (elf.getNode(ni)) {
         .archive,
         .archive_header,
-        .archive_elf_footer,
+        .archive_input_member,
+        .archive_elf_member_header,
         .elf,
         .ehdr,
         .shdr,
         .segment,
-        .input_member,
         => unreachable,
         .section => |shndx| shndx,
         .input_section,
@@ -4594,12 +4692,12 @@ fn getNodeVAddr(elf: *Elf, ni: MappedFile.Node.Index) u64 {
     return switch (elf.getNode(ni)) {
         .archive,
         .archive_header,
-        .archive_elf_footer,
+        .archive_input_member,
+        .archive_elf_member_header,
         .elf,
         .ehdr,
         .shdr,
         .segment,
-        .input_member,
         .copied_global,
         => unreachable,
         .section => |shndx| shndx.vaddr(elf),
@@ -4613,14 +4711,18 @@ fn getNodeVAddr(elf: *Elf, ni: MappedFile.Node.Index) u64 {
 }
 fn computeNodeVAddr(elf: *Elf, ni: MappedFile.Node.Index) u64 {
     const parent_vaddr = switch (elf.getNode(ni.parent(&elf.mf).unwrap().?)) {
-        .archive, .archive_header, .archive_elf_footer => unreachable,
+        .archive,
+        .archive_header,
+        .archive_input_member,
+        .archive_elf_member_header,
+        => unreachable,
         .elf => return 0,
         .ehdr, .shdr => unreachable,
         .segment => |phndx| switch (elf.phdrSlice()) {
             inline else => |phdr| elf.targetLoad(&phdr[phndx].vaddr),
         },
         .section => |shndx| if (shndx == elf.shndx.tdata) 0 else shndx.vaddr(elf),
-        .input_member, .input_section, .copied_global => unreachable,
+        .input_section, .copied_global => unreachable,
         inline .nav, .uav, .lazy_code, .lazy_const_data => |i| Symbol.Id.local(i.symbol(elf)).value(elf),
     };
     const offset, _ = ni.location(&elf.mf).resolve(&elf.mf);
@@ -4639,12 +4741,12 @@ fn resetNodeRelocs(elf: *Elf, ni: MappedFile.Node.Index) void {
     const symbol_relocs: *SymbolReloc.Index, const got_relocs: ?*GotReloc.Index = switch (elf.getNode(ni)) {
         .archive,
         .archive_header,
-        .archive_elf_footer,
+        .archive_input_member,
+        .archive_elf_member_header,
         .elf,
         .ehdr,
         .shdr,
         .segment,
-        .input_member,
         .copied_global,
         => unreachable, // cannot contain relocs
         .section => unreachable, // cannot contain relocs (.plt and .dynamic unsupported)
@@ -4705,7 +4807,12 @@ fn flushMovedNodeRelocs(
                 // changed, so update the `offset` field of the `ElfN.Rela` entry.
                 reloc.relaSection(elf).relaSetOffset(elf, rela_index, node_vaddr + reloc.offset);
             }
-            reloc.apply(elf);
+            // This is not just the inverse of the above condition, because if `reloc` is relative
+            // to the base of this DSO, then `rela_index` is an `R_*_RELATIVE` relocation, but we
+            // still need to call `SymbolReloc.apply` to update that relocation's addend.
+            if (elf.ehdrType() != .REL) {
+                reloc.apply(elf);
+            }
         }
     }
 
@@ -4888,7 +4995,31 @@ fn targetDynsymHashInfo(elf: *const Elf) DynsymHashInfo {
         // TODO: Alpha and S390x will need to use either `."@4"` or `.@"8"` depending on `elf.identClass()`.
     };
 }
-pub fn targetLoad(elf: *const Elf, ptr: anytype) @typeInfo(@TypeOf(ptr)).pointer.child {
+/// Specifies any restrictions the current target has regarding how segments are ordered in the
+/// virtual address space. Most targets do not have any such restrictions.
+fn targetSegmentLoadAddressRestrictions(elf: *const Elf) enum {
+    none,
+    /// The "mutable data" segment must be the last loadable segment in the virtual address space.
+    data_last,
+} {
+    return switch (elf.ehdrMachine()) {
+        .AARCH64,
+        .PPC64,
+        .RISCV,
+        .X86_64,
+        .LOONGARCH,
+        => .none,
+
+        // SPARC uses `R_SPARC_PC{10,22}` relocations to construct pointers to the GOT, but these
+        // relocations write an *unsigned* PC-relative offset. This cannot even be worked around by
+        // using a larger code model, because the crt `_start` assembly always uses these specific
+        // relocations. Therefore, to avoid relocation errors, all code must appear before the GOT
+        // in the virtual address space. The easiest way for us to do that is to ensure that the
+        // "mutable data" segment, containing the GOT, is the last segment in the address space.
+        .SPARCV9 => .data_last,
+    };
+}
+fn targetLoad(elf: *const Elf, ptr: anytype) @typeInfo(@TypeOf(ptr)).pointer.child {
     const pointer_ty = @typeInfo(@TypeOf(ptr)).pointer;
     const Child = pointer_ty.child;
     const alignment = pointer_ty.attrs.@"align" orelse @alignOf(Child);
@@ -4969,16 +5100,6 @@ fn shdrPtr(elf: *Elf, shndx: Section.Index) ShdrPtr {
             return @unionInit(ShdrPtr, @tagName(class), shdr_ptr);
         },
     }
-}
-
-fn arHdrPtr(elf: *Elf, ni: MappedFile.Node.Index) *align(2) std.elf.ar_hdr {
-    assert(elf.ni.elf != .root);
-    const file_offset = ni.fileLocation(&elf.mf, false).offset;
-    return @ptrCast(@alignCast(elf.mf.memory_map.memory[@intCast(switch (elf.getNode(ni)) {
-        else => unreachable,
-        .archive_header => file_offset + std.elf.ARMAG.len,
-        .elf, .input_member => file_offset - @sizeOf(std.elf.ar_hdr),
-    })..][0..@sizeOf(std.elf.ar_hdr)]));
 }
 
 const SymPtr = union(std.elf.CLASS) {
@@ -5480,18 +5601,60 @@ fn loadObject(
         .member = if (member) |m| try gpa.dupe(u8, m) else null,
         .extra = undefined,
     };
-    if (elf.ni.elf != .root) {
-        const archive_ni: MappedFile.Node.Index = .root;
+    if (elf.archive) |*archive| {
+        // We're creating a static library, so just add this input as an archive member.
+        assert(member == null); // don't try to put static library members into other static libraries
+
+        const first_member_oni = archive.header_ni.next(&elf.mf);
+
+        if (first_member_oni.unwrap()) |first_member_ni| switch (elf.getNode(first_member_ni)) {
+            .archive_input_member, .archive_elf_member_header => {},
+            .elf => unreachable, // always preceded by `.archive_elf_member_header`
+            else => unreachable, // never a child of `.archive`
+        };
+
         try elf.nodes.ensureUnusedCapacity(gpa, 1);
-        input.extra = .{ .node = try archive_ni.addFloatingChild(&elf.mf, gpa, .{
-            .size = Alignment.@"2".forward(fl.size + @sizeOf(std.elf.ar_hdr)),
+        const new_member_ni = try archive.ni.addFooterChildBefore(&elf.mf, gpa, first_member_oni, .{
+            .size = Alignment.@"2".forward(@sizeOf(std.elf.ar_hdr) + fl.size),
             .alignment = .@"2",
-            .next_moved = true,
-            .bubbles_moved = false,
-            .enable_next_moved = true,
-        }) };
-        elf.nodes.appendAssumeCapacity(.{ .input_member = input_index });
+        });
+        elf.nodes.appendAssumeCapacity(.{ .archive_input_member = input_index });
+        input.extra = .{ .node = new_member_ni };
         elf.input_prog_node.increaseEstimatedTotalItems(1);
+
+        // The contents of the input will be written to the file by an idle task (`flushInput`), but
+        // we do need to write the input's archive member header (`ar_hdr`) now, for two reasons:
+        //
+        // * If the input file has a long name, we need to add it to the archive member name string
+        //   table, which must happen deterministically (i.e. not in an idle task).
+        //
+        // * `flushInput` needs to know the actual file size (before padding to the alignment).
+        const member_ar_hdr: *std.elf.ar_hdr = @ptrCast(
+            new_member_ni.slice(&elf.mf)[0..@sizeOf(std.elf.ar_hdr)],
+        );
+        member_ar_hdr.* = .{
+            .ar_name = undefined, // populated below
+            .ar_date = "0           ".*,
+            .ar_uid = "0     ".*,
+            .ar_gid = "0     ".*,
+            .ar_mode = "644     ".*,
+            .ar_size = undefined, // populated below
+            .ar_fmag = std.elf.ARFMAG.*,
+        };
+
+        if (std.mem.print(&member_ar_hdr.ar_size, "{d}", .{fl.size})) |size_str| {
+            @memset(member_ar_hdr.ar_size[size_str.len..], ' ');
+        } else |err| switch (err) {
+            error.NoSpaceLeft => return diags.failParse(
+                path,
+                "file size of {Bi} exceeds maximum size of archive member",
+                .{fl.size},
+            ),
+        }
+
+        const member_name = std.fs.path.basename(path.sub_path);
+        // After this call returns, `member_ar_hdr` is invalidated.
+        try elf.populateArchiveMemberName(member_ar_hdr, member_name);
 
         // Since we are not emitting the archive symbol table (yet?) we do not need to parse
         // the symbols in this input.
@@ -5904,6 +6067,46 @@ fn loadObject(
             };
         },
     }
+}
+/// This function may resize the archive header, so therefore invalidates `member_ar_hdr`.
+fn populateArchiveMemberName(elf: *Elf, member_ar_hdr: *std.elf.ar_hdr, member_name: []const u8) Error!void {
+    if (std.mem.print(&member_ar_hdr.ar_name, "{s}/", .{member_name})) |name_str| {
+        @memset(member_ar_hdr.ar_name[name_str.len..], ' ');
+        return;
+    } else |err| switch (err) {
+        error.NoSpaceLeft => {}, // handled below
+    }
+
+    const gpa = elf.base.comp.gpa;
+    const archive_header_ni = elf.archive.?.header_ni;
+
+    // The member's name is too big to put directly in the `ar_name` field, so it needs to go in the
+    // "long name" string table instead (in the special member named "//").
+
+    _, const old_archive_header_size = archive_header_ni.location(&elf.mf).resolve(&elf.mf);
+
+    // We're going to add a new string at the end of the table. Update `member_ar_hdr` first,
+    // because resizing the string table will invalidate it.
+    const string_table_offset = old_archive_header_size - (std.elf.ARMAG.len + @sizeOf(std.elf.ar_hdr));
+    if (std.mem.print(&member_ar_hdr.ar_name, "/{d}", .{string_table_offset})) |name_str| {
+        @memset(member_ar_hdr.ar_name[name_str.len..], ' ');
+    } else |inner_err| switch (inner_err) {
+        error.NoSpaceLeft => {
+            // The string table offset is itself too big to represent. This means the string table's
+            // *size* is definitely too big to represent (we only get 10 bytes for that whereas we
+            // get 16 here!), so as long as we still add the string, we're guaranteed to get a link
+            // error for that reason. Therefore, we can just ignore this error and carry on.
+        },
+    }
+
+    // We set the size of the archive header node exactly, because we want padding bytes to go into
+    // the root `.archive` node. That way, those bytes could still be used to grow the string table
+    // if necessary, but they could also be used for new archive members.
+    try archive_header_ni.resizeLeaf(&elf.mf, gpa, old_archive_header_size + member_name.len + 2);
+
+    const dest_slice = archive_header_ni.slice(&elf.mf)[@intCast(old_archive_header_size)..];
+    @memcpy(dest_slice[0 .. dest_slice.len - 2], member_name);
+    @memcpy(dest_slice[dest_slice.len - 2 ..], "/\n"); // yes, the terminator is weird
 }
 fn loadDso(elf: *Elf, path: std.Build.Cache.Path, fr: *Io.File.Reader) (LoadParseInputError || error{BadMagic})!void {
     const comp = elf.base.comp;
@@ -7072,12 +7275,12 @@ fn addGotRelocAssumeCapacity(
     switch (elf.getNode(node)) {
         .archive,
         .archive_header,
-        .archive_elf_footer,
+        .archive_input_member,
+        .archive_elf_member_header,
         .elf,
         .ehdr,
         .shdr,
         .segment,
-        .input_member,
         .copied_global,
         => unreachable, // cannot contain relocs,
         .section,
@@ -7129,6 +7332,7 @@ fn addGotRelocAssumeCapacity(
     });
 }
 fn updateGotEntry(elf: *Elf, got_index: usize) void {
+    assert(elf.ehdrType() != .REL);
     const entry_value: union(enum) {
         unsigned: u64,
         signed: i64,
@@ -7514,6 +7718,17 @@ fn flushInner(
         diags.addError("failed to apply {d} relocations: misaligned value", .{elf.misaligned_reloc_count});
     }
 
+    if (elf.archive) |*archive| {
+        if (archive.elf_member_too_big) diags.addError(
+            "file size of {Bi} exceeds maximum size of archive member",
+            .{elf.ni.elf.location(&elf.mf).resolve(&elf.mf)[1]},
+        );
+        if (archive.strtab_member_too_big) diags.addError(
+            "archive file name string table exceeds maximum size",
+            .{},
+        );
+    }
+
     elf.flushDynamic();
 
     const entry_addr: u64 = entry: {
@@ -7544,6 +7759,9 @@ fn flushInner(
 pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
     const comp = elf.base.comp;
     const diags = &comp.link_diags;
+
+    elf.mf.nodes_lock.lock();
+    defer elf.mf.nodes_lock.unlock();
 
     assert(elf.pending_uavs.items.len == 0);
     for (&elf.lazy.values) |*lazy| {
@@ -7698,7 +7916,7 @@ fn idleProgNode(
     return prog_node.start(name: switch (node) {
         else => |tag| @tagName(tag),
         .section => |shndx| shndx.name(elf).slice(elf),
-        .input_member => |ii| std.fmt.bufPrint(&name, "{f}{f}", .{
+        .archive_input_member => |ii| std.fmt.bufPrint(&name, "{f}{f}", .{
             ii.path(elf).fmtEscapeString(),
             fmtMemberString(ii.member(elf)),
         }) catch &name,
@@ -7825,7 +8043,6 @@ fn genLazy(elf: *Elf, pt: Zcu.PerThread, lmr: Node.LazyMapRef) Error!void {
 fn flushInput(elf: *Elf, ii: Node.InputIndex) Error!void {
     const comp = elf.base.comp;
     const io = comp.io;
-    const gpa = comp.gpa;
     const diags = &comp.link_diags;
     const path = ii.path(elf);
     const file = path.root_dir.handle.openFile(io, path.sub_path, .{}) catch |err| switch (err) {
@@ -7833,23 +8050,40 @@ fn flushInput(elf: *Elf, ii: Node.InputIndex) Error!void {
         else => |e| return diags.fail("failed to open input file \"{f}\": {t}", .{ path.fmtEscapeString(), e }),
     };
     defer file.close(io);
+
+    const slice = ii.node(elf).slice(&elf.mf);
+
+    const member_ar_hdr: *const std.elf.ar_hdr = @ptrCast(slice[0..@sizeOf(std.elf.ar_hdr)]);
+    const input_size: u32 = member_ar_hdr.size() catch |err| switch (err) {
+        // We wrote the `ar_hdr` ourselves (in `loadObject`), so it is definitely valid.
+        error.Overflow, error.InvalidCharacter => unreachable,
+    };
+
+    switch (slice.len - @sizeOf(std.elf.ar_hdr) - input_size) {
+        0 => {},
+        1 => {
+            // Alignment added one padding byte, which the format requires to have value '\n'.
+            slice[slice.len - 1] = '\n';
+        },
+        else => unreachable, // node size should agree with the value we wrote into `ar_hdr.ar_size`
+    }
+
     var fr = file.reader(io, &.{});
-    var nw: MappedFile.Node.Writer = undefined;
-    ii.node(elf).writer(&elf.mf, gpa, &nw);
-    defer nw.deinit();
-    const size = nw.interface.buffer.len - @sizeOf(std.elf.ar_hdr);
-    const n_bytes = nw.interface.sendFileAll(&fr, .limited(size)) catch |err| switch (err) {
+    var w: Io.Writer = .fixed(slice[@sizeOf(std.elf.ar_hdr)..]);
+    const n_bytes_read = w.sendFileAll(&fr, .limited(input_size)) catch |err| switch (err) {
         error.ReadFailed => return diags.fail("failed to read input \"{f}{f}\": {t}", .{
             path.fmtEscapeString(),
             fmtMemberString(ii.member(elf)),
             fr.err orelse (fr.seek_err orelse fr.size_err.?),
         }),
-        error.WriteFailed => return nw.err.?,
+        error.WriteFailed => unreachable, // `.limited(input_size)` prevents us writing too many bytes
     };
-    if (n_bytes + 1 < size) return diags.fail("failed to read input \"{f}{f}\": unexpected eof", .{
-        path.fmtEscapeString(),
-        fmtMemberString(ii.member(elf)),
-    });
+    if (n_bytes_read != input_size) {
+        return diags.fail("failed to load input \"{f}{f}\": file truncated during compilation", .{
+            path.fmtEscapeString(),
+            fmtMemberString(ii.member(elf)),
+        });
+    }
 }
 
 fn flushInputSection(elf: *Elf, isi: InputSection.Index) Error!void {
@@ -7931,12 +8165,18 @@ fn flushMoved(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!void
     const trace = tracy.trace(@src());
     defer trace.end();
 
-    elf.mf.nodes_lock.lock();
-    defer elf.mf.nodes_lock.unlock();
-
     switch (elf.getNode(ni)) {
-        .archive, .archive_header => unreachable,
-        .archive_elf_footer, .elf => {},
+        .archive => unreachable,
+        .archive_header => unreachable,
+
+        .archive_input_member,
+        .archive_elf_member_header,
+        .elf,
+        => {
+            assert(elf.archive != null);
+            return;
+        },
+
         .ehdr, .shdr => elf.flushElfOffset(ni),
         .segment => |phndx| {
             elf.flushElfOffset(ni);
@@ -8014,7 +8254,6 @@ fn flushMoved(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!void
                 elf.flushMovedPltSection(.plt_sec, old_addr, addr);
             }
         },
-        .input_member => {},
         .input_section => |isi| {
             const old_section_addr = isi.ptr(elf).vaddr;
             const new_section_addr = elf.computeNodeVAddr(ni);
@@ -8114,6 +8353,18 @@ fn allocateSegmentLoadAddress(elf: *Elf, orig_phndx: u32) std.mem.Allocator.Erro
     const page_align = elf.targetPageAlign();
     const node_align = segment_ni.alignment(&elf.mf);
     const ph_align = page_align.max(node_align);
+
+    // If we determine that the segment's virtual address needs to move, then it's a good idea to
+    // make it less likely that it needs to move *again* in the future, because it is expensive to
+    // change a segment's load address (a lot of re-flushing is necessary). To do that, we reserve
+    // more virtual address space than we need (multiplying the actual size by this value). That
+    // way, there will usually be padding between segments which they can grow into.
+    //
+    // TODO: we might want to decrease this multiplier, or even omit it entirely, in cases where
+    // virtual address space is constrained. For instance, 32-bit targets, or targets where short
+    // PC-relative relocations between segments are common.
+    const reserve_size_multiplier = 4;
+
     switch (elf.phdrSlice()) {
         inline else => |phdr| {
             const offset = elf.targetLoad(&phdr[orig_phndx].offset);
@@ -8172,15 +8423,46 @@ fn allocateSegmentLoadAddress(elf: *Elf, orig_phndx: u32) std.mem.Allocator.Erro
                 // backwards to the start of the page.
                 const next_page_vaddr = std.mem.alignBackward(u64, next_vaddr, page_align.toByteUnits());
 
-                // If we're at the same vaddr we started at, then all we're worried about is the
-                // segment fitting here. However, if we've already changed our virtual address, then
-                // we might as well try to reserve a bit *more* virtual address space while we're at
-                // it, because changing virtual address is quite disruptive (we need to re-flush a
-                // lot of stuff!) and giving ourselves more space will make it less likely to happen
-                // again.
-                const target_size = if (vaddr == orig_vaddr) size else size * 4;
-                if (vaddr + target_size <= next_page_vaddr) {
-                    break; // hooray, we fit here!
+                // Check if the segment fits here. We apply `reserve_size_multiplier`, but only if
+                // the segment is already known to be moving---making it easier to grow in-place is
+                // the whole point of the multiplier!
+                {
+                    const target_size = if (vaddr == orig_vaddr) size else size * reserve_size_multiplier;
+                    if (vaddr + target_size <= next_page_vaddr) {
+                        break; // hooray, we fit here!
+                    }
+                }
+
+                const next_ni = elf.phdrs.items[next_phndx].unwrap().?;
+
+                // This segment don't fit here, but before deciding how to proceed, we need to
+                // consider any target-specific restrictions we are subject to.
+                switch (elf.targetSegmentLoadAddressRestrictions()) {
+                    .none => {},
+                    .data_last => if (next_ni == elf.ni.data) {
+                        // We can't leapfrog over the data segment. Instead, that segment just needs
+                        // to be shifted forwards to make space for us, and we'll then `break` with
+                        // our current vaddr.
+
+                        if (next_phndx + 1 < phdr.len) switch (elf.targetLoad(&phdr[next_phndx + 1].type)) {
+                            .NULL, .LOAD => unreachable, // data segment should be the last loadable segment
+                            else => {},
+                        };
+
+                        const free_vaddr = vaddr + size * reserve_size_multiplier;
+
+                        const next_align = page_align.max(next_ni.alignment(&elf.mf));
+                        const next_offset = elf.targetLoad(&next_ph.offset);
+                        const next_new_vaddr = next_align.forward(free_vaddr) + next_offset % next_align.toByteUnits();
+
+                        // This logic for updating the data segment's vaddr is identical to how we
+                        // will update the vaddr of `phndx` when we break from the loop.
+                        elf.targetStore(&next_ph.vaddr, @intCast(next_new_vaddr));
+                        elf.targetStore(&next_ph.paddr, @intCast(next_new_vaddr));
+                        try next_ni.childrenMoved(elf.base.comp.gpa, &elf.mf);
+
+                        break;
+                    },
                 }
 
                 // We don't fit here, so shift ourselves forward (i.e. swap with `next_phndx`). But
@@ -8192,8 +8474,7 @@ fn allocateSegmentLoadAddress(elf: *Elf, orig_phndx: u32) std.mem.Allocator.Erro
 
                 // Now just swap the phdrs and update our `phndx`.
                 std.mem.swap(@TypeOf(next_ph.*), &phdr[phndx], next_ph);
-                const next_ni = elf.phdrs.items[next_phndx];
-                elf.phdrs.items[phndx] = next_ni;
+                elf.phdrs.items[phndx] = .wrap(next_ni);
                 elf.nodes.items(.data)[@backingInt(next_ni)] = .{ .segment = phndx };
                 elf.phdrs.items[next_phndx] = .wrap(segment_ni);
                 elf.nodes.items(.data)[@backingInt(segment_ni)] = .{ .segment = @intCast(next_phndx) };
@@ -8213,24 +8494,23 @@ fn flushResized(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!vo
     const trace = tracy.trace(@src());
     defer trace.end();
 
-    elf.mf.nodes_lock.lock();
-    defer elf.mf.nodes_lock.unlock();
-
     _, const size = ni.location(&elf.mf).resolve(&elf.mf);
     switch (elf.getNode(ni)) {
-        .archive => {
-            if (ni.last(&elf.mf).unwrap()) |last_ni| {
-                if (last_ni.prev(&elf.mf).unwrap()) |prev_ni| {
-                    if (prev_ni.hasNextMoved(&elf.mf)) return;
-                }
-                const offset, _ = last_ni.location(&elf.mf).resolve(&elf.mf);
-                _ = std.mem.print(&elf.arHdrPtr(last_ni).ar_size, "{d:<10}", .{
-                    size - offset,
-                }) catch @panic("archive member too large");
+        .archive, .archive_header => {},
+        .archive_input_member => unreachable,
+        .archive_elf_member_header => unreachable,
+        .elf => if (elf.archive) |*archive| {
+            const member_ar_hdr: *std.elf.ar_hdr = @ptrCast(
+                archive.elf_member_header_ni.slice(&elf.mf),
+            );
+            if (std.mem.print(&member_ar_hdr.ar_size, "{d}", .{size})) |size_str| {
+                @memset(member_ar_hdr.ar_size[size_str.len..], ' ');
+                archive.elf_member_too_big = false;
+            } else |err| switch (err) {
+                error.NoSpaceLeft => archive.elf_member_too_big = true,
             }
         },
-        .archive_header, .elf => {},
-        .ehdr, .archive_elf_footer => unreachable,
+        .ehdr => unreachable,
         .shdr => {},
         .segment => |phndx| switch (elf.phdrSlice()) {
             inline else => |phdr| {
@@ -8302,7 +8582,7 @@ fn flushResized(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!vo
                 }
             },
         },
-        .input_member, .input_section, .copied_global, .nav, .uav, .lazy_code, .lazy_const_data => {},
+        .input_section, .copied_global, .nav, .uav, .lazy_code, .lazy_const_data => {},
     }
 }
 
@@ -8310,12 +8590,11 @@ fn flushNextMoved(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!
     const trace = tracy.trace(@src());
     defer trace.end();
 
-    elf.mf.nodes_lock.lock();
-    defer elf.mf.nodes_lock.unlock();
-
     switch (elf.getNode(ni)) {
         .archive,
-        .archive_elf_footer,
+        .archive_input_member,
+        .archive_elf_member_header,
+        .elf,
         .ehdr,
         .shdr,
         .segment,
@@ -8327,54 +8606,32 @@ fn flushNextMoved(elf: *Elf, ni: MappedFile.Node.Index) std.mem.Allocator.Error!
         .lazy_code,
         .lazy_const_data,
         => unreachable,
-        .archive_header, .elf, .input_member => |_, tag| {
-            const member_offset, const update_size = member_offset: {
-                const offset, _ = ni.location(&elf.mf).resolve(&elf.mf);
-                break :member_offset switch (tag) {
-                    else => unreachable,
-                    .archive_header => .{ offset + std.elf.ARMAG.len + @sizeOf(std.elf.ar_hdr), true },
-                    .elf, .input_member => .{ offset, !ni.prev(&elf.mf).unwrap().?.hasNextMoved(&elf.mf) },
-                };
+
+        .archive_header => {
+            const archive = &elf.archive.?;
+
+            // Because we can't just throw padding bytes in the middle of an archive file, we need
+            // the member name string table (the "//" member) to absorb all the padding bytes
+            // between it (in the `.archive_header` node) and the first actual member.
+            const next_member_ni = ni.next(&elf.mf).unwrap() orelse {
+                // I guess there are no link inputs yet? But there will be eventually!
+                return;
             };
-            const member_size = if (ni.next(&elf.mf).unwrap()) |next_ni| member_size: {
-                const next_offset, _ = next_ni.location(&elf.mf).resolve(&elf.mf);
-                const next_member_size = if (next_ni.next(&elf.mf).unwrap()) |next_next_ni| next_member_size: {
-                    const next_next_offset, _ = next_next_ni.location(&elf.mf).resolve(&elf.mf);
-                    const next_member_end = next_next_offset - @sizeOf(std.elf.ar_hdr);
-                    break :next_member_size next_member_end - next_offset;
-                } else next_member_size: {
-                    _, const parent_size = ni.parent(&elf.mf).unwrap().?.location(&elf.mf).resolve(&elf.mf);
-                    const next_member_end = parent_size;
-                    break :next_member_size next_member_end - next_offset;
-                };
-                const ar_hdr = elf.arHdrPtr(next_ni);
-                var name_buf: [16]u8 = undefined;
-                _ = std.mem.print(&ar_hdr.ar_name, "{s:<16}", .{
-                    switch (elf.getNode(next_ni)) {
-                        else => unreachable,
-                        .elf => std.mem.print(&name_buf, "{s}_zcu.o/", .{elf.base.comp.root_name}),
-                        .input_member => |ii| std.mem.print(&name_buf, "{s}/", .{
-                            std.fs.path.basename(ii.path(elf).sub_path),
-                        }),
-                    } catch @panic("TODO: long archive member names"),
-                }) catch @panic("TODO: long archive member names");
-                ar_hdr.ar_date = "0           ".*;
-                ar_hdr.ar_uid = "0     ".*;
-                ar_hdr.ar_gid = "0     ".*;
-                ar_hdr.ar_mode = "644     ".*;
-                _ = std.mem.print(&ar_hdr.ar_size, "{d:<10}", .{next_member_size}) catch
-                    @panic("archive member too large");
-                ar_hdr.ar_fmag = std.elf.ARFMAG.*;
-                const member_end = next_offset - @sizeOf(std.elf.ar_hdr);
-                break :member_size member_end - member_offset;
-            } else member_size: {
-                _, const parent_size = ni.parent(&elf.mf).unwrap().?.location(&elf.mf).resolve(&elf.mf);
-                const member_end = parent_size;
-                break :member_size member_end - member_offset;
-            };
-            if (update_size) _ = std.mem.print(&elf.arHdrPtr(ni).ar_size, "{d:<10}", .{
-                member_size,
-            }) catch @panic("archive member too large");
+            const next_member_offset: u64, _ = next_member_ni.location(&elf.mf).resolve(&elf.mf);
+            const strtab_member_offset = std.elf.ARMAG.len + @sizeOf(std.elf.ar_hdr);
+            assert(Alignment.@"2".check(next_member_offset));
+            assert(Alignment.@"2".check(strtab_member_offset));
+            const strtab_size = next_member_offset - strtab_member_offset;
+
+            const member_ar_hdr: *std.elf.ar_hdr = @ptrCast(
+                archive.header_ni.slice(&elf.mf)[std.elf.ARMAG.len..][0..@sizeOf(std.elf.ar_hdr)],
+            );
+            if (std.mem.print(&member_ar_hdr.ar_size, "{d}", .{strtab_size})) |size_str| {
+                @memset(member_ar_hdr.ar_size[size_str.len..], ' ');
+                archive.strtab_member_too_big = false;
+            } else |err| switch (err) {
+                error.NoSpaceLeft => archive.strtab_member_too_big = true,
+            }
         },
     }
 }
