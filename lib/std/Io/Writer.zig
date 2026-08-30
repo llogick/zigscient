@@ -269,36 +269,43 @@ fn writeSplatHeaderLimitFinish(
     limit: usize,
 ) Error!usize {
     var remaining = limit;
+    var total: usize = 0;
     var vecs: [8][]const u8 = undefined;
     var i: usize = 0;
-    v: {
-        if (header.len != 0) {
-            const copy_len = @min(header.len, remaining);
-            vecs[i] = header[0..copy_len];
-            i += 1;
-            remaining -= copy_len;
-            if (remaining == 0) break :v;
-        }
-        for (data[0 .. data.len - 1]) |buf| {
-            if (buf.len == 0) continue;
-            const copy_len = @min(buf.len, remaining);
-            vecs[i] = buf[0..copy_len];
-            i += 1;
-            remaining -= copy_len;
-            if (remaining == 0) break :v;
-            if (vecs.len - i == 0) break :v;
-        }
-        const pattern = data[data.len - 1];
-        if (splat == 1 or remaining < pattern.len) {
-            vecs[i] = pattern[0..@min(remaining, pattern.len)];
-            i += 1;
-            break :v;
-        }
-        vecs[i] = pattern;
+    if (header.len != 0) {
+        const copy_len = @min(header.len, remaining);
+        vecs[i] = header[0..copy_len];
         i += 1;
-        return w.vtable.drain(w, (&vecs)[0..i], @min(remaining / pattern.len, splat));
+        remaining -= copy_len;
+        if (remaining == 0) {
+            return w.vtable.drain(w, (&vecs)[0..i], 1);
+        }
     }
-    return w.vtable.drain(w, (&vecs)[0..i], 1);
+    for (data[0 .. data.len - 1]) |buf| {
+        if (buf.len == 0) continue;
+        const copy_len = @min(buf.len, remaining);
+        vecs[i] = buf[0..copy_len];
+        i += 1;
+        remaining -= copy_len;
+        if (remaining == 0) {
+            return w.vtable.drain(w, (&vecs)[0..i], 1);
+        }
+        if (i == vecs.len) {
+            total += try w.vtable.drain(w, &vecs, 1);
+            i = 0;
+        }
+    }
+    const pattern = data[data.len - 1];
+    if (splat == 1 or remaining < pattern.len) {
+        vecs[i] = pattern[0..@min(remaining, pattern.len)];
+        i += 1;
+        total += try w.vtable.drain(w, (&vecs)[0..i], 1);
+        return total;
+    }
+    vecs[i] = pattern;
+    i += 1;
+    total += try w.vtable.drain(w, (&vecs)[0..i], @min(remaining / pattern.len, splat));
+    return total;
 }
 
 const SplatHeaderTestCase = struct {
@@ -357,6 +364,8 @@ test "fixed writer writeSplatHeaderLimit" {
 
     // allocating writer that needs to expand capacity during splat
     try testWriteSplatHeaderLimit(.{ .writer_type = .allocating, .buf_len = 8, .header = "hhhh", .data = &.{"PP"}, .splat = 3, .limit = 100, .expected_res = .{ .written = 10 }, .expected_buf_content = "hhhhPPPPPP" });
+    try testWriteSplatHeaderLimit(.{ .writer_type = .allocating, .buf_len = 2, .header = "", .data = &.{ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "X", "Y", "ZZ" }, .splat = 2, .limit = 100, .expected_res = .{ .written = 16 }, .expected_buf_content = "0123456789XYZZZZ" });
+    try testWriteSplatHeaderLimit(.{ .writer_type = .allocating, .buf_len = 2, .header = "", .data = &.{ "0", "1", "2", "", "", "3", "4" }, .splat = 2, .limit = 4, .expected_res = .{ .written = 4 }, .expected_buf_content = "0123" });
 }
 
 test "writeSplatHeader splatting avoids buffer aliasing temptation" {
@@ -367,9 +376,9 @@ test "writeSplatHeader splatting avoids buffer aliasing temptation" {
     const n = try aw.writer.writeSplatHeader("header which is longer than buf ", &.{
         "1", "2", "3", "4", "5", "6", "foo", "bar", "foo",
     }, 3);
-    try testing.expectEqual(41, n);
+    try testing.expectEqual(53, n);
     try testing.expectEqualStrings(
-        "header which is longer than buf 123456foo",
+        "header which is longer than buf 123456foobarfoofoofoo",
         aw.writer.buffered(),
     );
 }
