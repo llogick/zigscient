@@ -241,6 +241,7 @@ pub fn main(init: std.process.Init) !void {
     multi_reader.init(gpa, io, multi_reader_buffer.toStreams(), &.{ child.stdout.?, child.stderr.? });
     defer multi_reader.deinit();
 
+    var update_mtime = Io.Clock.real.now(io);
     for (case.updates) |update| {
         var update_prog_node = updates_prog_node.start(update.name, 0);
         defer update_prog_node.end();
@@ -253,7 +254,8 @@ pub fn main(init: std.process.Init) !void {
         log_cur_update = &update;
         defer log_cur_update = null;
 
-        eval.write(update);
+        eval.write(update, update_mtime);
+        update_mtime = update_mtime.addDuration(.fromSeconds(5));
         try eval.requestUpdate();
         try eval.check(&multi_reader, update, update_prog_node);
     }
@@ -286,14 +288,18 @@ const Eval = struct {
     enable_darling: bool,
 
     /// Currently this function assumes the previous updates have already been written.
-    fn write(eval: *Eval, update: Case.Update) void {
+    fn write(eval: *Eval, update: Case.Update, mtime: Io.Timestamp) void {
         const io = eval.io;
         for (update.changes) |full_contents| {
-            eval.tmp_dir.writeFile(io, .{
-                .sub_path = full_contents.name,
-                .data = full_contents.bytes,
-            }) catch |err| {
-                eval.fatal("failed to update '{s}': {t}", .{ full_contents.name, err });
+            var update_file = eval.tmp_dir.createFile(io, full_contents.name, .{}) catch |err| {
+                eval.fatal("failed to create update '{s}': {t}", .{ full_contents.name, err });
+            };
+            defer update_file.close(io);
+            update_file.writeStreamingAll(io, full_contents.bytes) catch |err| {
+                eval.fatal("failed to write update '{s}': {t}", .{ full_contents.name, err });
+            };
+            update_file.setTimestamps(io, .{ .modify_timestamp = .{ .new = mtime } }) catch |err| {
+                eval.fatal("failed to set mtime for '{s}': {t}", .{ full_contents.name, err });
             };
         }
         for (update.deletes) |doomed_name| {

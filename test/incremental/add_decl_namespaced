@@ -1,5 +1,3 @@
-#skip_target=wasm32-wasi-selfhosted
-#skip_target=x86_64-linux-selfhosted
 #update=initial version
 #file=main.zig
 const std = @import("std");
