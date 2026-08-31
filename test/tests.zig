@@ -2250,23 +2250,57 @@ const link_targets = blk: {
     };
 };
 
-/// Unlike `test_targets` and `c_abi_targets`, these targets are just simple strings which we pass
-/// directly to `incr-check`. They include the target triple and the compiler backend.
+const IncrementalTarget = struct {
+    target: std.Target.Query,
+    backend: enum { selfhosted, llvm, cbe },
+};
+
+/// These are passed to `incr-check` as `<target>-<backend>` strings.
 ///
 /// If only one specific test is failing on a target, instead of entirely disabling the target here,
 /// you can skip the target for that specific test only by adding a line like this to the manifest:
 ///   #skip_target=x86_64-linux-selfhosted
-const incremental_targets: []const []const u8 = &.{
+const incremental_targets = &[_]IncrementalTarget{
     // Avoid adding more CBE or LLVM targets without good reason: they're a lot slower than others
     // to run due to the output (C source code or LLVM IR) being built non-incrementally (by Clang
     // or LLVM). We just have a couple here to make sure that it works.
-    "x86_64-linux-cbe",
-    "x86_64-linux-llvm",
+    .{
+        .target = .{
+            .cpu_arch = .x86_64,
+            .os_tag = .linux,
+        },
+        .backend = .cbe,
+    },
+    .{
+        .target = .{
+            .cpu_arch = .x86_64,
+            .os_tag = .linux,
+        },
+        .backend = .llvm,
+    },
 
-    "x86_64-linux-selfhosted",
+    .{
+        .target = .{
+            .cpu_arch = .x86_64,
+            .os_tag = .linux,
+        },
+        .backend = .selfhosted,
+    },
     // https://codeberg.org/ziglang/zig/issues/31773
-    //"x86_64-windows-selfhosted",
-    "wasm32-wasi-selfhosted",
+    // .{
+    //     .target = .{
+    //         .cpu_arch = .x86_64,
+    //         .os_tag = .windows,
+    //     },
+    //     .backend = .selfhosted,
+    // },
+    .{
+        .target = .{
+            .cpu_arch = .wasm32,
+            .os_tag = .wasi,
+        },
+        .backend = .selfhosted,
+    },
 };
 
 fn compatible32bitArch(host: *const std.Target) ?std.Target.Cpu.Arch {
@@ -3164,8 +3198,14 @@ const LinkTestOptions = struct {
     test_filters: []const []const u8,
     optimize_modes: []const OptimizeMode,
     skip_non_native: bool,
+    skip_freebsd: bool,
+    skip_netbsd: bool,
+    skip_openbsd: bool,
     skip_windows: bool,
+    skip_darwin: bool,
+    skip_linux: bool,
     skip_llvm: bool,
+    skip_libc: bool,
     max_rss: usize,
 };
 
@@ -3178,12 +3218,21 @@ pub fn addLinkTests(b: *std.Build, options: LinkTestOptions) *Step {
     ) orelse false;
 
     for (link_targets) |link_target| {
-        if (options.skip_non_native and !link_target.target.isNative()) continue;
-        if (options.skip_windows and link_target.target.os_tag == .windows) continue;
-
         const resolved_target = b.resolveTargetQuery(link_target.target);
-        const triple_txt = resolved_target.query.zigTriple(b.allocator) catch @panic("OOM");
+
+        if (options.skip_non_native and !isNative(&resolved_target, &b.graph.host.result))
+            continue;
+
         const target = &resolved_target.result;
+
+        if (options.skip_freebsd and target.os.tag == .freebsd) continue;
+        if (options.skip_netbsd and target.os.tag == .netbsd) continue;
+        if (options.skip_openbsd and target.os.tag == .openbsd) continue;
+        if (options.skip_windows and target.os.tag == .windows) continue;
+        if (options.skip_darwin and target.os.tag.isDarwin()) continue;
+        if (options.skip_linux and target.os.tag == .linux) continue;
+
+        const triple_txt = resolved_target.query.zigTriple(b.allocator) catch @panic("OOM");
 
         if (options.test_target_filters.len > 0) {
             for (options.test_target_filters) |filter| {
@@ -3191,9 +3240,15 @@ pub fn addLinkTests(b: *std.Build, options: LinkTestOptions) *Step {
             } else continue;
         }
 
+        if (options.skip_libc and (link_target.link_libc == true or std.os.targetRequiresLibC(target)))
+            continue;
+
+        // We can't provide MSVC libc when cross-compiling.
+        if (target.abi == .msvc and link_target.link_libc == true and builtin.os.tag != .windows)
+            continue;
+
         for (options.optimize_modes) |optimize_mode| {
             if (link_target.optimize_mode != optimize_mode) continue;
-            if (link_target.link_libc and target.abi == .msvc and b.graph.host.result.os.tag != .windows) continue;
             const would_use_llvm = wouldUseLlvm(link_target.use_llvm, link_target.target, optimize_mode);
             if (options.skip_llvm and would_use_llvm) continue;
 
@@ -3290,11 +3345,24 @@ pub fn addDebuggerTests(b: *std.Build, options: DebuggerContext.Options) ?*Step 
     return step;
 }
 
+const IncrementalTestOptions = struct {
+    test_filters: []const []const u8,
+    test_target_filters: []const []const u8,
+    skip_non_native: bool,
+    skip_wasm: bool,
+    skip_freebsd: bool,
+    skip_netbsd: bool,
+    skip_openbsd: bool,
+    skip_windows: bool,
+    skip_darwin: bool,
+    skip_linux: bool,
+    skip_llvm: bool,
+};
+
 pub fn addIncrementalTests(
     b: *std.Build,
     test_step: *Step,
-    test_filters: []const []const u8,
-    test_target_filters: []const []const u8,
+    options: IncrementalTestOptions,
 ) !void {
     const io = b.graph.io;
 
@@ -3316,9 +3384,9 @@ pub fn addIncrementalTests(
     while (try it.next(io)) |entry| {
         if (std.mem.endsWith(u8, entry.basename, ".swp")) continue;
 
-        for (test_filters) |test_filter| {
+        for (options.test_filters) |test_filter| {
             if (std.mem.find(u8, entry.path, test_filter)) |_| break;
-        } else if (test_filters.len > 0) continue;
+        } else if (options.test_filters.len > 0) continue;
 
         switch (entry.kind) {
             .file => {},
@@ -3329,12 +3397,34 @@ pub fn addIncrementalTests(
         }
         b.dependOnFileContents(b.path(b.pathJoin(&.{ "test", "incremental", entry.path })));
 
-        for (incremental_targets) |target_str| {
-            if (test_target_filters.len > 0) {
-                for (test_target_filters) |filter| {
-                    if (std.mem.find(u8, target_str, filter) != null) break;
+        for (incremental_targets) |test_target| {
+            const resolved_target = b.resolveTargetQuery(test_target.target);
+
+            if (options.skip_non_native and !isNative(&resolved_target, &b.graph.host.result))
+                continue;
+
+            const target = &resolved_target.result;
+
+            if (options.skip_wasm and target.cpu.arch.isWasm()) continue;
+
+            if (options.skip_freebsd and target.os.tag == .freebsd) continue;
+            if (options.skip_netbsd and target.os.tag == .netbsd) continue;
+            if (options.skip_openbsd and target.os.tag == .openbsd) continue;
+            if (options.skip_windows and target.os.tag == .windows) continue;
+            if (options.skip_darwin and target.os.tag.isDarwin()) continue;
+            if (options.skip_linux and target.os.tag == .linux) continue;
+
+            if (options.skip_llvm and test_target.backend == .llvm) continue;
+
+            const triple_txt = resolved_target.query.zigTriple(b.allocator) catch @panic("OOM");
+
+            if (options.test_target_filters.len > 0) {
+                for (options.test_target_filters) |filter| {
+                    if (std.mem.find(u8, triple_txt, filter) != null) break;
                 } else continue;
             }
+
+            const target_str = b.fmt("{s}-{t}", .{ triple_txt, test_target.backend });
 
             const run = b.addRunArtifact(incr_check);
             run.setName(b.fmt("incr-check {s} '{s}'", .{ target_str, entry.basename }));
