@@ -35,6 +35,15 @@ const Hint = enum {
     unknown,
 };
 
+const Range = struct {
+    a: usize,
+    b: usize,
+    limit: usize,
+    leftmost: bool,
+    balanced: bool,
+    partitioned: bool,
+};
+
 /// Unstable in-place sort. O(n) best case, O(n*log(n)) worst case and average case.
 /// O(log(n)) memory (no allocator required).
 /// `context` must have methods `swap` and `lessThan`,
@@ -46,16 +55,19 @@ pub fn pdqContext(a: usize, b: usize, context: anytype) void {
     // number of allowed imbalanced partitions before switching to heap sort.
     const max_limit = if (b > a) math.log2_int(usize, b - a) else 0;
 
-    // set upper bound on stack memory usage.
-    const Range = struct { a: usize, b: usize, limit: usize, leftmost: bool };
-    var stack: [2 * @bitSizeOf(usize)]Range = undefined;
-    var range = Range{ .a = a, .b = b, .limit = max_limit, .leftmost = true };
+    // stack usage is bounded by log_2(n) due to placing longer partition onto stack each iteration.
+    var stack: [@bitSizeOf(usize)]Range = undefined;
+    var range = Range{
+        .a = a,
+        .b = b,
+        .limit = max_limit,
+        .leftmost = true,
+        .balanced = true,
+        .partitioned = true,
+    };
     var top: usize = 0;
 
     while (true) {
-        var was_balanced = true;
-        var was_partitioned = true;
-
         while (true) {
             const len = range.b - range.a;
 
@@ -76,7 +88,7 @@ pub fn pdqContext(a: usize, b: usize, context: anytype) void {
 
             // if the last partitioning was imbalanced, try breaking patterns in the slice by shuffling
             // some elements around. Hopefully we'll choose a better pivot this time.
-            if (!was_balanced) {
+            if (!range.balanced) {
                 breakPatterns(range.a, range.b, context);
                 range.limit -= 1;
             }
@@ -95,7 +107,7 @@ pub fn pdqContext(a: usize, b: usize, context: anytype) void {
 
             // if the last partitioning was decently balanced and didn't shuffle elements, and if pivot
             // selection predicts the slice is likely already sorted...
-            if (was_balanced and was_partitioned and hint == .increasing) {
+            if (range.balanced and range.partitioned and hint == .increasing) {
                 // try identifying several out-of-order elements and shifting them to correct
                 // positions. If the slice ends up being completely sorted, we're done.
                 if (partialInsertionSort(range.a, range.b, context)) break;
@@ -111,23 +123,45 @@ pub fn pdqContext(a: usize, b: usize, context: anytype) void {
 
             // partition the slice.
             var mid = pivot;
-            was_partitioned = partition(range.a, range.b, &mid, context);
+            const was_partitioned = partition(range.a, range.b, &mid, context);
 
             const left_len = mid - range.a;
-            const right_len = range.b - mid;
+            const right_len = range.b - (mid + 1);
             const balanced_threshold = len / 8;
-            if (left_len < right_len) {
-                was_balanced = left_len >= balanced_threshold;
-                stack[top] = .{ .a = range.a, .b = mid, .limit = range.limit, .leftmost = range.leftmost };
-                top += 1;
-                range.a = mid + 1;
-                range.leftmost = false;
-            } else {
-                was_balanced = right_len >= balanced_threshold;
-                stack[top] = .{ .a = mid + 1, .b = range.b, .limit = range.limit, .leftmost = false };
-                top += 1;
-                range.b = mid;
-            }
+
+            const left_is_smaller = left_len < right_len;
+
+            const smaller_len = if (left_is_smaller) left_len else right_len;
+            const was_balanced = smaller_len >= balanced_threshold;
+
+            const smaller_start_offset = if (left_is_smaller) range.a else mid + 1;
+            const larger_start_offset = if (left_is_smaller) mid + 1 else range.a;
+            const smaller_end_exclusive_offset = if (left_is_smaller) mid else range.b;
+            const larger_end_exclusive_offset = if (left_is_smaller) range.b else mid;
+
+            const smaller_is_leftmost = if (left_is_smaller) range.leftmost else false;
+            const larger_is_leftmost = if (left_is_smaller) false else range.leftmost;
+
+            // defer sorting the larger range until later to ensure stack usage is always less than log_2(n):
+            // as if we always push more than half the range to the stack then each time we push to the stack
+            // we reduce the amount of items we can push to it in later iterations by at least n/2
+            // therefore the count of items on the stack can never be more than log_2(n)
+            stack[top] = .{
+                .a = larger_start_offset,
+                .b = larger_end_exclusive_offset,
+                .limit = range.limit,
+                .leftmost = larger_is_leftmost,
+                .balanced = was_balanced,
+                .partitioned = was_partitioned,
+            };
+            top += 1;
+
+            // sort the smaller range immediately
+            range.a = smaller_start_offset;
+            range.b = smaller_end_exclusive_offset;
+            range.leftmost = smaller_is_leftmost;
+            range.balanced = true; // this either already true, or the range is small so we don't care
+            range.partitioned = was_partitioned;
         }
 
         top = math.sub(usize, top, 1) catch break;
