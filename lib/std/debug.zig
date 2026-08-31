@@ -1086,10 +1086,12 @@ const StackIterator = union(enum) {
         switch (it.*) {
             .ctx_first => |context_ptr| {
                 // After the first frame, start actually unwinding.
-                it.* = if (SelfInfo != void and SelfInfo.can_unwind and fp_usability != .ideal)
-                    .{ .di = .init(context_ptr) }
-                else
-                    .{ .fp = context_ptr.getFp() };
+                if (SelfInfo != void and SelfInfo.can_unwind and fp_usability != .ideal) {
+                    it.* = .{ .di = .init(context_ptr) };
+                } else {
+                    const fp = applyOffset(context_ptr.getFp(), stack_bias) orelse return .end;
+                    it.* = .{ .fp = fp };
+                }
 
                 // The caller expects *return* addresses, where they will subtract 1 to find the address of the call.
                 // However, we have the actual current PC, which should not be adjusted. Compensate by adding 1.
@@ -1099,7 +1101,7 @@ const StackIterator = union(enum) {
                 const di = getSelfDebugInfo() catch unreachable;
                 const ret_addr = di.unwindFrame(io, unwind_context) catch |err| {
                     const pc = unwind_context.pc;
-                    const fp = unwind_context.getFp();
+                    const fp = applyOffset(unwind_context.getFp(), stack_bias) orelse return .end;
                     unwind_context.deinit();
                     it.* = .{ .fp = fp };
                     return .{ .switch_to_fp = .{
@@ -1646,21 +1648,6 @@ fn handleSegfaultPosix(sig: posix.SIG, info: *const posix.siginfo_t, ctx_ptr: ?*
         break :info .{ addr, name };
     };
     const opt_cpu_context: ?cpu_context.Native = cpu_context.fromPosixSignalContext(ctx_ptr);
-
-    if (native_arch.isSPARC()) {
-        // It's unclear to me whether this is a QEMU bug or also real kernel behavior, but in the
-        // former, I observed that the most recent register window wasn't getting spilled on the
-        // stack as expected when a signal arrived. A `flushw` from the signal handler does not
-        // appear to be sufficient either. On the other hand, when doing a synchronous stack trace
-        // and using `flushw`, this all appears to work as expected. So, *probably* a QEMU bug, but
-        // someone with real SPARC hardware should verify.
-        //
-        // In any case, the register save area exists specifically so that register windows can be
-        // spilled asynchronously. This means that it should be perfectly fine for us to manually do
-        // so here.
-        const ctx = opt_cpu_context.?;
-        @as(*[16]usize, @ptrFromInt(ctx.o[6] + StackIterator.stack_bias)).* = ctx.l ++ ctx.i;
-    }
 
     handleSegfault(addr, name, if (opt_cpu_context) |*ctx| ctx else null);
 }
