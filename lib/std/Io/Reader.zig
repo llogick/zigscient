@@ -287,9 +287,9 @@ pub const LimitedAllocError = Allocator.Error || ShortError || error{StreamTooLo
 /// Transfers all bytes from the current position to the end of the stream, up
 /// to `limit`, returning them as a caller-owned allocated slice.
 ///
-/// If `limit` would be exceeded, `error.StreamTooLong` is returned instead. In
-/// such case, the next byte that would be read will be the first one to exceed
-/// `limit`, and all preceeding bytes have been discarded.
+/// If `limit` is reached or exceeded, `error.StreamTooLong` is returned
+/// instead. In such case, the next byte that would be read will be the first
+/// one to exceed `limit`, and all preceeding bytes have been discarded.
 ///
 /// See also:
 /// * `appendRemaining`
