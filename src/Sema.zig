@@ -29935,7 +29935,7 @@ fn storePtr2(
     // We're performing the store at runtime, so the pointee type must not be comptime-only.
     if (comptime_only) return sema.failWithOwnedErrorMsg(block, msg: {
         const msg = try sema.errMsg(src, "cannot store comptime-only type '{f}' at runtime", .{elem_ty.fmt(pt)});
-        errdefer msg.destroy(sema.gpa);
+        errdefer msg.destroy(zcu.gpa);
         try sema.errNote(ptr_src, msg, "operation is runtime due to this pointer", .{});
         break :msg msg;
     });
@@ -29959,10 +29959,18 @@ fn storePtr2(
 fn checkComptimeKnownStore(sema: *Sema, block: *Block, store_inst_ref: Air.Inst.Ref, store_src: LazySrcLoc) !void {
     const store_inst = store_inst_ref.toIndex().?;
     const inst_data = sema.air_instructions.items(.data)[@backingInt(store_inst)].bin_op;
-    const ptr = inst_data.lhs.toIndex() orelse return;
     const operand = inst_data.rhs;
 
     known: {
+        const ptr = inst_data.lhs.toIndex() orelse {
+            const ptr_val: Value = .fromInterned(inst_data.lhs.toInterned().?);
+            if (sema.isComptimeMutablePtr(ptr_val)) {
+                return;
+            } else {
+                break :known;
+            }
+        };
+
         const maybe_base_alloc = sema.base_allocs.get(ptr) orelse break :known;
         const maybe_comptime_alloc = sema.maybe_comptime_allocs.getPtr(maybe_base_alloc) orelse break :known;
 

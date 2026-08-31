@@ -77,6 +77,12 @@ export fn qoo(i: u8) void {
     _ = y;
 }
 
+var runtimeP: *bool = undefined;
+export fn qaz() void {
+    comptime var b = true;
+    runtimeP = &b;
+}
+
 // error
 //
 // :5:19: error: runtime value contains reference to comptime var
@@ -112,3 +118,6 @@ export fn qoo(i: u8) void {
 // :76:19: error: runtime value contains reference to comptime var
 // :76:19: note: comptime var pointers are not available at runtime
 // :75:14: note: 'runtime_value' points to comptime var declared here
+// :83:16: error: runtime value contains reference to comptime var
+// :83:16: note: comptime var pointers are not available at runtime
+// :82:22: note: 'runtime_value' points to comptime var declared here
