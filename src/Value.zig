@@ -1051,6 +1051,11 @@ pub const OverflowArithmeticResult = struct {
     wrapped_result: Value,
 };
 
+pub const OverflowArithmeticResultInt = struct {
+    overflow: bool,
+    wrapped_result: Value,
+};
+
 /// Supports both floats and ints; handles undefined.
 pub fn numberMax(lhs: Value, rhs: Value, zcu: *Zcu) Value {
     if (lhs.isUndef(zcu) or rhs.isUndef(zcu)) return undef;

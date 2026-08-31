@@ -169,7 +169,11 @@ fn addWithOverflowScalar(
         .overflow_bit = .undef_u1,
         .wrapped_result = try pt.undefValue(ty),
     };
-    return intAddWithOverflow(sema, lhs, rhs, ty);
+    const res = try intAddWithOverflow(sema, lhs, rhs, ty);
+    return .{
+        .overflow_bit = if (res.overflow) .one_u1 else .zero_u1,
+        .wrapped_result = res.wrapped_result,
+    };
 }
 
 /// `lhs` and `rhs` are of type `ty`.
@@ -227,7 +231,12 @@ fn subWithOverflowScalar(
         .overflow_bit = .undef_u1,
         .wrapped_result = try pt.undefValue(ty),
     };
-    return intSubWithOverflow(sema, lhs, rhs, ty);
+
+    const res = try intSubWithOverflow(sema, lhs, rhs, ty);
+    return .{
+        .overflow_bit = if (res.overflow) .one_u1 else .zero_u1,
+        .wrapped_result = res.wrapped_result,
+    };
 }
 
 /// `lhs` and `rhs` are of type `ty`.
@@ -285,7 +294,11 @@ fn mulWithOverflowScalar(
         .overflow_bit = .undef_u1,
         .wrapped_result = try pt.undefValue(ty),
     };
-    return intMulWithOverflow(sema, lhs, rhs, ty);
+    const res = try intMulWithOverflow(sema, lhs, rhs, ty);
+    return .{
+        .overflow_bit = if (res.overflow) .one_u1 else .zero_u1,
+        .wrapped_result = res.wrapped_result,
+    };
 }
 
 /// Applies the `+` operator to comptime-known values.
@@ -1108,7 +1121,7 @@ fn shlWithOverflowScalar(
         .int => {
             const result = try intShlWithOverflow(sema, block, lhs_ty, lhs_val, rhs_val, rhs_src, true, vec_idx);
             return .{
-                .overflow_bit = try pt.intValue(.u1, @intFromBool(result.overflow)),
+                .overflow_bit = if (result.overflow) .one_u1 else .zero_u1,
                 .wrapped_result = result.val,
             };
         },
@@ -1390,17 +1403,12 @@ pub fn byteSwap(sema: *Sema, val: Value, ty: Type) CompileError!Value {
 /// If the value overflowed the type, returns a comptime_int instead.
 /// Only supports scalars.
 fn intAdd(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !struct { overflow: bool, val: Value } {
-    const pt = sema.pt;
-    const zcu = pt.zcu;
     switch (ty.toIntern()) {
         .comptime_int_type => return .{ .overflow = false, .val = try comptimeIntAdd(sema, lhs, rhs) },
         else => {
             const res = try intAddWithOverflowInner(sema, lhs, rhs, ty);
-            return switch (res.overflow_bit.toUnsignedInt(zcu)) {
-                0 => .{ .overflow = false, .val = res.wrapped_result },
-                1 => .{ .overflow = true, .val = try comptimeIntAdd(sema, lhs, rhs) },
-                else => unreachable,
-            };
+            if (res.overflow) return .{ .overflow = true, .val = try comptimeIntAdd(sema, lhs, rhs) };
+            return .{ .overflow = false, .val = res.wrapped_result };
         },
     }
 }
@@ -1408,8 +1416,19 @@ fn intAdd(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !struct { overflow: boo
 fn comptimeIntAdd(sema: *Sema, lhs: Value, rhs: Value) !Value {
     const pt = sema.pt;
     const zcu = pt.zcu;
-    // TODO is this a performance issue? maybe we should try the operation without
-    // resorting to BigInt first.
+
+    // Try the operation without resorting to BigInt first.
+    if (lhs.getUnsignedInt(zcu)) |lhs_val| {
+        if (rhs.getUnsignedInt(zcu)) |rhs_val| {
+            const result, const overflow = @addWithOverflow(lhs_val, rhs_val);
+
+            if (overflow == 0) {
+                return pt.intValue(.comptime_int, result);
+            }
+            // It would overflow, fall back to BigInt.
+        }
+    }
+
     var lhs_space: Value.BigIntSpace = undefined;
     var rhs_space: Value.BigIntSpace = undefined;
     const lhs_bigint = lhs.toBigInt(&lhs_space, zcu);
@@ -1422,17 +1441,17 @@ fn comptimeIntAdd(sema: *Sema, lhs: Value, rhs: Value) !Value {
     result_bigint.add(lhs_bigint, rhs_bigint);
     return pt.intValue_big(.comptime_int, result_bigint.toConst());
 }
-fn intAddWithOverflow(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResult {
+fn intAddWithOverflow(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResultInt {
     switch (ty.toIntern()) {
         .comptime_int_type => return .{
-            .overflow_bit = .zero_u1,
+            .overflow = false,
             .wrapped_result = try comptimeIntAdd(sema, lhs, rhs),
         },
         else => return intAddWithOverflowInner(sema, lhs, rhs, ty),
     }
 }
 /// Like `intAddWithOverflow`, but asserts that `ty` is not `Type.comptime_int`.
-fn intAddWithOverflowInner(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResult {
+fn intAddWithOverflowInner(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResultInt {
     assert(ty.toIntern() != .comptime_int_type);
     const pt = sema.pt;
     const zcu = pt.zcu;
@@ -1448,7 +1467,7 @@ fn intAddWithOverflowInner(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value
     var result_bigint: BigIntMutable = .{ .limbs = limbs, .positive = undefined, .len = undefined };
     const overflowed = result_bigint.addWrap(lhs_bigint, rhs_bigint, info.signedness, info.bits);
     return .{
-        .overflow_bit = try pt.intValue(.u1, @intFromBool(overflowed)),
+        .overflow = overflowed,
         .wrapped_result = try pt.intValue_big(ty, result_bigint.toConst()),
     };
 }
@@ -1472,17 +1491,12 @@ fn intAddSat(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value {
 /// If the value overflowed the type, returns a comptime_int instead.
 /// Only supports scalars.
 fn intSub(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !struct { overflow: bool, val: Value } {
-    const pt = sema.pt;
-    const zcu = pt.zcu;
     switch (ty.toIntern()) {
         .comptime_int_type => return .{ .overflow = false, .val = try comptimeIntSub(sema, lhs, rhs) },
         else => {
             const res = try intSubWithOverflowInner(sema, lhs, rhs, ty);
-            return switch (res.overflow_bit.toUnsignedInt(zcu)) {
-                0 => .{ .overflow = false, .val = res.wrapped_result },
-                1 => .{ .overflow = true, .val = try comptimeIntSub(sema, lhs, rhs) },
-                else => unreachable,
-            };
+            if (res.overflow) return .{ .overflow = true, .val = try comptimeIntSub(sema, lhs, rhs) };
+            return .{ .overflow = false, .val = res.wrapped_result };
         },
     }
 }
@@ -1490,8 +1504,19 @@ fn intSub(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !struct { overflow: boo
 fn comptimeIntSub(sema: *Sema, lhs: Value, rhs: Value) !Value {
     const pt = sema.pt;
     const zcu = pt.zcu;
-    // TODO is this a performance issue? maybe we should try the operation without
-    // resorting to BigInt first.
+
+    // Try the operation without resorting to BigInt first.
+    if (lhs.getUnsignedInt(zcu)) |lhs_val| {
+        if (rhs.getUnsignedInt(zcu)) |rhs_val| {
+            const result, const overflow = @subWithOverflow(lhs_val, rhs_val);
+
+            if (overflow == 0) {
+                return pt.intValue(.comptime_int, result);
+            }
+            // It would overflow, fall back to BigInt.
+        }
+    }
+
     var lhs_space: Value.BigIntSpace = undefined;
     var rhs_space: Value.BigIntSpace = undefined;
     const lhs_bigint = lhs.toBigInt(&lhs_space, zcu);
@@ -1504,17 +1529,17 @@ fn comptimeIntSub(sema: *Sema, lhs: Value, rhs: Value) !Value {
     result_bigint.sub(lhs_bigint, rhs_bigint);
     return pt.intValue_big(.comptime_int, result_bigint.toConst());
 }
-fn intSubWithOverflow(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResult {
+fn intSubWithOverflow(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResultInt {
     switch (ty.toIntern()) {
         .comptime_int_type => return .{
-            .overflow_bit = .zero_u1,
+            .overflow = false,
             .wrapped_result = try comptimeIntSub(sema, lhs, rhs),
         },
         else => return intSubWithOverflowInner(sema, lhs, rhs, ty),
     }
 }
 /// Like `intSubWithOverflow`, but asserts that `ty` is not `Type.comptime_int`.
-fn intSubWithOverflowInner(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResult {
+fn intSubWithOverflowInner(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResultInt {
     assert(ty.toIntern() != .comptime_int_type);
     const pt = sema.pt;
     const zcu = pt.zcu;
@@ -1530,7 +1555,7 @@ fn intSubWithOverflowInner(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value
     var result_bigint: BigIntMutable = .{ .limbs = limbs, .positive = undefined, .len = undefined };
     const overflowed = result_bigint.subWrap(lhs_bigint, rhs_bigint, info.signedness, info.bits);
     return .{
-        .overflow_bit = try pt.intValue(.u1, @intFromBool(overflowed)),
+        .overflow = overflowed,
         .wrapped_result = try pt.intValue_big(ty, result_bigint.toConst()),
     };
 }
@@ -1554,17 +1579,12 @@ fn intSubSat(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value {
 /// If the value overflowed the type, returns a comptime_int instead.
 /// Only supports scalars.
 fn intMul(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !struct { overflow: bool, val: Value } {
-    const pt = sema.pt;
-    const zcu = pt.zcu;
     switch (ty.toIntern()) {
         .comptime_int_type => return .{ .overflow = false, .val = try comptimeIntMul(sema, lhs, rhs) },
         else => {
             const res = try intMulWithOverflowInner(sema, lhs, rhs, ty);
-            return switch (res.overflow_bit.toUnsignedInt(zcu)) {
-                0 => .{ .overflow = false, .val = res.wrapped_result },
-                1 => .{ .overflow = true, .val = try comptimeIntMul(sema, lhs, rhs) },
-                else => unreachable,
-            };
+            if (res.overflow) return .{ .overflow = true, .val = try comptimeIntMul(sema, lhs, rhs) };
+            return .{ .overflow = false, .val = res.wrapped_result };
         },
     }
 }
@@ -1572,8 +1592,19 @@ fn intMul(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !struct { overflow: boo
 fn comptimeIntMul(sema: *Sema, lhs: Value, rhs: Value) !Value {
     const pt = sema.pt;
     const zcu = pt.zcu;
-    // TODO is this a performance issue? maybe we should try the operation without
-    // resorting to BigInt first.
+
+    // Try the operation without resorting to BigInt first.
+    if (lhs.getUnsignedInt(zcu)) |lhs_val| {
+        if (rhs.getUnsignedInt(zcu)) |rhs_val| {
+            const result, const overflow = @mulWithOverflow(lhs_val, rhs_val);
+
+            if (overflow == 0) {
+                return pt.intValue(.comptime_int, result);
+            }
+            // It would overflow, fall back to BigInt.
+        }
+    }
+
     var lhs_space: Value.BigIntSpace = undefined;
     var rhs_space: Value.BigIntSpace = undefined;
     const lhs_bigint = lhs.toBigInt(&lhs_space, zcu);
@@ -1590,17 +1621,17 @@ fn comptimeIntMul(sema: *Sema, lhs: Value, rhs: Value) !Value {
     result_bigint.mul(lhs_bigint, rhs_bigint, limbs_buffer, sema.arena);
     return pt.intValue_big(.comptime_int, result_bigint.toConst());
 }
-fn intMulWithOverflow(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResult {
+fn intMulWithOverflow(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResultInt {
     switch (ty.toIntern()) {
         .comptime_int_type => return .{
-            .overflow_bit = .zero_u1,
+            .overflow = false,
             .wrapped_result = try comptimeIntMul(sema, lhs, rhs),
         },
         else => return intMulWithOverflowInner(sema, lhs, rhs, ty),
     }
 }
 /// Like `intMulWithOverflow`, but asserts that `ty` is not `Type.comptime_int`.
-fn intMulWithOverflowInner(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResult {
+fn intMulWithOverflowInner(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value.OverflowArithmeticResultInt {
     const pt = sema.pt;
     const zcu = pt.zcu;
     const info = ty.intInfo(zcu);
@@ -1617,7 +1648,7 @@ fn intMulWithOverflowInner(sema: *Sema, lhs: Value, rhs: Value, ty: Type) !Value
     const overflowed = !result_bigint.toConst().fitsInTwosComp(info.signedness, info.bits);
     if (overflowed) result_bigint.truncate(result_bigint.toConst(), info.signedness, info.bits);
     return .{
-        .overflow_bit = try pt.intValue(.u1, @intFromBool(overflowed)),
+        .overflow = overflowed,
         .wrapped_result = try pt.intValue_big(ty, result_bigint.toConst()),
     };
 }
