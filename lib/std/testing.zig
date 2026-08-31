@@ -1306,11 +1306,14 @@ pub const Reader = struct {
 
 /// A `Io.Reader` that gets its data from another `Io.Reader`, and always
 /// writes to its own buffer (and returns 0) during `stream` and `readVec`.
+/// Note: zero length buffers are not supported.
 pub const ReaderIndirect = struct {
     in: *Io.Reader,
     interface: Io.Reader,
 
     pub fn init(in: *Io.Reader, buffer: []u8) ReaderIndirect {
+        assert(buffer.len > 0);
+
         return .{
             .in = in,
             .interface = .{
@@ -1366,11 +1369,14 @@ pub const ReaderIndirect = struct {
 
 /// A `Io.Writer` that writes its data to another `Io.Writer`, and only
 /// writes new data to its own buffer during `drain`.
+/// Note: zero length buffers are not supported.
 pub const WriterIndirect = struct {
     out: *Io.Writer,
     interface: Io.Writer,
 
     pub fn init(out: *Io.Writer, buffer: []u8) WriterIndirect {
+        assert(buffer.len > 0);
+
         return .{
             .out = out,
             .interface = .{
