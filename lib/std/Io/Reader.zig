@@ -400,6 +400,7 @@ pub fn appendRemainingUnlimited(r: *Reader, gpa: Allocator, list: *ArrayList(u8)
         list.* = .{
             .items = a.writer.buffer[0..a.writer.end],
             .capacity = a.writer.buffer.len,
+            .pointer_stability = .{},
         };
     }
     _ = streamRemaining(r, &a.writer) catch |err| switch (err) {
