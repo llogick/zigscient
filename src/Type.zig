@@ -209,6 +209,7 @@ pub fn classify(start_ty: Type, zcu: *const Zcu) Class {
             const struct_obj = ip.loadStructType(cur_ty.toIntern());
             switch (struct_obj.layout) {
                 .auto, .@"extern" => {
+                    assert(struct_obj.want_layout);
                     zcu.assertUpToDate(.wrap(.{ .type_layout = cur_ty.toIntern() }));
                     break struct_obj.class;
                 },
@@ -222,6 +223,7 @@ pub fn classify(start_ty: Type, zcu: *const Zcu) Class {
             const union_obj = ip.loadUnionType(cur_ty.toIntern());
             switch (union_obj.layout) {
                 .auto, .@"extern" => {
+                    assert(union_obj.want_layout);
                     zcu.assertUpToDate(.wrap(.{ .type_layout = cur_ty.toIntern() }));
                     break union_obj.class;
                 },
@@ -232,8 +234,10 @@ pub fn classify(start_ty: Type, zcu: *const Zcu) Class {
             }
         },
         .enum_type => {
+            const enum_obj = ip.loadEnumType(cur_ty.toIntern());
+            assert(enum_obj.want_layout);
             zcu.assertUpToDate(.wrap(.{ .type_layout = cur_ty.toIntern() }));
-            cur_ty = .fromInterned(ip.loadEnumType(cur_ty.toIntern()).int_tag_type);
+            cur_ty = .fromInterned(enum_obj.int_tag_type);
             continue;
         },
 
