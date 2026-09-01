@@ -529,7 +529,7 @@ test "Dir.Iterator many entries" {
     var i: usize = 0;
     var buf: [4]u8 = undefined; // Enough to store "1024".
     while (i < num) : (i += 1) {
-        const name = try std.fmt.bufPrint(&buf, "{}", .{i});
+        const name = try std.mem.print(&buf, "{}", .{i});
         const file = try tmp_dir.dir.createFile(io, name, .{});
         file.close(io);
     }
@@ -551,7 +551,7 @@ test "Dir.Iterator many entries" {
 
     i = 0;
     while (i < num) : (i += 1) {
-        const name = try std.fmt.bufPrint(&buf, "{}", .{i});
+        const name = try std.mem.print(&buf, "{}", .{i});
         try expect(contains(&entries, .{ .name = name, .kind = .file, .inode = 0 }));
     }
 }

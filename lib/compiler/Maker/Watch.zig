@@ -145,7 +145,7 @@ const Os = switch (builtin.os.tag) {
         fn getDirHandle(gpa: Allocator, path: std.Build.Cache.Path, mount_id: *MountId) !FileHandle {
             var file_handle_buffer: [@sizeOf(std.os.linux.file_handle) + 128]u8 align(@alignOf(std.os.linux.file_handle)) = undefined;
             var buf: [std.fs.max_path_bytes]u8 = undefined;
-            const adjusted_path = if (path.sub_path.len == 0) "./" else std.fmt.bufPrint(&buf, "{s}/", .{
+            const adjusted_path = if (path.sub_path.len == 0) "./" else std.mem.print(&buf, "{s}/", .{
                 path.sub_path,
             }) catch return error.NameTooLong;
             const stack_ptr: *std.os.linux.file_handle = @ptrCast(&file_handle_buffer);

@@ -74,7 +74,7 @@ fn getCpuInfoFromRegistry(core: usize, args: anytype) !void {
 
     const max_cpu_buf = 4;
     var next_cpu_buf: [max_cpu_buf]u8 = undefined;
-    const next_cpu = try std.fmt.bufPrint(&next_cpu_buf, "{d}", .{core});
+    const next_cpu = try std.mem.print(&next_cpu_buf, "{d}", .{core});
 
     var subkey: [max_cpu_buf + 1]u16 = undefined;
     const subkey_len = try std.unicode.utf8ToUtf16Le(&subkey, next_cpu);

@@ -308,7 +308,7 @@ pub const Node = struct {
 
     pub fn startFmt(node: Node, estimated_total_items: usize, comptime format: []const u8, args: anytype) Node {
         var buffer: [max_name_len]u8 = undefined;
-        const name = std.fmt.bufPrint(&buffer, format, args) catch &buffer;
+        const name = std.mem.print(&buffer, format, args) catch &buffer;
         return Node.start(node, name, estimated_total_items);
     }
 
@@ -1355,7 +1355,7 @@ fn computeRedraw(io: Io, serialized_buffer: *Serialized.Buffer) !struct { []u8, 
                         i += progress_pulsing.len;
                     } else {
                         const percent = @as(u64, completed_items) * 100 / estimated_total;
-                        if (std.fmt.bufPrint(buf[i..], @"progress_normal {d}", .{percent})) |b| {
+                        if (std.mem.print(buf[i..], @"progress_normal {d}", .{percent})) |b| {
                             i += b.len;
                         } else |_| {}
                     }
@@ -1374,7 +1374,7 @@ fn computeRedraw(io: Io, serialized_buffer: *Serialized.Buffer) !struct { []u8, 
                         i += progress_pulsing_error.len;
                     } else {
                         const percent = @as(u64, completed_items) * 100 / estimated_total;
-                        if (std.fmt.bufPrint(buf[i..], @"progress_error {d}", .{percent})) |b| {
+                        if (std.mem.print(buf[i..], @"progress_error {d}", .{percent})) |b| {
                             i += b.len;
                         } else |_| {}
                     }
@@ -1475,16 +1475,16 @@ fn computeNode(
     if (!is_empty_root) {
         if (name.len != 0 or estimated_total > 0) {
             if (estimated_total > 0) {
-                if (std.fmt.bufPrint(buf[i..], "[{d}/{d}] ", .{ completed_items, estimated_total })) |b| {
+                if (std.mem.print(buf[i..], "[{d}/{d}] ", .{ completed_items, estimated_total })) |b| {
                     i += b.len;
                 } else |_| {}
             } else if (completed_items != 0) {
-                if (std.fmt.bufPrint(buf[i..], "[{d}] ", .{completed_items})) |b| {
+                if (std.mem.print(buf[i..], "[{d}] ", .{completed_items})) |b| {
                     i += b.len;
                 } else |_| {}
             }
             if (name.len != 0) {
-                if (std.fmt.bufPrint(buf[i..], "{s}", .{name})) |b| {
+                if (std.mem.print(buf[i..], "{s}", .{name})) |b| {
                     i += b.len;
                 } else |_| {}
             }

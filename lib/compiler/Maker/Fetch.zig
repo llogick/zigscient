@@ -362,7 +362,7 @@ pub const JobQueue = struct {
         var dest_sub_path_buf: ["p/".len + Package.Hash.max_len + ".tar.gz".len]u8 = undefined;
         const dest_path: Path = .{
             .root_dir = jq.global_cache,
-            .sub_path = std.fmt.bufPrint(&dest_sub_path_buf, "p/{s}.tar.gz", .{pkg_hash_slice}) catch unreachable,
+            .sub_path = std.mem.print(&dest_sub_path_buf, "p/{s}.tar.gz", .{pkg_hash_slice}) catch unreachable,
         };
 
         const gpa = jq.http_client.allocator;
@@ -843,7 +843,7 @@ pub fn computedPackageHash(f: *const Fetch) Package.Hash {
     if (f.have_manifest) {
         const man = &f.manifest;
         var version_buffer: [32]u8 = undefined;
-        const version: []const u8 = std.fmt.bufPrint(&version_buffer, "{f}", .{man.version}) catch &version_buffer;
+        const version: []const u8 = std.mem.print(&version_buffer, "{f}", .{man.version}) catch &version_buffer;
         return .init(f.computed_hash.digest, man.name, version, man.id, saturated_size);
     }
     // In the future build.zig.zon fields will be added to allow overriding these values

@@ -883,7 +883,7 @@ const ResourceTree = struct {
                 std.mem.writeInt(u32, name_buf[0..4], 0, .little);
                 std.mem.writeInt(u32, name_buf[4..8], string_table_offset, .little);
             } else {
-                const name_slice = std.fmt.bufPrint(&name_buf, "$R{X:0>6}", .{relocation.data_offset}) catch unreachable;
+                const name_slice = std.mem.print(&name_buf, "$R{X:0>6}", .{relocation.data_offset}) catch unreachable;
                 std.debug.assert(name_slice.len == 8);
             }
 

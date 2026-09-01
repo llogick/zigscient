@@ -615,7 +615,7 @@ const HexWriter = struct {
             const payload_bytes = self.getPayloadBytes();
             assert(payload_bytes.len <= max_payload_len);
 
-            const line = try std.fmt.bufPrint(&outbuf, ":{0X:0>2}{1X:0>4}{2X:0>2}{3X}{4X:0>2}" ++ linesep, .{
+            const line = try std.mem.print(&outbuf, ":{0X:0>2}{1X:0>4}{2X:0>2}{3X}{4X:0>2}" ++ linesep, .{
                 @as(u8, @intCast(payload_bytes.len)),
                 self.address,
                 @backingInt(self.payload),

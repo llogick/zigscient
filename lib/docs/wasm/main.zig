@@ -48,7 +48,7 @@ fn logFn(
 ) void {
     const prefix = if (scope == .default) "" else @tagName(scope) ++ ": ";
     var buf: [500]u8 = undefined;
-    const line = std.fmt.bufPrint(&buf, prefix ++ format, args) catch l: {
+    const line = std.mem.print(&buf, prefix ++ format, args) catch l: {
         buf[buf.len - 3 ..][0..3].* = "...".*;
         break :l &buf;
     };

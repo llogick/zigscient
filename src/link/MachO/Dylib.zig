@@ -844,7 +844,7 @@ pub const Id = struct {
         allocator.free(id.name);
     }
 
-    pub const ParseError = fmt.ParseIntError || fmt.BufPrintError;
+    pub const ParseError = fmt.ParseIntError || mem.PrintError;
 
     pub fn parseCurrentVersion(id: *Id, version: anytype) ParseError!void {
         id.current_version = try parseVersion(version);
@@ -865,7 +865,7 @@ pub const Id = struct {
                 },
                 .float => |float| {
                     var buf: [256]u8 = undefined;
-                    break :blk try fmt.bufPrint(&buf, "{d}", .{float});
+                    break :blk try mem.print(&buf, "{d}", .{float});
                 },
                 .string => |string| {
                     break :blk string;

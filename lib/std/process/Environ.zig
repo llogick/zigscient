@@ -466,7 +466,7 @@ pub const Map = struct {
             );
             i += "ZIG_PROGRESS=".len;
             var value_buf: [std.fmt.count("{d}", .{std.math.maxInt(usize)})]u8 = undefined;
-            const value = std.fmt.bufPrint(&value_buf, "{d}", .{@intFromPtr(handle)}) catch unreachable;
+            const value = std.mem.print(&value_buf, "{d}", .{@intFromPtr(handle)}) catch unreachable;
             for (block[i..][0..value.len], value) |*r, v| r.* = v;
             i += value.len;
             block[i] = 0;
@@ -840,7 +840,7 @@ pub fn createWindowsBlock(
         @memcpy(block[i..][0..zig_progress_key.len], &zig_progress_key);
         i += zig_progress_key.len;
         var value_buf: [std.fmt.count("{d}", .{std.math.maxInt(usize)})]u8 = undefined;
-        const value = std.fmt.bufPrint(&value_buf, "{d}", .{@intFromPtr(handle)}) catch unreachable;
+        const value = std.mem.print(&value_buf, "{d}", .{@intFromPtr(handle)}) catch unreachable;
         for (block[i..][0..value.len], value) |*r, v| r.* = v;
         i += value.len;
         block[i] = 0;

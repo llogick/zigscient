@@ -583,7 +583,7 @@ fn escapeUnprintables(mt: *MacroTranslator) ![]const u8 {
     const formatter = std.ascii.hexEscape(zigified, .lower);
     const encoded_size = @as(usize, @intCast(std.fmt.count("{f}", .{formatter})));
     const output = try mt.t.arena.alloc(u8, encoded_size);
-    return std.fmt.bufPrint(output, "{f}", .{formatter}) catch |err| switch (err) {
+    return std.mem.print(output, "{f}", .{formatter}) catch |err| switch (err) {
         error.NoSpaceLeft => unreachable,
         else => |e| return e,
     };

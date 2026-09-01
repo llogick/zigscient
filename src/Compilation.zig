@@ -3827,7 +3827,7 @@ pub fn saveState(comp: *Compilation) !void {
     }
 
     var basename_buf: [255]u8 = undefined;
-    const basename = std.fmt.bufPrint(&basename_buf, "{s}.zcs", .{
+    const basename = std.mem.print(&basename_buf, "{s}.zcs", .{
         comp.root_name,
     }) catch o: {
         basename_buf[basename_buf.len - 4 ..].* = ".zcs".*;

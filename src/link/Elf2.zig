@@ -3026,7 +3026,7 @@ fn lazySymbolInner(elf: *Elf, lazy: link.File.LazySymbol) Error!link.File.Symbol
         };
         const node = try shndx.get(elf).ni.addFloatingChild(&elf.mf, gpa, .{});
         var name_buf: [64]u8 = undefined;
-        const name = std.fmt.bufPrint(
+        const name = std.mem.print(
             &name_buf,
             "__lazy_{t}_{d}",
             .{ lazy.kind, @backingInt(lazy.ty) },
@@ -5361,7 +5361,7 @@ fn uavMapIndex(
             .alignment = resolved_align,
         });
         var name_buf: [32]u8 = undefined;
-        const name = std.fmt.bufPrint(
+        const name = std.mem.print(
             &name_buf,
             "__anon_{d}",
             .{@backingInt(uav_val)},
@@ -7916,13 +7916,13 @@ fn idleProgNode(
     return prog_node.start(name: switch (node) {
         else => |tag| @tagName(tag),
         .section => |shndx| shndx.name(elf).slice(elf),
-        .archive_input_member => |ii| std.fmt.bufPrint(&name, "{f}{f}", .{
+        .archive_input_member => |ii| std.mem.print(&name, "{f}{f}", .{
             ii.path(elf).fmtEscapeString(),
             fmtMemberString(ii.member(elf)),
         }) catch &name,
         .input_section => |isi| {
             const ii = isi.input(elf);
-            break :name std.fmt.bufPrint(&name, "{f}{f} {s}", .{
+            break :name std.mem.print(&name, "{f}{f} {s}", .{
                 ii.path(elf).fmtEscapeString(),
                 fmtMemberString(ii.member(elf)),
                 elf.getNode(isi.node(elf).parent(&elf.mf).unwrap().?).section.name(elf).slice(elf),
@@ -7932,7 +7932,7 @@ fn idleProgNode(
             const ip = &elf.base.comp.zcu.?.intern_pool;
             break :name ip.getNav(nmi.navIndex(elf)).fqn.toSlice(ip);
         },
-        .uav => |umi| std.fmt.bufPrint(&name, "{f}", .{
+        .uav => |umi| std.mem.print(&name, "{f}", .{
             Value.fromInterned(umi.uavValue(elf)).fmtValue(.{ .zcu = elf.base.comp.zcu.?, .tid = tid }),
         }) catch &name,
     }, 0);

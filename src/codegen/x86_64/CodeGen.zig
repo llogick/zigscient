@@ -178194,7 +178194,7 @@ fn airAsm(self: *CodeGen, inst: Air.Inst.Index) !void {
             inline for (@typeInfo(encoder.Instruction.Mnemonic).@"enum".field_names) |mnem_name|
                 max_mnem_len = @max(mnem_name.len, max_mnem_len);
             var intel_mnem_buf: [max_mnem_len + 1]u8 = undefined;
-            const intel_mnem_str = std.fmt.bufPrint(&intel_mnem_buf, "{s}{c}", .{
+            const intel_mnem_str = std.mem.print(&intel_mnem_buf, "{s}{c}", .{
                 @tagName(mnem_tag),
                 @as(u8, switch (mnem_size.size) {
                     .byte => 'b',

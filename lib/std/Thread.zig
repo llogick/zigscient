@@ -47,7 +47,7 @@ pub const SetNameError = error{
     Unsupported,
     Unexpected,
     InvalidWtf8,
-} || posix.PrctlError || Io.File.Writer.Error || Io.File.OpenError || std.fmt.BufPrintError;
+} || posix.PrctlError || Io.File.Writer.Error || Io.File.OpenError || std.mem.PrintError;
 
 pub fn setName(self: Thread, io: Io, name: []const u8) SetNameError!void {
     if (name.len > max_name_len) return error.NameTooLong;
@@ -75,7 +75,7 @@ pub fn setName(self: Thread, io: Io, name: []const u8) SetNameError!void {
             }
         } else {
             var buf: [32]u8 = undefined;
-            const path = try std.fmt.bufPrint(&buf, "/proc/self/task/{d}/comm", .{self.getHandle()});
+            const path = try std.mem.print(&buf, "/proc/self/task/{d}/comm", .{self.getHandle()});
 
             const file = try Io.Dir.cwd().openFile(io, path, .{ .mode = .write_only });
             defer file.close(io);
@@ -152,7 +152,7 @@ pub fn setName(self: Thread, io: Io, name: []const u8) SetNameError!void {
 pub const GetNameError = error{
     Unsupported,
     Unexpected,
-} || posix.PrctlError || posix.ReadError || Io.File.OpenError || std.fmt.BufPrintError;
+} || posix.PrctlError || posix.ReadError || Io.File.OpenError || std.mem.PrintError;
 
 /// On Windows, the result is encoded as [WTF-8](https://wtf-8.codeberg.page/).
 /// On other platforms, the result is an opaque sequence of bytes with no particular encoding.
@@ -176,7 +176,7 @@ pub fn getName(self: Thread, buffer_ptr: *[max_name_len:0]u8) GetNameError!?[]co
             }
         } else {
             var buf: [32]u8 = undefined;
-            const path = try std.fmt.bufPrint(&buf, "/proc/self/task/{d}/comm", .{self.getHandle()});
+            const path = try std.mem.print(&buf, "/proc/self/task/{d}/comm", .{self.getHandle()});
 
             const io = std.Options.debug_io;
 

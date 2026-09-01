@@ -2437,7 +2437,7 @@ pub const DynamicLinker = struct {
 
     /// Asserts that the length is less than or equal to 255 bytes.
     pub fn setFmt(dl: *DynamicLinker, comptime fmt_str: []const u8, args: anytype) !void {
-        dl.len = @intCast((try std.fmt.bufPrint(&dl.buffer, fmt_str, args)).len);
+        dl.len = @intCast((try std.mem.print(&dl.buffer, fmt_str, args)).len);
     }
 
     pub fn eql(lhs: DynamicLinker, rhs: DynamicLinker) bool {

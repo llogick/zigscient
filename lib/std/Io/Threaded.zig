@@ -7067,7 +7067,7 @@ fn realPathPosix(fd: posix.fd_t, out_buffer: []u8) File.RealPathError!usize {
         .linux, .serenity, .illumos => {
             var procfs_buf: ["/proc/self/path/-2147483648\x00".len]u8 = undefined;
             const template = if (native_os == .illumos) "/proc/self/path/{d}" else "/proc/self/fd/{d}";
-            const proc_path = std.fmt.bufPrintSentinel(&procfs_buf, template, .{fd}, 0) catch unreachable;
+            const proc_path = std.mem.printSentinel(&procfs_buf, template, .{fd}, 0) catch unreachable;
             const syscall: Syscall = try .start();
             while (true) {
                 const rc = posix.system.readlink(proc_path, out_buffer.ptr, out_buffer.len);
@@ -7155,7 +7155,7 @@ fn fileHardLink(
         error.FileNotFound => {
             if (options.follow_symlinks) return error.FileNotFound;
             var proc_buf: ["/proc/self/fd/-2147483648\x00".len]u8 = undefined;
-            const proc_path = std.fmt.bufPrintSentinel(&proc_buf, "/proc/self/fd/{d}", .{file.handle}, 0) catch
+            const proc_path = std.mem.printSentinel(&proc_buf, "/proc/self/fd/{d}", .{file.handle}, 0) catch
                 unreachable;
             return linkat(posix.AT.FDCWD, proc_path, new_dir.handle, new_sub_path_posix, posix.AT.SYMLINK_FOLLOW);
         },
@@ -8633,7 +8633,7 @@ fn fchmodatFallback(
         return error.OperationUnsupported;
 
     var procfs_buf: ["/proc/self/fd/-2147483648\x00".len]u8 = undefined;
-    const proc_path = std.fmt.bufPrintSentinel(&procfs_buf, "/proc/self/fd/{d}", .{path_fd}, 0) catch unreachable;
+    const proc_path = std.mem.printSentinel(&procfs_buf, "/proc/self/fd/{d}", .{path_fd}, 0) catch unreachable;
     const syscall: Syscall = try .start();
     while (true) {
         switch (posix.errno(posix.system.chmod(proc_path, mode))) {
@@ -10633,7 +10633,7 @@ fn processExecutablePath(userdata: ?*anyopaque, out_buffer: []u8) process.Execut
                 var it = std.mem.tokenizeScalar(u8, PATH, ':');
                 it: while (it.next()) |dir| {
                     var resolved_path_buf: [std.c.PATH_MAX]u8 = undefined;
-                    const resolved_path = std.fmt.bufPrintSentinel(&resolved_path_buf, "{s}/{s}", .{
+                    const resolved_path = std.mem.printSentinel(&resolved_path_buf, "{s}/{s}", .{
                         dir, argv0,
                     }, 0) catch continue;
 
@@ -14002,7 +14002,7 @@ fn netLookupFallible(
         const name_c = name_buffer[0..name.len :0];
 
         var port_buffer: [8]u8 = undefined;
-        const port_c = std.fmt.bufPrintSentinel(&port_buffer, "{d}", .{options.port}, 0) catch unreachable;
+        const port_c = std.mem.printSentinel(&port_buffer, "{d}", .{options.port}, 0) catch unreachable;
 
         const family: i32 = if (options.family) |f| switch (f) {
             .ip4 => posix.AF.INET,

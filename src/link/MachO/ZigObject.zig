@@ -720,7 +720,7 @@ pub fn lowerUav(
     }
 
     var name_buf: [32]u8 = undefined;
-    const name = std.fmt.bufPrint(&name_buf, "__anon_{d}", .{
+    const name = std.mem.print(&name_buf, "__anon_{d}", .{
         @backingInt(uav),
     }) catch unreachable;
     const sym_index = self.lowerConst(

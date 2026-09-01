@@ -405,10 +405,10 @@ fn parseAnalUnit(str: []const u8) ?AnalUnit {
 }
 fn printAnalUnit(unit: AnalUnit, buf: *[32]u8) []const u8 {
     const idx: u32 = switch (unit.unwrap()) {
-        .memoized_state => |stage| return std.fmt.bufPrint(buf, "memoized_state {s}", .{@tagName(stage)}) catch unreachable,
+        .memoized_state => |stage| return std.mem.print(buf, "memoized_state {s}", .{@tagName(stage)}) catch unreachable,
         inline else => |i| @backingInt(i),
     };
-    return std.fmt.bufPrint(buf, "{s} {d}", .{ @tagName(unit.unwrap()), idx }) catch unreachable;
+    return std.mem.print(buf, "{s} {d}", .{ @tagName(unit.unwrap()), idx }) catch unreachable;
 }
 
 fn printType(ty: Type, zcu: *const Zcu, w: *Io.Writer) Io.Writer.Error!void {

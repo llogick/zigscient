@@ -11386,7 +11386,7 @@ pub fn getOrPutStringFmt(
     const len: u32 = @intCast(std.fmt.count(format_z, args));
     const string_bytes = ip.getLocal(tid).getMutableStringBytes(gpa, io);
     const slice = try string_bytes.addManyAsSlice(len);
-    assert((std.fmt.bufPrint(slice[0], format_z, args) catch unreachable).len == len);
+    assert((std.mem.print(slice[0], format_z, args) catch unreachable).len == len);
     return ip.getOrPutTrailingString(gpa, io, tid, len, embedded_nulls);
 }
 

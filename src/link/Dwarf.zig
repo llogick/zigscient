@@ -3834,7 +3834,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                     .field);
                 {
                     var field_name_buf: [std.fmt.count("{d}", .{std.math.maxInt(u32)})]u8 = undefined;
-                    const field_name = std.fmt.bufPrint(&field_name_buf, "{d}", .{field_index}) catch unreachable;
+                    const field_name = std.mem.print(&field_name_buf, "{d}", .{field_index}) catch unreachable;
                     try wip_nav.strp(field_name);
                 }
                 try wip_nav.refType(field_type);
@@ -4456,7 +4456,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                     .tuple_index => |index| {
                         try wip_nav.abbrevCode(.access);
                         var field_name_buf: [std.fmt.count("{d}", .{std.math.maxInt(u32)})]u8 = undefined;
-                        const field_name = std.fmt.bufPrint(&field_name_buf, "{d}", .{index}) catch unreachable;
+                        const field_name = std.mem.print(&field_name_buf, "{d}", .{index}) catch unreachable;
                         try wip_nav.strp(field_name);
                     },
                 };
@@ -4551,7 +4551,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                         continue);
                     {
                         var field_name_buf: [std.fmt.count("{d}", .{std.math.maxInt(u32)})]u8 = undefined;
-                        const field_name = std.fmt.bufPrint(&field_name_buf, "{d}", .{field_index}) catch unreachable;
+                        const field_name = std.mem.print(&field_name_buf, "{d}", .{field_index}) catch unreachable;
                         try wip_nav.strp(field_name);
                     }
                     const field_value: Value = .fromInterned(switch (aggregate.storage) {

@@ -931,7 +931,7 @@ fn lowerZigArgs(
         var args_hash: [Sha256.digest_length]u8 = undefined;
         Sha256.hash(args, &args_hash, .{});
         var args_hex_hash: [Sha256.digest_length * 2]u8 = undefined;
-        _ = std.fmt.bufPrint(&args_hex_hash, "{x}", .{&args_hash}) catch unreachable;
+        _ = std.mem.print(&args_hex_hash, "{x}", .{&args_hash}) catch unreachable;
 
         const args_file = "args" ++ Dir.path.sep_str ++ args_hex_hash;
         local_cache_root.handle.access(io, args_file, .{}) catch {

@@ -7467,7 +7467,7 @@ const StringLiteral = struct {
             },
             else => {
                 var buf: [4]u8 = undefined;
-                const printed = std.fmt.bufPrint(&buf, "\\{o:0>3}", .{c}) catch unreachable;
+                const printed = std.mem.print(&buf, "\\{o:0>3}", .{c}) catch unreachable;
                 try w.writeAll(printed);
                 return printed.len;
             },
@@ -7489,7 +7489,7 @@ const StringLiteral = struct {
         } else {
             if (!sl.first) try sl.w.writeByte(',');
             var buf: [6]u8 = undefined;
-            const printed = std.fmt.bufPrint(&buf, "'\\x{x}'", .{c}) catch unreachable;
+            const printed = std.mem.print(&buf, "'\\x{x}'", .{c}) catch unreachable;
             try sl.w.writeAll(printed);
             sl.cur_len += printed.len;
             sl.first = false;

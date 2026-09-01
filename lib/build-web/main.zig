@@ -56,7 +56,7 @@ fn logFn(
     const level_txt = comptime message_level.asText();
     const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
     var buf: [500]u8 = undefined;
-    const line = std.fmt.bufPrint(&buf, level_txt ++ prefix2 ++ format, args) catch l: {
+    const line = std.mem.print(&buf, level_txt ++ prefix2 ++ format, args) catch l: {
         buf[buf.len - 3 ..][0..3].* = "...".*;
         break :l &buf;
     };
@@ -116,7 +116,7 @@ pub fn Slice(T: type) type {
 
 pub fn fatal(comptime format: []const u8, args: anytype) noreturn {
     var buf: [500]u8 = undefined;
-    const line = std.fmt.bufPrint(&buf, format, args) catch l: {
+    const line = std.mem.print(&buf, format, args) catch l: {
         buf[buf.len - 3 ..][0..3].* = "...".*;
         break :l &buf;
     };

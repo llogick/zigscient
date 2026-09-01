@@ -83,7 +83,7 @@ fn zonCast(comptime Result: type, zon_value: anytype, symbols: anytype) Result {
                                 .unsigned => std.math.maxInt(Symbol),
                             }})
                         ]u8 = undefined;
-                        return std.meta.stringToEnum(Result, std.fmt.bufPrint(&buf, "{d}", .{symbol}) catch unreachable).?;
+                        return std.meta.stringToEnum(Result, std.mem.print(&buf, "{d}", .{symbol}) catch unreachable).?;
                     },
                     else => return symbol,
                 },
@@ -256,7 +256,7 @@ fn nextToken(as: *Assemble, buf: *[token_buf_len]u8, comptime opts: struct {
             switch (modified_operand) {
                 .register => |reg| {
                     as.source = as.source[index + 1 ..];
-                    return std.fmt.bufPrint(buf, "{f}", .{reg.fmt()}) catch unreachable;
+                    return std.mem.print(buf, "{f}", .{reg.fmt()}) catch unreachable;
                 },
             }
         } else continue :c invalid_syntax,

@@ -1008,7 +1008,7 @@ pub const Session = struct {
         }
         for (wants) |want| {
             var buf: [Packet.max_data_length]u8 = undefined;
-            const arg = std.fmt.bufPrint(&buf, "want {s}\n", .{want}) catch unreachable;
+            const arg = std.mem.print(&buf, "want {s}\n", .{want}) catch unreachable;
             try Packet.write(.{ .data = arg }, &body);
         }
         try Packet.write(.{ .data = "done\n" }, &body);

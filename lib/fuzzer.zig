@@ -242,7 +242,7 @@ const Executable = struct {
     /// Asserts `buf[0..2]` is "in"
     fn inputFileName(buf: *[10]u8, i: u32) []u8 {
         assert(buf[0..2].* == "in".*);
-        const hex = std.fmt.bufPrint(buf[2..], "{x}", .{i}) catch unreachable;
+        const hex = std.mem.print(buf[2..], "{x}", .{i}) catch unreachable;
         return buf[0 .. 2 + hex.len];
     }
 
@@ -763,7 +763,7 @@ const Fuzzer = struct {
             const input_f = while (true) {
                 var name_buf: [10]u8 = undefined;
                 name_buf[0..2].* = "in".*;
-                const hex = std.fmt.bufPrint(name_buf[2..], "{x}", .{input_i}) catch unreachable;
+                const hex = std.mem.print(name_buf[2..], "{x}", .{input_i}) catch unreachable;
                 const name = name_buf[0 .. 2 + hex.len];
 
                 if (exec.cache_f.createFile(io, name, .{
@@ -998,7 +998,7 @@ const Fuzzer = struct {
         }
 
         pub fn inputName(n: *CorpusFileName, i: u32) []u8 {
-            const hex = std.fmt.bufPrint(n.buf[Test.dirname_len + 1 ..][0..8], "{x}", .{i}) catch unreachable;
+            const hex = std.mem.print(n.buf[Test.dirname_len + 1 ..][0..8], "{x}", .{i}) catch unreachable;
             return n.buf[0 .. Test.dirname_len + 1 + hex.len];
         }
     };

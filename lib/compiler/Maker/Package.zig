@@ -130,7 +130,7 @@ pub const Hash = struct {
         }
         var bin_digest: [Algo.digest_length]u8 = undefined;
         Algo.hash(sub_path, &bin_digest, .{});
-        _ = std.fmt.bufPrint(result.bytes[i..], "{x}", .{&bin_digest}) catch unreachable;
+        _ = std.mem.print(result.bytes[i..], "{x}", .{&bin_digest}) catch unreachable;
         return result;
     }
 

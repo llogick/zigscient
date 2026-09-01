@@ -1504,7 +1504,7 @@ fn testIp6ParseTransform(expected: []const u8, input: []const u8) !void {
         },
     };
     var buffer: [100]u8 = undefined;
-    const result = try std.fmt.bufPrint(&buffer, "{f}", .{ua});
+    const result = try std.mem.print(&buffer, "{f}", .{ua});
     try std.testing.expectEqualStrings(expected, result);
 }
 

@@ -971,7 +971,7 @@ const FuzzTestRunner = struct {
             i += 1;
         }) {
             const name_prefix = "f" ++ Dir.path.sep_str ++ "in";
-            in_name = std.fmt.bufPrint(&in_name_buf, name_prefix ++ "{x}", .{i}) catch unreachable;
+            in_name = std.mem.print(&in_name_buf, name_prefix ++ "{x}", .{i}) catch unreachable;
             in_f = cache_root.handle.openFile(io, in_name, .{
                 .lock = .exclusive,
                 .lock_nonblocking = true,

@@ -344,7 +344,7 @@ test "Server.Request.respondStreaming non-chunked, unknown content-length" {
         var total: usize = 0;
         for (0..500) |i| {
             var buf: [30]u8 = undefined;
-            const line = try std.fmt.bufPrint(&buf, "{d}, ah ha ha!\n", .{i});
+            const line = try std.mem.print(&buf, "{d}, ah ha ha!\n", .{i});
             try expected_response.appendSlice(line);
             total += line.len;
         }
@@ -1017,7 +1017,7 @@ fn echoTests(client: *http.Client, port: u16) !void {
     try expect(client.http_proxy != null or client.connection_pool.free_len == 1);
 
     { // send chunked request
-        const uri = try std.Uri.parse(try std.fmt.bufPrint(
+        const uri = try std.Uri.parse(try std.mem.print(
             &location_buffer,
             "http://127.0.0.1:{d}/echo-content",
             .{port},
@@ -1213,7 +1213,7 @@ test "redirect to different connection" {
             defer stream.close(io);
 
             var loc_buf: [50]u8 = undefined;
-            const new_loc = try std.fmt.bufPrint(&loc_buf, "http://127.0.0.1:{d}/ok", .{
+            const new_loc = try std.mem.print(&loc_buf, "http://127.0.0.1:{d}/ok", .{
                 global.other_port.?,
             });
 
@@ -1241,7 +1241,7 @@ test "redirect to different connection" {
     defer client.deinit();
 
     var loc_buf: [100]u8 = undefined;
-    const location = try std.fmt.bufPrint(&loc_buf, "http://127.0.0.1:{d}/help", .{
+    const location = try std.mem.print(&loc_buf, "http://127.0.0.1:{d}/help", .{
         test_server_orig.port(),
     });
     const uri = try std.Uri.parse(location);
@@ -1300,7 +1300,7 @@ test "boot failed connections from the pool" {
     defer client.deinit();
 
     var loc_buf: [100]u8 = undefined;
-    const location = try std.fmt.bufPrint(&loc_buf, "http://127.0.0.1:{d}/", .{
+    const location = try std.mem.print(&loc_buf, "http://127.0.0.1:{d}/", .{
         test_server_orig.port(),
     });
     const uri = try std.Uri.parse(location);

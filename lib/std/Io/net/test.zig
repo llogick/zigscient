@@ -65,7 +65,7 @@ test "parse and render IPv6 addresses" {
 fn testParseAndRenderIp6Address(input: []const u8, expected_output: []const u8) !void {
     var buffer: [100]u8 = undefined;
     const parsed = net.Ip6Address.Unresolved.parse(input);
-    const actual_printed = try std.fmt.bufPrint(&buffer, "{f}", .{parsed.success});
+    const actual_printed = try std.mem.print(&buffer, "{f}", .{parsed.success});
     try testing.expectEqualStrings(expected_output, actual_printed);
 }
 
@@ -115,7 +115,7 @@ test "parse and render IPv4 addresses" {
 fn testIp4ParseAndRender(text: []const u8) !void {
     var buffer: [18]u8 = undefined;
     const addr = try net.IpAddress.parseIp4(text, 0);
-    const rendered = try std.fmt.bufPrint(&buffer, "{f}", .{addr});
+    const rendered = try std.mem.print(&buffer, "{f}", .{addr});
     const without_port = rendered[0 .. rendered.len - 2];
     try testing.expectEqualStrings(text, without_port);
 }

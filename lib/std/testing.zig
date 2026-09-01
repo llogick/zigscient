@@ -656,7 +656,7 @@ test expectError {
 pub fn expectFmt(expected: []const u8, comptime template: []const u8, args: anytype) !void {
     if (@inComptime()) {
         var buffer: [std.fmt.count(template, args)]u8 = undefined;
-        return expectEqualStrings(expected, try std.fmt.bufPrint(&buffer, template, args));
+        return expectEqualStrings(expected, try std.mem.print(&buffer, template, args));
     }
     const actual = try std.fmt.allocPrint(allocator, template, args);
     defer allocator.free(actual);

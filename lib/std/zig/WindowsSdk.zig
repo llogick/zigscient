@@ -513,7 +513,7 @@ pub const Installation = struct {
 
         const version = version: {
             var buf: [Dir.max_path_bytes]u8 = undefined;
-            const sdk_lib_dir_path = std.fmt.bufPrint(buf[0..], "{s}\\Lib\\", .{path}) catch |err| switch (err) {
+            const sdk_lib_dir_path = std.mem.print(buf[0..], "{s}\\Lib\\", .{path}) catch |err| switch (err) {
                 error.NoSpaceLeft => return error.PathTooLong,
             };
             if (!Dir.path.isAbsolute(sdk_lib_dir_path)) return error.InstallationNotFound;
@@ -985,7 +985,7 @@ const MsvcLibDir = struct {
                 io.random(std.mem.asBytes(&guid));
 
                 var guid_buf: [38]u8 = undefined;
-                const guid_str = std.fmt.bufPrint(&guid_buf, "{f}", .{guid}) catch unreachable;
+                const guid_str = std.mem.print(&guid_buf, "{f}", .{guid}) catch unreachable;
 
                 var buf: std.ArrayList(u16) = .initBuffer(&key_path_buf);
                 buf.appendSliceAssumeCapacity(L("\\REGISTRY\\A\\"));

@@ -5006,7 +5006,7 @@ pub const TEB = extern struct {
 };
 
 comptime {
-    // XXX: Without this check we cannot use `std.Io.Writer` on 16-bit platforms. `std.fmt.bufPrint` will hit the unreachable in `PEB.GdiHandleBuffer` without this guard.
+    // XXX: Without this check we cannot use `std.Io.Writer` on 16-bit platforms. `std.mem.print` will hit the unreachable in `PEB.GdiHandleBuffer` without this guard.
     if (builtin.os.tag == .windows) {
         // Offsets taken from WinDbg info and Geoff Chappell[1] (RIP)
         // [1]: https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/api/pebteb/teb/index.htm

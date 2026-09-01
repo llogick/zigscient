@@ -635,7 +635,7 @@ const crypt_format = struct {
         _ = Codec.Encoder.encode(&ct_str, dk[0..]);
 
         var s_buf: [hash_length]u8 = undefined;
-        const s = fmt.bufPrint(
+        const s = mem.print(
             s_buf[0..],
             "{s}b${d}{d}${s}{s}",
             .{ prefix, params.rounds_log / 10, params.rounds_log % 10, salt_str, ct_str },

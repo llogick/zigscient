@@ -92,9 +92,9 @@ fn addTokenAssumeCapacity(pp: *Preprocessor, tok: Token) void {
 
 fn defineBuiltins(pp: *Preprocessor) !void {
     var buf: [5]u8 = undefined;
-    var val = std.fmt.bufPrint(&buf, "{d}", .{pp.target.cTypeByteSize(.longdouble).?}) catch unreachable;
+    var val = std.mem.print(&buf, "{d}", .{pp.target.cTypeByteSize(.longdouble).?}) catch unreachable;
     try pp.defineBuiltinValue("__SIZEOF_LONG_DOUBLE__", val, .pp_num);
-    val = std.fmt.bufPrint(&buf, "{d}", .{pp.target.cTypeByteSize(.double).?}) catch unreachable;
+    val = std.mem.print(&buf, "{d}", .{pp.target.cTypeByteSize(.double).?}) catch unreachable;
     try pp.defineBuiltinValue("__SIZEOF_DOUBLE__", val, .pp_num);
 
     if (pp.target.abi.isGnu()) {

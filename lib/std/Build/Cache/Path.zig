@@ -61,7 +61,7 @@ pub fn joinStringZ(p: Path, gpa: Allocator, sub_path: []const u8) Allocator.Erro
 pub fn openFile(p: Path, io: Io, sub_path: []const u8, flags: Io.Dir.OpenFileOptions) !Io.File {
     var buf: [Io.Dir.max_path_bytes]u8 = undefined;
     const joined_path = if (p.sub_path.len == 0) sub_path else p: {
-        break :p std.fmt.bufPrint(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
+        break :p std.mem.print(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
             p.sub_path, sub_path,
         }) catch return error.NameTooLong;
     };
@@ -76,7 +76,7 @@ pub fn openDir(
 ) Io.Dir.OpenError!Io.Dir {
     var buf: [Io.Dir.max_path_bytes]u8 = undefined;
     const joined_path = if (p.sub_path.len == 0) sub_path else p: {
-        break :p std.fmt.bufPrint(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
+        break :p std.mem.print(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
             p.sub_path, sub_path,
         }) catch return error.NameTooLong;
     };
@@ -86,7 +86,7 @@ pub fn openDir(
 pub fn createDirPathOpen(p: Path, io: Io, sub_path: []const u8, opts: Io.Dir.CreateDirPathOpenOptions) !Io.Dir {
     var buf: [Io.Dir.max_path_bytes]u8 = undefined;
     const joined_path = if (p.sub_path.len == 0) sub_path else p: {
-        break :p std.fmt.bufPrint(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
+        break :p std.mem.print(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
             p.sub_path, sub_path,
         }) catch return error.NameTooLong;
     };
@@ -96,7 +96,7 @@ pub fn createDirPathOpen(p: Path, io: Io, sub_path: []const u8, opts: Io.Dir.Cre
 pub fn statFile(p: Path, io: Io, sub_path: []const u8) !Io.Dir.Stat {
     var buf: [Io.Dir.max_path_bytes]u8 = undefined;
     const joined_path = if (p.sub_path.len == 0) sub_path else p: {
-        break :p std.fmt.bufPrint(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
+        break :p std.mem.print(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
             p.sub_path, sub_path,
         }) catch return error.NameTooLong;
     };
@@ -111,7 +111,7 @@ pub fn atomicFile(
     buf: *[Io.Dir.max_path_bytes]u8,
 ) !Io.File.Atomic {
     const joined_path = if (p.sub_path.len == 0) sub_path else p: {
-        break :p std.fmt.bufPrint(buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
+        break :p std.mem.print(buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
             p.sub_path, sub_path,
         }) catch return error.NameTooLong;
     };
@@ -121,7 +121,7 @@ pub fn atomicFile(
 pub fn access(p: Path, io: Io, sub_path: []const u8, flags: Io.Dir.AccessOptions) !void {
     var buf: [Io.Dir.max_path_bytes]u8 = undefined;
     const joined_path = if (p.sub_path.len == 0) sub_path else p: {
-        break :p std.fmt.bufPrint(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
+        break :p std.mem.print(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
             p.sub_path, sub_path,
         }) catch return error.NameTooLong;
     };
@@ -131,7 +131,7 @@ pub fn access(p: Path, io: Io, sub_path: []const u8, flags: Io.Dir.AccessOptions
 pub fn createDirPath(p: Path, io: Io, sub_path: []const u8) !void {
     var buf: [Io.Dir.max_path_bytes]u8 = undefined;
     const joined_path = if (p.sub_path.len == 0) sub_path else p: {
-        break :p std.fmt.bufPrint(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
+        break :p std.mem.print(&buf, "{s}" ++ Io.Dir.path.sep_str ++ "{s}", .{
             p.sub_path, sub_path,
         }) catch return error.NameTooLong;
     };
@@ -139,11 +139,11 @@ pub fn createDirPath(p: Path, io: Io, sub_path: []const u8) !void {
 }
 
 pub fn toString(p: Path, allocator: Allocator) Allocator.Error![]u8 {
-    return std.fmt.allocPrint(allocator, "{f}", .{p});
+    return allocator.print("{f}", .{p});
 }
 
 pub fn toStringZ(p: Path, allocator: Allocator) Allocator.Error![:0]u8 {
-    return std.fmt.allocPrintSentinel(allocator, "{f}", .{p}, 0);
+    return allocator.printSentinel("{f}", .{p}, 0);
 }
 
 pub fn fmtEscapeString(path: Path) std.fmt.Alt(Path, formatEscapeString) {

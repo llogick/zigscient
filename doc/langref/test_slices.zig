@@ -1,7 +1,7 @@
 const std = @import("std");
 const expectEqual = std.testing.expectEqual;
 const expectEqualStrings = std.testing.expectEqualStrings;
-const fmt = std.fmt;
+const mem = std.mem;
 
 test "using slices for strings" {
     // Zig has no concept of strings. String literals are const pointers
@@ -18,7 +18,7 @@ test "using slices for strings" {
     _ = &start;
     const all_together_slice = all_together[start..];
     // String concatenation example.
-    const hello_world = try fmt.bufPrint(all_together_slice, "{s} {s}", .{ hello, world });
+    const hello_world = try mem.print(all_together_slice, "{s} {s}", .{ hello, world });
 
     // Generally, you can use UTF-8 and not worry about whether something is a
     // string. If you don't need to deal with individual characters, no need

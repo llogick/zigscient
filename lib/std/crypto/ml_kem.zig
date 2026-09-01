@@ -1701,7 +1701,7 @@ fn testNistKat(mode: type, hash: []const u8) !void {
     var out: [32]u8 = undefined;
     fw.hasher.final(&out);
     var outHex: [64]u8 = undefined;
-    _ = try std.fmt.bufPrint(&outHex, "{x}", .{&out});
+    _ = try std.mem.print(&outHex, "{x}", .{&out});
     try testing.expectEqualStrings(&outHex, hash);
 }
 

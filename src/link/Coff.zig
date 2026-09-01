@@ -5994,7 +5994,7 @@ fn resolve(coff: *Coff, tid: Zcu.PerThread.Id) !bool {
             };
             var name: [std.Progress.Node.max_name_len]u8 = undefined;
             const sub_prog_node = coff.synth_prog_node.start(
-                std.fmt.bufPrint(&name, "lazy {s} for {f}", .{
+                std.mem.print(&name, "lazy {s} for {f}", .{
                     kind,
                     Type.fromInterned(lmr.lazySymbol(coff).ty).fmt(pt),
                 }) catch &name,
@@ -6132,7 +6132,7 @@ fn idleProgNode(
         inline .pseudo_section, .object_section => |smi| smi.name(coff).toSlice(coff),
         .input_section => |isi| {
             const ioi = isi.input(coff);
-            break :name std.fmt.bufPrint(&name, "{f}{f} {s}", .{
+            break :name std.mem.print(&name, "{f}{f} {s}", .{
                 ioi.path(coff).fmtEscapeString(),
                 fmtMemberNameString(ioi.memberName(coff)),
                 coff.getNode(isi.symbol(coff).node(coff).parent(&coff.mf).unwrap().?).object_section.name(coff).toSlice(coff),
@@ -6143,7 +6143,7 @@ fn idleProgNode(
             const ip = &coff.base.comp.zcu.?.intern_pool;
             break :name ip.getNav(nmi.navIndex(coff)).fqn.toSlice(ip);
         },
-        .uav => |umi| std.fmt.bufPrint(&name, "{f}", .{
+        .uav => |umi| std.mem.print(&name, "{f}", .{
             Value.fromInterned(umi.uavValue(coff)).fmtValue(.{
                 .zcu = coff.base.comp.zcu.?,
                 .tid = tid,

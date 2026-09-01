@@ -23,7 +23,7 @@ const ___tracy_c_zone_context = extern struct {
 
     pub inline fn addTextFmt(self: @This(), comptime fmt: []const u8, args: anytype) void {
         var buf: [512]u8 = undefined;
-        const slice = std.fmt.bufPrint(&buf, fmt, args) catch &buf;
+        const slice = std.mem.print(&buf, fmt, args) catch &buf;
         self.addText(slice);
     }
 
