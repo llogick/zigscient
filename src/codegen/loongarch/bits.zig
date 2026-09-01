@@ -85,7 +85,7 @@ pub const Register = enum(u7) {
             };
         }
 
-        pub fn fromFloating(bits: u16) Modifier {
+        pub fn fromFloatBits(bits: u16) Modifier {
             return switch (bits) {
                 else => unreachable,
                 32 => .floating32,
