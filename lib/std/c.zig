@@ -6614,6 +6614,7 @@ pub const IP = switch (native_os) {
     .illumos => illumos.IP,
     .haiku => haiku.IP,
     .serenity => serenity.IP,
+    .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => darwin.IP,
     else => void,
 };
 pub const IPV6 = switch (native_os) {
@@ -6625,6 +6626,7 @@ pub const IPV6 = switch (native_os) {
     .illumos => illumos.IPV6,
     .haiku => haiku.IPV6,
     .serenity => serenity.IPV6,
+    .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => darwin.IPV6,
     else => void,
 };
 pub const IPTOS = switch (native_os) {
@@ -6636,6 +6638,7 @@ pub const IPTOS = switch (native_os) {
     .illumos => illumos.IPTOS,
     .haiku => haiku.IPTOS,
     .serenity => serenity.IPTOS,
+    .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => darwin.IPTOS,
     else => void,
 };
 pub const SOL = switch (native_os) {
