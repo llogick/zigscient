@@ -860,20 +860,49 @@ fn testCompareDiskDesignators(expected_result: bool, kind: DiskDesignatorKind, p
     try std.testing.expectEqual(expected_result, compareDiskDesignators(u16, kind, wtf16_buf1[0..w1_len], wtf16_buf2[0..w2_len]));
 }
 
-/// On Windows, this calls `resolveWindows` and on POSIX it calls `resolvePosix`.
-pub fn resolve(allocator: Allocator, paths: []const []const u8) Allocator.Error![]u8 {
-    if (native_os == .windows) {
-        return resolveWindows(allocator, paths);
-    } else {
-        return resolvePosix(allocator, paths);
+/// Deprecated in favor of `resolveAlloc`.
+pub const resolve = resolveAlloc;
+/// Deprecated in favor of `resolveAllocWindows`.
+pub const resolveWindows = resolveAllocWindows;
+/// Deprecated in favor of `resolveAllocPosix`.
+pub const resolvePosix = resolveAllocPosix;
+
+/// Deprecated in favor of `relativeAlloc`.
+pub const relative = relativeAlloc;
+/// Deprecated in favor of `relativeAllocPosix`.
+pub const relativePosix = relativeAllocPosix;
+/// Deprecated in favor of `relativeAllocWindows`.
+pub const relativeWindows = relativeAllocWindows;
+
+/// On Windows, calls `resolveAllocWindows`; otherwise calls `resolveAllocPosix`.
+///
+/// See also:
+/// `resolveAppend`
+pub fn resolveAlloc(gpa: Allocator, paths: []const []const u8) Allocator.Error![]u8 {
+    switch (native_os) {
+        .windows => return resolveAllocWindows(gpa, paths),
+        else => return resolveAllocPosix(gpa, paths),
     }
 }
 
-/// This function is like a series of `cd` statements executed one after another.
-/// It resolves "." and ".." to the best of its ability, but will not convert relative paths to
-/// an absolute path, use Io.Dir.realpath instead.
-/// ".." components may persist in the resolved path if the resolved path is relative or drive-relative.
+/// On Windows, calls `resolveAppendWindows`; otherwise calls `resolveAppendPosix`.
+///
+/// See also:
+/// `resolveAlloc`
+pub fn resolveAppend(gpa: Allocator, al: *std.ArrayList(u8), paths: []const []const u8) Allocator.Error!void {
+    switch (native_os) {
+        .windows => return resolveAppendWindows(gpa, al, paths),
+        else => return resolveAppendPosix(gpa, al, paths),
+    }
+}
+
+/// Simulates a series of relative directory changes on a virtual filesystem that has no symlinks, returning the result
+/// as an allocated slice.
+///
 /// Path separators are canonicalized to '\\' and drives are canonicalized to capital letters.
+///
+/// "." and ".." are resolved but will not convert relative paths to an absolute path. ".." components may persist in
+/// the resolved path if the resolved path is relative or drive-relative.
 ///
 /// The result will not have a trailing path separator, except for the following scenarios:
 /// - The resolved path is drive-absolute with no components (e.g. `C:\`).
@@ -882,20 +911,56 @@ pub fn resolve(allocator: Allocator, paths: []const []const u8) Allocator.Error!
 /// - The resolved path is a UNC path with no components after the share name, and the input path contained a
 ///   trailing separator (e.g. `\\server\share\`).
 ///
-/// Each drive has its own current working directory, which is only resolved via the paths provided.
-/// In the scenario that the resolved path contains a drive-relative path that can't be resolved using the paths alone,
-/// the result will be a drive-relative path.
-/// Similarly, in the scenario that the resolved path contains a rooted path that can't be resolved using the paths alone,
-/// the result will be a rooted path.
+/// Each drive has its own current working directory, which is only resolved via the paths provided. In the scenario
+/// that the resolved path contains a drive-relative path that can't be resolved using the paths alone, the result will
+/// be a drive-relative path. Similarly, in the scenario that the resolved path contains a rooted path that can't be
+/// resolved using the paths alone, the result will be a rooted path.
 ///
-/// Note: all usage of this function should be audited due to the existence of symlinks.
-/// Without performing actual syscalls, resolving `..` could be incorrect.
-/// This API may break in the future: https://github.com/ziglang/zig/issues/13613
-pub fn resolveWindows(allocator: Allocator, paths: []const []const u8) Allocator.Error![]u8 {
+/// This function does not perform any syscalls. Executing this series of path lookups on an actual filesystem may
+/// produce different results due to symlinks.
+///
+/// See also:
+/// * `resolveAlloc`
+/// * `resolveAppendWindows`
+pub fn resolveAllocWindows(gpa: Allocator, paths: []const []const u8) Allocator.Error![]u8 {
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(gpa);
+    try resolveAppendWindows(gpa, &buffer, paths);
+    try buffer.shrinkToLen(gpa);
+    return buffer.toOwnedSliceAssert();
+}
+
+/// Simulates a series of relative directory changes on a virtual filesystem that has no symlinks, appending the result
+/// to the provided array list.
+///
+/// Path separators are canonicalized to '\\' and drives are canonicalized to capital letters.
+///
+/// "." and ".." are resolved but will not convert relative paths to an absolute path. ".." components may persist in
+/// the resolved path if the resolved path is relative or drive-relative.
+///
+/// The result will not have a trailing path separator, except for the following scenarios:
+/// - The resolved path is drive-absolute with no components (e.g. `C:\`).
+/// - The resolved path is a UNC path with only a server name, and the input path contained a trailing separator
+///   (e.g. `\\server\`).
+/// - The resolved path is a UNC path with no components after the share name, and the input path contained a
+///   trailing separator (e.g. `\\server\share\`).
+///
+/// Each drive has its own current working directory, which is only resolved via the paths provided. In the scenario
+/// that the resolved path contains a drive-relative path that can't be resolved using the paths alone, the result will
+/// be a drive-relative path. Similarly, in the scenario that the resolved path contains a rooted path that can't be
+/// resolved using the paths alone, the result will be a rooted path.
+///
+/// This function does not perform any syscalls. Executing this series of path lookups on an actual filesystem may
+/// produce different results due to symlinks.
+///
+/// See also:
+/// * `resolveAppend`
+/// * `resolveAllocWindows`
+pub fn resolveAppendWindows(gpa: Allocator, al: *std.ArrayList(u8), paths: []const []const u8) Allocator.Error!void {
     // Avoid heap allocation when paths.len is <= @bitSizeOf(usize) * 2
     // (we use `* 3` because stackFallback uses 1 usize as a length)
     var buf: [3]usize = undefined;
-    var bit_set_allocator_state: std.heap.BufferFirstAllocator = .init(@ptrCast(&buf), allocator);
+    var bit_set_allocator_state: std.heap.BufferFirstAllocator = .init(@ptrCast(&buf), gpa);
     const bit_set_allocator = bit_set_allocator_state.allocator();
     var relevant_paths: std.bit_set.Dynamic = try .initEmpty(bit_set_allocator, paths.len);
     defer relevant_paths.deinit(bit_set_allocator);
@@ -984,23 +1049,23 @@ pub fn resolveWindows(allocator: Allocator, paths: []const []const u8) Allocator
         break :root last_effective_root_path;
     };
 
-    var result: std.ArrayList(u8) = .empty;
-    defer result.deinit(allocator);
+    const prev_len = al.items.len;
+    errdefer al.shrinkRetainingCapacity(prev_len);
 
     var want_path_sep_between_root_and_component = false;
     switch (effective_root_path.kind) {
         .root_local_device, .local_device => {
-            try result.ensureUnusedCapacity(allocator, 3);
-            result.appendSliceAssumeCapacity("\\\\");
-            result.appendAssumeCapacity(effective_root_path.root[2]); // . or ?
+            try al.ensureUnusedCapacity(gpa, 3);
+            al.appendSliceAssumeCapacity("\\\\");
+            al.appendAssumeCapacity(effective_root_path.root[2]); // . or ?
             want_path_sep_between_root_and_component = true;
         },
         .drive_absolute, .drive_relative => {
-            try result.ensureUnusedCapacity(allocator, effective_root_path.root.len);
-            result.appendAssumeCapacity(std.ascii.toUpper(effective_root_path.root[0]));
-            result.appendAssumeCapacity(':');
+            try al.ensureUnusedCapacity(gpa, effective_root_path.root.len);
+            al.appendAssumeCapacity(std.ascii.toUpper(effective_root_path.root[0]));
+            al.appendAssumeCapacity(':');
             if (effective_root_path.kind == .drive_absolute) {
-                result.appendAssumeCapacity('\\');
+                al.appendAssumeCapacity('\\');
             }
         },
         .unc_absolute => {
@@ -1012,30 +1077,30 @@ pub fn resolveWindows(allocator: Allocator, paths: []const []const u8) Allocator
                 if (unc.sep_after_share) len += 1;
                 break :len len;
             };
-            try result.ensureUnusedCapacity(allocator, root_len);
-            result.appendSliceAssumeCapacity("\\\\");
+            try al.ensureUnusedCapacity(gpa, root_len);
+            al.appendSliceAssumeCapacity("\\\\");
             if (unc.server.len > 0 or unc.sep_after_server) {
-                result.appendSliceAssumeCapacity(unc.server);
+                al.appendSliceAssumeCapacity(unc.server);
                 if (unc.sep_after_server)
-                    result.appendAssumeCapacity('\\')
+                    al.appendAssumeCapacity('\\')
                 else
                     want_path_sep_between_root_and_component = true;
             }
             if (unc.share.len > 0) {
-                result.appendSliceAssumeCapacity(unc.share);
+                al.appendSliceAssumeCapacity(unc.share);
                 if (unc.sep_after_share)
-                    result.appendAssumeCapacity('\\')
+                    al.appendAssumeCapacity('\\')
                 else
                     want_path_sep_between_root_and_component = true;
             }
         },
         .rooted => {
-            try result.append(allocator, '\\');
+            try al.append(gpa, '\\');
         },
         .relative => {},
     }
 
-    const root_len = result.items.len;
+    const root_len = al.items.len - prev_len;
     var negative_count: usize = 0;
     for (paths[first_path_i..], first_path_i..) |path, i| {
         if (!relevant_paths.isSet(i)) continue;
@@ -1047,69 +1112,90 @@ pub fn resolveWindows(allocator: Allocator, paths: []const []const u8) Allocator
             if (mem.eql(u8, component, ".")) {
                 continue;
             } else if (mem.eql(u8, component, "..")) {
-                if (result.items.len == 0 or (result.items.len == root_len and effective_root_path.kind == .drive_relative)) {
+                if ((al.items.len - prev_len) == 0 or
+                    ((al.items.len - prev_len) == root_len and effective_root_path.kind == .drive_relative))
+                {
                     negative_count += 1;
                     continue;
                 }
-                while (true) {
-                    if (result.items.len == root_len) {
-                        break;
-                    }
-                    const end_with_sep = PathType.windows.isSep(u8, result.items[result.items.len - 1]);
-                    result.items.len -= 1;
+                while ((al.items.len - prev_len) != root_len) {
+                    const end_with_sep = PathType.windows.isSep(u8, al.items[al.items.len - 1]);
+                    al.items.len -= 1;
                     if (end_with_sep) break;
                 }
-            } else if (result.items.len == root_len and !want_path_sep_between_root_and_component) {
-                try result.appendSlice(allocator, component);
+            } else if ((al.items.len - prev_len) == root_len and !want_path_sep_between_root_and_component) {
+                try al.appendSlice(gpa, component);
             } else {
-                try result.ensureUnusedCapacity(allocator, 1 + component.len);
-                result.appendAssumeCapacity('\\');
-                result.appendSliceAssumeCapacity(component);
+                try al.ensureUnusedCapacity(gpa, 1 + component.len);
+                al.appendAssumeCapacity('\\');
+                al.appendSliceAssumeCapacity(component);
             }
         }
     }
 
-    if (root_len != 0 and result.items.len == root_len and negative_count == 0) {
-        return result.toOwnedSlice(allocator);
-    }
+    if (root_len != 0 and (al.items.len - prev_len) == root_len and negative_count == 0) return;
 
-    if (result.items.len == root_len) {
+    if ((al.items.len - prev_len) == root_len) {
         if (negative_count == 0) {
-            return allocator.dupe(u8, ".");
+            try al.resize(gpa, prev_len + 1);
+            al.items[al.items.len - 1] = '.';
+            return;
         }
 
-        try result.ensureTotalCapacityPrecise(allocator, 3 * negative_count - 1);
+        try al.ensureTotalCapacityPrecise(gpa, prev_len + 3 * negative_count - 1);
         for (0..negative_count - 1) |_| {
-            result.appendSliceAssumeCapacity("..\\");
+            al.appendSliceAssumeCapacity("..\\");
         }
-        result.appendSliceAssumeCapacity("..");
+        al.appendSliceAssumeCapacity("..");
     } else {
-        const dest = try result.addManyAt(allocator, root_len, 3 * negative_count);
+        const dest = try al.addManyAt(gpa, prev_len + root_len, 3 * negative_count);
         for (0..negative_count) |i| {
             dest[i * 3 ..][0..3].* = "..\\".*;
         }
     }
-
-    return result.toOwnedSlice(allocator);
 }
 
-/// Simulates a series of relative directory changes on a virtual filesystem
-/// that has no symlinks.
+/// Simulates a series of relative directory changes on a virtual filesystem that has no symlinks, returning the result
+/// as an allocated slice.
 ///
-/// "." and ".." are resolved but will not make relative paths absolute. ".."
-/// components remain in the resolved path when the resolved path is relative
-/// and there are not previous components to cancel out.
+/// "." and ".." are resolved but will not make relative paths absolute. ".." components remain in the resolved path
+/// when the resolved path is relative and there are not previous components to cancel out.
 ///
 /// The result does not have a trailing path separator.
 ///
-/// This function does not perform any syscalls. Executing this series of path
-/// lookups on an actual filesystem may produce different results due to
-/// symlinks.
-pub fn resolvePosix(gpa: Allocator, paths: []const []const u8) Allocator.Error![]u8 {
+/// This function does not perform any syscalls. Executing this series of path lookups on an actual filesystem may
+/// produce different results due to symlinks.
+///
+/// See also:
+/// * `resolveAlloc`
+/// * `resolveAppendPosix`
+pub fn resolveAllocPosix(gpa: Allocator, paths: []const []const u8) Allocator.Error![]u8 {
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(gpa);
+    try resolveAppendPosix(gpa, &buffer, paths);
+    try buffer.shrinkToLen(gpa);
+    return buffer.toOwnedSliceAssert();
+}
+
+/// Simulates a series of relative directory changes on a virtual filesystem that has no symlinks, appending the result
+/// to the provided array list.
+///
+/// "." and ".." are resolved but will not make relative paths absolute. ".." components remain in the resolved path
+/// when the resolved path is relative and there are not previous components to cancel out.
+///
+/// The result does not have a trailing path separator.
+///
+/// This function does not perform any syscalls. Executing this series of path lookups on an actual filesystem may
+/// produce different results due to symlinks.
+///
+/// See also:
+/// * `resolveAppend`
+/// * `resolveAllocPosix`
+pub fn resolveAppendPosix(gpa: Allocator, al: *std.ArrayList(u8), paths: []const []const u8) Allocator.Error!void {
     assert(paths.len > 0);
 
-    var result: std.ArrayList(u8) = .empty;
-    defer result.deinit(gpa);
+    const prev_len = al.items.len;
+    errdefer al.shrinkRetainingCapacity(prev_len);
 
     var negative_count: usize = 0;
     var is_abs = false;
@@ -1118,63 +1204,52 @@ pub fn resolvePosix(gpa: Allocator, paths: []const []const u8) Allocator.Error![
         if (isAbsolutePosix(p)) {
             is_abs = true;
             negative_count = 0;
-            result.clearRetainingCapacity();
+            al.shrinkRetainingCapacity(prev_len);
         }
         var it = mem.tokenizeScalar(u8, p, '/');
         while (it.next()) |component| {
             if (mem.eql(u8, component, ".")) {
                 continue;
             } else if (mem.eql(u8, component, "..")) {
-                if (result.items.len == 0) {
+                if ((al.items.len - prev_len) == 0) {
                     negative_count += @intFromBool(!is_abs);
                     continue;
                 }
                 while (true) {
-                    const ends_with_slash = result.items[result.items.len - 1] == '/';
-                    result.items.len -= 1;
-                    if (ends_with_slash or result.items.len == 0) break;
+                    const ends_with_slash = al.items[al.items.len - 1] == '/';
+                    al.items.len -= 1;
+                    if (ends_with_slash or (al.items.len - prev_len) == 0) break;
                 }
-            } else if (result.items.len > 0 or is_abs) {
-                try result.ensureUnusedCapacity(gpa, 1 + component.len);
-                result.appendAssumeCapacity('/');
-                result.appendSliceAssumeCapacity(component);
+            } else if ((al.items.len - prev_len) > 0 or is_abs) {
+                try al.ensureUnusedCapacity(gpa, 1 + component.len);
+                al.appendAssumeCapacity('/');
+                al.appendSliceAssumeCapacity(component);
             } else {
-                try result.appendSlice(gpa, component);
+                try al.appendSlice(gpa, component);
             }
         }
     }
 
-    if (result.items.len == 0) {
+    if ((al.items.len - prev_len) == 0) {
         if (is_abs) {
-            return gpa.dupe(u8, "/");
-        }
-        if (negative_count == 0) {
-            return gpa.dupe(u8, ".");
+            try al.resize(gpa, prev_len + 1);
+            al.items[al.items.len - 1] = '/';
+        } else if (negative_count == 0) {
+            try al.resize(gpa, prev_len + 1);
+            al.items[al.items.len - 1] = '.';
         } else {
-            const real_result = try gpa.alloc(u8, 3 * negative_count - 1);
+            try al.resize(gpa, prev_len + 3 * negative_count - 1);
             var count = negative_count - 1;
-            var i: usize = 0;
+            var i: usize = prev_len;
             while (count > 0) : (count -= 1) {
-                real_result[i..][0..3].* = "../".*;
+                al.items[i..][0..3].* = "../".*;
                 i += 3;
             }
-            real_result[i..][0..2].* = "..".*;
-            return real_result;
+            al.items[i..][0..2].* = "..".*;
         }
-    }
-
-    if (negative_count == 0) {
-        return result.toOwnedSlice(gpa);
-    } else {
-        const real_result = try gpa.alloc(u8, 3 * negative_count + result.items.len);
-        var count = negative_count;
-        var i: usize = 0;
-        while (count > 0) : (count -= 1) {
-            real_result[i..][0..3].* = "../".*;
-            i += 3;
-        }
-        @memcpy(real_result[i..][0..result.items.len], result.items);
-        return real_result;
+    } else if (negative_count != 0) {
+        const dest = try al.addManyAt(gpa, prev_len, 3 * negative_count);
+        for (0..negative_count) |i| dest[i * 3 ..][0..3].* = "../".*;
     }
 }
 
@@ -1192,7 +1267,7 @@ test resolve {
     try testResolvePosix(&[_][]const u8{""}, ".");
 }
 
-test resolveWindows {
+test resolveAllocWindows {
     try testResolveWindows(
         &[_][]const u8{ "Z:\\", "/usr/local", "lib\\zig\\std\\array_list.zig" },
         "Z:\\usr\\local\\lib\\zig\\std\\array_list.zig",
@@ -1280,7 +1355,7 @@ test resolveWindows {
     try testResolveWindows(&[_][]const u8{ "C:\\", "\\??\\C:\\foo", "bar" }, "C:\\??\\C:\\foo\\bar");
 }
 
-test resolvePosix {
+test resolveAllocPosix {
     try testResolvePosix(&.{ "/a/b", "c" }, "/a/b/c");
     try testResolvePosix(&.{ "/a/b", "c", "//d", "e///" }, "/d/e");
     try testResolvePosix(&.{ "/a/b/c", "..", "../" }, "/a");
@@ -1299,15 +1374,45 @@ test resolvePosix {
 }
 
 fn testResolveWindows(paths: []const []const u8, expected: []const u8) !void {
-    const actual = try resolveWindows(testing.allocator, paths);
-    defer testing.allocator.free(actual);
-    try testing.expectEqualStrings(expected, actual);
+    {
+        const actual = try resolveAllocWindows(testing.allocator, paths);
+        defer testing.allocator.free(actual);
+        try testing.expectEqualStrings(expected, actual);
+    }
+
+    {
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(testing.allocator);
+        try buffer.append(testing.allocator, 99);
+
+        try resolveAppendWindows(testing.allocator, &buffer, paths);
+        // Test that it preserved the previous contents of the array list.
+        try testing.expectEqual(expected.len + 1, buffer.items.len);
+        try testing.expectEqual(99, buffer.items[0]);
+        const result = buffer.items[1..];
+        try testing.expectEqualStrings(expected, result);
+    }
 }
 
 fn testResolvePosix(paths: []const []const u8, expected: []const u8) !void {
-    const actual = try resolvePosix(testing.allocator, paths);
-    defer testing.allocator.free(actual);
-    try testing.expectEqualStrings(expected, actual);
+    {
+        const actual = try resolveAllocPosix(testing.allocator, paths);
+        defer testing.allocator.free(actual);
+        try testing.expectEqualStrings(expected, actual);
+    }
+
+    {
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(testing.allocator);
+        try buffer.append(testing.allocator, 99);
+
+        try resolveAppendPosix(testing.allocator, &buffer, paths);
+        // Test that it preserved the previous contents of the array list.
+        try testing.expectEqual(expected.len + 1, buffer.items.len);
+        try testing.expectEqual(99, buffer.items[0]);
+        const result = buffer.items[1..];
+        try testing.expectEqualStrings(expected, result);
+    }
 }
 
 /// Strip the last component from a file path.
@@ -1498,17 +1603,18 @@ fn testBasenameWindows(input: []const u8, expected_output: []const u8) !void {
     try testing.expectEqualSlices(u8, expected_output, basenameWindows(input));
 }
 
-/// Returns the non-absolute path from `from` to `to`.
+/// Returns the non-absolute path from `from` to `to` as an allocated slice.
 ///
-/// Other than memory allocation, this is a pure function; the result solely
-/// depends on the input parameters.
+/// Other than memory allocation, this is a pure function; the result solely depends on the input parameters.
 ///
-/// If `from` and `to` each resolve to the same path (after calling `resolve`
-/// on each), a zero-length string is returned.
+/// If `from` and `to` each resolve to the same path (after calling `resolve` on each), a zero-length string is
+/// returned.
 ///
-/// See `relativePosix` and `relativeWindows` for operating system specific
-/// details and for how `environ_map` is used.
-pub fn relative(
+/// See `relativePosix` and `relativeWindows` for operating system specific details and for how `environ_map` is used.
+///
+/// See also:
+/// * `relativeAppend`
+pub fn relativeAlloc(
     gpa: Allocator,
     cwd: []const u8,
     environ_map: ?*const std.process.Environ.Map,
@@ -1516,30 +1622,59 @@ pub fn relative(
     to: []const u8,
 ) Allocator.Error![]u8 {
     if (native_os == .windows) {
-        return relativeWindows(gpa, cwd, environ_map, from, to);
+        return relativeAllocWindows(gpa, cwd, environ_map, from, to);
     } else {
-        return relativePosix(gpa, cwd, from, to);
+        return relativeAllocPosix(gpa, cwd, from, to);
     }
 }
 
-/// Returns the non-absolute path from `from` to `to` according to Windows rules.
+/// Appends the non-absolute path from `from` to `to` to the provided array list.
 ///
-/// Other than memory allocation, this is a pure function; the result solely
-/// depends on the input parameters.
+/// Other than modifying the provided array list, this is a pure function; the result solely depends on the input
+/// parameters and no file system operations are performed.
 ///
-/// If `from` and `to` each resolve to the same path (after calling `resolve`
-/// on each), a zero-length string is returned.
+/// If `from` and `to` each resolve to the same path (after calling `resolveAppend` on each), a zero-length string is
+/// returned.
 ///
-/// The result is not guaranteed to be relative, as the paths may be on
-/// different volumes. In that case, the result will be the canonicalized
-/// absolute path of `to`.
+/// See `relativeAppendPosix` and `relativeAppendWindows` for operating system specific details and for how
+/// `environ_map` is used.
 ///
-/// Per-drive CWDs are stored in special semi-hidden environment variables of
-/// the format `=<drive-letter>:`, e.g. `=C:`. This type of CWD is purely a
-/// shell concept, so there's no guarantee that it'll be set or that it'll even
-/// be accurate. This is the only reason for the `environ_map` parameter. `null` is
-/// treated equivalent to the environment variable missing.
-pub fn relativeWindows(
+/// See also:
+/// * `relativeAlloc`
+pub fn relativeAppend(
+    gpa: Allocator,
+    al: *std.ArrayList(u8),
+    cwd: []const u8,
+    environ_map: ?*const std.process.Environ.Map,
+    from: []const u8,
+    to: []const u8,
+) Allocator.Error!void {
+    if (native_os == .windows) {
+        return relativeAppendWindows(gpa, al, cwd, environ_map, from, to);
+    } else {
+        return relativeAppendPosix(gpa, al, cwd, from, to);
+    }
+}
+
+/// Returns the non-absolute path from `from` to `to` according to Windows rules as an allocated slice.
+///
+/// Other than memory allocation, this is a pure function; the result solely depends on the input parameters.
+///
+/// If `from` and `to` each resolve to the same path (after calling `resolve` on each), a zero-length string is
+/// returned.
+///
+/// The result is not guaranteed to be relative, as the paths may be on different volumes. In that case, the result will
+/// be the canonicalized absolute path of `to`.
+///
+/// Per-drive CWDs are stored in special semi-hidden environment variables of the format `=<drive-letter>:`, e.g. `=C:`.
+/// This type of CWD is purely a shell concept, so there's no guarantee that it'll be set or that it'll even be
+/// accurate. This is the only reason for the `environ_map` parameter. `null` is treated equivalent to the environment
+/// variable missing.
+///
+/// See also:
+/// `relativeAlloc`
+/// `relativeAppendWindows`
+pub fn relativeAllocWindows(
     gpa: Allocator,
     cwd: []const u8,
     environ_map: ?*const std.process.Environ.Map,
@@ -1635,6 +1770,37 @@ pub fn relativeWindows(
     return [_]u8{};
 }
 
+/// Appends the non-absolute path from `from` to `to` according to Windows rules to the provided array list.
+///
+/// Other than memory allocation, this is a pure function; the result solely depends on the input parameters.
+///
+/// If `from` and `to` each resolve to the same path (after calling `resolve` on each), a zero-length string is
+/// returned.
+///
+/// The result is not guaranteed to be relative, as the paths may be on different volumes. In that case, the result will
+/// be the canonicalized absolute path of `to`.
+///
+/// Per-drive CWDs are stored in special semi-hidden environment variables of the format `=<drive-letter>:`, e.g. `=C:`.
+/// This type of CWD is purely a shell concept, so there's no guarantee that it'll be set or that it'll even be
+/// accurate. This is the only reason for the `environ_map` parameter. `null` is treated equivalent to the environment
+/// variable missing.
+///
+/// See also:
+/// `relativeAppend`
+/// `relativeAllocWindows`
+pub fn relativeAppendWindows(
+    gpa: Allocator,
+    al: *std.ArrayList(u8),
+    cwd: []const u8,
+    environ_map: ?*const std.process.Environ.Map,
+    from: []const u8,
+    to: []const u8,
+) Allocator.Error!void {
+    const result = try relativeAllocWindows(gpa, cwd, environ_map, from, to);
+    defer gpa.free(result);
+    try al.appendSlice(gpa, result);
+}
+
 fn windowsResolveAgainstCwd(
     gpa: Allocator,
     cwd: []const u8,
@@ -1650,9 +1816,9 @@ fn windowsResolveAgainstCwd(
         .unc_absolute,
         .root_local_device,
         .local_device,
-        => try resolveWindows(gpa, &.{path}),
+        => try resolveAllocWindows(gpa, &.{path}),
 
-        .relative => try resolveWindows(gpa, &.{ cwd, path }),
+        .relative => try resolveAllocWindows(gpa, &.{ cwd, path }),
 
         .rooted => blk: {
             const parsed_cwd = parsePathWindows(u8, cwd);
@@ -1660,13 +1826,13 @@ fn windowsResolveAgainstCwd(
                 .drive_absolute => {
                     var drive_buf = "_:\\".*;
                     drive_buf[0] = cwd[0];
-                    break :blk try resolveWindows(gpa, &.{ &drive_buf, path });
+                    break :blk try resolveAllocWindows(gpa, &.{ &drive_buf, path });
                 },
                 .unc_absolute => {
-                    break :blk try resolveWindows(gpa, &.{ parsed_cwd.root, path });
+                    break :blk try resolveAllocWindows(gpa, &.{ parsed_cwd.root, path });
                 },
                 // Effectively a malformed CWD, give up and just return a normalized path
-                else => break :blk try resolveWindows(gpa, &.{path}),
+                else => break :blk try resolveAllocWindows(gpa, &.{path}),
             }
         },
         .drive_relative => blk: {
@@ -1695,41 +1861,76 @@ fn windowsResolveAgainstCwd(
                 break :drive_cwd drive_buf;
             };
             defer temp_allocator.free(drive_cwd);
-            break :blk try resolveWindows(gpa, &.{ drive_cwd, path });
+            break :blk try resolveAllocWindows(gpa, &.{ drive_cwd, path });
         },
     };
 }
 
-/// Returns the non-absolute path from `from` to `to` according to Windows rules.
+/// Returns the non-absolute path from `from` to `to` according to POSIX rules as an allocated slice.
 ///
-/// Other than memory allocation, this is a pure function; the result solely
-/// depends on the input parameters.
+/// Other than memory allocation, this is a pure function; the result solely depends on the input parameters.
 ///
-/// If `from` and `to` each resolve to the same path (after calling `resolve`
-/// on each), a zero-length string is returned.
+/// If `from` and `to` each resolve to the same path (after calling `resolve` on each), a zero-length string is
+/// returned.
 ///
-pub fn relativePosix(allocator: Allocator, cwd: []const u8, from: []const u8, to: []const u8) Allocator.Error![]u8 {
-    const resolved_from = try resolvePosix(allocator, &[_][]const u8{ cwd, from });
-    defer allocator.free(resolved_from);
-    const resolved_to = try resolvePosix(allocator, &[_][]const u8{ cwd, to });
-    defer allocator.free(resolved_to);
+/// See also:
+/// * `relativeAlloc`
+/// * `relativeAppendPosix`
+pub fn relativeAllocPosix(gpa: Allocator, cwd: []const u8, from: []const u8, to: []const u8) Allocator.Error![]u8 {
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(gpa);
+    try relativeAppendPosix(gpa, &buffer, cwd, from, to);
+    try buffer.shrinkToLen(gpa);
+    return buffer.toOwnedSliceAssert();
+}
 
-    var from_it = mem.tokenizeScalar(u8, resolved_from, '/');
-    var to_it = mem.tokenizeScalar(u8, resolved_to, '/');
+/// Appends the non-absolute path from `from` to `to` according to POSIX rules to the provided array list.
+///
+/// Other than modifying the provided array list, this is a pure function; the result solely depends on the input
+/// parameters and it does no file system operations.
+///
+/// If `from` and `to` each resolve to the same path (after calling `resolveAppend` on each), nothing is appended to the
+/// array list.
+///
+/// See also:
+/// * `relativeAppend`
+/// * `relativeAllocPosix`
+pub fn relativeAppendPosix(
+    gpa: Allocator,
+    al: *std.ArrayList(u8),
+    cwd: []const u8,
+    from: []const u8,
+    to: []const u8,
+) Allocator.Error!void {
+    const orig_len = al.items.len;
+    errdefer al.items.len = orig_len;
+
+    const resolved_from_start = al.items.len;
+    try resolveAppendPosix(gpa, al, &.{ cwd, from });
+    const resolved_from_end = al.items.len;
+
+    const resolved_to_start = al.items.len;
+    try resolveAppendPosix(gpa, al, &.{ cwd, to });
+    const resolved_to_end = al.items.len;
+
+    var from_it = mem.tokenizeScalar(u8, al.items[resolved_from_start..resolved_from_end], '/');
+    var to_it = mem.tokenizeScalar(u8, al.items[resolved_to_start..resolved_to_end], '/');
     while (true) {
-        const from_component = from_it.next() orelse return allocator.dupe(u8, to_it.rest());
+        const from_component = from_it.next() orelse {
+            const result = to_it.rest();
+            @memmove(al.items[orig_len..][0..result.len], result);
+            al.shrinkRetainingCapacity(orig_len + result.len);
+            return;
+        };
         const to_rest = to_it.rest();
         if (to_it.next()) |to_component| {
             if (mem.eql(u8, from_component, to_component))
                 continue;
         }
         var up_count: usize = 1;
-        while (from_it.next()) |_| {
-            up_count += 1;
-        }
+        while (from_it.next()) |_| up_count += 1;
         const up_index_end = up_count * "../".len;
-        const result = try allocator.alloc(u8, up_index_end + to_rest.len);
-        errdefer allocator.free(result);
+        const result = al.items[orig_len..];
 
         var result_index: usize = 0;
         while (result_index < up_index_end) {
@@ -1737,15 +1938,16 @@ pub fn relativePosix(allocator: Allocator, cwd: []const u8, from: []const u8, to
             result_index += 3;
         }
         if (to_rest.len == 0) {
-            // shave off the trailing slash
-            return allocator.realloc(result, result_index - 1);
+            // Shave off the trailing slash.
+            al.shrinkRetainingCapacity(orig_len + result_index - 1);
+            return;
         }
-
-        @memcpy(result[result_index..][0..to_rest.len], to_rest);
-        return result;
+        @memmove(result[result_index..][0..to_rest.len], to_rest);
+        al.shrinkRetainingCapacity(orig_len + result_index + to_rest.len);
+        return;
     }
 
-    return [_]u8{};
+    al.shrinkRetainingCapacity(orig_len);
 }
 
 test relative {
@@ -1803,15 +2005,44 @@ test relative {
 }
 
 fn testRelativePosix(from: []const u8, to: []const u8, expected_output: []const u8) !void {
-    const result = try relativePosix(testing.allocator, ".", from, to);
-    defer testing.allocator.free(result);
-    try testing.expectEqualStrings(expected_output, result);
+    {
+        const result = try relativePosix(testing.allocator, ".", from, to);
+        defer testing.allocator.free(result);
+        try testing.expectEqualStrings(expected_output, result);
+    }
+
+    {
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(testing.allocator);
+        try buffer.append(testing.allocator, 99);
+
+        try relativeAppendPosix(testing.allocator, &buffer, ".", from, to);
+        // Test that it preserved the previous contents of the array list.
+        try testing.expectEqual(expected_output.len + 1, buffer.items.len);
+        try testing.expectEqual(99, buffer.items[0]);
+        const result = buffer.items[1..];
+        try testing.expectEqualStrings(expected_output, result);
+    }
 }
 
 fn testRelativeWindows(from: []const u8, to: []const u8, expected_output: []const u8) !void {
-    const result = try relativeWindows(testing.allocator, ".", null, from, to);
-    defer testing.allocator.free(result);
-    try testing.expectEqualStrings(expected_output, result);
+    {
+        const result = try relativeAllocWindows(testing.allocator, ".", null, from, to);
+        defer testing.allocator.free(result);
+        try testing.expectEqualStrings(expected_output, result);
+    }
+    {
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(testing.allocator);
+        try buffer.append(testing.allocator, 99);
+
+        try relativeAppendWindows(testing.allocator, &buffer, ".", null, from, to);
+        // Test that it preserved the previous contents of the array list.
+        try testing.expectEqual(expected_output.len + 1, buffer.items.len);
+        try testing.expectEqual(99, buffer.items[0]);
+        const result = buffer.items[1..];
+        try testing.expectEqualStrings(expected_output, result);
+    }
 }
 
 /// Searches for a file extension separated by a `.` and returns the string after that `.`.
