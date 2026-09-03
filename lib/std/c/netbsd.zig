@@ -373,3 +373,16 @@ pub const IPTOS = struct {
     pub const PREC_PRIORITY = 0x20;
     pub const PREC_ROUTINE = 0x00;
 };
+
+// https://github.com/NetBSD/src/blob/2579a44b3da9597de159e42cb1b5db0d382bd511/sys/netinet/tcp.h#L126
+pub const TCP = struct {
+    pub const NODELAY = 1;
+    pub const MAXSEG = 2;
+    pub const KEEPIDLE = 3;
+    pub const KEEPINTVL = 5;
+    pub const KEEPCNT = 6;
+    pub const KEEPINIT = 7;
+    pub const INFO = 9;
+    pub const MD5SIG = 0x10;
+    pub const CONGCTL = 0x20;
+};

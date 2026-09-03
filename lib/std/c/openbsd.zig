@@ -443,3 +443,13 @@ pub const IPTOS = struct {
     pub const ECN_CE = 0x03;
     pub const ECN_MASK = 0x03;
 };
+
+// https://github.com/openbsd/src/blob/5761484065d1eed341f812f818ecf3f79138e7c6/sys/netinet/tcp.h#L215
+pub const TCP = struct {
+    pub const NODELAY = 0x01;
+    pub const MAXSEG = 0x02;
+    pub const MD5SIG = 0x04;
+    pub const SACK_ENABLE = 0x08;
+    pub const INFO = 0x09;
+    pub const NOPUSH = 0x10;
+};

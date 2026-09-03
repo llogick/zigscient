@@ -289,3 +289,11 @@ pub const IPTOS = struct {
     pub const THROUGHPUT = 0x08;
     pub const LOWDELAY = 0x10;
 };
+
+// https://github.com/haiku/haiku/blob/2ffb9aef511dde272ab57d545a5d8631705a5ec8/headers/posix/netinet/tcp.h#L74
+pub const TCP = struct {
+    pub const NODELAY = 0x01;
+    pub const MAXSEG = 0x02;
+    pub const NOPUSH = 0x04;
+    pub const NOOPT = 0x08;
+};

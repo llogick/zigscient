@@ -5997,8 +5997,14 @@ pub const SOCK = switch (native_os) {
 pub const TCP = switch (native_os) {
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => darwin.TCP,
     .linux => linux.TCP,
+    .freebsd => freebsd.TCP,
+    .netbsd => netbsd.TCP,
+    .openbsd => openbsd.TCP,
+    .dragonfly => dragonfly.TCP,
     .emscripten => emscripten.TCP,
     .windows => ws2_32.TCP,
+    .illumos => illumos.TCP,
+    .haiku => haiku.TCP,
     // https://github.com/SerenityOS/serenity/blob/61ac554a3403838f79ca746bd1c65ded6f97d124/Kernel/API/POSIX/netinet/tcp.h#L13-L14
     .serenity => struct {
         pub const NODELAY = 10;
