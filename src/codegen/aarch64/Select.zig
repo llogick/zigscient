@@ -7757,6 +7757,11 @@ pub fn layout(
 
     {
         wip_mir_log.debug("{f}<prologue>:", .{nav.fqn.fmt(ip)});
+
+        for (0..mod.patchable_function_entry) |_| {
+            try isel.emit(.nop());
+        }
+
         var save_index: usize = 0;
         while (save_index < saves.len) if (save_index + 2 <= saves.len and
             saves[save_index + 0].class == saves[save_index + 1].class and

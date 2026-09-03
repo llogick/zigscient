@@ -1126,6 +1126,17 @@ fn gen(func: *Func) !void {
         }
     }
 
+    for (0..func.mod.patchable_function_entry) |_| {
+        _ = try func.addInst(.{
+            .tag = .addi,
+            .data = .{ .i_type = .{
+                .rd = .zero,
+                .rs1 = .zero,
+                .imm12 = Immediate.s(0),
+            } },
+        });
+    }
+
     if (fn_info.cc != .naked) {
         _ = try func.addPseudo(.pseudo_dbg_prologue_end);
 

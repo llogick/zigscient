@@ -4756,7 +4756,6 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) codegen.Error!void 
 /// FP saving/restoring is not yet implemented.
 pub fn layout(isel: *Select, cc_it: CallAbiIterator, mod: *const Module) !usize {
     _ = cc_it;
-    _ = mod;
     const zcu = isel.pt.zcu;
     const ip = &zcu.intern_pool;
     const nav = ip.getNav(isel.nav_index);
@@ -4878,6 +4877,10 @@ pub fn layout(isel: *Select, cc_it: CallAbiIterator, mod: *const Module) !usize 
                 .fp => try isel.emit(.@"fst.d"(save.register, .sp, -8 - @as(i12, save.offset))),
                 .fcc => unreachable,
             }
+        }
+
+        for (0..mod.patchable_function_entry) |_| {
+            try isel.emit(.andi(.zero, .zero, 0));
         }
         wip_mir_log.debug("{f}<prologue>:", .{nav.fqn.fmt(ip)});
     }

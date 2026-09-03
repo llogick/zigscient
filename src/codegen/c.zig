@@ -1735,6 +1735,14 @@ pub const DeclGen = struct {
         const fn_ty = fn_val.typeOf(zcu);
 
         const fn_info = zcu.typeToFunc(fn_ty).?;
+
+        if (kind == .definition) {
+            if (dg.mod.patchable_function_entry > 0) {
+                const count = dg.mod.patchable_function_entry;
+                try w.print("zig_patchable_function_entry({d}) ", .{count});
+            }
+        }
+
         if (fn_info.cc == .naked) {
             switch (kind) {
                 .forward_decl => try w.writeAll("zig_naked_decl "),

@@ -2218,6 +2218,15 @@ pub const Object = struct {
                 .value = try o.builder.string(std.mem.span(s)),
             } }, &o.builder);
         }
+
+        if (owner_mod.patchable_function_entry > 0) {
+            const count = owner_mod.patchable_function_entry;
+            try attributes.addFnAttr(.{ .string = .{
+                .kind = try o.builder.string("patchable-function-entry"),
+                .value = try o.builder.fmt("{d}", .{count}),
+            } }, &o.builder);
+        }
+
         if (target.abi.float() == .soft) {
             // `use-soft-float` means "use software routines for floating point computations". In
             // other words, it configures how LLVM lowers basic float instructions like `fcmp`,

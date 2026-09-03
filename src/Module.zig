@@ -43,6 +43,7 @@ fuzz: bool,
 unwind_tables: std.lang.UnwindTables,
 cc_argv: []const []const u8,
 no_builtin: bool,
+patchable_function_entry: u16,
 
 pub const Deps = std.array_hash_map.String(*Module);
 
@@ -84,6 +85,7 @@ pub const CreateOptions = struct {
         sanitize_thread: ?bool = null,
         fuzz: ?bool = null,
         no_builtin: ?bool = null,
+        patchable_function_entry: u16 = 0,
     };
 };
 
@@ -107,6 +109,7 @@ pub const CreateError = error{
     StackCheckUnsupportedByTarget,
     StackProtectorUnsupportedByTarget,
     StackProtectorUnavailableWithoutLibC,
+    PatchableFunctionEntryUnsupportedByBackend,
 };
 
 /// At least one of `parent` and `resolved_target` must be non-null.
@@ -324,6 +327,39 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Module {
         break :b target.cpu.arch.isBpf();
     };
 
+    const patchable_function_entry = b: {
+        const x = options.inherited.patchable_function_entry;
+        if (x > 0) {
+            switch (zig_backend) {
+                .stage2_llvm,
+                .stage2_x86_64,
+                .stage2_aarch64,
+                .stage2_c,
+                .stage2_riscv64,
+                .stage2_loongarch,
+                => {},
+
+                // Does not apply to this architecture.
+                .stage2_spirv,
+                .zsf_spork8,
+                .stage2_wasm,
+                => return error.PatchableFunctionEntryUnsupportedByBackend,
+
+                // Not implemented.
+                .stage2_sparc64,
+                .stage2_x86,
+                .stage2_arm,
+                .stage2_powerpc,
+                => return error.PatchableFunctionEntryUnsupportedByBackend,
+
+                .other, .stage1, _ => unreachable,
+            }
+            break :b x;
+        }
+        if (options.parent) |p| break :b p.patchable_function_entry;
+        break :b 0;
+    };
+
     const llvm_cpu_features: ?[*:0]const u8 = b: {
         if (resolved_target.llvm_cpu_features) |x| break :b x;
         if (!options.global.use_llvm) break :b null;
@@ -398,6 +434,7 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Module {
         .unwind_tables = unwind_tables,
         .cc_argv = options.cc_argv,
         .no_builtin = no_builtin,
+        .patchable_function_entry = patchable_function_entry,
     };
     return mod;
 }
@@ -436,6 +473,7 @@ pub fn createLimited(gpa: Allocator, options: LimitedOptions) Allocator.Error!*M
         .unwind_tables = undefined,
         .cc_argv = undefined,
         .no_builtin = undefined,
+        .patchable_function_entry = undefined,
     };
     return mod;
 }
@@ -474,6 +512,7 @@ pub fn createBuiltin(arena: Allocator, opts: Builtin, dirs: std.zig.Directories)
         .red_zone = false,
         .sanitize_c = .off,
         .no_builtin = false,
+        .patchable_function_entry = 0,
     };
     return new;
 }

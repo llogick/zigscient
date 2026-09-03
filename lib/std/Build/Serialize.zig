@@ -1243,6 +1243,7 @@ fn addModule(s: *Serialize, m: *std.Build.Module) !Configuration.Module.Index {
         .rpaths = .init(rpaths),
         .link_objects = .init(link_objects),
         .frameworks = .{ .slice = frameworks },
+        .patchable_function_entry = m.patchable_function_entry,
     });
 
     // The import table is the only place that modules can form dependency

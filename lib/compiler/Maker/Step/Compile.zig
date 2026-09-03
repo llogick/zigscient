@@ -1318,6 +1318,14 @@ fn appendModuleFlags(
         }
     }
 
+    if (m.patchable_function_entry > 0) {
+        const count = m.patchable_function_entry;
+        try zig_args.append(
+            gpa,
+            try arena.print("-fpatchable-function-entry={d}", .{count}),
+        );
+    }
+
     if (m.resolved_target.get(conf)) |resolved_target| {
         // Communicate the query via CLI since it's more compact.
         if (resolved_target.unwrapQuery(conf)) |query| {

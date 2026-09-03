@@ -2067,6 +2067,11 @@ fn gen(
     const pt = self.pt;
     const zcu = pt.zcu;
     const fn_info = zcu.typeToFunc(self.fn_type).?;
+
+    for (0..self.mod.patchable_function_entry) |_| {
+        try self.asmOpOnly(.{ ._, .nop });
+    }
+
     if (fn_info.cc != .naked) {
         try self.asmRegister(.{ ._, .push }, .rbp);
         try self.asmPseudoImmediate(.pseudo_cfi_adjust_cfa_offset_i_s, .s(8));

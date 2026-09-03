@@ -582,35 +582,36 @@ const compile_usage =
     \\  --build-root [path]       Override path to project source files
     \\
     \\Global Compile Options:
-    \\  --name [name]             Compilation unit name (not a file path)
-    \\  -M[name][=src]            Create a module based on the current per-module settings.
-    \\                            The first module is the main module.
-    \\                            "std" can be configured by omitting src
-    \\                            After a -M argument, per-module settings are reset.
-    \\  --libc [file]             Provide a file which specifies libc paths
-    \\  -x [language]             Treat subsequent input files as having type <language>
-    \\  --error-limit [num]       Set the maximum amount of distinct error values
-    \\  -fllvm                    Force using LLVM as the codegen backend
-    \\  -fno-llvm                 Prevent using LLVM as the codegen backend
-    \\  -flibllvm                 Force using the LLVM API in the codegen backend
-    \\  -fno-libllvm              Prevent using the LLVM API in the codegen backend
-    \\  -fclang                   Force using Clang as the C/C++ compilation backend
-    \\  -fno-clang                Prevent using Clang as the C/C++ compilation backend
-    \\  -fPIE                     Force-enable Position Independent Executable
-    \\  -fno-PIE                  Force-disable Position Independent Executable
-    \\  -flto                     Force-enable Link Time Optimization (requires LLVM extensions)
-    \\  -fno-lto                  Force-disable Link Time Optimization
-    \\  -fdll-export-fns          Mark exported functions as DLL exports (Windows)
-    \\  -fno-dll-export-fns       Force-disable marking exported functions as DLL exports
-    \\  -freference-trace[=num]   Show num lines of reference trace per compile error
-    \\  -fno-reference-trace      Disable reference trace
-    \\  -ffunction-sections       Places each function in a separate section
-    \\  -fno-function-sections    All functions go into same section
-    \\  -fdata-sections           Places each data in a separate section
-    \\  -fno-data-sections        All data go into same section
-    \\  -mexec-model=[value]      (WASI) Execution model
-    \\  -municode                 (Windows) Use wmain/wWinMain as entry point
-    \\  --time-report             Send timing diagnostics to '--listen' clients
+    \\  --name [name]                    Compilation unit name (not a file path)
+    \\  -M[name][=src]                   Create a module based on the current per-module settings.
+    \\                                   The first module is the main module.
+    \\                                   "std" can be configured by omitting src
+    \\                                   After a -M argument, per-module settings are reset.
+    \\  --libc [file]                    Provide a file which specifies libc paths
+    \\  -x [language]                    Treat subsequent input files as having type <language>
+    \\  --error-limit [num]              Set the maximum amount of distinct error values
+    \\  -fllvm                           Force using LLVM as the codegen backend
+    \\  -fno-llvm                        Prevent using LLVM as the codegen backend
+    \\  -flibllvm                        Force using the LLVM API in the codegen backend
+    \\  -fno-libllvm                     Prevent using the LLVM API in the codegen backend
+    \\  -fclang                          Force using Clang as the C/C++ compilation backend
+    \\  -fno-clang                       Prevent using Clang as the C/C++ compilation backend
+    \\  -fPIE                            Force-enable Position Independent Executable
+    \\  -fno-PIE                         Force-disable Position Independent Executable
+    \\  -flto                            Force-enable Link Time Optimization (requires LLVM extensions)
+    \\  -fno-lto                         Force-disable Link Time Optimization
+    \\  -fdll-export-fns                 Mark exported functions as DLL exports (Windows)
+    \\  -fno-dll-export-fns              Force-disable marking exported functions as DLL exports
+    \\  -freference-trace[=num]          Show num lines of reference trace per compile error
+    \\  -fno-reference-trace             Disable reference trace
+    \\  -ffunction-sections              Places each function in a separate section
+    \\  -fno-function-sections           All functions go into same section
+    \\  -fdata-sections                  Places each data in a separate section
+    \\  -fno-data-sections               All data go into same section
+    \\  -fpatchable-function-entry=[num] Add num NOPs of padding in function prologues
+    \\  -mexec-model=[value]             (WASI) Execution model
+    \\  -municode                        (Windows) Use wmain/wWinMain as entry point
+    \\  --time-report                    Send timing diagnostics to '--listen' clients
     \\
     \\Per-Module Compile Options:
     \\  --dep [[import=]name]     Add an entry to the next module's import table
@@ -1943,6 +1944,10 @@ pub fn buildOutputType(
                     } else if (mem.cutPrefix(u8, arg, "-fopt-bisect-limit=")) |next_arg| {
                         cs.llvm_opt_bisect_limit = std.fmt.parseInt(c_int, next_arg, 0) catch |err|
                             fatal("unable to parse {q}: {t}", .{ arg, err });
+                    } else if (mem.cutPrefix(u8, arg, "-fpatchable-function-entry=")) |num| {
+                        cs.mod_opts.patchable_function_entry = std.fmt.parseUnsigned(u16, num, 10) catch |err| {
+                            fatal("unable to parse patchable-function-entry count {q}: {t}", .{ num, err });
+                        };
                     } else if (mem.eql(u8, arg, "--eh-frame-hdr")) {
                         cs.link_eh_frame_hdr = true;
                     } else if (mem.eql(u8, arg, "--no-eh-frame-hdr")) {
@@ -2412,6 +2417,14 @@ pub fn buildOutputType(
                         },
                     } else {
                         cs.mod_opts.unwind_tables = .sync;
+                    },
+                    .patchable_function_entry => {
+                        cs.mod_opts.patchable_function_entry =
+                            std.fmt.parseUnsigned(u16, it.only_arg, 10) catch |err| {
+                                fatal("unable to parse patchable function entry count {q}: {t}", .{
+                                    it.only_arg, err,
+                                });
+                            };
                     },
                     .nostdlib => {
                         cs.create_module.opts.ensure_libc_on_non_freestanding = false;
@@ -4651,6 +4664,7 @@ fn createModule(
         error.StackCheckUnsupportedByTarget => fatal("unable to create module {q}: the selected target does not support stack checking", .{name}),
         error.StackProtectorUnsupportedByTarget => fatal("unable to create module {q}: the selected target does not support stack protection", .{name}),
         error.StackProtectorUnavailableWithoutLibC => fatal("unable to create module {q}: enabling stack protection requires libc", .{name}),
+        error.PatchableFunctionEntryUnsupportedByBackend => fatal("unable to create module {q}: patchable function entries are unsupported by the selected backend", .{name}),
         error.OutOfMemory => |e| return e,
     };
     cli_mod.resolved = mod;

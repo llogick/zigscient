@@ -261,6 +261,12 @@
 #define zig_no_builtin
 #endif
 
+#if zig_has_attribute(patchable_function_entry)
+#define zig_patchable_function_entry(count) __attribute__((patchable_function_entry(count)))
+#else
+#define zig_patchable_function_entry(count) zig_patchable_function_entry_unavailable
+#endif
+
 #if zig_has_attribute(aligned) || defined(zig_tinyc)
 #define zig_under_align(alignment) __attribute__((aligned(alignment)))
 #elif defined(zig_msvc)

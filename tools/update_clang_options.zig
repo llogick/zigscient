@@ -594,6 +594,10 @@ const known_options = [_]KnownOpt{
         .name = "version",
         .ident = "version",
     },
+    .{
+        .name = "fpatchable-function-entry",
+        .ident = "patchable_function_entry",
+    },
 };
 
 const blacklisted_options = [_][]const u8{};

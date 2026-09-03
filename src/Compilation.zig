@@ -1309,6 +1309,7 @@ pub const cache_helpers = struct {
         hh.add(mod.fuzz);
         hh.add(mod.unwind_tables);
         hh.add(mod.no_builtin);
+        hh.add(mod.patchable_function_entry);
         hh.addListOfBytes(mod.cc_argv);
     }
 
@@ -1852,6 +1853,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                 error.PieRequiresPic => unreachable,
                 error.DynamicLinkingRequiresPic => unreachable,
                 error.TargetHasNoRedZone => unreachable,
+                error.PatchableFunctionEntryUnsupportedByBackend => unreachable,
                 // These are not possible because are explicitly *not* requesting these things.
                 error.StackCheckUnsupportedByTarget => unreachable,
                 error.StackProtectorUnsupportedByTarget => unreachable,
@@ -1913,6 +1915,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                 error.StackCheckUnsupportedByTarget => unreachable,
                 error.StackProtectorUnsupportedByTarget => unreachable,
                 error.StackProtectorUnavailableWithoutLibC => unreachable,
+                error.PatchableFunctionEntryUnsupportedByBackend => unreachable,
             };
             try options.root_mod.deps.putNoClobber(arena, "ubsan_rt", ubsan_rt_mod);
         }
@@ -1958,6 +1961,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                 error.StackCheckUnsupportedByTarget => unreachable,
                 error.StackProtectorUnsupportedByTarget => unreachable,
                 error.StackProtectorUnavailableWithoutLibC => unreachable,
+                error.PatchableFunctionEntryUnsupportedByBackend => unreachable,
             };
             try options.root_mod.deps.putNoClobber(arena, "zigc", zigc_mod);
         }
@@ -2091,6 +2095,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                 error.StackCheckUnsupportedByTarget => unreachable,
                 error.StackProtectorUnsupportedByTarget => unreachable,
                 error.StackProtectorUnavailableWithoutLibC => unreachable,
+                error.PatchableFunctionEntryUnsupportedByBackend => unreachable,
             };
 
             const zcu = try arena.create(Zcu);
@@ -6648,6 +6653,11 @@ pub fn addCCArgs(
             .s390x => try std.fmt.allocPrint(arena, "-m{s}-float", .{fabi}),
             else => try std.fmt.allocPrint(arena, "-mfloat-abi={s}", .{fabi}),
         });
+    }
+
+    if (mod.patchable_function_entry > 0) {
+        const pf = mod.patchable_function_entry;
+        try argv.append(try std.fmt.allocPrint(arena, "-fpatchable-function-entry={}", .{pf}));
     }
 
     try comp.addCommonCCArgs(arena, argv, ext, out_dep_path, mod, comp.config.c_frontend);

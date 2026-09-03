@@ -3603,7 +3603,11 @@
 .{ .name = "fms-compatibility-version=", .syntax = .joined },
 .{ .name = "fopenmp-cuda-number-of-sm=", .syntax = .joined },
 .{ .name = "foptimization-record-file=", .syntax = .joined },
-.{ .name = "fpatchable-function-entry=", .syntax = .joined },
+.{
+    .name = "fpatchable-function-entry=",
+    .ze = .patchable_function_entry,
+    .syntax = .joined,
+},
 .{ .name = "frepack-arrays-contiguity=", .syntax = .joined },
 .{ .name = "fsanitize-skip-hot-cutoff=", .syntax = .comma_joined },
 .{ .name = "fsave-optimization-record=", .syntax = .joined },
