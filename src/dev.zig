@@ -175,8 +175,6 @@ pub const Env = enum {
                 else => Env.ast_gen.supports(feature),
             },
             .lsp_server => switch (feature) {
-                .translate_c_command,
-                => true,
                 else => Env.sema.supports(feature),
             },
             .@"aarch64-linux" => switch (feature) {

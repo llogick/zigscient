@@ -4620,11 +4620,11 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
         _ => unreachable,
 
         .stage2_llvm => {
-            dev.check(.llvm_backend);
+            if (dev.env != .lsp_server) dev.check(.llvm_backend);
             break :ok @import("codegen/llvm.zig").toLlvmCallConv(cc, target) != null;
         },
         .stage2_c => {
-            dev.check(.c_backend);
+            if (dev.env != .lsp_server) dev.check(.c_backend);
             if (target.cCallingConvention()) |default_c| {
                 if (cc.eql(default_c)) {
                     break :ok true;
@@ -4683,14 +4683,14 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
             };
         },
         .stage2_wasm => {
-            dev.check(.wasm_backend);
+            if (dev.env != .lsp_server) dev.check(.wasm_backend);
             break :ok switch (cc) {
                 .wasm_mvp => |opts| opts.incoming_stack_alignment == null,
                 else => false,
             };
         },
         .stage2_arm => {
-            dev.check(.arm_backend);
+            if (dev.env != .lsp_server) dev.check(.arm_backend);
             break :ok switch (cc) {
                 .arm_aapcs => |opts| opts.incoming_stack_alignment == null,
                 .naked => true,
@@ -4698,21 +4698,21 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
             };
         },
         .stage2_x86_64 => {
-            dev.check(.x86_64_backend);
+            if (dev.env != .lsp_server) dev.check(.x86_64_backend);
             break :ok switch (cc) {
                 .x86_64_sysv, .x86_64_win, .naked => true, // incoming stack alignment supported
                 else => false,
             };
         },
         .stage2_aarch64 => {
-            dev.check(.aarch64_backend);
+            if (dev.env != .lsp_server) dev.check(.aarch64_backend);
             break :ok switch (cc) {
                 .aarch64_aapcs, .aarch64_aapcs_darwin, .naked => true,
                 else => false,
             };
         },
         .stage2_x86 => {
-            dev.check(.x86_backend);
+            if (dev.env != .lsp_server) dev.check(.x86_backend);
             break :ok switch (cc) {
                 .x86_sysv,
                 .x86_win,
@@ -4723,7 +4723,7 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
             };
         },
         .stage2_powerpc => {
-            dev.check(.powerpc_backend);
+            if (dev.env != .lsp_server) dev.check(.powerpc_backend);
             break :ok switch (target.cpu.arch) {
                 .powerpc, .powerpcle => switch (cc) {
                     .powerpc_sysv,
@@ -4746,7 +4746,7 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
             };
         },
         .stage2_riscv64 => {
-            dev.check(.riscv64_backend);
+            if (dev.env != .lsp_server) dev.check(.riscv64_backend);
             break :ok switch (cc) {
                 .riscv64_lp64 => |opts| opts.incoming_stack_alignment == null,
                 .naked => true,
@@ -4754,7 +4754,7 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
             };
         },
         .stage2_sparc64 => {
-            dev.check(.sparc64_backend);
+            if (dev.env != .lsp_server) dev.check(.sparc64_backend);
             break :ok switch (cc) {
                 .sparc64_sysv => |opts| opts.incoming_stack_alignment == null,
                 .naked => true,
@@ -4762,7 +4762,7 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
             };
         },
         .stage2_spirv => {
-            dev.check(.spirv_backend);
+            if (dev.env != .lsp_server) dev.check(.spirv_backend);
             break :ok switch (cc) {
                 .spirv_device, .spirv_kernel => true,
                 .spirv_fragment, .spirv_vertex => target.os.tag == .vulkan or target.os.tag == .opengl,
@@ -4771,14 +4771,14 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
             };
         },
         .stage2_loongarch => {
-            dev.check(.loongarch_backend);
+            if (dev.env != .lsp_server) dev.check(.loongarch_backend);
             break :ok switch (cc) {
                 .loongarch64_lp64, .loongarch32_ilp32, .naked => true,
                 else => false,
             };
         },
         .zsf_spork8 => {
-            dev.check(.spork8_backend);
+            if (dev.env != .lsp_server) dev.check(.spork8_backend);
             break :ok switch (cc) {
                 .spork8, .naked => true,
                 else => false,
