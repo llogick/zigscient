@@ -3277,6 +3277,7 @@ pub const Inst = struct {
 
     pub const ReifyStruct = struct {
         src_line: u32,
+        src_column: u32,
         /// This node is absolute, because `reify` instructions are tracked across updates, and
         /// this simplifies the logic for getting source locations for types.
         node: Ast.Node.Index,
@@ -3289,6 +3290,7 @@ pub const Inst = struct {
 
     pub const ReifyUnion = struct {
         src_line: u32,
+        src_column: u32,
         /// This node is absolute, because `reify` instructions are tracked across updates, and
         /// this simplifies the logic for getting source locations for types.
         node: Ast.Node.Index,
@@ -3301,6 +3303,7 @@ pub const Inst = struct {
 
     pub const ReifyEnum = struct {
         src_line: u32,
+        src_column: u32,
         /// This node is absolute, because `reify` instructions are tracked across updates, and
         /// this simplifies the logic for getting source locations for types.
         node: Ast.Node.Index,
@@ -3312,6 +3315,7 @@ pub const Inst = struct {
 
     pub const ReifySpirvType = struct {
         src_line: u32,
+        src_column: u32,
         /// This node is absolute, because `reify` instructions are tracked across updates, and
         /// this simplifies the logic for getting source locations for types.
         node: Ast.Node.Index,
@@ -3509,6 +3513,7 @@ pub const Inst = struct {
         fields_hash_2: u32,
         fields_hash_3: u32,
         src_line: u32,
+        src_column: u32,
         /// This node provides a new absolute baseline node for all instructions within this struct.
         src_node: Ast.Node.Index,
 
@@ -3664,6 +3669,7 @@ pub const Inst = struct {
         fields_hash_2: u32,
         fields_hash_3: u32,
         src_line: u32,
+        src_column: u32,
         /// This node provides a new absolute baseline node for all instructions within this struct.
         src_node: Ast.Node.Index,
 
@@ -3701,6 +3707,7 @@ pub const Inst = struct {
         fields_hash_2: u32,
         fields_hash_3: u32,
         src_line: u32,
+        src_column: u32,
         /// This node provides a new absolute baseline node for all instructions within this struct.
         src_node: Ast.Node.Index,
 
@@ -3756,6 +3763,7 @@ pub const Inst = struct {
     /// 4. decl: Index, // for every decls_len; points to a `declaration` instruction
     pub const OpaqueDecl = struct {
         src_line: u32,
+        src_column: u32,
         /// This node provides a new absolute baseline node for all instructions within this struct.
         src_node: Ast.Node.Index,
 
@@ -3803,8 +3811,8 @@ pub const Inst = struct {
         /// If this is an anonymous initialization (the operand is poison), this instruction becomes the owner of a type.
         /// To resolve source locations, we need an absolute source node.
         abs_node: Ast.Node.Index,
-        /// Likewise, we need an absolute line number.
-        abs_line: u32,
+        src_line: u32,
+        src_column: u32,
         fields_len: u32,
 
         pub const Item = struct {
@@ -3823,8 +3831,8 @@ pub const Inst = struct {
         /// This is an anonymous initialization, meaning this instruction becomes the owner of a type.
         /// To resolve source locations, we need an absolute source node.
         abs_node: Ast.Node.Index,
-        /// Likewise, we need an absolute line number.
-        abs_line: u32,
+        src_line: u32,
+        src_column: u32,
         fields_len: u32,
 
         pub const Item = struct {
@@ -5318,6 +5326,7 @@ pub fn getStructDecl(zir: *const Zir, struct_decl: Inst.Index) UnwrappedStructDe
     const field_bodies_overlong: []const Inst.Index = @ptrCast(zir.extra[extra_index..]);
     return .{
         .src_line = extra.data.src_line,
+        .src_column = extra.data.src_column,
         .src_node = extra.data.src_node,
         .name_strategy = small.name_strategy,
         .captures = captures,
@@ -5335,6 +5344,7 @@ pub fn getStructDecl(zir: *const Zir, struct_decl: Inst.Index) UnwrappedStructDe
 }
 pub const UnwrappedStructDecl = struct {
     src_line: u32,
+    src_column: u32,
     src_node: Ast.Node.Index,
     name_strategy: Inst.NameStrategy,
 
@@ -5463,6 +5473,7 @@ pub fn getUnionDecl(zir: *const Zir, union_decl: Inst.Index) UnwrappedUnionDecl 
     const field_bodies_overlong: []const Inst.Index = @ptrCast(zir.extra[extra_index..]);
     return .{
         .src_line = extra.data.src_line,
+        .src_column = extra.data.src_column,
         .src_node = extra.data.src_node,
         .name_strategy = small.name_strategy,
         .captures = captures,
@@ -5479,6 +5490,7 @@ pub fn getUnionDecl(zir: *const Zir, union_decl: Inst.Index) UnwrappedUnionDecl 
 }
 pub const UnwrappedUnionDecl = struct {
     src_line: u32,
+    src_column: u32,
     src_node: Ast.Node.Index,
     name_strategy: Inst.NameStrategy,
 
@@ -5590,6 +5602,7 @@ pub fn getEnumDecl(zir: *const Zir, enum_decl: Inst.Index) UnwrappedEnumDecl {
     const field_bodies_overlong: []const Inst.Index = @ptrCast(zir.extra[extra_index..]);
     return .{
         .src_line = extra.data.src_line,
+        .src_column = extra.data.src_column,
         .src_node = extra.data.src_node,
         .name_strategy = small.name_strategy,
         .captures = captures,
@@ -5604,6 +5617,7 @@ pub fn getEnumDecl(zir: *const Zir, enum_decl: Inst.Index) UnwrappedEnumDecl {
 }
 pub const UnwrappedEnumDecl = struct {
     src_line: u32,
+    src_column: u32,
     src_node: Ast.Node.Index,
     name_strategy: Inst.NameStrategy,
 
@@ -5682,6 +5696,7 @@ pub fn getOpaqueDecl(zir: *const Zir, opaque_decl: Inst.Index) UnwrappedOpaqueDe
     extra_index += decls_len;
     return .{
         .src_line = extra.data.src_line,
+        .src_column = extra.data.src_column,
         .src_node = extra.data.src_node,
         .name_strategy = small.name_strategy,
         .captures = captures,
@@ -5691,6 +5706,7 @@ pub fn getOpaqueDecl(zir: *const Zir, opaque_decl: Inst.Index) UnwrappedOpaqueDe
 }
 pub const UnwrappedOpaqueDecl = struct {
     src_line: u32,
+    src_column: u32,
     src_node: Ast.Node.Index,
     name_strategy: Inst.NameStrategy,
     captures: []const Inst.Capture,

@@ -1,0 +1,22 @@
+#update=initial version
+#file=main.zig
+fn getEnum(s: @Struct(.auto, null, &.{"field"}, &.{struct { tag: Enum }}, &.{.{}})) Enum {
+    return s.field.tag;
+}
+pub fn main(init: std.process.Init) !void {
+    try std.Io.File.stdout().writeStreamingAll(init.io, @tagName(getEnum(.{ .field = .{ .tag = .foo } })));
+}
+const Enum = enum { foo, bar };
+const std = @import("std");
+#expect_stdout="foo"
+#update=change field type
+#file=main.zig
+fn getEnum(s: @Struct(.auto, null, &.{"field"}, &.{Enum}, &.{.{}})) Enum {
+    return s.field;
+}
+pub fn main(init: std.process.Init) !void {
+    try std.Io.File.stdout().writeStreamingAll(init.io, @tagName(getEnum(.{ .field = .bar })));
+}
+const Enum = enum { foo, bar };
+const std = @import("std");
+#expect_stdout="bar"

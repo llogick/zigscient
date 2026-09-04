@@ -332,8 +332,7 @@ const ValueTable = std.array_hash_map.Auto(Air.Inst.Ref, WValue);
 
 const bookkeeping_init = if (std.debug.runtime_safety) @as(usize, 0) else {};
 
-const InnerError = error{
-    OutOfMemory,
+const InnerError = Error || error{
     /// An error occurred when trying to lower AIR to MIR.
     AlreadyReported,
     /// Compiler implementation could not handle a large integer.
@@ -361,7 +360,7 @@ pub fn deinit(cg: *CodeGen) void {
     cg.* = undefined;
 }
 
-pub fn fail(cg: *CodeGen, comptime fmt: []const u8, args: anytype) error{ OutOfMemory, AlreadyReported } {
+pub fn fail(cg: *CodeGen, comptime fmt: []const u8, args: anytype) Error {
     const zcu = cg.pt.zcu;
     const func = zcu.funcInfo(cg.func_index);
     return zcu.codegenFail(func.owner_nav, fmt, args);
@@ -760,11 +759,7 @@ fn ensureAllocLocal(cg: *CodeGen, ty: Type) InnerError!WValue {
     return .{ .local = .{ .value = initial_index, .references = 1 } };
 }
 
-pub const Error = error{
-    OutOfMemory,
-    /// Indicates the error is already stored in Zcu `failed_codegen`.
-    AlreadyReported,
-};
+pub const Error = codegen.Error;
 
 pub fn generate(
     bin_file: *link.File,

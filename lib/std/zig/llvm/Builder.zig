@@ -3461,8 +3461,7 @@ pub const Global = struct {
             const old_name = self.name(builder);
             if (new_name == old_name) return;
             const index = @backingInt(self.unwrap(builder));
-            _ = builder.addGlobalAssumeCapacity(new_name, builder.globals.values()[index]);
-            builder.globals.swapRemoveAt(index);
+            builder.globals.setKey(index, new_name);
             if (!old_name.isAnon()) return;
             builder.next_unnamed_global = @fromBackingInt(@backingInt(builder.next_unnamed_global) - 1);
             if (builder.next_unnamed_global == old_name) return;

@@ -45,9 +45,21 @@ pub const Index = enum(u32) {
 };
 
 pub const User = union(enum) {
-    dwarf: *@import("Dwarf.zig"),
+    elf: *@import("Dwarf.zig"),
+    elf2: *@import("Elf2.zig"),
+    macho: *@import("Dwarf.zig"),
     c: *@import("C.zig"),
     llvm: @import("../codegen/llvm.zig").Object.Ptr,
+
+    fn devFeature(tag: @typeInfo(User).@"union".tag_type.?) dev.Feature {
+        return switch (tag) {
+            .elf => .elf_linker,
+            .elf2 => .elf2_linker,
+            .macho => .macho_linker,
+            .c => .c_linker,
+            .llvm => .llvm_backend,
+        };
+    }
 
     /// Inform the debug info implementation that the new constant `val` was added to the pool at
     /// the given index (which equals the current pool length) due to a `get` call. It is guaranteed
@@ -58,9 +70,12 @@ pub const User = union(enum) {
         pt: Zcu.PerThread,
         index: Index,
         val: InternPool.Index,
-    ) Allocator.Error!void {
+    ) link.Error!void {
         switch (user) {
-            inline else => |impl| return impl.addConst(pt, index, val),
+            inline else => |impl, tag| {
+                dev.check(devFeature(tag));
+                return impl.addConst(pt, index, val);
+            },
         }
     }
 
@@ -73,9 +88,12 @@ pub const User = union(enum) {
         pt: Zcu.PerThread,
         index: Index,
         val: InternPool.Index,
-    ) Allocator.Error!void {
+    ) link.Error!void {
         switch (user) {
-            inline else => |impl| return impl.updateConst(pt, index, val),
+            inline else => |impl, tag| {
+                dev.check(devFeature(tag));
+                return impl.updateConst(pt, index, val);
+            },
         }
     }
 
@@ -89,9 +107,12 @@ pub const User = union(enum) {
         pt: Zcu.PerThread,
         index: Index,
         val: InternPool.Index,
-    ) Allocator.Error!void {
+    ) link.Error!void {
         switch (user) {
-            inline else => |impl| return impl.updateConstIncomplete(pt, index, val),
+            inline else => |impl, tag| {
+                dev.check(devFeature(tag));
+                return impl.updateConstIncomplete(pt, index, val);
+            },
         }
     }
 };
@@ -128,12 +149,12 @@ pub fn updateContainerType(
     user: User,
     container_ty: InternPool.Index,
     success: bool,
-) Allocator.Error!void {
+) link.Error!void {
     if (success) {
         const gpa = pt.zcu.comp.gpa;
         try pool.complete_containers.put(gpa, container_ty, {});
     } else {
-        _ = pool.complete_containers.fetchSwapRemove(container_ty);
+        _ = pool.complete_containers.swapRemove(container_ty);
     }
     var opt_dep = pool.container_deps.get(container_ty);
     while (opt_dep) |dep| : (opt_dep = dep.ptr(pool).next.unwrap()) {
@@ -143,7 +164,7 @@ pub fn updateContainerType(
 
 /// After this is called, there may be a constant for which debug information (complete or not) has
 /// not yet been emitted, so the user must call `flushPending` at some point after this call.
-pub fn get(pool: *ConstPool, pt: Zcu.PerThread, user: User, val: InternPool.Index) Allocator.Error!ConstPool.Index {
+pub fn get(pool: *ConstPool, pt: Zcu.PerThread, user: User, val: InternPool.Index) link.Error!ConstPool.Index {
     const zcu = pt.zcu;
     const ip = &zcu.intern_pool;
     const gpa = zcu.comp.gpa;
@@ -160,13 +181,16 @@ pub fn get(pool: *ConstPool, pt: Zcu.PerThread, user: User, val: InternPool.Inde
     }
     return index;
 }
-pub fn flushPending(pool: *ConstPool, pt: Zcu.PerThread, user: User) Allocator.Error!void {
+pub fn getIfExists(pool: *ConstPool, val: InternPool.Index) ?ConstPool.Index {
+    return @fromBackingInt(@intCast(pool.values.getIndex(val) orelse return null));
+}
+pub fn flushPending(pool: *ConstPool, pt: Zcu.PerThread, user: User) link.Error!void {
     while (pool.pending.pop()) |pending_ty| {
         try pool.update(pt, user, pending_ty);
     }
 }
 
-fn update(pool: *ConstPool, pt: Zcu.PerThread, user: User, index: ConstPool.Index) Allocator.Error!void {
+fn update(pool: *ConstPool, pt: Zcu.PerThread, user: User, index: ConstPool.Index) link.Error!void {
     const zcu = pt.zcu;
     const ip = &zcu.intern_pool;
     const val = index.val(pool);
@@ -285,6 +309,8 @@ fn registerTypeDeps(pool: *ConstPool, root: Index, ty: Type, zcu: *const Zcu) Al
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+const dev = @import("../dev.zig");
 const InternPool = @import("../InternPool.zig");
+const link = @import("../link.zig");
 const Type = @import("../Type.zig");
 const Zcu = @import("../Zcu.zig");

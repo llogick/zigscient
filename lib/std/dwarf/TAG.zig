@@ -40,8 +40,8 @@ pub const namelist = 0x2b;
 pub const namelist_item = 0x2c;
 pub const packed_type = 0x2d;
 pub const subprogram = 0x2e;
-pub const template_type_param = 0x2f;
-pub const template_value_param = 0x30;
+pub const template_type_parameter = 0x2f;
+pub const template_value_parameter = 0x30;
 pub const thrown_type = 0x31;
 pub const try_block = 0x32;
 pub const variant_part = 0x33;
@@ -120,3 +120,4 @@ pub const PGI_interface_block = 0xA020;
 // ZIG extensions.
 pub const ZIG_padding = 0xfdb1;
 pub const ZIG_comptime_value = 0xfdb2;
+pub const ZIG_lost_declaration = 0xfdb3;

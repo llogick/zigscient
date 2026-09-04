@@ -215,7 +215,6 @@ const Sema = @import("Sema.zig");
 const Zcu = @import("Zcu.zig");
 const link = @import("link.zig");
 const InternPool = @import("InternPool.zig");
-const dev = @import("dev.zig");
 const print_zir = @import("print_zir.zig");
 
 const build_options = @import("build_options");

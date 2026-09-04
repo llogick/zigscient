@@ -4,6 +4,7 @@ const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
 const CodeGen = @This();
+const codegen = @import("../../codegen.zig");
 const link = @import("../../link.zig");
 const Spork8 = link.File.Spork8;
 const Zcu = @import("../../Zcu.zig");
@@ -133,37 +134,20 @@ pub fn generate(
     _ = bin_file;
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
-    const cg = zcu.funcInfo(func_index);
+    const func = zcu.funcInfo(func_index);
 
-    var code_gen: CodeGen = .{
+    var cg: CodeGen = .{
         .gpa = gpa,
         .pt = pt,
         .air = air.*,
         .liveness = liveness.*.?,
-        .owner_nav = cg.owner_nav,
+        .owner_nav = func.owner_nav,
         .func_index = func_index,
         .mir_instructions = .empty,
         .mir_extra = .empty,
     };
-    defer code_gen.deinit();
+    defer cg.deinit();
 
-    return generateInner(&code_gen) catch |err| switch (err) {
-        error.AlreadyReported,
-        error.OutOfMemory,
-        => |e| return e,
-    };
-}
-
-pub fn deinit(cg: *CodeGen) void {
-    cg.* = undefined;
-}
-
-const InnerError = error{
-    AlreadyReported,
-    OutOfMemory,
-};
-
-fn generateInner(cg: *CodeGen) InnerError!Mir {
     // Generate MIR for function body
     try cg.genBody(cg.air.getMainBody());
 
@@ -175,7 +159,11 @@ fn generateInner(cg: *CodeGen) InnerError!Mir {
     };
 }
 
-fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
+pub fn deinit(cg: *CodeGen) void {
+    cg.* = undefined;
+}
+
+fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) codegen.Error!void {
     const zcu = cg.pt.zcu;
     const ip = &zcu.intern_pool;
 
@@ -185,7 +173,7 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
     }
 }
 
-fn genInst(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
+fn genInst(cg: *CodeGen, inst: Air.Inst.Index) codegen.Error!void {
     const air_tags = cg.air.instructions.items(.tag);
     return switch (air_tags[@backingInt(inst)]) {
         .inferred_alloc, .inferred_alloc_comptime => unreachable,
@@ -444,17 +432,17 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
     };
 }
 
-fn airUnreachable(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
+fn airUnreachable(cg: *CodeGen, inst: Air.Inst.Index) codegen.Error!void {
     _ = cg;
     _ = inst;
 }
 
-fn airTrap(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
+fn airTrap(cg: *CodeGen, inst: Air.Inst.Index) codegen.Error!void {
     _ = inst;
     try cg.addTag(.halt);
 }
 
-fn airAssembly(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
+fn airAssembly(cg: *CodeGen, inst: Air.Inst.Index) codegen.Error!void {
     const unwrapped_asm = cg.air.unwrapAsm(inst);
     const outputs = unwrapped_asm.outputs;
     // const inputs = unwrapped_asm.inputs;
@@ -538,7 +526,7 @@ pub fn addTagImm8(cg: *CodeGen, tag: Mir.Inst.Tag, imm8: u8) error{OutOfMemory}!
     try cg.addInst(.{ .tag = tag, .data = .{ .imm8 = imm8 } });
 }
 
-fn fail(cg: *CodeGen, comptime fmt: []const u8, args: anytype) error{ OutOfMemory, AlreadyReported } {
+fn fail(cg: *CodeGen, comptime fmt: []const u8, args: anytype) codegen.Error {
     const zcu = cg.pt.zcu;
     const func = zcu.funcInfo(cg.func_index);
     return zcu.codegenFail(func.owner_nav, fmt, args);

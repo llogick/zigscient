@@ -209,7 +209,7 @@ pub fn addConst(
     pt: Zcu.PerThread,
     pool_index: link.ConstPool.Index,
     val: InternPool.Index,
-) Allocator.Error!void {
+) link.Error!void {
     const zcu = pt.zcu;
     const gpa = zcu.comp.gpa;
     assert(zcu.intern_pool.typeOf(val) == .type_type);
@@ -310,7 +310,7 @@ pub fn updateConst(
     pt: Zcu.PerThread,
     index: link.ConstPool.Index,
     val: InternPool.Index,
-) Allocator.Error!void {
+) link.Error!void {
     const zcu = pt.zcu;
     const gpa = zcu.comp.gpa;
 
@@ -498,7 +498,7 @@ pub fn updateFunc(
     pt: Zcu.PerThread,
     func_index: InternPool.Index,
     mir: *AnyMir,
-) Allocator.Error!void {
+) link.Error!void {
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
     const nav = zcu.funcInfo(func_index).owner_nav;
@@ -536,11 +536,7 @@ pub fn updateFunc(
     try c.type_pool.flushPending(pt, .{ .c = c });
 }
 
-pub fn updateNav(
-    c: *C,
-    pt: Zcu.PerThread,
-    nav_index: InternPool.Nav.Index,
-) Allocator.Error!void {
+pub fn updateNav(c: *C, pt: Zcu.PerThread, nav_index: InternPool.Nav.Index) link.Error!void {
     const tracy = trace(@src());
     defer tracy.end();
 
@@ -603,7 +599,8 @@ pub fn updateNav(
             const start = aw.written().len;
             codegen.genDeclFwd(&dg, &aw.writer) catch |err| switch (err) {
                 error.AlreadyReported => return,
-                error.WriteFailed, error.OutOfMemory => return error.OutOfMemory,
+                error.WriteFailed => return error.OutOfMemory,
+                error.Canceled, error.OutOfMemory => |e| return e,
             };
             break :fwd_decl .{
                 .start = @intCast(start),
@@ -617,7 +614,8 @@ pub fn updateNav(
             const start = aw.written().len;
             codegen.genDecl(&dg, &aw.writer) catch |err| switch (err) {
                 error.AlreadyReported => return,
-                error.WriteFailed, error.OutOfMemory => return error.OutOfMemory,
+                error.WriteFailed => return error.OutOfMemory,
+                error.Canceled, error.OutOfMemory => |e| return e,
             };
             break :code .{
                 .start = @intCast(start),
@@ -655,7 +653,7 @@ fn updateUav(
     pt: Zcu.PerThread,
     val: Value,
     rendered_decl: *RenderedDecl,
-) Allocator.Error!void {
+) link.Error!void {
     const tracy = trace(@src());
     defer tracy.end();
 
@@ -691,7 +689,8 @@ fn updateUav(
             .init_val = val,
         }) catch |err| switch (err) {
             error.AlreadyReported => return,
-            error.WriteFailed, error.OutOfMemory => return error.OutOfMemory,
+            error.WriteFailed => return error.OutOfMemory,
+            error.Canceled, error.OutOfMemory => |e| return e,
         };
         break :fwd_decl .{
             .start = @intCast(start),
@@ -710,7 +709,8 @@ fn updateUav(
             .init_val = val,
         }) catch |err| switch (err) {
             error.AlreadyReported => return,
-            error.WriteFailed, error.OutOfMemory => return error.OutOfMemory,
+            error.WriteFailed => return error.OutOfMemory,
+            error.Canceled, error.OutOfMemory => |e| return e,
         };
         break :code .{
             .start = @intCast(start),
@@ -721,12 +721,13 @@ fn updateUav(
     rendered_decl.ctype_deps = try c.addCTypeDependencies(pt, &dg.ctype_deps);
 }
 
-pub fn updateLineNumber(c: *C, pt: Zcu.PerThread, ti_id: InternPool.TrackedInst.Index) error{}!void {
+pub fn updateLineNumber(c: *C, pt: Zcu.PerThread, ti_id: InternPool.TrackedInst.Index, line: u32) error{}!void {
     // The C backend does not currently emit "#line" directives. Even if it did, it would not be
     // capable of updating those line numbers without re-generating the entire declaration.
     _ = c;
     _ = pt;
     _ = ti_id;
+    _ = line;
 }
 
 pub fn flush(c: *C, arena: Allocator, tid: Zcu.PerThread.Id, prog_node: std.Progress.Node) link.Error!void {
@@ -1144,14 +1145,14 @@ pub fn flush(c: *C, arena: Allocator, tid: Zcu.PerThread.Id, prog_node: std.Prog
         for (need_never_tail_funcs.keys()) |fn_nav| {
             codegen.genLazyCallModifierFn(&lazy_dg, fn_nav, .never_tail, &lazy_decls_aw.writer) catch |err| switch (err) {
                 error.WriteFailed => return error.OutOfMemory,
-                error.OutOfMemory => |e| return e,
+                error.Canceled, error.OutOfMemory => |e| return e,
                 error.AlreadyReported => unreachable,
             };
         }
         for (need_never_inline_funcs.keys()) |fn_nav| {
             codegen.genLazyCallModifierFn(&lazy_dg, fn_nav, .never_inline, &lazy_decls_aw.writer) catch |err| switch (err) {
                 error.WriteFailed => return error.OutOfMemory,
-                error.OutOfMemory => |e| return e,
+                error.Canceled, error.OutOfMemory => |e| return e,
                 error.AlreadyReported => unreachable,
             };
         }
@@ -1343,7 +1344,7 @@ fn addCTypeDependencies(
     c: *C,
     pt: Zcu.PerThread,
     deps: *const codegen.CType.Dependencies,
-) Allocator.Error!CTypeDependencies {
+) link.Error!CTypeDependencies {
     const gpa = pt.zcu.comp.gpa;
 
     try c.bigint_types.ensureUnusedCapacity(gpa, deps.bigint.count());
@@ -1399,7 +1400,7 @@ fn addCTypeDependencies(
     };
 }
 
-fn updateNewUavs(c: *C, pt: Zcu.PerThread, old_uavs_len: usize) Allocator.Error!void {
+fn updateNewUavs(c: *C, pt: Zcu.PerThread, old_uavs_len: usize) link.Error!void {
     const gpa = pt.zcu.comp.gpa;
     var index = old_uavs_len;
     while (index < c.uavs.count()) : (index += 1) {

@@ -853,7 +853,7 @@ fn resolveRelocInner(
 
 const x86_64 = struct {
     fn relaxGotLoad(self: Atom, code: []u8, rel: Relocation, macho_file: *MachO) ResolveError!void {
-        dev.check(.x86_64_backend);
+        dev.checkAny(&.{ .llvm_backend, .x86_64_backend });
         const t = &macho_file.base.comp.root_mod.resolved_target.result;
         const diags = &macho_file.base.comp.link_diags;
         const old_inst = disassemble(code) orelse return error.RelaxFail;
@@ -879,7 +879,7 @@ const x86_64 = struct {
     }
 
     fn relaxTlv(code: []u8, t: *const std.Target) error{RelaxFail}!void {
-        dev.check(.x86_64_backend);
+        dev.checkAny(&.{ .llvm_backend, .x86_64_backend });
         const old_inst = disassemble(code) orelse return error.RelaxFail;
         switch (old_inst.encoding.mnemonic) {
             .mov => {

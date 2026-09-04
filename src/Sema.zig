@@ -403,6 +403,7 @@ pub const Block = struct {
     /// is always incorporated into the type name somehow.
     /// See `Sema.setTypeName`.
     type_name_ctx: InternPool.NullTerminatedString,
+    type_fqn_ctx: InternPool.NullTerminatedString,
 
     /// Create a `LazySrcLoc` based on an `Offset` from the code being analyzed in this block.
     /// Specifically, the given `Offset` is treated as relative to `block.src_base_inst`.
@@ -531,6 +532,7 @@ pub const Block = struct {
             .need_debug_scope = parent.need_debug_scope,
             .src_base_inst = parent.src_base_inst,
             .type_name_ctx = parent.type_name_ctx,
+            .type_fqn_ctx = parent.type_fqn_ctx,
         };
     }
 
@@ -4782,7 +4784,7 @@ fn failWithBadStructFieldAccess(
         const msg = try sema.errMsg(
             field_src,
             "no field named '{f}' in struct '{f}'",
-            .{ field_name.fmt(ip), struct_type.name.fmt(ip) },
+            .{ field_name.fmt(ip), struct_type.fqn.fmt(ip) },
         );
         errdefer msg.destroy(sema.gpa);
         try sema.errNote(struct_ty.srcLoc(zcu), msg, "struct declared here", .{});
@@ -4808,7 +4810,7 @@ fn failWithBadUnionFieldAccess(
         const msg = try sema.errMsg(
             field_src,
             "no field named '{f}' in union '{f}'",
-            .{ field_name.fmt(ip), union_obj.name.fmt(ip) },
+            .{ field_name.fmt(ip), union_obj.fqn.fmt(ip) },
         );
         errdefer msg.destroy(gpa);
         try sema.errNote(union_ty.srcLoc(zcu), msg, "union declared here", .{});
@@ -5291,6 +5293,7 @@ fn zirBlock(sema: *Sema, parent_block: *Block, inst: Zir.Inst.Index) CompileErro
         .error_return_trace_index = parent_block.error_return_trace_index,
         .src_base_inst = parent_block.src_base_inst,
         .type_name_ctx = parent_block.type_name_ctx,
+        .type_fqn_ctx = parent_block.type_fqn_ctx,
     };
 
     defer child_block.instructions.deinit(gpa);
@@ -6773,7 +6776,8 @@ fn analyzeCall(
         .instructions = .empty,
         .inlining = &generic_inlining,
         .src_base_inst = fn_nav.analysis.?.zir_index,
-        .type_name_ctx = fn_nav.fqn,
+        .type_name_ctx = fn_nav.name,
+        .type_fqn_ctx = fn_nav.fqn,
     } else undefined;
     defer if (any_generic_types) generic_block.instructions.deinit(gpa);
 
@@ -7039,6 +7043,7 @@ fn analyzeCall(
                 .inferred_error_set = fn_zir_info.inferred_error_set,
                 .generic_owner = func_val.?.toIntern(),
                 .comptime_args = comptime_args,
+                .anon_name_counter = &zcu.anon_name_counter,
             });
             if (zcu.comp.debugIncremental()) {
                 const nav = ip.indexToKey(func_instance).func.owner_nav;
@@ -7308,7 +7313,8 @@ fn analyzeCall(
         .runtime_loop = block.runtime_loop,
         .runtime_index = block.runtime_index,
         .src_base_inst = fn_nav.analysis.?.zir_index,
-        .type_name_ctx = fn_nav.fqn,
+        .type_name_ctx = fn_nav.name,
+        .type_fqn_ctx = fn_nav.fqn,
     };
 
     defer child_block.instructions.deinit(gpa);
@@ -17316,6 +17322,7 @@ fn zirTypeofBuiltin(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileErr
         .error_return_trace_index = block.error_return_trace_index,
         .src_base_inst = block.src_base_inst,
         .type_name_ctx = block.type_name_ctx,
+        .type_fqn_ctx = block.type_fqn_ctx,
     };
     defer child_block.instructions.deinit(sema.gpa);
 
@@ -17382,6 +17389,7 @@ fn zirTypeofPeer(
         .runtime_index = block.runtime_index,
         .src_base_inst = block.src_base_inst,
         .type_name_ctx = block.type_name_ctx,
+        .type_fqn_ctx = block.type_fqn_ctx,
     };
     defer child_block.instructions.deinit(sema.gpa);
     // Ignore the result, we only care about the instructions in `args`.
@@ -17941,6 +17949,7 @@ fn ensurePostHoc(sema: *Sema, block: *Block, dest_block: Zir.Inst.Index) !*Label
             .comptime_reason = block.comptime_reason,
             .src_base_inst = block.src_base_inst,
             .type_name_ctx = block.type_name_ctx,
+            .type_fqn_ctx = block.type_fqn_ctx,
         },
     };
     sema.post_hoc_blocks.putAssumeCapacityNoClobber(new_block_inst, labeled_block);
@@ -25936,6 +25945,7 @@ fn addSafetyCheck(
         .comptime_reason = null,
         .src_base_inst = parent_block.src_base_inst,
         .type_name_ctx = parent_block.type_name_ctx,
+        .type_fqn_ctx = parent_block.type_fqn_ctx,
     };
 
     defer fail_block.instructions.deinit(gpa);
@@ -26030,6 +26040,7 @@ fn addSafetyCheckUnwrapError(
         .comptime_reason = null,
         .src_base_inst = parent_block.src_base_inst,
         .type_name_ctx = parent_block.type_name_ctx,
+        .type_fqn_ctx = parent_block.type_fqn_ctx,
     };
 
     defer fail_block.instructions.deinit(gpa);
@@ -26153,6 +26164,7 @@ fn addSafetyCheckCall(
         .comptime_reason = null,
         .src_base_inst = parent_block.src_base_inst,
         .type_name_ctx = parent_block.type_name_ctx,
+        .type_fqn_ctx = parent_block.type_fqn_ctx,
     };
 
     defer fail_block.instructions.deinit(gpa);
@@ -34995,6 +35007,7 @@ pub fn analyzeMemoizedState(sema: *Sema, stage: InternPool.MemoizedStateStage) C
             .comptime_reason = null,
             .src_base_inst = std_type.typeDeclInst(zcu).?,
             .type_name_ctx = .empty,
+            .type_fqn_ctx = .empty,
         };
     };
     defer block.instructions.deinit(gpa);
@@ -35224,11 +35237,19 @@ pub fn setTypeName(
                 io,
                 pt.tid,
                 "{f}__{s}_{d}",
-                .{ block.type_name_ctx.fmt(ip), anon_prefix, @backingInt(wip.index) },
+                .{ block.type_name_ctx.fmt(ip), anon_prefix, zcu.anon_name_counter },
+                .no_embedded_nulls,
+            ), try ip.getOrPutStringFmt(
+                gpa,
+                io,
+                pt.tid,
+                "{f}__{s}_{d}",
+                .{ block.type_fqn_ctx.fmt(ip), anon_prefix, zcu.anon_name_counter },
                 .no_embedded_nulls,
             ), .none);
+            zcu.anon_name_counter += 1;
         },
-        .parent => wip.setName(ip, block.type_name_ctx, sema.owner.unwrap().nav_val.toOptional()),
+        .parent => wip.setName(ip, block.type_name_ctx, block.type_fqn_ctx, sema.owner.unwrap().nav_val.toOptional()),
         .func => {
             const fn_info = sema.code.getFnInfo(ip.funcZirBodyInst(sema.func_index).resolve(ip) orelse {
                 return sema.failTransitive(.{ .lost_tracking = ip.funcZirBodyInst(sema.func_index) });
@@ -35238,7 +35259,7 @@ pub fn setTypeName(
             var aw: std.Io.Writer.Allocating = .init(gpa);
             defer aw.deinit();
             const w = &aw.writer;
-            w.print("{f}(", .{block.type_name_ctx.fmt(ip)}) catch return error.OutOfMemory;
+            w.writeByte('(') catch return error.OutOfMemory;
 
             var arg_i: usize = 0;
             for (fn_info.param_body) |zir_inst| switch (zir_tags[@backingInt(zir_inst)]) {
@@ -35273,8 +35294,13 @@ pub fn setTypeName(
             };
 
             w.writeByte(')') catch return error.OutOfMemory;
-            const name = try ip.getOrPutString(gpa, io, pt.tid, aw.written(), .no_embedded_nulls);
-            wip.setName(ip, name, .none);
+            wip.setName(ip, try ip.getOrPutStringFmt(gpa, io, pt.tid, "{f}{s}", .{
+                block.type_name_ctx.fmt(ip),
+                aw.written(),
+            }, .no_embedded_nulls), try ip.getOrPutStringFmt(gpa, io, pt.tid, "{f}{s}", .{
+                block.type_fqn_ctx.fmt(ip),
+                aw.written(),
+            }, .no_embedded_nulls), .none);
         },
         .dbg_var => {
             // TODO: this logic is questionable. We ideally should be traversing the `Block` rather than relying on the order of AstGen instructions.
@@ -35289,10 +35315,12 @@ pub fn setTypeName(
             } else {
                 continue :strat .anon;
             };
-            const name = try ip.getOrPutStringFmt(gpa, io, pt.tid, "{f}.{s}", .{
+            wip.setName(ip, try ip.getOrPutStringFmt(gpa, io, pt.tid, "{f}.{s}", .{
+                // this "{f}." should be elided, but there's currently no way to get the parent function
                 block.type_name_ctx.fmt(ip), var_name,
-            }, .no_embedded_nulls);
-            wip.setName(ip, name, .none);
+            }, .no_embedded_nulls), try ip.getOrPutStringFmt(gpa, io, pt.tid, "{f}.{s}", .{
+                block.type_fqn_ctx.fmt(ip), var_name,
+            }, .no_embedded_nulls), .none);
         },
     }
 }

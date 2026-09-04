@@ -3450,7 +3450,7 @@ fn errUnionPayload(self: *Self, error_union_mcv: MCValue, error_union_ty: Type) 
     }
 }
 
-fn fail(self: *Self, comptime format: []const u8, args: anytype) error{ OutOfMemory, AlreadyReported } {
+fn fail(self: *Self, comptime format: []const u8, args: anytype) codegen.Error {
     @branchHint(.cold);
     const zcu = self.pt.zcu;
     const func = zcu.funcInfo(self.func_index);
@@ -3458,7 +3458,7 @@ fn fail(self: *Self, comptime format: []const u8, args: anytype) error{ OutOfMem
     return zcu.codegenFailMsg(func.owner_nav, msg);
 }
 
-fn failMsg(self: *Self, msg: *ErrorMsg) error{ OutOfMemory, AlreadyReported } {
+fn failMsg(self: *Self, msg: *ErrorMsg) codegen.Error {
     @branchHint(.cold);
     const zcu = self.pt.zcu;
     const func = zcu.funcInfo(self.func_index);

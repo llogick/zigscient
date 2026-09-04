@@ -16,3 +16,12 @@ pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, @tagName(some_enum));
 }
 #expect_stdout="first"
+#update=swap fields
+#file=main.zig
+const std = @import("std");
+var some_enum: enum { second, first } = .first;
+const io = std.Io.Threaded.global_single_threaded.io();
+pub fn main() !void {
+    try std.Io.File.stdout().writeStreamingAll(io, @tagName(some_enum));
+}
+#expect_stdout="first"

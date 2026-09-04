@@ -1236,29 +1236,22 @@ pub fn codeDecompressAlloc(self: *Object, elf_file: *Elf, atom_index: Atom.Index
 
     if (shdr.sh_flags & elf.SHF_COMPRESSED != 0) {
         const chdr = @as(*align(1) const elf.Elf64_Chdr, @ptrCast(data.ptr)).*;
+        var compressed_reader: Io.Reader = .fixed(data[@sizeOf(elf.Elf64_Chdr)..]);
+        const size = std.math.cast(usize, chdr.ch_size) orelse return error.Overflow;
+        var aw: Io.Writer.Allocating = try .initCapacity(gpa, size);
+        defer aw.deinit();
         switch (chdr.ch_type) {
             .ZLIB => {
-                var stream: std.Io.Reader = .fixed(data[@sizeOf(elf.Elf64_Chdr)..]);
-                var zlib_stream: std.compress.flate.Decompress = .init(&stream, .zlib, &.{});
-                const size = std.math.cast(usize, chdr.ch_size) orelse return error.Overflow;
-                var aw: std.Io.Writer.Allocating = .init(gpa);
-                try aw.ensureUnusedCapacity(size);
-                defer aw.deinit();
-                _ = try zlib_stream.reader.streamRemaining(&aw.writer);
-                return aw.toOwnedSlice();
+                var decompress: std.compress.flate.Decompress = .init(&compressed_reader, .zlib, &.{});
+                _ = try decompress.reader.streamRemaining(&aw.writer);
             },
             .ZSTD => {
-                var input: std.Io.Reader = .fixed(data[@sizeOf(elf.Elf64_Chdr)..]);
-                var stream: std.compress.zstd.Decompress = .init(&input, &.{}, .{});
-                const size = std.math.cast(usize, chdr.ch_size) orelse return error.Overflow;
-                var aw: std.Io.Writer.Allocating = try .initCapacity(gpa, size);
-                defer aw.deinit();
-                _ = try stream.reader.streamRemaining(&aw.writer);
-
-                return aw.toOwnedSlice();
+                var decompress: std.compress.zstd.Decompress = .init(&compressed_reader, &.{}, .{});
+                _ = try decompress.reader.streamRemaining(&aw.writer);
             },
             else => @panic("TODO unhandled compression scheme"),
         }
+        return aw.toOwnedSlice();
     }
 
     return data;
@@ -1492,7 +1485,7 @@ const Format = struct {
     object: *Object,
     elf_file: *Elf,
 
-    fn symtab(f: Format, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    fn symtab(f: Format, writer: *Io.Writer) Io.Writer.Error!void {
         const object = f.object;
         const elf_file = f.elf_file;
         try writer.writeAll("  locals\n");
@@ -1511,7 +1504,7 @@ const Format = struct {
         }
     }
 
-    fn atoms(f: Format, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    fn atoms(f: Format, writer: *Io.Writer) Io.Writer.Error!void {
         const object = f.object;
         try writer.writeAll("  atoms\n");
         for (object.atoms_indexes.items) |atom_index| {
@@ -1520,7 +1513,7 @@ const Format = struct {
         }
     }
 
-    fn cies(f: Format, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    fn cies(f: Format, writer: *Io.Writer) Io.Writer.Error!void {
         const object = f.object;
         try writer.writeAll("  cies\n");
         for (object.cies.items, 0..) |cie, i| {
@@ -1528,7 +1521,7 @@ const Format = struct {
         }
     }
 
-    fn fdes(f: Format, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    fn fdes(f: Format, writer: *Io.Writer) Io.Writer.Error!void {
         const object = f.object;
         try writer.writeAll("  fdes\n");
         for (object.fdes.items, 0..) |fde, i| {
@@ -1536,7 +1529,7 @@ const Format = struct {
         }
     }
 
-    fn groups(f: Format, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    fn groups(f: Format, writer: *Io.Writer) Io.Writer.Error!void {
         const object = f.object;
         const elf_file = f.elf_file;
         try writer.writeAll("  groups\n");
@@ -1586,7 +1579,7 @@ pub fn fmtPath(self: Object) std.fmt.Alt(Object, formatPath) {
     return .{ .data = self };
 }
 
-fn formatPath(object: Object, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+fn formatPath(object: Object, writer: *Io.Writer) Io.Writer.Error!void {
     if (object.archive) |ar| {
         try writer.print("{f}({f})", .{ ar.path, object.path });
     } else {

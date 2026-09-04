@@ -383,6 +383,7 @@ set(ZIG_STAGE2_SOURCES
     src/link/ConstPool.zig
     src/link/Coff.zig
     src/link/Dwarf.zig
+    src/link/Dwarf2.zig
     src/link/Elf.zig
     src/link/Elf/Archive.zig
     src/link/Elf/Atom.zig

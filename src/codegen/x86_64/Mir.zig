@@ -1519,30 +1519,33 @@ pub const Inst = struct {
         /// Uses `bytes` payload.
         pseudo_cfi_escape_bytes,
 
-        /// End of prologue
+        /// End of prologue.
         /// Uses `none` payload.
         pseudo_dbg_prologue_end_none,
-        /// Update debug line with is_stmt register set
+        /// Update debug line with is_stmt register set.
         /// Uses `line_column` payload.
         pseudo_dbg_line_stmt_line_column,
-        /// Update debug line with is_stmt register clear
+        /// Update debug line with is_stmt register clear.
         /// Uses `line_column` payload.
         pseudo_dbg_line_line_column,
-        /// Start of epilogue
-        /// Uses `none` payload.
-        pseudo_dbg_epilogue_begin_none,
-        /// Start of lexical block
+        /// Start of epilogue.
+        /// Uses `line_column` payload.
+        pseudo_dbg_epilogue_begin_line_column,
+        /// Start of lexical block.
         /// Uses `none` payload.
         pseudo_dbg_enter_block_none,
-        /// End of lexical block
+        /// End of lexical block.
         /// Uses `none` payload.
         pseudo_dbg_leave_block_none,
-        /// Start of inline function
+        /// Start of inline function.
         /// Uses `ip_index` payload.
         pseudo_dbg_enter_inline_func,
-        /// End of inline function
+        /// End of inline function.
         /// Uses `ip_index` payload.
         pseudo_dbg_leave_inline_func,
+        /// End of function.
+        /// Uses `none` payload.
+        pseudo_dbg_end_none,
         /// Local argument.
         /// Uses `none` payload.
         pseudo_dbg_arg_none,
@@ -1978,7 +1981,7 @@ pub fn emit(
     atom_id: link.File.AtomId,
     w: *std.Io.Writer,
     debug_output: link.File.DebugInfoOutput,
-) codegen.Error!void {
+) link.EmitError!void {
     const zcu = pt.zcu;
     const comp = zcu.comp;
     const gpa = comp.gpa;
@@ -1986,7 +1989,7 @@ pub fn emit(
     const fn_info = zcu.typeToFunc(.fromInterned(func.ty)).?;
     const nav = func.owner_nav;
     const mod = zcu.navFileScope(nav).mod.?;
-    var e: Emit = .{
+    var em: Emit = .{
         .lower = .{
             .target = &mod.resolved_target.result,
             .allocator = gpa,
@@ -2006,7 +2009,8 @@ pub fn emit(
             .column = func.lbrace_column,
             .is_stmt = switch (debug_output) {
                 .dwarf => |dwarf| dwarf.dwarf.debug_line.header.default_is_stmt,
-                .none => undefined,
+                .dwarf2 => |dwarf| dwarf.wip_nav.dwarf.debug_line.header.default_is_stmt,
+                .eh_frame, .none => undefined,
             },
         },
         .prev_di_pc = 0,
@@ -2015,11 +2019,12 @@ pub fn emit(
         .relocs = .empty,
         .table_relocs = .empty,
     };
-    defer e.deinit();
-    e.emitMir() catch |err| switch (err) {
-        error.LowerFail, error.EmitFail => return zcu.codegenFailMsg(nav, e.lower.err_msg.?),
+    defer em.deinit();
+    em.emitMir() catch |err| switch (err) {
+        error.LowerFail, error.EmitFail => return zcu.codegenFailMsg(nav, em.lower.err_msg.?),
         error.InvalidInstruction, error.CannotEncode => return zcu.codegenFail(nav, "emit MIR failed: {s} (Zig compiler bug)", .{@errorName(err)}),
         else => return zcu.codegenFail(nav, "emit MIR failed: {s}", .{@errorName(err)}),
+        error.AlreadyReported, error.Canceled, error.WriteFailed => |e| return e,
     };
 }
 
@@ -2031,12 +2036,12 @@ pub fn emitLazy(
     atom_id: link.File.AtomId,
     w: *std.Io.Writer,
     debug_output: link.File.DebugInfoOutput,
-) codegen.Error!void {
+) link.EmitError!void {
     const zcu = pt.zcu;
     const comp = zcu.comp;
     const gpa = comp.gpa;
     const mod = comp.root_mod;
-    var e: Emit = .{
+    var em: Emit = .{
         .lower = .{
             .target = &mod.resolved_target.result,
             .allocator = gpa,
@@ -2058,11 +2063,12 @@ pub fn emitLazy(
         .relocs = .empty,
         .table_relocs = .empty,
     };
-    defer e.deinit();
-    e.emitMir() catch |err| switch (err) {
-        error.LowerFail, error.EmitFail => return zcu.codegenFailTypeMsg(lazy_sym.ty, e.lower.err_msg.?),
+    defer em.deinit();
+    em.emitMir() catch |err| switch (err) {
+        error.LowerFail, error.EmitFail => return zcu.codegenFailTypeMsg(lazy_sym.ty, em.lower.err_msg.?),
         error.InvalidInstruction, error.CannotEncode => return zcu.codegenFailType(lazy_sym.ty, "emit MIR failed: {s} (Zig compiler bug)", .{@errorName(err)}),
         else => return zcu.codegenFailType(lazy_sym.ty, "emit MIR failed: {s}", .{@errorName(err)}),
+        error.AlreadyReported, error.Canceled, error.WriteFailed => |e| return e,
     };
 }
 

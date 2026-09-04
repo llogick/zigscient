@@ -17,6 +17,7 @@ const usage =
     \\Debug Options:
     \\  --preserve-tmp
     \\  --debug-log foo
+    \\  --debug-link-snapshot
 ;
 
 pub const std_options: std.Options = .{
@@ -60,6 +61,7 @@ pub fn main(init: std.process.Init) !void {
     var quiet: bool = false;
 
     var debug_log_args: std.ArrayList([]const u8) = .empty;
+    var debug_link_snapshot = false;
 
     var arg_it = try init.minimal.args.iterateAllocator(arena);
     _ = arg_it.skip();
@@ -77,6 +79,8 @@ pub fn main(init: std.process.Init) !void {
                     arena,
                     arg_it.next() orelse badUsage("expected arg after --debug-log", .{}),
                 );
+            } else if (std.mem.eql(u8, arg, "--debug-link-snapshot")) {
+                debug_link_snapshot = true;
             } else if (std.mem.eql(u8, arg, "--preserve-tmp")) {
                 preserve_tmp = true;
             } else if (std.mem.eql(u8, arg, "-fqemu")) {
@@ -172,6 +176,9 @@ pub fn main(init: std.process.Init) !void {
     }
     for (debug_log_args.items) |arg| {
         try child_args.appendSlice(arena, &.{ "--debug-log", arg });
+    }
+    if (debug_link_snapshot) {
+        try child_args.append(arena, "--debug-link-snapshot");
     }
     for (case.modules) |mod| {
         try child_args.appendSlice(arena, &.{ "--dep", mod.name });

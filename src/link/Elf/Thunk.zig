@@ -91,6 +91,7 @@ pub const Index = u32;
 
 const aarch64 = struct {
     fn write(thunk: Thunk, elf_file: *Elf, writer: anytype) !void {
+        dev.checkAny(&.{ .llvm_backend, .aarch64_backend });
         for (thunk.symbols.keys(), 0..) |ref, i| {
             const sym = elf_file.symbol(ref).?;
             const saddr = thunk.address(elf_file) + @as(i64, @intCast(i * trampoline_size));
@@ -113,6 +114,7 @@ const aarch64 = struct {
 };
 
 const assert = std.debug.assert;
+const dev = @import("../../dev.zig");
 const elf = std.elf;
 const log = std.log.scoped(.link);
 const math = std.math;

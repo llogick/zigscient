@@ -387,18 +387,19 @@ fn scanAllFunctions(di: *Dwarf, gpa: Allocator, endian: Endian) ScanError!void {
         const next_offset = unit_header.header_length + unit_header.unit_length;
 
         const version = try fr.takeInt(u16, endian);
-        if (version < 2 or version > 5) return bad();
-
         var address_size: u8 = undefined;
         var debug_abbrev_offset: u64 = undefined;
-        if (version >= 5) {
+        if (version == 5) {
             const unit_type = try fr.takeByte();
             if (unit_type != DW.UT.compile) return bad();
             address_size = try fr.takeByte();
             debug_abbrev_offset = try readFormatSizedInt(&fr, unit_header.format, endian);
-        } else {
+        } else if (version >= 2 and version < 5) {
             debug_abbrev_offset = try readFormatSizedInt(&fr, unit_header.format, endian);
             address_size = try fr.takeByte();
+        } else {
+            this_unit_offset += next_offset;
+            continue;
         }
 
         const abbrev_table = try di.getAbbrevTable(gpa, debug_abbrev_offset);
@@ -585,18 +586,19 @@ fn scanAllCompileUnits(di: *Dwarf, gpa: Allocator, endian: Endian) ScanError!voi
         const next_offset = unit_header.header_length + unit_header.unit_length;
 
         const version = try fr.takeInt(u16, endian);
-        if (version < 2 or version > 5) return bad();
-
         var address_size: u8 = undefined;
         var debug_abbrev_offset: u64 = undefined;
-        if (version >= 5) {
+        if (version == 5) {
             const unit_type = try fr.takeByte();
             if (unit_type != UT.compile) return bad();
             address_size = try fr.takeByte();
             debug_abbrev_offset = try readFormatSizedInt(&fr, unit_header.format, endian);
-        } else {
+        } else if (version >= 2 and version < 5) {
             debug_abbrev_offset = try readFormatSizedInt(&fr, unit_header.format, endian);
             address_size = try fr.takeByte();
+        } else {
+            this_unit_offset += next_offset;
+            continue;
         }
 
         const abbrev_table = try di.getAbbrevTable(gpa, debug_abbrev_offset);

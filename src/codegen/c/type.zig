@@ -1140,17 +1140,17 @@ pub const CType = union(enum) {
                         try w.print("_{f}", .{fmtZigType(field_ty, zcu)});
                     }
                 } else {
-                    const name = ty.containerTypeName(ip).toSlice(ip);
+                    const name = ty.containerTypeName(ip).fqn.toSlice(ip);
                     try w.print("{f}", .{@import("../c.zig").fmtIdentUnsolo(name)});
                 },
                 .@"opaque" => if (ty.toIntern() == .anyopaque_type) {
                     try w.writeAll("anyopaque");
                 } else {
-                    const name = ty.containerTypeName(ip).toSlice(ip);
+                    const name = ty.containerTypeName(ip).fqn.toSlice(ip);
                     try w.print("{f}", .{@import("../c.zig").fmtIdentUnsolo(name)});
                 },
                 .@"union", .@"enum" => {
-                    const name = ty.containerTypeName(ip).toSlice(ip);
+                    const name = ty.containerTypeName(ip).fqn.toSlice(ip);
                     try w.print("{f}", .{@import("../c.zig").fmtIdentUnsolo(name)});
                 },
             }

@@ -1020,7 +1020,7 @@ pub const Value = struct {
         /// Defines a value with a location.
         /// Returned location must be free-ed by caller.
         /// Extension unchanged.
-        fn def(vi: Value.Index, isel: *Select) error{ AlreadyReported, OutOfMemory }!?Location {
+        fn def(vi: Value.Index, isel: *Select) codegen.Error!?Location {
             try vi.collectDefs(isel);
             return vi.takeLocationMarkWritten(isel);
         }
@@ -2046,7 +2046,7 @@ pub const Value = struct {
             if (!std.debug.runtime_safety) assert(@sizeOf(Mat) <= 32);
         }
 
-        const Error = error{ OutOfMemory, AlreadyReported };
+        const Error = codegen.Error;
 
         pub fn ra(mat: Value.Mat) Register.Alias {
             return mat.location.register;
@@ -2296,13 +2296,13 @@ pub const Value = struct {
     };
 };
 
-fn fail(isel: *Select, comptime format: []const u8, args: anytype) error{ OutOfMemory, AlreadyReported } {
+fn fail(isel: *Select, comptime format: []const u8, args: anytype) codegen.Error {
     @branchHint(.cold);
     wip_mir_log.debug("codegen error: " ++ format, args);
     return isel.pt.zcu.codegenFail(isel.nav_index, format, args);
 }
 
-fn failUnimplemented(isel: *Select, comptime format: []const u8, args: anytype) error{ OutOfMemory, AlreadyReported }!void {
+fn failUnimplemented(isel: *Select, comptime format: []const u8, args: anytype) codegen.Error!void {
     @branchHint(.cold);
     if (debug_trap_unimplemented_code) {
         const gpa = isel.pt.zcu.gpa;
@@ -2963,7 +2963,7 @@ pub fn verify(isel: *Select, check_values: bool) void {
     }
 }
 
-pub fn body(isel: *Select, air_body: []const Air.Inst.Index) error{ OutOfMemory, AlreadyReported }!void {
+pub fn body(isel: *Select, air_body: []const Air.Inst.Index) codegen.Error!void {
     const zcu = isel.pt.zcu;
     const ip = &zcu.intern_pool;
     const gpa = zcu.gpa;
@@ -5341,7 +5341,7 @@ fn forgetReg(isel: *Select, dst_reg: Register) error{ OutOfMemory, AlreadyReport
 
 /// Frees a register by moving it to another place.
 /// Returns true on success, false on failure (i.e. dst_reg is locked/allocated or unallocatable).
-fn fillReg(isel: *Select, dst_reg: Register) error{ OutOfMemory, AlreadyReported }!bool {
+fn fillReg(isel: *Select, dst_reg: Register) codegen.Error!bool {
     if (!isRegisterAllocatable(dst_reg)) return false;
     const dst_live_vi = isel.live_registers.getPtr(dst_reg);
     const dst_vi = switch (dst_live_vi.*) {
@@ -5377,7 +5377,7 @@ fn fillReg(isel: *Select, dst_reg: Register) error{ OutOfMemory, AlreadyReported
 /// Frees a set of register. If locked is true, these registers are then locked.
 /// Requires all registers to be unlocked.
 /// Returns true on success.
-fn fillRegsBatch(isel: *Select, regs: RegisterSet, locking: bool) error{ OutOfMemory, AlreadyReported }!void {
+fn fillRegsBatch(isel: *Select, regs: RegisterSet, locking: bool) codegen.Error!void {
     tracking_log.debug("batch fill: {f}", .{fmtRegisterSet(regs)});
     // lock free registers
     var regs_it = regs.iterator();
@@ -5419,7 +5419,7 @@ fn fillRegsBatch(isel: *Select, regs: RegisterSet, locking: bool) error{ OutOfMe
 
 /// Frees a register by moving it to stack.
 /// Returns true on success, false on failure (i.e. dst_reg is locked/allocated or unallocatable).
-fn fillRegToMemory(isel: *Select, dst_reg: Register) error{ OutOfMemory, AlreadyReported }!bool {
+fn fillRegToMemory(isel: *Select, dst_reg: Register) codegen.Error!bool {
     if (!isRegisterAllocatable(dst_reg)) return false;
     const dst_live_vi = isel.live_registers.getPtr(dst_reg);
     const dst_vi = switch (dst_live_vi.*) {

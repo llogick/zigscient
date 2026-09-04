@@ -4,6 +4,7 @@
 const std = @import("std");
 const Endian = std.lang.Endian;
 const assert = std.debug.assert;
+const codegen = @import("../../codegen.zig");
 const link = @import("../../link.zig");
 const Zcu = @import("../../Zcu.zig");
 const ErrorMsg = Zcu.ErrorMsg;
@@ -40,8 +41,7 @@ branch_forward_origins: std.AutoHashMapUnmanaged(Mir.Inst.Index, std.ArrayList(M
 /// instruction
 code_offset_mapping: std.AutoHashMapUnmanaged(Mir.Inst.Index, usize) = .empty,
 
-const InnerError = std.Io.Writer.Error || error{
-    OutOfMemory,
+const InnerError = link.EmitError || error{
     EmitFail,
 };
 
@@ -175,21 +175,21 @@ fn mirDbgLine(emit: *Emit, inst: Mir.Inst.Index) !void {
 
 fn mirDebugPrologueEnd(emit: *Emit) !void {
     switch (emit.debug_output) {
-        .dwarf => |dbg_out| {
+        inline .dwarf, .dwarf2 => |dbg_out| {
             try dbg_out.setPrologueEnd();
             try emit.dbgAdvancePCAndLine(emit.prev_di_line, emit.prev_di_column);
         },
-        .none => {},
+        .eh_frame, .none => {},
     }
 }
 
 fn mirDebugEpilogueBegin(emit: *Emit) !void {
     switch (emit.debug_output) {
-        .dwarf => |dbg_out| {
+        inline .dwarf, .dwarf2 => |dbg_out| {
             try dbg_out.setEpilogueBegin();
             try emit.dbgAdvancePCAndLine(emit.prev_di_line, emit.prev_di_column);
         },
-        .none => {},
+        .eh_frame, .none => {},
     }
 }
 
@@ -496,13 +496,13 @@ fn dbgAdvancePCAndLine(emit: *Emit, line: u32, column: u32) !void {
     const delta_line = @as(i32, @intCast(line)) - @as(i32, @intCast(emit.prev_di_line));
     const delta_pc: usize = emit.w.end - emit.prev_di_pc;
     switch (emit.debug_output) {
-        .dwarf => |dbg_out| {
-            try dbg_out.advancePCAndLine(delta_line, delta_pc);
+        inline .dwarf, .dwarf2 => |dbg_out| {
+            try dbg_out.advanceLineAndPc(delta_line, delta_pc, false);
             emit.prev_di_line = line;
             emit.prev_di_column = column;
             emit.prev_di_pc = emit.w.end;
         },
-        else => {},
+        .eh_frame, .none => {},
     }
 }
 

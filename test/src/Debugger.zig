@@ -1,6 +1,7 @@
 b: *std.Build,
 options: Options,
 root_step: *std.Build.Step,
+test_matrix: []const TestTarget,
 
 pub const Options = struct {
     test_filters: []const []const u8,
@@ -12,19 +13,20 @@ pub const Options = struct {
     skip_libc: bool,
 };
 
-pub const Target = struct {
-    resolved: std.Build.ResolvedTarget,
+pub const TestTarget = struct {
+    target: std.Target.Query,
     optimize_mode: std.builtin.Optimize = .debug,
     link_libc: ?bool = null,
     single_threaded: ?bool = null,
     pic: ?bool = null,
-    test_name_suffix: []const u8,
+    linker: LinkerImpl,
 };
 
-pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
+pub const LinkerImpl = enum { default, old, new };
+
+pub fn addTests(db: *Debugger) void {
     db.addLldbTest(
         "basic",
-        target,
         &.{
             .{
                 .path = "basic.zig",
@@ -179,10 +181,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{},
     );
     db.addLldbTest(
         "identifiers",
-        target,
         &.{
             .{
                 .path = "identifiers.zig",
@@ -214,10 +216,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{},
     );
     db.addLldbTest(
         "types",
-        target,
         &.{
             .{
                 .path = "types.zig",
@@ -282,10 +284,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{},
     );
     db.addLldbTest(
         "pointers",
-        target,
         &.{
             .{
                 .path = "pointers.zig",
@@ -419,10 +421,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{},
     );
     db.addLldbTest(
         "strings",
-        target,
         &.{
             .{
                 .path = "strings.zig",
@@ -495,10 +497,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{},
     );
     db.addLldbTest(
         "enums",
-        target,
         &.{
             .{
                 .path = "enums.zig",
@@ -557,10 +559,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{ .skip_new_linker = true }, // passes, but prints errors
     );
     db.addLldbTest(
         "errors",
-        target,
         &.{
             .{
                 .path = "errors.zig",
@@ -627,10 +629,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{ .skip_new_linker = true },
     );
     db.addLldbTest(
         "optionals",
-        target,
         &.{
             .{
                 .path = "optionals.zig",
@@ -681,10 +683,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 2
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{},
     );
     db.addLldbTest(
         "unions",
-        target,
         &.{
             .{
                 .path = "unions.zig",
@@ -766,10 +768,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{ .skip_new_linker = true }, // passes, but prints errors
     );
     db.addLldbTest(
         "storage",
-        target,
         &.{
             .{
                 .path = "storage.zig",
@@ -866,10 +868,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{ .skip_new_linker = true },
     );
     db.addLldbTest(
         "if_blocks",
-        target,
         &.{
             .{
                 .path = "if_blocks.zig",
@@ -908,10 +910,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{},
     );
     db.addLldbTest(
         "switch_blocks",
-        target,
         &.{
             .{
                 .path = "switch_blocks.zig",
@@ -953,10 +955,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{},
     );
     db.addLldbTest(
         "step_single_stmt_loops",
-        target,
         &.{
             .{
                 .path = "step_single_stmt_loops.zig",
@@ -1371,10 +1373,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) frame variable --show-all-children x
             \\(u32) x = 12
         },
+        .{},
     );
     db.addLldbTest(
         "inline_call",
-        target,
         &.{
             .{
                 .path = "root0.zig",
@@ -1944,10 +1946,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\     frame #1: inline_call`m1pfi(m1pai=89) at mod1.zig:23:15
             \\     frame #2: inline_call`root0.main at root0.zig:41:15
         },
+        .{ .skip_new_linker = true },
     );
     db.addLldbTest(
         "link_object",
-        target,
         &.{
             .{
                 .path = "main.zig",
@@ -1983,10 +1985,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 2
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{},
     );
     db.addLldbTest(
         "hash_map",
-        target,
         &.{
             .{
                 .path = "main.zig",
@@ -2052,10 +2054,10 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{ .skip_new_linker = true },
     );
     db.addLldbTest(
         "multi_array_list",
-        target,
         &.{
             .{
                 .path = "main.zig",
@@ -2306,22 +2308,26 @@ pub fn addTestsForTarget(db: *Debugger, target: *const Target) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
+        .{ .skip_new_linker = true },
     );
 }
 
 const File = struct { import: ?[]const u8 = null, path: []const u8, source: []const u8 };
 
+const TestOptions = struct {
+    skip_new_linker: bool = false,
+};
+
 fn addGdbTest(
     db: *Debugger,
     name: []const u8,
-    target: *const Target,
     files: []const File,
     commands: []const u8,
     expected_output: []const []const u8,
+    options: TestOptions,
 ) void {
     db.addTest(
         name,
-        target,
         files,
         &.{},
         &.{
@@ -2331,24 +2337,22 @@ fn addGdbTest(
         },
         "set remotetimeout 0",
         commands,
-        &.{
-            "--args",
-        },
+        &.{"--args"},
         expected_output,
+        options,
     );
 }
 
 fn addLldbTest(
     db: *Debugger,
     name: []const u8,
-    target: *const Target,
     files: []const File,
     commands: []const u8,
     expected_output: []const []const u8,
+    options: TestOptions,
 ) void {
     db.addTest(
         name,
-        target,
         files,
         &.{.{ "LANG", "C.UTF-8" }}, // affects output formatting
         &.{
@@ -2358,10 +2362,9 @@ fn addLldbTest(
         },
         "settings set plugin.process.gdb-remote.packet-timeout 0",
         commands,
-        &.{
-            "--",
-        },
+        &.{"--"},
         expected_output,
+        options,
     );
 }
 
@@ -2373,7 +2376,6 @@ const success = 99;
 fn addTest(
     db: *Debugger,
     name: []const u8,
-    target: *const Target,
     files: []const File,
     env: []const struct { []const u8, []const u8 },
     db_argv1: []const []const u8,
@@ -2381,57 +2383,85 @@ fn addTest(
     commands: []const u8,
     db_argv2: []const []const u8,
     expected_output: []const []const u8,
+    options: TestOptions,
 ) void {
     if (db.options.test_filters.len > 0) {
         for (db.options.test_filters) |test_filter| {
             if (std.mem.find(u8, name, test_filter) != null) break;
         } else return;
     }
-    if (db.options.test_target_filters.len > 0) {
-        const triple_txt = target.resolved.query.zigTriple(db.b.allocator) catch @panic("OOM");
-        for (db.options.test_target_filters) |filter| {
-            if (std.mem.find(u8, triple_txt, filter) != null) break;
-        } else return;
-    }
-    const files_wf = db.b.addWriteFiles();
 
-    const mod = db.b.createModule(.{
-        .target = target.resolved,
-        .root_source_file = files_wf.add(files[0].path, files[0].source),
-        .optimize = target.optimize_mode,
-        .link_libc = target.link_libc,
-        .single_threaded = target.single_threaded,
-        .pic = target.pic,
-        .strip = false,
-    });
+    const wf = db.b.addWriteFiles();
+    const root_source_file = wf.add(files[0].path, files[0].source);
+    var imports: std.array_hash_map.String(*std.Build.Module) = .empty;
     for (files[1..]) |file| {
-        const path = files_wf.add(file.path, file.source);
-        if (file.import) |import| mod.addImport(import, db.b.createModule(.{
+        const path = wf.add(file.path, file.source);
+        if (file.import) |import| imports.putNoClobber(db.b.allocator, import, db.b.createModule(.{
             .root_source_file = path,
-        }));
+        })) catch @panic("OOM");
     }
-
-    const exe = db.b.addExecutable(.{
-        .name = name,
-        .root_module = mod,
-        .use_llvm = false,
-        .use_lld = false,
-    });
-
-    const commands_wf = db.b.addWriteFiles();
-    const run = std.Build.Step.Run.create(db.b, db.b.fmt("run {s} {s}", .{ name, target.test_name_suffix }));
-    for (env) |env_var| run.setEnvironmentVariable(env_var[0], env_var[1]);
-    run.addArgs(db_argv1);
-    run.addFileArg(commands_wf.add(
+    const commands_file = wf.add(
         db.b.fmt("{s}.cmd", .{name}),
         db.b.fmt("{s}\n\n{s}\n\nquit {d}\n", .{ db_commands, commands, success }),
-    ));
-    run.addArgs(db_argv2);
-    run.addArtifactArg(exe);
-    for (expected_output) |expected| run.addCheck(.{ .expect_stdout_match = db.b.fmt("{s}\n", .{expected}) });
-    run.addCheck(.{ .expect_term = .{ .exited = success } });
-    run.setStdIn(.{ .bytes = "" });
-    db.root_step.dependOn(&run.step);
+    );
+
+    for (db.test_matrix) |test_target| {
+        if (options.skip_new_linker and test_target.linker == .new) continue;
+
+        const resolved_target = db.b.resolveTargetQuery(test_target.target);
+
+        const target_str = db.b.fmt("{s}{s}{s}", .{
+            resolved_target.query.zigTriple(db.b.allocator) catch @panic("OOM"),
+            switch (test_target.linker) {
+                .default, .old => "",
+                .new => "-new-linker",
+            },
+            if (test_target.pic == true) "-pic" else "",
+        });
+
+        if (db.options.test_target_filters.len > 0) {
+            for (db.options.test_target_filters) |filter| {
+                if (std.mem.find(u8, target_str, filter) != null) break;
+            } else continue;
+        }
+
+        const mod = db.b.createModule(.{
+            .target = resolved_target,
+            .root_source_file = root_source_file,
+            .optimize = test_target.optimize_mode,
+            .link_libc = test_target.link_libc,
+            .single_threaded = test_target.single_threaded,
+            .pic = test_target.pic,
+            .strip = false,
+        });
+        for (imports.keys(), imports.values()) |import_name, import_mod|
+            mod.addImport(import_name, import_mod);
+
+        const exe = db.b.addExecutable(.{
+            .name = name,
+            .root_module = mod,
+            .use_llvm = false,
+            .use_lld = false,
+        });
+        exe.use_new_linker = switch (test_target.linker) {
+            .default => null,
+            .old => false,
+            .new => true,
+        };
+
+        const run = std.Build.Step.Run.create(db.b, db.b.fmt("run {s} {s}", .{ name, target_str }));
+        for (env) |env_var| run.setEnvironmentVariable(env_var[0], env_var[1]);
+        run.addArgs(db_argv1);
+        run.addFileArg(commands_file);
+        run.addArgs(db_argv2);
+        run.addArtifactArg(exe);
+        for (expected_output) |expected| run.addCheck(.{
+            .expect_stdout_match = db.b.fmt("{s}\n", .{expected}),
+        });
+        run.addCheck(.{ .expect_term = .{ .exited = success } });
+        run.setStdIn(.{ .bytes = "" });
+        db.root_step.dependOn(&run.step);
+    }
 }
 
 const Debugger = @This();

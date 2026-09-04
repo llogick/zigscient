@@ -243,7 +243,7 @@ fn handleCommand(zcu: *Zcu, w: *Io.Writer, cmd_str: []const u8, arg_str: []const
         var num_results: usize = 0;
         for (zcu.incremental_debug_state.types.keys()) |type_ip_index| {
             const ty: Type = .fromInterned(type_ip_index);
-            const ty_name = ty.containerTypeName(ip).toSlice(ip);
+            const ty_name = ty.containerTypeName(ip).fqn.toSlice(ip);
             const success = switch (@as(u2, @intFromBool(anchor_start)) << 1 | @intFromBool(anchor_end)) {
                 0b00 => std.mem.find(u8, ty_name, query) != null,
                 0b01 => std.mem.endsWith(u8, ty_name, query),
@@ -347,7 +347,7 @@ fn handleCommand(zcu: *Zcu, w: *Io.Writer, cmd_str: []const u8, arg_str: []const
             \\created on generation: {d}
             \\
         , .{
-            Type.fromInterned(ip_index).containerTypeName(ip).fmt(ip),
+            Type.fromInterned(ip_index).containerTypeName(ip).fqn.fmt(ip),
             create_gen,
         });
     } else if (std.mem.eql(u8, cmd_str, "type_namespace")) {
@@ -451,7 +451,7 @@ fn printType(ty: Type, zcu: *const Zcu, w: *Io.Writer) Io.Writer.Error!void {
         .union_type,
         .enum_type,
         .opaque_type,
-        => try w.print("{f}[{d}]", .{ ty.containerTypeName(ip).fmt(ip), @backingInt(ty.toIntern()) }),
+        => try w.print("{f}[{d}]", .{ ty.containerTypeName(ip).fqn.fmt(ip), @backingInt(ty.toIntern()) }),
 
         else => unreachable,
     }

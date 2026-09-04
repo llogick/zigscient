@@ -38,7 +38,6 @@ const Dwarf = @import("Dwarf.zig");
 const InternPool = @import("../InternPool.zig");
 const Zcu = @import("../Zcu.zig");
 const codegen = @import("../codegen.zig");
-const dev = @import("../dev.zig");
 const link = @import("../link.zig");
 const trace = @import("../tracy.zig").trace;
 const wasi_libc = @import("../libs/wasi_libc.zig");
@@ -1374,11 +1373,7 @@ pub const GlobalImport = extern struct {
                 .__tls_base => @tagName(Unpacked.__tls_base),
                 .__tls_size => @tagName(Unpacked.__tls_size),
                 .object_global => |i| i.name(wasm).slice(wasm),
-                inline .uav_obj, .uav_exe => |i| std.mem.print(
-                    buf,
-                    "__anon_{d}",
-                    .{@backingInt(i.key(wasm).*)},
-                ) catch unreachable,
+                inline .uav_obj, .uav_exe => |i| std.mem.print(buf, "__anon_{d}", .{i}) catch unreachable,
                 .nav_obj => |i| i.name(wasm),
                 .nav_exe => |i| i.name(wasm),
             };
@@ -1997,11 +1992,7 @@ pub const ObjectDataImport = extern struct {
                 .__heap_base => @tagName(.__heap_base),
                 .__heap_end => @tagName(.__heap_end),
                 .__wasm_first_page_end => @tagName(.__wasm_first_page_end),
-                inline .uav_exe, .uav_obj => |i| std.mem.print(
-                    buf,
-                    "__anon_{d}",
-                    .{@backingInt(i.key(wasm).*)},
-                ) catch unreachable,
+                inline .uav_exe, .uav_obj => |i| std.mem.print(buf, "__anon_{d}", .{i}) catch unreachable,
                 inline .nav_exe, .nav_obj => |i| i.name(wasm),
             };
         }
@@ -3583,8 +3574,6 @@ pub fn updateFunc(
     func_index: InternPool.Index,
     any_mir: *const codegen.AnyMir,
 ) !void {
-    dev.check(.wasm_backend);
-
     // This linker implementation only works with codegen backend `.stage2_wasm`.
     const mir = &any_mir.wasm;
     const zcu = pt.zcu;
@@ -3736,11 +3725,11 @@ pub fn updateNav(wasm: *Wasm, pt: Zcu.PerThread, nav_index: InternPool.Nav.Index
     }
 }
 
-pub fn updateLineNumber(wasm: *Wasm, pt: Zcu.PerThread, ti_id: InternPool.TrackedInst.Index) link.Error!void {
+pub fn updateLineNumber(wasm: *Wasm, pt: Zcu.PerThread, ti_id: InternPool.TrackedInst.Index, line: u32) link.Error!void {
     const comp = wasm.base.comp;
     const diags = &comp.link_diags;
     if (wasm.dwarf) |*dw| {
-        dw.updateLineNumber(pt.zcu, ti_id) catch |err| switch (err) {
+        dw.updateLineNumber(pt.zcu, ti_id, line) catch |err| switch (err) {
             error.OutOfMemory, error.Canceled, error.AlreadyReported => |e| return e,
             else => |e| return diags.fail("failed to update dwarf line numbers: {s}", .{@errorName(e)}),
         };

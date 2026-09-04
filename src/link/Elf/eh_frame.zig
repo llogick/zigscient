@@ -535,6 +535,7 @@ pub fn writeEhFrameHdr(elf_file: *Elf, writer: anytype) !void {
 
 const x86_64 = struct {
     fn resolveReloc(rec: anytype, elf_file: *Elf, rel: elf.Elf64_Rela, source: i64, target: i64, data: []u8) !void {
+        dev.checkAny(&.{ .llvm_backend, .x86_64_backend });
         const r_type: elf.R_X86_64 = @fromBackingInt(@intCast(rel.r_type()));
         switch (r_type) {
             .NONE => {},
@@ -549,6 +550,7 @@ const x86_64 = struct {
 
 const aarch64 = struct {
     fn resolveReloc(rec: anytype, elf_file: *Elf, rel: elf.Elf64_Rela, source: i64, target: i64, data: []u8) !void {
+        dev.checkAny(&.{ .llvm_backend, .aarch64_backend });
         const r_type: elf.R_AARCH64 = @fromBackingInt(@intCast(rel.r_type()));
         switch (r_type) {
             .NONE => {},
@@ -562,6 +564,7 @@ const aarch64 = struct {
 
 const riscv = struct {
     fn resolveReloc(rec: anytype, elf_file: *Elf, rel: elf.Elf64_Rela, source: i64, target: i64, data: []u8) !void {
+        dev.checkAny(&.{ .llvm_backend, .riscv64_backend });
         const r_type: elf.R_RISCV = @fromBackingInt(@intCast(rel.r_type()));
         switch (r_type) {
             .NONE => {},
@@ -584,6 +587,7 @@ fn reportInvalidReloc(rec: anytype, elf_file: *Elf, rel: elf.Elf64_Rela) !void {
 
 const std = @import("std");
 const assert = std.debug.assert;
+const dev = @import("../../dev.zig");
 const elf = std.elf;
 const math = std.math;
 const relocs_log = std.log.scoped(.link_relocs);

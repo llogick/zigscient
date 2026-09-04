@@ -362,8 +362,7 @@ pub const CommonInformationEntry = struct {
             if (aug_str.len == 0) break :aug .none;
             if (aug_str[0] == 'z') break :aug .lsb_z;
             if (std.mem.eql(u8, aug_str, "eh")) break :aug .gcc_eh;
-            // We can't finish parsing the CIE if we don't know what its augmentation means.
-            return bad();
+            return error.UnsupportedAugmentation;
         };
 
         switch (aug_kind) {
@@ -396,7 +395,7 @@ pub const CommonInformationEntry = struct {
                 'R' => fde_pointer_enc = @bitCast(try aug_data.takeByte()),
                 'S' => is_signal_frame = true,
                 'B', 'G' => {},
-                else => return bad(),
+                else => return error.UnsupportedAugmentation,
             };
             break :aug .{ fde_pointer_enc, is_signal_frame };
         };
@@ -502,7 +501,15 @@ pub fn prepare(
                 const idx = unwind.cie_list.len;
                 try unwind.cie_list.append(gpa, .{
                     .offset = entry_offset,
-                    .cie = try .parse(cie_info.format, try r.take(bytes_len), section.id, addr_size_bytes),
+                    .cie = CommonInformationEntry.parse(cie_info.format, try r.take(bytes_len), section.id, addr_size_bytes) catch |err| switch (err) {
+                        error.UnsupportedDwarfVersion,
+                        error.UnsupportedAugmentation,
+                        => {
+                            // These are recoverable by just skipping the CIE.
+                            continue;
+                        },
+                        else => |e| return e,
+                    },
                 });
                 errdefer _ = unwind.cie_list.pop().?;
                 try VirtualMachine.populateCieLastRow(gpa, &unwind.cie_list.items(.cie)[idx], addr_size_bytes, endian);
@@ -514,8 +521,10 @@ pub fn prepare(
                     try r.discardAll(bytes_len);
                     continue;
                 }
-                const cie = unwind.findCie(fde_info.cie_offset) orelse return error.InvalidDebugInfo;
-                const fde: FrameDescriptionEntry = try .parse(section.vaddr + r.seek, try r.take(bytes_len), cie, endian);
+                const fde_vaddr = section.vaddr + r.seek;
+                const fde_bytes = try r.take(bytes_len);
+                const cie = unwind.findCie(fde_info.cie_offset) orelse continue;
+                const fde: FrameDescriptionEntry = try .parse(fde_vaddr, fde_bytes, cie, endian);
                 try fde_list.append(gpa, .{
                     .pc_begin = fde.pc_begin,
                     .fde_offset = entry_offset,
@@ -612,7 +621,7 @@ pub fn getFde(unwind: *const Unwind, fde_offset: u64, endian: Endian) !struct { 
         .cie, .terminator => return bad(), // This is meant to be an FDE
     };
 
-    const cie = unwind.findCie(fde_info.cie_offset) orelse return error.InvalidDebugInfo;
+    const cie = unwind.findCie(fde_info.cie_offset) orelse return bad();
     const fde: FrameDescriptionEntry = try .parse(
         section.vaddr + fde_offset + fde_reader.seek,
         try fde_reader.take(cast(usize, fde_info.bytes_len) orelse return error.EndOfStream),

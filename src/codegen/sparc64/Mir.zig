@@ -382,7 +382,7 @@ pub fn emit(
     atom_index: link.File.AtomId,
     w: *std.Io.Writer,
     debug_output: link.File.DebugInfoOutput,
-) (codegen.Error || std.Io.Writer.Error)!void {
+) link.EmitError!void {
     _ = atom_index;
     const zcu = pt.zcu;
     const func = zcu.funcInfo(func_index);

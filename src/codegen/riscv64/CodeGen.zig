@@ -856,7 +856,7 @@ pub fn generateLazy(
     atom_index: link.File.AtomId,
     w: *std.Io.Writer,
     debug_output: link.File.DebugInfoOutput,
-) (codegen.Error || std.Io.Writer.Error)!void {
+) link.EmitError!void {
     _ = atom_index;
     const comp = bin_file.comp;
     const gpa = comp.gpa;
@@ -8349,7 +8349,7 @@ fn wantSafety(func: *Func) bool {
     };
 }
 
-fn fail(func: *const Func, comptime format: []const u8, args: anytype) error{ OutOfMemory, AlreadyReported } {
+fn fail(func: *const Func, comptime format: []const u8, args: anytype) codegen.Error {
     @branchHint(.cold);
     const zcu = func.pt.zcu;
     switch (func.owner) {
@@ -8359,7 +8359,7 @@ fn fail(func: *const Func, comptime format: []const u8, args: anytype) error{ Ou
     return error.AlreadyReported;
 }
 
-fn failMsg(func: *const Func, msg: *ErrorMsg) error{ OutOfMemory, AlreadyReported } {
+fn failMsg(func: *const Func, msg: *ErrorMsg) codegen.Error {
     @branchHint(.cold);
     const zcu = func.pt.zcu;
     switch (func.owner) {

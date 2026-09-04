@@ -487,7 +487,7 @@ pub fn writableSliceGreedyPreserve(w: *Writer, preserve: usize, minimum_len: usi
         @branchHint(.likely);
         return w.buffer[w.end..];
     }
-    try rebase(w, preserve, minimum_len);
+    try w.vtable.rebase(w, preserve, minimum_len);
     assert(w.buffer.len >= preserve + minimum_len);
     return w.buffer[w.end..];
 }
@@ -845,13 +845,10 @@ pub fn writeByte(w: *Writer, byte: u8) Error!void {
 ///
 /// Asserts buffer capacity is at least `preserve`.
 pub fn writeBytePreserve(w: *Writer, preserve: usize, byte: u8) Error!void {
-    if (w.buffer.len - w.end != 0) {
-        @branchHint(.likely);
-        w.buffer[w.end] = byte;
-        w.end += 1;
-        return;
+    if (w.buffer.len - w.end == 0) {
+        @branchHint(.unlikely);
+        try w.vtable.rebase(w, preserve -| 1, 1);
     }
-    try w.vtable.rebase(w, preserve -| 1, 1);
     w.buffer[w.end] = byte;
     w.end += 1;
 }

@@ -2,6 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const assert = std.debug.assert;
 
+const dev = @import("dev.zig");
 const Type = @import("Type.zig");
 const AddressSpace = std.lang.AddressSpace;
 const Alignment = @import("InternPool.zig").Alignment;
@@ -855,7 +856,10 @@ pub fn functionPointerMask(target: *const std.Target) ?u64 {
 
 pub fn supportsTailCall(target: *const std.Target, backend: std.lang.CompilerBackend) bool {
     switch (backend) {
-        .stage2_llvm => return @import("codegen/llvm.zig").supportsTailCall(target),
+        .stage2_llvm => {
+            dev.check(.llvm_backend);
+            return @import("codegen/llvm.zig").supportsTailCall(target);
+        },
         .stage2_c => return true,
         else => return false,
     }

@@ -340,7 +340,6 @@ const Module = struct {
             error.InvalidOperation,
             => return error.InvalidDebugInfo,
             error.UnsupportedAddrSize,
-            error.UnsupportedDwarfVersion,
             error.UnimplementedUserOpcode,
             => return error.UnsupportedDebugInfo,
         };

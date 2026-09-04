@@ -1452,6 +1452,8 @@ const Writer = struct {
         self.parent_decl_node = struct_decl.src_node;
         defer self.parent_decl_node = prev_parent_decl_node;
 
+        try stream.print(":{d}:{d} ", .{ struct_decl.src_line + 1, struct_decl.src_column + 1 });
+
         const fields_hash = self.code.getAssociatedSrcHash(inst).?;
         try stream.print("hash({x}) ", .{&fields_hash});
 
@@ -1513,6 +1515,8 @@ const Writer = struct {
         const prev_parent_decl_node = self.parent_decl_node;
         self.parent_decl_node = union_decl.src_node;
         defer self.parent_decl_node = prev_parent_decl_node;
+
+        try stream.print(":{d}:{d} ", .{ union_decl.src_line + 1, union_decl.src_column + 1 });
 
         const fields_hash = self.code.getAssociatedSrcHash(inst).?;
         try stream.print("hash({x}) ", .{&fields_hash});
@@ -1590,6 +1594,8 @@ const Writer = struct {
         self.parent_decl_node = enum_decl.src_node;
         defer self.parent_decl_node = prev_parent_decl_node;
 
+        try stream.print(":{d}:{d} ", .{ enum_decl.src_line + 1, enum_decl.src_column + 1 });
+
         const fields_hash = self.code.getAssociatedSrcHash(inst).?;
         try stream.print("hash({x}) ", .{&fields_hash});
 
@@ -1636,6 +1642,8 @@ const Writer = struct {
         const prev_parent_decl_node = self.parent_decl_node;
         self.parent_decl_node = opaque_decl.src_node;
         defer self.parent_decl_node = prev_parent_decl_node;
+
+        try stream.print(":{d}:{d} ", .{ opaque_decl.src_line + 1, opaque_decl.src_column + 1 });
 
         try stream.print("{s}, ", .{@tagName(opaque_decl.name_strategy)});
         try self.writeCaptures(stream, opaque_decl.captures, opaque_decl.capture_names);
@@ -2216,10 +2224,10 @@ const Writer = struct {
                 try stream.print("{s} '{s}'", .{ @tagName(decl.kind), self.code.nullTerminatedString(decl.name) });
             },
         }
+        try stream.print(":{d}:{d}", .{ decl.src_line + 1, decl.src_column + 1 });
+
         const src_hash = self.code.getAssociatedSrcHash(inst).?;
-        try stream.print(" line({d}) column({d}) hash({x})", .{
-            decl.src_line, decl.src_column, &src_hash,
-        });
+        try stream.print(" hash({x})", .{&src_hash});
 
         {
             if (decl.type_body) |b| {

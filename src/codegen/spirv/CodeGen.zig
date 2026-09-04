@@ -240,10 +240,7 @@ pub fn generate(
     };
     defer cg.deinit();
 
-    cg.genNav(true) catch |err| switch (err) {
-        error.AlreadyReported => return error.AlreadyReported,
-        error.OutOfMemory => return error.OutOfMemory,
-    };
+    try cg.genNav(true);
 
     return cg.serializeToMir(gpa);
 }
@@ -270,10 +267,7 @@ pub fn generateNav(
     };
     defer cg.deinit();
 
-    cg.genNav(false) catch |err| switch (err) {
-        error.AlreadyReported => return error.AlreadyReported,
-        error.OutOfMemory => return error.OutOfMemory,
-    };
+    try cg.genNav(false);
 
     return cg.serializeToMir(gpa);
 }
@@ -854,7 +848,7 @@ pub fn storageClass(cg: *const CodeGen, as: std.lang.AddressSpace) spec.StorageC
     };
 }
 
-const Error = error{ AlreadyReported, OutOfMemory };
+const Error = codegen.Error;
 
 pub fn genNav(cg: *CodeGen, do_codegen: bool) Error!void {
     const gpa = cg.gpa;

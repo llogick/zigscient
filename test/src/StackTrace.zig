@@ -38,6 +38,7 @@ pub const CaseParameters = struct {
     link_libc: ?bool = null,
     use_llvm: ?bool = null,
     use_lld: ?bool = null,
+    use_new_linker: ?bool = null,
     pie: ?bool = null,
     /// To enable this coverage, one of two things needs to happen:
     /// * The compiler needs to gain the ability to strip only debug info (not symbols)
@@ -758,8 +759,25 @@ pub const param_sets = [_]CaseParameters{
             .os_tag = .linux,
             .abi = .none,
         },
+        .use_new_linker = true,
+    },
+    .{
+        .target = .{
+            .cpu_arch = .x86_64,
+            .os_tag = .linux,
+            .abi = .none,
+        },
         .use_llvm = true,
         .use_lld = true,
+    },
+    .{
+        .target = .{
+            .cpu_arch = .x86_64,
+            .os_tag = .linux,
+            .abi = .none,
+        },
+        .use_llvm = true,
+        .use_new_linker = true,
     },
     .{
         .target = .{
@@ -1175,9 +1193,14 @@ fn addCaseInstance(
 
     const annotated_case_name = b.fmt("check {s} ({s}{s}{s}{s}{s}{s}{s}{s}{s})", .{
         name,
-        triple orelse "",
-        if (triple != null) " " else "",
+        triple orelse "native",
         backend_string,
+        if (params.use_new_linker == true)
+            " new_linker"
+        else if (params.use_lld == true)
+            " lld"
+        else
+            "",
         if (params.pie == true) " pie" else "",
         if (params.link_libc == true) " libc" else "",
         if (params.linkage) |linkage| switch (linkage) {
@@ -1210,6 +1233,7 @@ fn addCaseInstance(
         .use_llvm = params.use_llvm,
         .use_lld = params.use_lld,
     });
+    exe.use_new_linker = params.use_new_linker;
     exe.linkage = params.linkage;
     exe.pie = params.pie;
     exe.bundle_ubsan_rt = false;

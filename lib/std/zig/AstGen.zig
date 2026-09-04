@@ -1884,7 +1884,8 @@ fn structInitExprAnon(
 
     const payload_index = try addExtra(astgen, Zir.Inst.StructInitAnon{
         .abs_node = node,
-        .abs_line = astgen.source_line,
+        .src_line = astgen.source_line,
+        .src_column = astgen.source_column,
         .fields_len = @intCast(struct_init.ast.fields.len),
     });
     const field_size = @typeInfo(Zir.Inst.StructInitAnon.Item).@"struct".field_names.len;
@@ -1917,7 +1918,8 @@ fn structInitExprTyped(
 
     const payload_index = try addExtra(astgen, Zir.Inst.StructInit{
         .abs_node = node,
-        .abs_line = astgen.source_line,
+        .src_line = astgen.source_line,
+        .src_column = astgen.source_column,
         .fields_len = @intCast(struct_init.ast.fields.len),
     });
     const field_size = @typeInfo(Zir.Inst.StructInit.Item).@"struct".field_names.len;
@@ -4846,9 +4848,13 @@ fn structDeclInner(
     astgen.advanceSourceCursorToNode(node);
 
     const decl_inst = try gz.reserveInstructionIndex();
+    const src_line = astgen.source_line;
+    const src_column = astgen.source_column;
 
     if (container_decl.ast.members.len == 0 and maybe_backing_int_node == .none) {
         try gz.setStruct(decl_inst, .{
+            .src_line = src_line,
+            .src_column = src_column,
             .src_node = node,
             .name_strat = name_strat,
             .layout = layout,
@@ -5003,6 +5009,8 @@ fn structDeclInner(
     astgen.src_hasher.final(&fields_hash);
 
     try gz.setStruct(decl_inst, .{
+        .src_line = src_line,
+        .src_column = src_column,
         .src_node = node,
         .name_strat = name_strat,
         .layout = layout,
@@ -5151,6 +5159,8 @@ fn unionDeclInner(
     astgen.advanceSourceCursorToNode(node);
 
     const decl_inst = try gz.reserveInstructionIndex();
+    const src_line = astgen.source_line;
+    const src_column = astgen.source_column;
 
     var namespace: Scope.Namespace = .{
         .parent = scope,
@@ -5284,6 +5294,8 @@ fn unionDeclInner(
     astgen.src_hasher.final(&fields_hash);
 
     try gz.setUnion(decl_inst, .{
+        .src_line = src_line,
+        .src_column = src_column,
         .src_node = node,
         .name_strat = name_strat,
         .kind = switch (layout) {
@@ -5358,6 +5370,8 @@ fn containerDecl(
             astgen.advanceSourceCursorToNode(node);
 
             const decl_inst = try gz.reserveInstructionIndex();
+            const src_line = astgen.source_line;
+            const src_column = astgen.source_column;
 
             var namespace: Scope.Namespace = .{
                 .parent = scope,
@@ -5482,6 +5496,8 @@ fn containerDecl(
             astgen.src_hasher.final(&fields_hash);
 
             try gz.setEnum(decl_inst, .{
+                .src_line = src_line,
+                .src_column = src_column,
                 .src_node = node,
                 .name_strat = name_strat,
                 .tag_type_body_len = tag_type_body_len,
@@ -5504,6 +5520,8 @@ fn containerDecl(
             astgen.advanceSourceCursorToNode(node);
 
             const decl_inst = try gz.reserveInstructionIndex();
+            const src_line = astgen.source_line;
+            const src_column = astgen.source_column;
 
             var namespace: Scope.Namespace = .{
                 .parent = scope,
@@ -5545,6 +5563,8 @@ fn containerDecl(
             wip_decls.finish();
 
             try gz.setOpaque(decl_inst, .{
+                .src_line = src_line,
+                .src_column = src_column,
                 .src_node = node,
                 .name_strat = name_strat,
                 .decls_len = scan_result.decls_len,
@@ -9302,6 +9322,7 @@ fn builtinCall(
             const field_attrs = try comptimeExpr(gz, scope, .{ .rl = .{ .coerced_ty = field_attrs_ty } }, params[4], .struct_field_attrs);
             const result = try gz.addExtendedPayloadSmall(.reify_struct, @backingInt(reify_name_strat), Zir.Inst.ReifyStruct{
                 .src_line = gz.astgen.source_line,
+                .src_column = gz.astgen.source_column,
                 .node = node,
                 .layout = layout,
                 .backing_ty = backing_ty,
@@ -9330,6 +9351,7 @@ fn builtinCall(
             const field_attrs = try comptimeExpr(gz, scope, .{ .rl = .{ .coerced_ty = field_attrs_ty } }, params[4], .union_field_attrs);
             const result = try gz.addExtendedPayloadSmall(.reify_union, @backingInt(reify_name_strat), Zir.Inst.ReifyUnion{
                 .src_line = gz.astgen.source_line,
+                .src_column = gz.astgen.source_column,
                 .node = node,
                 .layout = layout,
                 .arg_ty = arg_ty,
@@ -9352,6 +9374,7 @@ fn builtinCall(
             const field_values = try comptimeExpr(gz, scope, .{ .rl = .{ .coerced_ty = field_values_ty } }, params[3], .enum_field_values);
             const result = try gz.addExtendedPayloadSmall(.reify_enum, @backingInt(reify_name_strat), Zir.Inst.ReifyEnum{
                 .src_line = gz.astgen.source_line,
+                .src_column = gz.astgen.source_column,
                 .node = node,
                 .tag_ty = tag_ty,
                 .mode = mode,
@@ -9365,6 +9388,7 @@ fn builtinCall(
             const operand = try comptimeExpr(gz, scope, .{ .rl = .{ .coerced_ty = spirv_type_options_ty } }, params[0], .type);
             const result = try gz.addExtendedPayload(.reify_spirv_type, Zir.Inst.ReifySpirvType{
                 .src_line = gz.astgen.source_line,
+                .src_column = gz.astgen.source_column,
                 .node = node,
                 .operand = operand,
             });
@@ -12392,6 +12416,8 @@ const GenZir = struct {
     }
 
     fn setStruct(gz: *GenZir, inst: Zir.Inst.Index, args: struct {
+        src_line: u32,
+        src_column: u32,
         src_node: Ast.Node.Index,
         name_strat: Zir.Inst.NameStrategy,
         layout: std.lang.Type.ContainerLayout,
@@ -12428,7 +12454,8 @@ const GenZir = struct {
             .fields_hash_1 = fields_hash_arr[1],
             .fields_hash_2 = fields_hash_arr[2],
             .fields_hash_3 = fields_hash_arr[3],
-            .src_line = astgen.source_line,
+            .src_line = args.src_line,
+            .src_column = args.src_column,
             .src_node = args.src_node,
         });
 
@@ -12461,6 +12488,8 @@ const GenZir = struct {
     }
 
     fn setUnion(gz: *GenZir, inst: Zir.Inst.Index, args: struct {
+        src_line: u32,
+        src_column: u32,
         src_node: Ast.Node.Index,
         name_strat: Zir.Inst.NameStrategy,
         kind: Zir.Inst.UnionDecl.Kind,
@@ -12495,7 +12524,8 @@ const GenZir = struct {
             .fields_hash_1 = fields_hash_arr[1],
             .fields_hash_2 = fields_hash_arr[2],
             .fields_hash_3 = fields_hash_arr[3],
-            .src_line = astgen.source_line,
+            .src_line = args.src_line,
+            .src_column = args.src_column,
             .src_node = args.src_node,
         });
 
@@ -12530,6 +12560,8 @@ const GenZir = struct {
     }
 
     fn setEnum(gz: *GenZir, inst: Zir.Inst.Index, args: struct {
+        src_line: u32,
+        src_column: u32,
         src_node: Ast.Node.Index,
         name_strat: Zir.Inst.NameStrategy,
         tag_type_body_len: ?u32,
@@ -12563,7 +12595,8 @@ const GenZir = struct {
             .fields_hash_1 = fields_hash_arr[1],
             .fields_hash_2 = fields_hash_arr[2],
             .fields_hash_3 = fields_hash_arr[3],
-            .src_line = astgen.source_line,
+            .src_line = args.src_line,
+            .src_column = args.src_column,
             .src_node = args.src_node,
         });
 
@@ -12594,6 +12627,8 @@ const GenZir = struct {
     }
 
     fn setOpaque(gz: *GenZir, inst: Zir.Inst.Index, args: struct {
+        src_line: u32,
+        src_column: u32,
         src_node: Ast.Node.Index,
         name_strat: Zir.Inst.NameStrategy,
         decls_len: u32,
@@ -12615,7 +12650,8 @@ const GenZir = struct {
             args.decls.len);
 
         const payload_index = astgen.addExtraAssumeCapacity(Zir.Inst.OpaqueDecl{
-            .src_line = astgen.source_line,
+            .src_line = args.src_line,
+            .src_column = args.src_column,
             .src_node = args.src_node,
         });
         if (captures_len != 0) astgen.extra.appendAssumeCapacity(captures_len);

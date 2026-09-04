@@ -61,7 +61,7 @@ stage3-release/bin/zig build \
 
 stage3-release/bin/zig build test docs \
   --maxrss ${ZSF_MAX_RSS:-0} \
-  -Dlldb=$HOME/deps/lldb-zig/Release-7c1090fd46/bin/lldb \
+  -Dlldb=$HOME/deps/lldb-zig/Release-aad646607a/bin/lldb \
   -Dlibc-test-path=$HOME/deps/libc-test-b95fe84 \
   -fqemu \
   --libc-runtimes $HOME/deps/glibc-2.43-musl-1.2.5 \

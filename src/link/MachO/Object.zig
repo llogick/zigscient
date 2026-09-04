@@ -3,6 +3,7 @@ const Object = @This();
 const trace = @import("../../tracy.zig").trace;
 const Archive = @import("Archive.zig");
 const Atom = @import("Atom.zig");
+const dev = @import("../../dev.zig");
 const Dwarf = @import("Dwarf.zig");
 const File = @import("file.zig").File;
 const MachO = @import("../MachO.zig");
@@ -2826,6 +2827,7 @@ const x86_64 = struct {
         handle: File.Handle,
         macho_file: *MachO,
     ) !void {
+        dev.checkAny(&.{ .llvm_backend, .x86_64_backend });
         const comp = macho_file.base.comp;
         const io = comp.io;
         const gpa = comp.gpa;
@@ -2938,6 +2940,7 @@ const x86_64 = struct {
     }
 
     fn validateRelocType(rel: macho.relocation_info, rel_type: macho.reloc_type_x86_64, is_extern: bool) !Relocation.Type {
+        dev.checkAny(&.{ .llvm_backend, .x86_64_backend });
         switch (rel_type) {
             .X86_64_RELOC_UNSIGNED => {
                 if (rel.r_pcrel == 1) return error.Pcrel;
@@ -2995,6 +2998,7 @@ const aarch64 = struct {
         handle: File.Handle,
         macho_file: *MachO,
     ) !void {
+        dev.checkAny(&.{ .llvm_backend, .aarch64_backend });
         const comp = macho_file.base.comp;
         const io = comp.io;
         const gpa = comp.gpa;
@@ -3131,6 +3135,7 @@ const aarch64 = struct {
     }
 
     fn validateRelocType(rel: macho.relocation_info, rel_type: macho.reloc_type_arm64, is_extern: bool) !Relocation.Type {
+        dev.checkAny(&.{ .llvm_backend, .aarch64_backend });
         switch (rel_type) {
             .ARM64_RELOC_UNSIGNED => {
                 if (rel.r_pcrel == 1) return error.Pcrel;

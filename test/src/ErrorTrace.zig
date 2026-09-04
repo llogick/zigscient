@@ -36,6 +36,7 @@ pub const CaseParameters = struct {
     optimize: OptimizeMode = .debug,
     use_llvm: ?bool = null,
     use_lld: ?bool = null,
+    use_new_linker: ?bool = null,
 
     // This is intended for targets that, for any reason, shouldn't be run as part of a normal test
     // invocation. This could be because of a slow backend, requiring a newer LLVM version, being
@@ -262,8 +263,25 @@ pub const param_sets = [_]CaseParameters{
             .os_tag = .linux,
             .abi = .none,
         },
+        .use_new_linker = true,
+    },
+    .{
+        .target = .{
+            .cpu_arch = .x86_64,
+            .os_tag = .linux,
+            .abi = .none,
+        },
         .use_llvm = true,
         .use_lld = true,
+    },
+    .{
+        .target = .{
+            .cpu_arch = .x86_64,
+            .os_tag = .linux,
+            .abi = .none,
+        },
+        .use_llvm = true,
+        .use_new_linker = true,
     },
     .{
         .target = .{
@@ -439,18 +457,23 @@ pub fn addCase(self: *ErrorTrace, case: Case) void {
     };
 
     const backend_string = if (params.use_llvm == true)
-        "-llvm"
+        " llvm"
     else if (params.use_llvm == false)
-        "-selfhosted"
+        " selfhosted"
     else
         "";
 
-    const annotated_case_name = b.fmt("check {s} ({s}{s}{t}{s})", .{
+    const annotated_case_name = b.fmt("check {s} ({s} {t}{s}{s})", .{
         case.name,
-        triple orelse "",
-        if (triple != null) " " else "",
+        triple orelse "native",
         params.optimize,
         backend_string,
+        if (params.use_new_linker == true)
+            " new_linker"
+        else if (params.use_lld == true)
+            " lld"
+        else
+            "",
     });
     if (self.options.test_filters.len > 0) {
         for (self.options.test_filters) |test_filter| {
@@ -472,6 +495,7 @@ pub fn addCase(self: *ErrorTrace, case: Case) void {
         .use_llvm = params.use_llvm,
         .use_lld = params.use_lld,
     });
+    exe.use_new_linker = params.use_new_linker;
     exe.bundle_ubsan_rt = false;
 
     const run = b.addRunArtifact(exe);

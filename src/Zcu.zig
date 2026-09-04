@@ -349,6 +349,9 @@ codegen_task_pool: CodegenTaskPool,
 
 generation: u32 = 0,
 
+/// Only access from the Sema thread.
+anon_name_counter: u32,
+
 lsp_document_store: ?*LspDocumentStore = null,
 
 pub const DependencyReason = struct {
@@ -947,9 +950,9 @@ pub const Namespace = struct {
         tid: Zcu.PerThread.Id,
         name: InternPool.NullTerminatedString,
     ) !InternPool.NullTerminatedString {
-        const ns_name = Type.fromInterned(ns.owner_type).containerTypeName(ip);
-        if (name == .empty) return ns_name;
-        return ip.getOrPutStringFmt(gpa, io, tid, "{f}.{f}", .{ ns_name.fmt(ip), name.fmt(ip) }, .no_embedded_nulls);
+        const ns_fqn = Type.fromInterned(ns.owner_type).containerTypeName(ip).fqn;
+        if (name == .empty) return ns_fqn;
+        return ip.getOrPutStringFmt(gpa, io, tid, "{f}.{f}", .{ ns_fqn.fmt(ip), name.fmt(ip) }, .no_embedded_nulls);
     }
 };
 
@@ -4276,7 +4279,7 @@ fn resolveReferencesInner(zcu: *Zcu) Allocator.Error!std.array_hash_map.Auto(Ana
             const referencer = types.values()[type_idx];
             type_idx += 1;
 
-            refs_log.debug("handle type '{f}'", .{Type.fromInterned(ty).containerTypeName(ip).fmt(ip)});
+            refs_log.debug("handle type '{f}'", .{Type.fromInterned(ty).containerTypeName(ip).fqn.fmt(ip)});
 
             // Queue any decls within this type which would be automatically analyzed.
             // Keep in sync with analysis queueing logic in `Zcu.PerThread.ScanDeclIter.scanDecl`.
@@ -4287,7 +4290,7 @@ fn resolveReferencesInner(zcu: *Zcu) Allocator.Error!std.array_hash_map.Auto(Ana
                 const gop = try units.getOrPut(gpa, unit);
                 if (!gop.found_existing) {
                     refs_log.debug("type '{f}': ref comptime %{}", .{
-                        Type.fromInterned(ty).containerTypeName(ip).fmt(ip),
+                        Type.fromInterned(ty).containerTypeName(ip).fqn.fmt(ip),
                         @backingInt(ip.getComptimeUnit(cu).zir_index.resolve(ip) orelse continue),
                     });
                     gop.value_ptr.* = referencer;
@@ -4321,7 +4324,7 @@ fn resolveReferencesInner(zcu: *Zcu) Allocator.Error!std.array_hash_map.Auto(Ana
                         const gop = try units.getOrPut(gpa, .wrap(.{ .nav_val = nav_id }));
                         if (!gop.found_existing) {
                             refs_log.debug("type '{f}': ref test %{}", .{
-                                Type.fromInterned(ty).containerTypeName(ip).fmt(ip),
+                                Type.fromInterned(ty).containerTypeName(ip).fqn.fmt(ip),
                                 @backingInt(inst_info.inst),
                             });
                             gop.value_ptr.* = referencer;
@@ -4344,7 +4347,7 @@ fn resolveReferencesInner(zcu: *Zcu) Allocator.Error!std.array_hash_map.Auto(Ana
                     const gop = try units.getOrPut(gpa, unit);
                     if (!gop.found_existing) {
                         refs_log.debug("type '{f}': ref named %{}", .{
-                            Type.fromInterned(ty).containerTypeName(ip).fmt(ip),
+                            Type.fromInterned(ty).containerTypeName(ip).fqn.fmt(ip),
                             @backingInt(inst_info.inst),
                         });
                         gop.value_ptr.* = referencer;
@@ -4361,7 +4364,7 @@ fn resolveReferencesInner(zcu: *Zcu) Allocator.Error!std.array_hash_map.Auto(Ana
                     const gop = try units.getOrPut(gpa, unit);
                     if (!gop.found_existing) {
                         refs_log.debug("type '{f}': ref named %{}", .{
-                            Type.fromInterned(ty).containerTypeName(ip).fmt(ip),
+                            Type.fromInterned(ty).containerTypeName(ip).fqn.fmt(ip),
                             @backingInt(inst_info.inst),
                         });
                         gop.value_ptr.* = referencer;
@@ -4424,7 +4427,7 @@ fn resolveReferencesInner(zcu: *Zcu) Allocator.Error!std.array_hash_map.Auto(Ana
                     if (!gop.found_existing) {
                         refs_log.debug("unit '{f}': ref type '{f}'", .{
                             zcu.fmtAnalUnit(unit),
-                            Type.fromInterned(ref.referenced).containerTypeName(ip).fmt(ip),
+                            Type.fromInterned(ref.referenced).containerTypeName(ip).fqn.fmt(ip),
                         });
                         gop.value_ptr.* = .{
                             .referencer = unit,
@@ -4537,7 +4540,7 @@ fn formatAnalUnit(data: FormatAnalUnit, writer: *Io.Writer) Io.Writer.Error!void
             }
         },
         .nav_val, .nav_ty => |nav, tag| return writer.print("{t}('{f}' [{}])", .{ tag, ip.getNav(nav).fqn.fmt(ip), @backingInt(nav) }),
-        .type_layout, .struct_defaults => |ty, tag| return writer.print("{t}('{f}' [{}])", .{ tag, Type.fromInterned(ty).containerTypeName(ip).fmt(ip), @backingInt(ty) }),
+        .type_layout, .struct_defaults => |ty, tag| return writer.print("{t}('{f}' [{}])", .{ tag, Type.fromInterned(ty).containerTypeName(ip).fqn.fmt(ip), @backingInt(ty) }),
         .func => |func| {
             const nav = zcu.funcInfo(func).owner_nav;
             return writer.print("func('{f}' [{}])", .{ ip.getNav(nav).fqn.fmt(ip), @backingInt(func) });
@@ -4563,8 +4566,8 @@ fn formatDependee(data: FormatDependee, writer: *Io.Writer) Io.Writer.Error!void
             return writer.print("{t}('{f}')", .{ tag, fqn.fmt(ip) });
         },
         .type_layout, .struct_defaults => |ip_index, tag| {
-            const name = Type.fromInterned(ip_index).containerTypeName(ip);
-            return writer.print("{t}('{f}')", .{ tag, name.fmt(ip) });
+            const fqn = Type.fromInterned(ip_index).containerTypeName(ip).fqn;
+            return writer.print("{t}('{f}')", .{ tag, fqn.fmt(ip) });
         },
         .func_ies => |ip_index| {
             const fqn = ip.getNav(ip.indexToKey(ip_index).func.owner_nav).fqn;
@@ -4611,13 +4614,17 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
             if (allowed_arch == target.cpu.arch) break;
         } else return .{ .bad_arch = cc.archs() },
     }
-    const backend_ok = switch (backend) {
+    const backend_ok = ok: switch (backend) {
         .stage1 => unreachable,
         .other => unreachable,
         _ => unreachable,
 
-        .stage2_llvm => @import("codegen/llvm.zig").toLlvmCallConv(cc, target) != null,
-        .stage2_c => ok: {
+        .stage2_llvm => {
+            dev.check(.llvm_backend);
+            break :ok @import("codegen/llvm.zig").toLlvmCallConv(cc, target) != null;
+        },
+        .stage2_c => {
+            dev.check(.c_backend);
             if (target.cCallingConvention()) |default_c| {
                 if (cc.eql(default_c)) {
                     break :ok true;
@@ -4675,81 +4682,114 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
                 else => false,
             };
         },
-        .stage2_wasm => switch (cc) {
-            .wasm_mvp => |opts| opts.incoming_stack_alignment == null,
-            else => false,
-        },
-        .stage2_arm => switch (cc) {
-            .arm_aapcs => |opts| opts.incoming_stack_alignment == null,
-            .naked => true,
-            else => false,
-        },
-        .stage2_x86_64 => switch (cc) {
-            .x86_64_sysv, .x86_64_win, .naked => true, // incoming stack alignment supported
-            else => false,
-        },
-        .stage2_aarch64 => switch (cc) {
-            .aarch64_aapcs, .aarch64_aapcs_darwin, .naked => true,
-            else => false,
-        },
-        .stage2_x86 => switch (cc) {
-            .x86_sysv,
-            .x86_win,
-            .x86_mingw,
-            => |opts| opts.incoming_stack_alignment == null and opts.register_params == 0,
-            .naked => true,
-            else => false,
-        },
-        .stage2_powerpc => switch (target.cpu.arch) {
-            .powerpc, .powerpcle => switch (cc) {
-                .powerpc_sysv,
-                .powerpc_sysv_altivec,
-                .powerpc_aix,
-                .powerpc_aix_altivec,
-                .naked,
-                => true,
+        .stage2_wasm => {
+            dev.check(.wasm_backend);
+            break :ok switch (cc) {
+                .wasm_mvp => |opts| opts.incoming_stack_alignment == null,
                 else => false,
-            },
-            .powerpc64, .powerpc64le => switch (cc) {
-                .powerpc64_elf,
-                .powerpc64_elf_altivec,
-                .powerpc64_elf_v2,
-                .naked,
-                => true,
+            };
+        },
+        .stage2_arm => {
+            dev.check(.arm_backend);
+            break :ok switch (cc) {
+                .arm_aapcs => |opts| opts.incoming_stack_alignment == null,
+                .naked => true,
                 else => false,
-            },
-            else => unreachable,
+            };
         },
-        .stage2_riscv64 => switch (cc) {
-            .riscv64_lp64 => |opts| opts.incoming_stack_alignment == null,
-            .naked => true,
-            else => false,
+        .stage2_x86_64 => {
+            dev.check(.x86_64_backend);
+            break :ok switch (cc) {
+                .x86_64_sysv, .x86_64_win, .naked => true, // incoming stack alignment supported
+                else => false,
+            };
         },
-        .stage2_sparc64 => switch (cc) {
-            .sparc64_sysv => |opts| opts.incoming_stack_alignment == null,
-            .naked => true,
-            else => false,
+        .stage2_aarch64 => {
+            dev.check(.aarch64_backend);
+            break :ok switch (cc) {
+                .aarch64_aapcs, .aarch64_aapcs_darwin, .naked => true,
+                else => false,
+            };
         },
-        .stage2_spirv => switch (cc) {
-            .spirv_device, .spirv_kernel => true,
-            .spirv_fragment, .spirv_vertex => target.os.tag == .vulkan or target.os.tag == .opengl,
-            .spirv_task, .spirv_mesh => target.os.tag == .vulkan,
-            else => false,
+        .stage2_x86 => {
+            dev.check(.x86_backend);
+            break :ok switch (cc) {
+                .x86_sysv,
+                .x86_win,
+                .x86_mingw,
+                => |opts| opts.incoming_stack_alignment == null and opts.register_params == 0,
+                .naked => true,
+                else => false,
+            };
         },
-        .stage2_loongarch => switch (cc) {
-            .loongarch64_lp64, .loongarch32_ilp32, .naked => true,
-            else => false,
+        .stage2_powerpc => {
+            dev.check(.powerpc_backend);
+            break :ok switch (target.cpu.arch) {
+                .powerpc, .powerpcle => switch (cc) {
+                    .powerpc_sysv,
+                    .powerpc_sysv_altivec,
+                    .powerpc_aix,
+                    .powerpc_aix_altivec,
+                    .naked,
+                    => true,
+                    else => false,
+                },
+                .powerpc64, .powerpc64le => switch (cc) {
+                    .powerpc64_elf,
+                    .powerpc64_elf_altivec,
+                    .powerpc64_elf_v2,
+                    .naked,
+                    => true,
+                    else => false,
+                },
+                else => unreachable,
+            };
         },
-        .zsf_spork8 => switch (cc) {
-            .spork8, .naked => true,
-            else => false,
+        .stage2_riscv64 => {
+            dev.check(.riscv64_backend);
+            break :ok switch (cc) {
+                .riscv64_lp64 => |opts| opts.incoming_stack_alignment == null,
+                .naked => true,
+                else => false,
+            };
+        },
+        .stage2_sparc64 => {
+            dev.check(.sparc64_backend);
+            break :ok switch (cc) {
+                .sparc64_sysv => |opts| opts.incoming_stack_alignment == null,
+                .naked => true,
+                else => false,
+            };
+        },
+        .stage2_spirv => {
+            dev.check(.spirv_backend);
+            break :ok switch (cc) {
+                .spirv_device, .spirv_kernel => true,
+                .spirv_fragment, .spirv_vertex => target.os.tag == .vulkan or target.os.tag == .opengl,
+                .spirv_task, .spirv_mesh => target.os.tag == .vulkan,
+                else => false,
+            };
+        },
+        .stage2_loongarch => {
+            dev.check(.loongarch_backend);
+            break :ok switch (cc) {
+                .loongarch64_lp64, .loongarch32_ilp32, .naked => true,
+                else => false,
+            };
+        },
+        .zsf_spork8 => {
+            dev.check(.spork8_backend);
+            break :ok switch (cc) {
+                .spork8, .naked => true,
+                else => false,
+            };
         },
     };
     if (!backend_ok) return .{ .bad_backend = backend };
     return .ok;
 }
 
-pub const CodegenFailError = error{
+pub const CodegenFailError = Io.Cancelable || error{
     /// Indicates the error message has been already stored at `Zcu.failed_codegen`.
     AlreadyReported,
     OutOfMemory,
@@ -5041,7 +5081,7 @@ fn addDependencyLoopErrorLine(
         }),
         .struct_defaults => |ty| try eb.printString(
             "default field values of '{f}' depend on themselves for initialization here",
-            .{Type.fromInterned(ty).containerTypeName(ip).fmt(ip)},
+            .{Type.fromInterned(ty).containerTypeName(ip).fqn.fmt(ip)},
         ),
     } else switch (dep_node.unit.unwrap()) {
         .@"comptime" => unreachable, // cannot be involved in a dependency loop
@@ -5060,12 +5100,12 @@ fn addDependencyLoopErrorLine(
         }),
         .type_layout => |ty| try eb.printString("{f} depends on type '{f}' {s}", .{
             fmt_source,
-            Type.fromInterned(ty).containerTypeName(ip).fmt(ip),
+            Type.fromInterned(ty).containerTypeName(ip).fqn.fmt(ip),
             dep_node.reason.type_layout_reason.msg(),
         }),
         .struct_defaults => |ty| try eb.printString(
             "{f} uses default field values of '{f}' here",
-            .{ fmt_source, Type.fromInterned(ty).containerTypeName(ip).fmt(ip) },
+            .{ fmt_source, Type.fromInterned(ty).containerTypeName(ip).fqn.fmt(ip) },
         ),
     };
 
@@ -5107,10 +5147,10 @@ fn formatDependencyLoopSourceUnit(data: FormatAnalUnit, w: *Io.Writer) Io.Writer
             else => try w.writeAll("'std.lang' declarations"),
         },
         .type_layout => |ty| try w.print("type '{f}'", .{
-            Type.fromInterned(ty).containerTypeName(ip).fmt(ip),
+            Type.fromInterned(ty).containerTypeName(ip).fqn.fmt(ip),
         }),
         .struct_defaults => |ty| try w.print("default field value of '{f}'", .{
-            Type.fromInterned(ty).containerTypeName(ip).fmt(ip),
+            Type.fromInterned(ty).containerTypeName(ip).fqn.fmt(ip),
         }),
         .func => |func| try w.print("function '{f}'", .{
             ip.getNav(zcu.funcInfo(func).owner_nav).fqn.fmt(ip),
@@ -5160,7 +5200,7 @@ pub fn populateReferenceTrace(
             const root_name: ?[]const u8 = switch (ref.referencer.unwrap()) {
                 .@"comptime" => "comptime",
                 .nav_val, .nav_ty => |nav| ip.getNav(nav).name.toSlice(ip),
-                .type_layout, .struct_defaults => |ty| Type.fromInterned(ty).containerTypeName(ip).toSlice(ip),
+                .type_layout, .struct_defaults => |ty| Type.fromInterned(ty).containerTypeName(ip).fqn.toSlice(ip),
                 .func => |f| ip.getNav(zcu.funcInfo(f).owner_nav).name.toSlice(ip),
                 .memoized_state => null,
             };
@@ -5282,7 +5322,7 @@ pub const CodegenTaskPool = struct {
     /// memory on AIR/MIR, we see a limit of around 10 MiB of AIR in-flight.
     const max_air_bytes_in_flight = 10 * 1024 * 1024;
 
-    const max_funcs_in_flight = @import("link.zig").Queue.buffer_size;
+    const max_funcs_in_flight = link.Queue.buffer_size;
 
     available_air_bytes: u32,
 
