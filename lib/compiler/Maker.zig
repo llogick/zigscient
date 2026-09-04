@@ -2786,6 +2786,7 @@ fn makeStep(
                 const candidate_max_rss = candidate_index.ptr(c).max_rss.toBytes();
                 if (maker.available_rss < candidate_max_rss) break;
                 assert(maker.memory_blocked_steps.pop() == candidate_index);
+                maker.available_rss -= candidate_max_rss;
                 dispatch_set.appendAssumeCapacity(candidate_index);
             }
         }
