@@ -668,6 +668,7 @@ pub fn addCases(cases: *Context, params: *const Context.CaseParameters, target: 
             .{ .x86, .linux },
             .{ .aarch64, .freebsd },
             .{ .aarch64, .netbsd },
+            .{ .aarch64, .openbsd },
             .{ .aarch64, .linux },
             .{ .loongarch64, .linux },
             .{ .powerpc64le, .linux },
