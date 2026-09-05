@@ -8580,10 +8580,13 @@ fn maybeAddCopyRelocation(elf: *Elf, global_name: String(.strtab)) Error!bool {
     try Section.Index.data.ensureAligned(elf, dso_global.alignment);
 
     try elf.nodes.ensureUnusedCapacity(gpa, 1);
-    const node = try Section.Index.data.get(elf).ni.addFloatingChild(gpa, &elf.mf, .{
-        .size = dso_global.alignment.forward(dso_global.size),
-        .alignment = dso_global.alignment,
-    });
+    const node = elf.addNodeAssumeCapacity(
+        try Section.Index.data.get(elf).ni.addFloatingChild(gpa, &elf.mf, .{
+            .size = dso_global.alignment.forward(dso_global.size),
+            .alignment = dso_global.alignment,
+        }),
+        .{ .copied_global = global_name },
+    );
     errdefer comptime unreachable;
 
     const vaddr = elf.computeNodeVAddr(node);
