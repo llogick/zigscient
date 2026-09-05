@@ -144,6 +144,7 @@ test "int" {
 }
 
 test "float" {
+    if (builtin.zig_backend == .stage2_c and builtin.cpu.arch.isAarch64() and builtin.os.tag == .netbsd) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/36765
     if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch.isAarch64() and builtin.os.tag == .netbsd) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/36765
 
     @setEvalBranchQuota(4000);
