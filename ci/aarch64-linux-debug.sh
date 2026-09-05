@@ -52,7 +52,6 @@ stage3-debug/bin/zig build test docs \
   -Dskip-non-native \
   -Dtarget=native-native-musl \
   --search-prefix "$PREFIX" \
-  -Denable-superhtml \
   --test-timeout 3m
 
 stage3-debug/bin/zig build \

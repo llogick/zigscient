@@ -52,7 +52,6 @@ stage3-release/bin/zig build test docs \
   -Dskip-non-native \
   -Dtarget=native-native-musl \
   --search-prefix "$PREFIX" \
-  -Denable-superhtml \
   --test-timeout 3m
 
 # Ensure that stage3 and stage4 are byte-for-byte identical.
