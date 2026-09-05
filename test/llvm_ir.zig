@@ -75,6 +75,15 @@ pub fn addCases(cases: *tests.LlvmIrContext) void {
         "store volatile i16 321, ptr",
     }, .{});
 
+    cases.addMatches("unused volatile packed pointer load",
+        \\const S = packed struct(u16) { a: u2, b: u8, c: u6 };
+        \\export fn entry(ptr: *volatile S) void {
+        \\    _ = ptr.b;
+        \\}
+    , &.{
+        "load volatile i16, ptr",
+    }, .{});
+
     cases.addMatches("allowzero ptr load",
         \\export fn entry(ptr: *allowzero i16) i16 {
         \\    return ptr.*;

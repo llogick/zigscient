@@ -5220,7 +5220,7 @@ fn airLoad(fg: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value {
     const backing_int_ty = try fg.pt.intType(.unsigned, @intCast(ptr_info.packed_offset.host_size * 8));
     const llvm_backing_int_ty = try o.lowerType(backing_int_ty, .as_value);
 
-    const backing_int_val = try fg.load(ptr, ptr_align, backing_int_ty, .normal);
+    const backing_int_val = try fg.load(ptr, ptr_align, backing_int_ty, access_kind);
 
     const elem_bits = ptr_ty.childType(zcu).bitSize(zcu);
     const shift_amt = try o.builder.intValue(llvm_backing_int_ty, ptr_info.packed_offset.bit_offset);
