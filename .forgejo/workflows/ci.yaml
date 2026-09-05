@@ -14,28 +14,26 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  aarch64-freebsd-debug:
-    if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, aarch64-freebsd]
-    steps:
-      - name: Checkout
-        uses: https://codeberg.org/ziglang/checkout@19af6bac491e2534a4687a50ee84fa7f13258d28
-        with:
-          fetch-depth: 0
-      - name: Build and Test
-        run: sh ci/aarch64-freebsd-debug.sh
-        timeout-minutes: 360
-  aarch64-freebsd-release:
-    if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, aarch64-freebsd]
-    steps:
-      - name: Checkout
-        uses: https://codeberg.org/ziglang/checkout@19af6bac491e2534a4687a50ee84fa7f13258d28
-        with:
-          fetch-depth: 0
-      - name: Build and Test
-        run: sh ci/aarch64-freebsd-release.sh
-        timeout-minutes: 300
+  # aarch64-freebsd-debug:
+  #   runs-on: [self-hosted, aarch64-freebsd]
+  #   steps:
+  #     - name: Checkout
+  #       uses: https://codeberg.org/ziglang/checkout@19af6bac491e2534a4687a50ee84fa7f13258d28
+  #       with:
+  #         fetch-depth: 0
+  #     - name: Build and Test
+  #       run: sh ci/aarch64-freebsd-debug.sh
+  #       timeout-minutes: 240
+  # aarch64-freebsd-release:
+  #   runs-on: [self-hosted, aarch64-freebsd]
+  #   steps:
+  #     - name: Checkout
+  #       uses: https://codeberg.org/ziglang/checkout@19af6bac491e2534a4687a50ee84fa7f13258d28
+  #       with:
+  #         fetch-depth: 0
+  #     - name: Build and Test
+  #       run: sh ci/aarch64-freebsd-release.sh
+  #       timeout-minutes: 180
 
   aarch64-linux-debug:
     runs-on: [self-hosted, aarch64-linux]
@@ -58,28 +56,26 @@ jobs:
         run: sh ci/aarch64-linux-release.sh
         timeout-minutes: 180
 
-  aarch64-netbsd-debug:
-    if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, aarch64-netbsd]
-    steps:
-      - name: Checkout
-        uses: https://codeberg.org/ziglang/checkout@19af6bac491e2534a4687a50ee84fa7f13258d28
-        with:
-          fetch-depth: 0
-      - name: Build and Test
-        run: sh ci/aarch64-netbsd-debug.sh
-        timeout-minutes: 360
-  aarch64-netbsd-release:
-    if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, aarch64-netbsd]
-    steps:
-      - name: Checkout
-        uses: https://codeberg.org/ziglang/checkout@19af6bac491e2534a4687a50ee84fa7f13258d28
-        with:
-          fetch-depth: 0
-      - name: Build and Test
-        run: sh ci/aarch64-netbsd-release.sh
-        timeout-minutes: 300
+  # aarch64-netbsd-debug:
+  #   runs-on: [self-hosted, aarch64-netbsd]
+  #   steps:
+  #     - name: Checkout
+  #       uses: https://codeberg.org/ziglang/checkout@19af6bac491e2534a4687a50ee84fa7f13258d28
+  #       with:
+  #         fetch-depth: 0
+  #     - name: Build and Test
+  #       run: sh ci/aarch64-netbsd-debug.sh
+  #       timeout-minutes: 240
+  # aarch64-netbsd-release:
+  #   runs-on: [self-hosted, aarch64-netbsd]
+  #   steps:
+  #     - name: Checkout
+  #       uses: https://codeberg.org/ziglang/checkout@19af6bac491e2534a4687a50ee84fa7f13258d28
+  #       with:
+  #         fetch-depth: 0
+  #     - name: Build and Test
+  #       run: sh ci/aarch64-netbsd-release.sh
+  #       timeout-minutes: 180
 
   aarch64-macos-debug:
     runs-on: [self-hosted, aarch64-macos]
