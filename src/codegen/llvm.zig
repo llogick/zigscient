@@ -395,7 +395,7 @@ pub const Object = struct {
         }
 
         {
-            var module_flags = try std.array_list.Managed(Builder.Metadata).initCapacity(o.gpa, 8);
+            var module_flags = try std.array_list.Managed(Builder.Metadata).initCapacity(o.gpa, 11);
             defer module_flags.deinit();
 
             const behavior_error = try o.builder.metadataConstant(try o.builder.intConst(.i32, 1));
@@ -489,6 +489,20 @@ pub const Object = struct {
                     behavior_max,
                     (try o.builder.metadataString("RegCallv4")).toMetadata(),
                     try o.builder.metadataConstant(.@"1"),
+                }));
+            }
+
+            // The frontend should eventually offer options to control these.
+            if (target.cpu.arch.isAarch64() and target.os.tag == .openbsd) {
+                module_flags.appendAssumeCapacity(try o.builder.metadataTuple(&.{
+                    behavior_min,
+                    (try o.builder.metadataString("branch-target-enforcement")).toMetadata(),
+                    try o.builder.metadataConstant(try o.builder.intConst(.i32, 2)),
+                }));
+                module_flags.appendAssumeCapacity(try o.builder.metadataTuple(&.{
+                    behavior_min,
+                    (try o.builder.metadataString("sign-return-address")).toMetadata(),
+                    try o.builder.metadataConstant(try o.builder.intConst(.i32, 2)),
                 }));
             }
 
@@ -2227,6 +2241,22 @@ pub const Object = struct {
             // This prevents LLVM from using FPU/SIMD code for things like `memcpy`. As for the
             // above, this should be revisited if `softfp` support is added.
             try attributes.addFnAttr(.noimplicitfloat, &o.builder);
+        }
+
+        // The frontend should eventually offer options to control these.
+        if (target.cpu.arch.isAarch64() and target.os.tag == .openbsd) {
+            try attributes.addFnAttr(.{ .string = .{
+                .kind = try o.builder.string("branch-target-enforcement"),
+                .value = try o.builder.string(""),
+            } }, &o.builder);
+            try attributes.addFnAttr(.{ .string = .{
+                .kind = try o.builder.string("sign-return-address"),
+                .value = try o.builder.string("non-leaf"),
+            } }, &o.builder);
+            try attributes.addFnAttr(.{ .string = .{
+                .kind = try o.builder.string("sign-return-address-key"),
+                .value = try o.builder.string("a_key"),
+            } }, &o.builder);
         }
     }
 
