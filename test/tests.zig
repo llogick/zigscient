@@ -2834,6 +2834,10 @@ pub fn addModuleTests(b: *std.Build, options: ModuleTestOptions) *Step {
 
         const target = &resolved_target.result;
 
+        if (target.cpu.arch.isAarch64() and target.os.tag == .openbsd and target.ofmt == .c) {
+            continue; // https://codeberg.org/ziglang/zig/issues/36766
+        }
+
         if (std.mem.eql(u8, options.name, "libc")) {
             // The libc API tests obviously need to link libc. So for test
             // target entries where we wouldn't link libc by default, skip the
