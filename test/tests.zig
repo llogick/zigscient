@@ -2286,14 +2286,13 @@ const incremental_targets = &[_]IncrementalTarget{
         },
         .backend = .selfhosted,
     },
-    // https://codeberg.org/ziglang/zig/issues/31773
-    // .{
-    //     .target = .{
-    //         .cpu_arch = .x86_64,
-    //         .os_tag = .windows,
-    //     },
-    //     .backend = .selfhosted,
-    // },
+    .{
+        .target = .{
+            .cpu_arch = .x86_64,
+            .os_tag = .windows,
+        },
+        .backend = .selfhosted,
+    },
     .{
         .target = .{
             .cpu_arch = .wasm32,

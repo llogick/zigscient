@@ -1780,4 +1780,5 @@ const usage =
     \\  --strings                          Display string tables
     \\  --symbols                          Display symbol tables
     \\  --tls                              Display TLS information
+    \\
 ;
