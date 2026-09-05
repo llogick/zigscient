@@ -460,7 +460,14 @@ pub const Instruction = union(enum) {
                 .def_cfa_expression => .{ .def_cfa_expr = try reader.takeLeb128(usize) },
 
                 _ => switch (@backingInt(inst.low.extended)) {
-                    0x1C...0x3F => return error.UnimplementedUserOpcode,
+                    // For the moment, we just ignore these so that they don't cause unwinding to
+                    // fail; `SelfUnwinder` already unconditionally strips pointer authentication
+                    // codes. If this code is ever extended to be useful for remote/offline
+                    // unwinding, we will have to actually model the RA sign state properly.
+                    0x2C => .nop, // DW_CFA_AARCH64_negate_ra_state_with_pc
+                    0x2D => .nop, // DW_CFA_AARCH64_negate_ra_state
+
+                    0x1C...0x2B, 0x2E...0x3F => return error.UnimplementedUserOpcode,
                     else => return error.InvalidOpcode,
                 },
             },
