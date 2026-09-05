@@ -242,6 +242,10 @@ pub const aarch64 = struct {
         return @as(u4, @truncate(input >> offset));
     }
 
+    inline fn signedBitField(input: u64, offset: u6) i4 {
+        return @as(i4, @bitCast(@as(u4, @truncate(input >> offset))));
+    }
+
     /// Input array should consist of readouts from 12 system registers such that:
     /// 0  -> MIDR_EL1
     /// 1  -> ID_AA64PFR0_EL1
@@ -255,18 +259,22 @@ pub const aarch64 = struct {
     /// 9  -> ID_AA64MMFR0_EL1
     /// 10 -> ID_AA64MMFR1_EL1
     /// 11 -> ID_AA64MMFR2_EL1
-    pub fn detectNativeCpuAndFeatures(arch: Target.Cpu.Arch, registers: [12]u64) ?Target.Cpu {
+    pub fn detectNativeCpuAndFeatures(arch: Target.Cpu.Arch, registers: [12]u64) Target.Cpu {
         const info = detectNativeCoreInfo(registers[0]);
-        const model = cpu_models.isKnown(info, true) orelse return null;
+        const model = cpu_models.isKnown(info, true) orelse Target.Cpu.Model.generic(arch);
 
         var cpu = Target.Cpu{
             .arch = arch,
             .model = model,
-            .features = Target.Cpu.Feature.Set.empty,
+            .features = .empty,
         };
 
+        cpu.features.addFeatureSet(model.features);
+
         detectNativeCpuFeatures(&cpu, registers[1..12]);
-        addInstructionFusions(&cpu, info);
+        addInstructionFusions(&cpu);
+
+        cpu.features.populateDependencies(cpu.arch.allFeaturesList());
 
         return cpu;
     }
@@ -318,14 +326,9 @@ pub const aarch64 = struct {
         setFeature(cpu, .sve, bitField(registers[0], 32) >= 1);
         setFeature(cpu, .el3, bitField(registers[0], 12) >= 1);
         setFeature(cpu, .ras, bitField(registers[0], 28) >= 1);
-
-        if (bitField(registers[0], 20) < 0xF) blk: {
-            if (bitField(registers[0], 16) != bitField(registers[0], 20)) break :blk; // This should never occur
-
-            setFeature(cpu, .neon, true);
-            setFeature(cpu, .fp_armv8, true);
-            setFeature(cpu, .fullfp16, bitField(registers[0], 20) > 0);
-        }
+        setFeature(cpu, .fp_armv8, signedBitField(registers[0], 16) >= 0);
+        setFeature(cpu, .neon, signedBitField(registers[0], 20) >= 0);
+        setFeature(cpu, .fullfp16, signedBitField(registers[0], 16) >= 1 and signedBitField(registers[0], 20) >= 1);
 
         // ID_AA64PFR1_EL1
         setFeature(cpu, .mpam, bitField(registers[1], 16) > 0 and bitField(registers[0], 40) == 0); // MPAM v0.1
@@ -336,7 +339,7 @@ pub const aarch64 = struct {
         // ID_AA64DFR0_EL1
         setFeature(cpu, .tracev8_4, bitField(registers[2], 40) >= 1);
         setFeature(cpu, .spe, bitField(registers[2], 32) >= 1);
-        setFeature(cpu, .perfmon, bitField(registers[2], 8) >= 1 and bitField(registers[2], 8) < 0xF);
+        setFeature(cpu, .perfmon, signedBitField(registers[2], 8) >= 1);
 
         // ID_AA64DFR1_EL1 reserved
         // ID_AA64AFR0_EL1 reserved / implementation defined
@@ -387,17 +390,14 @@ pub const aarch64 = struct {
         setFeature(cpu, .uaops, bitField(registers[10], 4) >= 1);
     }
 
-    fn addInstructionFusions(cpu: *Target.Cpu, info: CoreInfo) void {
-        switch (info.implementer) {
-            0x41 => switch (info.part) {
-                0xd4b, 0xd4c => {
-                    // According to A78C/X1C Core Software Optimization Guide, CPU fuses certain instructions.
-                    setFeature(cpu, .cmp_bcc_fusion, true);
-                    setFeature(cpu, .fuse_aes, true);
-                },
-                else => {},
-            },
-            else => {},
+    fn addInstructionFusions(cpu: *Target.Cpu) void {
+        const m = cpu.model;
+        const c = Target.aarch64.cpu;
+
+        if (m == &c.cortex_a78c or m == &c.cortex_x1c) {
+            // According to A78C/X1C Core Software Optimization Guide, CPU fuses certain instructions.
+            setFeature(cpu, .cmp_bcc_fusion, true);
+            setFeature(cpu, .fuse_aes, true);
         }
     }
 };

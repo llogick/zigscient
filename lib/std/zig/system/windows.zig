@@ -3,11 +3,10 @@ const builtin = @import("builtin");
 const assert = std.debug.assert;
 const mem = std.mem;
 const Target = std.Target;
-
-pub const WindowsVersion = std.Target.Os.WindowsVersion;
-pub const PF = std.os.windows.PF;
-pub const REG = std.os.windows.REG;
-pub const IsProcessorFeaturePresent = std.os.windows.IsProcessorFeaturePresent;
+const WindowsVersion = std.Target.Os.WindowsVersion;
+const PF = std.os.windows.PF;
+const REG = std.os.windows.REG;
+const IsProcessorFeaturePresent = std.os.windows.IsProcessorFeaturePresent;
 
 /// Returns the highest known WindowsVersion deduced from reported runtime information.
 /// Discards information about in-between versions we don't differentiate.
@@ -193,20 +192,18 @@ fn setFeature(comptime Feature: type, cpu: *Target.Cpu, feature: Feature, enable
     if (enabled) cpu.features.addFeature(idx) else cpu.features.removeFeature(idx);
 }
 
-fn getCpuCount() usize {
-    return std.os.windows.peb().NumberOfProcessors;
-}
-
 /// If the fine-grained detection of CPU features via Win registry fails,
 /// we fallback to a generic CPU model but we override the feature set
 /// using `SharedUserData` contents.
 /// This is effectively what LLVM does for all ARM chips on Windows.
 fn genericCpuAndNativeFeatures(arch: Target.Cpu.Arch) Target.Cpu {
-    var cpu = Target.Cpu{
+    var cpu: Target.Cpu = .{
         .arch = arch,
         .model = Target.Cpu.Model.generic(arch),
-        .features = Target.Cpu.Feature.Set.empty,
+        .features = .empty,
     };
+
+    cpu.features.addFeatureSet(cpu.model.features);
 
     switch (arch) {
         .aarch64, .aarch64_be => {
@@ -256,6 +253,8 @@ fn genericCpuAndNativeFeatures(arch: Target.Cpu.Arch) Target.Cpu {
         else => {},
     }
 
+    cpu.features.populateDependencies(cpu.arch.allFeaturesList());
+
     return cpu;
 }
 
@@ -263,52 +262,39 @@ pub fn detectNativeCpuAndFeatures() ?Target.Cpu {
     const current_arch = builtin.cpu.arch;
     const cpu: ?Target.Cpu = switch (current_arch) {
         .aarch64, .aarch64_be => blk: {
-            var cores: [128]Target.Cpu = undefined;
-            const core_count = getCpuCount();
+            var registers: [12]u64 = undefined;
 
-            if (core_count > cores.len) break :blk null;
+            // CP 4000 -> MIDR_EL1
+            // CP 4020 -> ID_AA64PFR0_EL1
+            // CP 4021 -> ID_AA64PFR1_EL1
+            // CP 4028 -> ID_AA64DFR0_EL1
+            // CP 4029 -> ID_AA64DFR1_EL1
+            // CP 402C -> ID_AA64AFR0_EL1
+            // CP 402D -> ID_AA64AFR1_EL1
+            // CP 4030 -> ID_AA64ISAR0_EL1
+            // CP 4031 -> ID_AA64ISAR1_EL1
+            // CP 4038 -> ID_AA64MMFR0_EL1
+            // CP 4039 -> ID_AA64MMFR1_EL1
+            // CP 403A -> ID_AA64MMFR2_EL1
+            getCpuInfoFromRegistry(0, .{
+                .{ .key = "CP 4000", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[0])) },
+                .{ .key = "CP 4020", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[1])) },
+                .{ .key = "CP 4021", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[2])) },
+                .{ .key = "CP 4028", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[3])) },
+                .{ .key = "CP 4029", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[4])) },
+                .{ .key = "CP 402C", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[5])) },
+                .{ .key = "CP 402D", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[6])) },
+                .{ .key = "CP 4030", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[7])) },
+                .{ .key = "CP 4031", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[8])) },
+                .{ .key = "CP 4038", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[9])) },
+                .{ .key = "CP 4039", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[10])) },
+                .{ .key = "CP 403A", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[11])) },
+            }) catch break :blk null;
 
-            var i: usize = 0;
-            while (i < core_count) : (i += 1) {
-                // Backing datastore
-                var registers: [12]u64 = undefined;
-
-                // Registry key to system ID register mapping
-                // CP 4000 -> MIDR_EL1
-                // CP 4020 -> ID_AA64PFR0_EL1
-                // CP 4021 -> ID_AA64PFR1_EL1
-                // CP 4028 -> ID_AA64DFR0_EL1
-                // CP 4029 -> ID_AA64DFR1_EL1
-                // CP 402C -> ID_AA64AFR0_EL1
-                // CP 402D -> ID_AA64AFR1_EL1
-                // CP 4030 -> ID_AA64ISAR0_EL1
-                // CP 4031 -> ID_AA64ISAR1_EL1
-                // CP 4038 -> ID_AA64MMFR0_EL1
-                // CP 4039 -> ID_AA64MMFR1_EL1
-                // CP 403A -> ID_AA64MMFR2_EL1
-                getCpuInfoFromRegistry(i, .{
-                    .{ .key = "CP 4000", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[0])) },
-                    .{ .key = "CP 4020", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[1])) },
-                    .{ .key = "CP 4021", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[2])) },
-                    .{ .key = "CP 4028", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[3])) },
-                    .{ .key = "CP 4029", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[4])) },
-                    .{ .key = "CP 402C", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[5])) },
-                    .{ .key = "CP 402D", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[6])) },
-                    .{ .key = "CP 4030", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[7])) },
-                    .{ .key = "CP 4031", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[8])) },
-                    .{ .key = "CP 4038", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[9])) },
-                    .{ .key = "CP 4039", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[10])) },
-                    .{ .key = "CP 403A", .value_type = REG.ValueType.QWORD, .value_buf = @as(*[8]u8, @ptrCast(&registers[11])) },
-                }) catch break :blk null;
-
-                cores[i] = @import("arm.zig").aarch64.detectNativeCpuAndFeatures(current_arch, registers) orelse
-                    break :blk null;
-            }
-
-            // Pick the first core, usually LITTLE in big.LITTLE architecture.
-            break :blk cores[0];
+            break :blk @import("arm.zig").aarch64.detectNativeCpuAndFeatures(current_arch, registers);
         },
         else => null,
     };
+
     return cpu orelse genericCpuAndNativeFeatures(current_arch);
 }
