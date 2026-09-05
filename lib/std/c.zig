@@ -1366,6 +1366,27 @@ pub const CTL = switch (native_os) {
     },
     else => void,
 };
+pub const CPU = switch (native_os) {
+    .openbsd => switch (native_arch) {
+        .aarch64, .aarch64_be => struct {
+            pub const COMPATIBLE = 1;
+            pub const ID_AA64ISAR0 = 2;
+            pub const ID_AA64ISAR1 = 3;
+            pub const ID_AA64ISAR2 = 4;
+            pub const ID_AA64MMFR0 = 5;
+            pub const ID_AA64MMFR1 = 6;
+            pub const ID_AA64MMFR2 = 7;
+            pub const AA64PFR0 = 8;
+            pub const AA64PFR1 = 9;
+            pub const AA64SMFR0 = 10;
+            pub const AA64ZFR0 = 11;
+            pub const LIDACTION = 12;
+            pub const LED_BLINK = 13;
+        },
+        else => void,
+    },
+    else => void,
+};
 pub const KERN = switch (native_os) {
     .freebsd => struct {
         /// struct: process entries
