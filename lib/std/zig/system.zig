@@ -15,6 +15,7 @@ pub const NativePaths = @import("system/NativePaths.zig");
 pub const windows = @import("system/windows.zig");
 pub const darwin = @import("system/darwin.zig");
 pub const linux = @import("system/linux.zig");
+pub const freebsd = @import("system/freebsd.zig");
 
 pub const Executor = union(enum) {
     native,
@@ -543,6 +544,7 @@ fn detectNativeCpuAndFeatures(io: Io, cpu_arch: Target.Cpu.Arch, os: Target.Os, 
     }
 
     switch (builtin.os.tag) {
+        .freebsd => return freebsd.detectNativeCpuAndFeatures(),
         .linux => return linux.detectNativeCpuAndFeatures(io),
         .macos => return darwin.macos.detectNativeCpuAndFeatures(),
         .windows => return windows.detectNativeCpuAndFeatures(),
