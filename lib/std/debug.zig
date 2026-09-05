@@ -1851,18 +1851,44 @@ pub fn ConfigurableTrace(comptime size: usize, comptime stack_frame_count: usize
 pub const SafetyLock = struct {
     state: State = if (runtime_safety) .unlocked else .unknown,
 
-    pub const State = if (runtime_safety) enum { unlocked, locked } else enum { unknown };
+    pub const State = if (runtime_safety) enum(usize) {
+        unlocked = 0,
+        exclusive = math.maxInt(usize),
+        _, // shared lock count
 
+        fn isShared(state: State) bool {
+            return switch (state) {
+                _ => true,
+                else => false,
+            };
+        }
+    } else enum { unknown };
+
+    /// Exclusive. Use when mutating data.
     pub fn lock(l: *SafetyLock) void {
         if (!runtime_safety) return;
         assert(l.state == .unlocked);
-        l.state = .locked;
+        l.state = .exclusive;
     }
 
     pub fn unlock(l: *SafetyLock) void {
         if (!runtime_safety) return;
-        assert(l.state == .locked);
+        assert(l.state == .exclusive);
         l.state = .unlocked;
+    }
+
+    /// Use when consuming data in a read-only manner.
+    pub fn lockShared(l: *SafetyLock) void {
+        if (!runtime_safety) return;
+        assert(l.state != .exclusive);
+        l.state = @fromBackingInt(@backingInt(l.state) + 1);
+        assert(l.state.isShared()); // Catch overflow to `exclusive`.
+    }
+
+    pub fn unlockShared(l: *SafetyLock) void {
+        if (!runtime_safety) return;
+        assert(l.state.isShared());
+        l.state = @fromBackingInt(@backingInt(l.state) - 1);
     }
 
     pub fn assertUnlocked(l: SafetyLock) void {
@@ -1872,7 +1898,12 @@ pub const SafetyLock = struct {
 
     pub fn assertLocked(l: SafetyLock) void {
         if (!runtime_safety) return;
-        assert(l.state == .locked);
+        assert(l.state == .exclusive);
+    }
+
+    pub fn assertLockedShared(l: SafetyLock) void {
+        if (!runtime_safety) return;
+        assert(l.state.isShared());
     }
 };
 
@@ -1882,6 +1913,12 @@ test SafetyLock {
     safety_lock.lock();
     safety_lock.assertLocked();
     safety_lock.unlock();
+    safety_lock.assertUnlocked();
+    safety_lock.lockShared();
+    safety_lock.assertLockedShared();
+    for (0..3) |_| safety_lock.lockShared();
+    safety_lock.assertLockedShared();
+    for (0..4) |_| safety_lock.unlockShared();
     safety_lock.assertUnlocked();
 }
 

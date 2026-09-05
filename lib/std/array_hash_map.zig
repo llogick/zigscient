@@ -200,17 +200,18 @@ pub fn Custom(
         /// cause an existing key or value pointer to become invalidated will
         /// instead trigger an assertion.
         ///
-        /// An additional call to `lockPointers` in such state also triggers an
-        /// assertion.
+        /// `lockPointers` may be called multiple times. This allows multiple
+        /// independent users of the hash map to keep it locked simultaneously.
         ///
-        /// `unlockPointers` returns the hash map to the previous state.
+        /// `unlockPointers` restores the hash map to its previous state when
+        /// called the same number of times as `lockPointers`.
         pub fn lockPointers(self: *Self) void {
-            self.pointer_stability.lock();
+            self.pointer_stability.lockShared();
         }
 
-        /// Undoes a call to `lockPointers`.
+        /// Undoes one call to `lockPointers`.
         pub fn unlockPointers(self: *Self) void {
-            self.pointer_stability.unlock();
+            self.pointer_stability.unlockShared();
         }
 
         /// Clears the map but retains the backing allocation for future use.

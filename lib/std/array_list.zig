@@ -74,17 +74,18 @@ pub fn AlignedManaged(comptime T: type, comptime alignment: ?mem.Alignment) type
         /// cause an existing value pointer to become invalidated will
         /// instead trigger an assertion.
         ///
-        /// An additional call to `lockPointers` in such state also triggers an
-        /// assertion.
+        /// `lockPointers` may be called multiple times. This allows multiple
+        /// independent users of the list to keep it locked simultaneously.
         ///
-        /// `unlockPointers` returns the array list to the previous state.
+        /// `unlockPointers` restores the list to its previous state when
+        /// called the same number of times as `lockPointers`.
         pub fn lockPointers(self: *Self) void {
-            self.pointer_stability.lock();
+            self.pointer_stability.lockShared();
         }
 
-        /// Undoes a call to `lockPointers`.
+        /// Undoes one call to `lockPointers`.
         pub fn unlockPointers(self: *Self) void {
-            self.pointer_stability.unlock();
+            self.pointer_stability.unlockShared();
         }
 
         /// ArrayList takes ownership of the passed in slice. The slice must have been
@@ -698,17 +699,18 @@ pub fn Aligned(comptime T: type, comptime alignment: ?mem.Alignment) type {
         /// cause an existing value pointer to become invalidated will
         /// instead trigger an assertion.
         ///
-        /// An additional call to `lockPointers` in such state also triggers an
-        /// assertion.
+        /// `lockPointers` may be called multiple times. This allows multiple
+        /// independent users of the list to keep it locked simultaneously.
         ///
-        /// `unlockPointers` returns the unmanaged array list to the previous state.
+        /// `unlockPointers` restores the list to its previous state when
+        /// called the same number of times as `lockPointers`.
         pub fn lockPointers(self: *Self) void {
-            self.pointer_stability.lock();
+            self.pointer_stability.lockShared();
         }
 
-        /// Undoes a call to `lockPointers`.
+        /// Undoes one call to `lockPointers`.
         pub fn unlockPointers(self: *Self) void {
-            self.pointer_stability.unlock();
+            self.pointer_stability.unlockShared();
         }
 
         /// Convert this list into an analogous memory-managed one.
