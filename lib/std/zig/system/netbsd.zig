@@ -32,44 +32,46 @@ const aarch64 = struct {
         clidr: u64,
         ctr: u64,
     };
+
+    fn detectNativeCpuAndFeatures(arch: std.Target.Cpu.Arch) ?std.Target.Cpu {
+        var value: aarch64.sysctl_cpu_id = undefined;
+        var len: usize = @sizeOf(@TypeOf(value));
+        switch (std.posix.errno(std.c.sysctlbyname("machdep.cpu0.cpu_id", &value, &len, null, 0))) {
+            .SUCCESS => {},
+            .FAULT => unreachable,
+            .INVAL => unreachable,
+            .ISDIR => unreachable,
+            .NOENT => unreachable, // 👻
+            .NOMEM => {}, // `aarch64.sysctl_cpu_id` has grown upstream, harmless
+            .NOTDIR => unreachable,
+            .NOTEMPTY => unreachable,
+            .OPNOTSUPP => unreachable,
+            .PERM => unreachable,
+            else => return null,
+        }
+
+        const registers = [12]u64{
+            value.midr,
+            value.aa64pfr0,
+            value.aa64pfr1,
+            value.aa64dfr0,
+            value.aa64dfr1,
+            0, // ID_AA64AFR0_EL1
+            0, // ID_AA64AFR1_EL1
+            value.aa64isar0,
+            value.aa64isar1,
+            value.aa64mmfr0,
+            value.aa64mmfr1,
+            value.aa64mmfr2,
+        };
+
+        return @import("arm.zig").aarch64.detectNativeCpuAndFeatures(arch, registers);
+    }
 };
 
 pub fn detectNativeCpuAndFeatures() ?std.Target.Cpu {
     return switch (native_arch) {
-        .aarch64, .aarch64_be => b: {
-            var value: aarch64.sysctl_cpu_id = undefined;
-            var len: usize = @sizeOf(@TypeOf(value));
-            switch (std.posix.errno(std.c.sysctlbyname("machdep.cpu0.cpu_id", &value, &len, null, 0))) {
-                .SUCCESS => {},
-                .FAULT => unreachable,
-                .INVAL => unreachable,
-                .ISDIR => unreachable,
-                .NOENT => unreachable, // 👻
-                .NOMEM => {}, // `aarch64.sysctl_cpu_id` has grown upstream, harmless
-                .NOTDIR => unreachable,
-                .NOTEMPTY => unreachable,
-                .OPNOTSUPP => unreachable,
-                .PERM => unreachable,
-                else => return null,
-            }
-
-            const registers = [12]u64{
-                value.midr,
-                value.aa64pfr0,
-                value.aa64pfr1,
-                value.aa64dfr0,
-                value.aa64dfr1,
-                0, // ID_AA64AFR0_EL1
-                0, // ID_AA64AFR1_EL1
-                value.aa64isar0,
-                value.aa64isar1,
-                value.aa64mmfr0,
-                value.aa64mmfr1,
-                value.aa64mmfr2,
-            };
-
-            break :b @import("arm.zig").aarch64.detectNativeCpuAndFeatures(native_arch, registers);
-        },
+        .aarch64, .aarch64_be => aarch64.detectNativeCpuAndFeatures(native_arch),
         else => null,
     };
 }

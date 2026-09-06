@@ -1203,6 +1203,9 @@ test {
     _ = NativePaths;
 
     _ = darwin;
+    _ = freebsd;
     _ = linux;
+    _ = netbsd;
+    _ = openbsd;
     _ = windows;
 }
