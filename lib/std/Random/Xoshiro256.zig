@@ -1,4 +1,4 @@
-//! Xoshiro256++ - http://xoroshiro.di.unimi.it/
+//! Xoshiro256++ - https://prng.di.unimi.it/xoshiro256plusplus.c
 //!
 //! PRNG
 

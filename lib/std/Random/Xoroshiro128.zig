@@ -1,4 +1,4 @@
-//! Xoroshiro128+ - http://xoroshiro.di.unimi.it/
+//! Xoroshiro128+ - https://prng.di.unimi.it/xoroshiro128plus.c
 //!
 //! PRNG
 
