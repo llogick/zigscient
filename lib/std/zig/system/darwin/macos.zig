@@ -399,14 +399,14 @@ test "detect" {
 
 pub fn detectNativeCpuAndFeatures() ?Target.Cpu {
     var cpu_family: std.c.CPUFAMILY = undefined;
-    var len: usize = @sizeOf(std.c.CPUFAMILY);
+    var len: usize = @sizeOf(@TypeOf(cpu_family));
     switch (posix.errno(posix.system.sysctlbyname("hw.cpufamily", &cpu_family, &len, null, 0))) {
         .SUCCESS => {},
         .FAULT => unreachable, // segmentation fault
         .PERM => unreachable, // only when setting values,
         .NOMEM => unreachable, // memory already on the stack
         .NOENT => unreachable, // constant, known good value
-        else => unreachable,
+        else => return null,
     }
 
     const current_arch = builtin.cpu.arch;
@@ -438,11 +438,7 @@ pub fn detectNativeCpuAndFeatures() ?Target.Cpu {
                 else => return null,
             };
 
-            return Target.Cpu{
-                .arch = current_arch,
-                .model = model,
-                .features = model.features,
-            };
+            return model.toCpu(current_arch);
         },
         else => {},
     }

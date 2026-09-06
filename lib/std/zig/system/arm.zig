@@ -279,6 +279,33 @@ pub const aarch64 = struct {
         return cpu;
     }
 
+    /// Input array should consist of readouts from 12 system registers such that:
+    /// 0  -> ID_AA64PFR0_EL1
+    /// 1  -> ID_AA64PFR1_EL1
+    /// 2  -> ID_AA64DFR0_EL1
+    /// 3  -> ID_AA64DFR1_EL1
+    /// 4  -> ID_AA64AFR0_EL1
+    /// 5  -> ID_AA64AFR1_EL1
+    /// 6  -> ID_AA64ISAR0_EL1
+    /// 7  -> ID_AA64ISAR1_EL1
+    /// 8  -> ID_AA64MMFR0_EL1
+    /// 9 -> ID_AA64MMFR1_EL1
+    /// 10 -> ID_AA64MMFR2_EL1
+    pub fn detectNativeFeatures(arch: Target.Cpu.Arch, model: *const Target.Cpu.Model, registers: [11]u64) Target.Cpu {
+        var cpu: Target.Cpu = .{
+            .arch = arch,
+            .model = model,
+            .features = model.features,
+        };
+
+        detectNativeCpuFeatures(&cpu, registers[0..]);
+        addInstructionFusions(&cpu);
+
+        cpu.features.populateDependencies(cpu.arch.allFeaturesList());
+
+        return cpu;
+    }
+
     /// Takes readout of MIDR_EL1 register as input.
     fn detectNativeCoreInfo(midr: u64) CoreInfo {
         var info = CoreInfo{
