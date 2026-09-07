@@ -113,32 +113,38 @@ const aarch64 = struct {
     }
 
     fn detectNativeCpuAndFeatures(arch: std.Target.Cpu.Arch) ?std.Target.Cpu {
-        const model: *const std.Target.Cpu.Model = blk: {
+        const maybe_model: ?*const std.Target.Cpu.Model = blk: {
             var buf: [64:0]u8 = undefined;
-            const name = hwModelName(&buf) orelse return null;
+            const name = hwModelName(&buf) orelse break :blk null;
 
             inline for (models) |pair| {
                 if (std.mem.startsWith(u8, name, pair[0])) break :blk pair[1];
             }
 
-            break :blk .generic(arch);
+            break :blk null;
         };
 
-        const registers = [11]u64{
-            sysctlReg(std.c.CPU.AA64PFR0) orelse return null,
-            sysctlReg(std.c.CPU.AA64PFR1) orelse return null,
-            0, // ID_AA64DFR0_EL1
-            0, // ID_AA64DFR1_EL1
-            0, // ID_AA64AFR0_EL1
-            0, // ID_AA64AFR1_EL1
-            sysctlReg(std.c.CPU.ID_AA64ISAR0) orelse return null,
-            sysctlReg(std.c.CPU.ID_AA64ISAR1) orelse return null,
-            sysctlReg(std.c.CPU.ID_AA64MMFR0) orelse return null,
-            sysctlReg(std.c.CPU.ID_AA64MMFR1) orelse return null,
-            sysctlReg(std.c.CPU.ID_AA64MMFR2) orelse return null,
+        const registers = blk: {
+            break :blk [11]u64{
+                sysctlReg(std.c.CPU.AA64PFR0) orelse break :blk null,
+                sysctlReg(std.c.CPU.AA64PFR1) orelse break :blk null,
+                0, // ID_AA64DFR0_EL1
+                0, // ID_AA64DFR1_EL1
+                0, // ID_AA64AFR0_EL1
+                0, // ID_AA64AFR1_EL1
+                sysctlReg(std.c.CPU.ID_AA64ISAR0) orelse break :blk null,
+                sysctlReg(std.c.CPU.ID_AA64ISAR1) orelse break :blk null,
+                sysctlReg(std.c.CPU.ID_AA64MMFR0) orelse break :blk null,
+                sysctlReg(std.c.CPU.ID_AA64MMFR1) orelse break :blk null,
+                sysctlReg(std.c.CPU.ID_AA64MMFR2) orelse break :blk null,
+            };
+        } orelse {
+            // Even if the registers are unavailable, we should still return the
+            // model if we managed to detect it.
+            return if (maybe_model) |m| m.toCpu(arch) else null;
         };
 
-        return @import("arm.zig").aarch64.detectNativeFeatures(arch, model, registers);
+        return @import("arm.zig").aarch64.detectNativeFeatures(arch, maybe_model orelse .generic(arch), registers);
     }
 };
 

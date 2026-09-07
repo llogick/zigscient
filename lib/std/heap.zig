@@ -80,7 +80,7 @@ pub fn defaultQueryPageSize() usize {
         .linux => if (builtin.link_libc)
             @max(std.c.sysconf(@backingInt(std.c._SC.PAGESIZE)), 0)
         else
-            std.os.linux.getauxval(std.elf.AT_PAGESZ),
+            std.os.linux.getauxval(std.elf.AT.PAGESZ),
         .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => {
             const task_port = std.c.mach_task_self();
             // mach_task_self may fail "if there are any resource failures or other errors".

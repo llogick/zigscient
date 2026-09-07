@@ -775,9 +775,9 @@ pub fn sysctl(
 
 pub fn getSelfPhdrs() []std.elf.ElfN.Phdr {
     const getauxval = if (builtin.link_libc) std.c.getauxval else std.os.linux.getauxval;
-    assert(getauxval(std.elf.AT_PHENT) == @sizeOf(std.elf.ElfN.Phdr));
-    const phdrs: [*]std.elf.ElfN.Phdr = @ptrFromInt(getauxval(std.elf.AT_PHDR));
-    return phdrs[0..getauxval(std.elf.AT_PHNUM)];
+    assert(getauxval(std.elf.AT.PHENT) == @sizeOf(std.elf.ElfN.Phdr));
+    const phdrs: [*]std.elf.ElfN.Phdr = @ptrFromInt(getauxval(std.elf.AT.PHDR));
+    return phdrs[0..getauxval(std.elf.AT.PHNUM)];
 }
 
 pub fn dl_iterate_phdr(
@@ -819,7 +819,7 @@ pub fn dl_iterate_phdr(
                 .PHDR => break @intFromPtr(phdrs.ptr) - phdr.vaddr,
                 else => {},
             } else unreachable,
-            .name = switch (getauxval(std.elf.AT_EXECFN)) {
+            .name = switch (getauxval(std.elf.AT.EXECFN)) {
                 0 => "/proc/self/exe",
                 else => |name| @ptrFromInt(name),
             },

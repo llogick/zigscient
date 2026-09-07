@@ -65,8 +65,8 @@ fn checkGetAuxVal() !void {
 }
 
 fn checkGetAuxVal_v2_16() !void {
-    const base = std.c.getauxval(std.elf.AT_BASE);
-    const pgsz = std.c.getauxval(std.elf.AT_PAGESZ);
+    const base = std.c.getauxval(std.elf.AT.BASE);
+    const pgsz = std.c.getauxval(std.elf.AT.PAGESZ);
 
     assert(base != 0);
     assert(pgsz != 0);

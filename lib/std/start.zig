@@ -617,11 +617,11 @@ fn posixCallMainAndExit(argc_argv_ptr: [*]usize) callconv(.c) noreturn {
         var i: usize = 0;
         var at_phdr: usize = 0;
         var at_phnum: usize = 0;
-        while (auxv[i].a_type != elf.AT_NULL) : (i += 1) {
+        while (auxv[i].a_type != elf.AT.NULL) : (i += 1) {
             switch (auxv[i].a_type) {
-                elf.AT_PHNUM => at_phnum = auxv[i].a_un.a_val,
-                elf.AT_PHDR => at_phdr = auxv[i].a_un.a_val,
-                elf.AT_HWCAP => at_hwcap = auxv[i].a_un.a_val,
+                elf.AT.PHNUM => at_phnum = auxv[i].a_un.a_val,
+                elf.AT.PHDR => at_phdr = auxv[i].a_un.a_val,
+                elf.AT.HWCAP => at_hwcap = auxv[i].a_un.a_val,
                 else => continue,
             }
         }
@@ -736,8 +736,8 @@ fn main(c_argc: c_int, c_argv: [*][*:0]c_char, c_envp: [*:null]?[*:0]c_char) cal
 
     switch (builtin.os.tag) {
         .linux => {
-            const at_phdr = std.c.getauxval(elf.AT_PHDR);
-            const at_phnum = std.c.getauxval(elf.AT_PHNUM);
+            const at_phdr = std.c.getauxval(elf.AT.PHDR);
+            const at_phnum = std.c.getauxval(elf.AT.PHNUM);
             const phdrs = (@as([*]elf.ElfN.Phdr, @ptrFromInt(at_phdr)))[0..at_phnum];
             expandStackSize(phdrs);
         },

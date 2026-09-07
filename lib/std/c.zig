@@ -10533,8 +10533,134 @@ pub const sendfile = switch (native_os) {
     .linux => private.sendfile,
     else => {},
 };
-/// See std.elf for constants for this
-pub extern "c" fn getauxval(__type: c_ulong) c_ulong;
+
+pub extern "c" fn getauxval(type: c_ulong) c_ulong;
+pub extern "c" fn elf_aux_info(aux: c_int, buf: *anyopaque, buflen: c_int) c_int;
+
+pub const HWCAP = switch (native_os) {
+    .freebsd => switch (native_arch) {
+        // FreeBSD deliberately matches the Linux ABI for AT_HWCAP...
+        else => std.os.linux.HWCAP,
+        // ... but because Linux went the SYS_riscv_hwprobe route, FreeBSD
+        // defines more bits than Linux does:
+        .riscv64 => struct {
+            pub const ISA_A = 1 << 0;
+            pub const ISA_B = 1 << 1;
+            pub const ISA_C = 1 << 2;
+            pub const ISA_D = 1 << 3;
+            pub const ISA_F = 1 << 5;
+            pub const ISA_H = 1 << 7;
+            pub const ISA_I = 1 << 8;
+            pub const ISA_M = 1 << 12;
+            pub const ISA_V = 1 << 21;
+        },
+    },
+    .illumos => switch (native_arch) {
+        .x86, .x86_64 => struct {
+            pub const FPU = 1 << 0;
+            pub const TSC = 1 << 1;
+            pub const CX8 = 1 << 2;
+            pub const SEP = 1 << 3;
+            pub const AMD_SYSC = 1 << 4;
+            pub const CMOV = 1 << 5;
+            pub const MMX = 1 << 6;
+            pub const AMD_MMX = 1 << 7;
+            pub const AMD_3DNow = 1 << 8;
+            pub const AMD_3DNowx = 1 << 9;
+            pub const FXSR = 1 << 10;
+            pub const SSE = 1 << 11;
+            pub const SSE2 = 1 << 12;
+            pub const PAUSE = 1 << 13;
+            pub const SSE3 = 1 << 14;
+            pub const MON = 1 << 15;
+            pub const CX16 = 1 << 16;
+            pub const AHF = 1 << 17;
+            pub const TSCP = 1 << 18;
+            pub const AMD_SSE4A = 1 << 19;
+            pub const POPCNT = 1 << 20;
+            pub const AMD_LZCNT = 1 << 21;
+            pub const SSSE3 = 1 << 22;
+            pub const SSE4_1 = 1 << 23;
+            pub const SSE4_2 = 1 << 24;
+            pub const MOVBE = 1 << 25;
+            pub const AES = 1 << 26;
+            pub const PCLMULQDQ = 1 << 27;
+            pub const XSAVE = 1 << 28;
+            pub const AVX = 1 << 29;
+            pub const VMX = 1 << 30;
+            pub const AMD_SVM = 1 << 31;
+
+            pub const @"2" = struct {
+                pub const F16C = 1 << 0;
+                pub const RDRAND = 1 << 1;
+                pub const BMI1 = 1 << 2;
+                pub const BMI2 = 1 << 3;
+                pub const FMA = 1 << 4;
+                pub const AVX2 = 1 << 5;
+                pub const ADX = 1 << 6;
+                pub const RDSEED = 1 << 7;
+                pub const AVX512F = 1 << 8;
+                pub const AVX512DQ = 1 << 9;
+                pub const AVX512IFMA = 1 << 10;
+                pub const AVX512PF = 1 << 11;
+                pub const AVX512ER = 1 << 12;
+                pub const AVX512CD = 1 << 13;
+                pub const AVX512BW = 1 << 14;
+                pub const AVX512VL = 1 << 15;
+                pub const AVX512VBMI = 1 << 16;
+                pub const AVX512VPOPCDQ = 1 << 17;
+                pub const AVX512_4NNIW = 1 << 18;
+                pub const AVX512_4FMAPS = 1 << 19;
+                pub const SHA = 1 << 20;
+                pub const FSGSBASE = 1 << 21;
+                pub const CLFLUSHOPT = 1 << 22;
+                pub const CLWB = 1 << 23;
+                pub const MONITORX = 1 << 24;
+                pub const CLZERO = 1 << 25;
+                pub const AVX512_VNNI = 1 << 26;
+                pub const VPCLMULQDQ = 1 << 27;
+                pub const VAES = 1 << 28;
+            };
+        },
+        else => struct {},
+    },
+    .linux => std.os.linux.HWCAP,
+    .openbsd => switch (native_arch) {
+        // Same deal as for FreeBSD.
+        else => std.os.linux.HWCAP,
+        .riscv64 => struct {
+            pub const ISA_A = 1 << 0;
+            pub const ISA_B = 1 << 1;
+            pub const ISA_C = 1 << 2;
+            pub const ISA_D = 1 << 3;
+            pub const ISA_F = 1 << 5;
+            pub const ISA_H = 1 << 7;
+            pub const ISA_I = 1 << 8;
+            pub const ISA_M = 1 << 12;
+            pub const ISA_V = 1 << 21;
+
+            pub const @"2" = struct {
+                pub const ISA_ZBA = 1 << 0;
+                pub const ISA_ZBB = 1 << 1;
+                pub const ISA_ZBC = 1 << 2;
+                pub const ISA_ZBS = 1 << 3;
+                pub const ISA_ZFH = 1 << 4;
+                pub const ISA_ZKT = 1 << 5;
+                pub const ISA_ZVBB = 1 << 6;
+                pub const ISA_ZVBC = 1 << 7;
+                pub const ISA_ZVFH = 1 << 8;
+                pub const ISA_ZVKG = 1 << 9;
+                pub const ISA_ZVKNED = 1 << 10;
+                pub const ISA_ZVKNHA = 1 << 11;
+                pub const ISA_ZVKNHB = 1 << 12;
+                pub const ISA_ZVKSED = 1 << 13;
+                pub const ISA_ZVKSH = 1 << 14;
+                pub const ISA_ZVKT = 1 << 15;
+            };
+        },
+    },
+    else => struct {},
+};
 
 pub extern "c" fn dl_iterate_phdr(callback: dl_iterate_phdr_callback, data: ?*anyopaque) c_int;
 
