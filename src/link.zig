@@ -755,8 +755,8 @@ pub const File = struct {
 
     pub const DebugInfoOutput = union(enum) {
         dwarf: *Dwarf.WipNav,
-        eh_frame: *Dwarf2.WipNav,
-        dwarf2: *Dwarf2.WipNav.Debug,
+        eh_frame: *Dwarf2.WipFunc,
+        dwarf2: *Dwarf2.WipFunc.Debug,
         none,
     };
     pub const UpdateDebugInfoError = Dwarf.UpdateError;

@@ -6140,7 +6140,7 @@ fn cmdChangelist(arena: Allocator, io: Io, args: []const []const u8, environ_map
     }
 
     var inst_map: std.AutoHashMapUnmanaged(Zir.Inst.Index, Zir.Inst.Index) = .empty;
-    try Zcu.mapOldZirToNew(arena, old_zir, new_zir, &inst_map);
+    try Zcu.mapOldZirToNew(arena, &old_zir, &new_zir, &inst_map);
 
     var stdout_writer = Io.File.stdout().writerStreaming(io, &stdout_buffer);
     const stdout_bw = &stdout_writer.interface;

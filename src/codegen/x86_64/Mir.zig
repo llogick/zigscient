@@ -2009,7 +2009,7 @@ pub fn emit(
             .column = func.lbrace_column,
             .is_stmt = switch (debug_output) {
                 .dwarf => |dwarf| dwarf.dwarf.debug_line.header.default_is_stmt,
-                .dwarf2 => |dwarf| dwarf.wip_nav.dwarf.debug_line.header.default_is_stmt,
+                .dwarf2 => |dwarf| dwarf.wip_func.dwarf.debug_line.header.default_is_stmt,
                 .eh_frame, .none => undefined,
             },
         },

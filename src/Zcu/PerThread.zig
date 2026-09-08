@@ -389,17 +389,18 @@ fn workerUpdateFile(
     // Discover all imports in the file. Imports of modules we ignore for now since we don't
     // know which module we're in, but imports of file paths might need us to queue up other
     // AstGen jobs.
-    const imports_index = file.zir.?.extra[@backingInt(Zir.ExtraIndex.imports)];
+    const zir = &file.zir.?;
+    const imports_index = zir.extra[@backingInt(Zir.ExtraIndex.imports)];
     if (imports_index != 0) {
-        const extra = file.zir.?.extraData(Zir.Inst.Imports, imports_index);
+        const extra = zir.extraData(Zir.Inst.Imports, imports_index);
         var import_i: u32 = 0;
         var extra_index = extra.end;
 
         while (import_i < extra.data.imports_len) : (import_i += 1) {
-            const item = file.zir.?.extraData(Zir.Inst.Imports.Item, extra_index);
+            const item = zir.extraData(Zir.Inst.Imports.Item, extra_index);
             extra_index = item.end;
 
-            const import_path = file.zir.?.nullTerminatedString(item.data.name);
+            const import_path = zir.nullTerminatedString(item.data.name);
 
             if (active.pt.discoverImport(file.path, import_path)) |res| switch (res) {
                 .module, .existing_file => {},
@@ -671,7 +672,7 @@ pub fn updateFile(
         switch (file.getMode()) {
             .zig => {
                 file.zir = try AstGen.generate(gpa, file.tree.?);
-                Zcu.saveZirCache(gpa, &cache_file_writer, stat, file.zir.?) catch |err| switch (err) {
+                Zcu.saveZirCache(gpa, &cache_file_writer, stat, &file.zir.?) catch |err| switch (err) {
                     error.OutOfMemory => |e| return e,
                     else => log.warn("unable to write cached ZIR code for {f} to {f}{s}: {t}", .{
                         file.path.fmt(comp), cache_directory, &hex_digest, err,
@@ -680,7 +681,7 @@ pub fn updateFile(
             },
             .zon => {
                 file.zoir = try ZonGen.generate(gpa, file.tree.?, .{});
-                Zcu.saveZoirCache(&cache_file_writer, stat, file.zoir.?) catch |err| {
+                Zcu.saveZoirCache(&cache_file_writer, stat, &file.zoir.?) catch |err| {
                     log.warn("unable to write cached ZOIR code for {f} to {f}{s}: {t}", .{
                         file.path.fmt(comp), cache_directory, &hex_digest, err,
                     });
@@ -713,12 +714,13 @@ pub fn updateFile(
 
     switch (file.getMode()) {
         .zig => {
-            if (file.zir.?.hasCompileErrors()) {
+            const zir = &file.zir.?;
+            if (zir.hasCompileErrors()) {
                 comp.mutex.lockUncancelable(io);
                 defer comp.mutex.unlock(io);
                 try zcu.failed_files.putNoClobber(gpa, file_index, null);
             }
-            if (file.zir.?.loweringFailed()) {
+            if (zir.loweringFailed()) {
                 file.status = .astgen_failure;
             } else {
                 file.status = .success;
@@ -848,14 +850,14 @@ fn updateZirRefs(pt: Zcu.PerThread) (Io.Cancelable || Allocator.Error)!void {
             },
         }
         const old_zir = file.prev_zir orelse continue;
-        const new_zir = file.zir.?;
+        const new_zir = &file.zir.?;
         const gop = try updated_files.getOrPut(gpa, file_index);
         assert(!gop.found_existing);
         gop.value_ptr.* = .{
             .file = file,
             .inst_map = .{},
         };
-        try Zcu.mapOldZirToNew(gpa, old_zir.*, new_zir, &gop.value_ptr.inst_map);
+        try Zcu.mapOldZirToNew(gpa, old_zir, new_zir, &gop.value_ptr.inst_map);
     }
 
     if (updated_files.count() == 0)
@@ -889,7 +891,7 @@ fn updateZirRefs(pt: Zcu.PerThread) (Io.Cancelable || Allocator.Error)!void {
             const old_tag = old_zir.instructions.items(.tag)[@backingInt(old_inst)];
             const old_data = old_zir.instructions.items(.data)[@backingInt(old_inst)];
 
-            const new_zir = file.zir.?;
+            const new_zir = &file.zir.?;
             const new_data = new_zir.instructions.items(.data)[@backingInt(new_inst)];
 
             debug_update_line_number: {
@@ -2697,7 +2699,7 @@ fn computeAliveFiles(pt: Zcu.PerThread) Allocator.Error!bool {
 
         if (file.status != .success) continue; // ZIR not valid if there was a file failure
 
-        const zir = file.zir.?;
+        const zir = &file.zir.?;
         const imports_index = zir.extra[@backingInt(Zir.ExtraIndex.imports)];
         if (imports_index == 0) continue; // this Zig file has no imports
         const extra = zir.extraData(Zir.Inst.Imports, imports_index);
@@ -2712,7 +2714,13 @@ fn computeAliveFiles(pt: Zcu.PerThread) Allocator.Error!bool {
                 // We've not necessarily generated builtin modules yet, so `doImport` could fail. Instead,
                 // create the module here. Then, since we know that `builtin.zig` doesn't have an error and
                 // has no imports other than 'std', we can just continue onto the next import.
-                try pt.updateBuiltinModule(file.mod.?.getBuiltinOptions(comp.config));
+                const res = try pt.updateBuiltinModule(file.mod.?.getBuiltinOptions(comp.config));
+                const gop = zcu.alive_files.getOrPutAssumeCapacity(res.file);
+                if (!gop.found_existing) gop.value_ptr.* = .{ .import = .{
+                    .importer = file_idx,
+                    .tok = item.data.token,
+                    .module = res.module_root,
+                } };
                 continue;
             }
 
@@ -2811,14 +2819,20 @@ fn computeAliveFiles(pt: Zcu.PerThread) Allocator.Error!bool {
 /// up-to-date, setting a misc failure if updating it fails.
 /// Asserts that the imported `builtin.zig` has no ZIR errors, and that it has only one
 /// import, which is 'std'.
-pub fn updateBuiltinModule(pt: Zcu.PerThread, opts: Builtin) Allocator.Error!void {
+fn updateBuiltinModule(pt: Zcu.PerThread, opts: Builtin) Allocator.Error!struct {
+    file: Zcu.File.Index,
+    module_root: *Module,
+} {
     const zcu = pt.zcu;
     const comp = zcu.comp;
     const gpa = comp.gpa;
     const io = comp.io;
 
     const gop = try zcu.builtin_modules.getOrPut(gpa, opts.hash());
-    if (gop.found_existing) return; // the `File` is up-to-date
+    if (gop.found_existing) return .{ // the `File` is up-to-date
+        .file = zcu.module_roots.get(gop.value_ptr.*).?.unwrap().?,
+        .module_root = gop.value_ptr.*,
+    };
     errdefer _ = zcu.builtin_modules.pop();
 
     const mod: *Module = try .createBuiltin(comp.arena, opts, comp.dirs);
@@ -2867,15 +2881,16 @@ pub fn updateBuiltinModule(pt: Zcu.PerThread, opts: Builtin) Allocator.Error!voi
     try opts.populateFile(gpa, file);
 
     assert(file.status == .success);
-    assert(!file.zir.?.hasCompileErrors());
+    const zir = &file.zir.?;
+    assert(!zir.hasCompileErrors());
     {
         // Check that it has only one import, which is 'std'.
-        const imports_idx = file.zir.?.extra[@backingInt(Zir.ExtraIndex.imports)];
+        const imports_idx = zir.extra[@backingInt(Zir.ExtraIndex.imports)];
         assert(imports_idx != 0); // there is an import
-        const extra = file.zir.?.extraData(Zir.Inst.Imports, imports_idx);
+        const extra = zir.extraData(Zir.Inst.Imports, imports_idx);
         assert(extra.data.imports_len == 1); // there is exactly one import
-        const item = file.zir.?.extraData(Zir.Inst.Imports.Item, extra.end);
-        const import_path = file.zir.?.nullTerminatedString(item.data.name);
+        const item = zir.extraData(Zir.Inst.Imports.Item, extra.end);
+        const import_path = zir.nullTerminatedString(item.data.name);
         assert(mem.eql(u8, import_path, "std")); // the single import is of 'std'
     }
 
@@ -2884,6 +2899,10 @@ pub fn updateBuiltinModule(pt: Zcu.PerThread, opts: Builtin) Allocator.Error!voi
         "unable to write '{f}': {s}",
         .{ file.path.fmt(comp), @errorName(err) },
     );
+    return .{
+        .file = file_index,
+        .module_root = mod,
+    };
 }
 
 pub fn embedFile(
@@ -3195,7 +3214,7 @@ const ScanDeclIter = struct {
         const gpa = comp.gpa;
         const io = comp.io;
         const file = namespace.fileScope(zcu);
-        const zir = file.zir.?;
+        const zir = &file.zir.?;
         const ip = &zcu.intern_pool;
 
         const decl = zir.getDeclaration(decl_inst);
@@ -3630,11 +3649,11 @@ fn lockAndClearFileCompileError(pt: Zcu.PerThread, file_index: Zcu.File.Index, f
         .astgen_failure => true,
         .success => switch (file.getMode()) {
             .zig => has_error: {
-                const zir = file.zir orelse break :has_error false;
+                const zir = &(file.zir orelse break :has_error false);
                 break :has_error zir.hasCompileErrors();
             },
             .zon => has_error: {
-                const zoir = file.zoir orelse break :has_error false;
+                const zoir = &(file.zoir orelse break :has_error false);
                 break :has_error zoir.hasCompileErrors();
             },
         },

@@ -552,9 +552,9 @@ pub fn emitMir(emit: *Emit) Error!void {
                 .pseudo_dbg_var_m,
                 => switch (emit.debug_output) {
                     inline .dwarf, .dwarf2 => |dwarf, tag| {
-                        const DwarfLoc = switch (tag) {
-                            .dwarf => link.File.Dwarf.Loc,
-                            .dwarf2 => link.File.Dwarf2.Loc,
+                        const DwarfLoc, const addr_loc = switch (tag) {
+                            .dwarf => .{ link.File.Dwarf.Loc, "addr_reloc" },
+                            .dwarf2 => .{ link.File.Dwarf2.Loc, "addrx_sym" },
                             .eh_frame, .none => comptime unreachable,
                         };
                         var loc_buf: [2]DwarfLoc = undefined;
@@ -597,16 +597,21 @@ pub fn emitMir(emit: *Emit) Error!void {
                                             .none => .{ .constu = 0 },
                                             .reg => |reg| .{ .breg = reg.dwarfNum() },
                                             .frame, .table, .rip_inst => unreachable,
-                                            .nav => |nav| .{ .addr_reloc = try codegen.genNavRef(
-                                                emit.bin_file,
-                                                emit.pt,
-                                                nav,
-                                            ) },
-                                            .uav => |uav| .{ .addr_reloc = try emit.bin_file.lowerUav(
-                                                emit.pt,
-                                                uav.val,
-                                                Type.fromInterned(uav.orig_ty).ptrAlignment(emit.pt.zcu),
-                                            ) },
+                                            .nav => |nav| @unionInit(
+                                                DwarfLoc,
+                                                addr_loc,
+                                                try codegen.genNavRef(emit.bin_file, emit.pt, nav),
+                                            ),
+                                            .uav => |uav| @unionInit(
+                                                DwarfLoc,
+                                                addr_loc,
+                                                try emit.bin_file.lowerUav(
+                                                    emit.pt,
+                                                    uav.val,
+                                                    Type.fromInterned(uav.orig_ty)
+                                                        .ptrAlignment(emit.pt.zcu),
+                                                ),
+                                            ),
                                             .lazy_sym, .extern_func => unreachable,
                                         };
                                         break :base &loc_buf[0];

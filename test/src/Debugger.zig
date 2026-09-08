@@ -629,7 +629,7 @@ pub fn addTests(db: *Debugger) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
-        .{ .skip_new_linker = true },
+        .{ .skip_new_linker = true }, // passes, but prints errors
     );
     db.addLldbTest(
         "optionals",
@@ -868,7 +868,7 @@ pub fn addTests(db: *Debugger) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
-        .{ .skip_new_linker = true },
+        .{},
     );
     db.addLldbTest(
         "if_blocks",
@@ -1946,7 +1946,7 @@ pub fn addTests(db: *Debugger) void {
             \\     frame #1: inline_call`m1pfi(m1pai=89) at mod1.zig:23:15
             \\     frame #2: inline_call`root0.main at root0.zig:41:15
         },
-        .{ .skip_new_linker = true },
+        .{},
     );
     db.addLldbTest(
         "link_object",
@@ -2054,7 +2054,7 @@ pub fn addTests(db: *Debugger) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
-        .{ .skip_new_linker = true },
+        .{},
     );
     db.addLldbTest(
         "multi_array_list",
@@ -2308,7 +2308,7 @@ pub fn addTests(db: *Debugger) void {
             \\(lldb) breakpoint delete --force 1
             \\1 breakpoints deleted; 0 breakpoint locations disabled.
         },
-        .{ .skip_new_linker = true },
+        .{},
     );
 }
 

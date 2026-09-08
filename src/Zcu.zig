@@ -2795,7 +2795,7 @@ pub const LazySrcLoc = struct {
         if (zir_inst == .main_struct_inst) return .{ file, .root };
 
         // Otherwise, make sure ZIR is loaded.
-        const zir = file.zir.?;
+        const zir = &file.zir.?;
 
         const inst = zir.instructions.get(@backingInt(zir_inst));
         const base_node: Ast.Node.Index = switch (inst.tag) {
@@ -3087,7 +3087,7 @@ pub fn saveZirCache(
     gpa: Allocator,
     cache_file_writer: *Io.File.Writer,
     stat: Io.File.Stat,
-    zir: Zir,
+    zir: *const Zir,
 ) (Io.File.Writer.Error || Allocator.Error)!void {
     const safety_buffer = if (data_has_safety_tag)
         try gpa.alloc([8]u8, zir.instructions.len)
@@ -3127,7 +3127,7 @@ pub fn saveZirCache(
     };
 }
 
-pub fn saveZoirCache(cache_file_writer: *Io.File.Writer, stat: Io.File.Stat, zoir: Zoir) Io.File.Writer.Error!void {
+pub fn saveZoirCache(cache_file_writer: *Io.File.Writer, stat: Io.File.Stat, zoir: *const Zoir) Io.File.Writer.Error!void {
     const header: Zoir.Header = .{
         .nodes_len = @intCast(zoir.nodes.len),
         .extra_len = @intCast(zoir.extra.len),
@@ -3441,8 +3441,8 @@ pub fn flushRetryableFailures(zcu: *Zcu) !void {
 
 pub fn mapOldZirToNew(
     gpa: Allocator,
-    old_zir: Zir,
-    new_zir: Zir,
+    old_zir: *const Zir,
+    new_zir: *const Zir,
     inst_map: *std.AutoHashMapUnmanaged(Zir.Inst.Index, Zir.Inst.Index),
 ) Allocator.Error!void {
     // Contain ZIR indexes of namespace declaration instructions, e.g. struct_decl, union_decl, etc.
