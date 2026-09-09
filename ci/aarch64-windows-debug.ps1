@@ -1,4 +1,4 @@
-$TARGET = "x86_64-windows-gnu"
+$TARGET = "aarch64-windows-gnu"
 $MCPU = "baseline"
 $PREFIX_PATH = "$($Env:USERPROFILE)\deps\zig+llvm+lld+clang-$TARGET-0.17.0-dev.203+073889523"
 $ZIG = "$PREFIX_PATH\bin\zig.exe"
@@ -69,39 +69,4 @@ stage3-debug\bin\zig.exe build `
 CheckLastExitCode
 
 stage4-debug\bin\zig.exe test ..\test\behavior.zig
-CheckLastExitCode
-
-Write-Output "Build x86_64-windows-msvc behavior tests using the C backend..."
-stage3-debug\bin\zig.exe build-obj `
-  -ofmt=c `
-  -OReleaseSmall `
-  --name compiler_rt `
-  -femit-bin="compiler_rt-x86_64-windows-msvc.c" `
-  -target x86_64-windows-msvc `
-  -lc `
-  ..\lib\compiler_rt.zig
-CheckLastExitCode
-
-stage3-debug\bin\zig.exe test `
-  -ofmt=c `
-  -femit-bin="behavior-x86_64-windows-msvc.c" `
-  --test-no-exec `
-  -target x86_64-windows-msvc `
-  -lc `
-  ..\test\behavior.zig
-CheckLastExitCode
-
-Import-Module "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
-CheckLastExitCode
-
-Enter-VsDevShell -VsInstallPath "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools" `
-  -DevCmdArguments '-arch=x64 -no_logo' `
-  -StartInPath $(Get-Location)
-CheckLastExitCode
-
-Write-Output "Build and run behavior tests with msvc..."
-cl /I..\lib /W3 /Z7 behavior-x86_64-windows-msvc.c compiler_rt-x86_64-windows-msvc.c /link /nologo /debug /subsystem:console kernel32.lib ntdll.lib libcmt.lib
-CheckLastExitCode
-
-.\behavior-x86_64-windows-msvc
 CheckLastExitCode

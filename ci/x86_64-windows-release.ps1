@@ -4,6 +4,8 @@ $PREFIX_PATH = "$($Env:USERPROFILE)\deps\zig+llvm+lld+clang-$TARGET-0.17.0-dev.2
 $ZIG = "$PREFIX_PATH\bin\zig.exe"
 $ZSF_MAX_RSS = if ($Env:ZSF_MAX_RSS) { $Env:ZSF_MAX_RSS } else { 0 }
 
+$Env:PATH = "$($Env:USERPROFILE)\local\bin;$Env:PATH"
+
 function CheckLastExitCode {
     if (!$?) {
         exit 1
@@ -18,7 +20,7 @@ $Env:ZIG_GLOBAL_CACHE_DIR="$(Get-Location)\zig-global-cache"
 $Env:ZIG_LOCAL_CACHE_DIR="$(Get-Location)\zig-local-cache"
 
 Write-Output "Building from source..."
-New-Item -Path 'build-release' -ItemType Directory
+New-Item -Force -Path 'build-release' -ItemType Directory
 Set-Location -Path 'build-release'
 
 # CMake gives a syntax error when file paths with backward slashes are used.
@@ -50,7 +52,6 @@ stage3-release\bin\zig.exe build test docs `
   --search-prefix "$PREFIX_PATH" `
   -Dstatic-llvm `
   -Dskip-non-native `
-  -Dskip-test-incremental `
   -Denable-symlinks-windows `
   --test-timeout 30m
 CheckLastExitCode
@@ -71,8 +72,9 @@ stage3-release\bin\zig.exe build `
   -Doptimize=ReleaseFast `
   -Dstrip `
   -Dtarget="$TARGET" `
+  -Dcpu="$MCPU" `
   -Duse-zig-libcxx `
-  -Dversion-string="$(stage3-release\bin\zig version)"
+  -Dversion-string="$(stage3-release\bin\zig.exe version)"
 CheckLastExitCode
 
 # Compare-Object returns an error code if the files differ.
