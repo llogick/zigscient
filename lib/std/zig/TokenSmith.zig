@@ -246,6 +246,7 @@ pub fn list(t: *TokenSmith) TokenList.Slice {
         .ptrs = undefined,
         .len = t.tags_len,
         .capacity = t.tags_len,
+        .pointer_stability = .{},
     };
     comptime std.debug.assert(slice.ptrs.len == 2);
     slice.ptrs[@backingInt(TokenList.Field.tag)] = @ptrCast(&t.tag_buf);
