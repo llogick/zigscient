@@ -47,27 +47,24 @@ ninja install
 # Must be done after zig cc is finished.
 export ZIG_LIB_DIR="$PWD/../lib"
 
-stage3-debug/bin/zig build test docs \
-  --maxrss ${ZSF_MAX_RSS:-0} \
+stage3-debug/bin/zig build install test docs \
+  --maxrss "${ZSF_MAX_RSS:-0}" \
+  --prefix stage4-debug \
+  --search-prefix "$PREFIX" \
+  --test-timeout 2m \
+  -Dversion-string="$(stage3-debug/bin/zig version)" \
+  -Dtarget=$TARGET \
+  -Dcpu=$MCPU \
+  -Duse-zig-libcxx \
+  -Denable-llvm \
+  -Dno-lib \
   -Denable-macos-sdk \
-  -Dstatic-llvm \
   -Dskip-spirv \
   -Dskip-wasm \
-  -Dskip-linux \
   -Dskip-freebsd \
   -Dskip-netbsd \
   -Dskip-openbsd \
   -Dskip-windows \
-  --search-prefix "$PREFIX" \
-  --test-timeout 2m
-
-stage3-debug/bin/zig build \
-  --prefix stage4-debug \
-  -Denable-llvm \
-  -Dno-lib \
-  -Dtarget=$TARGET \
-  -Dcpu=$MCPU \
-  -Duse-zig-libcxx \
-  -Dversion-string="$(stage3-debug/bin/zig version)"
+  -Dskip-linux
 
 stage4-debug/bin/zig test ../test/behavior.zig

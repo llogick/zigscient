@@ -39,25 +39,22 @@ ninja install
 # Must be done after zig cc is finished.
 export ZIG_LIB_DIR="$PWD/../lib"
 
-stage3-release/bin/zig build test docs \
-  --maxrss ${ZSF_MAX_RSS:-0} \
-  -Dstatic-llvm \
-  -Dskip-non-native \
-  --search-prefix "$PREFIX" \
-  --test-timeout 4m
-
-# Ensure that stage3 and stage4 are byte-for-byte identical.
-stage3-release/bin/zig build \
+stage3-release/bin/zig build install test docs \
+  --maxrss "${ZSF_MAX_RSS:-0}" \
   --prefix stage4-release \
-  -Denable-llvm \
-  -Dno-lib \
-  -Doptimize=ReleaseFast \
-  -Dstrip \
+  --search-prefix "$PREFIX" \
+  --test-timeout 4m \
+  -Dversion-string="$(stage3-release/bin/zig version)" \
   -Dtarget=$TARGET \
   -Dcpu=$MCPU \
+  -Doptimize=ReleaseFast \
+  -Dstrip \
   -Duse-zig-libcxx \
-  -Dversion-string="$(stage3-release/bin/zig version)"
+  -Denable-llvm \
+  -Dno-lib \
+  -Dskip-non-native
 
+# Ensure that stage3 and stage4 are byte-for-byte identical.
 echo "If the following command fails, it means nondeterminism has been"
 echo "introduced, making stage3 and stage4 no longer byte-for-byte identical."
 diff stage3-release/bin/zig stage4-release/bin/zig

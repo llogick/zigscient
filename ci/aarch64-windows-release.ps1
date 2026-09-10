@@ -47,13 +47,21 @@ CheckLastExitCode
 $Env:ZIG_LIB_DIR="$(Get-Location)\..\lib"
 
 Write-Output "Main test suite..."
-stage3-release\bin\zig.exe build test docs `
-  --maxrss $ZSF_MAX_RSS `
+stage3-release\bin\zig.exe build install test docs `
+  --maxrss "$ZSF_MAX_RSS" `
+  --prefix stage4-release `
   --search-prefix "$PREFIX_PATH" `
-  -Dstatic-llvm `
-  -Dskip-non-native `
+  --test-timeout 30m `
+  -Dversion-string="$(stage3-release\bin\zig.exe version)" `
+  -Dtarget="$TARGET" `
+  -Dcpu="$MCPU" `
+  -Doptimize=ReleaseFast `
+  -Dstrip `
+  -Duse-zig-libcxx `
+  -Denable-llvm `
+  -Dno-lib `
   -Denable-symlinks-windows `
-  --test-timeout 30m
+  -Dskip-non-native
 CheckLastExitCode
 
 # Ensure that the fuzzer at least compiles.
@@ -64,20 +72,6 @@ CheckLastExitCode
 # CheckLastExitCode
 
 # Ensure that stage3 and stage4 are byte-for-byte identical.
-Write-Output "Build and compare stage4..."
-stage3-release\bin\zig.exe build `
-  --prefix stage4-release `
-  -Denable-llvm `
-  -Dno-lib `
-  -Doptimize=ReleaseFast `
-  -Dstrip `
-  -Dtarget="$TARGET" `
-  -Dcpu="$MCPU" `
-  -Duse-zig-libcxx `
-  -Dversion-string="$(stage3-release\bin\zig.exe version)"
-CheckLastExitCode
-
-# Compare-Object returns an error code if the files differ.
 Write-Output "If the following command fails, it means nondeterminism has been"
 Write-Output "introduced, making stage3 and stage4 no longer byte-for-byte identical."
 Compare-Object (Get-Content stage3-release\bin\zig.exe) (Get-Content stage4-release\bin\zig.exe)

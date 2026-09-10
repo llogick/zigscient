@@ -45,43 +45,36 @@ ninja install
 # Must not be set while using the other `zig cc` which has its own zig lib dir.
 export ZIG_LIB_DIR="$PWD/../lib"
 
-# Covers several things:
-# 1. building the compiler without LLVM
-# 2. 32-bit
-# 3. arm
+# Simultaneously test building self-hosted without LLVM and with 32-bit arm
 stage3-release/bin/zig build \
   -Dtarget=arm-linux-musleabihf \
   -Dno-lib
 
-stage3-release/bin/zig build test docs \
-  --maxrss ${ZSF_MAX_RSS:-0} \
-  -Dlldb=$HOME/deps/lldb-zig/Release-aad646607a/bin/lldb \
-  -Dlibc-test-path=$HOME/deps/libc-test-b95fe84 \
-  -fqemu \
-  --libc-runtimes $HOME/deps/glibc-2.43-musl-1.2.5 \
-  -fwasmtime \
-  -Dstatic-llvm \
-  -Dtarget=native-native-musl \
+stage3-release/bin/zig build install test docs \
+  --maxrss "${ZSF_MAX_RSS:-0}" \
+  --prefix stage4-release \
   --search-prefix "$PREFIX" \
+  --libc-runtimes "$HOME/deps/glibc-2.43-musl-1.2.5" \
+  --test-timeout 12m \
+  -fqemu \
+  -fwasmtime \
+  -Dversion-string="$(stage3-release/bin/zig version)" \
+  -Dtarget=$TARGET \
+  -Dcpu=$MCPU \
+  -Doptimize=ReleaseFast \
+  -Dstrip \
+  -Duse-zig-libcxx \
+  -Denable-llvm \
+  -Dno-lib \
   -Denable-superhtml \
-  --test-timeout 12m
+  -Dlldb="$HOME/deps/lldb-zig/Release-aad646607a/bin/lldb" \
+  -Dlibc-test-path="$HOME/deps/libc-test-b95fe84"
 
 # Ensure that the fuzzer at least compiles.
 stage3-release/bin/zig build test-std --fuzz=1K -Dno-lib -Dfuzz-only -Doptimize=ReleaseSafe
 stage3-release/bin/zig build test-std --fuzz=1K -Dno-lib -Dfuzz-only -Doptimize=Debug
 
 # Ensure that stage3 and stage4 are byte-for-byte identical.
-stage3-release/bin/zig build \
-  --prefix stage4-release \
-  -Denable-llvm \
-  -Dno-lib \
-  -Doptimize=ReleaseFast \
-  -Dstrip \
-  -Dtarget=$TARGET \
-  -Dcpu=$MCPU \
-  -Duse-zig-libcxx \
-  -Dversion-string="$(stage3-release/bin/zig version)"
-
 echo "If the following command fails, it means nondeterminism has been"
 echo "introduced, making stage3 and stage4 no longer byte-for-byte identical."
 diff stage3-release/bin/zig stage4-release/bin/zig
@@ -110,9 +103,12 @@ ninja install
 export ZIG_LIB_DIR="$PWD/../lib"
 
 stage3/bin/zig test ../test/behavior.zig
-stage3/bin/zig build -p stage4 \
+stage3/bin/zig build \
+  --maxrss "${ZSF_MAX_RSS:-0}" \
+  --prefix stage4 \
+  --search-prefix "$PREFIX" \
+  -Dtarget=$TARGET \
+  -Dcpu=$MCPU \
   -Dstatic-llvm \
-  -Dtarget=native-native-musl \
-  -Dno-lib \
-  --search-prefix "$PREFIX"
+  -Dno-lib
 stage4/bin/zig test ../test/behavior.zig

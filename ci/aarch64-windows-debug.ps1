@@ -47,25 +47,19 @@ CheckLastExitCode
 $Env:ZIG_LIB_DIR="$(Get-Location)\..\lib"
 
 Write-Output "Main test suite..."
-stage3-debug\bin\zig.exe build test docs `
-  --maxrss $ZSF_MAX_RSS `
-  --search-prefix "$PREFIX_PATH" `
-  -Dstatic-llvm `
-  -Dskip-non-native `
-  -Denable-symlinks-windows `
-  --test-timeout 30m
-CheckLastExitCode
-
-Write-Output "Build and test stage4..."
-stage3-debug\bin\zig.exe build `
+stage3-debug\bin\zig.exe build install test docs `
+  --maxrss "$ZSF_MAX_RSS" `
   --prefix stage4-debug `
-  -Denable-llvm `
-  -Dno-lib `
-  -Doptimize=Debug `
+  --search-prefix "$PREFIX_PATH" `
+  --test-timeout 30m `
+  -Dversion-string="$(stage3-debug\bin\zig.exe version)" `
   -Dtarget="$TARGET" `
   -Dcpu="$MCPU" `
   -Duse-zig-libcxx `
-  -Dversion-string="$(stage3-debug\bin\zig.exe version)"
+  -Denable-llvm `
+  -Dno-lib `
+  -Denable-symlinks-windows `
+  -Dskip-non-native
 CheckLastExitCode
 
 stage4-debug\bin\zig.exe test ..\test\behavior.zig

@@ -40,36 +40,33 @@ ninja install
 export ZIG_LIB_DIR="$PWD/../lib"
 export ZIG_DEBUG_CMD=1
 
-# simultaneously test building self-hosted without LLVM and with 32-bit arm
+# Simultaneously test building self-hosted without LLVM and with 32-bit arm
 stage3-debug/bin/zig build \
+  --maxrss "${ZSF_MAX_RSS:-0}" \
   -Dtarget=arm-linux-musleabihf \
   -Dno-lib
 
-stage3-debug/bin/zig build test docs \
-  --maxrss ${ZSF_MAX_RSS:-0} \
-  -Dlldb=$HOME/deps/lldb-zig/Debug-aad646607a/bin/lldb \
+stage3-debug/bin/zig build install test docs \
+  --maxrss "${ZSF_MAX_RSS:-0}" \
+  --prefix stage4-debug \
+  --search-prefix "$PREFIX" \
+  --libc-runtimes "$HOME/deps/glibc-2.43-musl-1.2.5" \
+  --test-timeout 10m \
   -fqemu \
-  --libc-runtimes $HOME/deps/glibc-2.43-musl-1.2.5 \
   -fwasmtime \
-  -Dstatic-llvm \
+  -Dversion-string="$(stage3-debug/bin/zig version)" \
+  -Dtarget=$TARGET \
+  -Dcpu=$MCPU \
+  -Duse-zig-libcxx \
+  -Denable-llvm \
+  -Dno-lib \
+  -Denable-superhtml \
+  -Dlldb="$HOME/deps/lldb-zig/Debug-aad646607a/bin/lldb" \
   -Dskip-freebsd \
   -Dskip-netbsd \
   -Dskip-openbsd \
   -Dskip-windows \
   -Dskip-darwin \
-  -Dskip-llvm \
-  -Dtarget=native-native-musl \
-  --search-prefix "$PREFIX" \
-  -Denable-superhtml \
-  --test-timeout 10m
-
-stage3-debug/bin/zig build \
-  --prefix stage4-debug \
-  -Denable-llvm \
-  -Dno-lib \
-  -Dtarget=$TARGET \
-  -Dcpu=$MCPU \
-  -Duse-zig-libcxx \
-  -Dversion-string="$(stage3-debug/bin/zig version)"
+  -Dskip-llvm
 
 stage4-debug/bin/zig test ../test/behavior.zig

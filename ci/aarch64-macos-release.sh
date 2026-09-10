@@ -47,36 +47,33 @@ ninja install
 # Must be done after zig cc is finished.
 export ZIG_LIB_DIR="$PWD/../lib"
 
-stage3-release/bin/zig build test docs \
-  --maxrss ${ZSF_MAX_RSS:-0} \
+stage3-release/bin/zig build install test docs \
+  --maxrss "${ZSF_MAX_RSS:-0}" \
+  --prefix stage4-release \
+  --search-prefix "$PREFIX" \
+  --test-timeout 2m \
+  -Dversion-string="$(stage3-release/bin/zig version)" \
+  -Dtarget=$TARGET \
+  -Dcpu=$MCPU \
+  -Doptimize=ReleaseFast \
+  -Dstrip \
+  -Duse-zig-libcxx \
+  -Denable-llvm \
+  -Dno-lib \
   -Denable-macos-sdk \
-  -Dstatic-llvm \
   -Dskip-spirv \
   -Dskip-wasm \
-  -Dskip-linux \
   -Dskip-freebsd \
   -Dskip-netbsd \
   -Dskip-openbsd \
   -Dskip-windows \
-  --search-prefix "$PREFIX" \
-  --test-timeout 2m
+  -Dskip-linux
 
 # Ensure that the fuzzer at least compiles.
 stage3-release/bin/zig build test-std --fuzz=1K -Dno-lib -Dfuzz-only -Doptimize=ReleaseSafe
 stage3-release/bin/zig build test-std --fuzz=1K -Dno-lib -Dfuzz-only -Doptimize=Debug
 
 # Ensure that stage3 and stage4 are byte-for-byte identical.
-stage3-release/bin/zig build \
-  --prefix stage4-release \
-  -Denable-llvm \
-  -Dno-lib \
-  -Doptimize=ReleaseFast \
-  -Dstrip \
-  -Dtarget=$TARGET \
-  -Dcpu=$MCPU \
-  -Duse-zig-libcxx \
-  -Dversion-string="$(stage3-release/bin/zig version)"
-
 echo "If the following command fails, it means nondeterminism has been"
 echo "introduced, making stage3 and stage4 no longer byte-for-byte identical."
 diff stage3-release/bin/zig stage4-release/bin/zig
