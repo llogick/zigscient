@@ -420,6 +420,8 @@ pub fn EnumSet(comptime E: type) type {
 /// If the enum is exhaustive but not dense, a mapping will be constructed from
 /// enum values to dense indices.  This type does no dynamic
 /// allocation and can be copied by value.
+///
+/// Default initialization is deprecated; use .empty instead.
 pub fn EnumMap(comptime E: type, comptime V: type) type {
     return struct {
         const Self = @This();
@@ -440,6 +442,11 @@ pub fn EnumMap(comptime E: type, comptime V: type) type {
         /// Values of items in the map.  If the associated
         /// bit is zero, the value is undefined.
         values: [Indexer.count]Value = undefined,
+
+        pub const empty: Self = .{
+            .bits = .empty,
+            .values = undefined,
+        };
 
         /// Initializes the map using a sparse struct of optionals
         pub fn init(init_values: EnumFieldStruct(E, ?Value, @as(?Value, null))) Self {
@@ -470,12 +477,10 @@ pub fn EnumMap(comptime E: type, comptime V: type) type {
         /// Initializes a full mapping with all keys set to value.
         /// Consider using EnumArray instead if the map will remain full.
         pub fn initFull(value: Value) Self {
-            var result: Self = .{
+            return .{
                 .bits = .full,
-                .values = undefined,
+                .values = @splat(value),
             };
-            @memset(&result.values, value);
-            return result;
         }
 
         /// Initializes a full mapping with supplied values.
@@ -645,7 +650,10 @@ pub fn EnumMap(comptime E: type, comptime V: type) type {
 test EnumMap {
     const Ball = enum { red, green, blue };
 
-    const some = EnumMap(Ball, u8).init(.{
+    const none: EnumMap(Ball, u8) = .empty;
+    try testing.expectEqual(0, none.count());
+
+    const some: EnumMap(Ball, u8) = .init(.{
         .green = 0xff,
         .blue = 0x80,
     });
@@ -653,6 +661,9 @@ test EnumMap {
     try testing.expectEqual(null, some.get(.red));
     try testing.expectEqual(0xff, some.get(.green));
     try testing.expectEqual(0x80, some.get(.blue));
+
+    const all: EnumMap(Ball, u8) = .initFull(0);
+    try testing.expectEqual(3, all.count());
 }
 
 /// A multiset of enum elements up to a count of usize. Backed
