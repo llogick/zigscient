@@ -1337,7 +1337,7 @@ union __RequestUnion__vm_map_subsystem {
 		vm_size_t size;
 		natural_t nesting_depth;
 		mach_msg_type_number_t infoCnt;
-		int info[19];
+		int info[21];
 	} __Reply__vm_region_recurse_t __attribute__((unused));
 #ifdef  __MigPackStructs
 #pragma pack(pop)
@@ -1354,7 +1354,7 @@ union __RequestUnion__vm_map_subsystem {
 		vm_size_t size;
 		natural_t nesting_depth;
 		mach_msg_type_number_t infoCnt;
-		int info[19];
+		int info[21];
 	} __Reply__vm_region_recurse_64_t __attribute__((unused));
 #ifdef  __MigPackStructs
 #pragma pack(pop)

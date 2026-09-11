@@ -1057,7 +1057,10 @@ method_getArgumentType(Method _Nonnull m, unsigned int index,
 
 OBJC_EXPORT struct objc_method_description * _Nonnull
 method_getDescription(Method _Nonnull m) 
-    OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0, 2.0);
+    __API_DEPRECATED("Use method_getName and method_getTypeEncoding.",
+                     macos(10.5, 11.0), ios(2.0, 15.0), tvos(9.0, 15.0),
+                     watchos(1.0, 8.0), visionos(1.0, 1.0));
+
 
 /** 
  * Sets the implementation of a method.
@@ -1444,13 +1447,29 @@ protocol_addProperty(Protocol * _Nonnull proto, const char * _Nonnull name,
  * 
  * @param outCount The number of names returned.
  * 
- * @return An array of C strings of names. Must be free()'d by caller.
+ * @return An array of C strings of names. The array contains @c *outCount
+ *      pointers followed by a @c NULL terminator. You must free the array with
+ *      @c free().
  */
 OBJC_EXPORT const char * _Nonnull * _Nonnull
 objc_copyImageNames(unsigned int * _Nullable outCount) 
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0, 2.0);
 
-/** 
+/**
+ * Returns the Mach headers of all the images loaded into the current process
+ * that contain Objective-C or Swift code.
+ *
+ * @param outCount The number of image headers returned.
+ *
+ * @return An array of @c mach_header pointers. The array contains @c *outCount
+ *      pointers followed by a @c NULL terminator. You must free the array with
+ *      @c free().
+ */
+OBJC_EXPORT struct mach_header const *_Nonnull *_Nonnull
+objc_copyImageHeaders(unsigned int * _Nullable outCount)
+    OBJC_AVAILABLE(27.0, 27.0, 27.0, 27.0, 27.0);
+
+/**
  * Returns the dynamic library name a class originated from.
  * 
  * @param cls The class you are inquiring about.

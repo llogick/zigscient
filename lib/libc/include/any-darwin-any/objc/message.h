@@ -186,8 +186,8 @@ OBJC_EXPORT void
 objc_msgSend_fp2ret(void /* id self, SEL op, ... */ )
     OBJC_AVAILABLE(10.5, 2.0, 9.0, 1.0, 2.0);
 
-#pragma clang diagnostic pop
 # endif
+#pragma clang diagnostic pop
 
 // !OBJC_OLD_DISPATCH_PROTOTYPES
 #else

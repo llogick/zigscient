@@ -65,8 +65,14 @@
 struct aiocb {
 	int             aio_fildes;             /* File descriptor */
 	off_t           aio_offset;             /* File offset */
-	volatile void   *aio_buf;               /* Location of buffer */
-	size_t          aio_nbytes;             /* Length of transfer */
+	union {
+		volatile void   *aio_buf;               /* Location of buffer */
+		volatile struct iovec *aio_iov;         /* I/O scatter/gather list */
+	};
+	union {
+		size_t          aio_nbytes;             /* Length of transfer */
+		size_t          aio_iovcnt;             /* Number of iovecs in list */
+	};
 	int             aio_reqprio;            /* Request priority offset */
 	struct sigevent aio_sigevent;           /* Signal number and value */
 	int             aio_lio_opcode;         /* Operation to be performed */
@@ -81,7 +87,7 @@ struct aiocb {
  * none of the requested operations could be canceled since they are
  * already complete.
  */
-#define AIO_ALLDONE                     0x1
+#define AIO_ALLDONE             0x1
 
 /* all requested operations have been canceled */
 #define AIO_CANCELED            0x2
@@ -92,14 +98,23 @@ struct aiocb {
  */
 #define AIO_NOTCANCELED         0x4
 
+/*
+ * Apple extension: special file descriptor value for aio_cancel()
+ * to cancel all outstanding async I/O operations for the process.
+ * This is a non-portable extension to the POSIX specification.
+ */
+#define AIO_CANCEL_ALL_NP       ((int)0x80414c4c)  /* '\80ALL' */
+
 
 /*
  * lio_listio operation options
  */
 
-#define LIO_NOP                 0x0     /* option indicating that no transfer is requested */
+#define LIO_NOP                 0x0             /* option indicating that no transfer is requested */
 #define LIO_READ                0x1             /* option requesting a read */
 #define LIO_WRITE               0x2             /* option requesting a write */
+#define LIO_READV               0x3             /* option requesting a vectored read */
+#define LIO_WRITEV              0x4             /* option requesting a vectored write */
 
 /*
  * lio_listio() modes
@@ -123,7 +138,12 @@ struct aiocb {
 /*
  * Maximum number of operations in single lio_listio call
  */
-#define AIO_LISTIO_MAX          16
+#define AIO_LISTIO_MAX          32
+
+/*
+ * Maximum number of iovec structures in vectored AIO operations
+ */
+#define AIO_UIO_MAXIOV          UIO_MAXIOV
 
 
 /*
@@ -226,6 +246,26 @@ int             aio_suspend( const struct aiocb *const aiocblist[],
  * asynchronous operation while it is proceeding.
  */
 int             aio_write( struct aiocb * aiocbp );
+
+/*
+ * Read data into the scatter/gather list specified by aiocbp->aio_iov and
+ * aiocbp->aio_iovcnt from the file associated with aiocbp->aio_fildes. The
+ * function shall return when the read request has been initiated or, at a
+ * minimum, queued. The aiocbp argument may be used as an argument to aio_error()
+ * and aio_return() in order to determine the error status and return status,
+ * respectively, of the asynchronous operation while it is proceeding.
+ */
+int             aio_readv( struct aiocb * aiocbp );
+
+/*
+ * Write data from the scatter/gather list specified by aiocbp->aio_iov and
+ * aiocbp->aio_iovcnt to the file associated with aiocbp->aio_fildes. The
+ * function shall return when the write request has been initiated or, at a
+ * minimum, queued. The aiocbp argument may be used as an argument to aio_error()
+ * and aio_return() in order to determine the error status and return status,
+ * respectively, of the asynchronous operation while it is proceeding.
+ */
+int             aio_writev( struct aiocb * aiocbp );
 
 /*
  * Initiate a list of I/O requests with a single function call.  The mode

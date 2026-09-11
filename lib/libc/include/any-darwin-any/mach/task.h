@@ -172,7 +172,8 @@ mig_external
 #else
 extern
 #endif	/* mig_external */
-__TVOS_PROHIBITED __WATCHOS_PROHIBITED
+__API_DEPRECATED("use task_suspend2 instead", macos(10.0, __API_TO_BE_DEPRECATED), ios(2.0, __API_TO_BE_DEPRECATED), visionos(1.0, __API_TO_BE_DEPRECATED))
+__API_UNAVAILABLE(tvos, watchos)
 kern_return_t task_suspend
 (
 	task_read_t target_task
@@ -184,7 +185,8 @@ mig_external
 #else
 extern
 #endif	/* mig_external */
-__TVOS_PROHIBITED __WATCHOS_PROHIBITED
+__API_DEPRECATED("use task_resume2 instead", macos(10.0, __API_TO_BE_DEPRECATED), ios(2.0, __API_TO_BE_DEPRECATED), visionos(1.0, __API_TO_BE_DEPRECATED))
+__API_UNAVAILABLE(tvos, watchos)
 kern_return_t task_resume
 (
 	task_read_t target_task
@@ -588,7 +590,8 @@ mig_external
 #else
 extern
 #endif	/* mig_external */
-__TVOS_PROHIBITED __WATCHOS_PROHIBITED
+__API_AVAILABLE(macos(10.9), ios(7.0), visionos(1.0))
+__API_UNAVAILABLE(watchos, tvos)
 kern_return_t task_suspend2
 (
 	task_read_t target_task,
@@ -601,7 +604,8 @@ mig_external
 #else
 extern
 #endif	/* mig_external */
-__TVOS_PROHIBITED __WATCHOS_PROHIBITED
+__API_AVAILABLE(macos(10.9), ios(7.0), visionos(1.0))
+__API_UNAVAILABLE(watchos, tvos)
 kern_return_t task_resume2
 (
 	task_suspension_token_t suspend_token

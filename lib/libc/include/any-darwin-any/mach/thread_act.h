@@ -147,7 +147,8 @@ mig_external
 #else
 extern
 #endif	/* mig_external */
-__WATCHOS_PROHIBITED
+__API_DEPRECATED("use thread_suspend2 instead", macos(10.0, __API_TO_BE_DEPRECATED), ios(2.0, __API_TO_BE_DEPRECATED), tvos(9.0, __API_TO_BE_DEPRECATED), visionos(1.0, __API_TO_BE_DEPRECATED))
+__API_UNAVAILABLE(watchos)
 kern_return_t thread_suspend
 (
 	thread_read_t target_act
@@ -159,7 +160,8 @@ mig_external
 #else
 extern
 #endif	/* mig_external */
-__WATCHOS_PROHIBITED
+__API_DEPRECATED("use thread_resume2 instead", macos(10.0, __API_TO_BE_DEPRECATED), ios(2.0, __API_TO_BE_DEPRECATED), tvos(9.0, __API_TO_BE_DEPRECATED), visionos(1.0, __API_TO_BE_DEPRECATED))
+__API_UNAVAILABLE(watchos)
 kern_return_t thread_resume
 (
 	thread_read_t target_act
@@ -515,7 +517,8 @@ mig_external
 #else
 extern
 #endif	/* mig_external */
-__WATCHOS_PROHIBITED
+__API_AVAILABLE(macos(26.4), ios(26.4), tvos(26.4), visionos(26.4))
+__API_UNAVAILABLE(watchos)
 kern_return_t thread_suspend2
 (
 	thread_read_t target_act,
@@ -528,7 +531,8 @@ mig_external
 #else
 extern
 #endif	/* mig_external */
-__WATCHOS_PROHIBITED
+__API_AVAILABLE(macos(26.4), ios(26.4), tvos(26.4), visionos(26.4))
+__API_UNAVAILABLE(watchos)
 kern_return_t thread_resume2
 (
 	mach_port_t suspend_token

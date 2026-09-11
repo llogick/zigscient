@@ -96,6 +96,7 @@
  * Some structures must remain a constant size due to performance or ABI implications.
  * It's not necessarily an issue if you need to bump a size passed to these macros: act judiciously.
  */
+#if !defined(__cplusplus) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 #if __arm64__
 #define xnu_static_assert_struct_size(name, expected_size) _Static_assert(\
 	sizeof(name) == expected_size, "struct changed size unexpectedly")
@@ -113,6 +114,13 @@
 #define xnu_static_assert_struct_size_kernel_user64_user32(name, _kern_size, _u64_size, expected_user32_size) \
 	xnu_static_assert_struct_size(name, expected_user32_size)
 #endif /* __LP64__ */
+
+#else /* !defined(__cplusplus) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L */
+/* Define these macros to no-ops in environments where _Static_assert is unavailable */
+#define xnu_static_assert_struct_size(name, expected_size)
+#define xnu_static_assert_struct_size_kernel_user(name, expected_kernel_size, expected_user_size)
+#define xnu_static_assert_struct_size_kernel_user64_user32(name, _kern_size, _u64_size, _u32_size)
+#endif /* !defined(__cplusplus) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L */
 
 /*
  *	mach_port_name_t - the local identity for a Mach port
@@ -271,6 +279,7 @@ typedef struct mach_port_status {
 #define MACH_PORT_QLIMIT_BASIC          (5)
 #define MACH_PORT_QLIMIT_SMALL          (16)
 #define MACH_PORT_QLIMIT_LARGE          (1024)
+#define MACH_PORT_QLIMIT_KERNEL_SOFT    (4 * MACH_PORT_QLIMIT_LARGE)
 #define MACH_PORT_QLIMIT_KERNEL         (65534)
 #define MACH_PORT_QLIMIT_MIN            MACH_PORT_QLIMIT_ZERO
 #define MACH_PORT_QLIMIT_DEFAULT        MACH_PORT_QLIMIT_BASIC
@@ -367,6 +376,9 @@ typedef struct mach_service_port_info * mach_service_port_info_t;
 /* Allows 1p process to create weak reply port */
 #define MACH_PORT_WEAK_REPLY_ENTITLEMENT "com.apple.private.allow-weak-reply-port"
 
+/* Allows process to create read port for kernel_task - only works on dev/debug kernels */
+#define MACH_PORT_KERNEL_READ_ENTITLEMENT "com.apple.private.system-task-ports.kernel.read"
+
 /*
  * Flags for mach_port_options (used for
  * invocation of mach_port_construct).
@@ -405,6 +417,18 @@ typedef struct mach_service_port_info * mach_service_port_info_t;
 /* MPO port type flags */
 #define MPO_MAKE_PORT_TYPE(a, b)   (((a & 0x7) << 14) | ((b & 0x7) << 10))
 #define MPO_PORT_TYPE_MASK          MPO_MAKE_PORT_TYPE(0x7, 0x7) /* 0x1dc00 */
+
+#if __BUILDING_XNU_LIB_UNITTEST__
+/*
+ * This is a test only MPO flag for bootstrap port
+ * as copyin doesn't work in unit test yet.
+ */
+#define MPO_UNIT_TEST_BOOTSTRAP_ENTRY \
+	MPO_UNIT_TEST_BOOTSTRAP_PORT = MPO_MAKE_PORT_TYPE(4, 4),  /* 0x11000 */
+#else /* __BUILDING_XNU_LIB_UNITTEST__ */
+#define MPO_UNIT_TEST_BOOTSTRAP_ENTRY
+#endif /* __BUILDING_XNU_LIB_UNITTEST__ */
+
 /* These need to be defined for libxpc and other clients who `#ifdef` */
 	#define MPO_PORT                            MPO_PORT
 	#define MPO_SERVICE_PORT                    MPO_SERVICE_PORT
@@ -431,6 +455,11 @@ __options_decl(mpo_flags_t, uint32_t, {
 	MPO_EXCEPTION_PORT                  = MPO_MAKE_PORT_TYPE(2, 0),  /* 0x8000 */
 	/* Can receive OOL port array descriptors */
 	MPO_CONNECTION_PORT_WITH_PORT_ARRAY = MPO_MAKE_PORT_TYPE(4, 0),  /* 0x10000 */
+	/*
+	 * Temporary flag for IPC unit testing. Expand to nothing if
+	 * __BUILDING_XNU_LIB_UNITTEST__ is not defined.
+	 */
+	MPO_UNIT_TEST_BOOTSTRAP_ENTRY                                    /* 0x11000 */
 });
 
 /* For bincompat: weak reply port used to be called provisional reply port */
@@ -489,8 +518,15 @@ enum mach_port_guard_exception_codes {
 	kGUARD_EXC_UNGUARDED                    = 8,
 	kGUARD_EXC_KOBJECT_REPLY_PORT_SEMANTICS = 9,
 	kGUARD_EXC_REQUIRE_REPLY_PORT_SEMANTICS = 10,
+	kGUARD_EXC_RESTRICT_VOUCHER_OPERATIONS  = 11,
+	kGUARD_EXC_MACH_EXC_THREAD_SET_STATE    = 12,
+	kGUARD_EXC_MOVE_WEAK_REPLY_PORT_FATAL   = 13,
 	kGUARD_EXC_INCORRECT_GUARD              = 16,
+	kGUARD_EXC_BOOTSTRAP_PORT_NOTIFICATION  = 17,
+	kGUARD_EXC_CV_INVALID_EXCEPTION_PORT    = 18,
 	kGUARD_EXC_IMMOVABLE                    = 32,
+	kGUARD_EXC_RESTRICT_VOUCHER_RECIPE_SIZE = 33,
+	kGUARD_EXC_RESTRICT_INLINE_PORT_DESCRIPTORS     = 34,
 	kGUARD_EXC_STRICT_REPLY                 = 64,
 	kGUARD_EXC_INVALID_NOTIFICATION_REQ     = 65,
 	kGUARD_EXC_INVALID_MPO_ENTITLEMENT      = 66,
@@ -512,23 +548,18 @@ enum mach_port_guard_exception_codes {
 	/* start of always non-fatal guards */
 	kGUARD_EXC_RCV_GUARDED_DESC             = 0x00100000,     /* for development only */
 	kGUARD_EXC_SERVICE_PORT_VIOLATION_NON_FATAL = 0x00100001, /* unused */
-	kGUARD_EXC_INVALID_NOTIFICATION_PORT    = 0x00100006,
-	kGUARD_EXC_MACH_EXC_THREAD_SET_STATE    = 0x00100007,
-	kGUARD_EXC_CV_NOTIFICATION_PORT_REQ     = 0x00100008,
 	kGUARD_EXC_WEAK_REPLY_PORT              = 0x00100002, /* unused */
 	kGUARD_EXC_OOL_PORT_ARRAY_CREATION      = 0x00100003, /* unused */
-	kGUARD_EXC_MOVE_WEAK_REPLY_PORT         = 0x00100004,
+	kGUARD_EXC_MOVE_WEAK_REPLY_PORT         = 0x00100004, /* unused */
 	kGUARD_EXC_REPLY_PORT_SINGLE_SO_RIGHT   = 0x00100005,
+	kGUARD_EXC_INVALID_NOTIFICATION_PORT    = 0x00100006,
+	kGUARD_EXC_CV_NOTIFICATION_PORT_REQ     = 0x00100008,
 	kGUARD_EXC_MOD_REFS_NON_FATAL           = 1u << 21,
-	kGUARD_EXC_IMMOVABLE_NON_FATAL          = 1u << 22, /* unused */
+	kGUARD_EXC_IMMOVABLE_NON_FATAL          = 1u << 22,
 };
 
 #define MAX_FATAL_kGUARD_EXC_CODE               kGUARD_EXC_MSG_FILTERED
 #define MAX_OPTIONAL_kGUARD_EXC_CODE            kGUARD_EXC_RCV_INVALID_NAME
-
-/* Temporary! Should be removed after rdar://166892063 */
-#define kGUARD_EXC_PROVISIONAL_REPLY_PORT       kGUARD_EXC_WEAK_REPLY_PORT
-#define kGUARD_EXC_MOVE_PROVISIONAL_REPLY_PORT  kGUARD_EXC_MOVE_WEAK_REPLY_PORT
 
 
 /*

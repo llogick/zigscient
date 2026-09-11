@@ -78,4 +78,4 @@
 
 #undef __DISPATCH_INDIRECT__
 
-#endif
+#endif /* __DISPATCH_PUBLIC__ */

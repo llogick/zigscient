@@ -50,56 +50,121 @@ __BEGIN_DECLS
  * @const DISPATCH_BLOCK_DETACHED
  * Flag indicating that a dispatch block object should execute disassociated
  * from current execution context attributes such as os_activity_t
- * and properties of the current IPC request (if any). With regard to QoS class,
- * the behavior is the same as for DISPATCH_BLOCK_NO_QOS. If invoked directly,
- * the block object will remove the other attributes from the calling thread for
- * the duration of the block body (before applying attributes assigned to the
- * block object, if any). If submitted to a queue, the block object will be
- * executed with the attributes of the queue (or any attributes specifically
- * assigned to the block object).
+ * and properties of the current IPC request (if any). This flag has the same
+ * QoS implications as DISPATCH_BLOCK_NO_QOS_CLASS, in that the block will have
+ * no QoS unless assigned one via dispatch_block_create_with_qos_class().
+ * If invoked directly, the block object will remove the other attributes from
+ * the calling thread for the duration of the block body (before applying
+ * attributes assigned to the block object, if any). If submitted to a queue,
+ * the block object will be executed with the attributes of the queue.
  *
  * @const DISPATCH_BLOCK_ASSIGN_CURRENT
  * Flag indicating that a dispatch block object should be assigned the execution
  * context attributes that are current at the time the block object is created.
- * This applies to attributes such as QOS class, os_activity_t and properties of
+ * This applies to attributes such as QoS class, os_activity_t and properties of
  * the current IPC request (if any). If invoked directly, the block object will
  * apply these attributes to the calling thread for the duration of the block
- * body. If the block object is submitted to a queue, this flag replaces the
- * default behavior of associating the submitted block instance with the
- * execution context attributes that are current at the time of submission.
- * If a specific QOS class is assigned with DISPATCH_BLOCK_NO_QOS_CLASS or
- * dispatch_block_create_with_qos_class(), that QOS class takes precedence over
- * the QOS class assignment indicated by this flag.
+ * body. Note that direct invocation of a block can raise but not lower the
+ * calling context's QoS class. If the block object is submitted to a queue,
+ * this flag replaces the default behavior, where the submitted block's
+ * assigned QoS and other execution attributes are inherited from the
+ * submitting thread. If the creating thread and submitting thread are the
+ * same, this flag has no effect. If a QoS class is assigned with
+ * dispatch_block_create_with_qos_class(), or if DISPATCH_BLOCK_NO_QOS_CLASS is
+ * passed, that setting takes precedence over the QoS class of the creating
+ * context.
  *
  * @const DISPATCH_BLOCK_NO_QOS_CLASS
- * Flag indicating that a dispatch block object should be not be assigned a QOS
- * class. If invoked directly, the block object will be executed with the QOS
+ * Flag indicating that a dispatch block object should be not be assigned a QoS
+ * class. If invoked directly, the block object will be executed with the QoS
  * class of the calling thread. If the block object is submitted to a queue,
- * this replaces the default behavior of associating the submitted block
- * instance with the QOS class current at the time of submission.
- * This flag is ignored if a specific QOS class is assigned with
- * dispatch_block_create_with_qos_class().
+ * this replaces the default behavior of assigning the current thread's QoS to
+ * the block. This flag is ignored by dispatch_block_create_with_qos_class()
+ * called with any qos_class other than QOS_CLASS_UNSPECIFIED. Combining this
+ * flag with DISPATCH_BLOCK_ENFORCE_QOS_CLASS has no effect.
  *
  * @const DISPATCH_BLOCK_INHERIT_QOS_CLASS
  * Flag indicating that execution of a dispatch block object submitted to a
- * queue should prefer the QOS class assigned to the queue over the QOS class
- * assigned to the block (resp. associated with the block at the time of
- * submission). The latter will only be used if the queue in question does not
- * have an assigned QOS class, as long as doing so does not result in a QOS
- * class lower than the QOS class inherited from the queue's target queue.
+ * queue should prefer the queue's specified QoS class over the block's
+ * assigned QoS class. The latter will only be used if the queue does not have
+ * a specified QoS class, as long as doing so does not result in a QoS class
+ * lower than the QoS class inherited from the queue's target queue.
  * This flag is the default when a dispatch block object is submitted to a queue
- * for asynchronous execution and has no effect when the dispatch block object
- * is invoked directly. It is ignored if DISPATCH_BLOCK_ENFORCE_QOS_CLASS is
- * also passed.
+ * for asynchronous execution, and passing it explicitly to dispatch_async() or
+ * dispatch_async_and_wait() has no additional effect. For synchronous
+ * submission via dispatch_sync(), this flag overrides the default
+ * DISPATCH_BLOCK_ENFORCE_QOS_CLASS behavior. A block without an assigned QoS
+ * class has no enforcement to suppress, so this flag has no effect on
+ * dispatch_sync() in that case. When directly invoked, this flag will run at
+ * the QoS of the invoking thread and not result in any priority adjustments.
+ * This flag is ignored if DISPATCH_BLOCK_ENFORCE_QOS_CLASS is also passed.
  *
  * @const DISPATCH_BLOCK_ENFORCE_QOS_CLASS
- * Flag indicating that execution of a dispatch block object submitted to a
- * queue should prefer the QOS class assigned to the block (resp. associated
- * with the block at the time of submission) over the QOS class assigned to the
- * queue, as long as doing so will not result in a lower QOS class.
+ * Flag indicating that the block's assigned QoS class should be treated as
+ * enforced. When the block is submitted asynchronously to a queue, the
+ * enforced QoS class is preferred over the queue's specified QoS class,
+ * provided that doing so will not result in a lower QoS class. A block
+ * whose QoS class has been stripped (DISPATCH_BLOCK_NO_QOS_CLASS or
+ * DISPATCH_BLOCK_DETACHED) has no QoS class to enforce; this flag has no
+ * QoS effect in that case.
  * This flag is the default when a dispatch block object is submitted to a queue
  * for synchronous execution or when the dispatch block object is invoked
  * directly.
+ *
+ * @discussion
+ * When a block is submitted to a queue with dispatch_async(), the QoS class
+ * at which the block runs is determined as follows:
+ *
+ *  - If the block has an enforced QoS class
+ *    (DISPATCH_BLOCK_ENFORCE_QOS_CLASS), the block runs at the higher of
+ *    the enforced QoS class and the queue's specified or floor QoS class.
+ *  - Otherwise, if the queue has a specified QoS class (from
+ *    dispatch_queue_attr_make_with_qos_class()), the block runs at that
+ *    QoS class.
+ *  - Otherwise, the block runs at its assigned QoS class.
+ *  - The above QoS class is then raised, if necessary, to the queue's floor
+ *    QoS class (set via dispatch_set_qos_class_floor()) or to the specified
+ *    or floor QoS class of any target queue.
+ *
+ * For an anonymous block (one not wrapped with a dispatch_block_create*
+ * function), the assigned QoS class is the QoS class of the calling thread at
+ * the moment dispatch_async() is called. This value can be checked with
+ * qos_class_self().
+ *
+ * If the block has no assigned QoS class (DISPATCH_BLOCK_NO_QOS_CLASS,
+ * DISPATCH_BLOCK_DETACHED, or an anonymous block submitted from a thread that
+ * has opted out of QoS), the rules above are applied with the assigned QoS
+ * class treated as QOS_CLASS_UNSPECIFIED. The queue's specified or floor QoS
+ * class wins if it has one, and the block runs at QOS_CLASS_DEFAULT if not.
+ *
+ * QoS propagation through dispatch_async() caps the propagated QoS class at
+ * QOS_CLASS_USER_INITIATED. Blocks that acquire their assigned QoS class by
+ * propagation (anonymous blocks, dispatch_block_create() without an explicit
+ * QoS class, and DISPATCH_BLOCK_ASSIGN_CURRENT) will have an assigned QoS of
+ * QOS_CLASS_USER_INITIATED if submitted (or created, in the ASSIGN_CURRENT
+ * case) from a thread at QOS_CLASS_USER_INTERACTIVE. A QoS class assigned
+ * directly via dispatch_block_create_with_qos_class() bypasses the cap, as
+ * does a queue's specified QoS class.
+ *
+ * When a block is submitted with dispatch_sync() or invoked directly, the
+ * QoS class at which the block runs is determined as follows:
+ *
+ *  - The block runs on the caller's thread, so it inherits the caller's
+ *    QoS class.
+ *  - If the block has an assigned QoS class higher than the caller's, the
+ *    thread elevates its own QoS class to that of the block for the
+ *    duration of the block. DISPATCH_BLOCK_INHERIT_QOS_CLASS suppresses
+ *    this elevation.
+ *  - The queue's QoS configuration is not applied to the block when it is
+ *    invoked.
+ *
+ * Blocks submitted synchronously via dispatch_async_and_wait() may run on
+ * either the calling thread or the worker thread currently servicing the
+ * queue. Unlike dispatch_sync(), the queue's specified QoS class and floor
+ * are observed. The executing thread runs the block at the highest of the
+ * caller's QoS class, the queue's QoS class, and the block's assigned QoS
+ * class when the block enforces it. This composition only raises QoS, never
+ * lowers it.
  */
 DISPATCH_REFINED_FOR_SWIFT
 DISPATCH_OPTIONS(dispatch_block_flags, unsigned long,
@@ -141,15 +206,15 @@ DISPATCH_OPTIONS(dispatch_block_flags, unsigned long,
  * on with dispatch_block_wait() or observed with dispatch_block_notify().
  *
  * If the returned dispatch block object is submitted to a dispatch queue, the
- * submitted block instance will be associated with the QOS class current at the
- * time of submission, unless one of the following flags assigned a specific QOS
+ * submitted block instance will be assigned the QOS class current at the time
+ * of submission, unless one of the following flags assigned a specific QOS
  * class (or no QOS class) at the time of block creation:
  *  - DISPATCH_BLOCK_ASSIGN_CURRENT
  *  - DISPATCH_BLOCK_NO_QOS_CLASS
  *  - DISPATCH_BLOCK_DETACHED
- * The QOS class the block object will be executed with also depends on the QOS
- * class assigned to the queue and which of the following flags was specified or
- * defaulted to:
+ * The QOS class the block object will be executed with also depends on the
+ * queue's specified QOS class and which of the following flags was specified
+ * or defaulted to:
  *  - DISPATCH_BLOCK_INHERIT_QOS_CLASS (default for asynchronous execution)
  *  - DISPATCH_BLOCK_ENFORCE_QOS_CLASS (default for synchronous execution)
  * See description of dispatch_block_flags_t for details.
@@ -197,14 +262,14 @@ dispatch_block_create(dispatch_block_flags_t flags, dispatch_block_t block);
  * only the first completed execution of a dispatch block object can be waited
  * on with dispatch_block_wait() or observed with dispatch_block_notify().
  *
- * If invoked directly, the returned dispatch block object will be executed with
- * the assigned QOS class as long as that does not result in a lower QOS class
- * than what is current on the calling thread.
+ * If invoked directly, the returned dispatch block object will be executed at
+ * the higher of the block's assigned QoS class and the calling thread's QoS
+ * class.
  *
  * If the returned dispatch block object is submitted to a dispatch queue, the
  * QOS class it will be executed with depends on the QOS class assigned to the
- * block, the QOS class assigned to the queue and which of the following flags
- * was specified or defaulted to:
+ * block, the queue's specified QOS class and which of the following flags was
+ * specified or defaulted to:
  *  - DISPATCH_BLOCK_INHERIT_QOS_CLASS: default for asynchronous execution
  *  - DISPATCH_BLOCK_ENFORCE_QOS_CLASS: default for synchronous execution
  * See description of dispatch_block_flags_t for details.

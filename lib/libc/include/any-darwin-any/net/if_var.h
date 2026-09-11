@@ -139,6 +139,7 @@ struct net_event_data {
 #include <sys/_types/_timeval32.h>
 #define IF_DATA_TIMEVAL timeval32
 #else
+#include <sys/_types/_timeval.h>
 #define IF_DATA_TIMEVAL timeval
 #endif
 

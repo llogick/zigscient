@@ -133,7 +133,7 @@ typedef enum {
 #endif /* (_POSIX_C_SOURCE && !_DARWIN_C_SOURCE) */
 
 /* These macros are permited, as they are in the implementation namespace */
-#define _WSTATUS(x)     (_W_INT(x) & 0177)
+#define _WSTATUS(x)     (_W_INT(x) & 127)
 #define _WSTOPPED       0177            /* _WSTATUS if process is stopped */
 
 /*

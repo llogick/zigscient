@@ -109,6 +109,8 @@ enum {
     DYLD_CHAINED_PTR_ARM64E_USERLAND24      = 12,    // stride 8, unauth target is vm offset, 24-bit bind
     DYLD_CHAINED_PTR_ARM64E_SHARED_CACHE    = 13,    // stride 8, regular/auth targets both vm offsets.  Only A keys supported
     DYLD_CHAINED_PTR_ARM64E_SEGMENTED       = 14,    // stride 4, rebase offsets use segIndex and segOffset
+    DYLD_CHAINED_PTR_ARM64E_SHARED_CACHE_V3 = 15,    // stride 8, regular/auth targets both vm offsets.  Only A keys supported
+    DYLD_CHAINED_PTR_SHARED_CACHE_V2       = 16,    // stride 8, x86_64 shared cache slide v2, delta mask 0x00FFFF0000000000, target is vm offset
 };
 
 
@@ -294,7 +296,33 @@ struct dyld_chained_ptr_arm64e_shared_cache_auth_rebase
                 auth            :  1;   // == 1
 };
 
+// DYLD_CHAINED_PTR_ARM64E_SHARED_CACHE_V3
+struct dyld_chained_ptr_arm64e_shared_cache_v3_rebase
+{
+    uint64_t    pointerValue        : 51,
+                next                : 11,
+                unused              :  2; // = 0
+};
 
+// DYLD_CHAINED_PTR_ARM64E_SHARED_CACHE_V3
+struct dyld_chained_ptr_arm64e_shared_cache_v3_auth_rebase
+{
+    uint64_t    offsetFromSharedCacheBase : 32,
+                diversity                 : 16,
+                addrDiv                   :  1,
+                key                       :  2,
+                next                      : 11,
+                unused                    :  1, // = 0
+                auth                      :  1; // = 1;
+};
+
+// DYLD_CHAINED_PTR_SHARED_CACHE_V2
+struct dyld_chained_ptr_shared_cache_v2_rebase
+{
+    uint64_t    runtimeOffset   : 40,   // offset from the start of the shared cache
+                next            : 16,   // 4-byte stride
+                high8           :  8;   // top byte of target address
+};
 
 // values for dyld_chained_fixups_header.imports_format
 enum {

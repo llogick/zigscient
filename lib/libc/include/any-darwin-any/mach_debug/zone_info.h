@@ -61,6 +61,7 @@
 
 #include <mach/boolean.h>
 #include <mach/machine/vm_types.h>
+#include <sys/cdefs.h>
 
 /*
  *	Legacy definitions for host_zone_info().  This interface, and
@@ -152,11 +153,17 @@ typedef task_zone_info_t *task_zone_info_array_t;
 typedef struct mach_memory_info {
 	uint64_t flags;
 	uint64_t site;
+	/* The current size of the site in bytes */
 	uint64_t size;
+	/* The number of bytes which are not currently in use */
 	uint64_t free;
+	/* The size of the largest individual element in the site */
 	uint64_t largest;
+	/* The number of bytes which could be recovered by kernel GC */
 	uint64_t collectable_bytes;
+	/* The amount of kernel VA consumed by this site */
 	uint64_t mapped;
+	/* The peak (max) size of this site */
 	uint64_t peak;
 	uint16_t tag;
 	uint16_t zone;
@@ -166,6 +173,7 @@ typedef struct mach_memory_info {
 } mach_memory_info_t;
 
 typedef mach_memory_info_t *mach_memory_info_array_t;
+
 
 /*
  * MAX_ZTRACE_DEPTH configures how deep of a stack trace is taken on each zalloc in the zone of interest.  15

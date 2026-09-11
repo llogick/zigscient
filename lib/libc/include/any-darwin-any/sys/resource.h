@@ -414,7 +414,10 @@ struct rusage_info_v6 {
 	uint64_t ri_neural_footprint;
 	uint64_t ri_lifetime_max_neural_footprint;
 	uint64_t ri_interval_max_neural_footprint;
-	uint64_t ri_reserved[9];
+	uint64_t ri_conclave_footprint;
+	uint64_t ri_page_wait_time_mach;
+	uint64_t ri_page_cache_hits;
+	uint64_t ri_reserved[6];
 };
 
 typedef struct rusage_info_v6 rusage_info_current;
@@ -509,12 +512,15 @@ struct proc_rlimit_control_wakeupmon {
 #define IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES 3
 #define IOPOL_TYPE_VFS_STATFS_NO_DATA_VOLUME 4
 #define IOPOL_TYPE_VFS_TRIGGER_RESOLVE 5
-#define IOPOL_TYPE_VFS_IGNORE_CONTENT_PROTECTION 6
+#define IOPOL_TYPE_VFS_CONTENT_PROTECTION 6
 #define IOPOL_TYPE_VFS_IGNORE_PERMISSIONS 7
 #define IOPOL_TYPE_VFS_SKIP_MTIME_UPDATE 8
 #define IOPOL_TYPE_VFS_ALLOW_LOW_SPACE_WRITES 9
 #define IOPOL_TYPE_VFS_DISALLOW_RW_FOR_O_EVTONLY 10
 #define IOPOL_TYPE_VFS_ENTITLED_RESERVE_ACCESS 14
+
+/* compatibility with older names */
+#define IOPOL_TYPE_VFS_IGNORE_CONTENT_PROTECTION IOPOL_TYPE_VFS_CONTENT_PROTECTION
 
 /* scope */
 #define IOPOL_SCOPE_PROCESS   0
@@ -551,6 +557,7 @@ struct proc_rlimit_control_wakeupmon {
 
 #define IOPOL_VFS_CONTENT_PROTECTION_DEFAULT 0
 #define IOPOL_VFS_CONTENT_PROTECTION_IGNORE  1
+#define IOPOL_VFS_CONTENT_PROTECTION_STRICT  2
 
 #define IOPOL_VFS_IGNORE_PERMISSIONS_OFF 0
 #define IOPOL_VFS_IGNORE_PERMISSIONS_ON  1

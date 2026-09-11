@@ -402,6 +402,12 @@ int     futimens(int __fd, const struct timespec __times[2]) __API_AVAILABLE(mac
 int     utimensat(int __fd, const char *__path, const struct timespec __times[2],
     int __flag) __API_AVAILABLE(macosx(10.13), ios(11.0), tvos(11.0), watchos(4.0));
 #endif
+
+#if __DARWIN_C_LEVEL >= __DARWIN_C_FULL
+int     fchflagsat(int, const char *, __uint32_t, int) __API_AVAILABLE(macos(27.0), ios(27.0), tvos(27.0), watchos(27.0));
+mode_t  getumask(void) __API_AVAILABLE(macos(27.0), ios(27.0), tvos(27.0), watchos(27.0));
+#endif
+
 __END_DECLS
 
 #if !defined(_POSIX_C_SOURCE) || defined(_DARWIN_C_SOURCE)

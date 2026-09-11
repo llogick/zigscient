@@ -69,9 +69,9 @@
 #include <mach/machine/vm_types.h>
 #include <mach/time_value.h>
 #include <mach/policy.h>
+#include <mach/machine.h>
 #include <mach/vm_statistics.h> /* for vm_extmod_statistics_data_t */
 #include <Availability.h>
-
 #include <sys/cdefs.h>
 
 /*
@@ -520,6 +520,37 @@ struct task_ipc_space_policy_info {
 typedef struct task_ipc_space_policy_info * task_ipc_space_policy_info_t;
 #define TASK_IPC_SPACE_POLICY_INFO_COUNT  ((mach_msg_type_number_t) \
 	        (sizeof(struct task_ipc_space_policy_info) / sizeof(natural_t)))
+
+#define TASK_VM_SHARED_CACHE_INFO 34
+struct task_vm_shared_cache_info {
+	uint32_t slide;
+};
+typedef struct task_vm_shared_cache_info task_vm_shared_cache_info_data_t;
+typedef struct task_vm_shared_cache_info *task_vm_shared_cache_info_t;
+#define TASK_VM_SHARED_CACHE_INFO_COUNT \
+	(sizeof(struct task_vm_shared_cache_info) / sizeof(natural_t))
+
+OS_ENUM(task_shared_region_stubs, uint8_t,
+    TASK_SHARED_REGION_STUBS_DEV = 0x01,
+    TASK_SHARED_REGION_STUBS_PROD = 0x02,
+    );
+
+#define TASK_SHARED_REGION_INFO 35
+struct task_shared_region_info {
+	mach_vm_address_t sri_base_address;
+	mach_vm_size_t sri_size;
+	mach_vm_offset_t sri_slide;
+	uint64_t sri_id;
+	uint64_t sri_namespace_id;
+	cpu_type_t sri_cpu_type;
+	cpu_subtype_t sri_cpu_subtype;
+	boolean_t sri_reslid;
+	boolean_t sri_driverkit;
+	task_shared_region_stubs_t sri_stubs;
+};
+typedef struct task_shared_region_info task_shared_region_info_data_t;
+typedef struct task_shared_region_info *task_shared_region_info_t;
+#define TASK_SHARED_REGION_INFO_COUNT (sizeof(struct task_shared_region_info) / sizeof(natural_t))
 
 /*
  * Type to control EXC_GUARD delivery options for a task

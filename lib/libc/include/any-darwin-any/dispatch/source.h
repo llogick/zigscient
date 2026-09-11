@@ -29,10 +29,9 @@
 #if TARGET_OS_MAC
 #include <mach/port.h>
 #include <mach/message.h>
-#endif
-
-#if !defined(_WIN32)
 #include <sys/signal.h>
+#elif !defined(_WIN32)
+#include <signal.h>
 #endif
 
 DISPATCH_ASSUME_NONNULL_BEGIN
@@ -801,4 +800,4 @@ __END_DECLS
 DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
-#endif
+#endif /* __DISPATCH_SOURCE__ */

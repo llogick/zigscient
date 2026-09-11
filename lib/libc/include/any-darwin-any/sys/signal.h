@@ -378,6 +378,7 @@ struct  sigstack {
 #define sigmask(m)      (1 << ((m)-1))
 
 
+
 #define BADSIG          SIG_ERR
 
 #endif  /* (!_POSIX_C_SOURCE || _DARWIN_C_SOURCE) */

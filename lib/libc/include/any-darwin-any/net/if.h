@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000-2021 Apple Inc. All rights reserved.
+ * Copyright (c) 2000-2026 Apple Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  *
@@ -143,6 +143,7 @@ struct if_clonereq {
 #define IFCAP_CSUM_PARTIAL      0x02000 /* can offload partial checksum */
 #define IFCAP_CSUM_ZERO_INVERT  0x04000 /* can invert 0 to -0 (0xffff) */
 #define IFCAP_LRO_NUM_SEG       0x08000 /* NIC & driver can set the num of segments a LRO-packet is built of */
+#define IFCAP_IPSEC             0x10000 /* can do ipsec offload */
 
 #define IFCAP_HWCSUM    (IFCAP_RXCSUM | IFCAP_TXCSUM)
 #define IFCAP_TSO       (IFCAP_TSO4 | IFCAP_TSO6)
@@ -150,7 +151,8 @@ struct if_clonereq {
 #define IFCAP_VALID (IFCAP_HWCSUM | IFCAP_TSO | IFCAP_LRO | IFCAP_VLAN_MTU | \
 	IFCAP_VLAN_HWTAGGING | IFCAP_JUMBO_MTU | IFCAP_AV | IFCAP_TXSTATUS | \
 	IFCAP_SKYWALK | IFCAP_SW_TIMESTAMP | IFCAP_HW_TIMESTAMP | \
-	IFCAP_CSUM_PARTIAL | IFCAP_CSUM_ZERO_INVERT | IFCAP_LRO_NUM_SEG)
+	IFCAP_CSUM_PARTIAL | IFCAP_CSUM_ZERO_INVERT | IFCAP_LRO_NUM_SEG | \
+	IFCAP_IPSEC)
 
 #define IFQ_MAXLEN      128
 #define IFNET_SLOWHZ    1       /* granularity is 1 second */

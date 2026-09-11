@@ -182,6 +182,7 @@ typedef struct host_priority_info       *host_priority_info_t;
 #define HOST_VM_INFO64          4       /* 64-bit virtual memory stats */
 #define HOST_EXTMOD_INFO64      5       /* External modification stats */
 #define HOST_EXPIRED_TASK_INFO  6       /* Statistics for expired tasks */
+#define HOST_CPU_COUNTERS_INFO  8       /* Per-host CPU counter totals: time, cycles, instructions, energy */
 
 
 
@@ -207,7 +208,13 @@ typedef struct vm_purgeable_info        *host_purgable_info_t;
 
 /* size of the latest version of the structure */
 #define HOST_VM_INFO64_LATEST_COUNT HOST_VM_INFO64_COUNT
-#define HOST_VM_INFO64_REV3_COUNT HOST_VM_INFO64_COUNT
+#define HOST_VM_INFO64_REV6_COUNT HOST_VM_INFO64_COUNT
+#define HOST_VM_INFO64_REV5_COUNT ((mach_msg_type_number_t) \
+	 (offsetof(vm_statistics64_data_t, executable_count) / sizeof(integer_t)))
+#define HOST_VM_INFO64_REV4_COUNT ((mach_msg_type_number_t) \
+	 (offsetof(vm_statistics64_data_t, swap_count) / sizeof(integer_t)))
+#define HOST_VM_INFO64_REV3_COUNT ((mach_msg_type_number_t) \
+	 (offsetof(vm_statistics64_data_t, speculative_pages_created) / sizeof(integer_t)))
 #define HOST_VM_INFO64_REV2_COUNT ((mach_msg_type_number_t) \
 	 (offsetof(vm_statistics64_data_t, total_tag_storage_pages) / sizeof(integer_t)))
 #define HOST_VM_INFO64_REV1_COUNT ((mach_msg_type_number_t) \
@@ -247,6 +254,20 @@ typedef struct host_cpu_load_info       host_cpu_load_info_data_t;
 typedef struct host_cpu_load_info       *host_cpu_load_info_t;
 #define HOST_CPU_LOAD_INFO_COUNT ((mach_msg_type_number_t) \
 	        (sizeof (host_cpu_load_info_data_t) / sizeof (integer_t)))
+
+struct host_cpu_counters_info {
+	uint64_t        user_time_mach;   /* total user-mode time across all CPUs, mach absolute units */
+	uint64_t        system_time_mach; /* total system-mode time across all CPUs, mach absolute units */
+	uint64_t        idle_time_mach;   /* total idle time across all CPUs, mach absolute units */
+	uint64_t        cycles;           /* 0 if CPU counters unsupported */
+	uint64_t        instructions;     /* 0 if CPU counters unsupported */
+	uint64_t        energy_nj;        /* 0 if energy accounting unsupported */
+};
+
+typedef struct host_cpu_counters_info   host_cpu_counters_info_data_t;
+typedef struct host_cpu_counters_info   *host_cpu_counters_info_t;
+#define HOST_CPU_COUNTERS_INFO_COUNT ((mach_msg_type_number_t) \
+	        (sizeof (host_cpu_counters_info_data_t) / sizeof (integer_t)))
 
 struct host_preferred_user_arch {
 	cpu_type_t      cpu_type;       /* Preferred user-space cpu type */

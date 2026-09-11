@@ -155,6 +155,7 @@
 
 
 #if __DARWIN_C_LEVEL >= __DARWIN_C_FULL
+#define O_CLOFORK       0x08000000      /* implicitly set FD_CLOFORK */
 #define O_NOFOLLOW_ANY  0x20000000      /* no symlinks allowed in path */
 #endif
 
@@ -328,18 +329,17 @@
 #define F_ADDFILESUPPL          104     /* Add supplemental signature from same file with fd reference to original */
 #define F_GETSIGSINFO           105     /* Look up code signature information attached to a file or slice */
 
-#define F_SETLEASE              106      /* Acquire or release lease */
-#define F_GETLEASE              107      /* Retrieve lease information */
+#define F_SETLEASE              106     /* Acquire or release lease */
+#define F_GETLEASE              107     /* Retrieve lease information */
 
 #define F_SETLEASE_ARG(t, oc)   ((t) | ((oc) << 2))
 
-#define F_TRANSFEREXTENTS       110      /* Transfer allocated extents beyond leof to a different file */
+#define F_TRANSFEREXTENTS       110     /* Transfer allocated extents beyond leof to a different file */
 
-#define F_ATTRIBUTION_TAG       111      /* Based on flags, query/set/delete a file's attribution tag */
-#define F_NOCACHE_EXT           112      /* turn data caching off/on for this fd and relax size and alignment restrictions for write */
+#define F_ATTRIBUTION_TAG       111     /* Based on flags, query/set/delete a file's attribution tag */
+#define F_NOCACHE_EXT           112     /* turn data caching off/on for this fd and relax size and alignment restrictions for write */
 
-#define F_ADDSIGS_MAIN_BINARY   113             /* add detached signatures for main binary -- development only */
-
+#define F_ADDSIGS_MAIN_BINARY   113     /* add detached signatures for main binary -- development only */
 
 // FS-specific fcntl()'s numbers begin at 0x00010000 and go up
 #define FCNTL_FS_SPECIFIC_BASE  0x00010000
@@ -350,8 +350,15 @@
 #define F_DUPFD_CLOEXEC         67      /* mark the dup with FD_CLOEXEC */
 #endif
 
+#if __DARWIN_C_LEVEL >= __DARWIN_C_FULL
+#define F_DUPFD_CLOFORK         115     /* mark the dup with FD_CLOFORK */
+#endif
+
+#define F_RDADVISEV             116     /* Issue multiple advisory reads async with no copy to user */
+
 /* file descriptor flags (F_GETFD, F_SETFD) */
 #define FD_CLOEXEC      1               /* close-on-exec flag */
+#define FD_CLOFORK      2               /* close-on-fork flag */
 
 /* record locking flags (F_GETLK, F_SETLK, F_SETLKW) */
 #define F_RDLCK         1               /* shared or read lock */
@@ -416,10 +423,22 @@ struct flocktimeout {
  * information passed by user to system
  */
 
-
 struct radvisory {
 	off_t   ra_offset;
 	int     ra_count;
+};
+
+/*
+ * vector advisory file read data type -
+ * information passed by user to system
+ */
+#define READ_ADVISE_RANGES_MAX  64
+#define F_RDADVISEV_NOAGE       0x1     /* keep read pages in the active queue */
+
+struct radvisoryv {
+	unsigned int rav_flags;
+	unsigned int rav_count;
+	struct radvisory *rav_ranges;
 };
 
 

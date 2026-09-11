@@ -342,6 +342,30 @@ typedef integer_t       cpu_threadtype_t;
 #define CPU_SUBTYPE_ARM64_ALL           ((cpu_subtype_t) 0)
 #define CPU_SUBTYPE_ARM64_V8            ((cpu_subtype_t) 1)
 #define CPU_SUBTYPE_ARM64E              ((cpu_subtype_t) 2)
+/* The non-e x1 is defined in other tooling, but it's otherwise unused. */
+#define CPU_SUBTYPE_ARM64_X1            ((cpu_subtype_t) 3)
+#define CPU_SUBTYPE_ARM64E_X1           ((cpu_subtype_t) 12)
+/* Unallocated values upto CPU_SUBTYPE_ARM64_MAX (inclusive) are reserved. */
+#define CPU_SUBTYPE_ARM64_MAX           ((cpu_subtype_t) 20)
+
+/*
+ * Newer slices add additional complexity in determining the taxonomy of a
+ * slice. The current PAC slices include ARM64E and ARM64E_X1. Future slices
+ * _may_ continue the convention. At that time, this macro should be updated to
+ * include the new slice(s). Since those fictitious slices don't yet exist, they
+ * are omitted, but left reserved.
+ */
+#define CPU_SUBTYPE_HAS_ARM64E(subtype) \
+	( \
+	        (((subtype) & ~CPU_SUBTYPE_MASK) == CPU_SUBTYPE_ARM64E) || \
+	        (((subtype) & ~CPU_SUBTYPE_MASK) == CPU_SUBTYPE_ARM64E_X1) \
+	)
+
+#define CPU_SUBTYPE_HAS_ARM64X1(subtype) \
+	( \
+	        (((subtype) & ~CPU_SUBTYPE_MASK) == CPU_SUBTYPE_ARM64_X1) || \
+	        (((subtype) & ~CPU_SUBTYPE_MASK) == CPU_SUBTYPE_ARM64E_X1) \
+	)
 
 /* CPU subtype feature flags for ptrauth on arm64e platforms */
 #define CPU_SUBTYPE_ARM64_PTR_AUTH_MASK 0x0f000000
@@ -413,6 +437,9 @@ typedef integer_t       cpu_threadtype_t;
 #define CPUFAMILY_ARM_SOTRA 0xf76c5b1a
 #define CPUFAMILY_ARM_THERA 0xab345f09
 #define CPUFAMILY_ARM_TILOS 0x01d7a72b
+#define CPUFAMILY_ARM_KOMODO 0x6d0ccb0c
+#define CPUFAMILY_ARM_BORNEO 0x7db56df1
+#define CPUFAMILY_ARM_NEVIS 0x37652b0c
 
 /* Described in rdar://64125549 */
 #define CPUSUBFAMILY_UNKNOWN            0

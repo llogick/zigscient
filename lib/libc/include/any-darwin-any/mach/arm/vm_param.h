@@ -66,42 +66,53 @@
 
 #define VM_MAX_PAGE_ADDRESS     MACH_VM_MAX_ADDRESS
 
-#ifndef __ASSEMBLER__
-
-
+/* Assembler-friendly values */
 #if defined (__arm__)
 
-#define VM_MIN_ADDRESS          ((vm_address_t) 0x00000000)
-#define VM_MAX_ADDRESS          ((vm_address_t) 0x80000000)
+#define VM_MIN_ADDRESS_RAW      (0x00000000)
+#define VM_MAX_ADDRESS_RAW      (0x80000000)
 
 /* system-wide values */
-#define MACH_VM_MIN_ADDRESS     ((mach_vm_offset_t) 0)
-#define MACH_VM_MAX_ADDRESS     ((mach_vm_offset_t) VM_MAX_ADDRESS)
+#define MACH_VM_MIN_ADDRESS_RAW (VM_MIN_ADDRESS_RAW)
+#define MACH_VM_MAX_ADDRESS_RAW (VM_MAX_ADDRESS_RAW)
+#define MACH_VM_ADDRESS_MASK    (0x7FFFFFFF)
 
 #elif defined (__arm64__)
 
-#define VM_MIN_ADDRESS          ((vm_address_t) 0x0000000000000000ULL)
-#define VM_MAX_ADDRESS          ((vm_address_t) 0x00000000F0000000ULL)
+#define VM_MIN_ADDRESS_RAW      (0x0000000000000000ULL)
+#define VM_MAX_ADDRESS_RAW      (0x00000000F0000000ULL)
 
 /* system-wide values */
-#define MACH_VM_MIN_ADDRESS_RAW 0x0ULL
-#define MACH_VM_MAX_ADDRESS_RAW 0x00007FFFFE000000ULL
+#define MACH_VM_MIN_ADDRESS_RAW (0x0000000000000000ULL)
 
-/*
- * `MACH_VM_MAX_ADDRESS` is exported to user space, but we don't want this
- * larger value for `MACH_VM_MAX_ADDRESS` to be exposed outside the kernel.
- */
+#define MACH_VM_MIN_GPU_CARVEOUT_ADDRESS_RAW (0x0000001000000000ULL) /* 64 GiB */
+#define MACH_VM_MAX_GPU_CARVEOUT_ADDRESS_RAW (0x0000007000000000ULL) /* 448 GiB */
 
-#define MACH_VM_MIN_ADDRESS     ((mach_vm_offset_t) MACH_VM_MIN_ADDRESS_RAW)
-#define MACH_VM_MAX_ADDRESS     ((mach_vm_offset_t) MACH_VM_MAX_ADDRESS_RAW)
+#define MACH_VM_MAX_ADDRESS_RAW   (0x00007FFFFE000000ULL) /* (128 TiB - 32 MiB) */
+#define MACH_VM_ADDRESS_MASK      (0x00007FFFFFFFFFFFULL)
+#define MACH_VM_NANO_BASE_ADDRESS (0x0000600000000000ULL) /* 96 TiB */
 
-#define MACH_VM_MIN_GPU_CARVEOUT_ADDRESS_RAW 0x0000001000000000ULL
-#define MACH_VM_MAX_GPU_CARVEOUT_ADDRESS_RAW 0x0000007000000000ULL
+#else /* !__arm__ && !__arm64__ */
+
+#error architecture not supported
+
+#endif
+
+#ifndef __ASSEMBLER__
+
+
+#define VM_MIN_ADDRESS          ((vm_address_t)VM_MIN_ADDRESS_RAW)
+#define VM_MAX_ADDRESS          ((vm_address_t)VM_MAX_ADDRESS_RAW)
+
+/* system-wide values */
+#define MACH_VM_MIN_ADDRESS     ((mach_vm_offset_t)MACH_VM_MIN_ADDRESS_RAW)
+#define MACH_VM_MAX_ADDRESS     ((mach_vm_offset_t)MACH_VM_MAX_ADDRESS_RAW)
+
+#if defined (__arm64__)
+
 #define MACH_VM_MIN_GPU_CARVEOUT_ADDRESS     ((mach_vm_offset_t) MACH_VM_MIN_GPU_CARVEOUT_ADDRESS_RAW)
 #define MACH_VM_MAX_GPU_CARVEOUT_ADDRESS     ((mach_vm_offset_t) MACH_VM_MAX_GPU_CARVEOUT_ADDRESS_RAW)
 
-#else /* defined(__arm64__) */
-#error architecture not supported
 #endif
 
 #define VM_MAP_MIN_ADDRESS      VM_MIN_ADDRESS

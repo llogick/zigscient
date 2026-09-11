@@ -63,7 +63,15 @@ __BEGIN_DECLS
 #   define    HUGE_VAL     __builtin_huge_val()
 #   define    HUGE_VALF    __builtin_huge_valf()
 #   define    HUGE_VALL    __builtin_huge_vall()
-#   define    NAN          __builtin_nanf("0x7fc00000")
+#   if defined(__has_feature) && __has_feature(modules) && defined(__has_include) && __has_include(<float.h>)
+__END_DECLS
+#       define __need_infinity_nan
+#       include <float.h>
+#       undef __need_infinity_nan
+__BEGIN_DECLS
+#   else
+#       define    NAN          __builtin_nanf("0x7fc00000")
+#   endif
 #else
 #   define    HUGE_VAL     1e500
 #   define    HUGE_VALF    1e50f
@@ -71,7 +79,9 @@ __BEGIN_DECLS
 #   define    NAN          __nan()
 #endif
 
+#if !defined(__GNUC__) || !defined(__has_feature) || !__has_feature(modules) || !defined(__has_include) || !__has_include(<float.h>)
 #define INFINITY    HUGE_VALF
+#endif
 
 /******************************************************************************
  *      Taxonomy of floating point data types                                 *

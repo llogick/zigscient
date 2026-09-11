@@ -77,8 +77,9 @@
 #define EVFILT_USER             (-10)   /* User events */
 #define EVFILT_VM               (-12)   /* Virtual memory events */
 #define EVFILT_EXCEPT           (-15)   /* Exception events */
+#define EVFILT_LIO              (-19)   /* attached to lio requests */
 
-#define EVFILT_SYSCOUNT         18
+#define EVFILT_SYSCOUNT         19
 #define EVFILT_THREADMARKER     EVFILT_SYSCOUNT /* Internal use only */
 
 #pragma pack(4)

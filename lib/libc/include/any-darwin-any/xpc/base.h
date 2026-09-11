@@ -35,70 +35,131 @@
 
 __BEGIN_DECLS
 
-#pragma mark Attribute Shims
-#ifdef __GNUC__
-#define XPC_CONSTRUCTOR __attribute__((constructor))
-#define XPC_NORETURN __attribute__((__noreturn__))
-#define XPC_NOTHROW __attribute__((__nothrow__))
-#define XPC_NONNULL1 __attribute__((__nonnull__(1)))
-#define XPC_NONNULL2 __attribute__((__nonnull__(2)))
-#define XPC_NONNULL3 __attribute__((__nonnull__(3)))
-#define XPC_NONNULL4 __attribute__((__nonnull__(4)))
-#define XPC_NONNULL5 __attribute__((__nonnull__(5)))
-#define XPC_NONNULL6 __attribute__((__nonnull__(6)))
-#define XPC_NONNULL7 __attribute__((__nonnull__(7)))
-#define XPC_NONNULL8 __attribute__((__nonnull__(8)))
-#define XPC_NONNULL9 __attribute__((__nonnull__(9)))
-#define XPC_NONNULL10 __attribute__((__nonnull__(10)))
-#define XPC_NONNULL11 __attribute__((__nonnull__(11)))
-#define XPC_NONNULL_ALL __attribute__((__nonnull__))
-#define XPC_SENTINEL __attribute__((__sentinel__))
-#define XPC_PURE __attribute__((__pure__))
-#define XPC_WARN_RESULT __attribute__((__warn_unused_result__))
-#define XPC_MALLOC __attribute__((__malloc__))
-#define XPC_UNUSED __attribute__((__unused__))
-#define XPC_USED __attribute__((__used__))
-#define XPC_PACKED __attribute__((__packed__))
-#define XPC_PRINTF(m, n) __attribute__((format(printf, m, n)))
-#define XPC_INLINE static __inline__ __attribute__((__always_inline__))
-#define XPC_NOINLINE __attribute__((noinline))
-#define XPC_NOIMPL __attribute__((unavailable))
-
-#if __has_attribute(noescape)
-#define XPC_NOESCAPE __attribute__((__noescape__))
-#else
-#define XPC_NOESCAPE
+#ifndef __XPC_TEST__
+#define __XPC_TEST__ 0
 #endif
 
-#if __has_extension(attribute_unavailable_with_message)
-#define XPC_UNAVAILABLE(m) __attribute__((unavailable(m)))
-#else // __has_extension(attribute_unavailable_with_message)
-#define XPC_UNAVAILABLE(m) XPC_NOIMPL
-#endif // __has_extension(attribute_unavailable_with_message)
+#ifndef XPC_CONCAT
+#define XPC_CONCAT(_A, _B) XPC_CONCAT_(_A, _B)
+#define XPC_CONCAT_(_A, _B) _A ## _B
+#endif
 
-#define XPC_EXPORT extern __attribute__((visibility("default")))
-#define XPC_NOEXPORT __attribute__((visibility("hidden")))
-#define XPC_WEAKIMPORT extern __attribute__((weak_import))
+#pragma mark Attribute Shims
+// We use __has_attribute to check for attribute existance. The macros are set
+// up to always use __ before and after attributes to guard against
+// similarly-named mactos since these go in public headers. We also use
+// __attribute__ for best compatibility with older C/C++ versions. Attributes
+// should be optimized for use by Clang (i.e. use Clang's preferred form over a
+// supported GCC form if it's preferred by the compiler). Attributes are
+// defined in the order that they appear in Clang's doccumentation
+
+#if !defined(__has_attribute)
+#define __has_attribute(_X) 0
+#endif // !defined(__has_attribute)
+
+#define _XPC_CHOOSE_0(...)
+#define _XPC_CHOOSE_1(...) __VA_ARGS__
+
+#define XPC_ATTRIBUTE(_X, ...) XPC_CONCAT(_XPC_CHOOSE_, __has_attribute(_X))(__attribute__((__##_X##__(__VA_ARGS__))))
+
+// Swift attributes
+#define XPC_SWIFT_SENDABLE XPC_ATTRIBUTE(swift_attr, "@Sendable")
+#define XPC_SWIFT_NAME(_Name) XPC_ATTRIBUTE(swift_name, _Name)
+#define XPC_SWIFT_UNAVAILABLE(msg) __swift_unavailable(msg)
+#define XPC_SWIFT_NOEXPORT XPC_SWIFT_UNAVAILABLE("Unavailable in Swift from the XPC C Module")
+// Declaration attributes
+#define XPC_DEPRECATED(_M) XPC_ATTRIBUTE(deprecated, _M)
+#define XPC_TRANSPARENT_UNION XPC_ATTRIBUTE(transparent_union)
+// Function attributes
+#define XPC_NORETURN XPC_ATTRIBUTE(noreturn)
+#define XPC_ALLOC_SIZE(...) XPC_MALLOC XPC_ATTRIBUTE(alloc_size, __VA_ARGS__)
+#define XPC_INLINE static inline XPC_ATTRIBUTE(always_inline)
+#define XPC_RETURNS_ALIGNED(_N) XPC_ATTRIBUTE(assume_aligned, _N)
+#define XPC_CONSTRUCTOR XPC_ATTRIBUTE(constructor)
+#define XPC_PRINTF(_M, _N) XPC_ATTRIBUTE(format, printf, _M, _N)
+#define XPC_MALLOC XPC_ATTRIBUTE(malloc)
+#define XPC_WARN_RESULT XPC_ATTRIBUTE(warn_unused_result)
+#define XPC_NOINLINE XPC_ATTRIBUTE(noinline)
+#define XPC_NOTHROW XPC_ATTRIBUTE(nothrow)
+#define XPC_USED XPC_ATTRIBUTE(used)
+// Nullibility attributes
+#define XPC_NONNULL1 XPC_ATTRIBUTE(nonnull, 1)
+#define XPC_NONNULL2 XPC_ATTRIBUTE(nonnull, 2)
+#define XPC_NONNULL3 XPC_ATTRIBUTE(nonnull, 3)
+#define XPC_NONNULL4 XPC_ATTRIBUTE(nonnull, 4)
+#define XPC_NONNULL5 XPC_ATTRIBUTE(nonnull, 5)
+#define XPC_NONNULL6 XPC_ATTRIBUTE(nonnull, 6)
+#define XPC_NONNULL7 XPC_ATTRIBUTE(nonnull, 7)
+#define XPC_NONNULL8 XPC_ATTRIBUTE(nonnull, 8)
+#define XPC_NONNULL9 XPC_ATTRIBUTE(nonnull, 9)
+#define XPC_NONNULL10 XPC_ATTRIBUTE(nonnull, 10)
+#define XPC_NONNULL11 XPC_ATTRIBUTE(nonnull, 11)
+#define XPC_NONNULL_ALL XPC_ATTRIBUTE(nonnull)
+#define XPC_RETURNS_NONNULL XPC_ATTRIBUTE(returns_nonnull)
+// Variable attributes
+#define XPC_UNUSED XPC_ATTRIBUTE(unused)
+#define XPC_NOESCAPE XPC_ATTRIBUTE(noescape)
+// Other attributes
+#define XPC_READ_NONE XPC_ATTRIBUTE(const) // const attribute adds memory(none)
+#define XPC_PACKED XPC_ATTRIBUTE(packed)
+#define XPC_PURE XPC_ATTRIBUTE(pure) // pure attribute adds memory(read)
+#define XPC_NOIMPL XPC_ATTRIBUTE(unavailable)
+
+// diagnose_as_builtin
+#if !defined(__has_builtin)
+#define __has_builtin(_X) 0
+#endif
+#define XPC_DIAGNOSE_AS(_Builtin, ...) XPC_CONCAT(_XPC_CHOOSE_, __has_builtin(__builtin_ ## _Builtin))(XPC_ATTRIBTUE(diagnose_as_builtin, __builtin_ ## _Builtin)(__VA_ARGS__))
+
+// __abortlike
+#ifdef __abortlike
+#define XPC_ABORTLIKE __abortlike
+#else
+#define XPC_ABORTLIKE
+#endif
+
+// unavailable(message)
+#if __has_extension(attribute_unavailable_with_message)
+#define XPC_UNAVAILABLE(m) XPC_ATTRIBUTE(unavailable, m)
+#else
+#define XPC_UNAVAILABLE(m) XPC_NOIMPL
+#endif
+
+// _xpc_unreachable
+#if __has_builtin(__builtin_unreachable)
+#define _xpc_unreachable() __builtin_unreachable()
+#else
+#define _xpc_unreachable()
+#endif
+
+#pragma mark Import/Export
+#define XPC_CONST const
+#define XPC_NOCONST
+#define XPC_EXPORT extern XPC_ATTRIBUTE(visibility, "default")
+#define XPC_NOEXPORT XPC_ATTRIBUTE(visibility, "hidden")
 #define XPC_DEBUGGER_EXCL XPC_NOEXPORT XPC_USED
-#define XPC_TRANSPARENT_UNION __attribute__((transparent_union))
-#if __clang__
-#define XPC_DEPRECATED(m) __attribute__((deprecated(m)))
-#else // __clang__
-#define XPC_DEPRECATED(m) __attribute__((deprecated))
-#endif // __clang
+#define XPC_WEAKIMPORT extern XPC_ATTRIBUTE(weak_import)
+
+// XPC_TESTEXPORT
 #ifndef XPC_TESTEXPORT
 #define XPC_TESTEXPORT XPC_NOEXPORT
 #endif // XPC_TESTEXPORT
 
-#if defined(__XPC_TEST__) && __XPC_TEST__
+// XPC_TESTCONST
+#ifndef XPC_TESTCONST
+#define XPC_TESTCONST XPC_CONST
+#endif // XPC_TESTCONST
+
+#if __XPC_TEST__
 #define XPC_TESTSTATIC
 #define XPC_TESTEXTERN extern
 #define XPC_TESTNORETURN
-#else // defined(__XPC_TEST__) && __XPC_TEST__
+#else // __XPC_TEST__
 #define XPC_TESTSTATIC static
 #define XPC_TESTNORETURN XPC_NORETURN
-#endif // defined(__XPC_TEST__) && __XPC_TEST__
+#endif // __XPC_TEST__
 
+#pragma mark ARC
 #if __has_feature(objc_arc)
 #define XPC_GIVES_REFERENCE __strong
 #define XPC_UNRETAINED __unsafe_unretained
@@ -117,72 +178,8 @@ __BEGIN_DECLS
 #define XPC_BRIDGEREF_END(xo) (xo)
 #endif // __has_feature(objc_arc)
 
-#define _xpc_unreachable() __builtin_unreachable()
-#else // __GNUC__ 
-/*! @parseOnly */
-#define XPC_CONSTRUCTOR
-/*! @parseOnly */
-#define XPC_NORETURN
-/*! @parseOnly */
-#define XPC_NOTHROW
-/*! @parseOnly */
-#define XPC_NONNULL1
-/*! @parseOnly */
-#define XPC_NONNULL2
-/*! @parseOnly */
-#define XPC_NONNULL3
-/*! @parseOnly */
-#define XPC_NONNULL4
-/*! @parseOnly */
-#define XPC_NONNULL5
-/*! @parseOnly */
-#define XPC_NONNULL6
-/*! @parseOnly */
-#define XPC_NONNULL7
-/*! @parseOnly */
-#define XPC_NONNULL8
-/*! @parseOnly */
-#define XPC_NONNULL9
-/*! @parseOnly */
-#define XPC_NONNULL10
-/*! @parseOnly */
-#define XPC_NONNULL11
-/*! @parseOnly */
-#define XPC_NONNULL(n)
-/*! @parseOnly */
-#define XPC_NONNULL_ALL
-/*! @parseOnly */
-#define XPC_SENTINEL
-/*! @parseOnly */
-#define XPC_PURE
-/*! @parseOnly */
-#define XPC_WARN_RESULT
-/*! @parseOnly */
-#define XPC_MALLOC
-/*! @parseOnly */
-#define XPC_UNUSED
-/*! @parseOnly */
-#define XPC_PACKED
-/*! @parseOnly */
-#define XPC_PRINTF(m, n)
-/*! @parseOnly */
-#define XPC_INLINE static inline
-/*! @parseOnly */
-#define XPC_NOINLINE
-/*! @parseOnly */
-#define XPC_NOIMPL
-/*! @parseOnly */
-#define XPC_EXPORT extern
-/*! @parseOnly */
-#define XPC_WEAKIMPORT
-/*! @parseOnly */
-#define XPC_DEPRECATED
-/*! @parseOnly */
-#define XPC_UNAVAILABLE(m)
-/*! @parseOnly */
-#define XPC_NOESCAPE
-#endif // __GNUC__
 
+#pragma mark Nullability
 #if __has_feature(assume_nonnull)
 #define XPC_ASSUME_NONNULL_BEGIN _Pragma("clang assume_nonnull begin")
 #define XPC_ASSUME_NONNULL_END   _Pragma("clang assume_nonnull end")
@@ -197,10 +194,13 @@ __BEGIN_DECLS
 #define XPC_NONNULL_ARRAY
 #endif
 
+#pragma mark Bounds safety attributes
 #if defined(__has_ptrcheck) && __has_ptrcheck
 #define XPC_PTR_ASSUMES_SINGLE __ptrcheck_abi_assume_single()
 #define XPC_SINGLE __single
 #define XPC_UNSAFE_INDEXABLE __unsafe_indexable
+// This should be __null_terminated but because it was originally defined this
+// way, it will cause build failures to fix
 #define XPC_CSTRING XPC_UNSAFE_INDEXABLE
 #define XPC_SIZEDBY(N) __sized_by(N)
 #define XPC_COUNTEDBY(N) __counted_by(N)
@@ -219,32 +219,24 @@ __BEGIN_DECLS
 #define XPC_UNSAFE_FORGE_SINGLE(_type, _ptr) ((_type)(_ptr))
 #endif // defined(__has_ptrcheck) ** __has_ptrcheck
 
+#pragma mark Enums
+// XPC_FLAGS_ENUM
 #ifdef OS_CLOSED_OPTIONS
 #define XPC_FLAGS_ENUM(_name, _type, ...) \
 		OS_CLOSED_OPTIONS(_name, _type, __VA_ARGS__)
-#else // OS_CLOSED_ENUM
+#else
 #define XPC_FLAGS_ENUM(_name, _type, ...) \
 		OS_ENUM(_name, _type, __VA_ARGS__)
-#endif // OS_CLOSED_ENUM
+#endif
 
+// XPC_ENUM
 #ifdef OS_CLOSED_ENUM
 #define XPC_ENUM(_name, _type, ...) \
 		OS_CLOSED_ENUM(_name, _type, __VA_ARGS__)
-#else // OS_CLOSED_ENUM
+#else
 #define XPC_ENUM(_name, _type, ...) \
 		OS_ENUM(_name, _type, __VA_ARGS__)
-#endif // OS_CLOSED_ENUM
-
-#if __has_attribute(swift_name)
-# define XPC_SWIFT_NAME(_name) __attribute__((swift_name(_name)))
-#else
-# define XPC_SWIFT_NAME(_name) // __has_attribute(swift_name)
 #endif
-
-#define XPC_SWIFT_UNAVAILABLE(msg) __swift_unavailable(msg)
-#define XPC_SWIFT_NOEXPORT XPC_SWIFT_UNAVAILABLE("Unavailable in Swift from the XPC C Module")
-
-#define XPC_SWIFT_SENDABLE __attribute__((__swift_attr__("@Sendable")))
 
 __END_DECLS
 

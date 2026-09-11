@@ -32,7 +32,9 @@ typedef unsigned long long malloc_type_id_t;
 #if defined(__LP64__) /* MALLOC_TARGET_64BIT */
 
 // Included from <malloc/_malloc.h> so carefully manage what we include here.
+#ifndef __MALLOC_NO_AVAILABILITY_MACROS__
 #include <Availability.h> /* __SPI_AVAILABLE */
+#endif
 #if __has_include(<sys/_types/_size_t.h>)
 #include <sys/_types/_size_t.h>
 #else

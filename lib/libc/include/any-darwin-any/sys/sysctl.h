@@ -698,6 +698,14 @@ extern struct loadavg averunnable;
  *   hw.perflevelN.l2perflevels     - These values provide a bitmap, where bit  number of CPUs of the same type that share L2 and L3 caches.
  *   hw.perflevelN.l3perflevels     - If a cache is not present then the selector will return and error.
  *
+ */
+/*
+ *   hw.perflevelN.sharesl2         - A bitmap of other perflevel indexes that share L2 cache with
+ *                                  - perflevel N. Bit K is set if perflevel K shares L2 cache with perflevel N. Only exists
+ *                                  - for perflevels that share L2 cache with at least one other perflevel.
+ *
+ */
+/*
  *   hw.packages               - Gives the number of processor packages.
  *
  * These are the selectors for optional processor features for specific processors.  Selectors that return errors are not support

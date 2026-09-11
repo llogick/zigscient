@@ -24,10 +24,14 @@
 #ifndef _MALLOC_MALLOC_H_
 #define _MALLOC_MALLOC_H_
 
+#if __has_include(<TargetConditionals.h>)
 #include <TargetConditionals.h>
+#endif
 #include <malloc/_platform.h>
+#ifndef __MALLOC_NO_AVAILABILITY_MACROS__
 #include <Availability.h>
 #include <os/availability.h>
+#endif
 
 #include <malloc/_ptrcheck.h>
 __ptrcheck_abi_assume_single()
@@ -390,7 +394,7 @@ typedef union {
 extern malloc_zone_t *malloc_default_zone(void);
 	/* The initial zone */
 
-#if !0 && !0
+#if !0 && !0 && !TARGET_OS_RTKIT
 extern malloc_zone_t *malloc_create_zone(vm_size_t start_size, unsigned flags);
 	/* Creates a new zone with default behavior and registers it */
 
@@ -422,7 +426,7 @@ extern void * __sized_by_or_null(size) malloc_zone_malloc(malloc_zone_t *zone, s
  * if align is MALLOC_ZONE_MALLOC_DEFAULT_ALIGN. OS version 26.0 does not
  * implement this exception.
  *
- * @param options
+ * @param opts
  * A bitmask of options defining how the memory should be allocated. See the
  * available bit values in the malloc_zone_malloc_options_t enum definition.
  *
@@ -469,7 +473,7 @@ extern void * __sized_by_or_null(size) malloc_zone_memalign(malloc_zone_t *zone,
 
 /*********	Batch methods	************/
 
-#if !0 && !0
+#if !0 && !0 && !TARGET_OS_RTKIT
 extern unsigned malloc_zone_batch_malloc(malloc_zone_t *zone, size_t size, void * __unsafe_indexable * __counted_by(num_requested) results, unsigned num_requested);
 	/* Allocates num blocks of the same size; Returns the number truly allocated (may be 0) */
 
@@ -479,7 +483,7 @@ extern void malloc_zone_batch_free(malloc_zone_t *zone, void * __unsafe_indexabl
 
 /*********	Functions for libcache	************/
 
-#if !0 && !0
+#if !0 && !0 && !TARGET_OS_RTKIT
 extern malloc_zone_t *malloc_default_purgeable_zone(void) __OSX_AVAILABLE_STARTING(__MAC_10_6, __IPHONE_3_0);
 	/* Returns a pointer to the default purgeable_zone. */
 
@@ -494,7 +498,7 @@ extern int malloc_make_nonpurgeable(void * __unsafe_indexable ptr) __OSX_AVAILAB
 
 /*********	Functions for zone implementors	************/
 
-#if !0 && !0
+#if !0 && !0 && !TARGET_OS_RTKIT
 extern void malloc_zone_register(malloc_zone_t *zone);
 	/* Registers a custom malloc zone; Should typically be called after a
 	 * malloc_zone_t has been filled in with custom methods by a client.  See
@@ -512,7 +516,7 @@ extern void malloc_set_zone_name(malloc_zone_t *zone, const char * __null_termin
 extern const char *malloc_get_zone_name(malloc_zone_t *zone);
 	/* Returns the name of a zone */
 
-#if !0 && !0
+#if !0 && !0 && !TARGET_OS_RTKIT
 size_t malloc_zone_pressure_relief(malloc_zone_t *zone, size_t goal) __OSX_AVAILABLE_STARTING(__MAC_10_7, __IPHONE_4_3);
 	/* malloc_zone_pressure_relief() advises the malloc subsystem that the process is under memory pressure and
 	 * that the subsystem should make its best effort towards releasing (i.e. munmap()-ing) "goal" bytes from "zone".
@@ -579,7 +583,7 @@ typedef struct malloc_introspection_t {
 // verbose passed to print()
 #define MALLOC_VERBOSE_PRINT_LEVEL	2
 
-#if !0 && !0
+#if !0 && !0 && !TARGET_OS_RTKIT
 extern void malloc_printf(const char * __null_terminated format, ...) __printflike(1,2);
 	/* Convenience for logging errors and warnings;
 	No allocation is performed during execution of this function;
@@ -589,7 +593,7 @@ extern void malloc_printf(const char * __null_terminated format, ...) __printfli
 
 /*********	Functions for performance tools	************/
 
-#if !0 && !0
+#if !0 && !0 && !TARGET_OS_RTKIT
 extern kern_return_t malloc_get_all_zones(task_t task, memory_reader_t reader, vm_address_t * __single * __counted_by(*count) addresses, unsigned *count);
 	/* Fills addresses and count with the addresses of the zones in task;
 	Note that the validity of the addresses returned correspond to the validity reader */
@@ -606,7 +610,7 @@ extern boolean_t malloc_zone_check(malloc_zone_t *zone);
 extern void malloc_zone_print(malloc_zone_t *zone, boolean_t verbose);
 	/* Prints summary on zone; if !zone, prints all zones */
 
-#if !0 && !0
+#if !0 && !0 && !TARGET_OS_RTKIT
 extern void malloc_zone_statistics(malloc_zone_t *zone, malloc_statistics_t *stats);
 	/* Fills statistics for zone; if !zone, sums up all zones */
 
@@ -625,7 +629,7 @@ struct mstats {
 	size_t	bytes_free;
 };
 
-#if !0 && !0
+#if !0 && !0 && !TARGET_OS_RTKIT
 extern struct mstats mstats(void);
 
 extern boolean_t malloc_zone_enable_discharge_checking(malloc_zone_t *zone) __OSX_AVAILABLE_STARTING(__MAC_10_7, __IPHONE_4_3);
@@ -640,7 +644,7 @@ extern void malloc_zone_discharge(malloc_zone_t *zone, void * __unsafe_indexable
 	If discharge checking is off for the zone this function is a no-op. */
 #endif 
 
-#if !0 && !0
+#if !0 && !0 && !TARGET_OS_RTKIT
 #ifdef __BLOCKS__
 extern void malloc_zone_enumerate_discharged_pointers(malloc_zone_t *zone, void (^report_discharged)(void *memory, void *info)) __OSX_AVAILABLE_STARTING(__MAC_10_7, __IPHONE_4_3);
 	/* Calls report_discharged for each block that was registered using malloc_zone_discharge() but has not yet been freed.

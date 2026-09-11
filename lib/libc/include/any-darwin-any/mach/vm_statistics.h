@@ -207,6 +207,59 @@ struct vm_statistics64 {
 	uint64_t tagged_decompressions;
 	/* The current number of bytes consumed by compressed tag storage data */
 	uint64_t compressed_tag_storage_bytes;
+	/* added for rev4 */
+	/* The number of pages created due to speculative prefetch since boot */
+	uint64_t speculative_pages_created;
+	/* The number speculative pages that have been activated since boot */
+	uint64_t speculative_pages_activated;
+
+	/* Added for rev4 */
+	/* The number of pages currently populated in the swapfile */
+	uint64_t swap_count;
+
+	/* Added for rev5 */
+	/*
+	 * The number of tag storage pages which are reserved for storing tags but
+	 * don't currently hold any
+	 */
+	uint64_t empty_tag_storing_tag_storage_pages;
+	/*
+	 * The number of resident, file-backed (i.e. excluding JIT) pages which are
+	 * mapped as executable
+	 */
+	uint64_t executable_count;
+	/* The number of resident pages which are part of a shared region */
+	uint64_t shared_region_count;
+	/* The number of pages stolen by the booter */
+	uint64_t boot_stolen_count;
+	/* The number of file-backed pages which are secluded */
+	uint64_t secluded_count;
+	/* The number of internal pageable pages which are active */
+	uint64_t active_internal_count;
+	/* The number of internal pageable pages which are inactive */
+	uint64_t inactive_internal_count;
+	/* The number of external pageable pages which are active */
+	uint64_t active_external_count;
+	/* The number of external pageable pages which are inactive */
+	uint64_t inactive_external_count;
+	/* The number of purgeable volatile pages which are pageable */
+	uint64_t purgeable_pageable_count;
+	/* The number of purgeable-volatile pages which are wired */
+	uint64_t purgeable_wired_count;
+	/* The number of anonymous pages which are backgrounded */
+	uint64_t background_internal_count;
+	/* The number of file-backed pages which are backgrounded */
+	uint64_t background_external_count;
+	/* The number of anonymous pages which are queued for self-donation (App Swap) */
+	uint64_t donated_count;
+	/* The number of anonymous pages which are marked as real-time */
+	uint64_t realtime_count;
+	/* The size of physical memory in pages */
+	uint64_t max_mem_count;
+	/* The number of phantom file-cache ghosts which were re-paged-in */
+	uint64_t phantom_ghosts_found;
+	/* The number of phantom file-cache ghosts created by pageout */
+	uint64_t phantom_ghosts_added;
 } __attribute__((aligned(8)));
 
 typedef struct vm_statistics64  *vm_statistics64_t;
@@ -259,18 +312,19 @@ typedef struct vm_purgeable_info        *vm_purgeable_info_t;
 
 typedef int32_t vm_page_disposition_t;
 
-#define VM_PAGE_QUERY_PAGE_PRESENT      0x001
-#define VM_PAGE_QUERY_PAGE_FICTITIOUS   0x002
-#define VM_PAGE_QUERY_PAGE_REF          0x004
-#define VM_PAGE_QUERY_PAGE_DIRTY        0x008
-#define VM_PAGE_QUERY_PAGE_PAGED_OUT    0x010
-#define VM_PAGE_QUERY_PAGE_COPIED       0x020
-#define VM_PAGE_QUERY_PAGE_SPECULATIVE  0x040
-#define VM_PAGE_QUERY_PAGE_EXTERNAL     0x080
-#define VM_PAGE_QUERY_PAGE_CS_VALIDATED 0x100
-#define VM_PAGE_QUERY_PAGE_CS_TAINTED   0x200
-#define VM_PAGE_QUERY_PAGE_CS_NX        0x400
-#define VM_PAGE_QUERY_PAGE_REUSABLE     0x800
+#define VM_PAGE_QUERY_PAGE_PRESENT      0x0001
+#define VM_PAGE_QUERY_PAGE_FICTITIOUS   0x0002
+#define VM_PAGE_QUERY_PAGE_REF          0x0004
+#define VM_PAGE_QUERY_PAGE_DIRTY        0x0008
+#define VM_PAGE_QUERY_PAGE_PAGED_OUT    0x0010
+#define VM_PAGE_QUERY_PAGE_COPIED       0x0020
+#define VM_PAGE_QUERY_PAGE_SPECULATIVE  0x0040
+#define VM_PAGE_QUERY_PAGE_EXTERNAL     0x0080
+#define VM_PAGE_QUERY_PAGE_CS_VALIDATED 0x0100
+#define VM_PAGE_QUERY_PAGE_CS_TAINTED   0x0200
+#define VM_PAGE_QUERY_PAGE_CS_NX        0x0400
+#define VM_PAGE_QUERY_PAGE_REUSABLE     0x0800
+#define VM_PAGE_QUERY_PAGE_WIRED        0x1000
 
 #pragma mark User Flags
 
@@ -322,6 +376,10 @@ typedef int32_t vm_page_disposition_t;
  * VM_FLAGS_GUARD_OBJECT_OPTOUT
  *	Opt out this allocation from the guard object allocation policy.
  *	And memory will be allocated in typical first-fit allocation order.
+ *
+ * VM_FLAGS_SUPERPAGE_*
+ *      Deprecated; not supported on any current hardware.
+ *      These bits may be reused in the future and thus lead to unexpected results.
  */
 
 #define VM_FLAGS_FIXED                  0x00000000
@@ -335,13 +393,8 @@ typedef int32_t vm_page_disposition_t;
 #define VM_FLAGS_PERMANENT              0x00000080
 #define VM_FLAGS_TPRO                   0x00001000
 #define VM_FLAGS_MTE                    0x00002000
-#define VM_FLAGS_OVERWRITE              0x00004000 /* delete any existing mappings first */
-/*
- * VM_FLAGS_SUPERPAGE_MASK
- *	3 bits that specify whether large pages should be used instead of
- *	base pages (!=0), as well as the requested page size.
- */
-#define VM_FLAGS_SUPERPAGE_MASK         0x00070000 /* bits 0x10000, 0x20000, 0x40000 */
+#define VM_FLAGS_OVERWRITE              0x00004000  /* delete any existing mappings first */
+#define VM_FLAGS_SUPERPAGE_MASK         0x00070000 /* Currently unused. Bits 0x10000, 0x20000, 0x40000. */
 #define VM_FLAGS_RETURN_DATA_ADDR       0x00100000 /* Return address of target data, rather than base of page */
 #define VM_FLAGS_GUARD_OBJECT_OPTOUT    0x00400000
 #define VM_FLAGS_RETURN_4K_DATA_ADDR    0x00800000 /* Return 4K aligned address of target data */
@@ -365,7 +418,6 @@ typedef int32_t vm_page_disposition_t;
 	                         VM_FLAGS_PERMANENT |           \
 	                         VM_FLAGS_OVERWRITE |           \
 	                         VM_FLAGS_GUARD_OBJECT_OPTOUT | \
-	                         VM_FLAGS_SUPERPAGE_MASK |      \
 	                         VM_FLAGS_HW |                  \
 	                         VM_FLAGS_ALIAS_MASK)
 
@@ -381,6 +433,11 @@ typedef int32_t vm_page_disposition_t;
 	                         VM_FLAGS_RESILIENT_CODESIGN |  \
 	                         VM_FLAGS_RESILIENT_MEDIA)
 
+/*
+ * Superpage macros are deprecated as we don't currently support this feature
+ * on any platforms. We may reuse those flag bits in the future and thus use
+ * of these bits might lead to unexpected results in future OS versions.
+ */
 #define VM_FLAGS_SUPERPAGE_SHIFT 16
 #define SUPERPAGE_NONE                  0       /* no superpages, if all bits are 0 */
 #define SUPERPAGE_SIZE_ANY              1
@@ -404,7 +461,26 @@ __enum_decl(virtual_memory_guard_exception_code_t, uint32_t, {
 	kGUARD_EXC_SEC_IOPL_ON_EXEC_PAGE = 10,
 	kGUARD_EXC_SEC_EXEC_ON_IOPL_PAGE = 11,
 	kGUARD_EXC_SEC_UPL_WRITE_ON_EXEC_REGION = 12,
-	kGUARD_EXC_LARGE_ALLOCATION_TELEMETRY = 13,
+
+	/**
+	 * Guard exception sent to a thread when a CoW defeatured map attempts to
+	 * copy memory which is not permitted by system policy.
+	 */
+	kGUARD_EXC_COW_DEFEATURED_COPY_DENIED = 13,
+	/**
+	 * Guard exception sent to a thread when it attempts to extract a given type
+	 * of memory in a way which is not permitted for CoW defeatured maps.
+	 */
+	kGUARD_EXC_COW_DEFEATURED_EXTRACT_DENIED = 14,
+	/**
+	 * Guard exception sent to a thread when it attempts to copy-map a memory
+	 * entry which was created for sharing by a CoW defeatured map.
+	 */
+	kGUARD_EXC_COW_DEFEATURED_SHARE_MAP_AS_COPY_DENIED = 15,
+	kGUARD_EXC_COW_DEFEATURED_FIRST = kGUARD_EXC_COW_DEFEATURED_COPY_DENIED,
+	kGUARD_EXC_COW_DEFEATURED_LAST = kGUARD_EXC_COW_DEFEATURED_SHARE_MAP_AS_COPY_DENIED,
+
+	kGUARD_EXC_LARGE_ALLOCATION_TELEMETRY = 16,
 	/*
 	 * rdar://151450801 (Remove spurious kGUARD_EXC_SEC_ACCESS_FAULT and kGUARD_EXC_SEC_ASYNC_ACCESS_FAULT once CrashReporter is aligned)
 	 */
@@ -661,6 +737,12 @@ __enum_decl(virtual_memory_guard_exception_code_t, uint32_t, {
 
 /* memory allocated for CompositorServices */
 #define VM_MEMORY_COMPOSITOR_SERVICES 107
+
+/* memory allocate for in-process debug tools */
+#define VM_MEMORY_DEBUG 108
+
+/* Apple Neural Engine */
+#define VM_MEMORY_NEURAL 109
 
 /* Reserve 230-239 for Rosetta */
 #define VM_MEMORY_ROSETTA 230

@@ -158,7 +158,7 @@ long	 atol(const char *);
 long long
 	 atoll(const char *);
 #endif /* !__DARWIN_NO_LONG_LONG */
-void	*bsearch(const void *_LIBC_SIZE(__width) __key, const void *_LIBC_SIZE(__width * __nel) __base, size_t __nel,
+void	*bsearch(const void *__key, const void *_LIBC_SIZE(__width * __nel) __base, size_t __nel,
 	    size_t __width, int (* _Nonnull __compar)(const void *, const void *));
 /* calloc is now declared in _malloc.h */
 div_t	 div(int, int) __pure2;
@@ -304,7 +304,7 @@ int	 atexit_b(void (^ _Nonnull)(void)) __OSX_AVAILABLE_STARTING(__MAC_10_6, __IP
 #define __bsearch_noescape
 #endif
 #endif /* __BLOCKS__ */
-void	*bsearch_b(const void *_LIBC_SIZE(__width) __key, const void *_LIBC_SIZE(__width * __nel) __base, size_t __nel,
+void	*bsearch_b(const void *__key, const void *_LIBC_SIZE(__width * __nel) __base, size_t __nel,
 	    size_t __width, int (^ _Nonnull __compar)(const void *, const void *) __bsearch_noescape)
 	    __OSX_AVAILABLE_STARTING(__MAC_10_6, __IPHONE_3_2);
 #endif /* __BLOCKS__ */

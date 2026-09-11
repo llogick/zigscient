@@ -57,7 +57,10 @@ __BEGIN_DECLS
  *
  * The values stored in the lock should be considered opaque and implementation
  * defined, they contain thread ownership information that the system may use
- * to attempt to resolve priority inversions.
+ * to attempt to resolve priority inversions. However, it is guaranteed that an
+ * unlocked lock with no other contending threads will have the value
+ * OS_UNFAIR_LOCK_INIT, and so bytewise copying the value to a new location is
+ * equivalent to initializing a new lock in the new location.
  *
  * This lock must be unlocked from the same thread that locked it, attempts to
  * unlock from a different thread will cause an assertion aborting the process.

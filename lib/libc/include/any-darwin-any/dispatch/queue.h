@@ -220,6 +220,15 @@ __BEGIN_DECLS
  * concurrently with respect to other blocks submitted to that same queue.
  * Serial queues are processed concurrently with respect to each other.
  *
+ * The QoS class at which the block runs is determined by the block's assigned
+ * QoS class together with the target queue's specified QoS class (see
+ * dispatch_queue_attr_make_with_qos_class()) and floor (see
+ * dispatch_set_qos_class_floor()). For a bare block (one not wrapped by
+ * dispatch_block_create*), the assigned QoS class is the QoS class current on
+ * the calling thread at the moment dispatch_async() is called. See
+ * dispatch_block_flags_t for the full resolution rules and for control over
+ * how the block's QoS class interacts with the queue's.
+ *
  * @param queue
  * The target dispatch queue to which the block is submitted.
  * The system will hold a reference on the target queue until the block
@@ -915,9 +924,10 @@ dispatch_queue_attr_make_with_autorelease_frequency(
  * relative priority to the queue.
  *
  * @discussion
- * When specified in this manner, the QOS class and relative priority take
- * precedence over those inherited from the dispatch queue's target queue (if
- * any) as long that does not result in a lower QOS class and relative priority.
+ * The attribute sets the queue's specified QoS class and relative priority.
+ * This takes precedence over the QoS class and relative priority inherited
+ * from the target queue, but the target queue's QoS acts as a floor QoS for
+ * all work submitted to this queue.
  *
  * The global queue priorities map to the following QOS classes:
  *  - DISPATCH_QUEUE_PRIORITY_HIGH:         QOS_CLASS_USER_INITIATED
@@ -934,9 +944,9 @@ dispatch_queue_attr_make_with_autorelease_frequency(
  *	queue = dispatch_queue_create("com.example.myqueue", attr);
  * </code>
  *
- * The QOS class and relative priority set this way on a queue have no effect on
- * blocks that are submitted synchronously to a queue (via dispatch_sync(),
- * dispatch_barrier_sync()).
+ * The QOS class and relative priority specified this way on a queue have no
+ * effect on blocks that are submitted synchronously to a queue (via
+ * dispatch_sync(), dispatch_barrier_sync()).
  *
  * @param attr
  * A queue attribute value to be combined with the QOS class, or NULL.
@@ -1000,11 +1010,14 @@ dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t _Nullable attr,
  * a queue will hold a reference to that queue. Therefore a queue will not be
  * deallocated until all pending blocks have finished.
  *
- * When using a dispatch queue attribute @a attr specifying a QoS class (derived
- * from the result of dispatch_queue_attr_make_with_qos_class()), passing the
- * result of dispatch_get_global_queue() in @a target will ignore the QoS class
- * of that global queue and will use the global queue with the QoS class
- * specified by attr instead.
+ * When using a dispatch queue attribute @a attr with a specified QoS class
+ * (derived from the result of dispatch_queue_attr_make_with_qos_class()),
+ * passing the result of dispatch_get_global_queue() in @a target will ignore
+ * the QoS class of that global queue and will use the global queue with the
+ * QoS class specified by @a attr instead.
+ *
+ * A queue's QoS class can also be raised by configuring a floor with
+ * dispatch_set_qos_class_floor() before the queue is activated.
  *
  * Queues created with dispatch_queue_create_with_target() cannot have their
  * target queue changed, unless created inactive (See
@@ -1065,6 +1078,10 @@ dispatch_queue_create_with_target(const char *_Nullable DISPATCH_UNSAFE_INDEXABL
  * The quality of service class so specified takes precedence over the quality
  * of service class of the newly created dispatch queue's target queue (if any)
  * as long that does not result in a lower QOS class and relative priority.
+ *
+ * The queue's QoS class can also be raised by configuring a floor with
+ * dispatch_set_qos_class_floor() (use DISPATCH_QUEUE_SERIAL_INACTIVE etc. to
+ * obtain an inactive queue, then activate it after configuration).
  *
  * When no quality of service class is specified, the target queue of a newly
  * created dispatch queue is the default priority global concurrent queue.
@@ -1127,11 +1144,11 @@ dispatch_queue_get_label(dispatch_queue_t _Nullable queue);
  * Returns the QOS class and relative priority of the given queue.
  *
  * @discussion
- * If the given queue was created with an attribute value returned from
- * dispatch_queue_attr_make_with_qos_class(), this function returns the QOS
- * class and relative priority specified at that time; for any other attribute
- * value it returns a QOS class of QOS_CLASS_UNSPECIFIED and a relative
- * priority of 0.
+ * This function returns the QOS class and relative priority of the queue,
+ * either set by dispatch_queue_attr_make_with_qos_class() or by
+ * dispatch_set_qos_class_floor(). For a queue with no QOS class
+ * configuration, it returns a QOS class of QOS_CLASS_UNSPECIFIED and a
+ * relative priority of 0.
  *
  * If the given queue is one of the global queues, this function returns its
  * assigned QOS class value as documented under dispatch_get_global_queue() and
@@ -1804,4 +1821,4 @@ __END_DECLS
 DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
-#endif
+#endif /* __DISPATCH_QUEUE__ */

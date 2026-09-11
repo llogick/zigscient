@@ -137,6 +137,13 @@
  * It is disabled by default.
  */
 
+
+#if defined(__is_target_environment) && defined(__has_extension) 
+  #if __is_target_environment(kernelkit) && !__has_extension(define_target_os_macros)
+    #error KernelKit requires `-fdefine_target_os_macros`
+  #endif
+#endif
+
 #if !defined(__has_extension) || !__has_extension(define_target_os_macros)
 #if defined(__has_builtin)
  #if __has_builtin(__is_target_arch)
@@ -147,7 +154,7 @@
     /* "-target=x86_64-apple-ios12-macabi" */
     /* "-target=arm64-apple-ios12-macabi" */
     /* "-target=arm64e-apple-ios12-macabi" */
-    #if (__is_target_arch(x86_64) || __is_target_arch(arm64) || __is_target_arch(arm64e)) && __is_target_vendor(apple) && __is_target_os(ios) && __is_target_environment(macabi)
+    #if (__is_target_arch(x86_64) || __arm64__) && __is_target_vendor(apple) && __is_target_os(ios) && __is_target_environment(macabi)
         #define TARGET_OS_MAC               1
         #define TARGET_OS_IPHONE            1
         #define TARGET_OS_IOS               1
@@ -163,7 +170,7 @@
     /* "-target=x86_64-apple-ios12-simulator" */
     /* "-target=arm64-apple-ios12-simulator" */
     /* "-target=arm64e-apple-ios12-simulator" */
-    #if (__is_target_arch(x86_64) || __is_target_arch(arm64) || __is_target_arch(arm64e)) && __is_target_vendor(apple) && __is_target_os(ios) && __is_target_environment(simulator)
+    #if (__is_target_arch(x86_64) || __arm64__) && __is_target_vendor(apple) && __is_target_os(ios) && __is_target_environment(simulator)
         #define TARGET_OS_MAC               1
         #define TARGET_OS_IPHONE            1
         #define TARGET_OS_IOS               1

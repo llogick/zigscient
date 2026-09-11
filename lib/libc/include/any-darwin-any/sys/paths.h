@@ -40,7 +40,7 @@
 #define _PATH_RSRCNAME         "rsrc"
 #define _PATH_RSRCFORKSPEC     "/..namedfork/rsrc"
 
-/* Prefix Path Namespace */
+/* Path resolution modifiers (added either as prefixes to a path or as arguments to system calls) */
 #define RESOLVE_NOFOLLOW_ANY            0x00000001       /* no symlinks allowed in path */
 #define RESOLVE_NODOTDOT                0x00000002       /* prevent '..' path traversal */
 #define RESOLVE_LOCAL                   0x00000004       /* prevent a path lookup into a network filesystem */
@@ -50,8 +50,11 @@
 #define RESOLVE_NOXATTRS                0x00000040       /* prevent a path lookup on named streams */
 #define RESOLVE_NOQUARANTINE            0x00000080       /* prevent operating on a quarantined file */
 #define RESOLVE_NOUNION                 0x00000100       /* prevent a path lookup on filesystem with MNT_UNION from traversing to covered filesystem */
+#define RESOLVE_BENEATH                 0x00000200       /* prevent relative path lookups from going above a specified directory */
+#define RESOLVE_NOCROSSMOUNT            0x00000400       /* prevent a path lookup from traversing to different filesystems */
 
-#define RESOLVE_VALIDMASK               0x000001FF
+#define RESOLVE_VALIDMASK               0x000007FF
+#define RESOLVE_RELATIVE_MASK           (RESOLVE_BENEATH | RESOLVE_NOCROSSMOUNT)
 
 
 #endif /* __APPLE_API_PRIVATE */

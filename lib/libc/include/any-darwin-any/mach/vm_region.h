@@ -42,7 +42,9 @@
 #include <mach/vm_prot.h>
 #include <mach/vm_inherit.h>
 #include <mach/vm_behavior.h>
+#include <mach/vm_statistics.h>
 #include <mach/vm_types.h>
+#include <mach/mach_types.h>
 #include <mach/message.h>
 #include <mach/machine/vm_param.h>
 #include <mach/machine/vm_types.h>
@@ -71,7 +73,6 @@ typedef int     *vm_region_recurse_info_t;
 typedef int     *vm_region_recurse_info_64_t;
 typedef int      vm_region_flavor_t;
 typedef int      vm_region_info_data_t[VM_REGION_INFO_MAX];
-
 
 #define VM_REGION_BASIC_INFO_64         9
 struct vm_region_basic_info_64 {
@@ -133,7 +134,7 @@ typedef struct vm_region_basic_info              vm_region_basic_info_data_t;
 #define SM_TRUESHARED      5
 #define SM_PRIVATE_ALIASED 6
 #define SM_SHARED_ALIASED  7
-#define SM_LARGE_PAGE      8
+#define SM_LARGE_PAGE      8 /* Unused today, but provided for compatibility */
 
 /*
  * For submap info,  the SM flags above are overlayed when a submap
@@ -259,6 +260,10 @@ struct vm_region_submap_info_64 {
 	unsigned int            pages_reusable;
 	/* v2 fields */
 	vm_object_id_t          object_id_full;
+	/* v3 fields */
+	uint32_t                pages_wired;
+	uint16_t                wire_tag;
+	uint16_t                __padding0;
 };
 
 typedef struct vm_region_submap_info_64         *vm_region_submap_info_64_t;
@@ -269,8 +274,12 @@ typedef struct vm_region_submap_info_64          vm_region_submap_info_data_64_t
  * so if we ever increase this you'll need to also bump the definition of
  * vm_region_recurse_info_t.
  */
-#define VM_REGION_SUBMAP_INFO_V2_SIZE   \
+#define VM_REGION_SUBMAP_INFO_V3_SIZE \
 	(sizeof (vm_region_submap_info_data_64_t))
+
+/* v2 size is v3 size minus v3's new fields */
+#define VM_REGION_SUBMAP_INFO_V2_SIZE   \
+	(offsetof (vm_region_submap_info_data_64_t, pages_wired))
 
 /* v1 size is v2 size minus v2's new fields */
 #define VM_REGION_SUBMAP_INFO_V1_SIZE   \
@@ -282,6 +291,9 @@ typedef struct vm_region_submap_info_64          vm_region_submap_info_data_64_t
 	(VM_REGION_SUBMAP_INFO_V1_SIZE - \
 	 sizeof (unsigned int) /* pages_reusable */ )
 
+#define VM_REGION_SUBMAP_INFO_V3_COUNT_64 \
+	((mach_msg_type_number_t) \
+	 (VM_REGION_SUBMAP_INFO_V3_SIZE / sizeof (natural_t)))
 #define VM_REGION_SUBMAP_INFO_V2_COUNT_64 \
 	((mach_msg_type_number_t) \
 	 (VM_REGION_SUBMAP_INFO_V2_SIZE / sizeof (natural_t)))
@@ -293,11 +305,13 @@ typedef struct vm_region_submap_info_64          vm_region_submap_info_data_64_t
 	 (VM_REGION_SUBMAP_INFO_V0_SIZE / sizeof (natural_t)))
 
 /* set this to the latest version */
-#define VM_REGION_SUBMAP_INFO_COUNT_64          VM_REGION_SUBMAP_INFO_V2_COUNT_64
+#define VM_REGION_SUBMAP_INFO_COUNT_64          VM_REGION_SUBMAP_INFO_V3_COUNT_64
 
 #define VM_REGION_FLAG_JIT_ENABLED              0x1
 #define VM_REGION_FLAG_TPRO_ENABLED             0x2
-
+/* SPI bits; see vm_region_private.h */
+#define VM_REGION_FLAG_RESERVED_BIT_3           0x4
+#define VM_REGION_FLAG_RESERVED_BIT_4           0x8
 
 struct vm_region_submap_short_info_64 {
 	vm_prot_t               protection;     /* present access protection */
@@ -355,9 +369,11 @@ typedef struct vm32_read_entry          vm32_read_entry_t[VM_MAP_ENTRY_MAX];
 #define VM_PAGE_INFO_MAX
 typedef int *vm_page_info_t;
 typedef int vm_page_info_data_t[VM_PAGE_INFO_MAX];
-typedef int vm_page_info_flavor_t;
 
-#define VM_PAGE_INFO_BASIC              1
+typedef int vm_page_info_flavor_t;
+#define VM_PAGE_INFO_BASIC 1
+#define VM_PAGE_INFO_EXTENDED 2
+
 struct vm_page_info_basic {
 	int                     disposition;
 	int                     ref_count;
@@ -372,5 +388,20 @@ typedef struct vm_page_info_basic               vm_page_info_basic_data_t;
 #define VM_PAGE_INFO_BASIC_COUNT        ((mach_msg_type_number_t) \
 	(sizeof(vm_page_info_basic_data_t)/sizeof(int)))
 
+typedef struct vm_page_info_extended {
+	vm_page_disposition_t   disposition;
+	uint32_t                ref_count;
+	vm_object_id_t          object_id;
+	memory_object_offset_t  offset;
+	int                     depth;
+	uint32_t                __pad1;
+	uint64_t                disposition_ts; /* abs. time (in sec) */
+	uint64_t                __reserved[4];
+} vm_page_info_extended_data_t;
+
+typedef struct vm_page_info_extended *vm_page_info_extended_t;
+
+#define VM_PAGE_INFO_EXTENDED_COUNT ((mach_msg_type_number_t) \
+	(sizeof(vm_page_info_extended_data_t) / sizeof(natural_t)))
 
 #endif  /*_MACH_VM_REGION_H_*/

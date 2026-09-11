@@ -366,4 +366,4 @@ typedef void (*dispatch_function_t)(void *_Nullable);
 
 DISPATCH_ASSUME_ABI_SINGLE_END
 
-#endif
+#endif /* __DISPATCH_BASE__ */

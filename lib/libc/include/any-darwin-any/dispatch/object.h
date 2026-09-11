@@ -460,13 +460,17 @@ dispatch_resume(dispatch_object_t object);
  * Sets the QOS class floor on a dispatch queue, source or workloop.
  *
  * @discussion
- * The QOS class of workitems submitted to this object asynchronously will be
- * elevated to at least the specified QOS class floor. The QOS of the workitem
- * will be used if higher than the floor even when the workitem has been created
- * without "ENFORCE" semantics.
+ * Workitems submitted to this object asynchronously run at the higher of
+ * the floor and the workitem's assigned QoS class (regardless of whether
+ * the workitem was created with DISPATCH_BLOCK_ENFORCE_QOS_CLASS) — i.e.
+ * the floor raises the workitem's QoS class but never lowers it.
  *
  * Setting the QOS class floor is equivalent to the QOS effects of configuring
- * a queue whose target queue has a QoS class set to the same value.
+ * a queue whose target queue has the same specified QoS class.
+ *
+ * If this queue was previously created with a specified QoS class (via
+ * dispatch_queue_attr_make_with_qos_class()), setting a floor QoS class
+ * supersedes the specified QoS class.
  *
  * @param object
  * A dispatch queue, workloop, or source to configure.
@@ -673,4 +677,4 @@ __END_DECLS
 DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
-#endif
+#endif /* __DISPATCH_OBJECT__ */

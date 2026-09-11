@@ -189,6 +189,8 @@
 
 #define SO_BINDTODEVICE            0x1134  /* bind socket to a network device (max valid option length IFNAMSIZ) */
 
+#define SO_MAX_PACING_RATE         0x1136  /* Define per-socket maximum pacing rate in bytes/sec */
+
 /* When adding new socket-options, you need to make sure MPTCP supports these as well! */
 
 /*

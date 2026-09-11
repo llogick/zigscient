@@ -37,11 +37,11 @@
         #if __has_builtin(__is_target_os)
             #if __is_target_os(macos)
                 #define __MAC_OS_X_VERSION_MIN_REQUIRED __ENVIRONMENT_OS_VERSION_MIN_REQUIRED__
-                #define __MAC_OS_X_VERSION_MAX_ALLOWED __MAC_26_5
+                #define __MAC_OS_X_VERSION_MAX_ALLOWED __MAC_27_0
             #endif
         #elif  __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ 
             #define __MAC_OS_X_VERSION_MIN_REQUIRED __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__
-            #define __MAC_OS_X_VERSION_MAX_ALLOWED __MAC_26_5
+            #define __MAC_OS_X_VERSION_MAX_ALLOWED __MAC_27_0
         #endif /* __has_builtin(__is_target_os) */
     #endif /* defined(__has_builtin) */
 #endif /* __MAC_OS_X_VERSION_MIN_REQUIRED */
@@ -51,11 +51,11 @@
         #if __has_builtin(__is_target_os)
             #if __is_target_os(ios)
                 #define __IPHONE_OS_VERSION_MIN_REQUIRED __ENVIRONMENT_OS_VERSION_MIN_REQUIRED__
-                #define __IPHONE_OS_VERSION_MAX_ALLOWED __IPHONE_26_5
+                #define __IPHONE_OS_VERSION_MAX_ALLOWED __IPHONE_27_0
             #endif
         #elif  __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ 
             #define __IPHONE_OS_VERSION_MIN_REQUIRED __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
-            #define __IPHONE_OS_VERSION_MAX_ALLOWED __IPHONE_26_5
+            #define __IPHONE_OS_VERSION_MAX_ALLOWED __IPHONE_27_0
         #endif /* __has_builtin(__is_target_os) */
     #endif /* defined(__has_builtin) */
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
@@ -65,13 +65,13 @@
         #if __has_builtin(__is_target_os)
             #if __is_target_os(watchos)
                 #define __WATCH_OS_VERSION_MIN_REQUIRED __ENVIRONMENT_OS_VERSION_MIN_REQUIRED__
-                #define __WATCH_OS_VERSION_MAX_ALLOWED __WATCHOS_26_5
+                #define __WATCH_OS_VERSION_MAX_ALLOWED __WATCHOS_27_0
                 /* for compatibility with existing code.  New code should use platform specific checks */
                 #define __IPHONE_OS_VERSION_MIN_REQUIRED __IPHONE_9_0
             #endif
         #elif  __ENVIRONMENT_WATCH_OS_VERSION_MIN_REQUIRED__ 
             #define __WATCH_OS_VERSION_MIN_REQUIRED __ENVIRONMENT_WATCH_OS_VERSION_MIN_REQUIRED__
-            #define __WATCH_OS_VERSION_MAX_ALLOWED __WATCHOS_26_5
+            #define __WATCH_OS_VERSION_MAX_ALLOWED __WATCHOS_27_0
             /* for compatibility with existing code.  New code should use platform specific checks */
             #define __IPHONE_OS_VERSION_MIN_REQUIRED __IPHONE_9_0
         #endif /* __has_builtin(__is_target_os) */
@@ -83,13 +83,13 @@
         #if __has_builtin(__is_target_os)
             #if __is_target_os(tvos)
                 #define __TV_OS_VERSION_MIN_REQUIRED __ENVIRONMENT_OS_VERSION_MIN_REQUIRED__
-                #define __TV_OS_VERSION_MAX_ALLOWED __TVOS_26_5
+                #define __TV_OS_VERSION_MAX_ALLOWED __TVOS_27_0
                 /* for compatibility with existing code.  New code should use platform specific checks */
                 #define __IPHONE_OS_VERSION_MIN_REQUIRED __IPHONE_9_0
             #endif
         #elif  __ENVIRONMENT_TV_OS_VERSION_MIN_REQUIRED__ 
             #define __TV_OS_VERSION_MIN_REQUIRED __ENVIRONMENT_TV_OS_VERSION_MIN_REQUIRED__
-            #define __TV_OS_VERSION_MAX_ALLOWED __TVOS_26_5
+            #define __TV_OS_VERSION_MAX_ALLOWED __TVOS_27_0
             /* for compatibility with existing code.  New code should use platform specific checks */
             #define __IPHONE_OS_VERSION_MIN_REQUIRED __IPHONE_9_0
         #endif /* __has_builtin(__is_target_os) */
@@ -103,7 +103,7 @@
         #if __has_builtin(__is_target_os)
             #if __is_target_os(driverkit)
                 #define __DRIVERKIT_VERSION_MIN_REQUIRED __ENVIRONMENT_OS_VERSION_MIN_REQUIRED__
-                #define __DRIVERKIT_VERSION_MAX_ALLOWED __DRIVERKIT_25_5
+                #define __DRIVERKIT_VERSION_MAX_ALLOWED __DRIVERKIT_27_0
             #endif
         #endif /* __has_builtin(__is_target_os) */
     #endif /* defined(__has_builtin) */
@@ -114,7 +114,7 @@
         #if __has_builtin(__is_target_os)
             #if __is_target_os(visionos)
                 #define __VISION_OS_VERSION_MIN_REQUIRED __ENVIRONMENT_OS_VERSION_MIN_REQUIRED__
-                #define __VISION_OS_VERSION_MAX_ALLOWED __VISIONOS_26_5
+                #define __VISION_OS_VERSION_MAX_ALLOWED __VISIONOS_27_0
                 /* for compatibility with existing code.  New code should use platform specific checks */
                 #define __IPHONE_OS_VERSION_MIN_REQUIRED __IPHONE_17_1
             #endif
@@ -216,6 +216,14 @@
    #define __API_UNAVAILABLE_PLATFORM_visionOSApplicationExtension visionOSApplicationExtension,unavailable
    
    #define __API_UNAVAILABLE_PLATFORM_kernelkit kernelkit,unavailable
+ #endif /* __has_attribute(availability) */
+#endif /* defined(__has_feature) && defined(__has_attribute) */
+
+#if defined(__has_feature) && defined(__has_attribute)
+ #if __has_attribute(availability)
+   #define __API_AVAILABLE_PLATFORM_anyappleos(x) anyAppleOS,introduced=x
+   #define __API_DEPRECATED_PLATFORM_anyappleos(x,y) anyAppleOS,introduced=x,deprecated=y
+   #define __API_UNAVAILABLE_PLATFORM_anyappleos anyAppleOS,unavailable
  #endif /* __has_attribute(availability) */
 #endif /* defined(__has_feature) && defined(__has_attribute) */
 

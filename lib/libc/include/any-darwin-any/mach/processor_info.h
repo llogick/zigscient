@@ -90,10 +90,11 @@ typedef integer_t       processor_set_info_data_t[PROCESSOR_SET_INFO_MAX];
  *	Currently defined information.
  */
 typedef int     processor_flavor_t;
-#define PROCESSOR_BASIC_INFO    1               /* basic information */
-#define PROCESSOR_CPU_LOAD_INFO 2       /* cpu load information */
-#define PROCESSOR_PM_REGS_INFO  0x10000001      /* performance monitor register info */
-#define PROCESSOR_TEMPERATURE   0x10000002      /* Processor core temperature */
+#define PROCESSOR_BASIC_INFO       1            /* basic information */
+#define PROCESSOR_CPU_LOAD_INFO    2            /* cpu load information */
+#define PROCESSOR_CPU_COUNTERS_INFO 3           /* per-CPU active/idle time, cycles, instructions, energy */
+#define PROCESSOR_PM_REGS_INFO     0x10000001   /* performance monitor register info */
+#define PROCESSOR_TEMPERATURE      0x10000002   /* Processor core temperature */
 
 struct processor_basic_info {
 	cpu_type_t      cpu_type;       /* type of cpu */
@@ -119,6 +120,20 @@ typedef struct processor_cpu_load_info  processor_cpu_load_info_data_t;
 typedef struct processor_cpu_load_info  *processor_cpu_load_info_t;
 #define PROCESSOR_CPU_LOAD_INFO_COUNT   ((mach_msg_type_number_t) \
 	        (sizeof(processor_cpu_load_info_data_t)/sizeof(natural_t)))
+
+struct processor_cpu_counters_info {
+	uint64_t        user_time_mach;   /* user-mode time, mach absolute units */
+	uint64_t        system_time_mach; /* system-mode time, mach absolute units */
+	uint64_t        idle_time_mach;   /* idle time, mach absolute units */
+	uint64_t        cycles;           /* 0 if CPU counters unsupported */
+	uint64_t        instructions;     /* 0 if CPU counters unsupported */
+	uint64_t        energy_nj;        /* 0 if energy accounting unsupported */
+};
+
+typedef struct processor_cpu_counters_info  processor_cpu_counters_info_data_t;
+typedef struct processor_cpu_counters_info  *processor_cpu_counters_info_t;
+#define PROCESSOR_CPU_COUNTERS_INFO_COUNT ((mach_msg_type_number_t) \
+	        (sizeof(processor_cpu_counters_info_data_t)/sizeof(natural_t)))
 
 /*
  *	Scaling factor for load_average, mach_factor.

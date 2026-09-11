@@ -183,7 +183,7 @@ typedef int             memory_object_return_t;
 
 #define         MEMORY_OBJECT_DATA_FLUSH        0x1
 #define         MEMORY_OBJECT_DATA_NO_CHANGE    0x2
-#define         MEMORY_OBJECT_DATA_PURGE        0x4
+#define         MEMORY_OBJECT_DATA_PURGE        0x4 /* This is unused and unimplemented */
 #define         MEMORY_OBJECT_COPY_SYNC         0x8
 #define         MEMORY_OBJECT_DATA_SYNC         0x10
 #define         MEMORY_OBJECT_IO_SYNC           0x20

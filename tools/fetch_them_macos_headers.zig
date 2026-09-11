@@ -24,6 +24,7 @@ const OsVer = enum(u32) {
     sonoma = 14,
     sequoia = 15,
     tahoe = 26,
+    golden_gate = 27,
 };
 
 const Target = struct {

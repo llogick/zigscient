@@ -112,8 +112,9 @@
 #define HOST_MEMORY_ERROR_PORT          (26 + HOST_MAX_SPECIAL_KERNEL_PORT)
 #define HOST_MANAGEDAPPDISTD_PORT       (27 + HOST_MAX_SPECIAL_KERNEL_PORT)
 #define HOST_DOUBLEAGENTD_PORT          (28 + HOST_MAX_SPECIAL_KERNEL_PORT)
+#define HOST_DISKIMAGESIOD_PORT         (29 + HOST_MAX_SPECIAL_KERNEL_PORT)
 
-#define HOST_MAX_SPECIAL_PORT           HOST_DOUBLEAGENTD_PORT
+#define HOST_MAX_SPECIAL_PORT           HOST_DISKIMAGESIOD_PORT
 /* MAX = last since rdar://59872249 */
 
 /* obsolete name */
@@ -302,6 +303,11 @@
 #define host_set_doubleagentd_port(host, port)     \
 	(host_set_special_port((host), HOST_DOUBLEAGENTD_PORT, (port)))
 
+#define host_get_diskimagesiod_port(host, port)     \
+	(host_get_special_port((host),                  \
+	HOST_LOCAL_NODE, HOST_DISKIMAGESIOD_PORT, (port)))
+#define host_set_diskimagesiod_port(host, port)     \
+	(host_set_special_port((host), HOST_DISKIMAGESIOD_PORT, (port)))
 /* HOST_RESOURCE_NOTIFY_PORT doesn't #defines these conveniences.
  *  All lookups go through send_resource_violation()
  */

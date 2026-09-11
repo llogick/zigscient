@@ -30,7 +30,9 @@
  * Be cautious about what is included and declared here.
  */
 
+#ifndef __MALLOC_NO_AVAILABILITY_MACROS__
 #include <Availability.h>
+#endif
 #include <sys/cdefs.h>
 #if __has_include(<sys/_types/_size_t.h>)
 #include <sys/_types/_size_t.h>

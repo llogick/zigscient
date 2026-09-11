@@ -270,7 +270,7 @@ extern
 #endif	/* mig_external */
 kern_return_t host_lockgroup_info
 (
-	host_t host,
+	host_t host_priv_t,
 	lockgroup_info_array_t *lockgroup_info,
 	mach_msg_type_number_t *lockgroup_infoCnt
 );

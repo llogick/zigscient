@@ -60,7 +60,7 @@
 #if (defined(__has_include) && __has_include(<__xnu_libcxx_sentinel.h>))
 
 #if !__has_include_next(<limits.h>)
-#error Do not build with -nostdinc (use GCC_USE_STANDARD_INCLUDE_SEARCHING=NO)
+#error Do not build with -nostdinc (use GCC_USE_STANDARD_INCLUDE_SEARCHING=YES)
 #else
 #include_next <limits.h>
 #endif /* __has_include_next */

@@ -37,7 +37,6 @@
 
 #define EXCEPTION_CODE_MAX       2      /*  code and subcode */
 
-
 /*
  *	Trap numbers as defined by the hardware exception vectors.
  */

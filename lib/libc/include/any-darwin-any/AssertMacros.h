@@ -1272,7 +1272,7 @@
  *  of the old macros into the new equivalents.  To do so, in Terminal go into the directory containing the
  *  sources to be converted and run this command.
  *
-    find -E . -regex '.*\.(c|cc|cp|cpp|m|mm|h)' -print0 |  xargs -0 tops -verbose \
+    find -E . -regex '.*\.(c|cc|cp|cpp|m|mm|h|hh|hp|hpp)' -print0 |  xargs -0 tops -verbose \
       replace "check(<b args>)" with "__Check(<args>)" \
       replace "check_noerr(<b args>)" with "__Check_noErr(<args>)" \
       replace "check_noerr_string(<b args>)" with "__Check_noErr_String(<args>)" \

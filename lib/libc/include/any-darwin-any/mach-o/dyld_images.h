@@ -174,11 +174,7 @@ struct __attribute__((aligned(16))) dyld_all_image_infos
 
     mach_port_t                     notifyPorts[DYLD_MAX_PROCESS_INFO_NOTIFY_COUNT];
 
-#if __LP64__
 	uintptr_t						reserved[11-(DYLD_MAX_PROCESS_INFO_NOTIFY_COUNT/2)];
-#else
-	uintptr_t						reserved[9-DYLD_MAX_PROCESS_INFO_NOTIFY_COUNT];
-#endif
     // The following fields were added in version 18 (previously they were reserved padding fields)
     uint64_t                        sharedCacheFSID;
     uint64_t                        sharedCacheFSObjID;

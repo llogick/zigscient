@@ -42,6 +42,7 @@
 #define SBC_PANIC_ON_AUTHFAIL           0x0008  /* On failure to authenticate, panic */
 #define SBC_STRICT_AUTH                 0x0010  /* Strict authentication mode */
 #define SBC_PRESERVE_GRAFT              0x0020  /* Preserve graft itself until unmount */
+#define SBC_SKIP_AUTH                   0x0040  /* No authentication mode (check root hash only) */
 
 /* Flag values for ungraftdmg */
 #define UNGRAFTDMG_NOFORCE              0x0000000000000002ULL  /* Disallow ungraft if a non-dir vnode inside the graft is in use */

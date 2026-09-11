@@ -213,6 +213,11 @@ ssize_t readlinkat(int, const char *, char *, size_t)   __OSX_AVAILABLE_STARTING
 int     symlinkat(const char *, int, const char *) __OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0);
 int     unlinkat(int, const char *, int) __OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0);
 
+__API_AVAILABLE(macos(27.0), ios(27.0), tvos(27.0), watchos(27.0), visionos(27.0))
+int     dup3(int, int, int);
+__API_AVAILABLE(macos(27.0), ios(27.0), tvos(27.0), watchos(27.0), visionos(27.0))
+int     pipe2(int [2], int);
+
 __END_DECLS
 
 #endif /* __DARWIN_C_LEVEL >= 200809L */
