@@ -1560,7 +1560,7 @@ fn printEnumNonexhaustive(w: *Writer, value: anytype) Error!void {
         try w.writeVecAll(&vecs);
         return;
     }
-    try w.writeAll("@enumFromInt(");
+    try w.writeAll("@fromBackingInt(");
     try w.printInt(@backingInt(value), 10, .lower, .{});
     try w.writeByte(')');
 }

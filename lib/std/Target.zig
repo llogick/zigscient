@@ -324,7 +324,7 @@ pub const Os = struct {
                 var vecs: [2][]const u8 = .{ ".", name };
                 return w.writeVecAll(&vecs);
             } else {
-                return w.print("@enumFromInt(0x{X:0>8})", .{wv});
+                return w.print("@fromBackingInt(0x{X:0>8})", .{wv});
             }
         }
     };

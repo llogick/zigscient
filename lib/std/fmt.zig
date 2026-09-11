@@ -947,7 +947,7 @@ test "non-exhaustive enum" {
     };
     try expectFmt("enum: .One\n", "enum: {}\n", .{Enum.One});
     try expectFmt("enum: .Two\n", "enum: {}\n", .{Enum.Two});
-    try expectFmt("enum: @enumFromInt(4660)\n", "enum: {}\n", .{@as(Enum, @fromBackingInt(@intCast(0x1234)))});
+    try expectFmt("enum: @fromBackingInt(4660)\n", "enum: {}\n", .{@as(Enum, @fromBackingInt(@intCast(0x1234)))});
     try expectFmt("enum: f\n", "enum: {x}\n", .{Enum.One});
     try expectFmt("enum: beef\n", "enum: {x}\n", .{Enum.Two});
     try expectFmt("enum: BEEF\n", "enum: {X}\n", .{Enum.Two});
