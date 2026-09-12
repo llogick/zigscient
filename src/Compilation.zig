@@ -3157,6 +3157,17 @@ pub fn update(comp: *Compilation, main_progress_node: std.Progress.Node) UpdateE
             // cache manifest must not be written.
             if (anyErrors(comp)) return;
 
+            // Release the lock and close the file before writing the manifest.
+            // This avoids the potential of another process getting a cache hit and
+            // trying to spawn a process with it while there's still an open fd to it.
+            if (comp.bin_file) |lf| {
+                lf.releaseLock();
+                if (lf.file) |f| {
+                    f.close(io);
+                    lf.file = null;
+                }
+            }
+
             // Failure here only means an unnecessary cache miss.
             man.writeManifest() catch |err| log.warn("failed to write cache manifest: {t}", .{err});
 
