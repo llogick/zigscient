@@ -2768,7 +2768,7 @@ fn computeAliveFiles(pt: Zcu.PerThread) Allocator.Error!bool {
                     // have a huge number of them by transitive imports, so just reporting this one
                     // hopefully keeps the error focused.
                     zcu.multi_module_err = .{
-                        .file = file_idx,
+                        .file = res.file,
                         .modules = .{ imported_file.mod.?, imported_mod },
                         .refs = .{ gop.value_ptr.*, imported_ref },
                     };

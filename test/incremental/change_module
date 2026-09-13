@@ -43,8 +43,8 @@ pub fn main() void {
 comptime {
     _ = @import("other.zig");
 }
-#expect_error=foo.zig:1:1: error: file exists in modules 'root' and 'foo'
-#expect_error=foo.zig:1:1: note: files must belong to only one module
+#expect_error=other.zig:1:1: error: file exists in modules 'root' and 'foo'
+#expect_error=other.zig:1:1: note: files must belong to only one module
 #expect_error=main.zig:3:17: note: file is imported here by the root of module 'root'
 #expect_error=foo.zig:2:17: note: file is imported here by the root of module 'foo'
 
