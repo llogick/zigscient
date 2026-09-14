@@ -2135,6 +2135,7 @@ fn batchDrainSubmitted(
                 },
                 .device_io_control => {},
                 .net_receive => @panic("TODO implement batched net_receive"),
+                .net_send => @panic("TODO implement batched net_send"),
                 .net_read => @panic("TODO implement batched net_read"),
                 .net_write => @panic("TODO implement batched net_write"),
             };
@@ -2196,6 +2197,7 @@ fn batchSourceEvent(context: ?*anyopaque) callconv(.c) void {
         },
         .device_io_control => unreachable,
         .net_receive => @panic("TODO implement batched net_receive"),
+        .net_send => @panic("TODO implement batched net_send"),
         .net_read => @panic("TODO implement batched net_read"),
         .net_write => @panic("TODO implement batched net_write"),
     };
