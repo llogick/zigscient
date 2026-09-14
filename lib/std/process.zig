@@ -410,8 +410,6 @@ pub const SpawnOptions = struct {
     start_suspended: bool = false,
     /// Windows-only. Sets the CREATE_NO_WINDOW flag in CreateProcess.
     create_no_window: bool = false,
-    /// Darwin-only. Disable ASLR for the child process.
-    disable_aslr: bool = false,
 
     /// Behavior of the child process's standard input, output, and error streams.
     pub const StdIo = union(enum) {
@@ -489,8 +487,6 @@ pub const RunOptions = struct {
     progress_node: std.Progress.Node = std.Progress.Node.none,
     /// Windows-only. Sets the CREATE_NO_WINDOW flag in CreateProcess.
     create_no_window: bool = true,
-    /// Darwin-only. Disable ASLR for the child process.
-    disable_aslr: bool = false,
     timeout: Io.Timeout = .none,
 };
 
@@ -510,7 +506,6 @@ pub fn run(gpa: Allocator, io: Io, options: RunOptions) RunError!RunResult {
         .expand_arg0 = options.expand_arg0,
         .progress_node = options.progress_node,
         .create_no_window = options.create_no_window,
-        .disable_aslr = options.disable_aslr,
 
         .stdin = .ignore,
         .stdout = .pipe,
