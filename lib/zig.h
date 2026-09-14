@@ -6794,10 +6794,7 @@ static inline uint32_t zig_e_zig_x86_get_xcr0(void) {
     __asm__("xgetbv" : "=a" (eax), "=d" (edx) : "c" (0));
     return eax;
 #else
-    *eax = 0;
-    *ebx = 0;
-    *ecx = 0;
-    *edx = 0;
+    return 0;
 #endif
 }
 
