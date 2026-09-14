@@ -107,7 +107,7 @@ jobs:
           fetch-depth: 0
       - name: Build and Test
         run: sh ci/aarch64-openbsd-debug.sh
-        timeout-minutes: 240
+        timeout-minutes: 300
   aarch64-openbsd-release:
     runs-on: [self-hosted, aarch64-openbsd]
     steps:
