@@ -821,7 +821,8 @@ const InstTracking = struct {
         target: InstTracking,
     ) !void {
         const ty = function.typeOfIndex(inst);
-        if ((self.long == .none or self.long == .reserved_frame) and target.long == .load_frame)
+        if ((self.long == .none or self.long == .reserved_frame) and
+            target.long == .load_frame and target.short != .load_frame)
             try function.genCopy(ty, target.long, self.short, .{});
         try function.genCopy(ty, target.short, self.short, .{});
     }
@@ -174277,8 +174278,9 @@ fn restoreState(self: *CodeGen, state: State, deaths: []const Air.Inst.Index, co
         if (opts.emit_instructions and current_maybe_inst != target_maybe_inst) {
             if (current_maybe_inst) |current_inst|
                 try self.inst_tracking.getPtr(current_inst).?.spill(self, current_inst);
-            if (target_maybe_inst) |target_inst|
-                try self.inst_tracking.getPtr(target_inst).?.materialize(self, target_inst, reg_tracking);
+            if (target_maybe_inst) |target_inst| for (reg_tracking.getRegs()) |source_reg| {
+                if (RegisterManager.indexOfRegIntoTracked(source_reg).? > reg_index) break;
+            } else try self.inst_tracking.getPtr(target_inst).?.materialize(self, target_inst, reg_tracking);
         }
         if (opts.update_tracking) {
             if (current_maybe_inst) |current_inst| {
