@@ -1242,7 +1242,6 @@ test "combine doc comments of declaration and definition" {
         \\```
         \\
         \\Foo
-        \\
         \\Bar
     );
     try testHoverWithOptions(
@@ -1257,7 +1256,6 @@ test "combine doc comments of declaration and definition" {
         \\(type)
         \\
         \\Foo
-        \\
         \\Bar
     , .{ .markup_kind = .plaintext });
 }
@@ -1277,7 +1275,6 @@ test "top-level doc comment" {
         \\```
         \\
         \\A
-        \\
         \\B
     );
 }

@@ -1319,6 +1319,7 @@ pub const Inst = struct {
         pl_op: struct {
             operand: Ref,
             payload: u32,
+            tree_data_index: u32 = 0,
         },
         dbg_stmt: struct {
             line: u32,
@@ -1368,7 +1369,7 @@ pub const Inst = struct {
         // to insert a secret field for safety checks.
         comptime {
             if (!std.debug.runtime_safety) {
-                assert(@sizeOf(Data) == 8);
+                assert(@sizeOf(Data) == 12);
             }
         }
     };

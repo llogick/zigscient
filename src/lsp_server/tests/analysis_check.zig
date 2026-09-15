@@ -114,6 +114,7 @@ pub fn main(init: std.process.Init) Error!void {
         },
         .disable_notifications = true,
         .disable_compilations = true,
+        .disable_aira = true,
     };
 
     if (builtin.target.os.tag == .wasi) {

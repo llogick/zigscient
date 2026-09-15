@@ -84,4 +84,7 @@ disable_notifications: bool = false,
 /// Disable the integrated incremental compilations functionality. NOTE: It's highly recommended that the server be restarted.
 disable_compilations: bool = false,
 
+/// Disable the AIR Analyzer (AIRA)
+disable_aira: bool = false,
+
 // DO NOT EDIT

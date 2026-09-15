@@ -13,7 +13,7 @@ const Target = std.Target;
 const ErrorBundle = std.zig.ErrorBundle;
 const fatal = std.process.fatal;
 
-const Value = @import("Value.zig");
+pub const Value = @import("Value.zig");
 pub const Type = @import("Type.zig");
 const target_util = @import("target.zig");
 const link = @import("link.zig");
@@ -39,7 +39,7 @@ const Cache = std.Build.Cache;
 const c_codegen = @import("codegen/c.zig");
 const libtsan = @import("libs/libtsan.zig");
 const Zir = std.zig.Zir;
-const Air = @import("Air.zig");
+pub const Air = @import("Air.zig");
 const Builtin = @import("Builtin.zig");
 const LlvmObject = @import("codegen/llvm.zig").Object;
 const dev = @import("dev.zig");
@@ -2012,6 +2012,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
 
         // This is shared hasher state common to zig source and all C source files.
         cache.hash.addBytes(build_options.version);
+        cache.hash.addBytes("Zigscient");
         cache.hash.add(builtin.zig_backend);
         cache.hash.add(options.config.pie);
         cache.hash.add(options.config.lto);

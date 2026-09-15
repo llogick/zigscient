@@ -3163,7 +3163,7 @@ fn varDecl(
                     try reachableExprComptime(gz, scope, result_info, init_node, node, if (force_comptime) .comptime_keyword else null);
 
                 _ = try gz.addUnNode(.validate_const, init_inst, init_node);
-                try gz.addDbgVar(.dbg_var_val, ident_name, init_inst);
+                try gz.addDbgVar(.dbg_var_val, ident_name, init_inst, @backingInt(init_node));
 
                 // The const init expression may have modified the error return trace, so signal
                 // to Sema that it should save the new index for restoring later.
@@ -3236,7 +3236,7 @@ fn varDecl(
             else
                 try gz.addUnNode(.make_ptr_const, var_ptr, node);
 
-            try gz.addDbgVar(.dbg_var_ptr, ident_name, const_ptr);
+            try gz.addDbgVar(.dbg_var_ptr, ident_name, const_ptr, @backingInt(node));
 
             const sub_scope = try block_arena.create(Scope.LocalPtr);
             sub_scope.* = .{
@@ -3312,7 +3312,7 @@ fn varDecl(
                 break :ptr try gz.addUnNode(.resolve_inferred_alloc, alloc, node);
             } else alloc;
 
-            try gz.addDbgVar(.dbg_var_ptr, ident_name, final_ptr);
+            try gz.addDbgVar(.dbg_var_ptr, ident_name, final_ptr, @backingInt(init_node));
 
             const sub_scope = try block_arena.create(Scope.LocalPtr);
             sub_scope.* = .{
@@ -3621,7 +3621,7 @@ fn assignDestructureMaybeDecls(
             ident_name_raw,
             if (is_const) .@"local constant" else .@"local variable",
         );
-        try gz.addDbgVar(.dbg_var_ptr, ident_name, final_ptr);
+        try gz.addDbgVar(.dbg_var_ptr, ident_name, final_ptr, @backingInt(variable_node));
         // Finally, create the scope.
         const sub_scope = try block_arena.create(Scope.LocalPtr);
         sub_scope.* = .{
@@ -6226,7 +6226,7 @@ fn ifExpr(
                     .token_src = token_name_index,
                     .id_cat = .capture,
                 };
-                try then_scope.addDbgVar(.dbg_var_val, ident_name, payload_inst);
+                try then_scope.addDbgVar(.dbg_var_val, ident_name, payload_inst, token_name_index);
                 break :s &payload_val_scope.base;
             } else {
                 _ = try then_scope.addUnNode(.ensure_err_union_payload_void, cond.inst, node);
@@ -6254,7 +6254,7 @@ fn ifExpr(
                 .token_src = ident_token,
                 .id_cat = .capture,
             };
-            try then_scope.addDbgVar(.dbg_var_val, ident_name, payload_inst);
+            try then_scope.addDbgVar(.dbg_var_val, ident_name, payload_inst, ident_token);
             break :s &payload_val_scope.base;
         } else {
             break :s &then_scope.base;
@@ -6296,7 +6296,7 @@ fn ifExpr(
                     .token_src = error_token,
                     .id_cat = .capture,
                 };
-                try else_scope.addDbgVar(.dbg_var_val, ident_name, payload_inst);
+                try else_scope.addDbgVar(.dbg_var_val, ident_name, payload_inst, error_token);
                 break :s &payload_val_scope.base;
             } else {
                 break :s &else_scope.base;
@@ -6558,7 +6558,7 @@ fn whileExpr(
     if (opt_payload_inst.unwrap()) |payload_inst| {
         try then_scope.instructions.append(astgen.gpa, payload_inst);
     }
-    if (dbg_var_name != .empty) try then_scope.addDbgVar(.dbg_var_val, dbg_var_name, dbg_var_inst);
+    if (dbg_var_name != .empty) try then_scope.addDbgVar(.dbg_var_val, dbg_var_name, dbg_var_inst, payload_val_scope.token_src);
     try then_scope.instructions.append(astgen.gpa, continue_block);
     // This code could be improved to avoid emitting the continue expr when there
     // are no jumps to it. This happens when the last statement of a while body is noreturn
@@ -6623,7 +6623,7 @@ fn whileExpr(
                     .token_src = error_token,
                     .id_cat = .capture,
                 };
-                try else_scope.addDbgVar(.dbg_var_val, ident_name, else_payload_inst);
+                try else_scope.addDbgVar(.dbg_var_val, ident_name, else_payload_inst, error_token);
                 break :s &payload_val_scope.base;
             } else {
                 break :s &else_scope.base;
@@ -6897,7 +6897,7 @@ fn forExpr(
                 .id_cat = .capture,
             };
 
-            try then_scope.addDbgVar(.dbg_var_val, name_str_index, capture_inst);
+            try then_scope.addDbgVar(.dbg_var_val, name_str_index, capture_inst, ident_tok);
             capture_sub_scope = &capture_scope.base;
         }
 
@@ -7486,7 +7486,7 @@ fn switchExpr(
                             .token_src = ident_token,
                             .id_cat = .capture,
                         };
-                        try scratch_scope.addDbgVar(.dbg_var_val, ident_name, non_err_payload_inst.toRef());
+                        try scratch_scope.addDbgVar(.dbg_var_val, ident_name, non_err_payload_inst.toRef(), ident_token);
                         break :scope &payload_val_scope.base;
                     } else {
                         _ = try scratch_scope.addUnNode(
@@ -7712,10 +7712,10 @@ fn switchExpr(
             defer scratch_scope.unstack();
 
             if (dbg_var_payload_name != .empty) {
-                try scratch_scope.addDbgVar(.dbg_var_val, dbg_var_payload_name, dbg_var_payload_inst);
+                try scratch_scope.addDbgVar(.dbg_var_val, dbg_var_payload_name, dbg_var_payload_inst, payload_capture_scope.token_src);
             }
             if (dbg_var_tag_name != .empty) {
-                try scratch_scope.addDbgVar(.dbg_var_val, dbg_var_tag_name, dbg_var_tag_inst);
+                try scratch_scope.addDbgVar(.dbg_var_val, dbg_var_tag_name, dbg_var_tag_inst, tag_capture_scope.token_src);
             }
             if (do_err_trace and nodeMayAppendToErrorTrace(tree, operand_node)) {
                 _ = try scratch_scope.addSaveErrRetIndex(.always);
@@ -12708,13 +12708,14 @@ const GenZir = struct {
         }
     }
 
-    fn addDbgVar(gz: *GenZir, tag: Zir.Inst.Tag, name: Zir.NullTerminatedString, inst: Zir.Inst.Ref) !void {
+    fn addDbgVar(gz: *GenZir, tag: Zir.Inst.Tag, name: Zir.NullTerminatedString, inst: Zir.Inst.Ref, tree_data_index: u32) !void {
         if (gz.is_comptime) return;
 
         _ = try gz.add(.{ .tag = tag, .data = .{
             .str_op = .{
                 .str = name,
                 .operand = inst,
+                .tree_data_index = tree_data_index,
             },
         } });
     }

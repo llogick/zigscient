@@ -738,6 +738,7 @@ const Writer = struct {
         try w.writeOperand(s, inst, 0, pl_op.operand);
         const name: Air.NullTerminatedString = @fromBackingInt(@intCast(pl_op.payload));
         try s.print(", \"{f}\"", .{std.zig.fmtString(name.toSlice(w.air))});
+        try s.print(", tree_data_index: {}", .{pl_op.tree_data_index});
     }
 
     fn writeCall(w: *Writer, s: *std.Io.Writer, inst: Air.Inst.Index) Error!void {

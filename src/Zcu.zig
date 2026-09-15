@@ -3013,9 +3013,9 @@ pub fn namespacePtrUnwrap(zcu: *Zcu, index: Namespace.OptionalIndex) ?*Namespace
 }
 
 // TODO https://github.com/ziglang/zig/issues/8643
-pub const data_has_safety_tag = @sizeOf(Zir.Inst.Data) != 8;
+pub const data_has_safety_tag = @sizeOf(Zir.Inst.Data) != 16;
 pub const HackDataLayout = extern struct {
-    data: [8]u8 align(@alignOf(Zir.Inst.Data)),
+    data: [16]u8 align(@alignOf(Zir.Inst.Data)),
     safety_tag: u8,
 };
 comptime {
@@ -3054,7 +3054,7 @@ pub fn loadZirCacheBody(gpa: Allocator, header: Zir.Header, cache_br: *Io.Reader
     zir.extra = try gpa.alloc(u32, header.extra_len);
 
     const safety_buffer = if (data_has_safety_tag)
-        try gpa.alloc([8]u8, header.instructions_len)
+        try gpa.alloc([16]u8, header.instructions_len)
     else
         undefined;
     defer if (data_has_safety_tag) gpa.free(safety_buffer);
@@ -3090,7 +3090,7 @@ pub fn saveZirCache(
     zir: *const Zir,
 ) (Io.File.Writer.Error || Allocator.Error)!void {
     const safety_buffer = if (data_has_safety_tag)
-        try gpa.alloc([8]u8, zir.instructions.len)
+        try gpa.alloc([16]u8, zir.instructions.len)
     else
         undefined;
     defer if (data_has_safety_tag) gpa.free(safety_buffer);

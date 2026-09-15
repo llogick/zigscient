@@ -2493,6 +2493,8 @@ pub const Inst = struct {
             /// Offset into `string_bytes`. Null-terminated.
             str: NullTerminatedString,
             operand: Ref,
+            tree_data_index: u32 = 0,
+            _: u32 = 0,
 
             pub fn getStr(self: @This(), zir: Zir) [:0]const u8 {
                 return zir.nullTerminatedString(self.str);
@@ -2523,7 +2525,7 @@ pub const Inst = struct {
         // to insert a secret field for safety checks.
         comptime {
             if (builtin.mode != .debug and builtin.mode != .safe) {
-                assert(@sizeOf(Data) == 8);
+                assert(@sizeOf(Data) == 16);
             }
         }
 

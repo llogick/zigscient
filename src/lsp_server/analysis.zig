@@ -18,6 +18,7 @@ const ast = @import("ast.zig");
 const tracy = @import("tracy");
 const InternPool = @import("analyser/InternPool.zig");
 const references = @import("features/references.zig");
+const Aira = @import("Aira.zig");
 
 pub const DocumentScope = @import("DocumentScope.zig");
 pub const Declaration = DocumentScope.Declaration;
@@ -1902,9 +1903,9 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, options: ResolveOptions) Error
             }
 
             if (var_decl.ast.init_node.unwrap()) |init_node| blk: {
-                return try analyser.resolveTypeOfNodeInternal(.of(init_node, handle)) orelse break :blk;
+                return try analyser.resolveTypeOfNodeInternal(.of(init_node, handle)) orelse
+                    (try airaResolveDecl(analyser, .{ .decl = .{ .ast_node = node }, .handle = handle })) orelse break :blk;
             }
-
             return fallback_type;
         },
         .call,
@@ -2931,7 +2932,7 @@ fn resolveBindingOfNodeUncached(analyser: *Analyser, options: ResolveOptions) Er
             }
 
             const child = try analyser.lookupSymbolGlobal(handle, name, tree.tokenStart(name_token)) orelse return null;
-            const child_ty = try child.resolveType(analyser) orelse return null;
+            const child_ty = (try airaResolveDecl(analyser, child)) orelse return null;
             return .{
                 .type = child_ty,
                 .is_const = child.isConst(),
@@ -4635,7 +4636,7 @@ pub fn getFieldAccessType(
                     symbol_name,
                     source_index,
                 )) |child| {
-                    current_type = (try child.resolveType(analyser)) orelse return null;
+                    current_type = (try airaResolveDecl(analyser, child)) orelse return null;
                 } else return null;
             },
             .period => {
@@ -5602,7 +5603,8 @@ pub const DeclWithHandle = struct {
                 }
 
                 const init_node = tree.nodeData(pay.node).extra_and_node[1];
-                const node = try analyser.resolveTypeOfNode(.of(init_node, self.handle)) orelse return null;
+                const node = try analyser.resolveTypeOfNode(.of(init_node, self.handle)) orelse
+                    (try airaResolveDecl(analyser, .{ .decl = .{ .ast_node = pay.getVarDeclNode(tree) }, .handle = self.handle })) orelse return null;
                 break :blk switch (node.data) {
                     .array => |array_info| try array_info.elem_ty.instanceTypeVal(analyser),
                     .tuple => try analyser.resolveBracketAccessType(node, .{ .single = pay.index }),
@@ -6623,3 +6625,31 @@ pub const ReferencedType = struct {
         }
     };
 };
+
+pub fn airaResolveDecl(asta: *Analyser, decl: DeclWithHandle) Error!?Type {
+    // Need to figure out how to get fields for reified Ts
+    const asta_ty = (try decl.resolveType(asta));
+    if (decl.decl != .ast_node) return asta_ty;
+    var aira: Aira = try Aira.init(
+        asta.store,
+        decl.handle,
+        decl.decl.ast_node,
+    ) orelse return asta_ty;
+    defer aira.deinit();
+    const inst = try aira.resolveNode(decl.decl.ast_node) orelse return asta_ty;
+    var ares = Aira.resolveInst(aira.air, inst) orelse return asta_ty;
+    switch (ares.inst_tag) {
+        .alloc,
+        .ptr_cast,
+        => ares.ip_index = aira.deref(ares.ip_index) orelse ares.ip_index,
+        .call => ares.ip_index = aira.resolveFnRetTy(ares.ip_index) orelse return asta_ty,
+        else => {},
+    }
+    ares.ip_index = aira.derefOrUnwrap(ares.ip_index);
+    const src_node_info = aira.resolveSrcNode(ares.ip_index) orelse return asta_ty;
+    const zdoc = try asta.store.getOrLoadHandle(src_node_info.zdoc_uri) orelse return asta_ty;
+    const new_decl: DeclWithHandle = .{ .decl = .{ .ast_node = src_node_info.src_node }, .handle = zdoc };
+    var rty = (try new_decl.resolveType(asta)) orelse return asta_ty;
+    rty.is_type_val = false;
+    return rty;
+}

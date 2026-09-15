@@ -95,6 +95,7 @@ pub const Settings = struct {
     },
     disable_notifications: bool,
     disable_compilations: bool,
+    disable_aira: bool,
 };
 
 pub fn deinit(self: *DocumentStore) void {

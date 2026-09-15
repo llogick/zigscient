@@ -144,6 +144,12 @@
       "description": "Disable the integrated incremental compilations functionality. NOTE: It's highly recommended that the server be restarted.",
       "type": "bool",
       "default": false
+    },
+    {
+      "name": "disable_aira",
+      "description": "Disable the AIR Analyzer (AIRA)",
+      "type": "bool",
+      "default": false
     }
   ]
 }

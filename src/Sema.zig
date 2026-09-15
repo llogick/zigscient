@@ -5880,7 +5880,7 @@ fn zirDbgVar(
     const str_op = sema.code.instructions.items(.data)[@backingInt(inst)].str_op;
     const operand = sema.resolveInst(str_op.operand);
     const name = str_op.getStr(sema.code);
-    try sema.addDbgVar(block, operand, air_tag, name);
+    try sema.addDbgVar(block, operand, air_tag, name, str_op.tree_data_index);
 }
 
 fn addDbgVar(
@@ -5889,6 +5889,7 @@ fn addDbgVar(
     operand: Air.Inst.Ref,
     air_tag: Air.Inst.Tag,
     name: []const u8,
+    tree_data_index: u32,
 ) CompileError!void {
     if (block.isComptime() or block.ownerModule().strip) return;
 
@@ -5923,6 +5924,7 @@ fn addDbgVar(
         .data = .{ .pl_op = .{
             .payload = @backingInt(name_nts),
             .operand = operand,
+            .tree_data_index = tree_data_index,
         } },
     });
 }
@@ -7341,12 +7343,12 @@ fn analyzeCall(
                 const extra = sema.code.extraData(Zir.Inst.Param, zir_datas[@backingInt(inst)].pl_tok.payload_index);
                 const param_name = sema.code.nullTerminatedString(extra.data.name);
                 const air_inst = sema.inst_map.get(inst).?;
-                try sema.addDbgVar(&child_block, air_inst, .dbg_arg_inline, param_name);
+                try sema.addDbgVar(&child_block, air_inst, .dbg_arg_inline, param_name, zir_datas[@backingInt(inst)].pl_tok.payload_index);
             },
             .param_anytype, .param_anytype_comptime => {
                 const param_name = zir_datas[@backingInt(inst)].str_tok.get(sema.code);
                 const air_inst = sema.inst_map.get(inst).?;
-                try sema.addDbgVar(&child_block, air_inst, .dbg_arg_inline, param_name);
+                try sema.addDbgVar(&child_block, air_inst, .dbg_arg_inline, param_name, 0);
             },
             else => {},
         };

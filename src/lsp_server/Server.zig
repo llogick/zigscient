@@ -338,7 +338,7 @@ pub fn generateDiagnostics(server: *Server, handle: *DocumentStore.Handle) void 
                 return;
             }
 
-            if (!DocumentStore.isBuildFile(param_handle.uri)) proj_diags: {
+            if (!DocumentStore.isBuildFile(param_handle.uri) and param_handle.tree.errors.len == 0) proj_diags: {
                 const build = build: {
                     if (param_handle.computed_data.build) |build| break :build build;
                     if (param_handle.closest_build_file_uri) |build_file_uri| {
@@ -952,6 +952,7 @@ pub fn createDocumentStoreConfig(config_manager: *const settings_handler.Manager
         .wasi_preopens = config_manager.wasi_preopens,
         .disable_notifications = config_manager.config.disable_notifications,
         .disable_compilations = config_manager.config.disable_compilations,
+        .disable_aira = config_manager.config.disable_aira,
     };
 }
 
