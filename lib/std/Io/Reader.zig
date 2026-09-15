@@ -287,16 +287,20 @@ pub const LimitedAllocError = Allocator.Error || ShortError || error{StreamTooLo
 /// Transfers all bytes from the current position to the end of the stream, up
 /// to `limit`, returning them as a caller-owned allocated slice.
 ///
-/// If `limit` is reached or exceeded, `error.StreamTooLong` is returned
-/// instead. In such case, the next byte that would be read will be the first
-/// one to exceed `limit`, and all preceeding bytes have been discarded.
+/// If `limit` is exceeded, `error.StreamTooLong` is returned instead.
+/// In such case, the next byte that would be read will be one byte past the
+/// first one to exceed `limit`, and all preceeding bytes have been discarded.
 ///
 /// See also:
 /// * `appendRemaining`
 pub fn allocRemaining(r: *Reader, gpa: Allocator, limit: Limit) LimitedAllocError![]u8 {
     var buffer: ArrayList(u8) = .empty;
     defer buffer.deinit(gpa);
-    try appendRemaining(r, gpa, &buffer, limit);
+
+    try appendRemaining(r, gpa, &buffer, switch (limit) {
+        .unlimited => limit,
+        .nothing, _ => .limited(@backingInt(limit) + 1),
+    });
     return buffer.toOwnedSlice(gpa);
 }
 
@@ -1892,6 +1896,31 @@ test "takeStruct and peekStruct packed" {
     }), try r.takeStruct(S, .big));
 
     try testing.expectError(error.EndOfStream, r.takeStruct(S, .little));
+}
+
+test allocRemaining {
+    {
+        var r: Reader = .fixed("abc");
+        const str = try r.allocRemaining(testing.allocator, .unlimited);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("abc", str);
+    }
+    {
+        var r: Reader = .fixed("abc");
+        const str = try r.allocRemaining(testing.allocator, .limited(5));
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("abc", str);
+    }
+    {
+        var r: Reader = .fixed("abc");
+        const str = try r.allocRemaining(testing.allocator, .limited(3));
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("abc", str);
+    }
+    {
+        var r: Reader = .fixed("abcd");
+        try testing.expectError(error.StreamTooLong, r.allocRemaining(testing.allocator, .limited(3)));
+    }
 }
 
 /// Provides a `Reader` implementation by passing data from an underlying
