@@ -251,7 +251,7 @@ pub fn deref(
     aira: *Aira,
     ip_index: InternPool.Index,
 ) ?InternPool.Index {
-    const ty = Type.fromInterned(ip_index);
+    const ty = toType(ip_index, aira.active.pt);
     return if (ty.zigTypeTag(aira.active.pt.zcu) == .pointer) ty.childType(aira.active.pt.zcu).ip_index else null;
 }
 

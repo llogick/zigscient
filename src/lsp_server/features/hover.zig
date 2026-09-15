@@ -178,6 +178,7 @@ fn hoverSymbolResolvedType(
         switch (ares.inst_tag) {
             .alloc,
             .ptr_cast,
+            .dbg_var_ptr,
             => ares.ip_index = aira.deref(ares.ip_index) orelse ares.ip_index,
             .call => ares.ip_index = aira.resolveFnRetTy(ares.ip_index) orelse break :interned,
             else => {},

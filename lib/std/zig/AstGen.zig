@@ -3236,7 +3236,7 @@ fn varDecl(
             else
                 try gz.addUnNode(.make_ptr_const, var_ptr, node);
 
-            try gz.addDbgVar(.dbg_var_ptr, ident_name, const_ptr, @backingInt(node));
+            try gz.addDbgVar(.dbg_var_ptr, ident_name, const_ptr, @backingInt(init_node));
 
             const sub_scope = try block_arena.create(Scope.LocalPtr);
             sub_scope.* = .{
