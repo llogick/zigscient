@@ -56,13 +56,15 @@ pub fn lower(emit: *Emit) Error!void {
         writeSleb128(code, aligned_stack);
         // subtract it from the current stack pointer
         code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_sub));
-        // Get negative stack alignment
-        const neg_stack_align = @as(i32, @intCast(align_bytes)) * -1;
-        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_const));
-        writeSleb128(code, neg_stack_align);
-        // Bitwise-and the value to get the new stack pointer to ensure the
-        // pointers are aligned with the abi alignment.
-        code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_and));
+        if (align_bytes != 16) {
+            // Get negative stack alignment
+            const neg_stack_align = @as(i32, @intCast(align_bytes)) * -1;
+            code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_const));
+            writeSleb128(code, neg_stack_align);
+            // Bitwise-and the value to get the new stack pointer to ensure the
+            // pointers are aligned with the abi alignment.
+            code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.i32_and));
+        }
         // The bottom will be used to calculate all stack pointer offsets.
         code.appendAssumeCapacity(@backingInt(std.wasm.Opcode.local_tee));
         writeUleb128(code, mir.prologue.bottom_stack_local);
@@ -988,9 +990,7 @@ pub fn lower(emit: *Emit) Error!void {
 /// Asserts 20 unused capacity.
 fn encodeMemArg(code: *ArrayList(u8), mem_arg: Mir.MemArg) void {
     assert(code.unusedCapacitySlice().len >= 20);
-    // Wasm encodes alignment as power of 2, rather than natural alignment.
-    const encoded_alignment = @ctz(mem_arg.alignment);
-    writeUleb128(code, encoded_alignment);
+    writeUleb128(code, mem_arg.alignment.toLog2Units());
     writeUleb128(code, mem_arg.offset);
 }
 

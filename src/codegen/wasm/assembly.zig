@@ -679,20 +679,20 @@ fn parseMemArg(cg: *CodeGen, inst: []const u8, word_it: *mem.TokenIterator(u8, .
         const offset_str = oa[0];
         const alignment_str = oa[1];
 
-        const offset = std.fmt.parseInt(i32, offset_str, 0) catch {
+        const offset = std.fmt.parseInt(i64, offset_str, 0) catch {
             return cg.fail("Malformed assembly, malformed offset \"{s}\"", .{offset_str});
         };
         const alignment_p2 = std.fmt.parseInt(u5, alignment_str, 0) catch {
             return cg.fail("Malformed assembly, malformed offset \"{s}\"", .{alignment_str});
         };
 
-        return .{ .offset = @bitCast(offset), .alignment = @as(u32, 1) << alignment_p2 };
+        return .{ .offset = @bitCast(offset), .alignment = .fromLog2Units(alignment_p2) };
     } else {
         const offset_str = mem_arg_str;
-        const offset = std.fmt.parseInt(i32, offset_str, 0) catch {
+        const offset = std.fmt.parseInt(i64, offset_str, 0) catch {
             return cg.fail("Malformed assembly, malformed offset \"{s}\"", .{offset_str});
         };
-        return .{ .offset = @bitCast(offset), .alignment = 1 };
+        return .{ .offset = @bitCast(offset), .alignment = .@"1" };
     }
 }
 

@@ -694,11 +694,18 @@ pub fn extraData(self: *const Mir, comptime T: type, index: usize) struct { data
     inline for (info.field_names, info.field_types) |field_name, field_type| {
         @field(result, field_name) = switch (field_type) {
             u32 => self.extra[i],
+            u64 => value: {
+                const lo = @as(u64, self.extra[i]);
+                const hi = @as(u64, self.extra[i + 1]) << 32;
+                i += 1;
+                break :value hi | lo;
+            },
             i32 => @bitCast(self.extra[i]),
             Wasm.UavsObjIndex,
             Wasm.UavsExeIndex,
             InternPool.Nav.Index,
             InternPool.Index,
+            Alignment,
             => @fromBackingInt(@intCast(self.extra[i])),
             else => @compileError("Unsupported field type " ++ @typeName(field_type)),
         };
@@ -747,8 +754,8 @@ pub const Float64 = struct {
 };
 
 pub const MemArg = struct {
-    offset: u32,
-    alignment: u32,
+    offset: u64,
+    alignment: Alignment,
 };
 
 pub const UavRefOff = struct {
