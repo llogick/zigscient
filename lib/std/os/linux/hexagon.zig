@@ -136,7 +136,6 @@ pub fn clone() callconv(.naked) u32 {
         \\ callr r11
         \\
         \\ r6 = #93 // SYS_exit
-        \\ r0 = #0
         \\ trap0(#1)
     );
 }

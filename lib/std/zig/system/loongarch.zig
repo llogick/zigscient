@@ -94,21 +94,9 @@ pub fn detectNativeCpuAndFeatures(
     return cpu;
 }
 
-/// This is a workaround for the C backend until zig has the ability to put
-/// C code in inline assembly.
-extern fn zig_loongarch_cpucfg(word: u32, result: *u32) callconv(.c) void;
-
 fn cpucfg(word: u32) u32 {
-    var result: u32 = undefined;
-
-    if (builtin.zig_backend == .stage2_c) {
-        zig_loongarch_cpucfg(word, &result);
-    } else {
-        asm ("cpucfg %[result], %[word]"
-            : [result] "=r" (result),
-            : [word] "r" (word),
-        );
-    }
-
-    return result;
+    return asm ("cpucfg %[result], %[word]"
+        : [result] "=r" (-> u32),
+        : [word] "r" (word),
+    );
 }

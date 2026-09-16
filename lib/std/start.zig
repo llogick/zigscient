@@ -189,7 +189,7 @@ fn _start() callconv(.naked) noreturn {
             .m88k => ".cfi_undefined %%r1",
             .microblaze, .microblazeel => "", // No CFI support.
             .mips, .mipsel, .mips64, .mips64el => ".cfi_undefined $ra",
-            .or1k => ".cfi_undefined r9",
+            .or1k => ".cfi_undefined 9",
             .powerpc, .powerpcle, .powerpc64, .powerpc64le => ".cfi_undefined lr",
             .riscv32, .riscv32be, .riscv64, .riscv64be => if (builtin.zig_backend == .stage2_riscv64)
                 ""

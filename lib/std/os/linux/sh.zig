@@ -179,11 +179,11 @@ pub fn clone() callconv(.naked) u32 {
         \\ cmp/eq #0, r0
         \\ bt 1f
         \\
-        \\ // parent
+        \\ ! parent
         \\ rts
         \\  nop
         \\
-        \\ // child
+        \\ ! child
         \\1:
     );
     if (builtin.unwind_tables != .none or !builtin.strip_debug_info) asm volatile (
@@ -199,6 +199,7 @@ pub fn clone() callconv(.naked) u32 {
         \\  nop
         \\
         \\ mov #1, r3 ! SYS_exit
+        \\ mov r0, r4
         \\ trapa #31
         \\ or r0, r0
         \\ or r0, r0

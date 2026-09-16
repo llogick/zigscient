@@ -120,8 +120,8 @@ pub fn clone() callconv(.naked) u32 {
     // __clone(func, stack, flags, arg, ptid, tls, ctid)
     //         r3,   r4,    r5,    r6,  r7,   r8,  +0
     //
-    // syscall(SYS_clone, flags, stack, ptid, tls, ctid)
-    //         r11        r3,    r4,    r5,   r6,  r7
+    // syscall(SYS_clone, flags, stack, ptid, ctid, tls)
+    //         r11        r3,    r4,    r5,   r6,   r7
     asm volatile (
         \\ # Save function pointer and argument pointer on new thread stack
         \\ l.addi r13, r0, -4
@@ -134,8 +134,8 @@ pub fn clone() callconv(.naked) u32 {
         \\ l.ori r11, r0, 220 # SYS_clone
         \\ l.ori r3, r5, 0
         \\ l.ori r5, r7, 0
-        \\ l.ori r6, r8, 0
-        \\ l.lwz r7, 0(r1)
+        \\ l.lwz r6, 0(r1)
+        \\ l.ori r7, r8, 0
         \\ l.sys 1
         \\ l.sfeqi r11, 0
         \\ l.bf 1f
@@ -145,7 +145,7 @@ pub fn clone() callconv(.naked) u32 {
         \\1:
     );
     if (builtin.unwind_tables != .none or !builtin.strip_debug_info) asm volatile (
-        \\ .cfi_undefined r9
+        \\ .cfi_undefined 9
     );
     asm volatile (
         \\ l.ori r2, r0, 0

@@ -151,6 +151,8 @@ pub fn clone() callconv(.naked) u32 {
         \\
         \\ mov a2, a10
         \\ callx0 a9
+        \\
+        \\ mov a6, a2
     ) else asm volatile (
         \\ beqz a2, 1f
         \\ // parent

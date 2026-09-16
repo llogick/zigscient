@@ -6750,19 +6750,7 @@ static inline void* zig_e_zig_windows_peb(void) {
 
 #endif
 
-#if defined(zig_loongarch)
-
-static inline void zig_e_zig_loongarch_cpucfg(uint32_t word, uint32_t* result) zig_mangled(zig_e_zig_loongarch_cpucfg, "zig_loongarch_cpucfg");
-
-static inline void zig_e_zig_loongarch_cpucfg(uint32_t word, uint32_t* result) {
-#if defined(zig_gnuc_asm)
-    __asm__("cpucfg %[result], %[word]" : [result] "=r" (*result) : [word] "r" (word));
-#else
-    *result = 0;
-#endif
-}
-
-#elif defined(zig_x86) && !defined(zig_x86_16)
+#if defined(zig_x86) && !defined(zig_x86_16)
 
 static inline void zig_e_zig_x86_cpuid(uint32_t leaf_id, uint32_t subid, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx) zig_mangled(zig_e_zig_x86_cpuid, "zig_x86_cpuid");
 static inline uint32_t zig_e_zig_x86_get_xcr0(void) zig_mangled(zig_e_zig_x86_get_xcr0, "zig_x86_get_xcr0");

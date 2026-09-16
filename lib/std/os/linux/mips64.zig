@@ -148,6 +148,7 @@ pub fn syscall_pipe(
         \\1:
         \\ sw $v0, 0($a0)
         \\ sw $v1, 4($a0)
+        \\ move $v0, $zero
         \\2:
         : [ret] "={$2}" (-> u64),
         : [number] "{$2}" (@backingInt(SYS.pipe)),
