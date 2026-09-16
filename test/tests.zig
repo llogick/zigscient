@@ -2395,6 +2395,16 @@ pub fn isNative(actual_target: *const std.Build.ResolvedTarget, host: *const std
     if (actual.os.tag != host.os.tag)
         return false;
 
+    // This check is really only necessary for the case where `host.cpu.arch.isAarch64()` and
+    // `actual.cpu.arch.isArm()`. As they are wholly separate `std.Target` families with their own
+    // feature bits, the logic below would produce complete nonsense.
+    //
+    // This does mean that we aren't actually checking feature compatibility between these two
+    // families even though we should. That's not a problem currently, but in the future, we may
+    // need to add a special code path just for this specific case...
+    if (actual.cpu.arch.family() != host.cpu.arch.family())
+        return true;
+
     // Remove features that don't actually affect compatibility.
     const irrelevant: std.Target.Cpu.Feature.Set = switch (host.cpu.arch) {
         .x86_64 => std.Target.x86.featureSet(&.{
