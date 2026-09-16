@@ -44,6 +44,11 @@ pub fn addLibcTestCase(
 }
 
 pub fn addTarget(libc: *const Libc, target: std.Build.ResolvedTarget) void {
+    const want_debug = for (libc.options.optimize_modes) |m| {
+        if (m == .debug) break true;
+    } else false;
+    if (!want_debug) return;
+
     if (libc.options.skip_wasm and target.query.cpu_arch != null and target.query.cpu_arch.?.isWasm()) return;
 
     if (libc.options.test_target_filters.len > 0) {
@@ -55,73 +60,71 @@ pub fn addTarget(libc: *const Libc, target: std.Build.ResolvedTarget) void {
 
     const common = libc.libc_test_src_path.path(libc.b, "common");
 
-    for (libc.options.optimize_modes) |optimize| {
-        const libtest_mod = libc.b.createModule(.{
+    const libtest_mod = libc.b.createModule(.{
+        .target = target,
+        .optimize = .debug,
+        .link_libc = true,
+    });
+
+    const libtest_c_source_files: []const []const u8 = &.{
+        "print.c", "rand.c", "mtest.c", "setrlim.c", "memfill.c", "vmfill.c", "fdfill.c", "utf8.c",
+    };
+    libtest_mod.addCSourceFiles(.{
+        .root = common,
+        .files = libtest_c_source_files[0..if (target.result.isMuslLibC()) 8 else 3],
+        .flags = &.{"-fno-builtin"},
+    });
+
+    const libtest = libc.b.addLibrary(.{
+        .name = "test",
+        .root_module = libtest_mod,
+    });
+
+    for (libc.test_cases.items) |*test_case| {
+        if (target.result.isWasiLibC() and !test_case.supports_wasi_libc)
+            continue;
+
+        const annotated_case_name = libc.b.fmt("run libc-test {s}", .{test_case.name});
+        for (libc.options.test_filters) |test_filter| {
+            if (std.mem.find(u8, annotated_case_name, test_filter)) |_| break;
+        } else if (libc.options.test_filters.len > 0) continue;
+
+        const mod = libc.b.createModule(.{
             .target = target,
-            .optimize = optimize,
+            .optimize = .debug,
             .link_libc = true,
         });
-
-        var libtest_c_source_files: []const []const u8 = &.{
-            "print.c", "rand.c", "mtest.c", "setrlim.c", "memfill.c", "vmfill.c", "fdfill.c", "utf8.c",
-        };
-        libtest_mod.addCSourceFiles(.{
-            .root = common,
-            .files = libtest_c_source_files[0..if (target.result.isMuslLibC()) 8 else 3],
+        mod.addIncludePath(common);
+        if (target.result.isWasiLibC())
+            mod.addCMacro("_WASI_EMULATED_SIGNAL", "");
+        mod.addCSourceFile(.{
+            .file = test_case.src_file,
             .flags = &.{"-fno-builtin"},
         });
-
-        const libtest = libc.b.addLibrary(.{
-            .name = "test",
-            .root_module = libtest_mod,
-        });
-
-        for (libc.test_cases.items) |*test_case| {
-            if (target.result.isWasiLibC() and !test_case.supports_wasi_libc)
-                continue;
-
-            const annotated_case_name = libc.b.fmt("run libc-test {s} ({t})", .{ test_case.name, optimize });
-            for (libc.options.test_filters) |test_filter| {
-                if (std.mem.find(u8, annotated_case_name, test_filter)) |_| break;
-            } else if (libc.options.test_filters.len > 0) continue;
-
-            const mod = libc.b.createModule(.{
-                .target = target,
-                .optimize = optimize,
-                .link_libc = true,
-            });
-            mod.addIncludePath(common);
-            if (target.result.isWasiLibC())
-                mod.addCMacro("_WASI_EMULATED_SIGNAL", "");
+        if (test_case.additional_src_file) |additional_src_file| {
             mod.addCSourceFile(.{
-                .file = test_case.src_file,
+                .file = additional_src_file,
                 .flags = &.{"-fno-builtin"},
             });
-            if (test_case.additional_src_file) |additional_src_file| {
-                mod.addCSourceFile(.{
-                    .file = additional_src_file,
-                    .flags = &.{"-fno-builtin"},
-                });
-            }
-            mod.linkLibrary(libtest);
-
-            const exe = libc.b.addExecutable(.{
-                .name = test_case.name,
-                .root_module = mod,
-                .max_rss = libc.options.max_rss,
-            });
-
-            const run = libc.b.addRunArtifact(exe);
-            run.setName(annotated_case_name);
-            run.skip_foreign_checks = true;
-            run.disable_zig_progress = true; // can interfere with fd count assumptions
-            run.expectStdErrEqual("");
-            run.expectStdOutEqual("");
-            run.expectExitCode(0);
-            run.step.max_rss = libc.options.max_rss;
-
-            libc.root_step.dependOn(&run.step);
         }
+        mod.linkLibrary(libtest);
+
+        const exe = libc.b.addExecutable(.{
+            .name = test_case.name,
+            .root_module = mod,
+            .max_rss = libc.options.max_rss,
+        });
+
+        const run = libc.b.addRunArtifact(exe);
+        run.setName(annotated_case_name);
+        run.skip_foreign_checks = true;
+        run.disable_zig_progress = true; // can interfere with fd count assumptions
+        run.expectStdErrEqual("");
+        run.expectStdOutEqual("");
+        run.expectExitCode(0);
+        run.step.max_rss = libc.options.max_rss;
+
+        libc.root_step.dependOn(&run.step);
     }
 }
 
