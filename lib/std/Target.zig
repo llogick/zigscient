@@ -575,38 +575,38 @@ pub const Os = struct {
 
                 .driverkit => .{
                     .semver = .{
-                        .min = .{ .major = 20, .minor = 0, .patch = 0 },
-                        .max = .{ .major = 25, .minor = 5, .patch = 0 },
+                        .min = .{ .major = 21, .minor = 0, .patch = 0 },
+                        .max = .{ .major = 27, .minor = 0, .patch = 0 },
                     },
                 },
                 .macos => .{
                     .semver = .{
-                        .min = .{ .major = 14, .minor = 0, .patch = 0 },
-                        .max = .{ .major = 26, .minor = 5, .patch = 0 },
+                        .min = .{ .major = 15, .minor = 0, .patch = 0 },
+                        .max = .{ .major = 27, .minor = 0, .patch = 0 },
                     },
                 },
                 .ios, .maccatalyst => .{
                     .semver = .{
-                        .min = .{ .major = 15, .minor = 0, .patch = 0 },
-                        .max = .{ .major = 26, .minor = 5, .patch = 0 },
+                        .min = .{ .major = 18, .minor = 0, .patch = 0 },
+                        .max = .{ .major = 27, .minor = 0, .patch = 0 },
                     },
                 },
                 .tvos => .{
                     .semver = .{
                         .min = .{ .major = 26, .minor = 0, .patch = 0 },
-                        .max = .{ .major = 26, .minor = 5, .patch = 0 },
+                        .max = .{ .major = 27, .minor = 0, .patch = 0 },
                     },
                 },
                 .visionos => .{
                     .semver = .{
-                        .min = .{ .major = 26, .minor = 0, .patch = 0 },
-                        .max = .{ .major = 26, .minor = 5, .patch = 0 },
+                        .min = .{ .major = 27, .minor = 0, .patch = 0 },
+                        .max = .{ .major = 27, .minor = 0, .patch = 0 },
                     },
                 },
                 .watchos => .{
                     .semver = .{
                         .min = .{ .major = 11, .minor = 0, .patch = 0 },
-                        .max = .{ .major = 26, .minor = 5, .patch = 0 },
+                        .max = .{ .major = 27, .minor = 0, .patch = 0 },
                     },
                 },
 
