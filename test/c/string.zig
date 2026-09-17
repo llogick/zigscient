@@ -50,3 +50,12 @@ test "strndup" {
     const copy3_u8: [*:0]u8 = @ptrCast(copy3);
     try testing.expectEqualStrings("Hello", std.mem.span(@as([*:0]const u8, copy3_u8)));
 }
+
+test "strnlen" {
+    const str: [*:0]const u8 = "Hello";
+    try testing.expectEqual(3, c.strnlen(@ptrCast(str), 3));
+    try testing.expectEqual(4, c.strnlen(@ptrCast(str), 4));
+    try testing.expectEqual(5, c.strnlen(@ptrCast(str), 5));
+    try testing.expectEqual(5, c.strnlen(@ptrCast(str), 6));
+    try testing.expectEqual(5, c.strnlen(@ptrCast(str), 7));
+}

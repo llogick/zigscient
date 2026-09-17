@@ -224,7 +224,10 @@ fn stpncpy(noalias dst: [*]c_char, noalias src: [*:0]const c_char, max: usize) c
 }
 
 fn strnlen(str: [*:0]const c_char, max: usize) callconv(.c) usize {
-    return std.mem.findScalar(u8, @ptrCast(str[0..max]), 0) orelse max;
+    for (0..max) |i| {
+        if (str[i] == 0) return i;
+    }
+    return max;
 }
 
 fn memmem(haystack: *const anyopaque, haystack_len: usize, needle: *const anyopaque, needle_len: usize) callconv(.c) ?*anyopaque {

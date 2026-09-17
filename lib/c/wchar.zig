@@ -79,11 +79,14 @@ fn wmemset(dest: [*]wchar_t, elem: wchar_t, len: usize) callconv(.c) [*]wchar_t 
 }
 
 fn wcslen(str: [*:0]const wchar_t) callconv(.c) usize {
-    return wcsnlen(str, std.math.maxInt(usize));
+    return std.mem.len(str);
 }
 
 fn wcsnlen(str: [*:0]const wchar_t, max: usize) callconv(.c) usize {
-    return std.mem.findScalar(wchar_t, str[0..max], 0) orelse max;
+    for (0..max) |i| {
+        if (str[i] == 0) return i;
+    }
+    return max;
 }
 
 fn wcscmp(a: [*:0]const wchar_t, b: [*:0]const wchar_t) callconv(.c) c_int {

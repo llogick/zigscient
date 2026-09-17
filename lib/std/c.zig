@@ -11471,7 +11471,9 @@ pub const strdup = switch (builtin.abi) {
     .msvc => private._strdup,
     else => private.strdup,
 };
+pub extern "c" fn strnlen(s: [*:0]const c_char, n: usize) callconv(.c) usize;
 pub extern "c" fn strndup(s: [*:0]const c_char, n: usize) ?[*:0]c_char;
+pub extern "c" fn wcsnlen(s: [*:0]const wchar_t, n: usize) callconv(.c) usize;
 pub const wcsdup = switch (builtin.abi) {
     .msvc => private._wcsdup,
     else => private.wcsdup,

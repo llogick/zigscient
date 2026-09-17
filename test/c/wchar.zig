@@ -32,3 +32,12 @@ test "wcsdup empty string" {
     defer c.free(cpy);
     try testing.expectEqual(@as(c.wchar_t, 0), cpy[0]);
 }
+
+test "wcsnlen" {
+    const wcs: [*:0]const c.wchar_t = &.{ 'H', 'e', 'l', 'l', 'o' };
+    try testing.expectEqual(3, c.wcsnlen(wcs, 3));
+    try testing.expectEqual(4, c.wcsnlen(wcs, 4));
+    try testing.expectEqual(5, c.wcsnlen(wcs, 5));
+    try testing.expectEqual(5, c.wcsnlen(wcs, 6));
+    try testing.expectEqual(5, c.wcsnlen(wcs, 7));
+}
