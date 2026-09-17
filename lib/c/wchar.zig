@@ -46,8 +46,11 @@ comptime {
     }
 }
 
-fn wmemchr(ptr: [*]const wchar_t, value: wchar_t, len: usize) callconv(.c) ?[*]wchar_t {
-    return @constCast(ptr[std.mem.findScalar(wchar_t, ptr[0..len], value) orelse return null ..]);
+fn wmemchr(ptr: [*]const wchar_t, value: wchar_t, len: usize) callconv(.c) ?*wchar_t {
+    for (0..len) |i| {
+        if (ptr[i] == value) return @constCast(&ptr[i]);
+    }
+    return null;
 }
 
 fn wmemcmp(a: [*]const wchar_t, b: [*]const wchar_t, len: usize) callconv(.c) c_int {

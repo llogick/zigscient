@@ -68,8 +68,12 @@ comptime {
 }
 
 fn memchr(ptr: *const anyopaque, value: c_int, len: usize) callconv(.c) ?*anyopaque {
+    const b: u8 = @truncate(@as(c_uint, @bitCast(value)));
     const bytes: [*]const u8 = @ptrCast(ptr);
-    return @constCast(bytes[std.mem.findScalar(u8, bytes[0..len], @truncate(@as(c_uint, @bitCast(value)))) orelse return null ..]);
+    for (0..len) |i| {
+        if (bytes[i] == b) return @constCast(&bytes[i]);
+    }
+    return null;
 }
 
 fn strcpy(noalias dst: [*]c_char, noalias src: [*:0]const c_char) callconv(.c) [*]c_char {
