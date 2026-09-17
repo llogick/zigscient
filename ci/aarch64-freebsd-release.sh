@@ -54,6 +54,10 @@ stage3-release/bin/zig build install test docs \
   -Dno-lib \
   -Dskip-non-native
 
+# Ensure that the fuzzer at least compiles.
+stage3-release/bin/zig build test-std --fuzz=1K -Dno-lib -Dfuzz-only -Doptimize=ReleaseSafe
+stage3-release/bin/zig build test-std --fuzz=1K -Dno-lib -Dfuzz-only -Doptimize=Debug
+
 # Ensure that stage3 and stage4 are byte-for-byte identical.
 echo "If the following command fails, it means nondeterminism has been"
 echo "introduced, making stage3 and stage4 no longer byte-for-byte identical."
