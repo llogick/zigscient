@@ -155,7 +155,7 @@ pub fn hashAddFrameworks(man: *Cache.Manifest, hm: []const Framework) !void {
     for (hm) |value| {
         man.hash.add(value.needed);
         man.hash.add(value.weak);
-        _ = try man.addFilePath(value.path, null);
+        _ = try man.addInputPath(value.path, .{});
     }
 }
 

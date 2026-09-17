@@ -152,18 +152,12 @@ pub fn main(init: std.process.Init) !void {
 
     var child_args: std.ArrayList([]const u8) = .empty;
     try child_args.appendSlice(arena, &.{
-        resolved_zig_exe,
-        "build-exe",
-        "-fincremental",
-        "-fno-ubsan-rt",
-        "-target",
-        try target_query.zigTriple(arena),
-        "--cache-dir",
-        ".local-cache",
-        "--global-cache-dir",
-        ".global-cache",
+        resolved_zig_exe,     "build-exe",
+        "-fincremental",      "-fno-ubsan-rt",
+        "-target",            try target_query.zigTriple(arena),
+        "--cache-dir",        ".local-cache",
+        "--global-cache-dir", ".global-cache",
     });
-    try child_args.append(arena, "--listen=-");
 
     if (opt_resolved_lib_dir) |resolved_lib_dir| {
         try child_args.appendSlice(arena, &.{ "--zig-lib-dir", resolved_lib_dir });
@@ -187,6 +181,7 @@ pub fn main(init: std.process.Init) !void {
     for (case.modules) |mod| {
         try child_args.append(arena, try std.fmt.allocPrint(arena, "-M{s}={s}", .{ mod.name, mod.file }));
     }
+    try child_args.append(arena, "--listen=-");
 
     const zig_prog_node = prog_node.start("zig", 0);
     defer zig_prog_node.end();
@@ -199,15 +194,23 @@ pub fn main(init: std.process.Init) !void {
             resolved_zig_exe;
 
         try cc_child_args.appendSlice(arena, &.{
-            resolved_cc_zig_exe,
-            "cc",
-            "-target",
-            try target_query.zigTriple(arena),
-            "-I",
-            opt_resolved_lib_dir.?, // verified earlier
+            resolved_cc_zig_exe,  "build-exe",
+            "-target",            try target_query.zigTriple(arena),
+            "--cache-dir",        ".local-cache",
+            "--global-cache-dir", ".global-cache",
+            "-I",  opt_resolved_lib_dir.?, // verified earlier
+            "-lc",
         });
+    }
 
-        try cc_child_args.append(arena, "-o");
+    const allow_compiler_stderr = debug_log_args.items.len != 0;
+
+    if (allow_compiler_stderr) {
+        const cmd: std.zig.SubprocessCommand = .{
+            .argv = child_args.items,
+            .cwd = tmp_dir_path,
+        };
+        std.log.scoped(.spawn).info("{f}", .{cmd});
     }
 
     var child = try std.process.spawn(io, .{
@@ -233,7 +236,7 @@ pub fn main(init: std.process.Init) !void {
         .tmp_dir = tmp_dir,
         .tmp_dir_path = tmp_dir_path,
         .child = &child,
-        .allow_compiler_stderr = debug_log_args.items.len != 0,
+        .allow_compiler_stderr = allow_compiler_stderr,
         .quiet = quiet,
         .preserve_tmp_on_fatal = preserve_tmp,
         .cc_child_args = &cc_child_args,
@@ -659,8 +662,17 @@ const Eval = struct {
         const child_prog_node = prog_node.start("build cbe output", 0);
         defer child_prog_node.end();
 
-        try eval.cc_child_args.appendSlice(eval.arena, &.{ out_path, c_path });
+        try eval.cc_child_args.append(eval.arena, try std.fmt.allocPrint(eval.arena, "-femit-bin={s}", .{out_path}));
+        try eval.cc_child_args.append(eval.arena, c_path);
         defer eval.cc_child_args.items.len -= 2;
+
+        if (eval.allow_compiler_stderr) {
+            const cmd: std.zig.SubprocessCommand = .{
+                .argv = eval.cc_child_args.items,
+                .cwd = eval.tmp_dir_path,
+            };
+            std.log.scoped(.spawn).info("{f}", .{cmd});
+        }
 
         const result = std.process.run(eval.arena, eval.io, .{
             .argv = eval.cc_child_args.items,

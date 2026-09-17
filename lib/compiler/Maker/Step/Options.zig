@@ -42,7 +42,7 @@ pub fn make(
         const lazy_path = arg.path.get(conf);
         try step.addWatchInput(maker, arena, lazy_path);
         const arg_path = try maker.resolveLazyPath(arena, lazy_path, step_index);
-        // _ = try man.addFilePath(arg_path, null);
+        // _ = try man.addInputPath(arg_path, .{});
         try args_bytes.print(arena, "pub const {f}: []const u8 = \"{f}\";\n", .{
             std.zig.fmtId(name), arg_path.fmtEscapeString(),
         });
@@ -54,7 +54,7 @@ pub fn make(
     const basename = "options.zig";
 
     if (try step.cacheHitWatched(maker, &man, progress_node)) {
-        const digest = man.final();
+        const digest = man.hitDigestHex();
         maker.generatedPath(conf_options.generated_file).* = .{
             .root_dir = cache_root,
             .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest, basename }),
@@ -63,7 +63,7 @@ pub fn make(
         return;
     }
 
-    const digest = man.final();
+    const digest = man.missDigestHex();
     const out_path: Cache.Path = .{
         .root_dir = cache_root,
         .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest, basename }),
@@ -95,7 +95,7 @@ pub fn make(
         },
     };
 
-    try step.writeManifestAndWatch(maker, &man);
+    try step.finalizeManifestAndWatch(maker, &man);
 
     maker.generatedPath(conf_options.generated_file).* = out_path;
 }

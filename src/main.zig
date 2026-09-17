@@ -104,6 +104,7 @@ const normal_usage =
     \\
     \\  env              Print lib path, std path, cache directory, and version
     \\  help             Print this help and exit
+    \\  cache-cat        Print a zig-cache manifest file as zon
     \\  std              View standard library documentation in a browser
     \\  libc             Display native libc paths file or validate one
     \\  targets          List available compilation targets
@@ -239,6 +240,10 @@ const Cmd = enum {
     ar,
 
     build,
+    @"cache-cat",
+    fetch,
+    init,
+    libc,
 
     clang,
     @"-cc1",
@@ -255,10 +260,7 @@ const Cmd = enum {
     fmt,
     objcopy,
     objdump,
-    fetch,
-    libc,
     std,
-    init,
     targets,
     version,
     env,
@@ -360,7 +362,7 @@ pub fn mainArgs(
             dev.check(.ar_command);
             return process.exit(try llvmArMain(arena, args));
         },
-        .build, .fetch, .init, .libc => {
+        .build, .fetch, .init, .libc, .@"cache-cat" => {
             return jitCmd(gpa, arena, io, cmd_args, environ_map, .{
                 .cmd_name = "maker",
                 .root_src_path = "Maker.zig",
@@ -3582,6 +3584,7 @@ pub fn buildOutputType(
     };
 
     const cwd_path = try std.zig.getResolvedCwd(io, arena);
+    std.log.debug("cwd_path={s}", .{cwd_path});
 
     // This `init` calls `fatal` on error.
     cs.dirs = .init(arena, io, .{
@@ -5202,8 +5205,14 @@ fn cmdTranslateC(
     Compilation.cache_helpers.hashCSource(&man, c_source_file) catch |err|
         fatal("unable to process {q}: {t}", .{ c_source_file.src_path, err });
 
-    const result: Compilation.TranslateCResult = if (try man.hit(prog_node)) .{
-        .digest = man.finalBin(),
+    var diag: Cache.Manifest.CheckDiagnostic = undefined;
+    const status = man.check(&diag, prog_node) catch |err| switch (err) {
+        error.OutOfMemory, error.Canceled => |e| return e,
+        error.CacheCheckFailed => fatal("translate-c checking cache failed: {f}", .{diag.fmt(&man)}),
+    };
+    std.log.debug("translate-c cache {f}", .{status.fmt(&man)});
+    const result: Compilation.TranslateCResult = if (status == .hit) .{
+        .digest = man.hitDigest(),
         .cache_hit = true,
         .errors = std.zig.ErrorBundle.empty,
     } else result: {
@@ -5230,7 +5239,7 @@ fn cmdTranslateC(
             }
         }
 
-        man.writeManifest() catch |err| warn("failed to write cache manifest: {t}", .{err});
+        man.finalize() catch |err| warn("failed to write cache manifest: {t}", .{err});
         break :result result;
     };
 

@@ -137,7 +137,7 @@ pub fn make(
     man.hash.addBytes(output);
 
     if (try step.cacheHit(maker, &man, progress_node)) {
-        const digest = man.final();
+        const digest = man.hitDigestHex();
         maker.generatedPath(conf_ch.generated_dir).* = .{
             .root_dir = cache_root,
             .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest }),
@@ -145,7 +145,7 @@ pub fn make(
         return;
     }
 
-    const digest = man.final();
+    const digest = man.missDigestHex();
 
     // If output_path has directory parts, deal with them.  Example:
     // output_dir is zig-cache/o/HASH
@@ -169,7 +169,7 @@ pub fn make(
         .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest }),
     };
 
-    try step.writeManifest(maker, &man);
+    try step.finalizeManifest(maker, &man);
 }
 
 fn ensureAllValuesUsed(

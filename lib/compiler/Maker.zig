@@ -218,13 +218,14 @@ pub fn main(init: process.Init.Minimal) !void {
         .random_seed = parseRandomSeed(seed_arg),
     };
 
-    const cmd = stringToEnum(enum { libc, init, fetch, build }, cmd_name) orelse
+    const cmd = stringToEnum(enum { libc, init, fetch, build, @"cache-cat" }, cmd_name) orelse
         fatal("bad command name: {q}", .{cmd_name});
     switch (cmd) {
         else => fatal("Zigscient's Maker doesn't support: {q}", .{cmd_name}),
         // .libc => return cmdLibC(gpa, &graph, args[arg_i..]),
         // .init => return cmdInit(gpa, &graph, args[arg_i..]),
         // .fetch => return cmdFetch(gpa, &graph, args[arg_i..]),
+        // .@"cache-cat" => return cmdCacheCat(gpa, &graph, args[arg_i..]),
         .build => {},
     }
 
@@ -725,8 +726,8 @@ pub fn main(init: process.Init.Minimal) !void {
     configure: while (true) {
         // Set of files that, if modified, imply that recompiling and rerunning
         // configurer is needed.
-        var configure_source_files: Cache.Manifest.Files = .empty;
-        defer Cache.Manifest.freeFiles(gpa, &configure_source_files);
+        var configure_source_files: Cache.Manifest.SelfContainedFiles = .empty;
+        defer configure_source_files.deinit(gpa);
 
         // If this fails, we can still start the server and wait for user
         // to request a rebuild. If it returns error.FailedButCacheIntact
@@ -1089,7 +1090,7 @@ const ConfigureOptions = struct {
     fetch_only: bool,
     print_configuration: PrintConfiguration,
     forks: []Fork,
-    src_files: *Cache.Manifest.Files,
+    src_files: *Cache.Manifest.SelfContainedFiles,
 };
 
 fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
@@ -1444,8 +1445,14 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
             defer compile_prog_node.end();
 
             if (config_man) |man| {
-                if (try man.hit(compile_prog_node)) {
-                    const digest = man.final();
+                var diagnostic: Cache.Manifest.CheckDiagnostic = undefined;
+                const status = man.check(&diagnostic, compile_prog_node) catch |err| switch (err) {
+                    error.Canceled, error.OutOfMemory => |e| return e,
+                    error.CacheCheckFailed => fatal("checking cache failed: {f}", .{diagnostic.fmt(man)}),
+                };
+                log.debug("configuration cache {f}", .{status.fmt(man)});
+                if (status == .hit) {
+                    const digest = man.hitDigestHex();
                     const path: Path = .{
                         .root_dir = graph.local_cache_root,
                         .sub_path = try arena.print("c/{s}", .{&digest}),
@@ -1544,11 +1551,12 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
         }
 
         if (config_man) |man| for (configuration.path_deps) |path_dep| {
-            switch (path_dep.flags.mode) {
-                .directory => {}, // TODO
-                .contents => try man.addPathPost(try confPathDepToCachePath(arena, graph, &configuration, path_dep)),
-                .metadata => {}, // TODO
-            }
+            const path = try confPathDepToCachePath(arena, graph, &configuration, path_dep);
+            try man.addDiscoveredPath(.{
+                .discovered_path = .{ .unresolved = path },
+                .handle = if (path_dep.flags.is_directory) .{ .dir = null } else .{ .file = null },
+                .metadata_only = path_dep.flags.metadata_only,
+            });
         };
 
         // If it is poisoned, there is no point in moving it to cached
@@ -1557,7 +1565,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
             break :cp .{ config_tmp_path, null };
         } else {
             const man = config_man.?;
-            const digest = man.final();
+            const digest = man.missDigestHex();
             const final_path: Path = .{
                 .root_dir = graph.local_cache_root,
                 .sub_path = try arena.print("c/{s}", .{&digest}),
@@ -1588,7 +1596,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
                     config_tmp_path, final_path, e,
                 });
             };
-            man.writeManifest() catch |err| log.warn("failed to write cache manifest: {t}", .{err});
+            man.finalize() catch |err| log.warn("failed to write cache manifest: {t}", .{err});
             options.src_files.* = man.takeFiles();
             break :cp .{ final_path, man.toOwnedLock() };
         }
@@ -1610,10 +1618,10 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
 
     const configuration = c: {
         var file = configuration_path.root_dir.handle.openFile(io, configuration_path.sub_path, .{}) catch |err|
-            fatal("failed to open configuration file {f}: {t}", .{ configuration_path, err });
+            fatal("failed to open configuration file {qf}: {t}", .{ configuration_path, err });
         defer file.close(io);
         break :c Configuration.loadFile(arena, io, file) catch |err|
-            fatal("failed to load configuration file {f}: {t}", .{ configuration_path, err });
+            fatal("failed to load configuration file {qf}: {t}", .{ configuration_path, err });
     };
     // Technically if the configuration is marked as poisoned, we could
     // already delete the file now, but we leave it around in case the
@@ -1925,6 +1933,101 @@ fn cmdFetch(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
 
     return process.cleanExit(io);
 }
+
+fn cmdCacheCat(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
+    const io = graph.io;
+
+    var arg_i: usize = 0;
+    var contents: std.ArrayList(u8) = .empty;
+    defer contents.deinit(gpa);
+
+    while (nextArg(args, &arg_i)) |arg| {
+        if (mem.startsWith(u8, arg, "-")) {
+            if (mem.eql(u8, arg, "-h") or mem.eql(u8, arg, "--help")) {
+                try Io.File.stdout().writeStreamingAll(io, usage_cache_cat);
+                return process.cleanExit(io);
+            } else {
+                fatal("unrecognized parameter: {q}", .{arg});
+            }
+        } else {
+            var file = Dir.cwd().openFile(io, arg, .{}) catch |err| fatal("opening {q} failed: {t}", .{ arg, err });
+            defer file.close(io);
+
+            var manifest_reader = file.reader(io, &.{}); // Reads positionally from zero.
+            contents.clearRetainingCapacity();
+            manifest_reader.interface.appendRemainingUnlimited(gpa, &contents) catch |err| switch (err) {
+                error.OutOfMemory => |e| return e,
+                error.ReadFailed => switch (manifest_reader.err.?) {
+                    error.Canceled => |e| return e,
+                    else => |e| fatal("reading from {q} failed: {t}", .{ arg, e }),
+                },
+            };
+            const hex_digest = Dir.path.basename(arg);
+            cacheCatOne(hex_digest, contents.items, initStdoutWriter(io)) catch |err| switch (err) {
+                error.WriteFailed => fatal("writing to stdout failed: {t}", .{stdout_writer_allocation.err.?}),
+                else => |e| fatal("parsing {q} failed: {t}", .{ arg, e }),
+            };
+            try stdout_writer_allocation.flush();
+        }
+    }
+}
+
+fn cacheCatOne(input_hex_digest: []const u8, contents: []const u8, writer: *Io.Writer) !void {
+    var bin_digest: Cache.BinDigest = undefined;
+    _ = try fmt.hexToBytes(&bin_digest, input_hex_digest);
+
+    var hh: Cache.HashHelper = .{};
+    hh.hasher.update(&bin_digest);
+
+    var serializer: std.zon.Serializer = .{ .writer = writer };
+    var top_level = try serializer.beginStruct(.{});
+    try top_level.field("input_hash", input_hex_digest, .{});
+    var files_tuple = try top_level.beginTupleField("files", .{});
+    var off: usize = 0;
+    while (off + 1 < contents.len) {
+        const file_off: Cache.Manifest.File.Offset = @fromBackingInt(@intCast(off));
+        const file = try file_off.getFallibleConst(contents);
+        const path = try file_off.pathFallible(contents);
+        if (path.len == 0) return error.InvalidFormat;
+
+        var file_obj = try files_tuple.beginStructField(.{ .whitespace_style = .{ .wrap = false } });
+        try file_obj.field("size", file.size, .{});
+        try file_obj.field("inode", file.inode, .{});
+        try file_obj.field("mtime", file.mtime, .{});
+        const hex_digest = Cache.binToHex(file.digest);
+        try file_obj.field("digest", @as([]const u8, &hex_digest), .{});
+        if (file.flags.is_directory) try file_obj.field("directory", true, .{});
+        if (file.flags.metadata_only) try file_obj.field("metadata", true, .{});
+        try file_obj.field("prefix", file.flags.prefix, .{});
+        try file_obj.field("path", path, .{});
+        try file_obj.end();
+
+        hh.hasher.update(&file.digest);
+
+        off += Cache.Manifest.File.sizeOf(path.len);
+    }
+
+    try files_tuple.end();
+
+    var discovered_bin_digest: Cache.BinDigest = undefined;
+    hh.hasher.final(&discovered_bin_digest);
+    const discovered_hex_digest = Cache.binToHex(discovered_bin_digest);
+    try top_level.field("discovered_hash", @as([]const u8, &discovered_hex_digest), .{});
+
+    try top_level.end();
+    try writer.writeByte('\n');
+}
+
+const usage_cache_cat =
+    \\Usage: zig cache-cat <paths>
+    \\
+    \\   Prints .zig-cache/h/* manifest files in text form.
+    \\
+    \\Options:
+    \\  -h, --help             Print this help and exit
+    \\
+    \\
+;
 
 const usage_fetch =
     \\Usage: zig fetch [options] <url>
@@ -2274,7 +2377,7 @@ fn resolveTopLevelSteps(maker: *Maker, step_names: []const []const u8) ![]const 
 fn prepare(
     maker: *Maker,
     step_indices: []const Configuration.Step.Index,
-    configure_source_files: *const Cache.Manifest.Files,
+    configure_source_files: *const Cache.Manifest.SelfContainedFiles,
 ) !void {
     const gpa = maker.gpa;
     const graph = maker.graph;

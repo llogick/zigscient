@@ -1500,11 +1500,11 @@ pub fn doPrelinkTask(comp: *Compilation, task: PrelinkTask) void {
                 base.loadInput(input) catch |err| switch (err) {
                     error.AlreadyReported => return, // error reported via diags
                     else => |e| switch (input) {
-                        .dso => |dso| diags.addParseError(dso.path, "failed to parse shared library: {s}", .{@errorName(e)}),
-                        .object => |obj| diags.addParseError(obj.path, "failed to parse object: {s}", .{@errorName(e)}),
-                        .archive => |obj| diags.addParseError(obj.path, "failed to parse archive: {s}", .{@errorName(e)}),
-                        .res => |res| diags.addParseError(res.path, "failed to parse Windows resource: {s}", .{@errorName(e)}),
-                        .dso_exact => diags.addError("failed to handle dso_exact: {s}", .{@errorName(e)}),
+                        .dso => |dso| diags.addParseError(dso.path, "failed to parse shared library: {t}", .{e}),
+                        .object => |obj| diags.addParseError(obj.path, "failed to parse object: {t}", .{e}),
+                        .archive => |obj| diags.addParseError(obj.path, "failed to parse archive: {t}", .{e}),
+                        .res => |res| diags.addParseError(res.path, "failed to parse Windows resource: {t}", .{e}),
+                        .dso_exact => diags.addError("failed to handle dso_exact: {t}", .{e}),
                     },
                 };
                 prog_node.completeOne();
@@ -1925,15 +1925,24 @@ pub fn hashInputs(man: *Cache.Manifest, link_inputs: []const Input) !void {
         man.hash.add(@as(@typeInfo(Input).@"union".tag_type.?, link_input));
         switch (link_input) {
             .object, .archive => |obj| {
-                _ = try man.addOpenedFile(obj.path, obj.file, null);
+                _ = try man.addInputPath(obj.path, .{
+                    .handle = .{ .file = obj.file },
+                    .request_handle = true,
+                });
                 man.hash.add(obj.must_link);
                 man.hash.add(obj.hidden);
             },
             .res => |res| {
-                _ = try man.addOpenedFile(res.path, res.file, null);
+                _ = try man.addInputPath(res.path, .{
+                    .handle = .{ .file = res.file },
+                    .request_handle = true,
+                });
             },
             .dso => |dso| {
-                _ = try man.addOpenedFile(dso.path, dso.file, null);
+                _ = try man.addInputPath(dso.path, .{
+                    .handle = .{ .file = dso.file },
+                    .request_handle = true,
+                });
                 man.hash.add(dso.needed);
                 man.hash.add(dso.weak);
                 man.hash.add(dso.reexport);

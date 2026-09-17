@@ -55,7 +55,7 @@ pub fn make(
                 man.hash.addBytes(copy.sub_path.slice(conf));
                 const src_lazy_path = copy.src_file.get(conf);
                 const source_path = try maker.resolveLazyPath(arena, src_lazy_path, step_index);
-                _ = try man.addFilePath(source_path, null);
+                _ = try man.addInputPath(source_path, .{});
                 try step.addWatchInput(maker, arena, src_lazy_path);
             }
 
@@ -96,7 +96,7 @@ pub fn make(
                         },
                         .file => {
                             const entry_path = try src_dir_path.join(arena, entry.path);
-                            _ = try man.addFilePath(entry_path, null);
+                            _ = try man.addInputPath(entry_path, .{});
                             total_items += 1;
                         },
                         else => continue,
@@ -105,7 +105,7 @@ pub fn make(
             }
 
             if (try step.cacheHit(maker, &man, progress_node)) {
-                const digest = man.final();
+                const digest = man.hitDigestHex();
                 maker.generatedPath(conf_wf.generated_directory).* = .{
                     .root_dir = cache_root,
                     .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest }),
@@ -114,7 +114,7 @@ pub fn make(
                 return;
             }
 
-            const digest = man.final();
+            const digest = man.missDigestHex();
             const out_path: Path = .{
                 .root_dir = cache_root,
                 .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest }),
@@ -122,7 +122,7 @@ pub fn make(
 
             progress_node.setEstimatedTotalItems(total_items);
             try operate(maker, step_index, open_dir_cache, out_path, progress_node);
-            try step.writeManifest(maker, &man);
+            try step.finalizeManifest(maker, &man);
 
             maker.generatedPath(conf_wf.generated_directory).* = out_path;
         },

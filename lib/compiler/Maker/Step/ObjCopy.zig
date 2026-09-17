@@ -34,7 +34,7 @@ pub fn make(
     defer man.deinit();
 
     const input_path = try maker.resolveLazyPath(arena, input_lazy_path, step_index);
-    _ = try man.addFilePath(input_path, null);
+    _ = try man.addInputPath(input_path, .{});
     man.hash.addOptionalBytes(only_section);
     man.hash.addOptionalBytes(opt_basename);
     man.hash.addOptionalBytes(opt_debug_basename);
@@ -48,7 +48,7 @@ pub fn make(
 
     if (try step.cacheHit(maker, &man, progress_node)) {
         // Cache hit, skip subprocess execution.
-        const digest = man.final();
+        const digest = man.hitDigestHex();
         maker.generatedPath(conf_oc.output_file).* = .{
             .root_dir = cache_root,
             .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest, basename }),
@@ -67,7 +67,7 @@ pub fn make(
 
     // We don't find out more input files while executing objcopy so we can
     // already obtain the digest and use it directly as the output path.
-    const digest = man.final();
+    const digest = man.missDigestHex();
     const dest_path: Path = .{
         .root_dir = cache_root,
         .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest, basename }),
@@ -165,7 +165,7 @@ pub fn make(
 
     maker.generatedPath(conf_oc.output_file).* = dest_path;
 
-    step.writeManifest(maker, &man) catch |err| switch (err) {
+    step.finalizeManifest(maker, &man) catch |err| switch (err) {
         error.Canceled => |e| return e,
         else => |e| try step.addError(maker, "failed writing cache manifest: {t}", .{e}),
     };

@@ -7,7 +7,7 @@ const elf = std.elf;
 const log = std.log.scoped(.elf);
 const mem = std.mem;
 const Path = std.Build.Cache.Path;
-const Stat = std.Build.Cache.File.Stat;
+const Stat = std.Build.Cache.Manifest.Stat;
 const Allocator = mem.Allocator;
 
 const Elf = @import("../Elf.zig");

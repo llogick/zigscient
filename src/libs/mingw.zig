@@ -246,35 +246,24 @@ pub fn buildImportLib(comp: *Compilation, lib_name: []const u8, prog_node: std.P
     var man = cache.obtain();
     defer man.deinit();
 
-    _ = try man.addFilePath(def_file_path, null);
+    _ = try man.addInputPath(def_file_path, .{});
 
     const final_lib_basename = try std.fmt.allocPrint(gpa, "{s}.lib", .{lib_name});
     errdefer gpa.free(final_lib_basename);
 
-    const is_hit = man.hit(prog_node) catch |err| switch (err) {
-        error.CacheCheckFailed => switch (man.diagnostic) {
-            .none => unreachable,
-            .manifest_create, .manifest_read, .manifest_lock => |e| {
-                comp.setMiscFailure(.windows_import_lib, "checking cache failed: {t} {t}", .{ man.diagnostic, e });
-                return error.AlreadyReported;
-            },
-            .file_open, .file_stat, .file_read, .file_hash => |op| {
-                const pp = man.files.keys()[op.file_index].prefixed_path;
-                const prefix = man.cache.prefixes()[pp.prefix];
-                comp.setMiscFailure(.windows_import_lib, "checking cache failed: {f}{s} {t} {t}", .{
-                    prefix, pp.sub_path, man.diagnostic, op.err,
-                });
-                return error.AlreadyReported;
-            },
-        },
-        error.OutOfMemory, error.Canceled => |e| return e,
-        error.InvalidFormat => {
-            comp.setMiscFailure(.windows_import_lib, "checking cache failed: invalid manifest file format", .{});
+    var diag: Cache.Manifest.CheckDiagnostic = undefined;
+    const status = man.check(&diag, prog_node) catch |err| switch (err) {
+        error.CacheCheckFailed => {
+            comp.lockAndSetMiscFailure(.windows_import_lib, "{s} cache check failed: {f}", .{
+                final_lib_basename, diag.fmt(&man),
+            });
             return error.AlreadyReported;
         },
+        error.OutOfMemory, error.Canceled => |e| return e,
     };
-    if (is_hit) {
-        const digest = man.final();
+    log.debug("{s} cache {f}", .{ final_lib_basename, status.fmt(&man) });
+    if (status == .hit) {
+        const digest = man.hitDigestHex();
         const sub_path = try std.fs.path.join(gpa, &.{ "o", &digest, final_lib_basename });
         errdefer gpa.free(sub_path);
 
@@ -293,7 +282,7 @@ pub fn buildImportLib(comp: *Compilation, lib_name: []const u8, prog_node: std.P
         return crt_file_path;
     }
 
-    const digest = man.final();
+    const digest = man.missDigestHex();
     const o_sub_path = try std.fs.path.join(arena, &[_][]const u8{ "o", &digest });
     var o_dir = try comp.dirs.global_cache.handle.createDirPathOpen(io, o_sub_path, .{});
     defer o_dir.close(io);
@@ -365,9 +354,8 @@ pub fn buildImportLib(comp: *Compilation, lib_name: []const u8, prog_node: std.P
         try file_writer.interface.flush();
     }
 
-    man.writeManifest() catch |err| {
-        log.warn("failed to write cache manifest for DLL import {s}.lib: {s}", .{ lib_name, @errorName(err) });
-    };
+    man.finalize() catch |err|
+        log.warn("failed to write cache manifest for DLL import {s}.lib: {t}", .{ lib_name, err });
 
     comp.mutex.lockUncancelable(io);
     defer comp.mutex.unlock(io);

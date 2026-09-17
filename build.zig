@@ -285,7 +285,8 @@ pub fn build(b: *std.Build) !void {
                 const file_contents = cwd.readFileAlloc(io, config_h_path, arena, .limited(max_config_h_bytes)) catch unreachable;
                 break :blk parseConfigH(b, file_contents);
             } else {
-                std.log.warn("config.h could not be located automatically. Consider providing it explicitly via \"-Dconfig_h\"", .{});
+                std.log.warn("config.h could not be located automatically", .{});
+                std.log.info("config.h can be provided explicitly via \"-Dconfig_h\"", .{});
                 break :blk null;
             }
         };
@@ -1894,13 +1895,13 @@ fn getVersion(b: *std.Build, opt_version_string: ?[]const u8) !std.SemanticVersi
         const io = b.graph.io;
         const git_file = b.root.openFile(io, ".git", .{ .allow_directory = false }) catch |err| switch (err) {
             error.IsDir => {
-                b.dependOnFileContents(b.path(".git/logs/HEAD"));
+                b.dependOnFileMetadata(b.path(".git/logs/HEAD"));
                 break :git;
             },
-            error.FileNotFound => break :git,
             else => |e| return e,
         };
         defer git_file.close(io);
+        b.dependOnFileContents(b.path(".git"));
         var line_buffer: ["gitdir: ".len + std.Io.Dir.max_path_bytes + 1]u8 = undefined;
         var git_file_reader = git_file.reader(io, &line_buffer);
         if (std.mem.cutPrefix(u8, std.mem.trimEnd(u8, try git_file_reader.interface.allocRemaining(
@@ -1908,7 +1909,7 @@ fn getVersion(b: *std.Build, opt_version_string: ?[]const u8) !std.SemanticVersi
             .limited("gitdir: ".len + std.Io.Dir.max_path_bytes + "\r\n".len),
         ), "\r\n"), "gitdir: ")) |git_dir| {
             const head_file = b.pathJoin(&.{ git_dir, "logs", "HEAD" });
-            b.dependOnFileContents(if (std.Io.Dir.path.isAbsolute(head_file))
+            b.dependOnFileMetadata(if (std.Io.Dir.path.isAbsolute(head_file))
                 b.graph.cwdRelativePath(head_file)
             else
                 b.path(head_file));

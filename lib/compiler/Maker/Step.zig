@@ -726,53 +726,48 @@ pub fn handleChildProcessTerm(s: *Step, maker: *Maker, term: std.process.Child.T
 /// Prefer `cacheHitWatched` unless you already added watch inputs
 /// separately from using the cache system.
 pub fn cacheHit(s: *Step, maker: *Maker, man: *Cache.Manifest, parent_progress_node: std.Progress.Node) !bool {
-    s.result_cached = man.hit(parent_progress_node) catch |err| return failWithCacheError(s, maker, man, err);
-    return s.result_cached;
+    var diag: Cache.Manifest.CheckDiagnostic = undefined;
+    const status = man.check(&diag, parent_progress_node) catch |err|
+        return failWithCacheError(s, maker, man, &diag, err);
+    const hit = .hit == status; // TODO cache miss reason in the build summary
+    s.result_cached = hit;
+    return hit;
 }
 
 /// Clears previous watch inputs, if any, and then populates watch inputs from
 /// the full set of files picked up by the cache manifest.
 ///
-/// Must be accompanied with `writeManifestAndWatch`.
+/// Must be accompanied with `finalizeManifestAndWatch`.
 pub fn cacheHitWatched(s: *Step, maker: *Maker, man: *Cache.Manifest, parent_progress_node: std.Progress.Node) !bool {
-    const is_hit = man.hit(parent_progress_node) catch |err| return failWithCacheError(s, maker, man, err);
-    s.result_cached = is_hit;
+    var diag: Cache.Manifest.CheckDiagnostic = undefined;
+    const status = man.check(&diag, parent_progress_node) catch |err|
+        return failWithCacheError(s, maker, man, &diag, err);
+    const hit = .hit == status; // TODO cache miss reason in the build summary
+    s.result_cached = hit;
     // The above call to hit() populates the manifest with files, so in case of
     // a hit, we need to populate watch inputs.
-    if (is_hit) try setWatchInputsFromManifest(s, maker, man);
-    return is_hit;
+    if (hit) try setWatchInputsFromManifest(s, maker, man);
+    return hit;
 }
 
 fn failWithCacheError(
     s: *Step,
     maker: *Maker,
     man: *const Cache.Manifest,
-    err: Cache.Manifest.HitError,
+    diag: *const Cache.Manifest.CheckDiagnostic,
+    err: Cache.Manifest.CheckError,
 ) error{ OutOfMemory, Canceled, MakeFailed } {
     switch (err) {
-        error.CacheCheckFailed => switch (man.diagnostic) {
-            .none => unreachable,
-            .manifest_create, .manifest_read, .manifest_lock => |e| return s.fail(maker, "failed checking cache: {t} {t}", .{
-                man.diagnostic, e,
-            }),
-            .file_open, .file_stat, .file_read, .file_hash => |op| {
-                const pp = man.files.keys()[op.file_index].prefixed_path;
-                const prefix = man.cache.prefixes()[pp.prefix].path orelse "";
-                return s.fail(maker, "failed checking cache: {s}{c}{s} {t} {t}", .{
-                    prefix, Dir.path.sep, pp.sub_path, man.diagnostic, op.err,
-                });
-            },
-        },
+        error.CacheCheckFailed => return s.fail(maker, "checking cache failed: {f}", .{diag.fmt(man)}),
         error.OutOfMemory, error.Canceled => |e| return e,
-        error.InvalidFormat => return s.fail(maker, "failed checking cache: invalid manifest file format", .{}),
     }
 }
 
-/// Prefer `writeManifestAndWatch` unless you already added watch inputs
+/// Prefer `finalizeManifestAndWatch` unless you already added watch inputs
 /// separately from using the cache system.
-pub fn writeManifest(s: *Step, maker: *Maker, man: *Cache.Manifest) !void {
+pub fn finalizeManifest(s: *Step, maker: *Maker, man: *Cache.Manifest) !void {
     if (s.test_results.isSuccess()) {
-        man.writeManifest() catch |err| switch (err) {
+        man.finalize() catch |err| switch (err) {
             error.Canceled => |e| return e,
             else => |e| try s.addError(maker, "failed writing cache manifest: {t}", .{e}),
         };
@@ -783,29 +778,29 @@ pub fn writeManifest(s: *Step, maker: *Maker, man: *Cache.Manifest) !void {
 /// the full set of files picked up by the cache manifest.
 ///
 /// Must be accompanied with `cacheHitWatched`.
-pub fn writeManifestAndWatch(s: *Step, maker: *Maker, man: *Cache.Manifest) !void {
-    try writeManifest(s, maker, man);
+pub fn finalizeManifestAndWatch(s: *Step, maker: *Maker, man: *Cache.Manifest) !void {
+    try finalizeManifest(s, maker, man);
     try setWatchInputsFromManifest(s, maker, man);
 }
 
 pub fn setWatchInputsFromManifest(s: *Step, maker: *Maker, man: *Cache.Manifest) !void {
-    return setWatchInputsFromManifestFiles(s, maker, &man.files, man.cache.prefixes());
+    return setWatchInputsFromManifestFiles(s, maker, &man.borrowFiles(), man.cache.prefixes());
 }
 
 pub fn setWatchInputsFromManifestFiles(
     s: *Step,
     maker: *Maker,
-    files: *const Cache.Manifest.Files,
+    scf: *const Cache.Manifest.SelfContainedFiles,
     prefixes: []const Cache.Directory,
 ) !void {
     const graph = maker.graph;
     const arena = graph.arena; // TODO don't leak into process arena
     clearWatchInputs(s, maker);
-    for (files.keys()) |file| {
+    for (scf.files.keys()) |file_offset| {
         // The file path data is freed when the cache manifest is cleaned up at the end of `make`.
-        const sub_path = try arena.dupe(u8, file.prefixed_path.sub_path);
+        const sub_path = try arena.dupe(u8, scf.path(file_offset));
         try addWatchInputFromPath(s, maker, .{
-            .root_dir = prefixes[file.prefixed_path.prefix],
+            .root_dir = prefixes[file_offset.get(scf.contents.items).flags.prefix],
             .sub_path = Dir.path.dirname(sub_path) orelse "",
         }, Dir.path.basename(sub_path));
     }

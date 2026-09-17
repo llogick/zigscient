@@ -14,5 +14,5 @@ export fn entry() void {
 
 // error
 //
-// :4:24: error: 'y' not accessible from inner function
+// :4:24: error: "y" not accessible from inner function
 // :3:9: note: crossed function definition here

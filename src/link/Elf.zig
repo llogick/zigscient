@@ -1120,7 +1120,7 @@ fn parseDso(
 
     const handle = dso.file;
 
-    const stat = Stat.fromFs(try handle.stat(io));
+    const stat: Stat = .init(try handle.stat(io));
     var header = try SharedObject.parseHeader(gpa, io, diags, dso.path, handle, stat, target);
     defer header.deinit(gpa);
 
@@ -4407,7 +4407,7 @@ const mem = std.mem;
 const Allocator = std.mem.Allocator;
 const Hash = std.hash.Wyhash;
 const Path = std.Build.Cache.Path;
-const Stat = std.Build.Cache.File.Stat;
+const Stat = std.Build.Cache.Manifest.Stat;
 
 const codegen = @import("../codegen.zig");
 const eh_frame = @import("Elf/eh_frame.zig");

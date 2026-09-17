@@ -58,7 +58,8 @@ available_deps: AvailableDeps,
 
 pub const ConfigureDependency = struct {
     lazy_path: LazyPath,
-    mode: std.Build.Configuration.PathDep.Mode,
+    is_directory: bool,
+    metadata_only: bool,
 };
 
 pub const ReleaseMode = enum {
@@ -102,7 +103,8 @@ pub const Graph = struct {
     /// Populated by calling one of:
     /// * `dependOnFileContents`
     /// * `dependOnFileMetadata`
-    /// * `dependOnDirectory`
+    /// * `dependOnDirectoryContents`
+    /// * `dependOnDirectoryMetadata`
     configure_dependencies: ArrayList(ConfigureDependency) = .empty,
 
     /// If the cache is poisoned means that the **configure logic** had side
@@ -2602,7 +2604,8 @@ pub fn dependOnFileContents(b: *Build, lazy_path: LazyPath) void {
     const graph = b.graph;
     graph.configure_dependencies.append(graph.arena, .{
         .lazy_path = lazy_path.dupe(graph),
-        .mode = .contents,
+        .is_directory = false,
+        .metadata_only = false,
     }) catch @panic("OOM");
 }
 
@@ -2627,11 +2630,41 @@ pub fn dependOnFileMetadata(b: *Build, lazy_path: LazyPath) void {
     const graph = b.graph;
     graph.configure_dependencies.append(graph.arena, .{
         .lazy_path = lazy_path.dupe(graph),
-        .mode = .metadata,
+        .is_directory = false,
+        .metadata_only = true,
     }) catch @panic("OOM");
 }
 
 /// Indicates that the build.zig logic depends on a particular directory's entries.
+///
+/// This is an alternative to `Graph.poisonCache` that avoids making every invocation
+/// of `zig build` into a cache miss.
+///
+/// If any file is created, deleted, or renamed in this directory, leaving the
+/// directory in a different state than last configuration with respect to
+/// existence and naming of entries, the configure phase will be repeated.
+///
+/// Only a subset of `LazyPath` are supported:
+/// - Relative to cwd
+/// - Relative to any package root
+/// - Relative to zig cache or zig installation
+///
+/// If the directory would be inside one of the search prefixes, then the dependency
+/// cannot be tracked; `Graph.poisonCache` must be used instead.
+///
+/// Not recursive.
+pub fn dependOnDirectoryContents(b: *Build, lazy_path: LazyPath) void {
+    validateConfigureDependency(lazy_path);
+    const graph = b.graph;
+    graph.configure_dependencies.append(graph.arena, .{
+        .lazy_path = lazy_path.dupe(graph),
+        .is_directory = true,
+        .metadata_only = false,
+    }) catch @panic("OOM");
+}
+
+/// Indicates that the build.zig logic depends on a particular directory's last
+/// modification date.
 ///
 /// This is an alternative to `Graph.poisonCache` that avoids making every invocation
 /// of `zig build` into a cache miss.
@@ -2646,12 +2679,15 @@ pub fn dependOnFileMetadata(b: *Build, lazy_path: LazyPath) void {
 ///
 /// If the directory would be inside one of the search prefixes, then the dependency
 /// cannot be tracked; `Graph.poisonCache` must be used instead.
-pub fn dependOnDirectory(b: *Build, lazy_path: LazyPath) void {
+///
+/// Not recursive.
+pub fn dependOnDirectoryMetadata(b: *Build, lazy_path: LazyPath) void {
     validateConfigureDependency(lazy_path);
     const graph = b.graph;
     graph.configure_dependencies.append(graph.arena, .{
         .lazy_path = lazy_path.dupe(graph),
-        .mode = .directory,
+        .is_directory = true,
+        .metadata_only = true,
     }) catch @panic("OOM");
 }
 

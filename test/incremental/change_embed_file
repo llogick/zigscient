@@ -17,7 +17,7 @@ Hello again, World!
 
 #update=delete file
 #rm_file=string.txt
-#expect_error=main.zig:2:27: error: unable to open 'string.txt': FileNotFound
+#expect_error=main.zig:2:27: error: failed opening "string.txt": FileNotFound
 
 #update=remove reference to file
 #file=main.zig
@@ -37,7 +37,7 @@ pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, string);
 }
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_error=main.zig:2:27: error: unable to open 'string.txt': FileNotFound
+#expect_error=main.zig:2:27: error: failed opening "string.txt": FileNotFound
 
 #update=recreate file
 #file=string.txt

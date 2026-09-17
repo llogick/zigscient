@@ -977,7 +977,7 @@ pub const File = struct {
         success,
     },
     /// Whether this is populated depends on `status`.
-    stat: Cache.File.Stat,
+    stat: Cache.Manifest.Stat,
 
     /// Whether this file is the generated file of a "builtin" module. This matters because those
     /// files are generated and stored in-nemory rather than being read off-disk. The rest of the
@@ -1287,7 +1287,7 @@ pub const EmbedFile = struct {
     val: InternPool.Index,
     /// If this is `null` and `val` is `.none`, the file has never been loaded.
     err: ?(Io.File.OpenError || Io.File.StatError || Io.File.Reader.Error || error{UnexpectedEof}),
-    stat: Cache.File.Stat,
+    stat: Cache.Manifest.Stat,
 
     pub const Index = enum(u32) {
         _,

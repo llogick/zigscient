@@ -776,6 +776,9 @@ pub fn Aligned(comptime T: type, comptime alignment: ?mem.Alignment) type {
         ///
         /// Asserts what the capacity is equal to the length.
         /// Never invalidates element pointers.
+        ///
+        /// See also:
+        /// * `shrinkToLen`
         pub fn toOwnedSliceAssert(self: *Self) Slice {
             assert(self.items.len == self.capacity);
             const items = self.items;

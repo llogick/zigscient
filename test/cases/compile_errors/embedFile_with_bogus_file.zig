@@ -6,4 +6,4 @@ export fn entry() usize {
 
 // error
 //
-// :1:29: error: unable to open 'bogus.txt': FileNotFound
+// :1:29: error: failed opening "bogus.txt": FileNotFound

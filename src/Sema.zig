@@ -12978,7 +12978,7 @@ fn zirEmbedFile(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!A
 
     const result = ef_idx.get(zcu);
     if (result.val == .none) {
-        return sema.fail(block, operand_src, "unable to open '{s}': {s}", .{ name, @errorName(result.err.?) });
+        return sema.fail(block, operand_src, "failed opening {q}: {t}", .{ name, result.err.? });
     }
 
     return Air.internedToRef(result.val);
@@ -15915,9 +15915,7 @@ fn zirClosureGet(sema: *Sema, block: *Block, extended: Zir.Inst.Extended.InstDat
                 const file, const src_base_node = Zcu.LazySrcLoc.resolveBaseNode(block.src_base_inst, zcu).?;
                 const tree = file.getTree(zcu) catch |err| {
                     // In this case we emit a warning + a less precise source location.
-                    log.warn("unable to load {f}: {s}", .{
-                        file.path.fmt(zcu.comp), @errorName(err),
-                    });
+                    log.warn("failed loading {qf}: {t}", .{ file.path.fmt(zcu.comp), err });
                     break :name null;
                 };
                 const node = src_node.toAbsolute(src_base_node);
@@ -15943,9 +15941,7 @@ fn zirClosureGet(sema: *Sema, block: *Block, extended: Zir.Inst.Extended.InstDat
                 const file, const src_base_node = Zcu.LazySrcLoc.resolveBaseNode(block.src_base_inst, zcu).?;
                 const tree = file.getTree(zcu) catch |err| {
                     // In this case we emit a warning + a less precise source location.
-                    log.warn("unable to load {f}: {s}", .{
-                        file.path.fmt(zcu.comp), @errorName(err),
-                    });
+                    log.warn("failed loading {qf}: {t}", .{ file.path.fmt(zcu.comp), err });
                     break :name null;
                 };
                 const node = src_node.toAbsolute(src_base_node);
@@ -15954,7 +15950,7 @@ fn zirClosureGet(sema: *Sema, block: *Block, extended: Zir.Inst.Extended.InstDat
             };
 
             const msg = if (name) |some|
-                try sema.errMsg(src, "'{s}' not accessible from inner function", .{some})
+                try sema.errMsg(src, "{q} not accessible from inner function", .{some})
             else
                 try sema.errMsg(src, "variable not accessible from inner function", .{});
             errdefer msg.destroy(sema.gpa);

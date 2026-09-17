@@ -97,7 +97,7 @@ pub fn make(
                 man.hash.add(arg.flags.make_absolute);
                 man.hash.addBytesZ(prefix);
                 man.hash.addBytesZ(suffix);
-                _ = try man.addFilePath(file_path, null);
+                _ = try man.addInputPath(file_path, .{});
             },
             .path_directory => {
                 const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
@@ -135,7 +135,7 @@ pub fn make(
                 argv_list.appendAssumeCapacity(result.written());
                 man.hash.addBytesZ(prefix);
                 man.hash.addBytesZ(suffix);
-                _ = try man.addFilePath(file_path, null);
+                _ = try man.addInputPath(file_path, .{});
             },
             .artifact => {
                 const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
@@ -155,7 +155,7 @@ pub fn make(
                 man.hash.add(arg.flags.make_absolute);
                 man.hash.addBytesZ(prefix);
                 man.hash.addBytesZ(suffix);
-                _ = try man.addFilePath(file_path, null);
+                _ = try man.addInputPath(file_path, .{});
             },
             .output_file, .output_directory => {
                 const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
@@ -211,7 +211,7 @@ pub fn make(
         },
         .lazy_path => |lazy_path| {
             const file_path = try maker.resolveLazyPathIndex(arena, lazy_path, run_index);
-            _ = try man.addFilePath(file_path, null);
+            _ = try man.addInputPath(file_path, .{});
         },
         .none => {},
     }
@@ -240,7 +240,7 @@ pub fn make(
 
     for (conf_run.file_inputs.slice) |lazy_path| {
         const file_path = try maker.resolveLazyPathIndex(arena, lazy_path, run_index);
-        _ = try man.addFilePath(file_path, null);
+        _ = try man.addInputPath(file_path, .{});
     }
 
     if (conf_run.cwd.value) |lazy_path| {
@@ -261,7 +261,7 @@ pub fn make(
 
     if (!has_side_effects and try step.cacheHitWatched(maker, &man, progress_node)) {
         // Cache hit; skip running command.
-        const digest = man.final();
+        const digest = man.hitDigestHex();
         try populateGeneratedStdIo(maker, &conf_run, cache_root, &digest);
         try populateGeneratedPaths(maker, output_placeholders.items, cache_root, &digest);
         step.result_cached = true;
@@ -270,12 +270,12 @@ pub fn make(
 
     if (!any_dep_files) {
         // We already know the final output paths; use them directly.
-        const digest = if (has_side_effects) man.hash.final() else man.final();
+        const digest = if (has_side_effects) man.hash.final() else man.missDigestHex();
         const output_dir_path = "o" ++ Dir.path.sep_str ++ &digest;
         try populateGeneratedStdIo(maker, &conf_run, cache_root, &digest);
         try populateGeneratedPathsCreateDirs(arena, run_index, maker, output_dir_path, output_placeholders.items, argv_list.items);
         try runCommand(arena, run, run_index, maker, progress_node, argv_list.items, has_side_effects, output_dir_path, null);
-        if (!has_side_effects) try step.writeManifestAndWatch(maker, &man);
+        if (!has_side_effects) try step.finalizeManifestAndWatch(maker, &man);
         return;
     }
 
@@ -292,23 +292,39 @@ pub fn make(
         switch (arg.flags.tag) {
             .output_file => if (arg.flags.dep_file) {
                 const generated_path = maker.generatedPath(arg.generated.value.?).*;
-                const result = if (has_side_effects)
-                    man.addDepFile(generated_path.root_dir.handle, generated_path.sub_path)
-                else
-                    man.addDepFilePost(generated_path.root_dir.handle, generated_path.sub_path);
-                result catch |err| switch (err) {
-                    error.OutOfMemory, error.Canceled => |e| return e,
-                    else => |e| return step.fail(maker, "failed adding to cache the file {f}: {t}", .{
-                        generated_path, e,
-                    }),
-                };
+                if (has_side_effects) {
+                    var diagnostic: Cache.DepTokenizer.Token = undefined;
+                    man.addInputDepFile(generated_path, &diagnostic) catch |err| switch (err) {
+                        error.OutOfMemory, error.Canceled => |e| return e,
+                        error.InvalidDepFile => return step.fail(maker, "failed adding dep file {f} to cache: {f}", .{
+                            generated_path, diagnostic,
+                        }),
+                        else => |e| return step.fail(maker, "failed adding dep file {f} to cache: {t}", .{
+                            generated_path, e,
+                        }),
+                    };
+                } else {
+                    var diagnostic: Cache.Manifest.AddDiscoveredDepFileDiagnostic = undefined;
+                    man.addDiscoveredDepFile(generated_path, &diagnostic) catch |err| switch (err) {
+                        error.OutOfMemory, error.Canceled => |e| return e,
+                        error.InvalidDepFile => return step.fail(maker, "failed adding dep file {f} to cache: {f}", .{
+                            generated_path, diagnostic.dep_tokenizer,
+                        }),
+                        error.FileSystemFailure => return step.fail(maker, "failed adding a path from dep file {f} to cache: {f}", .{
+                            generated_path, diagnostic.add_discovered_path,
+                        }),
+                        else => |e| return step.fail(maker, "failed adding dep file {f} to cache: {t}", .{
+                            generated_path, e,
+                        }),
+                    };
+                }
             },
             .output_directory => continue,
             else => unreachable,
         }
     }
 
-    const digest = if (has_side_effects) man.hash.final() else man.final();
+    const digest = if (has_side_effects) man.hash.final() else man.missDigestHex();
 
     const any_output = output_placeholders.items.len > 0 or
         conf_run.captured_stdout.value != null or conf_run.captured_stderr.value != null;
@@ -344,7 +360,7 @@ pub fn make(
         };
     }
 
-    if (!has_side_effects) try step.writeManifestAndWatch(maker, &man);
+    if (!has_side_effects) try step.finalizeManifestAndWatch(maker, &man);
 
     try populateGeneratedStdIo(maker, &conf_run, cache_root, &digest);
     try populateGeneratedPaths(maker, output_placeholders.items, cache_root, &digest);

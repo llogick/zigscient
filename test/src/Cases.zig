@@ -319,7 +319,7 @@ pub fn addCompile(
 pub fn addFromDir(ctx: *Cases, dir: Io.Dir, path_from_root: []const u8, b: *std.Build) void {
     var current_file: []const u8 = "none";
     ctx.addFromDirInner(dir, path_from_root, &current_file, b) catch |err| {
-        std.debug.panicExtra(@returnAddress(), "test harness failed to process file {q}: {t}\n", .{
+        std.debug.panicExtra(@returnAddress(), "test harness failed to process file {q}: {t}", .{
             current_file, err,
         });
     };
@@ -348,7 +348,7 @@ fn addFromDirInner(
                 try filenames.append(ctx.arena, try ctx.arena.dupe(u8, entry.path));
             },
             .directory => {
-                b.dependOnDirectory(b.path(b.pathJoin(&.{ path_from_root, entry.path })));
+                b.dependOnDirectoryContents(b.path(b.pathJoin(&.{ path_from_root, entry.path })));
             },
             else => continue,
         }

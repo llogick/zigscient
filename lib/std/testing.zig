@@ -592,6 +592,9 @@ pub const TmpDir = struct {
     const random_bytes_count = 12;
     const sub_path_len = std.base64.url_safe.Encoder.calcSize(random_bytes_count);
 
+    /// Deprecated.
+    pub const parent_dir_path: []const u8 = ".zig-cache" ++ std.fs.path.sep_str ++ "tmp";
+
     pub fn cleanup(self: *TmpDir) void {
         self.dir.close(io);
         self.parent_dir.deleteTree(io, &self.sub_path) catch {};

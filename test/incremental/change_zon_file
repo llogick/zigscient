@@ -17,7 +17,7 @@ const io = std.Io.Threaded.global_single_threaded.io();
 
 #update=delete file
 #rm_file=message.zon
-#expect_error=message.zon:1:1: error: unable to load 'message.zon': FileNotFound
+#expect_error=message.zon:1:1: error: unable to load "message.zon": FileNotFound
 #expect_error=main.zig:2:37: note: file imported here
 
 #update=remove reference to ZON file
@@ -28,7 +28,7 @@ pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, "a hardcoded string\n");
 }
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_error=message.zon:1:1: error: unable to load 'message.zon': FileNotFound
+#expect_error=message.zon:1:1: error: unable to load "message.zon": FileNotFound
 #expect_error=main.zig:2:37: note: file imported here
 
 #update=recreate ZON file
