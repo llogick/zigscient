@@ -374,16 +374,14 @@ pub fn resolveTargetQuery(io: Io, query: Target.Query) DetectError!Target {
     }
 
     var cpu = switch (query.cpu_model) {
-        .native => detectNativeCpuAndFeatures(io, query_cpu_arch, os, query),
-        .baseline => Target.Cpu.baseline(query_cpu_arch, os),
+        .native => detectNativeCpuAndFeatures(io, query_cpu_arch),
+        .baseline => null,
         .determined_by_arch_os => if (query.cpu_arch == null)
-            detectNativeCpuAndFeatures(io, query_cpu_arch, os, query)
+            detectNativeCpuAndFeatures(io, query_cpu_arch)
         else
-            Target.Cpu.baseline(query_cpu_arch, os),
+            null,
         .explicit => |model| model.toCpu(query_cpu_arch),
-    } orelse backup_cpu_detection: {
-        break :backup_cpu_detection Target.Cpu.baseline(query_cpu_arch, os);
-    };
+    } orelse Target.Cpu.baseline(query_cpu_arch, os);
 
     // For x86, we need to populate some CPU feature flags depending on architecture
     // and mode:
@@ -421,6 +419,7 @@ pub fn resolveTargetQuery(io: Io, query: Target.Query) DetectError!Target {
     var result = detectAbiAndDynamicLinker(io, cpu, os, query) catch |err| switch (err) {
         error.Canceled => |e| return e,
         error.Unexpected => |e| return e,
+        error.ApiLevelQueryFailed => |e| return e,
         error.WouldBlock => return error.Unexpected,
         error.ConnectionResetByPeer => return error.Unexpected,
         error.NotOpenForReading => return error.Unexpected,
@@ -499,27 +498,6 @@ pub fn resolveTargetQuery(io: Io, query: Target.Query) DetectError!Target {
         }
     }
 
-    if (builtin.os.tag == .linux and result.isBionicLibC() and query.os_tag == null and query.android_api_level == null) {
-        result.os.version_range.linux.android = detectAndroidApiLevel(io) catch |err| return switch (err) {
-            error.InvalidWtf8,
-            error.InvalidBatchScriptArg,
-            => unreachable, // Windows-only
-            error.ApiLevelQueryFailed => |e| e,
-            else => blk: {
-                std.log.err("spawning or reading from getprop failed ({s})", .{@errorName(err)});
-                switch (err) {
-                    error.SystemResources,
-                    error.FileSystem,
-                    error.ProcessFdQuotaExceeded,
-                    error.SystemFdQuotaExceeded,
-                    error.SymLinkLoop,
-                    => |e| break :blk e,
-                    else => break :blk error.ApiLevelQueryFailed,
-                }
-            },
-        };
-    }
-
     return result;
 }
 
@@ -535,13 +513,12 @@ fn updateCpuFeatures(
     set.removeFeatureSet(sub_set);
 }
 
-fn detectNativeCpuAndFeatures(io: Io, cpu_arch: Target.Cpu.Arch, os: Target.Os, query: Target.Query) ?Target.Cpu {
-    // Here we switch on a comptime value rather than `cpu_arch`. This is valid because `cpu_arch`,
-    // although it is a runtime value, is guaranteed to be one of the architectures in the set
-    // of the respective switch prong.
-    switch (builtin.cpu.arch) {
-        .loongarch32, .loongarch64 => return @import("system/loongarch.zig").detectNativeCpuAndFeatures(cpu_arch, os, query),
-        .x86_64, .x86 => return @import("system/x86.zig").detectNativeCpuAndFeatures(cpu_arch, os, query),
+fn detectNativeCpuAndFeatures(io: Io, cpu_arch: Target.Cpu.Arch) ?Target.Cpu {
+    const family = builtin.target.cpu.arch.family();
+    assert(cpu_arch.family() == family);
+    switch (family) {
+        .loongarch => return @import("system/loongarch.zig").detectNativeCpuAndFeatures(cpu_arch),
+        .x86 => return @import("system/x86.zig").detectNativeCpuAndFeatures(cpu_arch),
         else => {},
     }
 
@@ -594,11 +571,13 @@ fn abiAndDynamicLinkerFromFile(
     ld_info_list: []const LdInfo,
     query: Target.Query,
 ) AbiAndDynamicLinkerFromFileError!Target {
+    assert(query.abi == null); // See the early exit in `detectAbiAndDynamicLinker`.
+
     const io = file_reader.io;
     var result: Target = .{
         .cpu = cpu,
         .os = os,
-        .abi = query.abi orelse Target.Abi.default(cpu.arch, os.tag),
+        .abi = Target.Abi.default(cpu.arch, os.tag),
         .ofmt = query.ofmt orelse Target.ObjectFormat.default(os.tag, cpu.arch),
         .dynamic_linker = query.dynamic_linker orelse .none,
     };
@@ -612,26 +591,25 @@ fn abiAndDynamicLinkerFromFile(
             .INTERP => {
                 got_dyn_section = true;
 
-                if (look_for_ld) {
-                    const p_filesz = phdr.filesz;
-                    if (p_filesz > result.dynamic_linker.buffer.len) return error.NameTooLong;
-                    const filesz: usize = @intCast(p_filesz);
-                    try file_reader.seekTo(phdr.offset);
-                    try file_reader.interface.readSliceAll(result.dynamic_linker.buffer[0..filesz]);
-                    // PT.INTERP includes a null byte in filesz.
-                    const len = filesz - 1;
-                    // dynamic_linker.max_byte is "max", not "len".
-                    // We know it will fit in u8 because we check against dynamic_linker.buffer.len above.
-                    result.dynamic_linker.len = @intCast(len);
+                var interp: Target.DynamicLinker = .none;
+                const p_filesz = phdr.filesz;
+                if (p_filesz < 2) return error.InvalidElfFile;
+                if (p_filesz > interp.buffer.len) return error.NameTooLong;
+                const filesz: usize = @intCast(p_filesz);
+                try file_reader.seekTo(phdr.offset);
+                try file_reader.interface.readSliceAll(interp.buffer[0..filesz]);
+                // PT.INTERP includes a null byte in filesz.
+                const len = filesz - 1;
+                // dynamic_linker.max_byte is "max", not "len".
+                // We know it will fit in u8 because we check against dynamic_linker.buffer.len above.
+                interp.len = @intCast(len);
 
-                    // Use it to determine ABI.
-                    const full_ld_path = result.dynamic_linker.buffer[0..len];
-                    for (ld_info_list) |ld_info| {
-                        const standard_ld_basename = fs.path.basename(ld_info.ld.get().?);
-                        if (std.mem.endsWith(u8, full_ld_path, standard_ld_basename)) {
-                            result.abi = ld_info.abi;
-                            break;
-                        }
+                // Use it to determine ABI.
+                for (ld_info_list) |ld_info| {
+                    if (std.mem.endsWith(u8, interp.get().?, fs.path.basename(ld_info.ld.get().?))) {
+                        result.abi = ld_info.abi;
+                        if (look_for_ld) result.dynamic_linker = interp;
+                        break;
                     }
                 }
             },
@@ -651,6 +629,10 @@ fn abiAndDynamicLinkerFromFile(
             },
             else => continue,
         };
+    }
+
+    if (look_for_ld and result.dynamic_linker.get() == null) {
+        result.dynamic_linker = .standard(cpu, os.tag, result.abi);
     }
 
     if (!got_dyn_section) {
@@ -954,17 +936,14 @@ fn glibcVerFromSoFile(file_reader: *Io.File.Reader) !std.SemanticVersion {
 /// file recursively. If that does not provide the answer, then the function falls back to
 /// defaults.
 fn detectAbiAndDynamicLinker(io: Io, cpu: Target.Cpu, os: Target.Os, query: Target.Query) !Target {
-    const native_target_has_ld = comptime Target.DynamicLinker.kind(builtin.os.tag) != .none;
-    const is_linux = builtin.target.os.tag == .linux;
-    const is_illumos = builtin.target.os.tag == .illumos;
-    const is_darwin = builtin.target.os.tag.isDarwin();
-    const have_all_info = query.dynamic_linker != null and
-        query.abi != null and (!is_linux or query.abi.?.isGnu());
-    const os_is_non_native = query.os_tag != null;
-    // The illumos environment is always the same.
-    if (!native_target_has_ld or have_all_info or os_is_non_native or is_illumos or is_darwin) {
+    const native_os_uses_elf = comptime Target.ObjectFormat.default(builtin.target.os.tag, builtin.target.cpu.arch) == .elf;
+    const native_ld_needs_abi = comptime Target.DynamicLinker.kind(builtin.target.os.tag) == .arch_os_abi;
+    if (!native_os_uses_elf or !native_ld_needs_abi or query.os_tag != null or query.abi != null) {
         return defaultAbiAndDynamicLinker(cpu, os, query);
     }
+
+    assert(os.tag == builtin.target.os.tag);
+
     // The current target's ABI cannot be relied on for this. For example, we may build the zig
     // compiler for target riscv64-linux-musl and provide a tarball for users to download.
     // A user could then run that zig compiler on riscv64-linux-gnu. This use case is well-defined
@@ -982,30 +961,17 @@ fn detectAbiAndDynamicLinker(io: Io, cpu: Target.Cpu, os: Target.Os, query: Targ
     var ld_info_list_buffer: [all_abis.len]LdInfo = undefined;
     var ld_info_list_len: usize = 0;
 
-    switch (Target.DynamicLinker.kind(os.tag)) {
-        // The OS has no dynamic linker. Leave the list empty and rely on `Abi.default()` to pick
-        // something sensible in `abiAndDynamicLinkerFromFile()`.
-        .none => {},
-        // The OS has a system-wide dynamic linker. Unfortunately, this implies that there's no
-        // useful ABI information that we can glean from it merely being present. That means the
-        // best we can do for this case (for now) is also `Abi.default()`.
-        .arch_os => {},
-        // The OS can have different dynamic linker paths depending on libc/ABI. In this case, we
-        // need to gather all the valid arch/OS/ABI combinations. `abiAndDynamicLinkerFromFile()`
-        // will then look for a dynamic linker with a matching path on the system and pick the ABI
-        // we associated it with here.
-        .arch_os_abi => for (all_abis) |abi| {
-            const ld = Target.DynamicLinker.standard(cpu, os, abi);
+    for (all_abis) |abi| {
+        const ld: Target.DynamicLinker = .standard(cpu, os.tag, abi);
 
-            // Does the generated target triple actually have a standard dynamic linker path?
-            if (ld.get() == null) continue;
+        // Does the generated target triple actually have a standard dynamic linker path?
+        if (ld.get() == null) continue;
 
-            ld_info_list_buffer[ld_info_list_len] = .{
-                .ld = ld,
-                .abi = abi,
-            };
-            ld_info_list_len += 1;
-        },
+        ld_info_list_buffer[ld_info_list_len] = .{
+            .ld = ld,
+            .abi = abi,
+        };
+        ld_info_list_len += 1;
     }
 
     const ld_info_list = ld_info_list_buffer[0..ld_info_list_len];
@@ -1034,13 +1000,9 @@ fn detectAbiAndDynamicLinker(io: Io, cpu: Target.Cpu, os: Target.Os, query: Targ
         // it uses the file it references instead, doing the same logic
         // recursively in case it finds another shebang line.
 
-        var file_name: []const u8 = switch (os.tag) {
-            // Since /usr/bin/env is hard-coded into the shebang line of many
-            // portable scripts, it's a reasonably reliable path to start with.
-            else => "/usr/bin/env",
-            // Haiku does not have a /usr root directory.
-            .haiku => "/bin/env",
-        };
+        // Since /usr/bin/env is hard-coded into the shebang line of many
+        // portable scripts, it's a reasonably reliable path to start with.
+        var file_name: []const u8 = "/usr/bin/env";
 
         while (true) {
             const file = Io.Dir.openFileAbsolute(io, file_name, .{}) catch |err| switch (err) {
@@ -1062,7 +1024,7 @@ fn detectAbiAndDynamicLinker(io: Io, cpu: Target.Cpu, os: Target.Os, query: Targ
                 error.NetworkNotFound,
                 error.FileTooBig,
                 error.Unexpected,
-                => |e| if (e == error.FileNotFound and os.tag == .linux and mem.eql(u8, file_name, "/usr/bin/env")) {
+                => |e| if (builtin.target.os.tag == .linux and e == error.FileNotFound and mem.eql(u8, file_name, "/usr/bin/env")) {
                     // Android does not have a /usr directory, so try again
                     file_name = "/system/bin/env";
                     continue;
@@ -1116,7 +1078,7 @@ fn detectAbiAndDynamicLinker(io: Io, cpu: Target.Cpu, os: Target.Os, query: Targ
     };
     defer file_reader.file.close(io);
 
-    return abiAndDynamicLinkerFromFile(&file_reader, &header, cpu, os, ld_info_list, query) catch |err| switch (err) {
+    var result = abiAndDynamicLinkerFromFile(&file_reader, &header, cpu, os, ld_info_list, query) catch |err| switch (err) {
         error.FileSystem,
         error.SystemResources,
         error.SymLinkLoop,
@@ -1132,6 +1094,29 @@ fn detectAbiAndDynamicLinker(io: Io, cpu: Target.Cpu, os: Target.Os, query: Targ
             return defaultAbiAndDynamicLinker(cpu, os, query);
         },
     };
+
+    if (builtin.target.os.tag == .linux and result.isBionicLibC() and query.android_api_level == null) {
+        result.os.version_range.linux.android = detectAndroidApiLevel(io) catch |err| return switch (err) {
+            error.InvalidWtf8,
+            error.InvalidBatchScriptArg,
+            => unreachable, // Windows-only
+            error.ApiLevelQueryFailed => |e| e,
+            else => blk: {
+                std.log.err("spawning or reading from getprop failed ({s})", .{@errorName(err)});
+                switch (err) {
+                    error.SystemResources,
+                    error.FileSystem,
+                    error.ProcessFdQuotaExceeded,
+                    error.SystemFdQuotaExceeded,
+                    error.SymLinkLoop,
+                    => |e| break :blk e,
+                    else => break :blk error.ApiLevelQueryFailed,
+                }
+            },
+        };
+    }
+
+    return result;
 }
 
 fn defaultAbiAndDynamicLinker(cpu: Target.Cpu, os: Target.Os, query: Target.Query) Target {
@@ -1141,7 +1126,7 @@ fn defaultAbiAndDynamicLinker(cpu: Target.Cpu, os: Target.Os, query: Target.Quer
         .os = os,
         .abi = abi,
         .ofmt = query.ofmt orelse Target.ObjectFormat.default(os.tag, cpu.arch),
-        .dynamic_linker = query.dynamic_linker orelse .standard(cpu, os, abi),
+        .dynamic_linker = query.dynamic_linker orelse .standard(cpu, os.tag, abi),
     };
 }
 
@@ -1169,13 +1154,6 @@ fn detectAndroidApiLevel(io: Io) !u32 {
     var stdout_buf: [92 + 1]u8 = undefined;
     var reader = child.stdout.?.readerStreaming(io, &.{});
     const n = try reader.interface.readSliceShort(&stdout_buf);
-    const api_level = std.fmt.parseInt(u32, stdout_buf[0 .. n - 1], 10) catch |e| {
-        std.log.err(
-            "Could not parse API level, unexpected getprop output '{s}' ({s})",
-            .{ stdout_buf[0 .. n - 1], @errorName(e) },
-        );
-        return error.ApiLevelQueryFailed;
-    };
 
     switch (try child.wait(io)) {
         .exited => |code| if (code != 0) {
@@ -1196,7 +1174,14 @@ fn detectAndroidApiLevel(io: Io) !u32 {
         },
     }
 
-    return api_level;
+    const result = mem.trimEnd(u8, stdout_buf[0..n], "\n");
+    return std.fmt.parseInt(u32, result, 10) catch |e| {
+        std.log.err(
+            "Could not parse API level, unexpected getprop output '{s}' ({s})",
+            .{ result, @errorName(e) },
+        );
+        return error.ApiLevelQueryFailed;
+    };
 }
 
 test {

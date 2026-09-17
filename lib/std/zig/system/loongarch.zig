@@ -18,14 +18,7 @@ fn setFeature(cpu: *std.Target.Cpu, feature: std.Target.loongarch.Feature, enabl
     if (enabled) cpu.features.addFeature(idx) else cpu.features.removeFeature(idx);
 }
 
-pub fn detectNativeCpuAndFeatures(
-    arch: std.Target.Cpu.Arch,
-    os: std.Target.Os,
-    query: std.Target.Query,
-) ?std.Target.Cpu {
-    _ = os;
-    _ = query;
-
+pub fn detectNativeCpuAndFeatures(arch: std.Target.Cpu.Arch) ?std.Target.Cpu {
     const variant: Variant = @fromBackingInt(@intCast(cpucfg(1) & 0b11));
 
     var cpu: std.Target.Cpu = .{

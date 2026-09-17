@@ -26,32 +26,36 @@ cpu_features_sub: Target.Cpu.Feature.Set = .empty,
 /// `null` means native.
 os_tag: ?Target.Os.Tag = null,
 
-/// `null` means the default version range for `os_tag`. If `os_tag` is `null` (native)
-/// then `null` for this field means native.
+/// `null` means native when `os_tag` is native; otherwise, the default minimum version for
+/// `cpu_arch`, `os_tag`, and `abi`.
 os_version_min: ?OsVersion = null,
 
-/// When cross compiling, `null` means default (latest known OS version).
-/// When `os_tag` is native, `null` means equal to the native OS version.
+/// `null` means native when `os_tag` is native; otherwise, the latest known OS version.
 os_version_max: ?OsVersion = null,
 
-/// `null` means default when cross compiling, or native when `os_tag` is native.
-/// If `isGnu()` is `false`, this must be `null` and is ignored.
+/// `null` means native when `abi` is native; otherwise, the default minimum version for `cpu_arch`,
+/// `os_tag`, and `abi`.
+///
+/// Must be `null` when `abi` is `null` or `isGnu()` is `false`.
 glibc_version: ?SemanticVersion = null,
 
-/// `null` means default when cross compiling, or native when `os_tag` is native.
-/// If `isAndroid()` is `false`, this must be `null` and is ignored.
+/// `null` means native when `abi` is native; otherwise, the default minimum version for `cpu_arch`
+/// and `abi`.
+///
+/// Must be `null` when `abi` is `null` or `isAndroid()` is `false`.
 android_api_level: ?u32 = null,
 
-/// `null` means the native C ABI, if `os_tag` is native, otherwise it means the default C ABI.
+/// `null` means native if `os_tag` is native; otherwise, best-effort default for `cpu_arch` and
+/// `os_tag`.
 abi: ?Target.Abi = null,
 
-/// When `os_tag` is `null`, then `null` means native. Otherwise it means the standard path
-/// based on the `os_tag`.  When `dynamic_linker` is a non-`null` empty string, no dynamic
-/// linker is used regardless of `os_tag`.
-dynamic_linker: ?Target.DynamicLinker = null,
-
-/// `null` means default for the cpu/arch/os combo.
+/// `null` means default for the `cpu_arch` and `os_tag` combination.
 ofmt: ?Target.ObjectFormat = null,
+
+/// `null` means native when `abi` is native; otherwise, the standard path based on `cpu_arch`,
+/// `os_tag`, and `abi`. A non-`null` empty string means no dynamic linker is used regardless of the
+/// values of other fields.
+dynamic_linker: ?Target.DynamicLinker = null,
 
 pub const CpuModel = union(enum) {
     /// Always native
@@ -175,11 +179,11 @@ pub const ParseOptions = struct {
     /// parsed CPU Architecture. If native, then this will be "native". Otherwise, it will be "baseline".
     cpu_features: ?[]const u8 = null,
 
+    object_format: ?[]const u8 = null,
+
     /// Absolute path to dynamic linker, to override the default, which is either a natively
     /// detected path, or a standard path.
     dynamic_linker: ?[]const u8 = null,
-
-    object_format: ?[]const u8 = null,
 
     /// If this is provided, the function will populate some information about parsing failures,
     /// so that user-friendly error messages can be delivered.
@@ -381,12 +385,16 @@ pub fn isNativeCpu(self: Query) bool {
 }
 
 pub fn isNativeOs(self: Query) bool {
-    return self.os_tag == null and self.os_version_min == null and self.os_version_max == null and
-        self.dynamic_linker == null and self.glibc_version == null and self.android_api_level == null;
+    return self.os_tag == null and
+        self.os_version_min == null and
+        self.os_version_max == null;
 }
 
 pub fn isNativeAbi(self: Query) bool {
-    return self.os_tag == null and self.abi == null;
+    return self.os_tag == null and
+        self.abi == null and
+        self.glibc_version == null and
+        self.android_api_level == null;
 }
 
 pub fn isNativeTriple(self: Query) bool {
@@ -394,11 +402,13 @@ pub fn isNativeTriple(self: Query) bool {
 }
 
 pub fn isNative(self: Query) bool {
-    return self.isNativeTriple() and self.ofmt == null;
+    return self.isNativeTriple() and
+        self.ofmt == null and
+        self.dynamic_linker == null;
 }
 
 pub fn canDetectLibC(self: Query) bool {
-    if (self.isNativeOs()) return true;
+    if (self.isNativeOs() and self.isNativeAbi()) return true;
     if (self.os_tag) |os| {
         if (builtin.os.tag == .macos and os.isDarwin()) return true;
         if (os == .linux) {
@@ -459,14 +469,14 @@ pub fn zigTriple(self: Query, gpa: Allocator) Allocator.Error![]u8 {
     }
 
     if (self.glibc_version) |v| {
-        const name = if (self.abi) |abi| @tagName(abi) else "gnu";
+        const name = @tagName(self.abi.?);
         try result.ensureUnusedCapacity(gpa, name.len + 2);
         result.appendAssumeCapacity('-');
         result.appendSliceAssumeCapacity(name);
         result.appendAssumeCapacity('.');
         try formatVersion(v, gpa, &result);
     } else if (self.android_api_level) |lvl| {
-        const name = if (self.abi) |abi| @tagName(abi) else "android";
+        const name = @tagName(self.abi.?);
         try result.ensureUnusedCapacity(gpa, name.len + 2);
         result.appendAssumeCapacity('-');
         result.appendSliceAssumeCapacity(name);
@@ -538,6 +548,7 @@ pub fn allocDescription(self: Query, allocator: Allocator) ![]u8 {
     return self.zigTriple(allocator);
 }
 
+/// Deprecated; set `glibc_version` directly. Will be removed in 0.18.0.
 pub fn setGnuLibCVersion(self: *Query, major: u32, minor: u32, patch: u32) void {
     self.glibc_version = SemanticVersion{ .major = major, .minor = minor, .patch = patch };
 }
@@ -599,8 +610,8 @@ pub fn eql(a: Query, b: Query) bool {
     if (!versionEqualOpt(a.glibc_version, b.glibc_version)) return false;
     if (a.android_api_level != b.android_api_level) return false;
     if (a.abi != b.abi) return false;
-    if (!dynamicLinkerEqualOpt(a.dynamic_linker, b.dynamic_linker)) return false;
     if (a.ofmt != b.ofmt) return false;
+    if (!dynamicLinkerEqualOpt(a.dynamic_linker, b.dynamic_linker)) return false;
 
     return true;
 }
@@ -620,24 +631,6 @@ fn dynamicLinkerEqualOpt(a: ?Target.DynamicLinker, b: ?Target.DynamicLinker) boo
 test parse {
     const io = std.testing.io;
 
-    if (builtin.target.isGnuLibC()) {
-        var query = try Query.parse(.{});
-        query.setGnuLibCVersion(2, 1, 1);
-
-        const text = try query.zigTriple(std.testing.allocator);
-        defer std.testing.allocator.free(text);
-
-        try std.testing.expectEqualSlices(u8, "native-native-gnu.2.1.1", text);
-    }
-    if (builtin.target.abi.isAndroid()) {
-        var query = try Query.parse(.{});
-        query.android_api_level = 30;
-
-        const text = try query.zigTriple(std.testing.allocator);
-        defer std.testing.allocator.free(text);
-
-        try std.testing.expectEqualSlices(u8, "native-native-android.30", text);
-    }
     {
         const query = try Query.parse(.{
             .arch_os_abi = "aarch64-linux",

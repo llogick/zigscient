@@ -41,8 +41,7 @@ inline fn hasMask(input: u32, mask: u32) bool {
     return (input & mask) == mask;
 }
 
-pub fn detectNativeCpuAndFeatures(arch: Target.Cpu.Arch, os: Target.Os, query: Target.Query) Target.Cpu {
-    _ = query;
+pub fn detectNativeCpuAndFeatures(arch: Target.Cpu.Arch) Target.Cpu {
     var cpu = Target.Cpu{
         .arch = arch,
         .model = Target.Cpu.Model.generic(arch),
@@ -50,7 +49,7 @@ pub fn detectNativeCpuAndFeatures(arch: Target.Cpu.Arch, os: Target.Os, query: T
     };
 
     // First we detect features, to use as hints when detecting CPU Model.
-    detectNativeFeatures(&cpu, os.tag);
+    detectNativeFeatures(&cpu);
 
     var leaf = cpuid(0, 0);
     const max_leaf = leaf.eax;
@@ -90,7 +89,7 @@ pub fn detectNativeCpuAndFeatures(arch: Target.Cpu.Arch, os: Target.Os, query: T
     // Add the CPU model's feature set into the working set, but then
     // override with actual detected features again.
     cpu.features.addFeatureSet(cpu.model.features);
-    detectNativeFeatures(&cpu, os.tag);
+    detectNativeFeatures(&cpu);
 
     cpu.features.populateDependencies(cpu.arch.allFeaturesList());
 
@@ -215,7 +214,7 @@ fn detectAmdProcessor(cpu: *const Target.Cpu, family: u32, model: u32) ?*const T
     };
 }
 
-fn detectNativeFeatures(cpu: *Target.Cpu, os_tag: Target.Os.Tag) void {
+fn detectNativeFeatures(cpu: *Target.Cpu) void {
     var leaf = cpuid(0, 0);
 
     const max_level = leaf.eax;
@@ -268,7 +267,7 @@ fn detectNativeFeatures(cpu: *Target.Cpu, os_tag: Target.Os.Tag) void {
     // Darwin lazily saves the AVX512 context on first use: trust that the OS will
     // save the AVX512 context if we use AVX512 instructions, even if the bit is not
     // set right now.
-    const has_avx512_save = if (os_tag.isDarwin())
+    const has_avx512_save = if (builtin.target.os.tag.isDarwin())
         true
     else
         xcr0.zmm_hi256 and xcr0.hi16_zmm;
