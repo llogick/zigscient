@@ -309,6 +309,15 @@ pub fn make(
     }
 }
 
+pub fn deinit(step: *Step, gpa: Allocator) void {
+    step.clearResultStderr(gpa);
+    step.clearFailedCommand(gpa);
+    step.clearErrorBundle(gpa);
+    step.inputs.deinit(gpa);
+    if (step.getZigProcess()) |zp| gpa.destroy(zp);
+    step.* = undefined;
+}
+
 /// Prepares the step for being re-evaluated.
 pub fn reset(step: *Step, maker: *Maker) void {
     assert(step.state == .precheck_done);
