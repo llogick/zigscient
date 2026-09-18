@@ -514,6 +514,11 @@ pub const Manifest = struct {
             pub fn path(off: File.Offset, contents: []const u8) [:0]const u8 {
                 return pathFallible(off, contents) catch unreachable;
             }
+
+            pub fn pathOrDot(off: File.Offset, contents: []const u8) [:0]const u8 {
+                const p = pathFallible(off, contents) catch unreachable;
+                return if (p.len == 0) "." else p;
+            }
         };
 
         /// Intentionally matches if the files are different only by flags other than prefix.
@@ -1176,7 +1181,7 @@ pub const Manifest = struct {
         const io = cache.io;
         const input_file = file_off.get(contents);
         const parent_dir = cache.prefixes()[input_file.flags.prefix].handle;
-        const file_path = file_off.path(contents);
+        const file_path = file_off.pathOrDot(contents);
         const gpa = cache.gpa;
 
         if (input_path.have_digest) return;
@@ -1352,7 +1357,7 @@ pub const Manifest = struct {
         const disk_file = file_off.get(disk_contents);
         const input_file = file_off.get(input_contents);
         const parent_dir = cache.prefixes()[disk_file.flags.prefix].handle;
-        const file_path = file_off.path(disk_contents);
+        const file_path = file_off.pathOrDot(disk_contents);
 
         assert(disk_file.flags == input_file.flags);
 
@@ -1536,7 +1541,7 @@ pub const Manifest = struct {
         const gpa = cache.gpa;
         const io = cache.io;
         const parent_dir = cache.prefixes()[file.flags.prefix].handle;
-        const file_path = file_off.path(contents);
+        const file_path = file_off.pathOrDot(contents);
 
         if (file.flags.metadata_only) {
             const actual_stat = parent_dir.statFile(io, file_path, .{}) catch |err| switch (err) {

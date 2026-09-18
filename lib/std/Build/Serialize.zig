@@ -648,27 +648,35 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                     .options => e: {
                         const so: *Step.Options = @fieldParentPtr("step", step);
 
-                        const args = try arena.alloc(Configuration.Step.Options.Arg, so.args.items.len);
-                        for (args, so.args.items) |*dest, src| dest.* = .{
+                        const files = try arena.alloc(Configuration.Step.Options.NamedPath, so.files.items.len);
+                        for (files, so.files.items) |*dest, src| dest.* = .{
                             .name = src.name,
                             .path = try s.addLazyPath(src.path),
                         };
 
-                        const args_untracked = try arena.alloc(Configuration.Step.Options.Arg, so.args_untracked.items.len);
-                        for (args_untracked, so.args_untracked.items) |*dest, src| dest.* = .{
+                        const directories = try arena.alloc(Configuration.Step.Options.NamedPath, so.directories.items.len);
+                        for (directories, so.directories.items) |*dest, src| dest.* = .{
+                            .name = src.name,
+                            .path = try s.addLazyPath(src.path),
+                        };
+
+                        const untracked_paths = try arena.alloc(Configuration.Step.Options.NamedPath, so.untracked_paths.items.len);
+                        for (untracked_paths, so.untracked_paths.items) |*dest, src| dest.* = .{
                             .name = src.name,
                             .path = try s.addLazyPath(src.path),
                         };
 
                         break :e try wc.addExtraErased(Configuration.Step.Options, .{
                             .flags = .{
-                                .args = so.args.items.len != 0,
-                                .args_untracked = so.args_untracked.items.len != 0,
+                                .files = so.files.items.len != 0,
+                                .directories = so.directories.items.len != 0,
+                                .untracked_paths = so.untracked_paths.items.len != 0,
                             },
                             .generated_file = so.generated_file,
                             .contents = try wc.addBytes(so.contents.items),
-                            .args = .{ .slice = args },
-                            .args_untracked = .{ .slice = args_untracked },
+                            .files = .{ .slice = files },
+                            .directories = .{ .slice = directories },
+                            .untracked_paths = .{ .slice = untracked_paths },
                         });
                     },
                 })),

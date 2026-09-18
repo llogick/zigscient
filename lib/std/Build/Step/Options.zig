@@ -12,13 +12,14 @@ const Configuration = std.Build.Configuration;
 step: Step,
 generated_file: Configuration.GeneratedFileIndex,
 contents: std.ArrayList(u8) = .empty,
-args: std.ArrayList(Arg) = .empty,
-args_untracked: std.ArrayList(Arg) = .empty,
+files: std.ArrayList(NamedPath) = .empty,
+directories: std.ArrayList(NamedPath) = .empty,
+untracked_paths: std.ArrayList(NamedPath) = .empty,
 encountered_types: std.StringHashMapUnmanaged(void),
 
 pub const base_tag: Step.Tag = .options;
 
-pub const Arg = struct {
+pub const NamedPath = struct {
     name: Configuration.String,
     path: LazyPath,
 };
@@ -421,28 +422,45 @@ fn printStructValue(
     }
 }
 
-/// The added option has type `[]const u8` and value of the provided path.
-/// This interface assumes the provided path is a generated file, and causes a
-/// transitive dependency through Options on the file's contents.
+/// The added option has type `[]const u8` and value of the provided file path. If the provided path is a
+/// generated file, causes a transitive dependency on the file's contents.
 ///
 /// See also:
+/// * `addOptionPathDirectory`
 /// * `addOptionPathUntracked`
 pub fn addOptionPath(options: *Options, name: []const u8, path: LazyPath) void {
     const graph = options.step.owner.graph;
     const arena = graph.arena;
     const wc = &graph.wip_configuration;
 
-    options.args.append(arena, .{
+    options.files.append(arena, .{
         .name = wc.addString(name) catch @panic("OOM"),
         .path = path.dupe(options.step.owner.graph),
     }) catch @panic("OOM");
     path.addStepDependencies(&options.step);
 }
 
-/// The added option has type `[]const u8` and value of the provided path.
-/// This interface treats the resolved path string as pure data, meaning it
-/// does not track anything about the meaning or contents of this path, and
-/// therefore also does not create any related dependencies.
+/// The added option has type `[]const u8` and value of the provided directory path. Causes a transitive
+/// dependency through Options on the directory's contents.
+///
+/// See also:
+/// * `addOptionPath`
+/// * `addOptionPathUntracked`
+pub fn addOptionPathDirectory(options: *Options, name: []const u8, path: LazyPath) void {
+    const graph = options.step.owner.graph;
+    const arena = graph.arena;
+    const wc = &graph.wip_configuration;
+
+    options.directories.append(arena, .{
+        .name = wc.addString(name) catch @panic("OOM"),
+        .path = path.dupe(options.step.owner.graph),
+    }) catch @panic("OOM");
+    path.addStepDependencies(&options.step);
+}
+
+/// The added option has type `[]const u8` and value of the provided path. The resolved path is interpreted as
+/// a string without tracking anything about the meaning or contents, and therefore may be a file, directory,
+/// not exist, or even be an invalid path, and likewise does not create any file system or `Step` dependencies.
 ///
 /// See also:
 /// * `addOptionPath`
@@ -451,7 +469,7 @@ pub fn addOptionPathUntracked(options: *Options, name: []const u8, path: LazyPat
     const arena = graph.arena;
     const wc = &graph.wip_configuration;
 
-    options.args_untracked.append(arena, .{
+    options.untracked_paths.append(arena, .{
         .name = wc.addString(name) catch @panic("OOM"),
         .path = path.dupe(options.step.owner.graph),
     }) catch @panic("OOM");
