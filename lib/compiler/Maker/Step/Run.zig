@@ -372,6 +372,10 @@ pub fn make(
     step.clearFailedCommand(gpa);
 }
 
+pub fn deinit(run: *Run, gpa: Allocator) void {
+    run.fuzz_tests.deinit(gpa);
+}
+
 fn thirdPartyToggle(
     man_hash: ?*Cache.HashHelper,
     argv_list: *std.ArrayList([]const u8),
