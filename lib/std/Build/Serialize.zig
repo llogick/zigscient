@@ -82,604 +82,606 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                 .steps = .{ .slice = dep_steps },
             });
 
+            const extended: u32 = switch (step.tag) {
+                .top_level => e: {
+                    const top_level: *Step.TopLevel = @fieldParentPtr("step", step);
+                    break :e try wc.addExtraErased(Configuration.Step.TopLevel, .{
+                        .description = try wc.addString(top_level.description),
+                    });
+                },
+                .compile => e: {
+                    const c: *Step.Compile = @fieldParentPtr("step", step);
+                    const installed_headers: []u32 = try arena.alloc(u32, c.installed_headers.items.len);
+                    for (installed_headers, c.installed_headers.items) |*dst, src| switch (src) {
+                        .file => |file| {
+                            dst.* = try wc.addExtraErased(Configuration.Step.Compile.InstalledHeader.File, .{
+                                .source = try s.addLazyPath(file.source),
+                                .dest_sub_path = try wc.addString(file.dest_rel_path),
+                            });
+                        },
+                        .directory => |directory| {
+                            const include_extensions = directory.options.include_extensions orelse &.{};
+                            dst.* = try wc.addExtraErased(Configuration.Step.Compile.InstalledHeader.Directory, .{
+                                .flags = .{
+                                    .include_extensions = include_extensions.len != 0,
+                                    .exclude_extensions = directory.options.exclude_extensions.len != 0,
+                                },
+                                .source = try s.addLazyPath(directory.source),
+                                .dest_sub_path = try wc.addString(directory.dest_rel_path),
+                                .exclude_extensions = .{ .slice = try s.initStringList(directory.options.exclude_extensions) },
+                                .include_extensions = .{ .slice = try s.initStringList(include_extensions) },
+                            });
+                        },
+                    };
+
+                    break :e try wc.addExtraErased(Configuration.Step.Compile, .{
+                        .flags = .{
+                            .filters_len = c.filters.len != 0,
+                            .installed_headers_len = installed_headers.len != 0,
+                            .force_undefined_symbols_len = c.force_undefined_symbols.entries.len != 0,
+
+                            .verbose_link = c.verbose_link,
+                            .verbose_cc = c.verbose_cc,
+                            .rdynamic = c.rdynamic,
+                            .import_memory = c.import_memory,
+                            .export_memory = c.export_memory,
+                            .import_symbols = c.import_symbols,
+                            .import_table = c.import_table,
+                            .export_table = c.export_table,
+                            .growable_table = c.growable_table,
+                            .shared_memory = c.shared_memory,
+                            .link_eh_frame_hdr = c.link_eh_frame_hdr,
+                            .link_emit_relocs = c.link_emit_relocs,
+                            .link_function_sections = c.link_function_sections,
+                            .link_data_sections = c.link_data_sections,
+                            .linker_dynamicbase = c.linker_dynamicbase,
+                            .link_z_notext = c.link_z_notext,
+                            .link_z_relro = c.link_z_relro,
+                            .link_z_lazy = c.link_z_lazy,
+                            .link_z_defs = c.link_z_defs,
+                            .headerpad_max_install_names = c.headerpad_max_install_names,
+                            .dead_strip_dylibs = c.dead_strip_dylibs,
+                            .force_load_objc = c.force_load_objc,
+                            .discard_local_symbols = c.discard_local_symbols,
+                            .mingw_unicode_entry_point = c.mingw_unicode_entry_point,
+                        },
+                        .flags2 = .{
+                            .pie = .init(c.pie),
+                            .formatted_panics = .init(c.formatted_panics),
+                            .bundle_compiler_rt = .init(c.bundle_compiler_rt),
+                            .bundle_ubsan_rt = .init(c.bundle_ubsan_rt),
+                            .each_lib_rpath = .init(c.each_lib_rpath),
+                            .link_gc_sections = .init(c.link_gc_sections),
+                            .linker_allow_shlib_undefined = .init(c.linker_allow_shlib_undefined),
+                            .linker_allow_undefined_version = .init(c.linker_allow_undefined_version),
+                            .linker_enable_new_dtags = .init(c.linker_enable_new_dtags),
+                            .dll_export_fns = .init(c.dll_export_fns),
+                            .use_llvm = .init(c.use_llvm),
+                            .use_lld = .init(c.use_lld),
+                            .use_new_linker = .init(c.use_new_linker),
+                            .allow_so_scripts = .init(c.allow_so_scripts),
+                            .sanitize_coverage_trace_pc_guard = .init(c.sanitize_coverage_trace_pc_guard),
+                            .linkage = .init(c.linkage),
+                        },
+                        .flags3 = .{
+                            .version = c.version != null,
+                            .compress_debug_sections = c.compress_debug_sections,
+                            .initial_memory = c.initial_memory != null,
+                            .max_memory = c.max_memory != null,
+                            .kind = c.kind,
+                            .global_base = c.global_base != null,
+                            .test_runner = if (c.test_runner) |tr| switch (tr.mode) {
+                                .simple => .simple,
+                                .server => .server,
+                            } else .default,
+                            .wasi_exec_model = .init(c.wasi_exec_model),
+                            .win32_manifest = c.win32_manifest != null,
+                            .win32_module_definition = c.win32_module_definition != null,
+                            .zig_lib_dir = c.zig_lib_dir != null,
+                            .rc_includes = c.rc_includes,
+                            .image_base = c.image_base != null,
+                            .build_id = .init(c.build_id),
+                            .entry = switch (c.entry) {
+                                .default => .default,
+                                .disabled => .disabled,
+                                .enabled => .enabled,
+                                .symbol_name => .symbol_name,
+                            },
+                            .lto = .init(c.lto),
+                            .subsystem = .init(c.subsystem),
+                        },
+                        .flags4 = .{
+                            .libc_file = c.libc_file != null,
+                            .link_z_common_page_size = c.link_z_common_page_size != null,
+                            .link_z_max_page_size = c.link_z_max_page_size != null,
+                            .pagezero_size = c.pagezero_size != null,
+                            .stack_size = c.stack_size != null,
+                            .headerpad_size = c.headerpad_size != null,
+                            .error_limit = c.error_limit != null,
+                            .install_name = c.install_name != null,
+                            .entitlements = c.entitlements != null,
+                            .expect_errors = if (c.expect_errors) |x| switch (x) {
+                                .contains => .contains,
+                                .exact => .exact,
+                                .starts_with => .starts_with,
+                                .stderr_contains => .stderr_contains,
+                            } else .none,
+                            .linker_script = c.linker_script != null,
+                            .version_script = c.version_script != null,
+                            .emit_directory = c.emit_directory != .none,
+                            .generated_docs = c.generated_docs != .none,
+                            .generated_asm = c.generated_asm != .none,
+                            .generated_bin = c.generated_bin != .none,
+                            .generated_pdb = c.generated_pdb != .none,
+                            .generated_implib = c.generated_implib != .none,
+                            .generated_llvm_bc = c.generated_llvm_bc != .none,
+                            .generated_llvm_ir = c.generated_llvm_ir != .none,
+                            .generated_h = c.generated_h != .none,
+                            .incremental = .init(c.incremental),
+                        },
+                        .root_module = try s.addModule(c.root_module),
+                        .root_name = try wc.addString(c.name),
+                        .linker_script = .{ .value = try s.addOptionalLazyPath(c.linker_script) },
+                        .version_script = .{ .value = try s.addOptionalLazyPath(c.version_script) },
+                        .zig_lib_dir = .{ .value = try s.addOptionalLazyPath(c.zig_lib_dir) },
+                        .libc_file = .{ .value = try s.addOptionalLazyPath(c.libc_file) },
+                        .win32_manifest = .{ .value = try s.addOptionalLazyPath(c.win32_manifest) },
+                        .win32_module_definition = .{ .value = try s.addOptionalLazyPath(c.win32_module_definition) },
+                        .entitlements = .{ .value = try s.addOptionalLazyPath(c.entitlements) },
+                        .version = .{ .value = try s.addOptionalSemVer(c.version) },
+                        .install_name = .{ .value = try s.addOptionalString(c.install_name) },
+                        .initial_memory = .{ .value = c.initial_memory },
+                        .max_memory = .{ .value = c.max_memory },
+                        .global_base = .{ .value = c.global_base },
+                        .image_base = .{ .value = c.image_base },
+                        .link_z_common_page_size = .{ .value = c.link_z_common_page_size },
+                        .link_z_max_page_size = .{ .value = c.link_z_max_page_size },
+                        .pagezero_size = .{ .value = c.pagezero_size },
+                        .stack_size = .{ .value = c.stack_size },
+                        .headerpad_size = .{ .value = c.headerpad_size },
+                        .error_limit = .{ .value = c.error_limit },
+                        .entry = .{ .value = switch (c.entry) {
+                            .symbol_name => |name| try wc.addString(name),
+                            .default, .disabled, .enabled => null,
+                        } },
+                        .build_id = .{ .value = if (c.build_id) |id| switch (id) {
+                            .hexstring => |*hexstring| try wc.addString(hexstring.toSlice()),
+                            .none, .fast, .uuid, .sha1, .md5 => null,
+                        } else null },
+                        .filters = .{ .slice = try s.initStringList(c.filters) },
+                        .installed_headers = .initErased(installed_headers),
+                        .force_undefined_symbols = .{ .slice = try s.initStringList(c.force_undefined_symbols.keys()) },
+                        .expect_errors = .{ .u = if (c.expect_errors) |x| switch (x) {
+                            .contains => |slice| .{ .contains = try wc.addString(slice) },
+                            .exact => |exact| .{ .exact = .{ .slice = try s.initStringList(exact) } },
+                            .starts_with => |slice| .{ .starts_with = try wc.addString(slice) },
+                            .stderr_contains => |slice| .{ .stderr_contains = try wc.addString(slice) },
+                        } else .none },
+                        .test_runner = .{ .u = if (c.test_runner) |tr| switch (tr.mode) {
+                            .simple => .{ .simple = try s.addLazyPath(tr.path) },
+                            .server => .{ .server = try s.addLazyPath(tr.path) },
+                        } else .default },
+
+                        .emit_directory = .{ .value = c.emit_directory.unwrap() },
+                        .generated_docs = .{ .value = c.generated_docs.unwrap() },
+                        .generated_asm = .{ .value = c.generated_asm.unwrap() },
+                        .generated_bin = .{ .value = c.generated_bin.unwrap() },
+                        .generated_pdb = .{ .value = c.generated_pdb.unwrap() },
+                        .generated_implib = .{ .value = c.generated_implib.unwrap() },
+                        .generated_llvm_bc = .{ .value = c.generated_llvm_bc.unwrap() },
+                        .generated_llvm_ir = .{ .value = c.generated_llvm_ir.unwrap() },
+                        .generated_h = .{ .value = c.generated_h.unwrap() },
+                    });
+                },
+                .install_artifact => e: {
+                    const ia: *Step.InstallArtifact = @fieldParentPtr("step", step);
+                    break :e try wc.addExtraErased(Configuration.Step.InstallArtifact, .{
+                        .flags = .{
+                            .dylib_symlinks = ia.dylib_symlinks,
+                            .bin_dir = ia.dest_dir != null,
+                            .implib_dir = ia.implib_dir != null,
+                            .pdb_dir = ia.pdb_dir != null,
+                            .h_dir = ia.h_dir != null,
+                            .bin_sub_path = ia.dest_sub_path != null,
+                        },
+                        .bin_dir = .{ .value = try addInstallDirDefaultNull(wc, ia.dest_dir) },
+                        .implib_dir = .{ .value = try addInstallDirDefaultNull(wc, ia.implib_dir) },
+                        .pdb_dir = .{ .value = try addInstallDirDefaultNull(wc, ia.pdb_dir) },
+                        .h_dir = .{ .value = try addInstallDirDefaultNull(wc, ia.h_dir) },
+                        .bin_sub_path = .{ .value = try s.addOptionalString(ia.dest_sub_path) },
+                    });
+                },
+                .install_file => e: {
+                    const sif: *Step.InstallFile = @fieldParentPtr("step", step);
+                    break :e try wc.addExtraErased(Configuration.Step.InstallFile, .{
+                        .source = try s.addLazyPath(sif.source),
+                        .dest_dir = try addInstallDir(wc, sif.dir),
+                        .dest_sub_path = try wc.addString(sif.dest_rel_path),
+                    });
+                },
+                .install_dir => e: {
+                    const sid: *Step.InstallDir = @fieldParentPtr("step", step);
+                    const dest_sub_path: ?[]const u8 = if (sid.options.install_subdir.len != 0)
+                        sid.options.install_subdir
+                    else
+                        null;
+                    const include_extensions = sid.options.include_extensions orelse &.{};
+                    break :e try wc.addExtraErased(Configuration.Step.InstallDir, .{
+                        .flags = .{
+                            .dest_sub_path = dest_sub_path != null,
+                            .exclude_extensions = sid.options.exclude_extensions.len != 0,
+                            .include_extensions = include_extensions.len != 0,
+                            .include_extensions_active = sid.options.include_extensions != null,
+                            .blank_extensions = sid.options.blank_extensions.len != 0,
+                        },
+                        .source_dir = try s.addLazyPath(sid.options.source_dir),
+                        .dest_dir = try addInstallDir(wc, sid.options.install_dir),
+                        .dest_sub_path = .{ .value = try s.addOptionalString(dest_sub_path) },
+                        .exclude_extensions = .{ .slice = try s.initStringList(sid.options.exclude_extensions) },
+                        .include_extensions = .{ .slice = try s.initStringList(include_extensions) },
+                        .blank_extensions = .{ .slice = try s.initStringList(sid.options.blank_extensions) },
+                    });
+                },
+                .fail => e: {
+                    const sf: *Step.Fail = @fieldParentPtr("step", step);
+                    break :e try wc.addExtraErased(Configuration.Step.Fail, .{
+                        .msg = sf.error_msg,
+                    });
+                },
+                .find_program => e: {
+                    const fp: *Step.FindProgram = @fieldParentPtr("step", step);
+                    break :e try wc.addExtraErased(Configuration.Step.FindProgram, .{
+                        .names = fp.names,
+                        .found_path = fp.found_path,
+                    });
+                },
+                .fmt => e: {
+                    const sf: *Step.Fmt = @fieldParentPtr("step", step);
+                    break :e try wc.addExtraErased(Configuration.Step.Fmt, .{
+                        .flags = .{
+                            .paths = sf.paths.len != 0,
+                            .exclude_paths = sf.exclude_paths.len != 0,
+                            .check = sf.check,
+                        },
+                        .paths = .{ .slice = try s.initLazyPathList(sf.paths) },
+                        .exclude_paths = .{ .slice = try s.initLazyPathList(sf.exclude_paths) },
+                    });
+                },
+                .translate_c => e: {
+                    const tc: *Step.TranslateC = @fieldParentPtr("step", step);
+
+                    const system_libs = try arena.alloc(Configuration.SystemLib.Index, tc.system_libs.items.len);
+                    for (system_libs, tc.system_libs.items) |*dest, *src| dest.* = try s.addSystemLib(src);
+
+                    break :e try wc.addExtraErased(Configuration.Step.TranslateC, .{
+                        .flags = .{
+                            .include_dirs = tc.include_dirs.items.len != 0,
+                            .system_libs = system_libs.len != 0,
+                            .c_macros = tc.c_macros.items.len != 0,
+                            .link_libc = tc.link_libc,
+                            .optimize = .init(tc.optimize),
+                        },
+                        .src_path = try s.addLazyPath(tc.source),
+                        .output_file = tc.output_file,
+                        .include_dirs = .init(try s.initIncludeDirList(tc.include_dirs.items)),
+                        .system_libs = .{ .slice = system_libs },
+                        .c_macros = .{ .slice = tc.c_macros.items },
+                        .target = try addOptionalResolvedTarget(wc, tc.target),
+                    });
+                },
+                .write_file => e: {
+                    const wf: *Step.WriteFile = @fieldParentPtr("step", step);
+
+                    const directories = try arena.alloc(
+                        Configuration.Step.WriteFile.Directory,
+                        wf.directories.items.len,
+                    );
+                    for (directories, wf.directories.items) |*dest, src| dest.* = .{
+                        .sub_path = src.sub_path,
+                        .src_path = try s.addLazyPath(src.src_path),
+                        .exclude_extensions = src.exclude_extensions,
+                        .include_extensions = src.include_extensions,
+                    };
+
+                    break :e try wc.addExtraErased(Configuration.Step.WriteFile, .{
+                        .flags = .{
+                            .embeds = wf.embeds.items.len != 0,
+                            .copies = wf.copies.items.len != 0,
+                            .directories = directories.len != 0,
+                            .mode = switch (wf.mode) {
+                                .whole_cached => .whole_cached,
+                                .tmp => .tmp,
+                                .mutate => .mutate,
+                            },
+                        },
+                        .generated_directory = wf.generated_directory,
+                        .embeds = .{ .slice = wf.embeds.items },
+                        .copies = .{ .slice = try s.initCopyList(wf.copies.items) },
+                        .directories = .{ .slice = directories },
+                        .mutate_path = .{ .value = switch (wf.mode) {
+                            .mutate => |lp| try s.addLazyPath(lp),
+                            .whole_cached, .tmp => null,
+                        } },
+                    });
+                },
+                .update_source_files => e: {
+                    const usf: *Step.UpdateSourceFiles = @fieldParentPtr("step", step);
+                    break :e try wc.addExtraErased(Configuration.Step.UpdateSourceFiles, .{
+                        .flags = .{
+                            .embeds = usf.embeds.items.len != 0,
+                            .copies = usf.copies.items.len != 0,
+                        },
+                        .embeds = .{ .slice = usf.embeds.items },
+                        .copies = .{ .slice = try s.initCopyList(usf.copies.items) },
+                    });
+                },
+                .run => e: {
+                    const run: *Step.Run = @fieldParentPtr("step", step);
+                    var expect_stderr_exact: ?Configuration.Bytes = null;
+                    var expect_stdout_exact: ?Configuration.Bytes = null;
+                    var expect_stderr_match: std.ArrayList(Configuration.Bytes) = .empty;
+                    var expect_stdout_match: std.ArrayList(Configuration.Bytes) = .empty;
+                    var expect_term: ?struct {
+                        status: Configuration.Step.Run.ExpectTermStatus,
+                        value: u32,
+                    } = null;
+                    var expect_stderr_snapshot: ?Configuration.LazyPath.Index = null;
+                    var expect_stdout_snapshot: ?Configuration.LazyPath.Index = null;
+                    switch (run.stdio) {
+                        .check => |checks| for (checks.items) |check| switch (check) {
+                            .expect_stderr_exact => |bytes| expect_stderr_exact = try wc.addBytes(bytes),
+                            .expect_stdout_exact => |bytes| expect_stdout_exact = try wc.addBytes(bytes),
+                            .expect_stderr_match => |bytes| {
+                                try expect_stderr_match.append(arena, try wc.addBytes(bytes));
+                            },
+                            .expect_stdout_match => |bytes| {
+                                try expect_stdout_match.append(arena, try wc.addBytes(bytes));
+                            },
+                            .expect_term => |t| expect_term = switch (t) {
+                                .exited => |x| .{ .status = .exited, .value = x },
+                                .signal => |x| .{ .status = .signal, .value = @backingInt(x) },
+                                .stopped => |x| .{ .status = .stopped, .value = @backingInt(x) },
+                                .unknown => |x| .{ .status = .unknown, .value = x },
+                            },
+                            .expect_stderr_snapshot => |path| expect_stderr_snapshot = try s.addLazyPath(path),
+                            .expect_stdout_snapshot => |path| expect_stdout_snapshot = try s.addLazyPath(path),
+                        },
+                        else => {},
+                    }
+                    const preopens = try arena.alloc(
+                        Configuration.Step.Run.Preopen,
+                        run.preopens.count(),
+                    );
+                    for (preopens, run.preopens.keys(), run.preopens.values()) |*dest, name, path| {
+                        dest.* = .{ .name = name, .path = try s.addLazyPath(path) };
+                    }
+
+                    break :e try wc.addExtraErased(Configuration.Step.Run, .{
+                        .flags = .{
+                            .disable_zig_progress = run.disable_zig_progress,
+                            .skip_foreign_checks = run.skip_foreign_checks,
+                            .failing_to_execute_foreign_is_an_error = run.failing_to_execute_foreign_is_an_error,
+                            .has_side_effects = run.has_side_effects,
+                            .test_runner_mode = run.test_runner_mode,
+                            .color = run.color,
+                            .stdio = switch (run.stdio) {
+                                .infer_from_args => .infer_from_args,
+                                .inherit => .inherit,
+                                .check => .check,
+                                .zig_test => .zig_test,
+                            },
+                            .stdin = switch (run.stdin) {
+                                .none => .none,
+                                .bytes => .bytes,
+                                .lazy_path => .lazy_path,
+                            },
+                            .stdout_trim_whitespace = if (run.captured_stdout) |cs| cs.trim_whitespace else .none,
+                            .stderr_trim_whitespace = if (run.captured_stderr) |cs| cs.trim_whitespace else .none,
+                            .stdio_limit = run.stdio_limit != .unlimited,
+                            .producer = run.producer != null,
+                            .cwd = run.cwd != null,
+                            .captured_stdout = run.captured_stdout != null,
+                            .captured_stderr = run.captured_stderr != null,
+                            .environ_map = run.environ_map != null,
+                            .preopens = run.preopens.count() > 0,
+                        },
+                        .flags2 = .{
+                            .expect_stderr_exact = expect_stderr_exact != null,
+                            .expect_stdout_exact = expect_stdout_exact != null,
+                            .expect_stderr_match = expect_stderr_match.items.len != 0,
+                            .expect_stdout_match = expect_stdout_match.items.len != 0,
+                            .expect_term = expect_term != null,
+                            .expect_term_status = if (expect_term) |t| t.status else .exited,
+                            .expect_stderr_snapshot = expect_stderr_snapshot != null,
+                            .expect_stdout_snapshot = expect_stdout_snapshot != null,
+                        },
+                        .file_inputs = .{ .slice = try s.initLazyPathList(run.file_inputs.items) },
+                        .args = .{ .slice = try s.initArgsList(run.argv.items) },
+                        .cwd = .{ .value = try s.addOptionalLazyPath(run.cwd) },
+                        .preopens = .{ .slice = preopens },
+                        .captured_stdout = .{ .value = if (run.captured_stdout) |cs| .{
+                            .basename = try wc.addString(cs.basename),
+                            .generated_file = cs.generated_file,
+                        } else null },
+                        .captured_stderr = .{ .value = if (run.captured_stderr) |cs| .{
+                            .basename = try wc.addString(cs.basename),
+                            .generated_file = cs.generated_file,
+                        } else null },
+                        .environ_map = .{ .value = try s.addEnvironMap(run.environ_map) },
+                        .expect_term_value = .{ .value = if (expect_term) |t| t.value else null },
+                        .stdio_limit = .{ .value = run.stdio_limit.toInt64() },
+                        .producer = .{ .value = if (run.producer) |cs| s.stepIndex(&cs.step) else null },
+                        .expect_stderr_exact = .{ .value = if (expect_stderr_exact) |bytes| bytes else null },
+                        .expect_stdout_exact = .{ .value = if (expect_stdout_exact) |bytes| bytes else null },
+                        .expect_stderr_match = .{ .slice = expect_stderr_match.items },
+                        .expect_stdout_match = .{ .slice = expect_stdout_match.items },
+                        .expect_stderr_snapshot = .{ .value = expect_stderr_snapshot orelse null },
+                        .expect_stdout_snapshot = .{ .value = expect_stdout_snapshot orelse null },
+                        .stdin = .{ .u = switch (run.stdin) {
+                            .none => .none,
+                            .bytes => |bytes| .{ .bytes = try wc.addBytes(bytes) },
+                            .lazy_path => |lp| .{ .lazy_path = try s.addLazyPath(lp) },
+                        } },
+                    });
+                },
+                .check_file => e: {
+                    const cf: *Step.CheckFile = @fieldParentPtr("step", step);
+                    break :e try wc.addExtraErased(Configuration.Step.CheckFile, .{
+                        .flags = .{
+                            .expected_exact = cf.expected_exact != null,
+                            .expected_matches = cf.expected_matches.len != 0,
+                            .max_bytes = cf.max_bytes != null,
+                        },
+                        .file = try s.addLazyPath(cf.file),
+                        .expected_exact = .{ .value = cf.expected_exact },
+                        .expected_matches = .{ .slice = cf.expected_matches },
+                        .max_bytes = .{ .value = cf.max_bytes },
+                    });
+                },
+                .config_header => e: {
+                    const ch: *Step.ConfigHeader = @fieldParentPtr("step", step);
+                    const lazy_path: ?std.Build.LazyPath = ch.style.getPath();
+                    const pairs = try arena.alloc(Configuration.Step.ConfigHeader.Value.Pair, ch.values.count());
+                    for (pairs, ch.values.keys(), ch.values.values()) |*pair, key, value| pair.* = .{
+                        .key = try wc.addString(key),
+                        .index = switch (value) {
+                            .undef => .undef,
+                            .defined => .defined,
+                            .boolean => |x| switch (x) {
+                                false => .bool_false,
+                                true => .bool_true,
+                            },
+                            .int => |x| switch (x) {
+                                0 => .int_0,
+                                1 => .int_1,
+                                else => try wc.addExtra(Configuration.Step.ConfigHeader.Value, .initSigned(x)),
+                            },
+                            .ident => |x| try wc.addExtra(Configuration.Step.ConfigHeader.Value, .{
+                                .flags = .{
+                                    .tag = .ident,
+                                    .small = 0,
+                                },
+                                .i64 = .{ .value = null },
+                                .u64 = .{ .value = null },
+                                .ident = .{ .value = try wc.addString(x) },
+                                .string = .{ .value = null },
+                            }),
+                            .string => |x| try wc.addExtra(Configuration.Step.ConfigHeader.Value, .{
+                                .flags = .{
+                                    .tag = .string,
+                                    .small = 0,
+                                },
+                                .i64 = .{ .value = null },
+                                .u64 = .{ .value = null },
+                                .ident = .{ .value = null },
+                                .string = .{ .value = try wc.addString(x) },
+                            }),
+                        },
+                    };
+                    break :e try wc.addExtraErased(Configuration.Step.ConfigHeader, .{
+                        .flags = .{
+                            .template_file = lazy_path != null,
+                            .style = .init(ch.style),
+                            .input_size_limit = ch.input_size_limit != null,
+                            .include_guard = ch.include_guard != .none,
+                        },
+                        .template_file = .{ .value = try s.addOptionalLazyPath(lazy_path) },
+                        .generated_dir = ch.generated_dir,
+                        .input_size_limit = .{ .value = ch.input_size_limit },
+                        .include_path = try wc.addString(ch.include_path),
+                        .include_guard = .{ .value = ch.include_guard.unwrap() },
+                        .values = .{ .slice = pairs },
+                    });
+                },
+                .obj_copy => e: {
+                    const oc: *Step.ObjCopy = @fieldParentPtr("step", step);
+
+                    const debug_basename: ?Configuration.String = if (oc.debug_file) |df|
+                        df.basename.unwrap()
+                    else
+                        null;
+
+                    const debug_file: ?Configuration.GeneratedFileIndex = if (oc.debug_file) |df|
+                        df.output_file
+                    else
+                        null;
+
+                    const add_sections = try arena.alloc(
+                        Configuration.Step.ObjCopy.AddSection,
+                        oc.add_sections.items.len,
+                    );
+                    for (add_sections, oc.add_sections.items) |*dest, src| dest.* = .{
+                        .section_name = src.section_name,
+                        .file_path = try s.addLazyPath(src.file_path),
+                    };
+
+                    break :e try wc.addExtraErased(Configuration.Step.ObjCopy, .{
+                        .flags = .{
+                            .basename = oc.basename != .none,
+                            .debug_file = debug_file != null,
+                            .debug_basename = debug_basename != null,
+                            .format = .init(oc.format),
+                            .strip = oc.strip,
+                            .compress_debug = oc.compress_debug,
+                            .only_section = oc.only_section != .none,
+                            .pad_to = oc.pad_to != null,
+                            .add_section = add_sections.len != 0,
+                            .update_section = oc.update_sections.items.len != 0,
+                        },
+                        .input_file = try s.addLazyPath(oc.input_file),
+                        .output_file = oc.output_file,
+                        .basename = .{ .value = oc.basename.unwrap() },
+                        .debug_file = .{ .value = debug_file },
+                        .debug_basename = .{ .value = debug_basename },
+                        .only_section = .{ .value = oc.only_section.unwrap() },
+                        .pad_to = .{ .value = oc.pad_to },
+                        .add_section = .{ .slice = add_sections },
+                        .update_section = .{ .slice = oc.update_sections.items },
+                    });
+                },
+                .options => e: {
+                    const so: *Step.Options = @fieldParentPtr("step", step);
+
+                    const files = try arena.alloc(Configuration.Step.Options.NamedPath, so.files.items.len);
+                    for (files, so.files.items) |*dest, src| dest.* = .{
+                        .name = src.name,
+                        .path = try s.addLazyPath(src.path),
+                    };
+
+                    const directories = try arena.alloc(Configuration.Step.Options.NamedPath, so.directories.items.len);
+                    for (directories, so.directories.items) |*dest, src| dest.* = .{
+                        .name = src.name,
+                        .path = try s.addLazyPath(src.path),
+                    };
+
+                    const untracked_paths = try arena.alloc(Configuration.Step.Options.NamedPath, so.untracked_paths.items.len);
+                    for (untracked_paths, so.untracked_paths.items) |*dest, src| dest.* = .{
+                        .name = src.name,
+                        .path = try s.addLazyPath(src.path),
+                    };
+
+                    break :e try wc.addExtraErased(Configuration.Step.Options, .{
+                        .flags = .{
+                            .files = so.files.items.len != 0,
+                            .directories = so.directories.items.len != 0,
+                            .untracked_paths = so.untracked_paths.items.len != 0,
+                        },
+                        .generated_file = so.generated_file,
+                        .contents = try wc.addBytes(so.contents.items),
+                        .files = .{ .slice = files },
+                        .directories = .{ .slice = directories },
+                        .untracked_paths = .{ .slice = untracked_paths },
+                    });
+                },
+            };
+
             try wc.steps.ensureTotalCapacity(gpa, s.step_map.entries.capacity);
             wc.steps.appendAssumeCapacity(.{
                 .name = try wc.addString(step.name),
                 .owner = try s.builderToPackage(step.owner),
                 .deps = deps,
                 .max_rss = .fromBytes(step.max_rss),
-                .extended = @fromBackingInt(@intCast(switch (step.tag) {
-                    .top_level => e: {
-                        const top_level: *Step.TopLevel = @fieldParentPtr("step", step);
-                        break :e try wc.addExtraErased(Configuration.Step.TopLevel, .{
-                            .description = try wc.addString(top_level.description),
-                        });
-                    },
-                    .compile => e: {
-                        const c: *Step.Compile = @fieldParentPtr("step", step);
-                        const installed_headers: []u32 = try arena.alloc(u32, c.installed_headers.items.len);
-                        for (installed_headers, c.installed_headers.items) |*dst, src| switch (src) {
-                            .file => |file| {
-                                dst.* = try wc.addExtraErased(Configuration.Step.Compile.InstalledHeader.File, .{
-                                    .source = try s.addLazyPath(file.source),
-                                    .dest_sub_path = try wc.addString(file.dest_rel_path),
-                                });
-                            },
-                            .directory => |directory| {
-                                const include_extensions = directory.options.include_extensions orelse &.{};
-                                dst.* = try wc.addExtraErased(Configuration.Step.Compile.InstalledHeader.Directory, .{
-                                    .flags = .{
-                                        .include_extensions = include_extensions.len != 0,
-                                        .exclude_extensions = directory.options.exclude_extensions.len != 0,
-                                    },
-                                    .source = try s.addLazyPath(directory.source),
-                                    .dest_sub_path = try wc.addString(directory.dest_rel_path),
-                                    .exclude_extensions = .{ .slice = try s.initStringList(directory.options.exclude_extensions) },
-                                    .include_extensions = .{ .slice = try s.initStringList(include_extensions) },
-                                });
-                            },
-                        };
-
-                        break :e try wc.addExtraErased(Configuration.Step.Compile, .{
-                            .flags = .{
-                                .filters_len = c.filters.len != 0,
-                                .installed_headers_len = installed_headers.len != 0,
-                                .force_undefined_symbols_len = c.force_undefined_symbols.entries.len != 0,
-
-                                .verbose_link = c.verbose_link,
-                                .verbose_cc = c.verbose_cc,
-                                .rdynamic = c.rdynamic,
-                                .import_memory = c.import_memory,
-                                .export_memory = c.export_memory,
-                                .import_symbols = c.import_symbols,
-                                .import_table = c.import_table,
-                                .export_table = c.export_table,
-                                .growable_table = c.growable_table,
-                                .shared_memory = c.shared_memory,
-                                .link_eh_frame_hdr = c.link_eh_frame_hdr,
-                                .link_emit_relocs = c.link_emit_relocs,
-                                .link_function_sections = c.link_function_sections,
-                                .link_data_sections = c.link_data_sections,
-                                .linker_dynamicbase = c.linker_dynamicbase,
-                                .link_z_notext = c.link_z_notext,
-                                .link_z_relro = c.link_z_relro,
-                                .link_z_lazy = c.link_z_lazy,
-                                .link_z_defs = c.link_z_defs,
-                                .headerpad_max_install_names = c.headerpad_max_install_names,
-                                .dead_strip_dylibs = c.dead_strip_dylibs,
-                                .force_load_objc = c.force_load_objc,
-                                .discard_local_symbols = c.discard_local_symbols,
-                                .mingw_unicode_entry_point = c.mingw_unicode_entry_point,
-                            },
-                            .flags2 = .{
-                                .pie = .init(c.pie),
-                                .formatted_panics = .init(c.formatted_panics),
-                                .bundle_compiler_rt = .init(c.bundle_compiler_rt),
-                                .bundle_ubsan_rt = .init(c.bundle_ubsan_rt),
-                                .each_lib_rpath = .init(c.each_lib_rpath),
-                                .link_gc_sections = .init(c.link_gc_sections),
-                                .linker_allow_shlib_undefined = .init(c.linker_allow_shlib_undefined),
-                                .linker_allow_undefined_version = .init(c.linker_allow_undefined_version),
-                                .linker_enable_new_dtags = .init(c.linker_enable_new_dtags),
-                                .dll_export_fns = .init(c.dll_export_fns),
-                                .use_llvm = .init(c.use_llvm),
-                                .use_lld = .init(c.use_lld),
-                                .use_new_linker = .init(c.use_new_linker),
-                                .allow_so_scripts = .init(c.allow_so_scripts),
-                                .sanitize_coverage_trace_pc_guard = .init(c.sanitize_coverage_trace_pc_guard),
-                                .linkage = .init(c.linkage),
-                            },
-                            .flags3 = .{
-                                .version = c.version != null,
-                                .compress_debug_sections = c.compress_debug_sections,
-                                .initial_memory = c.initial_memory != null,
-                                .max_memory = c.max_memory != null,
-                                .kind = c.kind,
-                                .global_base = c.global_base != null,
-                                .test_runner = if (c.test_runner) |tr| switch (tr.mode) {
-                                    .simple => .simple,
-                                    .server => .server,
-                                } else .default,
-                                .wasi_exec_model = .init(c.wasi_exec_model),
-                                .win32_manifest = c.win32_manifest != null,
-                                .win32_module_definition = c.win32_module_definition != null,
-                                .zig_lib_dir = c.zig_lib_dir != null,
-                                .rc_includes = c.rc_includes,
-                                .image_base = c.image_base != null,
-                                .build_id = .init(c.build_id),
-                                .entry = switch (c.entry) {
-                                    .default => .default,
-                                    .disabled => .disabled,
-                                    .enabled => .enabled,
-                                    .symbol_name => .symbol_name,
-                                },
-                                .lto = .init(c.lto),
-                                .subsystem = .init(c.subsystem),
-                            },
-                            .flags4 = .{
-                                .libc_file = c.libc_file != null,
-                                .link_z_common_page_size = c.link_z_common_page_size != null,
-                                .link_z_max_page_size = c.link_z_max_page_size != null,
-                                .pagezero_size = c.pagezero_size != null,
-                                .stack_size = c.stack_size != null,
-                                .headerpad_size = c.headerpad_size != null,
-                                .error_limit = c.error_limit != null,
-                                .install_name = c.install_name != null,
-                                .entitlements = c.entitlements != null,
-                                .expect_errors = if (c.expect_errors) |x| switch (x) {
-                                    .contains => .contains,
-                                    .exact => .exact,
-                                    .starts_with => .starts_with,
-                                    .stderr_contains => .stderr_contains,
-                                } else .none,
-                                .linker_script = c.linker_script != null,
-                                .version_script = c.version_script != null,
-                                .emit_directory = c.emit_directory != .none,
-                                .generated_docs = c.generated_docs != .none,
-                                .generated_asm = c.generated_asm != .none,
-                                .generated_bin = c.generated_bin != .none,
-                                .generated_pdb = c.generated_pdb != .none,
-                                .generated_implib = c.generated_implib != .none,
-                                .generated_llvm_bc = c.generated_llvm_bc != .none,
-                                .generated_llvm_ir = c.generated_llvm_ir != .none,
-                                .generated_h = c.generated_h != .none,
-                                .incremental = .init(c.incremental),
-                            },
-                            .root_module = try s.addModule(c.root_module),
-                            .root_name = try wc.addString(c.name),
-                            .linker_script = .{ .value = try s.addOptionalLazyPath(c.linker_script) },
-                            .version_script = .{ .value = try s.addOptionalLazyPath(c.version_script) },
-                            .zig_lib_dir = .{ .value = try s.addOptionalLazyPath(c.zig_lib_dir) },
-                            .libc_file = .{ .value = try s.addOptionalLazyPath(c.libc_file) },
-                            .win32_manifest = .{ .value = try s.addOptionalLazyPath(c.win32_manifest) },
-                            .win32_module_definition = .{ .value = try s.addOptionalLazyPath(c.win32_module_definition) },
-                            .entitlements = .{ .value = try s.addOptionalLazyPath(c.entitlements) },
-                            .version = .{ .value = try s.addOptionalSemVer(c.version) },
-                            .install_name = .{ .value = try s.addOptionalString(c.install_name) },
-                            .initial_memory = .{ .value = c.initial_memory },
-                            .max_memory = .{ .value = c.max_memory },
-                            .global_base = .{ .value = c.global_base },
-                            .image_base = .{ .value = c.image_base },
-                            .link_z_common_page_size = .{ .value = c.link_z_common_page_size },
-                            .link_z_max_page_size = .{ .value = c.link_z_max_page_size },
-                            .pagezero_size = .{ .value = c.pagezero_size },
-                            .stack_size = .{ .value = c.stack_size },
-                            .headerpad_size = .{ .value = c.headerpad_size },
-                            .error_limit = .{ .value = c.error_limit },
-                            .entry = .{ .value = switch (c.entry) {
-                                .symbol_name => |name| try wc.addString(name),
-                                .default, .disabled, .enabled => null,
-                            } },
-                            .build_id = .{ .value = if (c.build_id) |id| switch (id) {
-                                .hexstring => |*hexstring| try wc.addString(hexstring.toSlice()),
-                                .none, .fast, .uuid, .sha1, .md5 => null,
-                            } else null },
-                            .filters = .{ .slice = try s.initStringList(c.filters) },
-                            .installed_headers = .initErased(installed_headers),
-                            .force_undefined_symbols = .{ .slice = try s.initStringList(c.force_undefined_symbols.keys()) },
-                            .expect_errors = .{ .u = if (c.expect_errors) |x| switch (x) {
-                                .contains => |slice| .{ .contains = try wc.addString(slice) },
-                                .exact => |exact| .{ .exact = .{ .slice = try s.initStringList(exact) } },
-                                .starts_with => |slice| .{ .starts_with = try wc.addString(slice) },
-                                .stderr_contains => |slice| .{ .stderr_contains = try wc.addString(slice) },
-                            } else .none },
-                            .test_runner = .{ .u = if (c.test_runner) |tr| switch (tr.mode) {
-                                .simple => .{ .simple = try s.addLazyPath(tr.path) },
-                                .server => .{ .server = try s.addLazyPath(tr.path) },
-                            } else .default },
-
-                            .emit_directory = .{ .value = c.emit_directory.unwrap() },
-                            .generated_docs = .{ .value = c.generated_docs.unwrap() },
-                            .generated_asm = .{ .value = c.generated_asm.unwrap() },
-                            .generated_bin = .{ .value = c.generated_bin.unwrap() },
-                            .generated_pdb = .{ .value = c.generated_pdb.unwrap() },
-                            .generated_implib = .{ .value = c.generated_implib.unwrap() },
-                            .generated_llvm_bc = .{ .value = c.generated_llvm_bc.unwrap() },
-                            .generated_llvm_ir = .{ .value = c.generated_llvm_ir.unwrap() },
-                            .generated_h = .{ .value = c.generated_h.unwrap() },
-                        });
-                    },
-                    .install_artifact => e: {
-                        const ia: *Step.InstallArtifact = @fieldParentPtr("step", step);
-                        break :e try wc.addExtraErased(Configuration.Step.InstallArtifact, .{
-                            .flags = .{
-                                .dylib_symlinks = ia.dylib_symlinks,
-                                .bin_dir = ia.dest_dir != null,
-                                .implib_dir = ia.implib_dir != null,
-                                .pdb_dir = ia.pdb_dir != null,
-                                .h_dir = ia.h_dir != null,
-                                .bin_sub_path = ia.dest_sub_path != null,
-                            },
-                            .bin_dir = .{ .value = try addInstallDirDefaultNull(wc, ia.dest_dir) },
-                            .implib_dir = .{ .value = try addInstallDirDefaultNull(wc, ia.implib_dir) },
-                            .pdb_dir = .{ .value = try addInstallDirDefaultNull(wc, ia.pdb_dir) },
-                            .h_dir = .{ .value = try addInstallDirDefaultNull(wc, ia.h_dir) },
-                            .bin_sub_path = .{ .value = try s.addOptionalString(ia.dest_sub_path) },
-                        });
-                    },
-                    .install_file => e: {
-                        const sif: *Step.InstallFile = @fieldParentPtr("step", step);
-                        break :e try wc.addExtraErased(Configuration.Step.InstallFile, .{
-                            .source = try s.addLazyPath(sif.source),
-                            .dest_dir = try addInstallDir(wc, sif.dir),
-                            .dest_sub_path = try wc.addString(sif.dest_rel_path),
-                        });
-                    },
-                    .install_dir => e: {
-                        const sid: *Step.InstallDir = @fieldParentPtr("step", step);
-                        const dest_sub_path: ?[]const u8 = if (sid.options.install_subdir.len != 0)
-                            sid.options.install_subdir
-                        else
-                            null;
-                        const include_extensions = sid.options.include_extensions orelse &.{};
-                        break :e try wc.addExtraErased(Configuration.Step.InstallDir, .{
-                            .flags = .{
-                                .dest_sub_path = dest_sub_path != null,
-                                .exclude_extensions = sid.options.exclude_extensions.len != 0,
-                                .include_extensions = include_extensions.len != 0,
-                                .include_extensions_active = sid.options.include_extensions != null,
-                                .blank_extensions = sid.options.blank_extensions.len != 0,
-                            },
-                            .source_dir = try s.addLazyPath(sid.options.source_dir),
-                            .dest_dir = try addInstallDir(wc, sid.options.install_dir),
-                            .dest_sub_path = .{ .value = try s.addOptionalString(dest_sub_path) },
-                            .exclude_extensions = .{ .slice = try s.initStringList(sid.options.exclude_extensions) },
-                            .include_extensions = .{ .slice = try s.initStringList(include_extensions) },
-                            .blank_extensions = .{ .slice = try s.initStringList(sid.options.blank_extensions) },
-                        });
-                    },
-                    .fail => e: {
-                        const sf: *Step.Fail = @fieldParentPtr("step", step);
-                        break :e try wc.addExtraErased(Configuration.Step.Fail, .{
-                            .msg = sf.error_msg,
-                        });
-                    },
-                    .find_program => e: {
-                        const fp: *Step.FindProgram = @fieldParentPtr("step", step);
-                        break :e try wc.addExtraErased(Configuration.Step.FindProgram, .{
-                            .names = fp.names,
-                            .found_path = fp.found_path,
-                        });
-                    },
-                    .fmt => e: {
-                        const sf: *Step.Fmt = @fieldParentPtr("step", step);
-                        break :e try wc.addExtraErased(Configuration.Step.Fmt, .{
-                            .flags = .{
-                                .paths = sf.paths.len != 0,
-                                .exclude_paths = sf.exclude_paths.len != 0,
-                                .check = sf.check,
-                            },
-                            .paths = .{ .slice = try s.initLazyPathList(sf.paths) },
-                            .exclude_paths = .{ .slice = try s.initLazyPathList(sf.exclude_paths) },
-                        });
-                    },
-                    .translate_c => e: {
-                        const tc: *Step.TranslateC = @fieldParentPtr("step", step);
-
-                        const system_libs = try arena.alloc(Configuration.SystemLib.Index, tc.system_libs.items.len);
-                        for (system_libs, tc.system_libs.items) |*dest, *src| dest.* = try s.addSystemLib(src);
-
-                        break :e try wc.addExtraErased(Configuration.Step.TranslateC, .{
-                            .flags = .{
-                                .include_dirs = tc.include_dirs.items.len != 0,
-                                .system_libs = system_libs.len != 0,
-                                .c_macros = tc.c_macros.items.len != 0,
-                                .link_libc = tc.link_libc,
-                                .optimize = .init(tc.optimize),
-                            },
-                            .src_path = try s.addLazyPath(tc.source),
-                            .output_file = tc.output_file,
-                            .include_dirs = .init(try s.initIncludeDirList(tc.include_dirs.items)),
-                            .system_libs = .{ .slice = system_libs },
-                            .c_macros = .{ .slice = tc.c_macros.items },
-                            .target = try addOptionalResolvedTarget(wc, tc.target),
-                        });
-                    },
-                    .write_file => e: {
-                        const wf: *Step.WriteFile = @fieldParentPtr("step", step);
-
-                        const directories = try arena.alloc(
-                            Configuration.Step.WriteFile.Directory,
-                            wf.directories.items.len,
-                        );
-                        for (directories, wf.directories.items) |*dest, src| dest.* = .{
-                            .sub_path = src.sub_path,
-                            .src_path = try s.addLazyPath(src.src_path),
-                            .exclude_extensions = src.exclude_extensions,
-                            .include_extensions = src.include_extensions,
-                        };
-
-                        break :e try wc.addExtraErased(Configuration.Step.WriteFile, .{
-                            .flags = .{
-                                .embeds = wf.embeds.items.len != 0,
-                                .copies = wf.copies.items.len != 0,
-                                .directories = directories.len != 0,
-                                .mode = switch (wf.mode) {
-                                    .whole_cached => .whole_cached,
-                                    .tmp => .tmp,
-                                    .mutate => .mutate,
-                                },
-                            },
-                            .generated_directory = wf.generated_directory,
-                            .embeds = .{ .slice = wf.embeds.items },
-                            .copies = .{ .slice = try s.initCopyList(wf.copies.items) },
-                            .directories = .{ .slice = directories },
-                            .mutate_path = .{ .value = switch (wf.mode) {
-                                .mutate => |lp| try s.addLazyPath(lp),
-                                .whole_cached, .tmp => null,
-                            } },
-                        });
-                    },
-                    .update_source_files => e: {
-                        const usf: *Step.UpdateSourceFiles = @fieldParentPtr("step", step);
-                        break :e try wc.addExtraErased(Configuration.Step.UpdateSourceFiles, .{
-                            .flags = .{
-                                .embeds = usf.embeds.items.len != 0,
-                                .copies = usf.copies.items.len != 0,
-                            },
-                            .embeds = .{ .slice = usf.embeds.items },
-                            .copies = .{ .slice = try s.initCopyList(usf.copies.items) },
-                        });
-                    },
-                    .run => e: {
-                        const run: *Step.Run = @fieldParentPtr("step", step);
-                        var expect_stderr_exact: ?Configuration.Bytes = null;
-                        var expect_stdout_exact: ?Configuration.Bytes = null;
-                        var expect_stderr_match: std.ArrayList(Configuration.Bytes) = .empty;
-                        var expect_stdout_match: std.ArrayList(Configuration.Bytes) = .empty;
-                        var expect_term: ?struct {
-                            status: Configuration.Step.Run.ExpectTermStatus,
-                            value: u32,
-                        } = null;
-                        var expect_stderr_snapshot: ?Configuration.LazyPath.Index = null;
-                        var expect_stdout_snapshot: ?Configuration.LazyPath.Index = null;
-                        switch (run.stdio) {
-                            .check => |checks| for (checks.items) |check| switch (check) {
-                                .expect_stderr_exact => |bytes| expect_stderr_exact = try wc.addBytes(bytes),
-                                .expect_stdout_exact => |bytes| expect_stdout_exact = try wc.addBytes(bytes),
-                                .expect_stderr_match => |bytes| {
-                                    try expect_stderr_match.append(arena, try wc.addBytes(bytes));
-                                },
-                                .expect_stdout_match => |bytes| {
-                                    try expect_stdout_match.append(arena, try wc.addBytes(bytes));
-                                },
-                                .expect_term => |t| expect_term = switch (t) {
-                                    .exited => |x| .{ .status = .exited, .value = x },
-                                    .signal => |x| .{ .status = .signal, .value = @backingInt(x) },
-                                    .stopped => |x| .{ .status = .stopped, .value = @backingInt(x) },
-                                    .unknown => |x| .{ .status = .unknown, .value = x },
-                                },
-                                .expect_stderr_snapshot => |path| expect_stderr_snapshot = try s.addLazyPath(path),
-                                .expect_stdout_snapshot => |path| expect_stdout_snapshot = try s.addLazyPath(path),
-                            },
-                            else => {},
-                        }
-                        const preopens = try arena.alloc(
-                            Configuration.Step.Run.Preopen,
-                            run.preopens.count(),
-                        );
-                        for (preopens, run.preopens.keys(), run.preopens.values()) |*dest, name, path| {
-                            dest.* = .{ .name = name, .path = try s.addLazyPath(path) };
-                        }
-
-                        break :e try wc.addExtraErased(Configuration.Step.Run, .{
-                            .flags = .{
-                                .disable_zig_progress = run.disable_zig_progress,
-                                .skip_foreign_checks = run.skip_foreign_checks,
-                                .failing_to_execute_foreign_is_an_error = run.failing_to_execute_foreign_is_an_error,
-                                .has_side_effects = run.has_side_effects,
-                                .test_runner_mode = run.test_runner_mode,
-                                .color = run.color,
-                                .stdio = switch (run.stdio) {
-                                    .infer_from_args => .infer_from_args,
-                                    .inherit => .inherit,
-                                    .check => .check,
-                                    .zig_test => .zig_test,
-                                },
-                                .stdin = switch (run.stdin) {
-                                    .none => .none,
-                                    .bytes => .bytes,
-                                    .lazy_path => .lazy_path,
-                                },
-                                .stdout_trim_whitespace = if (run.captured_stdout) |cs| cs.trim_whitespace else .none,
-                                .stderr_trim_whitespace = if (run.captured_stderr) |cs| cs.trim_whitespace else .none,
-                                .stdio_limit = run.stdio_limit != .unlimited,
-                                .producer = run.producer != null,
-                                .cwd = run.cwd != null,
-                                .captured_stdout = run.captured_stdout != null,
-                                .captured_stderr = run.captured_stderr != null,
-                                .environ_map = run.environ_map != null,
-                                .preopens = run.preopens.count() > 0,
-                            },
-                            .flags2 = .{
-                                .expect_stderr_exact = expect_stderr_exact != null,
-                                .expect_stdout_exact = expect_stdout_exact != null,
-                                .expect_stderr_match = expect_stderr_match.items.len != 0,
-                                .expect_stdout_match = expect_stdout_match.items.len != 0,
-                                .expect_term = expect_term != null,
-                                .expect_term_status = if (expect_term) |t| t.status else .exited,
-                                .expect_stderr_snapshot = expect_stderr_snapshot != null,
-                                .expect_stdout_snapshot = expect_stdout_snapshot != null,
-                            },
-                            .file_inputs = .{ .slice = try s.initLazyPathList(run.file_inputs.items) },
-                            .args = .{ .slice = try s.initArgsList(run.argv.items) },
-                            .cwd = .{ .value = try s.addOptionalLazyPath(run.cwd) },
-                            .preopens = .{ .slice = preopens },
-                            .captured_stdout = .{ .value = if (run.captured_stdout) |cs| .{
-                                .basename = try wc.addString(cs.basename),
-                                .generated_file = cs.generated_file,
-                            } else null },
-                            .captured_stderr = .{ .value = if (run.captured_stderr) |cs| .{
-                                .basename = try wc.addString(cs.basename),
-                                .generated_file = cs.generated_file,
-                            } else null },
-                            .environ_map = .{ .value = try s.addEnvironMap(run.environ_map) },
-                            .expect_term_value = .{ .value = if (expect_term) |t| t.value else null },
-                            .stdio_limit = .{ .value = run.stdio_limit.toInt64() },
-                            .producer = .{ .value = if (run.producer) |cs| s.stepIndex(&cs.step) else null },
-                            .expect_stderr_exact = .{ .value = if (expect_stderr_exact) |bytes| bytes else null },
-                            .expect_stdout_exact = .{ .value = if (expect_stdout_exact) |bytes| bytes else null },
-                            .expect_stderr_match = .{ .slice = expect_stderr_match.items },
-                            .expect_stdout_match = .{ .slice = expect_stdout_match.items },
-                            .expect_stderr_snapshot = .{ .value = expect_stderr_snapshot orelse null },
-                            .expect_stdout_snapshot = .{ .value = expect_stdout_snapshot orelse null },
-                            .stdin = .{ .u = switch (run.stdin) {
-                                .none => .none,
-                                .bytes => |bytes| .{ .bytes = try wc.addBytes(bytes) },
-                                .lazy_path => |lp| .{ .lazy_path = try s.addLazyPath(lp) },
-                            } },
-                        });
-                    },
-                    .check_file => e: {
-                        const cf: *Step.CheckFile = @fieldParentPtr("step", step);
-                        break :e try wc.addExtraErased(Configuration.Step.CheckFile, .{
-                            .flags = .{
-                                .expected_exact = cf.expected_exact != null,
-                                .expected_matches = cf.expected_matches.len != 0,
-                                .max_bytes = cf.max_bytes != null,
-                            },
-                            .file = try s.addLazyPath(cf.file),
-                            .expected_exact = .{ .value = cf.expected_exact },
-                            .expected_matches = .{ .slice = cf.expected_matches },
-                            .max_bytes = .{ .value = cf.max_bytes },
-                        });
-                    },
-                    .config_header => e: {
-                        const ch: *Step.ConfigHeader = @fieldParentPtr("step", step);
-                        const lazy_path: ?std.Build.LazyPath = ch.style.getPath();
-                        const pairs = try arena.alloc(Configuration.Step.ConfigHeader.Value.Pair, ch.values.count());
-                        for (pairs, ch.values.keys(), ch.values.values()) |*pair, key, value| pair.* = .{
-                            .key = try wc.addString(key),
-                            .index = switch (value) {
-                                .undef => .undef,
-                                .defined => .defined,
-                                .boolean => |x| switch (x) {
-                                    false => .bool_false,
-                                    true => .bool_true,
-                                },
-                                .int => |x| switch (x) {
-                                    0 => .int_0,
-                                    1 => .int_1,
-                                    else => try wc.addExtra(Configuration.Step.ConfigHeader.Value, .initSigned(x)),
-                                },
-                                .ident => |x| try wc.addExtra(Configuration.Step.ConfigHeader.Value, .{
-                                    .flags = .{
-                                        .tag = .ident,
-                                        .small = 0,
-                                    },
-                                    .i64 = .{ .value = null },
-                                    .u64 = .{ .value = null },
-                                    .ident = .{ .value = try wc.addString(x) },
-                                    .string = .{ .value = null },
-                                }),
-                                .string => |x| try wc.addExtra(Configuration.Step.ConfigHeader.Value, .{
-                                    .flags = .{
-                                        .tag = .string,
-                                        .small = 0,
-                                    },
-                                    .i64 = .{ .value = null },
-                                    .u64 = .{ .value = null },
-                                    .ident = .{ .value = null },
-                                    .string = .{ .value = try wc.addString(x) },
-                                }),
-                            },
-                        };
-                        break :e try wc.addExtraErased(Configuration.Step.ConfigHeader, .{
-                            .flags = .{
-                                .template_file = lazy_path != null,
-                                .style = .init(ch.style),
-                                .input_size_limit = ch.input_size_limit != null,
-                                .include_guard = ch.include_guard != .none,
-                            },
-                            .template_file = .{ .value = try s.addOptionalLazyPath(lazy_path) },
-                            .generated_dir = ch.generated_dir,
-                            .input_size_limit = .{ .value = ch.input_size_limit },
-                            .include_path = try wc.addString(ch.include_path),
-                            .include_guard = .{ .value = ch.include_guard.unwrap() },
-                            .values = .{ .slice = pairs },
-                        });
-                    },
-                    .obj_copy => e: {
-                        const oc: *Step.ObjCopy = @fieldParentPtr("step", step);
-
-                        const debug_basename: ?Configuration.String = if (oc.debug_file) |df|
-                            df.basename.unwrap()
-                        else
-                            null;
-
-                        const debug_file: ?Configuration.GeneratedFileIndex = if (oc.debug_file) |df|
-                            df.output_file
-                        else
-                            null;
-
-                        const add_sections = try arena.alloc(
-                            Configuration.Step.ObjCopy.AddSection,
-                            oc.add_sections.items.len,
-                        );
-                        for (add_sections, oc.add_sections.items) |*dest, src| dest.* = .{
-                            .section_name = src.section_name,
-                            .file_path = try s.addLazyPath(src.file_path),
-                        };
-
-                        break :e try wc.addExtraErased(Configuration.Step.ObjCopy, .{
-                            .flags = .{
-                                .basename = oc.basename != .none,
-                                .debug_file = debug_file != null,
-                                .debug_basename = debug_basename != null,
-                                .format = .init(oc.format),
-                                .strip = oc.strip,
-                                .compress_debug = oc.compress_debug,
-                                .only_section = oc.only_section != .none,
-                                .pad_to = oc.pad_to != null,
-                                .add_section = add_sections.len != 0,
-                                .update_section = oc.update_sections.items.len != 0,
-                            },
-                            .input_file = try s.addLazyPath(oc.input_file),
-                            .output_file = oc.output_file,
-                            .basename = .{ .value = oc.basename.unwrap() },
-                            .debug_file = .{ .value = debug_file },
-                            .debug_basename = .{ .value = debug_basename },
-                            .only_section = .{ .value = oc.only_section.unwrap() },
-                            .pad_to = .{ .value = oc.pad_to },
-                            .add_section = .{ .slice = add_sections },
-                            .update_section = .{ .slice = oc.update_sections.items },
-                        });
-                    },
-                    .options => e: {
-                        const so: *Step.Options = @fieldParentPtr("step", step);
-
-                        const files = try arena.alloc(Configuration.Step.Options.NamedPath, so.files.items.len);
-                        for (files, so.files.items) |*dest, src| dest.* = .{
-                            .name = src.name,
-                            .path = try s.addLazyPath(src.path),
-                        };
-
-                        const directories = try arena.alloc(Configuration.Step.Options.NamedPath, so.directories.items.len);
-                        for (directories, so.directories.items) |*dest, src| dest.* = .{
-                            .name = src.name,
-                            .path = try s.addLazyPath(src.path),
-                        };
-
-                        const untracked_paths = try arena.alloc(Configuration.Step.Options.NamedPath, so.untracked_paths.items.len);
-                        for (untracked_paths, so.untracked_paths.items) |*dest, src| dest.* = .{
-                            .name = src.name,
-                            .path = try s.addLazyPath(src.path),
-                        };
-
-                        break :e try wc.addExtraErased(Configuration.Step.Options, .{
-                            .flags = .{
-                                .files = so.files.items.len != 0,
-                                .directories = so.directories.items.len != 0,
-                                .untracked_paths = so.untracked_paths.items.len != 0,
-                            },
-                            .generated_file = so.generated_file,
-                            .contents = try wc.addBytes(so.contents.items),
-                            .files = .{ .slice = files },
-                            .directories = .{ .slice = directories },
-                            .untracked_paths = .{ .slice = untracked_paths },
-                        });
-                    },
-                })),
+                .extended = @fromBackingInt(extended),
             });
         }
     }
