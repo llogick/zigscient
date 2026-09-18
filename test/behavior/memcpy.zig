@@ -180,3 +180,32 @@ test "@memcpy no sentinel source into sentinel destination" {
     S.doTheTest();
     comptime S.doTheTest();
 }
+
+test "@memcpy a global array" {
+    const S = struct {
+        var array_u8: [1]u8 = .{1};
+        const slice_u8: []u8 = &array_u8;
+        var array_u32: [1]u32 = .{10};
+        const slice_u32: []u32 = &array_u32;
+    };
+
+    try expect(S.array_u8[0] == 1);
+    @memcpy(&S.array_u8, &[1]u8{2});
+    try expect(S.array_u8[0] == 2);
+    @memcpy(&S.array_u8, &[1]u8{S.array_u8[0] + 1});
+    try expect(S.array_u8[0] == 3);
+    @memcpy(S.slice_u8, &[1]u8{4});
+    try expect(S.array_u8[0] == 4);
+    @memcpy(S.slice_u8, &[1]u8{S.array_u8[0] + 1});
+    try expect(S.array_u8[0] == 5);
+
+    try expect(S.array_u32[0] == 10);
+    @memcpy(&S.array_u32, &[1]u32{20});
+    try expect(S.array_u32[0] == 20);
+    @memcpy(&S.array_u32, &[1]u32{S.array_u32[0] + 10});
+    try expect(S.array_u32[0] == 30);
+    @memcpy(S.slice_u32, &[1]u32{40});
+    try expect(S.array_u32[0] == 40);
+    @memcpy(S.slice_u32, &[1]u32{S.array_u32[0] + 10});
+    try expect(S.array_u32[0] == 50);
+}
