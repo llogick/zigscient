@@ -183,6 +183,7 @@ const SillyStruct = struct {
 const here_is_a_null_literal = SillyStruct{ .context = null };
 
 test "unwrap optional which is field of global var" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 

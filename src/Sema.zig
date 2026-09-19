@@ -20918,13 +20918,8 @@ fn zirReifySpirvType(
             const depth = try sema.interpretStdLangType(block, operand_src, depth_val, std.lang.Type.Spirv.Image.Depth);
             const access = try sema.interpretStdLangType(block, operand_src, access_val, std.lang.Type.Spirv.Image.Access);
 
-            switch (target.os.tag) {
-                .opencl => if (access == .unknown) {
-                    return sema.fail(block, operand_src, "'access' field must be specified under the 'opencl' os", .{});
-                },
-                else => if (access != .unknown) {
-                    return sema.fail(block, operand_src, "access qualifier '.{t}' is only valid under the 'opencl' os", .{access});
-                },
+            if (target.os.tag == .opencl and access == .unknown) {
+                return sema.fail(block, operand_src, "'access' field must be specified under the 'opencl' OS", .{});
             }
 
             const arrayed = try sema.interpretStdLangType(block, operand_src, arrayed_val, bool);
@@ -20934,31 +20929,24 @@ fn zirReifySpirvType(
             const usage_tag = try sema.interpretStdLangType(block, operand_src, usage_tag_val, @typeInfo(std.lang.Type.Spirv.Image.Usage).@"union".tag_type.?);
 
             switch (target.os.tag) {
-                .vulkan => {
-                    if (usage_tag == .unknown) {
-                        return sema.fail(
-                            block,
-                            operand_src,
-                            "'usage' must be '.sampled' or '.storage' under the 'vulkan' os (Sampled == 0 is forbidden)",
-                            .{},
-                        );
-                    }
+                .vulkan => if (usage_tag == .unknown) {
+                    return sema.fail(block, operand_src, "'usage' must be '.sampled' or '.storage' under the 'vulkan' OS", .{});
                 },
                 .opencl => {
                     if (usage_tag != .unknown) {
-                        return sema.fail(block, operand_src, "'usage' must be '.unknown' under the 'opencl' os", .{});
+                        return sema.fail(block, operand_src, "'usage' must be '.unknown' under the 'opencl' OS", .{});
                     }
                     if (multisampled) {
-                        return sema.fail(block, operand_src, "'multisampled' must be 'false' under the 'opencl' os", .{});
+                        return sema.fail(block, operand_src, "'multisampled' must be 'false' under the 'opencl' OS", .{});
                     }
                     if (format != .unknown) {
-                        return sema.fail(block, operand_src, "'format' must be '.unknown' under the 'opencl' os", .{});
+                        return sema.fail(block, operand_src, "'format' must be '.unknown' under the 'opencl' OS", .{});
                     }
                     if (dim == .cube) {
-                        return sema.fail(block, operand_src, "'dim' '.cube' is not allowed under the 'opencl' os", .{});
+                        return sema.fail(block, operand_src, "'dim' '.cube' is not allowed under the 'opencl' OS", .{});
                     }
                     if (arrayed and dim != .@"1d" and dim != .@"2d") {
-                        return sema.fail(block, operand_src, "'arrayed' may only be 'true' when 'dim' is '.1d' or '.2d' under the 'opencl' os", .{});
+                        return sema.fail(block, operand_src, "'arrayed' may only be 'true' when 'dim' is '.1d' or '.2d' under the 'opencl' OS", .{});
                     }
                 },
                 else => {},
@@ -20969,10 +20957,10 @@ fn zirReifySpirvType(
                     const sampled_type = usage_val.unionPayload(zcu).toType();
 
                     if (target.os.tag != .opencl and sampled_type.toIntern() == .void_type) {
-                        return sema.fail(block, operand_src, "'void' type for '{t}' field is only valid under the 'opencl' os", .{usage_tag});
+                        return sema.fail(block, operand_src, "'void' type for '{t}' field is only valid under the 'opencl' OS", .{usage_tag});
                     }
                     if (target.os.tag == .opencl and sampled_type.toIntern() != .void_type) {
-                        return sema.fail(block, operand_src, "'{t}' field type must be 'void' under the 'opencl' os", .{usage_tag});
+                        return sema.fail(block, operand_src, "'{t}' field type must be 'void' under the 'opencl' OS", .{usage_tag});
                     }
 
                     if (sampled_type.toIntern() != .void_type and
@@ -20988,7 +20976,7 @@ fn zirReifySpirvType(
                             return sema.fail(
                                 block,
                                 operand_src,
-                                "'{t}' field value must be a 32-bit int, 64-bit int or 32-bit float under the 'vulkan' os",
+                                "'{t}' field value must be a 32-bit int, 64-bit int or 32-bit float under the 'vulkan' OS",
                                 .{usage_tag},
                             );
                         }
@@ -21009,7 +20997,7 @@ fn zirReifySpirvType(
                                 return sema.fail(
                                     block,
                                     operand_src,
-                                    "image 'format' '.{t}' does not match '{t}' type '{f}' under the 'vulkan' os",
+                                    "image 'format' '.{t}' does not match '{t}' type '{f}' under the 'vulkan' OS",
                                     .{ format, usage_tag, sampled_type.fmt(pt) },
                                 );
                             }
@@ -21062,7 +21050,7 @@ fn zirReifySpirvType(
                 elem_ty.zigTypeTag(zcu) == .spirv and
                 ip.loadSpirvType(elem_ty.toIntern()).flags.tag == .runtime_array)
             {
-                return sema.fail(block, operand_src, "'runtime_array' of 'runtime_array' is not allowed under the 'vulkan' os", .{});
+                return sema.fail(block, operand_src, "'runtime_array' of 'runtime_array' is not allowed under the 'vulkan' OS", .{});
             }
             break :blk .{
                 .ty = union_val.val,
@@ -25319,11 +25307,14 @@ fn zirBuiltinExtern(
     }
 
     if (options.decoration) |decoration| switch (decoration) {
-        .flat => switch (ptr_info.flags.address_space) {
+        .location, .flat => switch (ptr_info.flags.address_space) {
             .input, .output => {},
-            else => return sema.fail(block, options_src, "\"flat\" decoration requires \"input\" or \"output\" address space", .{}),
+            else => return sema.fail(block, options_src, "'{t}' decoration requires 'input' or 'output' address space", .{decoration}),
         },
-        .location, .descriptor => {},
+        .descriptor => switch (ptr_info.flags.address_space) {
+            .global, .storage_buffer, .uniform, .constant => {},
+            else => return sema.fail(block, options_src, "'descriptor' decoration requires 'storage_buffer', 'uniform', 'constant' or 'global' address space", .{}),
+        },
     };
 
     const target = zcu.getTarget();
@@ -34917,6 +34908,7 @@ pub fn resolveNavPtrModifiers(
     const gpa = comp.gpa;
     const io = comp.io;
     const ip = &zcu.intern_pool;
+    const target = zcu.getTarget();
 
     const align_src = block.src(.{ .node_offset_var_decl_align = .zero });
     const section_src = block.src(.{ .node_offset_var_decl_section = .zero });
@@ -34948,7 +34940,6 @@ pub fn resolveNavPtrModifiers(
                 else => .constant,
             },
         };
-        const target = zcu.getTarget();
         const addrspace_body = zir_decl.addrspace_body orelse {
             if (zir_decl.linkage == .@"extern" and
                 target.cpu.arch.isSpirV() and
@@ -34971,6 +34962,21 @@ pub fn resolveNavPtrModifiers(
         const addrspace_ref = try sema.resolveInlineBody(block, addrspace_body, decl_inst);
         break :as try sema.analyzeAsAddressSpace(block, addrspace_src, addrspace_ref, addrspace_ctx);
     };
+
+    if (target.cpu.arch.isSpirV()) {
+        if (zir_decl.kind == .@"var" and zir_decl.linkage != .@"extern" and !zir_decl.is_threadlocal) {
+            return sema.failWithOwnedErrorMsg(block, msg: {
+                const decl_src = block.nodeOffset(.zero);
+                const msg = try sema.errMsg(decl_src, "SPIR-V target does not support global variables", .{});
+                errdefer msg.destroy(gpa);
+                try sema.errNote(decl_src, msg, "consider using 'threadlocal'", .{});
+                break :msg msg;
+            });
+        }
+        if (zir_decl.is_threadlocal and @"addrspace" != .private and target.os.tag == .vulkan) {
+            return sema.fail(block, addrspace_src, "threadlocal variables with address space '{t}' are not supported on {t}", .{ @"addrspace", target.os.tag });
+        }
+    }
 
     return .{
         .@"align" = @"align",

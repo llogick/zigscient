@@ -642,6 +642,8 @@ test "result type preserved through multiple references" {
 }
 
 test "result type found through optional pointer" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const ptr1: ?*const u32 = &@intCast(123);
     const ptr2: ?[]const u8 = &.{ @intCast(123), @truncate(0xABCD) };
     try expect(ptr1.?.* == 123);

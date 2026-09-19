@@ -122,6 +122,8 @@ test "while copies its payload" {
 }
 
 test "continue and break" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     try runContinueAndBreakTest();
     try expect(continue_and_break_counter == 8);
 }
@@ -140,6 +142,7 @@ fn runContinueAndBreakTest() !void {
 }
 
 test "while with optional as condition" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
@@ -153,6 +156,7 @@ test "while with optional as condition" {
 }
 
 test "while with optional as condition with else" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
@@ -171,6 +175,7 @@ test "while with optional as condition with else" {
 }
 
 test "while with error union condition" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
 

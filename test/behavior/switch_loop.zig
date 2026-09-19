@@ -96,7 +96,6 @@ test "switch loop on tagged union" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
 
     const S = struct {
@@ -291,7 +290,6 @@ test "switch loop with discarded tag capture" {
 }
 
 test "switch loop with single catch-all prong" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const S = struct {
         const E = enum { a, b, c };
         const U = union(E) { a: u32, b: u16, c: u8 };

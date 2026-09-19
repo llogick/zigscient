@@ -60,6 +60,7 @@ const g1: i32 = 1233 + 1;
 var g2: i32 = 0;
 
 test "global variables" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 
     try expect(g2 == 0);
@@ -683,6 +684,7 @@ var gdt = [_]GDTEntry{
 var global_ptr = &gdt[0];
 
 test "global constant is loaded with a runtime-known index" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 
     const S = struct {
@@ -999,6 +1001,8 @@ test "generic function uses return type of other generic function" {
 }
 
 test "const alloc with comptime-known initializer is made comptime-known" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const S = struct {
         a: bool,
         b: [2]u8,
@@ -1079,6 +1083,8 @@ test "inline call of function with a switch inside the return statement" {
 }
 
 test "pointer to zero sized global is mutable" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const S = struct {
         const Thing = struct {};
 

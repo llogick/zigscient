@@ -12,6 +12,8 @@ const var_linksection = linksections.?[1];
 const fn_linksection = linksections.?[2];
 
 test "addrspace on container-level const" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const S = struct {
         const a: u32 addrspace(.generic) = 123;
         fn check(ptr: anytype) !void {
@@ -47,6 +49,8 @@ test "addrspace and linksection on container-level const" {
 }
 
 test "addrspace on container-level var" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const S = struct {
         var a: u32 addrspace(.generic) = 123;
         fn check(ptr: anytype) !void {

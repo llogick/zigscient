@@ -604,6 +604,7 @@ pub fn defaultAddressSpace(
     // The default address space for functions on AVR is .flash to produce
     // correct fixups into progmem.
     if (context == .function and target.cpu.arch == .avr) return .flash;
+    if (context == .global_mutable and target.os.tag == .vulkan) return .private;
     return .generic;
 }
 
@@ -649,6 +650,7 @@ pub fn shouldBlockPointerOps(target: *const std.Target, as: AddressSpace) bool {
         // Logical pointers that never support operations
         .constant,
         .local,
+        .private,
         .input,
         .output,
         .uniform,

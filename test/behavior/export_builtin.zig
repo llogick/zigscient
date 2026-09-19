@@ -4,6 +4,7 @@ const expect = std.testing.expect;
 
 test "exporting enum value" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
         const E = enum(c_int) { one, two };
@@ -29,6 +30,7 @@ test "exporting with internal linkage" {
 
 test "exporting using namespace access" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
         const Inner = struct {

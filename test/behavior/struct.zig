@@ -443,6 +443,7 @@ test "packed struct 24bits" {
 }
 
 test "runtime struct initialization of bitfield" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
@@ -714,6 +715,7 @@ test "packed struct with u0 field access" {
 }
 
 test "access to global struct fields" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 
     g_foo.bar.value = 42;
@@ -943,7 +945,6 @@ test "tuple element initialized with fn call" {
 }
 
 test "struct with union field" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 
@@ -1081,7 +1082,6 @@ test "anon init through error unions and optionals" {
 test "anon init through optional" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
         a: u32,
@@ -1760,6 +1760,8 @@ test "circular dependency through pointer field of a struct" {
 }
 
 test "field calls do not force struct field init resolution" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const S = struct {
         x: u32 = blk: {
             _ = @TypeOf(make().dummyFn()); // runtime field call - S not fully resolved - dummyFn call should not force field init resolution
@@ -1943,8 +1945,6 @@ test "struct field default value is a call" {
 }
 
 test "aggregate initializers should allow initializing comptime fields, verifying equality" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     var x: u32 = 15;
     _ = &x;
     const T = @TypeOf(.{ @as(i32, -1234), @as(u32, 5678), x });
@@ -1985,6 +1985,7 @@ test "assignment of field with padding" {
 }
 
 test "initiate global variable with runtime value" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 

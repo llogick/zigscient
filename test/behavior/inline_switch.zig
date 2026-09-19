@@ -4,7 +4,6 @@ const builtin = @import("builtin");
 
 test "inline scalar prongs" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     var x: usize = 0;
     switch (x) {
@@ -19,7 +18,6 @@ test "inline scalar prongs" {
 
 test "inline prong ranges" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     var x: usize = 0;
     _ = &x;

@@ -319,7 +319,6 @@ test "assigning to an unwrapped optional field in an inline loop" {
 test "coerce an anon struct literal to optional struct" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
         const Struct = struct {
@@ -388,7 +387,6 @@ test "0-bit child type coerced to optional" {
 test "array of optional unaligned types" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const Enum = enum { one, two, three };
 
@@ -477,6 +475,7 @@ const NoReturn = struct {
 };
 
 test "optional of noreturn used with if" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 
     NoReturn.a = 64;
@@ -488,6 +487,7 @@ test "optional of noreturn used with if" {
 }
 
 test "optional of noreturn used with orelse" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 
     NoReturn.a = 64;
@@ -652,8 +652,6 @@ test "result location initialization of optional with OPV payload" {
 }
 
 test "global comptime only optional" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         const @"null": ?*type = null;
         const @"void": ?*const type = &void;

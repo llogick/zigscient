@@ -1,16 +1,11 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
-
 const CodeGen = @import("CodeGen.zig");
-const Decl = @import("CodeGen.zig").Decl;
-
 const spec = @import("spec.zig");
 const Opcode = spec.Opcode;
 const Word = spec.Word;
 const Id = spec.Id;
 const StorageClass = spec.StorageClass;
-
 const Assembler = @This();
 
 cg: *CodeGen,
@@ -20,7 +15,10 @@ src: []const u8 = undefined,
 tokens: std.ArrayList(Token) = .empty,
 current_token: u32 = 0,
 /// The instruction that is currently being parsed or has just been parsed.
-inst: struct {
+inst: Instruction = .{},
+value_map: std.array_hash_map.String(AsmValue) = .empty,
+
+const Instruction = struct {
     opcode: Opcode = undefined,
     operands: std.ArrayList(Operand) = .empty,
     string_bytes: std.ArrayList(u8) = .empty,
@@ -35,9 +33,7 @@ inst: struct {
         }
         return null;
     }
-} = .{},
-value_map: std.array_hash_map.String(AsmValue) = .empty,
-inst_map: std.array_hash_map.String(void) = .empty,
+};
 
 const Operand = union(enum) {
     /// Any 'simple' 32-bit value. This could be a mask or
@@ -68,26 +64,13 @@ pub fn deinit(ass: *Assembler) void {
     ass.inst.operands.deinit(gpa);
     ass.inst.string_bytes.deinit(gpa);
     ass.value_map.deinit(gpa);
-    ass.inst_map.deinit(gpa);
 }
 
 const Error = error{ AssembleFail, OutOfMemory };
 
 pub fn assemble(ass: *Assembler, src: []const u8) Error!void {
-    const gpa = ass.cg.gpa;
-
     ass.src = src;
     ass.errors.clearRetainingCapacity();
-
-    // Populate the opcode map if it isn't already
-    if (ass.inst_map.count() == 0) {
-        const instructions = spec.InstructionSet.core.instructions();
-        try ass.inst_map.ensureUnusedCapacity(gpa, @intCast(instructions.len));
-        for (instructions, 0..) |inst, i| {
-            const entry = try ass.inst_map.getOrPut(gpa, inst.name);
-            assert(entry.index == i);
-        }
-    }
 
     try ass.tokenize();
     while (!ass.testToken(.eof)) {
@@ -144,18 +127,20 @@ const AsmValue = union(enum) {
     /// zero-extended from the float's width to 64 bits.
     constant: u64,
     /// A vector "c" input expanded by `processSpecConstVector`.
-    constant_composite: struct {
+    constant_composite: ConstantComposite,
+    string: []const u8,
+
+    const ConstantComposite = struct {
         child: Id,
         child_kind: std.lang.TypeId,
         child_bit_width: u16,
         values: []u64,
-    },
-    string: []const u8,
+    };
 
     /// Retrieve the result-id of this AsmValue. Asserts that this AsmValue
     /// is of a variant that allows the result to be obtained (not an unresolved
     /// forward declaration, not in the process of being declared, etc).
-    pub fn resultId(value: AsmValue) Id {
+    fn resultId(value: AsmValue) Id {
         return switch (value) {
             .just_declared,
             .unresolved_forward_reference,
@@ -221,7 +206,7 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
     const cg = ass.cg;
     const gpa = cg.gpa;
     const operands = ass.inst.operands.items;
-    const section = &cg.sections.globals;
+    const section = &cg.module;
     const id = switch (ass.inst.opcode) {
         .OpTypeVoid => try cg.voidType(),
         .OpTypeBool => try cg.boolType(),
@@ -339,26 +324,16 @@ fn processTypeInstruction(ass: *Assembler) !AsmValue {
 /// - Target section is determined from instruction type.
 fn processGenericInstruction(ass: *Assembler) !?AsmValue {
     const cg = ass.cg;
-    const target = cg.zcu.getTarget();
     const operands = ass.inst.operands.items;
-    var maybe_spv_decl_index: ?Decl.Index = null;
     const section = switch (ass.inst.opcode.class()) {
-        .constant_creation => &cg.sections.globals,
-        .annotation => &cg.sections.annotations,
+        .constant_creation => &cg.module,
+        .annotation => &cg.module,
         .type_declaration => unreachable, // Handled elsewhere.
         else => switch (ass.inst.opcode) {
-            .OpEntryPoint => unreachable,
-            .OpExecutionMode, .OpExecutionModeId => &cg.sections.execution_modes,
             .OpVariable => section: {
                 const storage_class: spec.StorageClass = @fromBackingInt(@intCast(operands[2].value));
                 if (storage_class == .function) break :section &ass.cg.prologue;
-                maybe_spv_decl_index = try cg.allocDecl(.global);
-                if (!target.cpu.has(.spirv, .v1_4) and storage_class != .input and storage_class != .output) {
-                    // Before version 1.4, the interface’s storage classes are limited to the Input and Output
-                    break :section &cg.sections.globals;
-                }
-                try ass.cg.decl_deps.append(cg.gpa, maybe_spv_decl_index.?);
-                break :section &cg.sections.globals;
+                break :section &cg.module;
             },
             else => &ass.cg.body,
         },
@@ -388,10 +363,7 @@ fn processGenericInstruction(ass: *Assembler) !?AsmValue {
             .value, .literal32 => |word| section.writeWord(word),
             .literal64 => |dword| section.writeDoubleWord(dword),
             .result_id => {
-                maybe_result_id = if (maybe_spv_decl_index) |spv_decl_index|
-                    cg.declPtr(spv_decl_index).result_id
-                else
-                    cg.allocId();
+                maybe_result_id = cg.allocId();
                 section.writeOperand(Id, maybe_result_id.?);
             },
             .ref_id => |index| {
@@ -406,7 +378,8 @@ fn processGenericInstruction(ass: *Assembler) !?AsmValue {
     }
 
     const actual_word_count = section.instructions.items.len - first_word;
-    section.instructions.items[first_word] |= @as(u32, @as(u16, @intCast(actual_word_count))) << 16 | @backingInt(ass.inst.opcode);
+    const header: spec.InstructionHeader = .{ .opcode = ass.inst.opcode, .word_count = @intCast(actual_word_count) };
+    section.instructions.items[first_word] = @bitCast(header);
 
     switch (ass.inst.opcode) {
         .OpKill,
@@ -454,8 +427,8 @@ fn processSpecConstVector(ass: *Assembler) !?AsmValue {
         else => return ass.fail(ass.inst.inst_offset, "%ty must be a type", .{}),
     };
 
-    const globals = &cg.sections.globals;
-    const annotations = &cg.sections.annotations;
+    const globals = &cg.module;
+    const annotations = &cg.module;
     const literal_words: usize = if (cc.child_bit_width <= @bitSizeOf(Word)) 1 else 2;
 
     const elem_ids = try gpa.alloc(Id, cc.values.len);
@@ -465,11 +438,10 @@ fn processSpecConstVector(ass: *Assembler) !?AsmValue {
         elem_id_out.* = elem_id;
 
         switch (cc.child_kind) {
-            .bool => {
-                const opcode: Opcode = if (value & 1 != 0) .OpSpecConstantTrue else .OpSpecConstantFalse;
-                try globals.emitRaw(gpa, opcode, 2);
-                globals.writeOperand(Id, cc.child);
-                globals.writeOperand(Id, elem_id);
+            .bool => if (value & 1 != 0) {
+                try globals.emit(gpa, .OpSpecConstantTrue, .{ .id_result_type = cc.child, .id_result = elem_id });
+            } else {
+                try globals.emit(gpa, .OpSpecConstantFalse, .{ .id_result_type = cc.child, .id_result = elem_id });
             },
             .int, .float => {
                 try globals.emitRaw(gpa, .OpSpecConstant, 2 + literal_words);
@@ -487,10 +459,10 @@ fn processSpecConstVector(ass: *Assembler) !?AsmValue {
         const spec_id_word = std.math.cast(u32, spec_id_base + i) orelse {
             return ass.fail(ass.inst.inst_offset, "SpecId {} does not fit in 32 bits", .{spec_id_base + i});
         };
-        try annotations.emitRaw(gpa, .OpDecorate, 3);
-        annotations.writeOperand(Id, elem_id);
-        annotations.writeWord(@backingInt(spec.Decoration.spec_id));
-        annotations.writeWord(spec_id_word);
+        try annotations.emit(gpa, .OpDecorate, .{
+            .target = elem_id,
+            .decoration = .{ .spec_id = .{ .specialization_constant_id = spec_id_word } },
+        });
     }
 
     const result_id = cg.allocId();
@@ -557,14 +529,13 @@ fn parseInstruction(ass: *Assembler) !void {
     }
 
     const opcode_text = ass.tokenText(opcode_tok);
-    const index = ass.inst_map.getIndex(opcode_text) orelse {
+    const opcode = std.meta.stringToEnum(spec.Opcode, opcode_text) orelse {
         return ass.fail(opcode_tok.start, "invalid opcode '{s}'", .{opcode_text});
     };
 
-    const inst = spec.InstructionSet.core.instructions()[index];
-    ass.inst.opcode = @fromBackingInt(@intCast(inst.opcode));
+    ass.inst.opcode = opcode;
 
-    const expected_operands = inst.operands;
+    const expected_operands = opcode.operands();
     // This is a loop because the result-id is not always the first operand.
     const requires_lhs_result = for (expected_operands) |op| {
         if (op.kind == .id_result) break true;
@@ -614,8 +585,8 @@ fn parseOperand(ass: *Assembler, kind: spec.OperandKind) Error!void {
         else => switch (kind) {
             .literal_integer => try ass.parseLiteralInteger(),
             .literal_string => try ass.parseString(),
-            .literal_context_dependent_number => try ass.parseContextDependentNumber(),
-            .literal_ext_inst_integer => try ass.parseLiteralExtInstInteger(),
+            .literal_context_dependent_number => try ass.parseNumber(),
+            .literal_ext_inst_integer => try ass.parseLiteralInteger(),
             .pair_id_ref_id_ref => try ass.parsePhiSource(),
             else => return ass.todo("parse operand of type {s}", .{@tagName(kind)}),
         },
@@ -661,12 +632,12 @@ fn parseBitEnum(ass: *Assembler, kind: spec.OperandKind) !void {
         if ((mask & enumerant.value) == 0)
             continue;
 
-        for (enumerant.parameters) |param_kind| {
+        for (enumerant.parameters) |param| {
             if (ass.isAtInstructionBoundary()) {
                 return ass.fail(ass.currentToken().start, "missing required parameter for bit flag '{s}'", .{enumerant.name});
             }
 
-            try ass.parseOperand(param_kind);
+            try ass.parseOperand(param.kind);
         }
     }
 }
@@ -721,12 +692,12 @@ fn parseValueEnum(ass: *Assembler, kind: spec.OperandKind) !void {
 
     try ass.inst.operands.append(gpa, .{ .value = enumerant.value });
 
-    for (enumerant.parameters) |param_kind| {
+    for (enumerant.parameters) |param| {
         if (ass.isAtInstructionBoundary()) {
             return ass.fail(ass.currentToken().start, "missing required parameter for enum variant '{s}'", .{enumerant.name});
         }
 
-        try ass.parseOperand(param_kind);
+        try ass.parseOperand(param.kind);
     }
 }
 
@@ -746,30 +717,26 @@ fn parseRefId(ass: *Assembler) !void {
     try ass.inst.operands.append(gpa, .{ .ref_id = index });
 }
 
+fn eatPlaceholderConstant(ass: *Assembler) !?u64 {
+    const tok = ass.currentToken();
+    if (!ass.eatToken(.placeholder)) return null;
+    const name = ass.tokenText(tok)[1..];
+    const value = ass.value_map.get(name) orelse
+        return ass.fail(tok.start, "invalid placeholder '${s}'", .{name});
+    return switch (value) {
+        .constant => |literal| literal,
+        else => ass.fail(tok.start, "value '{s}' cannot be used as placeholder", .{name}),
+    };
+}
+
 fn parseLiteralInteger(ass: *Assembler) !void {
     const gpa = ass.cg.gpa;
 
     const tok = ass.currentToken();
-    if (ass.eatToken(.placeholder)) {
-        const name = ass.tokenText(tok)[1..];
-        const value = ass.value_map.get(name) orelse {
-            return ass.fail(tok.start, "invalid placeholder '${s}'", .{name});
-        };
-        switch (value) {
-            .constant => |literal| {
-                const literal32 = std.math.cast(u32, literal) orelse {
-                    return ass.fail(
-                        tok.start,
-                        "placeholder value {} does not fit in 32 bits",
-                        .{literal},
-                    );
-                };
-                try ass.inst.operands.append(gpa, .{ .literal32 = literal32 });
-            },
-            else => {
-                return ass.fail(tok.start, "value '{s}' cannot be used as placeholder", .{name});
-            },
-        }
+    if (try ass.eatPlaceholderConstant()) |literal| {
+        const literal32 = std.math.cast(u32, literal) orelse
+            return ass.fail(tok.start, "placeholder value {} does not fit in 32 bits", .{literal});
+        try ass.inst.operands.append(gpa, .{ .literal32 = literal32 });
         return;
     }
 
@@ -779,41 +746,6 @@ fn parseLiteralInteger(ass: *Assembler) !void {
     // only one instruction where multiple words are allowed, the literals that make up the
     // switch cases of OpSwitch. This case is handled separately, and so we just assume
     // everything is a 32-bit integer in this function.
-    const text = ass.tokenText(tok);
-    const value = std.fmt.parseInt(u32, text, 0) catch {
-        return ass.fail(tok.start, "'{s}' is not a valid 32-bit integer literal", .{text});
-    };
-    try ass.inst.operands.append(gpa, .{ .literal32 = value });
-}
-
-fn parseLiteralExtInstInteger(ass: *Assembler) !void {
-    const gpa = ass.cg.gpa;
-
-    const tok = ass.currentToken();
-    if (ass.eatToken(.placeholder)) {
-        const name = ass.tokenText(tok)[1..];
-        const value = ass.value_map.get(name) orelse {
-            return ass.fail(tok.start, "invalid placeholder '${s}'", .{name});
-        };
-        switch (value) {
-            .constant => |literal| {
-                const literal32 = std.math.cast(u32, literal) orelse {
-                    return ass.fail(
-                        tok.start,
-                        "placeholder value {} does not fit in 32 bits",
-                        .{literal},
-                    );
-                };
-                try ass.inst.operands.append(gpa, .{ .literal32 = literal32 });
-            },
-            else => {
-                return ass.fail(tok.start, "value '{s}' cannot be used as placeholder", .{name});
-            },
-        }
-        return;
-    }
-
-    try ass.expectToken(.value);
     const text = ass.tokenText(tok);
     const value = std.fmt.parseInt(u32, text, 0) catch {
         return ass.fail(tok.start, "'{s}' is not a valid 32-bit integer literal", .{text});
@@ -844,7 +776,7 @@ fn parseString(ass: *Assembler) !void {
     try ass.inst.operands.append(gpa, .{ .string = string_offset });
 }
 
-fn parseContextDependentNumber(ass: *Assembler) !void {
+fn parseNumber(ass: *Assembler) !void {
     const cg = ass.cg;
     assert(ass.inst.opcode == .OpConstant or ass.inst.opcode == .OpSpecConstant);
 
@@ -852,14 +784,14 @@ fn parseContextDependentNumber(ass: *Assembler) !void {
     const result = try ass.resolveRef(ass.inst.operands.items[0].ref_id);
     const result_id = result.resultId();
 
-    const words = cg.sections.globals.instructions.items;
+    const words = cg.module.instructions.items;
     var offset: usize = 0;
     while (offset < words.len) {
-        const word_count = words[offset] >> 16;
-        const opcode: Opcode = @fromBackingInt(@intCast(words[offset] & 0xFFFF));
+        const header: spec.InstructionHeader = @bitCast(words[offset]);
+        const word_count = header.word_count;
         defer offset += word_count;
         if (word_count == 0) break;
-        switch (opcode) {
+        switch (header.opcode) {
             .OpTypeInt => if (word_count >= 4 and @as(Id, @fromBackingInt(@intCast(words[offset + 1]))) == result_id) {
                 const width: u16 = @intCast(words[offset + 2]);
                 const signedness: std.lang.Signedness = if (words[offset + 3] == 0) .unsigned else .signed;
@@ -885,22 +817,11 @@ fn parseContextDependentInt(ass: *Assembler, signedness: std.lang.Signedness, wi
     const gpa = ass.cg.gpa;
 
     const tok = ass.currentToken();
-    if (ass.eatToken(.placeholder)) {
-        const name = ass.tokenText(tok)[1..];
-        const value = ass.value_map.get(name) orelse {
-            return ass.fail(tok.start, "invalid placeholder '${s}'", .{name});
-        };
-        switch (value) {
-            .constant => |literal| {
-                if (width <= @bitSizeOf(spec.Word)) {
-                    try ass.inst.operands.append(gpa, .{ .literal32 = @truncate(literal) });
-                } else {
-                    try ass.inst.operands.append(gpa, .{ .literal64 = literal });
-                }
-            },
-            else => {
-                return ass.fail(tok.start, "value '{s}' cannot be used as placeholder", .{name});
-            },
+    if (try ass.eatPlaceholderConstant()) |literal| {
+        if (width <= @bitSizeOf(spec.Word)) {
+            try ass.inst.operands.append(gpa, .{ .literal32 = @truncate(literal) });
+        } else {
+            try ass.inst.operands.append(gpa, .{ .literal64 = literal });
         }
         return;
     }
@@ -943,22 +864,11 @@ fn parseContextDependentFloat(ass: *Assembler, comptime width: u16) !void {
     const Int = @Int(.unsigned, width);
 
     const tok = ass.currentToken();
-    if (ass.eatToken(.placeholder)) {
-        const name = ass.tokenText(tok)[1..];
-        const value = ass.value_map.get(name) orelse {
-            return ass.fail(tok.start, "invalid placeholder '${s}'", .{name});
-        };
-        switch (value) {
-            .constant => |literal| {
-                if (width <= @bitSizeOf(spec.Word)) {
-                    try ass.inst.operands.append(gpa, .{ .literal32 = @truncate(literal) });
-                } else {
-                    try ass.inst.operands.append(gpa, .{ .literal64 = literal });
-                }
-            },
-            else => {
-                return ass.fail(tok.start, "value '{s}' cannot be used as placeholder", .{name});
-            },
+    if (try ass.eatPlaceholderConstant()) |literal| {
+        if (width <= @bitSizeOf(spec.Word)) {
+            try ass.inst.operands.append(gpa, .{ .literal32 = @truncate(literal) });
+        } else {
+            try ass.inst.operands.append(gpa, .{ .literal64 = literal });
         }
         return;
     }

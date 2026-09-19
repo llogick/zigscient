@@ -44,6 +44,7 @@ pub fn build(b: *std.Build) void {
         "../../tools/generate_linux_syscalls.zig",
         "../../tools/process_headers.zig",
         "../../tools/migrate_langref.zig",
+        "../../tools/unskip_spirv_tests.zig",
         "../../tools/update-linux-headers.zig",
         "../../tools/update_clang_options.zig",
         "../../tools/update_cpu_features.zig",

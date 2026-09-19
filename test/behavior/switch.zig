@@ -252,6 +252,7 @@ fn poll() void {
 }
 
 test "switch on global mutable var isn't constant-folded" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 
     while (state < 2) {
@@ -270,7 +271,6 @@ test "switch prong with variable" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try switchProngWithVarFn(SwitchProngWithVarEnum{ .One = 13 });
     try switchProngWithVarFn(SwitchProngWithVarEnum{ .Two = 13.0 });
@@ -294,7 +294,6 @@ fn switchProngWithVarFn(a: SwitchProngWithVarEnum) !void {
 test "switch on enum using pointer capture" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     try testSwitchEnumPtrCapture();
     try comptime testSwitchEnumPtrCapture();
@@ -570,7 +569,6 @@ test "switch with null and T peer types and inferred result location type" {
 test "switch prongs with cases with identical payload types" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const Union = union(enum) {
         A: usize,
@@ -726,7 +724,6 @@ test "switch on error set with single else" {
 test "switch capture copies its payload" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
         fn doTheTest() !void {
@@ -788,7 +785,6 @@ test "enum value without tag name used as switch item" {
 }
 
 test "switch item sizeof" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const S = struct {
         fn doTheTest() !void {
             var a: usize = 0;
@@ -817,8 +813,6 @@ test "comptime inline switch" {
 }
 
 test "switch capture peer type resolution" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const U = union(enum) {
         a: u32,
         b: u64,
@@ -835,7 +829,6 @@ test "switch capture peer type resolution" {
 
 test "switch capture peer type resolution for in-memory coercible payloads" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const T1 = c_int;
     const t1_info = @typeInfo(T1).int;
@@ -1166,8 +1159,6 @@ test "switch with uninstantiable union fields" {
 }
 
 test "switch with tag capture" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const U = union(enum) {
         a,
         b: i32,

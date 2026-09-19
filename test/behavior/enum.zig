@@ -930,7 +930,6 @@ test "constant enum initialization with differing sizes" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     try test3_1(test3_foo);
     try test3_2(test3_bar);
 }

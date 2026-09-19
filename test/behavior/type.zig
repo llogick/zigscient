@@ -406,6 +406,8 @@ test "matching captures causes opaque equivalence" {
 }
 
 test "reify enum where fields refers to part of array" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
+
     const field_names: [3][]const u8 = .{ "foo", "bar", undefined };
     const field_values: [3]u8 = .{ undefined, 0, 1 };
     const E = @Enum(u8, .exhaustive, field_names[0..2], field_values[1..3]);

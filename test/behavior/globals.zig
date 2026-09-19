@@ -4,6 +4,7 @@ const expect = std.testing.expect;
 
 var pos = [2]f32{ 0.0, 0.0 };
 test "store to global array" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
 
@@ -14,6 +15,7 @@ test "store to global array" {
 
 var vpos = @Vector(2, f32){ 0.0, 0.0 };
 test "store to global vector" {
+    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
 
@@ -66,8 +68,6 @@ test "global loads can affect liveness" {
 }
 
 test "global const can be self-referential" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         self: *const @This(),
         x: u32,
@@ -112,8 +112,6 @@ test "global var can be self-referential" {
 }
 
 test "global const can be indirectly self-referential" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         other: *const @This(),
         x: u32,

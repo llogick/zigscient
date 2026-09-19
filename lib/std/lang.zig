@@ -591,6 +591,7 @@ pub const AddressSpace = enum(u5) {
     param,
     shared,
     local,
+    private,
     input,
     output,
     uniform,
