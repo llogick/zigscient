@@ -1400,11 +1400,15 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
                         f.cli_module = m;
                     }
 
-                    // Each build.zig module needs access to each of its
-                    // dependencies' build.zig modules by name.
+                    // Each build.zig module needs access to each of its dependencies' build.zig modules by
+                    // name. Also, ensure build.zig.zon files are added to the configuration cache manifest.
                     for (fetches) |f| {
-                        const mod = f.cli_module orelse continue;
                         if (!f.have_manifest) continue;
+                        if (config_man) |man| {
+                            const manifest_path = try f.package_root.join(arena, Package.Manifest.basename);
+                            _ = try man.addInputPath(manifest_path, .{});
+                        }
+                        const mod = f.cli_module orelse continue;
                         const man = &f.manifest;
                         const dep_names = man.dependencies.keys();
                         try mod.deps.ensureUnusedCapacity(arena, @intCast(dep_names.len));
