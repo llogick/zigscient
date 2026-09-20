@@ -26591,7 +26591,7 @@ fn fieldPtr(
                     },
                     .packed_offset = ptr_ptr_info.packed_offset,
                 });
-                return block.addTyOp(.ptr_cast, result_ty, object_ptr);
+                return sema.coerceCompatiblePtrs(block, result_ty, object_ptr, object_ptr_src);
             } else {
                 return sema.fail(
                     block,
