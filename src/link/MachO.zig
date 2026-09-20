@@ -466,7 +466,19 @@ pub fn flush(
                 self.classifyInputFile(archive_input) catch |err|
                     diags.addParseError(lib.path, "failed to parse input file: {s}", .{@errorName(err)});
             },
-            else => unreachable,
+            else => {
+                dso: {
+                    const dso_input = link.openDsoInput(io, diags, lib.path, lib.needed, lib.weak, lib.reexport) catch break :dso;
+                    self.classifyInputFile(dso_input) catch break :dso;
+                    continue;
+                }
+                ar: {
+                    const archive_input = link.openArchiveInput(io, diags, lib.path, lib.must_link, lib.hidden) catch break :ar;
+                    self.classifyInputFile(archive_input) catch break :ar;
+                    continue;
+                }
+                diags.addParseError(lib.path, "unknown file extension", .{});
+            },
         }
     }
 
