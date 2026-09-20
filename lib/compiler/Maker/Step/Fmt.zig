@@ -63,3 +63,7 @@ pub fn make(
     };
     try step.handleChildProcessTerm(maker, run_result.term);
 }
+
+pub fn deinit(fmt: *Fmt, gpa: std.mem.Allocator) void {
+    fmt.argv.deinit(gpa);
+}

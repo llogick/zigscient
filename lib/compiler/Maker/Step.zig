@@ -321,7 +321,6 @@ pub fn deinit(step: *Step, gpa: Allocator) void {
         .config_header,
         .fail,
         .find_program,
-        .fmt,
         .install_artifact,
         .install_dir,
         .install_file,
@@ -332,7 +331,7 @@ pub fn deinit(step: *Step, gpa: Allocator) void {
         .update_source_files,
         .write_file,
         => {},
-        .run => |*extended| extended.deinit(gpa),
+        inline .fmt, .run => |*extended| extended.deinit(gpa),
     }
     step.* = undefined;
 }
