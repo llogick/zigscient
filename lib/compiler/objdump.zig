@@ -828,19 +828,21 @@ const coff = struct {
         defer gpa.free(string_table);
 
         if (d.opts.strings) {
-            if (d.element(.@"table-header"))
-                try w.print(
-                    \\String Table (0x{x} bytes):
-                    \\
-                , .{string_table.len});
+            if (string_table.len > 0) {
+                if (d.element(.@"table-header"))
+                    try w.print(
+                        \\String Table (0x{x} bytes):
+                        \\
+                    , .{string_table.len});
 
-            var sr = Io.Reader.fixed(string_table[@sizeOf(u32)..]);
-            while (try sr.takeDelimiter(0)) |str| {
-                try w.writeAll(str);
-                try w.writeByte('\n');
-            }
+                var sr = Io.Reader.fixed(string_table[@sizeOf(u32)..]);
+                while (try sr.takeDelimiter(0)) |str| {
+                    try w.writeAll(str);
+                    try w.writeByte('\n');
+                }
 
-            if (d.element(.newlines)) try w.writeByte('\n');
+                if (d.element(.newlines)) try w.writeByte('\n');
+            } else try w.writeAll("String table not present\n");
         }
 
         var sections: std.ArrayList(Section) = .empty;

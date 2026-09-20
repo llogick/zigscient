@@ -689,18 +689,24 @@ pub const File = struct {
         return macho.reopenDebugInfo();
     }
 
+    pub fn canMakeExecutable(base: *File) bool {
+        const comp = base.comp;
+        return switch (comp.config.output_mode) {
+            .Obj => false,
+            .Lib => switch (comp.config.link_mode) {
+                .static => false,
+                .dynamic => true,
+            },
+            .Exe => true,
+        };
+    }
+
     pub fn makeExecutable(base: *File) !void {
         dev.check(.make_executable);
         const comp = base.comp;
         const io = comp.io;
-        switch (comp.config.output_mode) {
-            .Obj => return,
-            .Lib => switch (comp.config.link_mode) {
-                .static => return,
-                .dynamic => {},
-            },
-            .Exe => {},
-        }
+        if (!base.canMakeExecutable())
+            return;
         switch (base.tag) {
             .lld => assert(base.file == null),
             .elf => if (base.file) |f| {

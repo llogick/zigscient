@@ -3535,7 +3535,7 @@ fn emitFromCObject(
 /// Having the file open for writing is problematic as far as executing the
 /// binary is concerned. This will remove the write flag, or close the file,
 /// or whatever is needed so that it can be executed.
-/// After this, one must call` makeFileWritable` before calling `update`.
+/// After this, one must call `makeFileWritable` before calling `update`.
 pub fn makeBinFileExecutable(comp: *Compilation) !void {
     if (!dev.env.supports(.make_executable)) return;
     const lf = comp.bin_file orelse return;
@@ -3544,7 +3544,8 @@ pub fn makeBinFileExecutable(comp: *Compilation) !void {
 
 pub fn makeBinFileWritable(comp: *Compilation) !void {
     const lf = comp.bin_file orelse return;
-    return lf.makeWritable();
+    if (lf.canMakeExecutable())
+        try lf.makeWritable();
 }
 
 const Header = extern struct {

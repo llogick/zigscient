@@ -4766,12 +4766,8 @@ fn serve(
                     continue;
                 }
 
-                if (comp.config.output_mode == .Exe) {
-                    try comp.makeBinFileWritable();
-                }
-
+                try comp.makeBinFileWritable();
                 try comp.update(main_progress_node);
-
                 try comp.makeBinFileExecutable();
                 try serveUpdateResults(&server, comp);
             },
@@ -4802,9 +4798,7 @@ fn serve(
                     try comp.hotCodeSwap(main_progress_node, pid);
                     try serveUpdateResults(&server, comp);
                 } else {
-                    if (comp.config.output_mode == .Exe) {
-                        try comp.makeBinFileWritable();
-                    }
+                    try comp.makeBinFileWritable();
                     try comp.update(main_progress_node);
                     try comp.makeBinFileExecutable();
                     try serveUpdateResults(&server, comp);
