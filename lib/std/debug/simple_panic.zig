@@ -84,7 +84,7 @@ pub fn invalidErrorCode() noreturn {
 
 pub fn unexpectedErrorCode(err: anyerror) noreturn {
     @branchHint(.cold);
-    _ = err;
+    _ = &err;
     call("unexpected error code", null);
 }
 
