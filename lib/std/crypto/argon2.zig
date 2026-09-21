@@ -8,7 +8,6 @@ const std = @import("std");
 const blake2 = crypto.hash.blake2;
 const crypto = std.crypto;
 const Io = std.Io;
-const math = std.math;
 const mem = std.mem;
 const phc_format = pwhash.phc_format;
 const pwhash = crypto.pwhash;
@@ -177,32 +176,6 @@ fn blake2bLong(out: []u8, in: []const u8) void {
     @memcpy(out_slice, out_buf[0..out_slice.len]);
 }
 
-fn initBlocks(
-    blocks: *Blocks,
-    h0: *H0,
-    memory: u32,
-    threads: u24,
-) void {
-    var block0: [1024]u8 = undefined;
-    var lane: u24 = 0;
-    while (lane < threads) : (lane += 1) {
-        const j = lane * (memory / threads);
-        mem.writeInt(u32, h0[Blake2b512.digest_length + 4 ..][0..4], lane, .little);
-
-        mem.writeInt(u32, h0[Blake2b512.digest_length..][0..4], 0, .little);
-        blake2bLong(&block0, h0);
-        for (&blocks.items[j + 0], 0..) |*v, i| {
-            v.* = mem.readInt(u64, block0[i * 8 ..][0..8], .little);
-        }
-
-        mem.writeInt(u32, h0[Blake2b512.digest_length..][0..4], 1, .little);
-        blake2bLong(&block0, h0);
-        for (&blocks.items[j + 1], 0..) |*v, i| {
-            v.* = mem.readInt(u64, block0[i * 8 ..][0..8], .little);
-        }
-    }
-}
-
 fn processBlocks(
     blocks: *Blocks,
     time: u32,
@@ -322,7 +295,11 @@ fn processSegment(
             random = blocks.items[prev][0];
         }
         const new_offset = indexAlpha(random, lanes, segments, threads, n, slice, lane, index);
-        processBlockXor(&blocks.items[offset], &blocks.items[prev], &blocks.items[new_offset]);
+        if (n == 0) {
+            processBlock(&blocks.items[offset], &blocks.items[prev], &blocks.items[new_offset]);
+        } else {
+            processBlockXor(&blocks.items[offset], &blocks.items[prev], &blocks.items[new_offset]);
+        }
     }
 }
 
@@ -354,22 +331,25 @@ fn processBlockGeneric(
     }
     var i: usize = 0;
     while (i < block_length) : (i += 16) {
-        blamkaGeneric(t[i..][0..16]);
+        blamkaGeneric(.{
+            &t[i + 0],  &t[i + 1],  &t[i + 2],  &t[i + 3],
+            &t[i + 4],  &t[i + 5],  &t[i + 6],  &t[i + 7],
+            &t[i + 8],  &t[i + 9],  &t[i + 10], &t[i + 11],
+            &t[i + 12], &t[i + 13], &t[i + 14], &t[i + 15],
+        });
     }
     i = 0;
-    var buffer: [16]u64 = undefined;
     while (i < block_length / 8) : (i += 2) {
-        var j: usize = 0;
-        while (j < block_length / 8) : (j += 2) {
-            buffer[j] = t[j * 8 + i];
-            buffer[j + 1] = t[j * 8 + i + 1];
-        }
-        blamkaGeneric(&buffer);
-        j = 0;
-        while (j < block_length / 8) : (j += 2) {
-            t[j * 8 + i] = buffer[j];
-            t[j * 8 + i + 1] = buffer[j + 1];
-        }
+        blamkaGeneric(.{
+            &t[0 * 16 + i], &t[0 * 16 + i + 1],
+            &t[1 * 16 + i], &t[1 * 16 + i + 1],
+            &t[2 * 16 + i], &t[2 * 16 + i + 1],
+            &t[3 * 16 + i], &t[3 * 16 + i + 1],
+            &t[4 * 16 + i], &t[4 * 16 + i + 1],
+            &t[5 * 16 + i], &t[5 * 16 + i + 1],
+            &t[6 * 16 + i], &t[6 * 16 + i + 1],
+            &t[7 * 16 + i], &t[7 * 16 + i + 1],
+        });
     }
     if (xor) {
         for (t, 0..) |v, j| {
@@ -382,38 +362,53 @@ fn processBlockGeneric(
     }
 }
 
-const QuarterRound = struct { a: usize, b: usize, c: usize, d: usize };
+const BlamkaVector = @Vector(4, u64);
 
-fn Rp(a: usize, b: usize, c: usize, d: usize) QuarterRound {
-    return .{ .a = a, .b = b, .c = c, .d = d };
+fn fBlaMka(x: BlamkaVector, y: BlamkaVector) BlamkaVector {
+    const x_lo: @Vector(4, u32) = @truncate(x);
+    const y_lo: @Vector(4, u32) = @truncate(y);
+    const xy = @as(BlamkaVector, x_lo) * @as(BlamkaVector, y_lo);
+    return x +% y +% @as(BlamkaVector, @splat(2)) *% xy;
 }
 
-fn fBlaMka(x: u64, y: u64) u64 {
-    const xy = @as(u64, @as(u32, @truncate(x))) * @as(u64, @as(u32, @truncate(y)));
-    return x +% y +% 2 *% xy;
+fn rotrVector(x: BlamkaVector, comptime n: comptime_int) BlamkaVector {
+    return (x >> @splat(n)) | (x << @splat(64 - n));
 }
 
-fn blamkaGeneric(x: *[16]u64) void {
-    const rounds = comptime [_]QuarterRound{
-        Rp(0, 4, 8, 12),
-        Rp(1, 5, 9, 13),
-        Rp(2, 6, 10, 14),
-        Rp(3, 7, 11, 15),
-        Rp(0, 5, 10, 15),
-        Rp(1, 6, 11, 12),
-        Rp(2, 7, 8, 13),
-        Rp(3, 4, 9, 14),
-    };
-    inline for (rounds) |r| {
-        x[r.a] = fBlaMka(x[r.a], x[r.b]);
-        x[r.d] = math.rotr(u64, x[r.d] ^ x[r.a], 32);
-        x[r.c] = fBlaMka(x[r.c], x[r.d]);
-        x[r.b] = math.rotr(u64, x[r.b] ^ x[r.c], 24);
-        x[r.a] = fBlaMka(x[r.a], x[r.b]);
-        x[r.d] = math.rotr(u64, x[r.d] ^ x[r.a], 16);
-        x[r.c] = fBlaMka(x[r.c], x[r.d]);
-        x[r.b] = math.rotr(u64, x[r.b] ^ x[r.c], 63);
-    }
+// The `inline` is load-bearing: without it ReleaseSmall keeps this out of line
+// and shuffles the four vectors through memory across every call, costing
+// roughly 9% on  Apple Silicon.
+inline fn blamkaRound(a: *BlamkaVector, b: *BlamkaVector, c: *BlamkaVector, d: *BlamkaVector) void {
+    a.* = fBlaMka(a.*, b.*);
+    d.* = rotrVector(d.* ^ a.*, 32);
+    c.* = fBlaMka(c.*, d.*);
+    b.* = rotrVector(b.* ^ c.*, 24);
+    a.* = fBlaMka(a.*, b.*);
+    d.* = rotrVector(d.* ^ a.*, 16);
+    c.* = fBlaMka(c.*, d.*);
+    b.* = rotrVector(b.* ^ c.*, 63);
+}
+
+fn blamkaGeneric(xs: [16]*u64) void {
+    var a: BlamkaVector = .{ xs[0].*, xs[1].*, xs[2].*, xs[3].* };
+    var b: BlamkaVector = .{ xs[4].*, xs[5].*, xs[6].*, xs[7].* };
+    var c: BlamkaVector = .{ xs[8].*, xs[9].*, xs[10].*, xs[11].* };
+    var d: BlamkaVector = .{ xs[12].*, xs[13].*, xs[14].*, xs[15].* };
+
+    blamkaRound(&a, &b, &c, &d);
+
+    var b_diag = @shuffle(u64, b, undefined, [_]i32{ 1, 2, 3, 0 });
+    var c_diag = @shuffle(u64, c, undefined, [_]i32{ 2, 3, 0, 1 });
+    var d_diag = @shuffle(u64, d, undefined, [_]i32{ 3, 0, 1, 2 });
+    blamkaRound(&a, &b_diag, &c_diag, &d_diag);
+    b = @shuffle(u64, b_diag, undefined, [_]i32{ 3, 0, 1, 2 });
+    c = @shuffle(u64, c_diag, undefined, [_]i32{ 2, 3, 0, 1 });
+    d = @shuffle(u64, d_diag, undefined, [_]i32{ 1, 2, 3, 0 });
+
+    inline for (0..4) |k| xs[k].* = a[k];
+    inline for (0..4) |k| xs[4 + k].* = b[k];
+    inline for (0..4) |k| xs[8 + k].* = c[k];
+    inline for (0..4) |k| xs[12 + k].* = d[k];
 }
 
 fn finalize(
@@ -511,9 +506,27 @@ pub fn kdf(
     var blocks = try Blocks.initCapacity(allocator, memory);
     defer blocks.deinit();
 
-    blocks.appendNTimesAssumeCapacity(@splat(0), memory);
+    const items = blocks.addManyAsSliceAssumeCapacity(memory);
 
-    initBlocks(&blocks, &h0, memory, params.p);
+    var block0: [1024]u8 = undefined;
+    var lane: u24 = 0;
+    while (lane < params.p) : (lane += 1) {
+        const j = lane * (memory / params.p);
+        mem.writeInt(u32, h0[Blake2b512.digest_length + 4 ..][0..4], lane, .little);
+
+        mem.writeInt(u32, h0[Blake2b512.digest_length..][0..4], 0, .little);
+        blake2bLong(&block0, &h0);
+        for (&items[j + 0], 0..) |*v, i| {
+            v.* = mem.readInt(u64, block0[i * 8 ..][0..8], .little);
+        }
+
+        mem.writeInt(u32, h0[Blake2b512.digest_length..][0..4], 1, .little);
+        blake2bLong(&block0, &h0);
+        for (&items[j + 1], 0..) |*v, i| {
+            v.* = mem.readInt(u64, block0[i * 8 ..][0..8], .little);
+        }
+    }
+
     try processBlocks(&blocks, params.t, memory, params.p, mode, io);
     finalize(&blocks, memory, params.p, derived_key);
 }
