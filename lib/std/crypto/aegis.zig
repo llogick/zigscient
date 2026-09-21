@@ -19,7 +19,7 @@
 //!
 //! Finally, leaking the state does not leak the key.
 //!
-//! https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/
+//! https://www.rfc-editor.org/rfc/rfc10032.html
 
 const std = @import("std");
 const crypto = std.crypto;
@@ -270,7 +270,7 @@ fn State128X(comptime degree: u7) type {
 ///
 /// The 128 bits variants of AEGIS have a 128 bit key and a 128 bit nonce.
 ///
-/// https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/
+/// https://www.rfc-editor.org/rfc/rfc10032.html
 fn Aegis128XGeneric(comptime degree: u7, comptime tag_bits: u9) type {
     comptime assert(degree > 0); // degree must be greater than 0
     comptime assert(tag_bits == 128 or tag_bits == 256); // tag must be 128 or 256 bits
@@ -565,7 +565,7 @@ fn State256X(comptime degree: u7) type {
 ///
 /// The 256 bits variants of AEGIS have a 256 bit key and a 256 bit nonce.
 ///
-/// https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/
+/// https://www.rfc-editor.org/rfc/rfc10032.html
 fn Aegis256XGeneric(comptime degree: u7, comptime tag_bits: u9) type {
     comptime assert(degree > 0); // degree must be greater than 0
     comptime assert(tag_bits == 128 or tag_bits == 256); // tag must be 128 or 256 bits
