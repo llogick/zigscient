@@ -744,12 +744,25 @@ pub inline fn readSliceEndianAlloc(
     return dest;
 }
 
+/// Deprecated; use readAllocAll. to be removed after 0.17.
+pub const readAlloc = readAllocAll;
+
 /// Shortcut for calling `readSliceAll` with a buffer provided by `allocator`.
-pub fn readAlloc(r: *Reader, allocator: Allocator, len: usize) ReadAllocError![]u8 {
+pub fn readAllocAll(r: *Reader, allocator: Allocator, len: usize) ReadAllocError![]u8 {
     const dest = try allocator.alloc(u8, len);
     errdefer allocator.free(dest);
     try readSliceAll(r, dest);
     return dest;
+}
+
+/// Shortcut for calling `readSliceShort` with a buffer provided by `allocator`,
+/// shrinking allocation if stream reached the end.
+pub fn readAllocShort(r: *Reader, allocator: Allocator, len: usize) ReadAllocError![]u8 {
+    const dest = try allocator.alloc(u8, len);
+    errdefer allocator.free(dest);
+    const n = try readSliceShort(r, dest);
+    if (n == dest.len) return dest;
+    return try allocator.realloc(dest, n);
 }
 
 pub const DelimiterError = error{
@@ -1744,6 +1757,47 @@ test "readSliceShort with indirect reader" {
     try testing.expectEqual(4, try ri.interface.readSliceShort(&buf));
     try testing.expectEqualStrings("Fren", buf[0..4]);
     try testing.expectEqual(0, try ri.interface.readSliceShort(&buf));
+}
+
+test readAllocAll {
+    const allocator = testing.allocator;
+    var r: Reader = .fixed("HelloFren");
+
+    const s1 = try r.readAllocAll(allocator, 5);
+    defer allocator.free(s1);
+    try testing.expectEqualStrings("Hello", s1);
+
+    const s2 = try r.readAllocAll(allocator, 4);
+    defer allocator.free(s2);
+    try testing.expectEqualStrings("Fren", s2);
+}
+
+test "readAllocAll with buffer bigger than content" {
+    const allocator = testing.allocator;
+    var r: Reader = .fixed("HelloFren");
+
+    const s1 = try r.readAllocAll(allocator, 5);
+    defer allocator.free(s1);
+    try testing.expectEqualStrings("Hello", s1);
+
+    const res = r.readAllocAll(allocator, 10);
+    try testing.expectError(Error.EndOfStream, res);
+}
+
+test readAllocShort {
+    var r: Reader = .fixed("HelloFren");
+
+    const s1 = try r.readAllocShort(testing.allocator, 5);
+    defer testing.allocator.free(s1);
+    try testing.expectEqualStrings("Hello", s1);
+
+    const s2 = try r.readAllocShort(testing.allocator, 10);
+    defer testing.allocator.free(s2);
+    try testing.expectEqualStrings("Fren", s2);
+
+    const s3 = try r.readAllocShort(testing.allocator, 10);
+    defer testing.allocator.free(s3);
+    try testing.expectEqual(0, s3.len);
 }
 
 test readVec {

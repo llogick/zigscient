@@ -409,7 +409,7 @@ const BinaryElfOutput = struct {
             const shstrtab_shdr = (try section_headers.next()).?;
 
             try in.seekTo(shstrtab_shdr.sh_offset);
-            break :blk try in.interface.readAlloc(allocator, shstrtab_shdr.sh_size);
+            break :blk try in.interface.readAllocAll(allocator, shstrtab_shdr.sh_size);
         };
 
         errdefer if (self.shstrtab) |shstrtab| allocator.free(shstrtab);

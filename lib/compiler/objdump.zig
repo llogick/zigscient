@@ -417,7 +417,7 @@ const coff = struct {
                                 \\
                             );
 
-                        const offsets = try r.readAlloc(gpa, num_symbols * 4);
+                        const offsets = try r.readAllocAll(gpa, num_symbols * 4);
                         defer gpa.free(offsets);
 
                         for (0..num_symbols) |symbol_i| {
@@ -549,7 +549,7 @@ const coff = struct {
                 .longnames => {
                     // This member is optional
                     if (std.mem.eql(u8, header.name, "//")) {
-                        opt_longnames = try r.readAlloc(gpa, header.size);
+                        opt_longnames = try r.readAllocAll(gpa, header.size);
                         if (dump_header)
                             try w.print("{t: >16} type\n", .{expected_kind});
 
@@ -819,7 +819,7 @@ const coff = struct {
             const string_table_len = r.peekInt(u32, .little) catch |err|
                 return d.failParse("unable to read string table length: {t}", .{err});
 
-            const table = r.readAlloc(gpa, string_table_len) catch |err|
+            const table = r.readAllocAll(gpa, string_table_len) catch |err|
                 return d.failParse("unable to read string table: {t}", .{err});
 
             try fr.seekTo(pos);
@@ -1268,7 +1268,7 @@ const coff = struct {
                 const dir = image_info.?.data_dirs[@backingInt(DIRECTORY_ENTRY.EXPORT)];
                 const dir_end_rva = dir.virtual_address + dir.size;
                 const dir_loc = fr.logicalPos();
-                const dir_slice = try r.readAlloc(gpa, dir.size);
+                const dir_slice = try r.readAllocAll(gpa, dir.size);
                 defer gpa.free(dir_slice);
 
                 const dll_name = std.mem.sliceTo(dir_slice[name_loc - dir_loc ..], 0);

@@ -5290,7 +5290,7 @@ fn loadArchive(coff: *Coff, path: std.Build.Cache.Path, fr: *Io.File.Reader) Loa
             .longnames => {
                 // This member is optional
                 if (std.mem.eql(u8, res.name, "//"))
-                    opt_longnames = try r.readAlloc(gpa, @intCast(res.size));
+                    opt_longnames = try r.readAllocAll(gpa, @intCast(res.size));
 
                 opt_expected_kind = null;
                 break;
