@@ -1029,7 +1029,7 @@ pub const rsa = struct {
 
         pub fn verify(
             comptime modulus_len: usize,
-            sig: [modulus_len]u8,
+            sig: *const [modulus_len]u8,
             msg: []const u8,
             public_key: PublicKey,
             comptime Hash: type,
@@ -1371,3 +1371,19 @@ pub const rsa = struct {
         return res;
     }
 };
+
+test "RSA-PSS verify wrapper" {
+    const modulus_hex = "a1757161bd6ddb93e4a96329dfed3cf5bd729156686893b74e36cabfc929781316ab7a2ecab1d5a0e3fe1d2ab4b14f34dbb02d3a7c879fded3b2ba26d41f554a183f906b3b32a7c11be8194d25f7a26fef17020373fea72906ba2db5259a4ab4ba91937f078bcb57f9f82b06ca6dac17a2e0b673c721b1f7d0600b208fef0d43";
+    const signature_hex = "32079b2b70f8828e4c70331abc9f08d2ccb805b29b7330c80f4ed17ddaa8c72b544faed138e9e7d41ca55e5770f408cb13d1149da7f1c13034dc5ce0da35dfc8417a2a8bfee1056b81e73954aae23acf6113c8db5b57b4a9242fd943c59c6b693d3d5d2dc40146dd75fc631507d1e43c6ce4f5a44b243804018107ae8bcacc86";
+    var modulus: [modulus_hex.len / 2]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&modulus, modulus_hex);
+    var signature: [signature_hex.len / 2]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&signature, signature_hex);
+    const key = try rsa.PublicKey.fromBytes(&.{ 1, 0, 1 }, &modulus);
+    const message = "Zig RSA-PSS wrapper regression";
+
+    try rsa.PSSSignature.verify(signature.len, &signature, message, key, std.crypto.hash.sha2.Sha256);
+    try std.testing.expectError(error.InvalidSignature, rsa.PSSSignature.verify(signature.len, &signature, "wrong message", key, std.crypto.hash.sha2.Sha256));
+    signature[signature.len - 1] ^= 1;
+    try std.testing.expectError(error.InvalidSignature, rsa.PSSSignature.verify(signature.len, &signature, message, key, std.crypto.hash.sha2.Sha256));
+}
