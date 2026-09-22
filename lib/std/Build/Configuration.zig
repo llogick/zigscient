@@ -1402,14 +1402,14 @@ pub const Step = extern struct {
         output_file: GeneratedFileIndex,
         include_dirs: Storage.UnionList(.flags, .include_dirs, Module.IncludeDir),
         system_libs: Storage.FlagLengthPrefixedList(.flags, .system_libs, SystemLib.Index),
-        c_macros: Storage.FlagLengthPrefixedList(.flags, .c_macros, String),
+        cc_argv: Storage.FlagLengthPrefixedList(.flags, .cc_argv, String),
         target: ResolvedTarget.OptionalIndex,
 
         pub const Flags = packed struct(u32) {
             tag: Tag = .translate_c,
             include_dirs: bool,
             system_libs: bool,
-            c_macros: bool,
+            cc_argv: bool,
             link_libc: bool,
             optimize: Module.Optimize,
             _: u20 = 0,

@@ -59,9 +59,8 @@ pub fn make(
     for (0..conf_tc.include_dirs.len) |i|
         try Step.Compile.appendIncludeDirFlags(arena, conf_tc.include_dirs.get(conf.extra, i), &argv, step_index, maker);
 
-    for (conf_tc.c_macros.slice) |c_macro| {
-        (try argv.addManyAsArray(arena, 2)).* = .{ "-D", c_macro.slice(conf) };
-    }
+    try argv.ensureUnusedCapacity(arena, conf_tc.cc_argv.slice.len);
+    for (conf_tc.cc_argv.slice) |arg| argv.appendAssumeCapacity(arg.slice(conf));
 
     var prev_search_strategy: std.Build.Module.SystemLib.SearchStrategy = .paths_first;
     var prev_preferred_link_mode: std.builtin.LinkMode = .dynamic;

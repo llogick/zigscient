@@ -11,7 +11,7 @@ step: Step,
 source: std.Build.LazyPath,
 include_dirs: std.ArrayList(std.Build.Module.IncludeDir) = .empty,
 system_libs: std.ArrayList(std.Build.Module.SystemLib) = .empty,
-c_macros: std.ArrayList(Configuration.String) = .empty,
+cc_argv: std.ArrayList(Configuration.String) = .empty,
 target: std.Build.ResolvedTarget,
 optimize: std.builtin.Optimize,
 output_file: Configuration.GeneratedFileIndex,
@@ -156,19 +156,24 @@ pub fn addCheckFile(translate_c: *TranslateC, expected_matches: []const []const 
 pub fn defineCMacro(translate_c: *TranslateC, name: []const u8, value: ?[]const u8) void {
     const graph = translate_c.step.owner.graph;
     const arena = graph.arena;
-    const wc = &graph.wip_configuration;
-    const macro = arena.print("{s}={s}", .{ name, value orelse "1" }) catch @panic("OOM");
-    const macro_string = wc.addString(macro) catch @panic("OOM");
-    translate_c.c_macros.append(arena, macro_string) catch @panic("OOM");
+    return addCFlags(translate_c, &.{
+        "-D",
+        arena.print("{s}={s}", .{ name, value orelse "1" }) catch @panic("OOM"),
+    });
 }
 
 /// name_and_value looks like [name]=[value].
 pub fn defineCMacroRaw(translate_c: *TranslateC, name_and_value: []const u8) void {
+    return addCFlags(translate_c, &.{ "-D", name_and_value });
+}
+
+/// Append arbitrary C compiler CLI arguments to the translation unit.
+pub fn addCFlags(translate_c: *TranslateC, args: []const []const u8) void {
     const graph = translate_c.step.owner.graph;
     const arena = graph.arena;
     const wc = &graph.wip_configuration;
-    const macro_string = wc.addString(name_and_value) catch @panic("OOM");
-    translate_c.c_macros.append(arena, macro_string) catch @panic("OOM");
+    translate_c.cc_argv.ensureUnusedCapacity(arena, args.len) catch @panic("OOM");
+    for (args) |arg| translate_c.cc_argv.appendAssumeCapacity(wc.addString(arg) catch @panic("OOM"));
 }
 
 pub fn linkSystemLibrary(
