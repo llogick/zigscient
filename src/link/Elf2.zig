@@ -2926,7 +2926,9 @@ fn updateGlobalDynamic(elf: *Elf, orig_gsi: Symbol.Global.Index, force_apply_rel
             _ = elf.unknown_globals.swapRemove(gsi);
         }
 
-        assert(elf.classifySymbolValue(.global(gsi)) != .dynamic);
+        if (elf.ehdrType() != .REL) {
+            assert(elf.classifySymbolValue(.global(gsi)) != .dynamic);
+        }
         gsi.deleteDynamicTargetRelocs(elf);
         if (maybe_alias_gsi) |alias_gsi| {
             alias_gsi.deleteDynamicTargetRelocs(elf);
