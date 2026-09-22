@@ -3905,7 +3905,7 @@ pub fn loadInput(coff: *Coff, input: link.Input) link.Error!void {
     const comp = coff.base.comp;
     const io = comp.io;
 
-    const path = input.path() orelse unreachable;
+    const path = input.path();
     const gop = try coff.inputs.getOrPut(comp.gpa, path);
     if (gop.found_existing) return;
     errdefer _ = coff.inputs.swapRemove(path);
@@ -3935,7 +3935,6 @@ pub fn loadInput(coff: *Coff, input: link.Input) link.Error!void {
             coff.loadDll(dso.path, &fr) catch |err|
                 return coff.failLoadInput(err, &fr, dso.path);
         },
-        .dso_exact => unreachable,
     }
 }
 

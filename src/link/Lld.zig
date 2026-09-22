@@ -309,9 +309,9 @@ fn linkAsArchive(lld: *Lld, arena: Allocator) link.Error!void {
 
     try object_files.ensureUnusedCapacity(arena, comp.link_inputs.len);
     for (comp.link_inputs) |input| switch (input) {
-        .dso, .dso_exact, .archive => {}, // static archives should not contain shared libraries or other static archives
+        .dso, .archive => {}, // static archives should not contain shared libraries or other static archives
         .res, .object => {
-            const path = try input.path().?.toStringZ(arena);
+            const path = try input.path().toStringZ(arena);
             object_files.appendAssumeCapacity(path);
         },
     };
@@ -551,7 +551,6 @@ fn coffLink(lld: *Lld, arena: Allocator) !void {
 
         try argv.ensureUnusedCapacity(comp.link_inputs.len);
         for (comp.link_inputs) |link_input| switch (link_input) {
-            .dso_exact => unreachable, // not applicable to PE/COFF
             inline .dso, .res => |x| {
                 argv.appendAssumeCapacity(try x.path.toString(arena));
             },
@@ -1114,10 +1113,6 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
                 }
                 try argv.append(try obj.path.toString(arena));
             },
-            .dso_exact => |dso_exact| {
-                assert(dso_exact.name[0] == ':');
-                try argv.appendSlice(&.{ "-l", dso_exact.name });
-            },
         };
 
         if (whole_archive) {
@@ -1159,9 +1154,16 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
             argv.appendAssumeCapacity("--as-needed");
             var as_needed = true;
 
+            // When we have a DSO input, in order to trick LLD into putting the basename in its
+            // `DT_NEEDED` entry while still allowing us to tell it the exact path to the shared
+            // object, we pass it on the CLI as "-l:/absolute/path/to/libfoo.so". This will treat
+            // the given path not actually as an absolute path, but as relative to the library
+            // search path, so the root directory must therefore be the only library search path.
+            try argv.append("-L/");
+
             for (base.comp.link_inputs) |link_input| switch (link_input) {
                 .res => unreachable, // Windows-only
-                .object, .archive, .dso_exact => continue,
+                .object, .archive => continue,
                 .dso => |dso| {
                     const lib_as_needed = !dso.needed;
                     switch ((@as(u2, @intFromBool(lib_as_needed)) << 1) | @intFromBool(as_needed)) {
@@ -1176,11 +1178,17 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
                         },
                     }
 
-                    // By this time, we depend on these libs being dynamically linked
-                    // libraries and not static libraries (the check for that needs to be earlier),
-                    // but they could be full paths to .so files, in which case we
-                    // want to avoid prepending "-l".
-                    argv.appendAssumeCapacity(try dso.path.toString(arena));
+                    // By this time, we depend on these libs being dynamically linked libraries and
+                    // not static libraries (the check for that needs to be earlier), but they could
+                    // be full file paths, in which case we don't want to use the "-l:" strategy.
+                    switch (dso.fallback_soname) {
+                        .basename => try argv.append(try arena.print("-l:{s}", .{try fs.path.resolve(arena, &.{
+                            comp.dirs.cwd,
+                            dso.path.root_dir.path orelse ".",
+                            dso.path.sub_path,
+                        })})),
+                        .full_path => try argv.append(try dso.path.toString(arena)),
+                    }
                 },
             };
 
@@ -1588,7 +1596,6 @@ fn wasmLink(lld: *Lld, arena: Allocator) !void {
             .dso => |dso| {
                 try argv.append(try dso.path.toString(arena));
             },
-            .dso_exact => unreachable,
             .res => unreachable,
         };
         if (whole_archive) {

@@ -19,7 +19,7 @@ pub fn flushObject(macho_file: *MachO, comp: *Compilation, module_obj_path: ?Pat
         // Instead of invoking a full-blown `-r` mode on the input which sadly will strip all
         // debug info segments/sections (this is apparently by design by Apple), we copy
         // the *only* input file over.
-        const path = positionals.items[0].path().?;
+        const path = positionals.items[0].path();
         const in_file = path.root_dir.handle.openFile(io, path.sub_path, .{}) catch |err|
             return diags.fail("failed to open {f}: {s}", .{ path, @errorName(err) });
         const stat = in_file.stat(io) catch |err|
@@ -31,7 +31,7 @@ pub fn flushObject(macho_file: *MachO, comp: *Compilation, module_obj_path: ?Pat
 
     for (positionals.items) |link_input| {
         macho_file.classifyInputFile(link_input) catch |err|
-            diags.addParseError(link_input.path().?, "failed to read input file: {s}", .{@errorName(err)});
+            diags.addParseError(link_input.path(), "failed to read input file: {t}", .{err});
     }
 
     if (diags.hasErrors()) return error.AlreadyReported;
@@ -102,7 +102,7 @@ pub fn flushStaticLib(macho_file: *MachO, comp: *Compilation, module_obj_path: ?
 
     for (positionals.items) |link_input| {
         macho_file.classifyInputFile(link_input) catch |err|
-            diags.addParseError(link_input.path().?, "failed to read input file: {s}", .{@errorName(err)});
+            diags.addParseError(link_input.path(), "failed to read input file: {t}", .{err});
     }
 
     if (diags.hasErrors()) return error.AlreadyReported;

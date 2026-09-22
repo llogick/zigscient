@@ -2898,12 +2898,13 @@ pub fn update(comp: *Compilation, main_progress_node: std.Progress.Node) UpdateE
         }
     }
 
-    for (comp.link_inputs) |input| if (input.path()) |path| {
+    for (comp.link_inputs) |input| {
+        const path = input.path();
         try comp.appendFileSystemInput(try .fromUnresolved(arena, comp.dirs, &.{
             path.root_dir.path orelse ".",
             path.sub_path,
         }));
-    };
+    }
 
     // For compiling Win32 resources, we rely on the cache hash system to avoid duplicating work.
     // Add a Job for each Win32 resource file.

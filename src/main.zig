@@ -822,7 +822,7 @@ const compile_usage =
     \\  --verbose-llvm-cpu-features  Enable compiler debug output for LLVM CPU features
     \\  --debug-log [scope]          Enable printing debug/info log messages for scope
     \\  --debug-compile-errors       Crash with helpful diagnostics at the first compile error
-    \\  --debug-link-snapshot        Enable dumping of the linker's state in JSON format
+    \\  --debug-link-snapshot        Dump linker state and output file information for troubleshooting
     \\  --debug-rt[=mode]            Build compiler runtime libraries with [mode] optimization
     \\                               (debug if [=mode] is omitted)
     \\  --debug-incremental          Enable incremental compilation debug features
@@ -1593,6 +1593,7 @@ pub fn buildOutputType(
                                 .search_strategy = cs.lib_search_strategy,
                                 .allow_so_scripts = cs.allow_so_scripts,
                             },
+                            .name_done = false,
                         } });
                     } else if (mem.eql(u8, arg, "--needed-library") or
                         mem.eql(u8, arg, "-needed-l") or
@@ -1608,6 +1609,7 @@ pub fn buildOutputType(
                                 .search_strategy = cs.lib_search_strategy,
                                 .allow_so_scripts = cs.allow_so_scripts,
                             },
+                            .name_done = false,
                         } });
                     } else if (mem.eql(u8, arg, "-weak_library") or mem.eql(u8, arg, "-weak-l")) {
                         try cs.create_module.cli_link_inputs.append(arena, .{ .name_query = .{
@@ -1619,6 +1621,7 @@ pub fn buildOutputType(
                                 .search_strategy = cs.lib_search_strategy,
                                 .allow_so_scripts = cs.allow_so_scripts,
                             },
+                            .name_done = false,
                         } });
                     } else if (mem.eql(u8, arg, "-D")) {
                         try cs.cc_argv.appendSlice(arena, &.{ arg, args_iter.nextOrFatal() });
@@ -2081,6 +2084,7 @@ pub fn buildOutputType(
                                 .search_strategy = cs.lib_search_strategy,
                                 .allow_so_scripts = cs.allow_so_scripts,
                             },
+                            .name_done = false,
                         } });
                     } else if (mem.cutPrefix(u8, arg, "-needed-l")) |name| {
                         try cs.create_module.cli_link_inputs.append(arena, .{ .name_query = .{
@@ -2092,6 +2096,7 @@ pub fn buildOutputType(
                                 .search_strategy = cs.lib_search_strategy,
                                 .allow_so_scripts = cs.allow_so_scripts,
                             },
+                            .name_done = false,
                         } });
                     } else if (mem.cutPrefix(u8, arg, "-weak-l")) |name| {
                         try cs.create_module.cli_link_inputs.append(arena, .{ .name_query = .{
@@ -2103,6 +2108,7 @@ pub fn buildOutputType(
                                 .search_strategy = cs.lib_search_strategy,
                                 .allow_so_scripts = cs.allow_so_scripts,
                             },
+                            .name_done = false,
                         } });
                     } else if (mem.startsWith(u8, arg, "-D")) {
                         try cs.cc_argv.append(arena, arg);
@@ -2321,12 +2327,24 @@ pub fn buildOutputType(
                         // We don't know whether this library is part of libc or libc++ until
                         // we resolve the target, so we simply append to the list for now.
                         if (mem.startsWith(u8, it.only_arg, ":")) {
-                            // -l :path/to/filename is used when callers need
-                            // more control over what's in the resulting
-                            // binary: no extra rpaths and DSO filename exactly
-                            // as provided. CGo compilation depends on this.
-                            try cs.create_module.cli_link_inputs.append(arena, .{ .dso_exact = .{
-                                .name = it.only_arg,
+                            // -l :path/to/filename indicates:
+                            // * No extra rpaths.
+                            // * NEEDED entry should be exactly the string
+                            //   after the colon. No file system paths prepended.
+                            // * The DSO still must be found at compile/link
+                            //   time and its entries used to resolve symbols.
+                            // CGo compilation depends on this.
+                            try cs.create_module.cli_link_inputs.append(arena, .{ .name_query = .{
+                                .name = it.only_arg[1..],
+                                .query = .{
+                                    .must_link = must_link,
+                                    .needed = needed,
+                                    .weak = false,
+                                    .preferred_mode = cs.lib_preferred_mode,
+                                    .search_strategy = cs.lib_search_strategy,
+                                    .allow_so_scripts = cs.allow_so_scripts,
+                                },
+                                .name_done = true,
                             } });
                         } else {
                             const compiler_rt_classification = target_util.classifyCompilerRtLibName(it.only_arg);
@@ -2352,6 +2370,7 @@ pub fn buildOutputType(
                                         .search_strategy = cs.lib_search_strategy,
                                         .allow_so_scripts = cs.allow_so_scripts,
                                     },
+                                    .name_done = false,
                                 } });
                             }
                         }
@@ -2850,6 +2869,7 @@ pub fn buildOutputType(
                             .search_strategy = cs.lib_search_strategy,
                             .allow_so_scripts = cs.allow_so_scripts,
                         },
+                        .name_done = false,
                     } }),
                     .weak_framework => try cs.create_module.frameworks.put(arena, it.only_arg, .{ .weak = true }),
                     .headerpad_max_install_names => cs.headerpad_max_install_names = true,
@@ -3219,6 +3239,7 @@ pub fn buildOutputType(
                             .search_strategy = cs.lib_search_strategy,
                             .allow_so_scripts = cs.allow_so_scripts,
                         },
+                        .name_done = false,
                     } });
                 } else if (mem.cutPrefix(u8, arg, "-weak-l")) |rest| {
                     try cs.create_module.cli_link_inputs.append(arena, .{ .name_query = .{
@@ -3230,6 +3251,7 @@ pub fn buildOutputType(
                             .search_strategy = cs.lib_search_strategy,
                             .allow_so_scripts = cs.allow_so_scripts,
                         },
+                        .name_done = false,
                     } });
                 } else if (mem.eql(u8, arg, "-weak_library")) {
                     try cs.create_module.cli_link_inputs.append(arena, .{ .name_query = .{
@@ -3241,6 +3263,7 @@ pub fn buildOutputType(
                             .search_strategy = cs.lib_search_strategy,
                             .allow_so_scripts = cs.allow_so_scripts,
                         },
+                        .name_done = false,
                     } });
                 } else if (mem.eql(u8, arg, "-compatibility_version")) {
                     const compat_version = linker_args_it.nextOrFatal();
@@ -4501,6 +4524,10 @@ fn createModule(
                     fatal("cannot use absolute path as a system library: {s}", .{lib_name});
                 }
 
+                if (!nq.name_done and std.mem.findScalar(u8, nq.name, '/') != null) {
+                    fatal("cannot use path separator in system library name: {s}", .{lib_name});
+                }
+
                 unresolved_link_inputs.appendAssumeCapacity(cli_link_input);
                 any_name_queries_remaining = true;
             },
@@ -4595,10 +4622,10 @@ fn createModule(
             &create_module.link_inputs,
             create_module.lib_directories.items,
             color,
-        ) catch |err| fatal("failed to resolve link inputs: {s}", .{@errorName(err)});
+        ) catch |err| fatal("failed to resolve link inputs: {t}", .{err});
 
         if (!create_module.opts.any_dyn_libs) for (create_module.link_inputs.items) |item| switch (item) {
-            .dso, .dso_exact => {
+            .dso => {
                 create_module.opts.any_dyn_libs = true;
                 break;
             },

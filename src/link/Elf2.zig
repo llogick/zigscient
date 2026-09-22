@@ -6230,33 +6230,18 @@ fn loadInputInner(elf: *Elf, input: link.Input) (Error || error{BadMagic})!void 
         .dso => |dso| {
             try elf.needed.ensureUnusedCapacity(elf.base.comp.gpa, 1);
             var fr = dso.file.reader(io, &buf);
-            elf.loadDso(dso.path, &fr) catch |err| switch (err) {
+            elf.loadDso(dso.path, dso.fallback_soname, &fr) catch |err| switch (err) {
                 else => |e| return e,
-                error.EndOfStream => return diags.failParse(
-                    dso.path,
-                    "unexpected eof",
-                    .{},
-                ),
+                error.EndOfStream => return diags.failParse(dso.path, "unexpected eof", .{}),
                 error.AccessDenied, error.Unexpected, error.Unseekable => |e| return diags.fail(
-                    "failed to read \"{f}\": {t}",
-                    .{ dso.path.fmtEscapeString(), e },
+                    "failed to read {qf}: {t}",
+                    .{ dso.path, e },
                 ),
                 error.ReadFailed => switch (fr.err.?) {
                     error.Canceled => |e| return e,
-                    else => |e| return diags.fail(
-                        "failed to read \"{f}\": {t}",
-                        .{ dso.path.fmtEscapeString(), e },
-                    ),
+                    else => |e| return diags.fail("failed to read {qf}: {t}", .{ dso.path, e }),
                 },
             };
-        },
-        .dso_exact => |dso_exact| {
-            log.debug("load dso_exact '{f}'", .{std.zig.fmtString(dso_exact.name)});
-            if (elf.shndx.dynamic != .UNDEF) {
-                try elf.needed.put(elf.base.comp.gpa, try elf.string(.dynstr, dso_exact.name), {});
-            }
-            // TODO: we need to get a resolved file path from the frontend, because we need to read
-            // the shared object to discover symbol types.
         },
     }
 }
@@ -6867,7 +6852,12 @@ fn populateArchiveMemberName(elf: *Elf, member_ar_hdr: *std.elf.ar_hdr, member_n
     @memcpy(dest_slice[0 .. dest_slice.len - 2], member_name);
     @memcpy(dest_slice[dest_slice.len - 2 ..], "/\n"); // yes, the terminator is weird
 }
-fn loadDso(elf: *Elf, path: std.Build.Cache.Path, fr: *Io.File.Reader) (LoadParseInputError || error{BadMagic})!void {
+fn loadDso(
+    elf: *Elf,
+    path: std.Build.Cache.Path,
+    fallback_soname: link.Input.Dso.FallbackSoname,
+    fr: *Io.File.Reader,
+) (LoadParseInputError || error{BadMagic})!void {
     const comp = elf.base.comp;
     const gpa = comp.gpa;
     const diags = &comp.link_diags;
@@ -6963,7 +6953,10 @@ fn loadDso(elf: *Elf, path: std.Build.Cache.Path, fr: *Io.File.Reader) (LoadPars
                     }
                     break std.mem.sliceTo(dynstr[@intCast(val)..], 0);
                 }
-            } else std.fs.path.basename(path.sub_path);
+            } else switch (fallback_soname) {
+                .basename => std.fs.path.basename(path.sub_path),
+                .full_path => try path.toString(comp.arena),
+            };
             try elf.needed.put(gpa, try elf.string(.dynstr, soname), {});
 
             // Scan the symbol table and populate `elf.dso_globals`.
