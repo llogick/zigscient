@@ -55,13 +55,17 @@ pub const RepresentationError = error{UnexpectedRepresentation};
 pub const Error = OverflowError || InvalidModulusError || NullExponentError || FieldElementError || RepresentationError;
 
 /// An unsigned big integer with a fixed maximum size (`max_bits`), suitable for cryptographic operations.
+/// Storage rounds up to whole limbs and can hold up to `capacity_bits` bits.
 /// Unless side-channels mitigations are explicitly disabled, operations are designed to be constant-time.
 pub fn Uint(comptime max_bits: comptime_int) type {
     comptime assert(@bitSizeOf(Limb) % 8 == 0); // Limb size must be a multiple of 8
+    comptime assert(max_bits > 0);
 
     return struct {
         const Self = @This();
         const max_limbs_count = @divCeil(max_bits, t_bits);
+
+        pub const capacity_bits = max_limbs_count * t_bits;
 
         limbs_buffer: [max_limbs_count]Limb,
         /// The number of active limbs.
@@ -102,14 +106,15 @@ pub fn Uint(comptime max_bits: comptime_int) type {
         /// Creates a new big integer from a primitive type.
         /// This function may not run in constant time.
         pub fn fromPrimitive(comptime T: type, init_value: T) OverflowError!Self {
-            var x = init_value;
+            const U = @Int(.unsigned, @bitSizeOf(T));
+            var x = math.cast(U, init_value) orelse return error.Overflow;
             var out: Self = .{
                 .limbs_buffer = undefined,
                 .limbs_len = max_limbs_count,
             };
             for (&out.limbs_buffer) |*limb| {
                 limb.* = if (@bitSizeOf(T) > t_bits) @as(TLimb, @truncate(x)) else x;
-                x = math.shr(T, x, t_bits);
+                x = math.shr(U, x, t_bits);
             }
             if (x != 0) {
                 return error.Overflow;
@@ -120,18 +125,21 @@ pub fn Uint(comptime max_bits: comptime_int) type {
         /// Converts a big integer to a primitive type.
         /// This function may not run in constant time.
         pub fn toPrimitive(self: Self, comptime T: type) OverflowError!T {
-            var x: T = 0;
+            const U = @Int(.unsigned, @bitSizeOf(T));
+            var x: U = 0;
             var i = self.limbs_len - 1;
             while (true) : (i -= 1) {
-                if (@bitSizeOf(T) >= t_bits and math.shr(T, x, @bitSizeOf(T) - t_bits) != 0) {
+                // Check for overflow before shifting, even when the destination is narrower than a limb.
+                const discarded = if (@bitSizeOf(U) >= t_bits) math.shr(U, x, @bitSizeOf(U) - t_bits) else x;
+                if (discarded != 0) {
                     return error.Overflow;
                 }
-                x = math.shl(T, x, t_bits);
-                const v = math.cast(T, self.limbsConst()[i]) orelse return error.Overflow;
+                x = math.shl(U, x, t_bits);
+                const v = math.cast(U, self.limbsConst()[i]) orelse return error.Overflow;
                 x |= v;
                 if (i == 0) break;
             }
-            return x;
+            return math.cast(T, x) orelse error.Overflow;
         }
 
         /// Encodes a big integer into a byte array.
@@ -150,15 +158,15 @@ pub fn Uint(comptime max_bits: comptime_int) type {
                 var remaining_bits = t_bits;
                 var limb = self.limbsConst()[i];
                 while (remaining_bits >= 8) {
-                    bytes[out_i] |= math.shl(u8, @as(u8, @truncate(limb)), shift);
+                    bytes[out_i] |= math.shl(u8, @truncate(limb), shift);
                     const consumed = 8 - shift;
-                    limb >>= @as(u4, @truncate(consumed));
+                    limb >>= @truncate(consumed);
                     remaining_bits -= consumed;
                     shift = 0;
                     switch (endian) {
                         .big => {
                             if (out_i == 0) {
-                                if (i != self.limbs_len - 1 or limb != 0) {
+                                if (limb | orLimbs(self.limbsConst()[i + 1 ..]) != 0) {
                                     return error.Overflow;
                                 }
                                 return;
@@ -168,7 +176,7 @@ pub fn Uint(comptime max_bits: comptime_int) type {
                         .little => {
                             out_i += 1;
                             if (out_i == bytes.len) {
-                                if (i != self.limbs_len - 1 or limb != 0) {
+                                if (limb | orLimbs(self.limbsConst()[i + 1 ..]) != 0) {
                                     return error.Overflow;
                                 }
                                 return;
@@ -176,48 +184,16 @@ pub fn Uint(comptime max_bits: comptime_int) type {
                         },
                     }
                 }
-                bytes[out_i] |= @as(u8, @truncate(limb));
+                bytes[out_i] |= @truncate(limb);
                 shift = remaining_bits;
             }
         }
 
         /// Creates a new big integer from a byte array.
         pub fn fromBytes(bytes: []const u8, comptime endian: Endian) OverflowError!Self {
-            if (bytes.len == 0) return Self.zero;
-            var shift: usize = 0;
             var out = Self.zero;
-            var out_i: usize = 0;
-            var i: usize = switch (endian) {
-                .big => bytes.len - 1,
-                .little => 0,
-            };
-            while (true) {
-                const bi = bytes[i];
-                out.limbs()[out_i] |= math.shl(Limb, bi, shift);
-                shift += 8;
-                if (shift >= t_bits) {
-                    shift -= t_bits;
-                    out.limbs()[out_i] = @as(TLimb, @truncate(out.limbs()[out_i]));
-                    const overflow = math.shr(Limb, bi, 8 - shift);
-                    out_i += 1;
-                    if (out_i >= out.limbs_len) {
-                        if (overflow != 0 or i != 0) {
-                            return error.Overflow;
-                        }
-                        break;
-                    }
-                    out.limbs()[out_i] = overflow;
-                }
-                switch (endian) {
-                    .big => {
-                        if (i == 0) break;
-                        i -= 1;
-                    },
-                    .little => {
-                        i += 1;
-                        if (i == bytes.len) break;
-                    },
-                }
+            if (decodeBytes(out.limbs(), bytes, endian) != 0) {
+                return error.Overflow;
             }
             return out;
         }
@@ -239,11 +215,7 @@ pub fn Uint(comptime max_bits: comptime_int) type {
 
         /// Returns `true` if the integer is zero.
         pub fn isZero(x: Self) bool {
-            var t: Limb = 0;
-            for (x.limbsConst()) |elem| {
-                t |= elem;
-            }
-            return ct.eql(t, 0);
+            return ct.eql(orLimbs(x.limbsConst()), 0);
         }
 
         /// Returns `true` if the integer is odd.
@@ -376,6 +348,47 @@ fn Fe_(comptime bits: comptime_int) type {
     };
 }
 
+// Decodes into zeroed limbs and returns the OR of the bits that didn't fit.
+fn decodeBytes(limbs: []Limb, bytes: []const u8, comptime endian: Endian) Limb {
+    var acc: Limb = 0;
+    var shift: usize = 0;
+    var out_i: usize = 0;
+    for (0..bytes.len) |k| {
+        const bi = bytes[
+            switch (endian) {
+                .big => bytes.len - 1 - k,
+                .little => k,
+            }
+        ];
+        if (out_i >= limbs.len) {
+            acc |= bi;
+            continue;
+        }
+        limbs[out_i] |= math.shl(Limb, bi, shift);
+        shift += 8;
+        if (shift >= t_bits) {
+            shift -= t_bits;
+            limbs[out_i] = @as(TLimb, @truncate(limbs[out_i]));
+            const spill = math.shr(Limb, bi, 8 - shift);
+            out_i += 1;
+            if (out_i < limbs.len) {
+                limbs[out_i] = spill;
+            } else {
+                acc |= spill;
+            }
+        }
+    }
+    return acc;
+}
+
+fn orLimbs(limbs: []const Limb) Limb {
+    var t: Limb = 0;
+    for (limbs) |limb| {
+        t |= limb;
+    }
+    return t;
+}
+
 /// A modulus, defining a finite field.
 /// All operations within the field are performed modulo this modulus, without heap allocations.
 /// `max_bits` represents the number of bits in the maximum value the modulus can be set to.
@@ -409,6 +422,11 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
         /// Actual size of the modulus, in bits.
         pub fn bits(self: Self) usize {
             return self.limbs_count() * t_bits - self.leading;
+        }
+
+        /// Returns the encoded length, in bytes.
+        pub fn encodedLen(self: Self) usize {
+            return @divCeil(self.bits(), 8);
         }
 
         /// Returns the element `1`.
@@ -472,6 +490,11 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
         /// Serializes the modulus to a byte string.
         pub fn toBytes(self: Self, bytes: []u8, comptime endian: Endian) OverflowError!void {
             return self.v.toBytes(bytes, endian);
+        }
+
+        /// Returns the modulus as an integer
+        pub fn toUint(self: Self) FeUint {
+            return self.v;
         }
 
         /// Rejects field elements that are not in the canonical form.
@@ -1084,4 +1107,101 @@ fn testCt(ct_: anytype) !void {
 test ct {
     try testCt(ct_protected);
     try testCt(ct_unprotected);
+}
+
+fn expectWellFormedLimbs(x: anytype) !void {
+    for (x.limbsConst()) |limb| {
+        try testing.expect(limb <= math.maxInt(TLimb));
+    }
+    for (x.limbs_buffer[x.limbs_len..]) |limb| {
+        try testing.expectEqual(0, limb);
+    }
+}
+
+// Big-endian encoding of the largest value a `Uint` can store.
+fn maxUintBytes(comptime U: type) [@divCeil(U.capacity_bits, 8)]u8 {
+    var buf: [@divCeil(U.capacity_bits, 8)]u8 = @splat(0xff);
+    buf[0] = 0xff >> (8 * buf.len - U.capacity_bits);
+    return buf;
+}
+
+test "modulus creation" {
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
+
+    const M = Modulus(256);
+    try testing.expectError(error.EvenModulus, M.fromPrimitive(u8, 0));
+    try testing.expectError(error.ModulusTooSmall, M.fromPrimitive(u8, 1));
+    try testing.expectError(error.EvenModulus, M.fromPrimitive(u8, 2));
+    for ([_]u65{ 3, 255, (1 << 64) + 1 }) |v| {
+        const m = try M.fromPrimitive(u65, v);
+        try testing.expectEqual(v, try m.toUint().toPrimitive(u65));
+        try testing.expectEqual(@divCeil(65 - @clz(v), 8), m.encodedLen());
+        try testing.expect((try M.fromUint(m.toUint())).v.eql(m.v));
+    }
+    const cap = maxUintBytes(Uint(256));
+    try testing.expectEqual(cap.len, (try M.fromBytes(&cap, .big)).encodedLen());
+}
+
+test "Uint serialization" {
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
+
+    const U = Uint(256);
+    const x = try U.fromPrimitive(u128, (1 << t_bits) + 5);
+    try testing.expectError(error.Overflow, Uint(64).fromPrimitive(u256, 1 << 200));
+    try testing.expectError(error.Overflow, x.toPrimitive(u8));
+    try testing.expectError(error.Overflow, x.toPrimitive(@Int(.unsigned, t_bits)));
+    try testing.expectEqual((1 << t_bits) + 5, try x.toPrimitive(@Int(.unsigned, t_bits + 1)));
+    const max = try U.fromPrimitive(u128, (1 << t_bits) - 1);
+    try testing.expectEqual((1 << t_bits) - 1, try max.toPrimitive(@Int(.unsigned, t_bits)));
+    try testing.expectError(error.Overflow, max.toPrimitive(@Int(.unsigned, t_bits - 1)));
+    const signed_max = try U.fromPrimitive(u128, math.maxInt(i128));
+    try testing.expectEqual(math.maxInt(i128), try signed_max.toPrimitive(i128));
+    try testing.expectError(error.Overflow, (try U.fromPrimitive(u128, 1 << 127)).toPrimitive(i128));
+
+    inline for (.{ .big, .little }) |endian| {
+        const zero = try U.fromBytes(&.{}, endian);
+        var empty: [0]u8 = .{};
+        try zero.toBytes(&empty, endian);
+        try testing.expectError(error.Overflow, x.toBytes(&empty, endian));
+        var tight: [16]u8 = undefined;
+        try x.toBytes(&tight, endian);
+        try testing.expectEqual((1 << t_bits) + 5, mem.readInt(u128, &tight, endian));
+        try testing.expect(x.eql(try U.fromBytes(&tight, endian)));
+        var normalized: [16]u8 = undefined;
+        try x.normalize().toBytes(&normalized, endian);
+        try testing.expectEqualSlices(u8, &tight, &normalized);
+
+        var cap = maxUintBytes(U);
+        if (endian == .little) mem.reverse(u8, &cap);
+        const full = try U.fromBytes(&cap, endian);
+        try expectWellFormedLimbs(full);
+        var out: [cap.len]u8 = undefined;
+        try full.toBytes(&out, endian);
+        try testing.expectEqualSlices(u8, &cap, &out);
+        out[if (endian == .big) 0 else out.len - 1] |= 1 << (U.capacity_bits % 8);
+        try testing.expectError(error.Overflow, U.fromBytes(&out, endian));
+        var padded = if (endian == .big) [_]u8{0} ++ cap else cap ++ [_]u8{0};
+        try testing.expect(full.eql(try U.fromBytes(&padded, endian)));
+        padded[if (endian == .big) 0 else padded.len - 1] = 1;
+        try testing.expectError(error.Overflow, U.fromBytes(&padded, endian));
+    }
+}
+
+test "field element decoding" {
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
+
+    const M = Modulus(256);
+    const mv: u256 = (1 << 190) + 33;
+    const m = try M.fromPrimitive(u256, mv);
+    try testing.expectError(error.NonCanonical, M.Fe.fromPrimitive(u256, m, mv));
+    try testing.expectError(error.Overflow, M.Fe.fromPrimitive(u256, m, 1 << 255));
+
+    inline for (.{ .big, .little }) |endian| {
+        var buf: [32]u8 = undefined;
+        try m.toBytes(&buf, endian);
+        try testing.expectError(error.NonCanonical, M.Fe.fromBytes(m, &buf, endian));
+        const x = try M.Fe.fromPrimitive(u256, m, mv - 1);
+        try x.toBytes(&buf, endian);
+        try testing.expect(x.eql(try M.Fe.fromBytes(m, &buf, endian)));
+    }
 }
