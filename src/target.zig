@@ -285,6 +285,17 @@ pub fn hasLldSupport(ofmt: std.Target.ObjectFormat) bool {
     };
 }
 
+pub fn preferNewLinkerOverLld(target: *const std.Target) bool {
+    return switch (target.ofmt) {
+        .elf => switch (target.cpu.arch) {
+            // Elf2 is more complete than LLD on these targets.
+            .sparc64 => true,
+            else => false,
+        },
+        else => false,
+    };
+}
+
 /// Returns `true` if `ofmt` has two linker implementations, so `-fnew-linker` is meaningful.
 pub fn hasNewLinker(ofmt: std.Target.ObjectFormat) bool {
     return switch (ofmt) {

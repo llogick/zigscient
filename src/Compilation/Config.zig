@@ -413,6 +413,12 @@ pub fn resolve(options: Options) ResolveError!Config {
         // assume no LLD.
         if (options.use_new_linker == true) break :b false;
 
+        if (options.use_new_linker == null and
+            target_util.preferNewLinkerOverLld(target))
+        {
+            break :b false;
+        }
+
         // If we have no zig code to compile, no need for the self-hosted linker.
         if (!options.have_zcu) break :b true;
 
@@ -447,6 +453,8 @@ pub fn resolve(options: Options) ResolveError!Config {
         }
 
         if (options.use_new_linker) |x| break :b x;
+
+        if (target_util.preferNewLinkerOverLld(target)) break :b true;
 
         break :b options.incremental;
     };

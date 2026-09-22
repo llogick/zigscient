@@ -1855,12 +1855,9 @@ pub fn genDebugInfoHeader(
     try dwarf.abbrevCode(dih_nw, .module);
     try dwarf.strx(dih_nw, mod.fully_qualified_name);
     try dih_w.writeUleb128(0);
-    try dwarf.genModuleDependency(
-        dih_nw,
-        "builtin",
-        zcu.builtin_modules.get(mod.getBuiltinOptions(comp.config).hash()).?,
-        module_offset,
-    );
+    if (zcu.builtin_modules.get(mod.getBuiltinOptions(comp.config).hash())) |builtin_mod| {
+        try dwarf.genModuleDependency(dih_nw, "builtin", builtin_mod, module_offset);
+    }
     try dwarf.genModuleDependency(dih_nw, "root", zcu.root_mod, module_offset);
     try dwarf.genModuleDependency(dih_nw, "std", zcu.std_mod, module_offset);
     for (mod.deps.keys(), mod.deps.values()) |name, dep|
