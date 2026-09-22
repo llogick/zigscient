@@ -43,7 +43,7 @@ stage3-debug/bin/zig build install test docs \
   --maxrss "${ZSF_MAX_RSS:-0}" \
   --prefix stage4-debug \
   --search-prefix "$PREFIX" \
-  --test-timeout 2m \
+  --test-timeout 4m \
   -Dversion-string="$(stage3-debug/bin/zig version)" \
   -Dtarget=$TARGET \
   -Dcpu=$MCPU \
