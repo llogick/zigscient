@@ -5622,9 +5622,10 @@ fn initHeaders(
                 .name = ".gnu.version",
                 .type = .GNU_VERSYM,
                 .flags = .{ .ALLOC = true },
+                .size = @sizeOf(std.elf.Versym), // "null" dynsym entry
                 .link = elf.shndx.dynsym.toSection().?,
                 .addralign = .@"2",
-                .size = 2, // "null" dynsym entry
+                .entsize = @sizeOf(std.elf.Versym),
                 .manual_size = true,
             });
             elf.targetStore(&elf.versymSlice()[0], .LOCAL); // "null" dynsym entry
