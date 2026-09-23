@@ -655,7 +655,6 @@ const riscv = struct {
                     setFeature(&cpu, Target.riscv.Feature.a, ima_support);
                 },
                 RISCV_HWPROBE.KEY.IMA_EXT_0 => {
-                    // https://bugzilla.kernel.org/show_bug.cgi?id=221874
                     const fd_support = set(value, RISCV_HWPROBE.IMA_EXT_0.IMA_FD);
                     setFeature(&cpu, .f, ima_support and fd_support);
                     setFeature(&cpu, .d, ima_support and fd_support);
