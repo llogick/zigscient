@@ -692,25 +692,25 @@ test "test vectors" {
             .msg_hex = "9bedc267423725d473888631ebf45988bad3db83851ee85c85e241a07d148b41",
             .public_key_hex = "f7badec5b8abeaf699583992219b7b223f1df3fbbea919844e3f7c554a43dd43",
             .sig_hex = "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff03be9678ac102edcd92b0210bb34d7428d12ffc5df5f37e359941266a4e35f0f",
-            .expected = error.IdentityElement, // 8 - non-canonical R
+            .expected = error.InvalidEncoding, // 8 - non-canonical R
         },
         Vec{
             .msg_hex = "9bedc267423725d473888631ebf45988bad3db83851ee85c85e241a07d148b41",
             .public_key_hex = "f7badec5b8abeaf699583992219b7b223f1df3fbbea919844e3f7c554a43dd43",
             .sig_hex = "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffca8c5b64cd208982aa38d4936621a4775aa233aa0505711d8fdcfdaa943d4908",
-            .expected = error.IdentityElement, // 9 - non-canonical R
+            .expected = error.InvalidEncoding, // 9 - non-canonical R
         },
         Vec{
             .msg_hex = "e96b7021eb39c1a163b6da4e3093dcd3f21387da4cc4572be588fafae23c155b",
             .public_key_hex = "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
             .sig_hex = "a9d55260f765261eb9b84e106f665e00b867287a761990d7135963ee0a7d59dca5bb704786be79fc476f91d3f3f89b03984d8068dcf1bb7dfc6637b45450ac04",
-            .expected = error.IdentityElement, // 10 - small-order A
+            .expected = error.InvalidEncoding, // 10 - small-order A
         },
         Vec{
             .msg_hex = "39a591f5321bbe07fd5a23dc2f39d025d74526615746727ceefd6e82ae65c06f",
             .public_key_hex = "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
             .sig_hex = "a9d55260f765261eb9b84e106f665e00b867287a761990d7135963ee0a7d59dca5bb704786be79fc476f91d3f3f89b03984d8068dcf1bb7dfc6637b45450ac04",
-            .expected = error.IdentityElement, // 11 - small-order A
+            .expected = error.InvalidEncoding, // 11 - small-order A
         },
     };
     for (entries) |entry| {
