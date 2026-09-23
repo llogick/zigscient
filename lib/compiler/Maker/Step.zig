@@ -309,15 +309,13 @@ pub fn make(
     }
 }
 
-pub fn deinit(step: *Step, gpa: Allocator) void {
+pub fn deinit(step: *Step, gpa: Allocator, io: Io) void {
     step.clearResultStderr(gpa);
     step.clearFailedCommand(gpa);
     step.clearErrorBundle(gpa);
     step.inputs.deinit(gpa);
-    if (step.getZigProcess()) |zp| gpa.destroy(zp);
     switch (step.extended) {
         .check_file,
-        .compile,
         .config_header,
         .fail,
         .find_program,
@@ -331,7 +329,7 @@ pub fn deinit(step: *Step, gpa: Allocator) void {
         .update_source_files,
         .write_file,
         => {},
-        inline .fmt, .run => |*extended| extended.deinit(gpa),
+        inline .compile, .fmt, .run => |*extended| extended.deinit(gpa, io),
     }
     step.* = undefined;
 }
@@ -455,6 +453,11 @@ pub const ZigProcess = struct {
         zp.multi_reader.deinit();
         zp.* = undefined;
     }
+
+    pub fn destroy(zp: *ZigProcess, gpa: Allocator, io: Io) void {
+        zp.deinit(io);
+        gpa.destroy(zp);
+    }
 };
 
 /// Assumes that argv contains `--listen=-` and that the process being spawned
@@ -482,9 +485,8 @@ pub fn evalZigProcess(
         zp.progress_ipc_index = null;
         var exited = false;
         defer if (exited) {
-            s.extended.compile.zig_process = null;
-            zp.deinit(io);
-            gpa.destroy(zp);
+            s.clearZigProcess();
+            zp.destroy(gpa, io);
         } else zp.saveState(prog_node);
         const result = zigProcessUpdate(step_index, maker, zp, watch) catch |err| switch (err) {
             error.BrokenPipe, error.EndOfStream => |reason| {
@@ -728,6 +730,13 @@ pub fn getZigProcess(s: *Step) ?*ZigProcess {
         .compile => |*compile| compile.zig_process,
         else => null,
     };
+}
+
+fn clearZigProcess(s: *Step) void {
+    (switch (s.extended) {
+        .compile => |*compile| &compile.zig_process,
+        else => return,
+    }).* = null;
 }
 
 fn sendMessage(io: Io, file: Io.File, tag: std.zig.Client.Message.Tag) !void {

@@ -111,6 +111,13 @@ pub fn make(
     }
 }
 
+pub fn deinit(compile: *Compile, gpa: Allocator, io: Io) void {
+    if (compile.zig_process) |zp| {
+        zp.destroy(gpa, io);
+        compile.zig_process = null;
+    }
+}
+
 fn updateGeneratedFile(
     maker: *Maker,
     arena: Allocator,

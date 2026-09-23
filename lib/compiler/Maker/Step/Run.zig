@@ -372,7 +372,8 @@ pub fn make(
     step.clearFailedCommand(gpa);
 }
 
-pub fn deinit(run: *Run, gpa: Allocator) void {
+pub fn deinit(run: *Run, gpa: Allocator, io: Io) void {
+    _ = io;
     run.fuzz_tests.deinit(gpa);
 }
 

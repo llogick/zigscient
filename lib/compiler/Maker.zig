@@ -2730,7 +2730,8 @@ fn makeSteps(
 
 fn deinit(maker: *Maker) void {
     const gpa = maker.gpa;
-    for (maker.steps) |*step| step.deinit(gpa);
+    const io = maker.graph.io;
+    for (maker.steps) |*step| step.deinit(gpa, io);
     maker.memory_blocked_steps.deinit(gpa);
     maker.initial_steps.deinit(gpa);
     maker.step_stack.deinit(gpa);

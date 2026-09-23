@@ -64,6 +64,7 @@ pub fn make(
     try step.handleChildProcessTerm(maker, run_result.term);
 }
 
-pub fn deinit(fmt: *Fmt, gpa: std.mem.Allocator) void {
+pub fn deinit(fmt: *Fmt, gpa: std.mem.Allocator, io: std.Io) void {
+    _ = io;
     fmt.argv.deinit(gpa);
 }
