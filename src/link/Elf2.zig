@@ -5653,7 +5653,7 @@ fn initHeaders(
                         .cnt = 1,
                         .hash = std.elf.hash.calculate(base_version_name),
                         .aux = @offsetOf(VerdefEntry, "aux"),
-                        .next = @sizeOf(VerdefEntry),
+                        .next = 0,
                     },
                     .aux = .{
                         .name = @backingInt(try elf.string(.dynstr, base_version_name)),
@@ -12569,7 +12569,9 @@ fn verdefId(elf: *Elf, version: String(.dynstr)) Error!u15 {
             elf.targetStore(&shdr.size, old_size + @sizeOf(VerdefEntry));
         },
     }
-    const entry_ptr = &elf.verdefSlice()[gop.index + 1];
+    const verdef_slice = elf.verdefSlice();
+    elf.targetStore(&verdef_slice[gop.index].def.next, @sizeOf(VerdefEntry));
+    const entry_ptr = &verdef_slice[gop.index + 1];
     entry_ptr.* = .{
         .def = .{
             .version = 1,
@@ -12578,7 +12580,7 @@ fn verdefId(elf: *Elf, version: String(.dynstr)) Error!u15 {
             .cnt = 1,
             .hash = std.elf.hash.calculate(version.slice(elf)),
             .aux = @offsetOf(VerdefEntry, "aux"),
-            .next = @sizeOf(VerdefEntry),
+            .next = 0,
         },
         .aux = .{
             .name = @backingInt(version),
