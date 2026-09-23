@@ -493,7 +493,7 @@ pub const Object = struct {
             }
 
             // The frontend should eventually offer options to control these.
-            if (target.cpu.arch.isAarch64() and target.os.tag == .openbsd) {
+            if (target.cpu.arch.isAarch64() and (target.os.tag == .openbsd or target.abi.isAndroid())) {
                 module_flags.appendAssumeCapacity(try o.builder.metadataTuple(&.{
                     behavior_min,
                     (try o.builder.metadataString("branch-target-enforcement")).toMetadata(),
@@ -2253,7 +2253,7 @@ pub const Object = struct {
         }
 
         // The frontend should eventually offer options to control these.
-        if (target.cpu.arch.isAarch64() and target.os.tag == .openbsd) {
+        if (target.cpu.arch.isAarch64() and (target.os.tag == .openbsd or target.abi.isAndroid())) {
             try attributes.addFnAttr(.{ .string = .{
                 .kind = try o.builder.string("branch-target-enforcement"),
                 .value = try o.builder.string(""),
