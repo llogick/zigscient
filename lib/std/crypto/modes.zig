@@ -37,14 +37,13 @@ pub fn ctrSlice(
     debug.assert(counter_offset + counter_size <= block_length);
     debug.assert(counter_size > 0 and counter_size <= block_length);
 
-    var counterBlock = iv;
     var i: usize = 0;
 
     const CounterInt = @Int(.unsigned, counter_size * 8);
 
     const parallel_count = BlockCipher.block.parallel.optimal_parallel_blocks;
     const wide_block_length = parallel_count * block_length;
-    var cnt_val = mem.readInt(CounterInt, counterBlock[counter_offset..][0..counter_size], endian);
+    var cnt_val = mem.readInt(CounterInt, iv[counter_offset..][0..counter_size], endian);
     if (src.len >= wide_block_length) {
         var counters: [parallel_count * block_length]u8 = undefined;
         inline for (0..parallel_count) |j| {
@@ -58,20 +57,18 @@ pub fn ctrSlice(
             cnt_val +%= parallel_count;
             block_cipher.xorWide(parallel_count, dst[i .. i + wide_block_length][0..wide_block_length], src[i .. i + wide_block_length][0..wide_block_length], counters);
         }
-        mem.writeInt(CounterInt, counterBlock[counter_offset..][0..counter_size], cnt_val, endian);
-    }
-    while (i + block_length <= src.len) : (i += block_length) {
-        block_cipher.xor(dst[i .. i + block_length][0..block_length], src[i .. i + block_length][0..block_length], counterBlock);
-        cnt_val +%= 1;
-        mem.writeInt(CounterInt, counterBlock[counter_offset..][0..counter_size], cnt_val, endian);
     }
     if (i < src.len) {
-        var pad: [block_length]u8 = @splat(0);
-        const src_slice = src[i..];
-        @memcpy(pad[0..src_slice.len], src_slice);
-        block_cipher.xor(&pad, &pad, counterBlock);
-        const pad_slice = pad[0 .. src.len - i];
-        @memcpy(dst[i..][0..pad_slice.len], pad_slice);
+        const rem = src.len - i;
+        var counters: [wide_block_length]u8 = undefined;
+        inline for (0..parallel_count) |j| {
+            counters[j * block_length ..][0..block_length].* = iv;
+            const block_ctr = cnt_val +% @as(CounterInt, j);
+            mem.writeInt(CounterInt, counters[j * block_length + counter_offset ..][0..counter_size], block_ctr, endian);
+        }
+        var keystream: [wide_block_length]u8 = undefined;
+        block_cipher.encryptWide(parallel_count, &keystream, &counters);
+        for (dst[i..][0..rem], src[i..][0..rem], keystream[0..rem]) |*d, s, k| d.* = s ^ k;
     }
 }
 

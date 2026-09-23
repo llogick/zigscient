@@ -103,7 +103,10 @@ fn AesOcb(comptime Aes: anytype) type {
 
         const has_aesni = builtin.cpu.has(.x86, .aes);
         const has_armaes = builtin.cpu.has(.aarch64, .aes);
-        const wb: usize = if ((builtin.cpu.arch == .x86_64 and has_aesni) or (builtin.cpu.arch == .aarch64 and has_armaes)) 4 else 0;
+        const wb: usize = if ((builtin.cpu.arch == .x86_64 and has_aesni) or (builtin.cpu.arch == .aarch64 and has_armaes))
+            4 // empirically what works best on x86_64 and aarch64 with AES-NI/ARM Crypto
+        else
+            Aes.block.parallel.optimal_parallel_blocks;
 
         /// c: ciphertext: output buffer should be of size m.len
         /// tag: authentication tag: output MAC
@@ -124,7 +127,7 @@ fn AesOcb(comptime Aes: anytype) type {
             var sum: [16]u8 = @splat(0);
             var i: usize = 0;
 
-            while (wb > 0 and i + wb <= full_blocks) : (i += wb) {
+            while (i + wb <= full_blocks) : (i += wb) {
                 var offsets: [wb]Block align(16) = undefined;
                 var es: [16 * wb]u8 align(16) = undefined;
                 var j: usize = 0;
@@ -191,7 +194,7 @@ fn AesOcb(comptime Aes: anytype) type {
             var sum: [16]u8 = @splat(0);
             var i: usize = 0;
 
-            while (wb > 0 and i + wb <= full_blocks) : (i += wb) {
+            while (i + wb <= full_blocks) : (i += wb) {
                 var offsets: [wb]Block align(16) = undefined;
                 var es: [16 * wb]u8 align(16) = undefined;
                 var j: usize = 0;

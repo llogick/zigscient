@@ -1,8 +1,11 @@
 const std = @import("../../std.zig");
 const math = std.math;
 const mem = std.mem;
+const bitsliced = @import("bitsliced.zig");
 
 const side_channels_mitigations = std.options.side_channels_mitigations;
+
+const protected = side_channels_mitigations != .none;
 
 /// A single AES block.
 pub const Block = struct {
@@ -288,7 +291,7 @@ pub const Block = struct {
     /// Perform operations on multiple blocks in parallel.
     pub const parallel = struct {
         /// The recommended number of AES encryption/decryption to perform in parallel for the chosen implementation.
-        pub const optimal_parallel_blocks = 1;
+        pub const optimal_parallel_blocks = if (protected) bitsliced.width else 1;
 
         /// Encrypt multiple blocks in parallel, each their own round key.
         pub fn encryptParallel(comptime count: usize, blocks: [count]Block, round_keys: [count]Block) [count]Block {
@@ -539,6 +542,38 @@ fn KeySchedule(comptime Aes: type) type {
     };
 }
 
+/// Packed forward round keys for the bitsliced implementation
+fn PackedKeys(comptime rounds: usize) type {
+    return if (protected) [rounds + 1]bitsliced.State else void;
+}
+
+/// Bitsliced operation over `count` blocks
+fn bitslicedOperation(
+    comptime rounds: usize,
+    comptime operation: enum { encrypt, decrypt },
+    keys: *const [rounds + 1]bitsliced.State,
+    comptime count: usize,
+    dst: *[16 * count]u8,
+    src: *const [16 * count]u8,
+) void {
+    const w = bitsliced.width;
+    const chunks = (count + w - 1) / w;
+    inline for (0..chunks) |c| {
+        const off: usize = c * w;
+        const n: usize = @min(w, count - off);
+        const lo = off * 16;
+        const hi = lo + n * 16;
+        var buf: [w * 16]u8 = undefined;
+        @memcpy(buf[0 .. n * 16], src[lo..hi]);
+        if (operation == .decrypt) {
+            bitsliced.Wide.decrypt(rounds, keys, &buf);
+        } else {
+            bitsliced.Wide.encrypt(rounds, keys, &buf);
+        }
+        @memcpy(dst[lo..hi], buf[0 .. n * 16]);
+    }
+}
+
 /// A context to perform encryption using the standard AES key schedule.
 pub fn AesEncryptCtx(comptime Aes: type) type {
     std.debug.assert(Aes.key_bits == 128 or Aes.key_bits == 256);
@@ -549,73 +584,54 @@ pub fn AesEncryptCtx(comptime Aes: type) type {
         pub const block = Aes.block;
         pub const block_length = block.block_length;
         key_schedule: KeySchedule(Aes),
+        packed_keys: PackedKeys(rounds),
 
         /// Create a new encryption context with the given key.
         pub fn init(key: [Aes.key_bits / 8]u8) Self {
             const key_schedule = KeySchedule(Aes).expandKey(key);
             return Self{
                 .key_schedule = key_schedule,
+                .packed_keys = if (protected) bitsliced.Wide.packKeys(key_schedule.round_keys[0..]) else {},
             };
         }
 
-        /// Encrypt a single block.
-        pub fn encrypt(ctx: Self, dst: *[16]u8, src: *const [16]u8) void {
+        /// Encrypt a single block, without any protection against side channels.
+        fn encryptUnprotectedBlock(ctx: Self, dst: *[16]u8, src: *const [16]u8) void {
             const round_keys = ctx.key_schedule.round_keys;
             var t = Block.fromBytes(src).xorBlocks(round_keys[0]);
-            comptime var i = 1;
-            if (side_channels_mitigations == .full) {
-                inline while (i < rounds) : (i += 1) {
-                    t = t.encrypt(round_keys[i]);
-                }
-            } else {
-                inline while (i < 5) : (i += 1) {
-                    t = t.encrypt(round_keys[i]);
-                }
-                inline while (i < rounds - 1) : (i += 1) {
-                    t = t.encryptUnprotected(round_keys[i]);
-                }
-                t = t.encrypt(round_keys[i]);
+            inline for (1..rounds) |i| {
+                t = t.encryptUnprotected(round_keys[i]);
             }
             t = t.encryptLast(round_keys[rounds]);
             dst.* = t.toBytes();
         }
 
+        /// Encrypt a single block.
+        pub fn encrypt(ctx: Self, dst: *[16]u8, src: *const [16]u8) void {
+            ctx.encryptWide(1, dst, src);
+        }
+
         /// Encrypt+XOR a single block.
         pub fn xor(ctx: Self, dst: *[16]u8, src: *const [16]u8, counter: [16]u8) void {
-            const round_keys = ctx.key_schedule.round_keys;
-            var t = Block.fromBytes(&counter).xorBlocks(round_keys[0]);
-            comptime var i = 1;
-            if (side_channels_mitigations == .full) {
-                inline while (i < rounds) : (i += 1) {
-                    t = t.encrypt(round_keys[i]);
-                }
-            } else {
-                inline while (i < 5) : (i += 1) {
-                    t = t.encrypt(round_keys[i]);
-                }
-                inline while (i < rounds - 1) : (i += 1) {
-                    t = t.encryptUnprotected(round_keys[i]);
-                }
-                t = t.encrypt(round_keys[i]);
-            }
-            t = t.encryptLast(round_keys[rounds]);
-            dst.* = t.xorBytes(src);
+            ctx.xorWide(1, dst, src, counter);
         }
 
         /// Encrypt multiple blocks, possibly leveraging parallelization.
         pub fn encryptWide(ctx: Self, comptime count: usize, dst: *[16 * count]u8, src: *const [16 * count]u8) void {
-            var i: usize = 0;
-            while (i < count) : (i += 1) {
-                ctx.encrypt(dst[16 * i .. 16 * i + 16][0..16], src[16 * i .. 16 * i + 16][0..16]);
+            if (protected) {
+                bitslicedOperation(rounds, .encrypt, &ctx.packed_keys, count, dst, src);
+            } else {
+                for (0..count) |i| {
+                    ctx.encryptUnprotectedBlock(dst[16 * i .. 16 * i + 16][0..16], src[16 * i .. 16 * i + 16][0..16]);
+                }
             }
         }
 
         /// Encrypt+XOR multiple blocks, possibly leveraging parallelization.
         pub fn xorWide(ctx: Self, comptime count: usize, dst: *[16 * count]u8, src: *const [16 * count]u8, counters: [16 * count]u8) void {
-            var i: usize = 0;
-            while (i < count) : (i += 1) {
-                ctx.xor(dst[16 * i .. 16 * i + 16][0..16], src[16 * i .. 16 * i + 16][0..16], counters[16 * i .. 16 * i + 16][0..16].*);
-            }
+            var ks: [16 * count]u8 = undefined;
+            ctx.encryptWide(count, &ks, &counters);
+            for (dst, ks, src) |*d, k, s| d.* = k ^ s;
         }
     };
 }
@@ -630,11 +646,13 @@ pub fn AesDecryptCtx(comptime Aes: type) type {
         pub const block = Aes.block;
         pub const block_length = block.block_length;
         key_schedule: KeySchedule(Aes),
+        packed_keys: PackedKeys(rounds),
 
         /// Create a decryption context from an existing encryption context.
         pub fn initFromEnc(ctx: AesEncryptCtx(Aes)) Self {
             return Self{
                 .key_schedule = ctx.key_schedule.invert(),
+                .packed_keys = ctx.packed_keys,
             };
         }
 
@@ -644,33 +662,30 @@ pub fn AesDecryptCtx(comptime Aes: type) type {
             return initFromEnc(enc_ctx);
         }
 
-        /// Decrypt a single block.
-        pub fn decrypt(ctx: Self, dst: *[16]u8, src: *const [16]u8) void {
+        /// Decrypt a single block, without any protection against side channels.
+        fn decryptUnprotectedBlock(ctx: Self, dst: *[16]u8, src: *const [16]u8) void {
             const inv_round_keys = ctx.key_schedule.round_keys;
             var t = Block.fromBytes(src).xorBlocks(inv_round_keys[0]);
-            comptime var i = 1;
-            if (side_channels_mitigations == .full) {
-                inline while (i < rounds) : (i += 1) {
-                    t = t.decrypt(inv_round_keys[i]);
-                }
-            } else {
-                inline while (i < 5) : (i += 1) {
-                    t = t.decrypt(inv_round_keys[i]);
-                }
-                inline while (i < rounds - 1) : (i += 1) {
-                    t = t.decryptUnprotected(inv_round_keys[i]);
-                }
-                t = t.decrypt(inv_round_keys[i]);
+            inline for (1..rounds) |i| {
+                t = t.decryptUnprotected(inv_round_keys[i]);
             }
             t = t.decryptLast(inv_round_keys[rounds]);
             dst.* = t.toBytes();
         }
 
+        /// Decrypt a single block.
+        pub fn decrypt(ctx: Self, dst: *[16]u8, src: *const [16]u8) void {
+            ctx.decryptWide(1, dst, src);
+        }
+
         /// Decrypt multiple blocks, possibly leveraging parallelization.
         pub fn decryptWide(ctx: Self, comptime count: usize, dst: *[16 * count]u8, src: *const [16 * count]u8) void {
-            var i: usize = 0;
-            while (i < count) : (i += 1) {
-                ctx.decrypt(dst[16 * i .. 16 * i + 16][0..16], src[16 * i .. 16 * i + 16][0..16]);
+            if (protected) {
+                bitslicedOperation(rounds, .decrypt, &ctx.packed_keys, count, dst, src);
+            } else {
+                for (0..count) |i| {
+                    ctx.decryptUnprotectedBlock(dst[16 * i .. 16 * i + 16][0..16], src[16 * i .. 16 * i + 16][0..16]);
+                }
             }
         }
     };
