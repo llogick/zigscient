@@ -32,6 +32,7 @@ test "div" {
     if (builtin.target.cpu.arch.isLoongArch()) return error.SkipZigTest; // TODO
     if (builtin.target.cpu.arch.isMIPS64()) return error.SkipZigTest; // TODO
     if (builtin.target.cpu.arch.isPowerPC()) return error.SkipZigTest; // TODO
+    if (builtin.target.cpu.arch.isSparc()) return error.SkipZigTest; // TODO
     if (builtin.target.cpu.arch == .s390x) return error.SkipZigTest; // TODO
     if (builtin.target.cpu.arch == .x86 and builtin.target.os.tag == .windows) return error.SkipZigTest; // TODO
 
