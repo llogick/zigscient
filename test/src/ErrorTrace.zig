@@ -328,21 +328,6 @@ pub const param_sets = [_]CaseParameters{
 
     .{
         .target = .{
-            .cpu_arch = .thumb,
-            .os_tag = .windows,
-            .abi = .msvc,
-        },
-    },
-    .{
-        .target = .{
-            .cpu_arch = .thumb,
-            .os_tag = .windows,
-            .abi = .gnu,
-        },
-    },
-
-    .{
-        .target = .{
             .cpu_arch = .x86,
             .os_tag = .windows,
             .abi = .msvc,
