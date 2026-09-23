@@ -14176,6 +14176,16 @@ fn processCurrentPath(userdata: ?*anyopaque, buffer: []u8) process.CurrentPathEr
         .SUCCESS => return std.mem.findScalar(u8, buffer, 0).?,
         .NOENT => return error.CurrentDirUnlinked,
         .RANGE => return error.NameTooLong,
+        // On Linux, this indicates that the buffer may have been large enough, but the path
+        // is too long for the syscall to handle since it exceeds PATH_MAX.
+        // https://github.com/torvalds/linux/blob/e4b275531887fef7f7d8a7284bfc32f0fbbd4208/fs/d_path.c#L406-L407
+        //
+        // This is returned as a distinct error to differentiate it from RANGE, since
+        // this NAMETOOLONG return is never recoverable by increasing the buffer size.
+        // The way to recover from it would be to reconstruct the cwd piece-by-piece by e.g.
+        // walking the filesystem backwards starting from "." (many libc implementations
+        // of `getcwd` do this fallback-to-filesystem-walking automatically).
+        .NAMETOOLONG => return error.PathExceedsLimit,
         .FAULT => |e| return errnoBug(e),
         .INVAL => |e| return errnoBug(e),
         else => return posix.unexpectedErrno(err),

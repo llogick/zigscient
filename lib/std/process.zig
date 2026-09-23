@@ -58,9 +58,14 @@ pub const Init = struct {
 };
 
 pub const CurrentPathError = error{
+    /// Buffer is too small to contain the current path.
     NameTooLong,
     /// Not possible on Windows. Always returned on WASI.
     CurrentDirUnlinked,
+    /// The current path cannot be retrieved due to a limitation of the
+    /// underlying libc or syscall implementation. Retrying with a larger
+    /// buffer will not succeed.
+    PathExceedsLimit,
 } || Io.Cancelable || Io.UnexpectedError;
 
 /// On Windows, the result is encoded as [WTF-8](https://wtf-8.codeberg.page/).
@@ -70,11 +75,10 @@ pub fn currentPath(io: Io, buffer: []u8) CurrentPathError!usize {
     return io.vtable.processCurrentPath(io.userdata, buffer);
 }
 
-pub const CurrentPathAllocError = Allocator.Error || error{
-    /// Not possible on Windows. Always returned on WASI.
-    CurrentDirUnlinked,
-} || Io.Cancelable || Io.UnexpectedError;
+pub const CurrentPathAllocError = Allocator.Error || CurrentPathError;
 
+/// Shortcut for calling `currentPath` with a buffer of size `max_path_bytes`.
+///
 /// On Windows, the result is encoded as [WTF-8](https://wtf-8.codeberg.page/).
 /// On other platforms, the result is an opaque sequence of bytes with no
 /// particular encoding.
@@ -82,10 +86,7 @@ pub const CurrentPathAllocError = Allocator.Error || error{
 /// Caller owns returned memory.
 pub fn currentPathAlloc(io: Io, allocator: Allocator) CurrentPathAllocError![:0]u8 {
     var buffer: [max_path_bytes]u8 = undefined;
-    const n = currentPath(io, &buffer) catch |err| switch (err) {
-        error.NameTooLong => unreachable,
-        else => |e| return e,
-    };
+    const n = try currentPath(io, &buffer);
     return allocator.dupeSentinel(u8, buffer[0..n], 0);
 }
 
