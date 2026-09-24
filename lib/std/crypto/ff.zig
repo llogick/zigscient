@@ -207,8 +207,8 @@ pub fn Uint(comptime max_bits: comptime_int) type {
         pub fn compare(x: Self, y: Self) math.Order {
             return crypto.timing_safe.compare(
                 Limb,
-                x.limbsConst(),
-                y.limbsConst(),
+                &x.limbs_buffer,
+                &y.limbs_buffer,
                 .little,
             );
         }
@@ -221,6 +221,11 @@ pub fn Uint(comptime max_bits: comptime_int) type {
         /// Returns `true` if the integer is odd.
         pub fn isOdd(x: Self) bool {
             return @as(u1, @truncate(x.limbsConst()[0])) != 0;
+        }
+
+        pub fn isOne(x: Self) bool {
+            const x_limbs = x.limbsConst();
+            return ct.eql((x_limbs[0] ^ 1) | orLimbs(x_limbs[1..]), 0);
         }
 
         /// Adds `y` to `x`, and returns `true` if the operation overflowed.
