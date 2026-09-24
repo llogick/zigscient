@@ -1370,7 +1370,7 @@ const KeyShare = struct {
             .ml_kem768_kp = try .generateDeterministic(seed[0..64].*),
             .secp256r1_kp = try .generateDeterministic(seed[64..96].*),
             .secp384r1_kp = try .generateDeterministic(seed[96..144].*),
-            .x25519_kp = try .generateDeterministic(seed[144..176].*),
+            .x25519_kp = .generateDeterministic(seed[144..176].*),
             .sk_buf = undefined,
             .sk_len = 0,
         };

@@ -32,24 +32,18 @@ pub const X25519 = struct {
         /// Deterministically derive a key pair from a cryptograpically secure secret seed.
         ///
         /// Except in tests, applications should generally call `generate()` instead of this function.
-        pub fn generateDeterministic(seed: [seed_length]u8) IdentityElementError!KeyPair {
-            const kp = KeyPair{
-                .public_key = try X25519.recoverPublicKey(seed),
+        pub fn generateDeterministic(seed: [seed_length]u8) KeyPair {
+            return .{
+                .public_key = X25519.recoverPublicKey(seed),
                 .secret_key = seed,
             };
-            return kp;
         }
 
         /// Generate a new, random key pair.
         pub fn generate(io: std.Io) KeyPair {
             var random_seed: [seed_length]u8 = undefined;
-            while (true) {
-                io.random(&random_seed);
-                return generateDeterministic(random_seed) catch {
-                    @branchHint(.unlikely);
-                    continue;
-                };
-            }
+            io.random(&random_seed);
+            return generateDeterministic(random_seed);
         }
 
         /// Create a key pair from an Ed25519 key pair
@@ -68,8 +62,8 @@ pub const X25519 = struct {
     };
 
     /// Compute the public key for a given private key.
-    pub fn recoverPublicKey(secret_key: [secret_length]u8) IdentityElementError![public_length]u8 {
-        const q = try Curve.basePoint.clampedMul(secret_key);
+    pub fn recoverPublicKey(secret_key: [secret_length]u8) [public_length]u8 {
+        const q = Curve.basePoint.clampedMul(secret_key) catch unreachable;
         return q.toBytes();
     }
 
@@ -96,7 +90,7 @@ test "public key calculation from secret key" {
     var pk_expected: [32]u8 = undefined;
     _ = try fmt.hexToBytes(sk[0..], "8052030376d47112be7f73ed7a019293dd12ad910b654455798b4667d73de166");
     _ = try fmt.hexToBytes(pk_expected[0..], "f1814f0e8ff1043d8a44d25babff3cedcae6c22c3edaa48f857ae70de2baae50");
-    const pk_calculated = try X25519.recoverPublicKey(sk);
+    const pk_calculated = X25519.recoverPublicKey(sk);
     try std.testing.expectEqual(pk_calculated, pk_expected);
 }
 
