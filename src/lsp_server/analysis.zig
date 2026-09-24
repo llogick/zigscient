@@ -6649,6 +6649,7 @@ pub fn airaResolveDecl(asta: *Analyser, decl: DeclWithHandle) Error!?Type {
     ares.ip_index = aira.derefOrUnwrap(ares.ip_index);
     const src_node_info = aira.resolveSrcNode(ares.ip_index) orelse return asta_ty;
     const zdoc = try asta.store.getOrLoadHandle(src_node_info.zdoc_uri) orelse return asta_ty;
+    if (!(@backingInt(src_node_info.src_node) < zdoc.tree.nodes.len)) return asta_ty;
     const new_decl: DeclWithHandle = .{ .decl = .{ .ast_node = src_node_info.src_node }, .handle = zdoc };
     var rty = (try new_decl.resolveType(asta)) orelse return asta_ty;
     rty.is_type_val = false;
