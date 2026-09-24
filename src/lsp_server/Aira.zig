@@ -299,7 +299,11 @@ pub fn resolveSrcNode(
     const key = ip.indexToKey(idx);
     const zir_index, const is_reified = sw: switch (key) {
         else => return null,
-        .undef => {
+        // reified
+        .undef,
+        .un, // union
+        .enum_tag,
+        => {
             idx = key.typeOf();
             const itk = ip.indexToKey(idx);
             continue :sw itk;
