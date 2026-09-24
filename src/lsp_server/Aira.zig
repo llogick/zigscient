@@ -282,19 +282,22 @@ pub fn resolveFnRetTy(
     };
 }
 
+pub const SrcNodeInfo = struct {
+    zdoc_uri: []const u8,
+    src_node: Ast.Node.Index,
+    is_reified: bool,
+};
+
 pub fn resolveSrcNode(
     aira: *Aira,
     ip_index: InternPool.Index,
-) ?struct {
-    zdoc_uri: []const u8,
-    src_node: Ast.Node.Index,
-} {
+) ?SrcNodeInfo {
     const pt = aira.active.pt;
     const ip = pt.zcu.intern_pool;
 
     var idx = ip_index;
     const key = ip.indexToKey(idx);
-    const zir_index = sw: switch (key) {
+    const zir_index, const is_reified = sw: switch (key) {
         else => return null,
         .undef => {
             idx = key.typeOf();
@@ -302,29 +305,32 @@ pub fn resolveSrcNode(
             continue :sw itk;
         },
         .struct_type => |st| switch (st) {
-            .declared => ip.loadStructType(idx).zir_index,
-            .reified => st.reified.zir_index,
+            .declared => .{ ip.loadStructType(idx).zir_index, false },
+            .reified => .{ st.reified.zir_index, true },
             else => return null,
         },
         .enum_type => |et| switch (et) {
-            .declared => ip.loadEnumType(idx).zir_index.unwrap() orelse return null,
-            .reified => et.reified.zir_index,
+            .declared => .{ ip.loadEnumType(idx).zir_index.unwrap() orelse return null, false },
+            .reified => .{ et.reified.zir_index, true },
             else => return null,
         },
         .union_type => |ut| switch (ut) {
-            .declared => ip.loadUnionType(idx).zir_index,
-            .reified => ut.reified.zir_index,
+            .declared => .{ ip.loadUnionType(idx).zir_index, false },
+            .reified => .{ ut.reified.zir_index, true },
             else => return null,
         },
     };
 
     const rez = zir_index.resolveFull(&ip) orelse return null;
     const file = pt.zcu.fileByIndex(rez.file);
+    const src_node = file.zir.?.getTypeDeclSrcNode(rez.inst) orelse return null;
+    if (!(@backingInt(src_node) < (file.getTree(aira.active.pt.zcu) catch return null).nodes.len)) return null;
 
-    return if (file.zir.?.getTypeDeclSrcNode(rez.inst)) |src_node|
-        .{ .zdoc_uri = file.uri_slice.?, .src_node = src_node }
-    else
-        null;
+    return .{
+        .zdoc_uri = file.uri_slice.?,
+        .src_node = src_node,
+        .is_reified = is_reified,
+    };
 }
 
 pub fn dumpFields(
@@ -354,16 +360,18 @@ pub fn dumpFields(
                 const decl = std.zig.Zir.getDeclaration(file.zir.?, rez.inst);
                 const src_node = decl.src_node;
                 const zdoc = (pt.zcu.lsp_document_store.?.getOrLoadHandle(file_uri) catch continue) orelse continue;
-                switch (zdoc.tree.nodeTag(src_node)) {
-                    .fn_proto_simple,
-                    .fn_proto_one,
-                    .fn_proto_multi,
-                    .fn_proto,
-                    .fn_decl,
-                    => {},
-                    else => continue,
+                if (@backingInt(src_node) < zdoc.tree.nodes.len) {
+                    switch (zdoc.tree.nodeTag(src_node)) {
+                        .fn_proto_simple,
+                        .fn_proto_one,
+                        .fn_proto_multi,
+                        .fn_proto,
+                        .fn_decl,
+                        => {},
+                        else => continue,
+                    }
+                    fields_info_out.append(arena, tree_util.nodeToSlice(&zdoc.tree, src_node)) catch @panic("OOM");
                 }
-                fields_info_out.append(arena, tree_util.nodeToSlice(&zdoc.tree, src_node)) catch @panic("OOM");
             }
             fields_info_out.append(arena, "\n```") catch @panic("OOM");
         },
@@ -391,16 +399,18 @@ pub fn dumpFields(
                 const decl = std.zig.Zir.getDeclaration(file.zir.?, rez.inst);
                 const src_node = decl.src_node;
                 const zdoc = (pt.zcu.lsp_document_store.?.getOrLoadHandle(file_uri) catch continue) orelse continue;
-                switch (zdoc.tree.nodeTag(src_node)) {
-                    .fn_proto_simple,
-                    .fn_proto_one,
-                    .fn_proto_multi,
-                    .fn_proto,
-                    .fn_decl,
-                    => {},
-                    else => continue,
+                if (@backingInt(src_node) < zdoc.tree.nodes.len) {
+                    switch (zdoc.tree.nodeTag(src_node)) {
+                        .fn_proto_simple,
+                        .fn_proto_one,
+                        .fn_proto_multi,
+                        .fn_proto,
+                        .fn_decl,
+                        => {},
+                        else => continue,
+                    }
+                    fields_info_out.append(arena, tree_util.nodeToSlice(&zdoc.tree, src_node)) catch @panic("OOM");
                 }
-                fields_info_out.append(arena, tree_util.nodeToSlice(&zdoc.tree, src_node)) catch @panic("OOM");
             }
             fields_info_out.append(arena, "```") catch @panic("OOM");
         },
