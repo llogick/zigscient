@@ -702,15 +702,14 @@ pub const param_sets = [_]CaseParameters{
             .abi = .none,
         },
     },
-    // SPARC linking support is currently incomplete.
-    // .{
-    //     .target = .{
-    //         .cpu_arch = .sparc64,
-    //         .os_tag = .linux,
-    //         .abi = .gnu,
-    //     },
-    //     .link_libc = true,
-    // },
+    .{
+        .target = .{
+            .cpu_arch = .sparc64,
+            .os_tag = .linux,
+            .abi = .gnu,
+        },
+        .link_libc = true,
+    },
 
     .{
         .target = .{
