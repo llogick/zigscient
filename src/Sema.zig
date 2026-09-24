@@ -5891,21 +5891,21 @@ fn addDbgVar(
     name: []const u8,
     tree_data_index: u32,
 ) CompileError!void {
-    if (block.isComptime() or block.ownerModule().strip) return;
+    // if (block.isComptime() or block.ownerModule().strip) return;
 
-    const pt = sema.pt;
-    const zcu = pt.zcu;
-    const operand_ty = sema.typeOf(operand);
-    const val_ty = switch (air_tag) {
-        .dbg_var_ptr => operand_ty.childType(zcu),
-        .dbg_var_val, .dbg_arg_inline => operand_ty,
-        else => unreachable,
-    };
-    if (val_ty.comptimeOnly(zcu)) return;
-    if (!val_ty.hasRuntimeBits(zcu)) return;
-    if (sema.resolveValue(operand)) |operand_val| {
-        if (operand_val.canMutateComptimeVarState(zcu)) return;
-    }
+    // const pt = sema.pt;
+    // const zcu = pt.zcu;
+    // const operand_ty = sema.typeOf(operand);
+    // const val_ty = switch (air_tag) {
+    //     .dbg_var_ptr => operand_ty.childType(zcu),
+    //     .dbg_var_val, .dbg_arg_inline => operand_ty,
+    //     else => unreachable,
+    // };
+    // if (val_ty.comptimeOnly(zcu)) return;
+    // if (!val_ty.hasRuntimeBits(zcu)) return;
+    // if (sema.resolveValue(operand)) |operand_val| {
+    //     if (operand_val.canMutateComptimeVarState(zcu)) return;
+    // }
 
     // To ensure the lexical scoping is known to backends, this alloc must be
     // within a real runtime block. We set a flag which communicates information
