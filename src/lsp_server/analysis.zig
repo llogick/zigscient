@@ -4824,8 +4824,16 @@ pub fn getFieldAccessType(
                     }
                 }
             },
+            .keyword_catch => {
+                const ct = current_type orelse return null;
+                return try analyser.resolveUnwrapErrorUnionType(ct, .payload);
+            },
+            .keyword_orelse => {
+                const ct = current_type orelse return null;
+                return try analyser.resolveOptionalUnwrap(ct);
+            },
             else => {
-                log.debug("Unimplemented token: {}", .{tok.tag});
+                log.debug("Asta.getFieldAccessType: Unimplemented token: {}", .{tok.tag});
                 return null;
             },
         }
