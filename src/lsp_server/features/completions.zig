@@ -14,6 +14,7 @@ const tracy = @import("tracy");
 const URI = @import("../uri.zig");
 const DocumentScope = @import("../DocumentScope.zig");
 const analyser_completions = @import("../analyser/completions.zig");
+const Aira = @import("../Aira.zig");
 
 const version_data = @import("version_data");
 const snippets = @import("../snippets.zig");
@@ -133,6 +134,10 @@ fn typeToCompletion(builder: *Builder, ty: Analyser.Type) Analyser.Error!void {
             if (info.type_from_callsite_references) |t| {
                 try typeToCompletion(builder, t.*);
             }
+        },
+        .aira_index => |aira_ip_index| {
+            const aira = builder.analyser.aira orelse return;
+            Aira.getFields(builder.arena, aira.active.pt, aira_ip_index, &builder.completions);
         },
         .function,
         .error_union,
@@ -1556,6 +1561,11 @@ fn collectContainerFields(
             const expected_ty = container.resolveDeclLiteralResultType();
             if (expected_ty.data != .container) return;
             break :blk expected_ty.data.container;
+        },
+        .aira_index => |aii| {
+            const aira = builder.analyser.aira orelse return;
+            Aira.getFields(builder.arena, aira.active.pt, aii, &builder.completions);
+            return;
         },
         else => return,
     };
