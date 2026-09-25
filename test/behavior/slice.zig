@@ -823,6 +823,12 @@ test "slice sentinel access at comptime" {
         try expect(slice0.len == 3);
         try expect(slice0[slice0.len] == 0);
     }
+    {
+        const slice0: []const u8 = &[_:0]u8{ '1', '2', '3' };
+
+        try expect(slice0.len == 3);
+        try expect(slice0.ptr[slice0.len] == 0);
+    }
 }
 
 test "slicing array with sentinel as end index" {
