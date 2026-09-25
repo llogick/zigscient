@@ -149,7 +149,7 @@
       "name": "disable_aira",
       "description": "Disable the AIR Analyzer (AIRA)",
       "type": "bool",
-      "default": false
+      "default": true
     }
   ]
 }

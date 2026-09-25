@@ -85,6 +85,6 @@ disable_notifications: bool = false,
 disable_compilations: bool = false,
 
 /// Disable the AIR Analyzer (AIRA)
-disable_aira: bool = false,
+disable_aira: bool = true,
 
 // DO NOT EDIT
