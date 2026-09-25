@@ -71,7 +71,7 @@ pub fn make(
 
     const incremental = conf_comp.flags4.incremental.toBool() orelse graph.incremental == true;
 
-    const maybe_output_dir = Step.evalZigProcess(
+    const opt_cache_digest = Step.evalZigProcess(
         compile_index,
         maker,
         argv.items,
@@ -88,24 +88,25 @@ pub fn make(
     const root_module = conf_comp.root_module.get(conf);
     const target = root_module.resolved_target.get(conf).?.result.get(conf);
 
-    // Update generated files
-    if (maybe_output_dir) |output_dir| {
-        if (conf_comp.emit_directory.value) |gf| maker.generatedPath(gf).* = output_dir;
-        try updateGeneratedFile(maker, arena, &conf_comp, output_dir, &target, conf_comp.generated_bin.value, .bin);
-        try updateGeneratedFile(maker, arena, &conf_comp, output_dir, &target, conf_comp.generated_pdb.value, .pdb);
-        try updateGeneratedFile(maker, arena, &conf_comp, output_dir, &target, conf_comp.generated_implib.value, .implib);
-        try updateGeneratedFile(maker, arena, &conf_comp, output_dir, &target, conf_comp.generated_h.value, .h);
-        try updateGeneratedFile(maker, arena, &conf_comp, output_dir, &target, conf_comp.generated_docs.value, .docs);
-        try updateGeneratedFile(maker, arena, &conf_comp, output_dir, &target, conf_comp.generated_asm.value, .@"asm");
-        try updateGeneratedFile(maker, arena, &conf_comp, output_dir, &target, conf_comp.generated_llvm_ir.value, .llvm_ir);
-        try updateGeneratedFile(maker, arena, &conf_comp, output_dir, &target, conf_comp.generated_llvm_bc.value, .llvm_bc);
+    if (opt_cache_digest.toHex()) |o_hex_digest| {
+        if (conf_comp.emit_directory.value) |gf| {
+            _ = try maker.setGeneratedPath(gf, .local_cache, &.{ "o", &o_hex_digest });
+        }
+        try updateGeneratedFile(maker, arena, &conf_comp, &o_hex_digest, &target, conf_comp.generated_bin.value, .bin);
+        try updateGeneratedFile(maker, arena, &conf_comp, &o_hex_digest, &target, conf_comp.generated_pdb.value, .pdb);
+        try updateGeneratedFile(maker, arena, &conf_comp, &o_hex_digest, &target, conf_comp.generated_implib.value, .implib);
+        try updateGeneratedFile(maker, arena, &conf_comp, &o_hex_digest, &target, conf_comp.generated_h.value, .h);
+        try updateGeneratedFile(maker, arena, &conf_comp, &o_hex_digest, &target, conf_comp.generated_docs.value, .docs);
+        try updateGeneratedFile(maker, arena, &conf_comp, &o_hex_digest, &target, conf_comp.generated_asm.value, .@"asm");
+        try updateGeneratedFile(maker, arena, &conf_comp, &o_hex_digest, &target, conf_comp.generated_llvm_ir.value, .llvm_ir);
+        try updateGeneratedFile(maker, arena, &conf_comp, &o_hex_digest, &target, conf_comp.generated_llvm_bc.value, .llvm_bc);
     }
 
     if (conf_comp.flags3.kind == .lib and conf_comp.flags2.linkage == .dynamic and
         conf_comp.version.value != null and target.flags.os_tag != .windows)
     {
         if (conf_comp.generated_bin.value) |generated_bin| {
-            const full_dest_path = maker.generatedPath(generated_bin).*;
+            const full_dest_path = maker.generatedPath(generated_bin);
             try maker.installSymLinks(arena, full_dest_path, compile_index, compile_index);
         }
     }
@@ -122,13 +123,12 @@ fn updateGeneratedFile(
     maker: *Maker,
     arena: Allocator,
     conf_comp: *const Configuration.Step.Compile,
-    out_path: std.Build.Cache.Path,
+    o_hex_digest: *const std.Build.Cache.HexDigest,
     target: *const Configuration.TargetQuery,
     opt_gf: ?Configuration.GeneratedFileIndex,
     ea: std.zig.EmitArtifact,
 ) Allocator.Error!void {
     const gf = opt_gf orelse return;
-    const graph = maker.graph;
     const conf = &maker.scanned_config.configuration;
     const name = try ea.cacheName(arena, .{
         .root_name = conf_comp.root_name.slice(conf),
@@ -147,7 +147,7 @@ fn updateGeneratedFile(
         else
             null,
     });
-    maker.generatedPath(gf).* = try out_path.join(graph.arena, name);
+    _ = try maker.setGeneratedPath(gf, .local_cache, &.{ "o", o_hex_digest, name });
 }
 
 /// List of importable modules in a compilation's module graph, including
@@ -982,7 +982,7 @@ pub fn rebuildInFuzzMode(
     maker: *Maker,
     compile_index: Configuration.Step.Index,
     progress_node: std.Progress.Node,
-) !Path {
+) !Step.OptCacheDigest {
     const gpa = maker.gpa;
     const step = maker.stepByIndex(compile_index);
 
@@ -1002,8 +1002,7 @@ pub fn rebuildInFuzzMode(
     defer argv.deinit(gpa);
 
     try lowerZigArgs(arena, compile, compile_index, maker, progress_node, &argv, true, false);
-    const maybe_output_bin_path = try Step.evalZigProcess(compile_index, maker, argv.items, progress_node, false);
-    return maybe_output_bin_path.?;
+    return Step.evalZigProcess(compile_index, maker, argv.items, progress_node, false);
 }
 
 fn addBool(gpa: Allocator, args: *std.ArrayList([]const u8), arg: []const u8, opt: bool) !void {
@@ -1419,7 +1418,7 @@ pub fn appendIncludeDirFlags(
         },
         .config_header_step => |ch_index| {
             const conf_ch = ch_index.ptr(conf).extended.get(conf.extra).config_header;
-            const path = maker.generatedPath(conf_ch.generated_dir).*;
+            const path = maker.generatedPath(conf_ch.generated_dir);
             zig_args.appendAssumeCapacity("-I");
             zig_args.appendAssumeCapacity(try path.toString(arena));
         },

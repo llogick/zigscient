@@ -34,7 +34,6 @@ pub fn make(
     const conf = &maker.scanned_config.configuration;
     const conf_step = step_index.ptr(conf);
     const conf_ch = conf_step.extended.get(conf.extra).config_header;
-    const cache_root = graph.local_cache_root;
 
     const input_size_limit: Io.Limit = if (conf_ch.input_size_limit.value) |x| .limited64(x) else .unlimited;
     const include_guard_override: ?[]const u8 = if (conf_ch.include_guard.value) |s| s.slice(conf) else null;
@@ -138,10 +137,7 @@ pub fn make(
 
     if (try step.cacheHit(maker, &man, progress_node)) {
         const digest = man.hitDigestHex();
-        maker.generatedPath(conf_ch.generated_dir).* = .{
-            .root_dir = cache_root,
-            .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest }),
-        };
+        _ = try maker.setGeneratedPath(conf_ch.generated_dir, .local_cache, &.{ "o", &digest });
         return;
     }
 
@@ -152,22 +148,16 @@ pub fn make(
     // output_path is libavutil/avconfig.h
     // We want to open directory zig-cache/o/HASH/libavutil/
     // but keep output_dir as zig-cache/o/HASH for -I include
-    const out_path: Path = .{
-        .root_dir = cache_root,
-        .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest, conf_ch.include_path.slice(conf) }),
-    };
+
+    const artifact_path = try maker.setGeneratedPath(conf_ch.generated_dir, .local_cache, &.{ "o", &digest });
+    const out_path = try artifact_path.join(arena, conf_ch.include_path.slice(conf));
     const out_path_dirname = out_path.dirname().?;
 
     out_path_dirname.root_dir.handle.createDirPath(io, out_path_dirname.sub_path) catch |err|
-        return step.fail(maker, "unable to make path {f}: {t}", .{ out_path_dirname, err });
+        return step.fail(maker, "failed to make path {qf}: {t}", .{ out_path_dirname, err });
 
     out_path.root_dir.handle.writeFile(io, .{ .sub_path = out_path.sub_path, .data = output }) catch |err|
-        return step.fail(maker, "unable to write file {f}: {t}", .{ out_path, err });
-
-    maker.generatedPath(conf_ch.generated_dir).* = .{
-        .root_dir = cache_root,
-        .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest }),
-    };
+        return step.fail(maker, "failed to write file {qf}: {t}", .{ out_path, err });
 
     try step.finalizeManifest(maker, &man);
 }

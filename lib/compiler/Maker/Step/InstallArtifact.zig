@@ -50,7 +50,7 @@ pub fn make(
             });
             const dest_dir = try maker.resolveInstallDir(arena, bin_dir);
             const dest_path = try dest_dir.join(arena, bin_sub_path);
-            const src_path = maker.generatedPath(generated_bin).*;
+            const src_path = maker.generatedPath(generated_bin);
             const p = try maker.installPath(arena, src_path, dest_path, step_index);
             all_cached = all_cached and p == .fresh;
 

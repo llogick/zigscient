@@ -184,7 +184,35 @@ pub fn main(init: std.process.Init) !void {
                         .bsp_build_started => {},
                         .bsp_build_completed => if (!watch) break,
                         .bsp_step_started => {},
-                        .bsp_step_completed => {},
+                        .bsp_step_completed => {
+                            var reader: Io.Reader = .fixed(body);
+                            const bsc = try reader.takeStruct(Server.Message.BuildStepCompleted, .little);
+                            log.info("step {q} {t}: ({d} generated files)", .{
+                                bsc.step_index.ptr(c).name.slice(c),
+                                bsc.status,
+                                bsc.generated_files_len,
+                            });
+
+                            var eb = try std.zig.ErrorBundle.readAlloc(
+                                &reader,
+                                gpa,
+                                bsc.error_bundle.extra_len,
+                                bsc.error_bundle.string_bytes_len,
+                            );
+                            defer eb.deinit(gpa);
+                            try eb.renderToStderr(io, .{}, .auto);
+
+                            const modified_files: []align(1) Server.Message.GeneratedFile = @ptrCast(
+                                try reader.take(bsc.generated_files_len * @sizeOf(Server.Message.GeneratedFile)),
+                            );
+                            for (modified_files) |modified_file| {
+                                const prefix = try reader.takeEnum(Server.Message.PathPrefix, .little);
+                                const sub_path = try reader.take(modified_file.path_len);
+                                log.info("generated file: {d} {t} {q}", .{
+                                    modified_file.index, prefix, sub_path,
+                                });
+                            }
+                        },
                         .bsp_configuration => @panic("TODO"),
                         else => std.debug.panic("received unexpected message: {f}", .{fmtEnum(header.tag)}),
                     }

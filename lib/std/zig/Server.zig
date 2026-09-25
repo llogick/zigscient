@@ -8,6 +8,7 @@ const OutMessage = std.zig.Server.Message;
 const InMessage = std.zig.Client.Message;
 const Reader = std.Io.Reader;
 const Writer = std.Io.Writer;
+const Configuration = std.Build.Configuration;
 
 in: *Reader,
 out: *Writer,
@@ -113,10 +114,15 @@ pub const Message = struct {
 
     /// Trailing:
     /// * error_bundle: ErrorBundle,
+    /// * generated_file: [generated_files_len]GeneratedFile,
+    /// * path_bytes: [_]u8, // for each GeneratedFile
+    ///   - PathPrefix
+    ///   - sub_path: [_]u8,
     pub const BuildStepCompleted = extern struct {
-        step_index: std.Build.Configuration.Step.Index,
+        step_index: Configuration.Step.Index,
         status: Status,
         error_bundle: ErrorBundle,
+        generated_files_len: u32,
         // TODO result_error_msgs
         // TODO result_stderr
         // TODO result_peak_rss
@@ -128,6 +134,12 @@ pub const Message = struct {
             skipped,
             skipped_oom,
         };
+    };
+
+    pub const GeneratedFile = extern struct {
+        index: Configuration.GeneratedFileIndex,
+        /// Includes only the path bytes, not the prefix or null byte.
+        path_len: u32,
     };
 
     pub const PathPrefix = enum(u8) {

@@ -197,6 +197,24 @@ pub fn renderToTerminal(eb: ErrorBundle, options: RenderOptions, t: Io.Terminal)
     }
 }
 
+pub fn readAlloc(
+    r: *Io.Reader,
+    gpa: Allocator,
+    extra_len: u32,
+    string_bytes_len: u32,
+) Io.Reader.ReadAllocError!ErrorBundle {
+    const extra = try r.readSliceEndianAlloc(gpa, u32, extra_len, .little);
+    errdefer gpa.free(extra);
+
+    const string_bytes = try r.readAlloc(gpa, string_bytes_len);
+    errdefer gpa.free(string_bytes);
+
+    return .{
+        .extra = extra,
+        .string_bytes = string_bytes,
+    };
+}
+
 fn renderErrorMessage(
     eb: ErrorBundle,
     options: RenderOptions,

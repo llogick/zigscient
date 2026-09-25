@@ -19,7 +19,6 @@ pub fn make(
     const graph = maker.graph;
     const step = maker.stepByIndex(step_index);
     const io = graph.io;
-    const cache_root = graph.local_cache_root;
     const arena = graph.arena; // TODO don't leak into the process arena
     const conf = &maker.scanned_config.configuration;
     const conf_step = step_index.ptr(conf);
@@ -80,19 +79,15 @@ pub fn make(
 
     if (try step.cacheHitWatched(maker, &man, progress_node)) {
         const digest = man.hitDigestHex();
-        maker.generatedPath(conf_options.generated_file).* = .{
-            .root_dir = cache_root,
-            .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest, basename }),
-        };
+        _ = try maker.setGeneratedPath(conf_options.generated_file, .local_cache, &.{ "o", &digest, basename });
         step.result_cached = true;
         return;
     }
 
     const digest = man.missDigestHex();
-    const out_path: Cache.Path = .{
-        .root_dir = cache_root,
-        .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest, basename }),
-    };
+    const out_path = try maker.setGeneratedPath(conf_options.generated_file, .local_cache, &.{
+        "o", &digest, basename,
+    });
 
     var file: Io.File = out_path.root_dir.handle.createFile(io, out_path.sub_path, .{}) catch |err| switch (err) {
         error.Canceled => |e| return e,
@@ -121,6 +116,4 @@ pub fn make(
     };
 
     try step.finalizeManifestAndWatch(maker, &man);
-
-    maker.generatedPath(conf_options.generated_file).* = out_path;
 }

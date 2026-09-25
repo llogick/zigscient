@@ -143,13 +143,14 @@ pub fn make(
     argv.appendAssumeCapacity(c_source_path);
 
     argv.appendAssumeCapacity("--listen=-");
-    const output_dir_path = (Step.evalZigProcess(step_index, maker, argv.items, progress_node, false) catch |err| switch (err) {
+    const opt_cache_digest = Step.evalZigProcess(step_index, maker, argv.items, progress_node, false) catch |err| switch (err) {
         error.NeedCompileErrorCheck => unreachable,
         else => |e| return e,
-    }).?;
+    };
+    const o_hex_digest = opt_cache_digest.toHex().?;
 
     const stem = Io.Dir.path.stem(Io.Dir.path.basename(c_source_path));
     const out_basename = try arena.print("{s}.zig", .{stem});
 
-    maker.generatedPath(conf_tc.output_file).* = try output_dir_path.join(arena, out_basename);
+    _ = try maker.setGeneratedPath(conf_tc.output_file, .local_cache, &.{ "o", &o_hex_digest, out_basename });
 }

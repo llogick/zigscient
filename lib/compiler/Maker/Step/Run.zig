@@ -18,14 +18,13 @@ const Step = @import("../Step.zig");
 const Maker = @import("../../Maker.zig");
 const Fuzz = @import("../../Maker/Fuzz.zig");
 
-/// If this is a Zig unit test binary, this tracks the names of the unit
-/// tests that are also fuzz tests. Indexes cannot be used as they may
-/// change between reruns.
+/// If this is a Zig unit test binary, this tracks the names of the unit tests that are also fuzz tests.
+/// Indexes cannot be used as they may change between reruns. Memory owned by `Maker.gpa`.
 fuzz_tests: std.ArrayList([]const u8) = .empty,
 cached_test_metadata: ?CachedTestMetadata = null,
 
-/// Populated during the fuzz phase if this run step corresponds to a unit test
-/// executable that contains fuzz tests.
+/// Populated during the fuzz phase if this run step corresponds to a unit test executable that contains fuzz
+/// tests. `Path.sub_path` owned by `Maker.gpa`.
 rebuilt_executable: ?Path = null,
 
 pub fn make(
@@ -146,7 +145,8 @@ pub fn make(
                 const producer_make_comp_step = maker.stepByIndex(producer_index);
                 const producer_make_comp = &producer_make_comp_step.extended.compile;
 
-                const file_path = producer_make_comp.installed_path orelse maker.generatedPath(producer.generated_bin.value.?).*;
+                const file_path = producer_make_comp.installed_path orelse
+                    maker.generatedPath(producer.generated_bin.value.?);
 
                 argv_list.appendAssumeCapacity(try mem.concat(arena, u8, &.{
                     prefix, try convertPathArg(arena, run_index, maker, file_path, arg.flags.make_absolute), suffix,
@@ -262,8 +262,8 @@ pub fn make(
     if (!has_side_effects and try step.cacheHitWatched(maker, &man, progress_node)) {
         // Cache hit; skip running command.
         const digest = man.hitDigestHex();
-        try populateGeneratedStdIo(maker, &conf_run, cache_root, &digest);
-        try populateGeneratedPaths(maker, output_placeholders.items, cache_root, &digest);
+        try populateGeneratedStdIo(maker, &conf_run, &digest);
+        try populateGeneratedPaths(maker, output_placeholders.items, &digest);
         step.result_cached = true;
         return;
     }
@@ -272,7 +272,7 @@ pub fn make(
         // We already know the final output paths; use them directly.
         const digest = if (has_side_effects) man.hash.final() else man.missDigestHex();
         const output_dir_path = "o" ++ Dir.path.sep_str ++ &digest;
-        try populateGeneratedStdIo(maker, &conf_run, cache_root, &digest);
+        try populateGeneratedStdIo(maker, &conf_run, &digest);
         try populateGeneratedPathsCreateDirs(arena, run_index, maker, output_dir_path, output_placeholders.items, argv_list.items);
         try runCommand(arena, run, run_index, maker, progress_node, argv_list.items, has_side_effects, output_dir_path, null);
         if (!has_side_effects) try step.finalizeManifestAndWatch(maker, &man);
@@ -291,7 +291,7 @@ pub fn make(
         const arg = placeholder.arg_index.get(conf);
         switch (arg.flags.tag) {
             .output_file => if (arg.flags.dep_file) {
-                const generated_path = maker.generatedPath(arg.generated.value.?).*;
+                const generated_path = maker.generatedPath(arg.generated.value.?);
                 if (has_side_effects) {
                     var diagnostic: Cache.DepTokenizer.Token = undefined;
                     man.addInputDepFile(generated_path, &diagnostic) catch |err| switch (err) {
@@ -362,8 +362,8 @@ pub fn make(
 
     if (!has_side_effects) try step.finalizeManifestAndWatch(maker, &man);
 
-    try populateGeneratedStdIo(maker, &conf_run, cache_root, &digest);
-    try populateGeneratedPaths(maker, output_placeholders.items, cache_root, &digest);
+    try populateGeneratedStdIo(maker, &conf_run, &digest);
+    try populateGeneratedPaths(maker, output_placeholders.items, &digest);
 
     // The utility functions that spawn the child process must unconditionally allocate
     // the failed command because at that point it is not known whether the step will
@@ -375,6 +375,7 @@ pub fn make(
 pub fn deinit(run: *Run, gpa: Allocator, io: Io) void {
     _ = io;
     run.fuzz_tests.deinit(gpa);
+    if (run.rebuilt_executable) |p| gpa.free(p.sub_path);
 }
 
 fn thirdPartyToggle(
@@ -1575,8 +1576,7 @@ pub fn rerunInFuzzMode(
                 const file_path: Path = if (producer_index == conf_run.producer.value.?)
                     run.rebuilt_executable.?
                 else
-                    producer_make_comp.installed_path orelse
-                        maker.generatedPath(producer.generated_bin.value.?).*;
+                    producer_make_comp.installed_path orelse maker.generatedPath(producer.generated_bin.value.?);
                 argv_list.appendAssumeCapacity(try mem.concat(arena, u8, &.{
                     prefix, try convertPathArg(arena, run_index, maker, file_path, arg.flags.make_absolute), suffix,
                 }));
@@ -1615,20 +1615,15 @@ pub fn rerunInFuzzMode(
 fn populateGeneratedPaths(
     maker: *Maker,
     output_placeholders: []const IndexedOutput,
-    cache_root: Cache.Directory,
     digest: *const Cache.HexDigest,
 ) !void {
     const conf = &maker.scanned_config.configuration;
-    const graph = maker.graph;
 
     for (output_placeholders) |placeholder| {
         const arg = placeholder.arg_index.get(conf);
-        maker.generatedPath(arg.generated.value.?).* = .{
-            .root_dir = cache_root,
-            .sub_path = try Dir.path.join(graph.arena, &.{
-                "o", digest, arg.basename.value.?.slice(conf),
-            }),
-        };
+        _ = try maker.setGeneratedPath(arg.generated.value.?, .local_cache, &.{
+            "o", digest, arg.basename.value.?.slice(conf),
+        });
     }
 }
 
@@ -1652,10 +1647,9 @@ fn populateGeneratedPathsCreateDirs(
         const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
         const basename = arg.basename.value.?.slice(conf);
 
-        const generated_path: Path = .{
-            .root_dir = cache_root,
-            .sub_path = try Dir.path.join(graph.arena, &.{ output_dir_path, basename }),
-        };
+        const generated_path = try maker.setGeneratedPath(arg.generated.value.?, .local_cache, &.{
+            output_dir_path, basename,
+        });
         const create_path: Path = .{
             .root_dir = cache_root,
             .sub_path = switch (arg.flags.tag) {
@@ -1667,8 +1661,6 @@ fn populateGeneratedPathsCreateDirs(
         create_path.root_dir.handle.createDirPath(io, create_path.sub_path) catch |err|
             return step.fail(maker, "unable to make path {f}: {t}", .{ create_path, err });
 
-        maker.generatedPath(arg.generated.value.?).* = generated_path;
-
         const arg_output_path = try convertPathArg(arena, run_index, maker, generated_path, arg.flags.make_absolute);
         argv[placeholder.index] = try mem.concat(arena, u8, &.{ prefix, arg_output_path, suffix });
     }
@@ -1677,28 +1669,20 @@ fn populateGeneratedPathsCreateDirs(
 fn populateGeneratedStdIo(
     maker: *Maker,
     conf_run: *const Configuration.Step.Run,
-    cache_root: Cache.Directory,
     digest: *const Cache.HexDigest,
 ) !void {
     const conf = &maker.scanned_config.configuration;
-    const graph = maker.graph;
 
     if (conf_run.captured_stdout.value) |captured| {
-        maker.generatedPath(captured.generated_file).* = .{
-            .root_dir = cache_root,
-            .sub_path = try Dir.path.join(graph.arena, &.{
-                "o", digest, captured.basename.slice(conf),
-            }),
-        };
+        _ = try maker.setGeneratedPath(captured.generated_file, .local_cache, &.{
+            "o", digest, captured.basename.slice(conf),
+        });
     }
 
     if (conf_run.captured_stderr.value) |captured| {
-        maker.generatedPath(captured.generated_file).* = .{
-            .root_dir = cache_root,
-            .sub_path = try Dir.path.join(graph.arena, &.{
-                "o", digest, captured.basename.slice(conf),
-            }),
-        };
+        _ = try maker.setGeneratedPath(captured.generated_file, .local_cache, &.{
+            "o", digest, captured.basename.slice(conf),
+        });
     }
 }
 
@@ -1735,7 +1719,6 @@ fn runCommand(
     const gpa = maker.gpa;
     const step = maker.stepByIndex(run_index);
     const io = graph.io;
-    const cache_root = graph.local_cache_root;
     const conf = &maker.scanned_config.configuration;
     const conf_step = run_index.ptr(conf);
     const conf_run = conf_step.extended.get(conf.extra).run;
@@ -1989,13 +1972,9 @@ fn runCommand(
         },
     }) |*stream| {
         if (stream.captured) |captured| {
-            const output_path: Path = .{
-                .root_dir = cache_root,
-                .sub_path = try Dir.path.join(graph.arena, &.{
-                    output_dir_path, captured.basename.slice(conf),
-                }),
-            };
-            maker.generatedPath(captured.generated_file).* = output_path;
+            const output_path = try maker.setGeneratedPath(captured.generated_file, .local_cache, &.{
+                output_dir_path, captured.basename.slice(conf),
+            });
 
             const sub_path_parent = output_path.dirname().?;
             sub_path_parent.root_dir.handle.createDirPath(io, sub_path_parent.sub_path) catch |err|

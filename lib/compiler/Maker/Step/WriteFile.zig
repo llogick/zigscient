@@ -24,7 +24,6 @@ pub fn make(
     const conf = &maker.scanned_config.configuration;
     const conf_step = step_index.ptr(conf);
     const conf_wf = conf_step.extended.get(conf.extra).write_file;
-    const cache_root = graph.local_cache_root;
     const directories = conf_wf.directories.slice;
 
     const open_dir_cache = try arena.alloc(Io.Dir, directories.len);
@@ -106,25 +105,17 @@ pub fn make(
 
             if (try step.cacheHit(maker, &man, progress_node)) {
                 const digest = man.hitDigestHex();
-                maker.generatedPath(conf_wf.generated_directory).* = .{
-                    .root_dir = cache_root,
-                    .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest }),
-                };
+                _ = try maker.setGeneratedPath(conf_wf.generated_directory, .local_cache, &.{ "o", &digest });
                 assert(step.result_cached);
                 return;
             }
 
             const digest = man.missDigestHex();
-            const out_path: Path = .{
-                .root_dir = cache_root,
-                .sub_path = try Io.Dir.path.join(arena, &.{ "o", &digest }),
-            };
+            const out_path = try maker.setGeneratedPath(conf_wf.generated_directory, .local_cache, &.{ "o", &digest });
 
             progress_node.setEstimatedTotalItems(total_items);
             try operate(maker, step_index, open_dir_cache, out_path, progress_node);
             try step.finalizeManifest(maker, &man);
-
-            maker.generatedPath(conf_wf.generated_directory).* = out_path;
         },
         .tmp => {
             step.result_cached = false;
@@ -133,20 +124,17 @@ pub fn make(
             io.random(@ptrCast(&rand_int));
             const hex_digest = std.fmt.hex(rand_int);
 
-            const out_path: Path = .{
-                .root_dir = cache_root,
-                .sub_path = try Io.Dir.path.join(arena, &.{ "tmp", &hex_digest }),
-            };
+            const out_path = try maker.setGeneratedPath(conf_wf.generated_directory, .local_cache, &.{
+                "tmp", &hex_digest,
+            });
 
             try operate(maker, step_index, open_dir_cache, out_path, progress_node);
-
-            maker.generatedPath(conf_wf.generated_directory).* = out_path;
         },
         .mutate => {
             step.result_cached = false;
             const root_path = try maker.resolveLazyPathIndex(arena, conf_wf.mutate_path.value.?, step_index);
             try operate(maker, step_index, open_dir_cache, root_path, progress_node);
-            maker.generatedPath(conf_wf.generated_directory).* = root_path;
+            _ = try maker.setGeneratedPathPath(conf_wf.generated_directory, root_path);
         },
     }
 }

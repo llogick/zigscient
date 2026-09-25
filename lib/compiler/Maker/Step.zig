@@ -460,6 +460,15 @@ pub const ZigProcess = struct {
     }
 };
 
+pub const OptCacheDigest = struct {
+    bin: ?Cache.BinDigest,
+
+    pub fn toHex(ocd: *const OptCacheDigest) ?Cache.HexDigest {
+        const bin = ocd.bin orelse return null;
+        return Cache.binToHex(bin);
+    }
+};
+
 /// Assumes that argv contains `--listen=-` and that the process being spawned
 /// is the zig compiler - the same version that compiled the build runner.
 ///
@@ -470,7 +479,7 @@ pub fn evalZigProcess(
     argv: []const []const u8,
     prog_node: std.Progress.Node,
     watch: bool,
-) (Step.ExtendedMakeError || error{NeedCompileErrorCheck})!?Path {
+) (Step.ExtendedMakeError || error{NeedCompileErrorCheck})!OptCacheDigest {
     const s = maker.stepByIndex(step_index);
     const gpa = maker.gpa;
     const graph = maker.graph;
@@ -503,7 +512,7 @@ pub fn evalZigProcess(
         if (s.result_error_bundle.errorMessageCount() > 0)
             return s.fail(maker, "{d} compilation errors", .{s.result_error_bundle.errorMessageCount()});
 
-        if (s.result_error_msgs.items.len > 0 and result == null) {
+        if (s.result_error_msgs.items.len > 0 and result.bin == null) {
             // Crash detected.
             const term = zp.child.wait(io) catch |e| {
                 return s.fail(maker, "unable to wait for {s}: {t}", .{ argv[0], e });
@@ -578,7 +587,7 @@ pub fn evalZigProcess(
     return result;
 }
 
-fn zigProcessUpdate(step_index: Configuration.Step.Index, maker: *Maker, zp: *ZigProcess, watch: bool) !?Path {
+fn zigProcessUpdate(step_index: Configuration.Step.Index, maker: *Maker, zp: *ZigProcess, watch: bool) !OptCacheDigest {
     const s = maker.stepByIndex(step_index);
     const gpa = maker.gpa;
     const graph = maker.graph;
@@ -590,7 +599,7 @@ fn zigProcessUpdate(step_index: Configuration.Step.Index, maker: *Maker, zp: *Zi
     try sendMessage(io, zp.child.stdin.?, .update);
     if (!watch) try sendMessage(io, zp.child.stdin.?, .exit);
 
-    var result: ?Path = null;
+    var result: OptCacheDigest = .{ .bin = null };
     var eos_err: error{EndOfStream}!void = {};
 
     var client: std.zig.Client = .{
@@ -632,11 +641,7 @@ fn zigProcessUpdate(step_index: Configuration.Step.Index, maker: *Maker, zp: *Zi
                 const EmitDigest = std.zig.Server.Message.EmitDigest;
                 const emit_digest: *align(1) const EmitDigest = @ptrCast(body);
                 s.result_cached = emit_digest.flags.cache_hit;
-                const digest = body[@sizeOf(EmitDigest)..][0..Cache.bin_digest_len];
-                result = .{
-                    .root_dir = graph.local_cache_root,
-                    .sub_path = try arena.dupe(u8, "o" ++ Dir.path.sep_str ++ Cache.binToHex(digest.*)),
-                };
+                result = .{ .bin = body[@sizeOf(EmitDigest)..][0..Cache.bin_digest_len].* };
             },
             .file_system_inputs => {
                 clearWatchInputs(s, maker);
