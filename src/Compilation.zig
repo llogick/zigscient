@@ -6683,80 +6683,6 @@ pub fn addCCArgs(
 
     try comp.addCommonCCArgs(arena, argv, ext, out_dep_path, mod, comp.config.c_frontend);
 
-    // Only assembly files support these flags.
-    switch (ext) {
-        .assembly,
-        .assembly_with_cpp,
-        => {
-            // The Clang assembler does not accept the list of CPU features like the
-            // compiler frontend does. Therefore we must hard-code the -m flags for
-            // all CPU features here.
-            switch (target.cpu.arch) {
-                .riscv32, .riscv32be, .riscv64, .riscv64be => {
-                    const RvArchFeat = struct { char: u8, feat: std.Target.riscv.Feature };
-                    const letters = [_]RvArchFeat{
-                        .{ .char = 'm', .feat = .m },
-                        .{ .char = 'a', .feat = .a },
-                        .{ .char = 'f', .feat = .f },
-                        .{ .char = 'd', .feat = .d },
-                        .{ .char = 'c', .feat = .c },
-                    };
-                    const prefix: []const u8 = if (target.cpu.arch == .riscv64) "rv64" else "rv32";
-                    const prefix_len = 4;
-                    assert(prefix.len == prefix_len);
-                    var march_buf: [prefix_len + letters.len + 1]u8 = undefined;
-                    var march_index: usize = prefix_len;
-                    @memcpy(march_buf[0..prefix.len], prefix);
-
-                    if (target.cpu.has(.riscv, .e)) {
-                        march_buf[march_index] = 'e';
-                    } else {
-                        march_buf[march_index] = 'i';
-                    }
-                    march_index += 1;
-
-                    for (letters) |letter| {
-                        if (target.cpu.has(.riscv, letter.feat)) {
-                            march_buf[march_index] = letter.char;
-                            march_index += 1;
-                        }
-                    }
-
-                    const march_arg = try std.fmt.allocPrint(arena, "-march={s}", .{
-                        march_buf[0..march_index],
-                    });
-                    try argv.append(march_arg);
-
-                    if (target.cpu.has(.riscv, .relax)) {
-                        try argv.append("-mrelax");
-                    } else {
-                        try argv.append("-mno-relax");
-                    }
-                    if (target.cpu.has(.riscv, .save_restore)) {
-                        try argv.append("-msave-restore");
-                    } else {
-                        try argv.append("-mno-save-restore");
-                    }
-                },
-                .mips, .mipsel, .mips64, .mips64el => {
-                    if (target.cpu.model.llvm_name) |llvm_name| {
-                        try argv.append(try std.fmt.allocPrint(arena, "-march={s}", .{llvm_name}));
-                    }
-                },
-                else => {
-                    // TODO
-                },
-            }
-
-            if (target_util.clangAssemblerSupportsMcpuArg(target)) {
-                if (target.cpu.model.llvm_name) |llvm_name| {
-                    try argv.append(try std.fmt.allocPrint(arena, "-mcpu={s}", .{llvm_name}));
-                }
-            }
-        },
-        else => {},
-    }
-
     // Non-preprocessed assembly files don't support these flags.
     if (ext != .assembly) {
         if (target_util.clangSupportsNoImplicitFloatArg(target) and target.abi.float() == .soft) {
@@ -6817,43 +6743,46 @@ pub fn addCCArgs(
         .ll,
         .bc,
         => {
-            const xclang_flag = switch (ext) {
-                .assembly, .assembly_with_cpp => "-Xclangas",
-                else => "-Xclang",
+            const xclang_flags: []const []const u8 = switch (ext) {
+                .assembly => &.{"-Xclangas"},
+                .assembly_with_cpp => &.{ "-Xclang", "-Xclangas" }, // preprocessor needs the features too
+                else => &.{"-Xclang"},
             };
 
-            if (target_util.clangSupportsTargetCpuArg(target)) {
-                if (target.cpu.model.llvm_name) |llvm_name| {
-                    try argv.appendSlice(&[_][]const u8{
-                        xclang_flag, "-target-cpu", xclang_flag, llvm_name,
-                    });
+            for (xclang_flags) |xclang| {
+                if (target_util.clangSupportsTargetCpuArg(target)) {
+                    if (target.cpu.model.llvm_name) |llvm_name| {
+                        try argv.appendSlice(&[_][]const u8{
+                            xclang, "-target-cpu", xclang, llvm_name,
+                        });
+                    }
                 }
-            }
 
-            // It would be really nice if there was a more compact way to communicate this info to Clang.
-            const all_features_list = target.cpu.arch.allFeaturesList();
-            try argv.ensureUnusedCapacity(all_features_list.len * 4);
-            for (all_features_list, 0..) |feature, index_usize| {
-                const index = @as(std.Target.Cpu.Feature.Set.Index, @intCast(index_usize));
-                const is_enabled = target.cpu.features.isEnabled(index);
+                // It would be really nice if there was a more compact way to communicate this info to Clang.
+                const all_features_list = target.cpu.arch.allFeaturesList();
+                try argv.ensureUnusedCapacity(all_features_list.len * 4);
+                for (all_features_list, 0..) |feature, index_usize| {
+                    const index = @as(std.Target.Cpu.Feature.Set.Index, @intCast(index_usize));
+                    const is_enabled = target.cpu.features.isEnabled(index);
 
-                if (feature.llvm_name) |llvm_name| {
-                    // We communicate these to Clang through the dedicated options.
-                    if (std.mem.startsWith(u8, llvm_name, "soft-float") or
-                        std.mem.startsWith(u8, llvm_name, "hard-float") or
-                        (target.cpu.arch.isPowerPC() and std.mem.startsWith(u8, llvm_name, "64bit")) or
-                        (target.cpu.arch.isX86() and std.mem.startsWith(u8, llvm_name, "x32")) or
-                        (target.cpu.arch == .s390x and std.mem.eql(u8, llvm_name, "backchain")))
-                        continue;
+                    if (feature.llvm_name) |llvm_name| {
+                        // We communicate these to Clang through the dedicated options.
+                        if (std.mem.startsWith(u8, llvm_name, "soft-float") or
+                            std.mem.startsWith(u8, llvm_name, "hard-float") or
+                            (target.cpu.arch.isPowerPC() and std.mem.startsWith(u8, llvm_name, "64bit")) or
+                            (target.cpu.arch.isX86() and std.mem.startsWith(u8, llvm_name, "x32")) or
+                            (target.cpu.arch == .s390x and std.mem.eql(u8, llvm_name, "backchain")))
+                            continue;
 
-                    // Ignore these until we figure out how to handle the concept of omitting features.
-                    // See https://github.com/ziglang/zig/issues/23539
-                    if (target_util.isDynamicAMDGCNFeature(target, feature)) continue;
+                        // Ignore these until we figure out how to handle the concept of omitting features.
+                        // See https://github.com/ziglang/zig/issues/23539
+                        if (target_util.isDynamicAMDGCNFeature(target, feature)) continue;
 
-                    argv.appendSliceAssumeCapacity(&[_][]const u8{ xclang_flag, "-target-feature", xclang_flag });
-                    const plus_or_minus = "-+"[@intFromBool(is_enabled)];
-                    const arg = try std.fmt.allocPrint(arena, "{c}{s}", .{ plus_or_minus, llvm_name });
-                    argv.appendAssumeCapacity(arg);
+                        argv.appendSliceAssumeCapacity(&[_][]const u8{ xclang, "-target-feature", xclang });
+                        const plus_or_minus = "-+"[@intFromBool(is_enabled)];
+                        const arg = try std.fmt.allocPrint(arena, "{c}{s}", .{ plus_or_minus, llvm_name });
+                        argv.appendAssumeCapacity(arg);
+                    }
                 }
             }
         },
