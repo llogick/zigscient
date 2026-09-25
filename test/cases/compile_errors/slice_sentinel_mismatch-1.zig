@@ -10,7 +10,7 @@ export fn entry2() void {
 
 // error
 //
-// :2:37: error: expected type '[2:1]u8', found '[2:2]u8'
-// :2:37: note: array sentinel '2' cannot cast into array sentinel '1'
+// :2:29: error: expected type '[:1]const u8', found '*const [2:2]u8'
+// :2:29: note: pointer sentinel '2' cannot cast into pointer sentinel '1'
 // :7:29: error: expected type '[:1]const u8', found '[:2]const u8'
 // :7:29: note: pointer sentinel '2' cannot cast into pointer sentinel '1'

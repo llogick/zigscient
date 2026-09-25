@@ -4253,7 +4253,7 @@ fn zirCoercePtrElemTy(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileE
             const want_ty = try pt.arrayType(.{
                 .len = val_ty.arrayLen(zcu),
                 .child = elem_ty.toIntern(),
-                .sentinel = if (ptr_ty.sentinel(zcu)) |s| s.toIntern() else .none,
+                .sentinel = if (val_ty.sentinel(zcu)) |s| s.toIntern() else .none,
             });
             return sema.coerce(block, want_ty, uncoerced_val, src);
         },
