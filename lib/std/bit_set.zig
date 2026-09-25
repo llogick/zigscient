@@ -163,6 +163,16 @@ pub fn Integer(comptime size: u16) type {
             self.mask = ~self.mask;
         }
 
+        /// Set all bits to 0.
+        pub fn unsetAll(self: *Self) void {
+            self.mask = 0;
+        }
+
+        /// Set all bits to 1.
+        pub fn setAll(self: *Self) void {
+            self.mask = ~self.mask;
+        }
+
         /// Performs a union of two bit sets, and stores the
         /// result in the first one.  Bits in the result are
         /// set if the corresponding bits were set in either input.
@@ -516,6 +526,23 @@ pub fn Array(comptime MaskIntType: type, comptime size: usize) type {
             }
 
             // Zero the padding bits
+            if (num_masks > 0) {
+                self.masks[num_masks - 1] &= last_item_mask;
+            }
+        }
+
+        /// Set all bits to 0.
+        pub fn unsetAll(self: *Self) void {
+            for (&self.masks) |*mask| {
+                mask.* = 0;
+            }
+        }
+
+        /// Set all bits to 1.
+        pub fn setAll(self: *Self) void {
+            for (&self.masks) |*mask| {
+                mask.* = ~@as(MaskInt, 0);
+            }
             if (num_masks > 0) {
                 self.masks[num_masks - 1] &= last_item_mask;
             }
@@ -896,8 +923,13 @@ pub const Dynamic = struct {
 
     /// Set all bits to 1.
     pub fn setAll(self: *Self) void {
-        const masks_len = numMasks(self.bit_length);
-        @memset(self.masks[0..masks_len], std.math.maxInt(MaskInt));
+        const num_masks = numMasks(self.bit_length);
+        @memset(self.masks[0..num_masks], std.math.maxInt(MaskInt));
+        if (num_masks > 0) {
+            const padding_bits = num_masks * @bitSizeOf(MaskInt) - self.bit_length;
+            const last_item_mask = (~@as(MaskInt, 0)) >> @as(ShiftInt, @intCast(padding_bits));
+            self.masks[num_masks - 1] = last_item_mask;
+        }
     }
 
     /// Flips a specific bit in the bit set
@@ -1205,6 +1237,16 @@ pub const DynamicManaged = struct {
     /// The two sets must both be the same bit_length.
     pub fn setIntersection(self: *Self, other: Self) void {
         self.unmanaged.setIntersection(other.unmanaged);
+    }
+
+    /// Set all bits to 0.
+    pub fn unsetAll(self: *Self) void {
+        self.unmanaged.unsetAll();
+    }
+
+    /// Set all bits to 1.
+    pub fn setAll(self: *Self) void {
+        self.unmanaged.setAll();
     }
 
     /// Finds the index of the first set bit.
@@ -1625,6 +1667,12 @@ fn testBitSet(a: anytype, b: anytype, len: usize) !void {
             try testing.expect(!a.isSet(len - 1));
         }
     }
+
+    a.unsetAll();
+    try testing.expectEqual(0, a.count());
+
+    a.setAll();
+    try testing.expectEqual(len, a.count());
 }
 
 fn fillEven(set: anytype, len: usize) void {
