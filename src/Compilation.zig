@@ -1684,6 +1684,7 @@ pub const CreateDiagnostic = union(enum) {
     illegal_zig_import,
     cross_libc_unavailable,
     find_native_libc: std.zig.LibCInstallation.FindError,
+    libc_installation_missing_cc_dir,
     libc_installation_missing_crt_dir,
     create_cache_path: CreateCachePath,
     open_output_bin: link.File.OpenError,
@@ -1699,6 +1700,7 @@ pub const CreateDiagnostic = union(enum) {
             .illegal_zig_import => try w.writeAll("this compiler implementation does not support importing the root source file of a provided module"),
             .cross_libc_unavailable => try w.writeAll("unable to provide libc for this target"),
             .find_native_libc => |err| try w.print("failed to find libc installation: {t}", .{err}),
+            .libc_installation_missing_cc_dir => try w.writeAll("libc installation is missing cc directory"),
             .libc_installation_missing_crt_dir => try w.writeAll("libc installation is missing crt directory"),
             .create_cache_path => |cache| try w.print("failed to create path '{s}' in {t} cache directory: {t}", .{
                 cache.sub,
@@ -2448,6 +2450,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                     });
                     const paths = lci.resolveCrtPaths(arena, basenames, target) catch |err| switch (err) {
                         error.OutOfMemory => |e| return e,
+                        error.LibCInstallationMissingCcDir => return diag.fail(.libc_installation_missing_cc_dir),
                         error.LibCInstallationMissingCrtDir => return diag.fail(.libc_installation_missing_crt_dir),
                     };
 
@@ -7668,7 +7671,7 @@ pub fn toCrtFile(comp: *Compilation) Allocator.Error!CrtFile {
 pub fn getCrtPaths(
     comp: *Compilation,
     arena: Allocator,
-) error{ OutOfMemory, LibCInstallationMissingCrtDir }!LibCInstallation.CrtPaths {
+) error{ OutOfMemory, LibCInstallationMissingCcDir, LibCInstallationMissingCrtDir }!LibCInstallation.CrtPaths {
     const target = &comp.root_mod.resolved_target.result;
     return getCrtPathsInner(arena, target, comp.config, comp.libc_installation, &comp.crt_files);
 }
@@ -7679,7 +7682,7 @@ fn getCrtPathsInner(
     config: Config,
     libc_installation: ?*const LibCInstallation,
     crt_files: *std.StringHashMapUnmanaged(CrtFile),
-) error{ OutOfMemory, LibCInstallationMissingCrtDir }!LibCInstallation.CrtPaths {
+) error{ OutOfMemory, LibCInstallationMissingCcDir, LibCInstallationMissingCrtDir }!LibCInstallation.CrtPaths {
     const basenames = LibCInstallation.CrtBasenames.get(.{
         .target = target,
         .link_libc = config.link_libc,
