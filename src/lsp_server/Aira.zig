@@ -10,6 +10,8 @@ const Type = Compilation.Type;
 const Zcu = Compilation.Zcu;
 const Air = Compilation.Air;
 
+const lsp = @import("lsp-server").lsp;
+
 const Asta = @import("analysis.zig");
 const ZigDoc = @import("ZigDoc.zig");
 const DocumentStore = @import("DocumentStore.zig");
@@ -335,6 +337,60 @@ pub fn resolveSrcNode(
         .src_node = src_node,
         .is_reified = is_reified,
     };
+}
+
+pub fn getFieldType(
+    pt: Zcu.PerThread,
+    ip_index: InternPool.Index,
+    target_field_name: []const u8,
+) ?InternPool.Index {
+    switch (pt.zcu.intern_pool.indexToKey(ip_index)) {
+        else => {},
+        .struct_type => {
+            const let = pt.zcu.intern_pool.loadStructType(ip_index);
+            for (let.field_names.get(&pt.zcu.intern_pool), let.field_types.get(&pt.zcu.intern_pool)) |field_name, field_type_index| {
+                if (std.mem.eql(u8, target_field_name, field_name.toSlice(&pt.zcu.intern_pool))) return field_type_index;
+            }
+        },
+    }
+    return null;
+}
+
+pub fn getFields(
+    arena: Allocator,
+    pt: Zcu.PerThread,
+    ip_index: InternPool.Index,
+    completions_list: *std.ArrayList(lsp.types.completion.Item),
+) void {
+    var idx = ip_index;
+    sw: switch (pt.zcu.intern_pool.indexToKey(idx)) {
+        else => {},
+        .struct_type => {
+            const let = pt.zcu.intern_pool.loadStructType(idx);
+            for (let.field_names.get(&pt.zcu.intern_pool), let.field_types.get(&pt.zcu.intern_pool)) |field_name, field_type_index| {
+                const ty = compiler.Compilation.Type.fromInterned(field_type_index);
+                completions_list.append(arena, .{
+                    .label = arena.print("{s}", .{field_name.toSlice(&pt.zcu.intern_pool)}) catch @panic("OOM"),
+                    .kind = .Field,
+                    .detail = arena.print("{f}", .{ty.fmt(pt)}) catch @panic("OOM"),
+                }) catch @panic("OOM");
+            }
+        },
+        .enum_type => {
+            const let = pt.zcu.intern_pool.loadEnumType(idx);
+            for (let.field_names.get(&pt.zcu.intern_pool)) |field_name| {
+                completions_list.append(arena, .{
+                    .label = arena.print("{s}", .{field_name.toSlice(&pt.zcu.intern_pool)}) catch @panic("OOM"),
+                    .kind = .Field,
+                }) catch @panic("OOM");
+            }
+        },
+        .union_type => {
+            const let = pt.zcu.intern_pool.loadUnionType(idx);
+            idx = let.enum_tag_type;
+            continue :sw pt.zcu.intern_pool.indexToKey(let.enum_tag_type);
+        },
+    }
 }
 
 pub fn dumpFields(

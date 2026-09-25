@@ -19,6 +19,7 @@ const tracy = @import("tracy");
 const InternPool = @import("analyser/InternPool.zig");
 const references = @import("features/references.zig");
 const Aira = @import("Aira.zig");
+const compiler = @import("compiler");
 
 pub const DocumentScope = @import("DocumentScope.zig");
 pub const Declaration = DocumentScope.Declaration;
@@ -40,6 +41,8 @@ resolve_number_literal_values: bool,
 /// handle of the doc where the request originated
 root_handle: ?*DocumentStore.Handle,
 max_conditional_combos: usize = 200,
+/// Init late and only if needed, ie Asta couldn't resolve a T
+aira: ?Aira = null,
 
 const NodeSet = std.HashMapUnmanaged(NodeWithUri, void, NodeWithUri.Context, std.hash_map.default_max_load_percentage);
 
@@ -64,6 +67,7 @@ pub fn init(
 }
 
 pub fn deinit(self: *Analyser) void {
+    if (self.aira) |*aira| aira.deinit();
     self.resolved_callsites.deinit(self.gpa);
     self.resolved_nodes.deinit(self.gpa);
 }
@@ -807,6 +811,27 @@ pub fn resolveFieldAccessBinding(analyser: *Analyser, lhs_binding: Binding, fiel
             .type = try child.resolveType(analyser) orelse return null,
             .is_const = if (left_type.is_type_val) child.isConst() else lhs_binding.is_const,
         };
+
+    if (lhs.data == .aira_index) {
+        var aira = analyser.aira orelse return null;
+        if (Aira.getFieldType(aira.active.pt, lhs.data.aira_index, field_name)) |field_type_index| {
+            if (aira.resolveSrcNode(field_type_index)) |src_node_info| blk: {
+                if (src_node_info.is_reified) break :blk;
+                const zdoc = try analyser.store.getOrLoadHandle(src_node_info.zdoc_uri) orelse return null;
+                const new_decl: DeclWithHandle = .{ .decl = .{ .ast_node = src_node_info.src_node }, .handle = zdoc };
+                var ty = try new_decl.resolveType(analyser) orelse return null;
+                ty.is_type_val = false;
+                return .{
+                    .type = ty,
+                    .is_const = true,
+                };
+            }
+            return .{
+                .type = .{ .data = .{ .aira_index = field_type_index }, .is_type_val = true },
+                .is_const = true,
+            };
+        }
+    }
 
     return null;
 }
@@ -3101,6 +3126,8 @@ pub const Type = struct {
             index: ?InternPool.Index,
         },
 
+        aira_index: compiler.Compilation.InternPool.Index,
+
         pub const Container = struct {
             scope_handle: ScopeWithHandle,
             bound_params: TokenToTypeMap,
@@ -3207,6 +3234,7 @@ pub const Type = struct {
                     std.hash.autoHash(hasher, payload.type);
                     std.hash.autoHash(hasher, payload.index);
                 },
+                .aira_index => |index| std.hash.autoHash(hasher, index),
             }
         }
 
@@ -3296,6 +3324,7 @@ pub const Type = struct {
                     if (a_payload.type != b_payload.type) return false;
                     if (a_payload.index != b_payload.index) return false;
                 },
+                .aira_index => |index| return index == b.aira_index,
             }
 
             return true;
@@ -3353,6 +3382,8 @@ pub const Type = struct {
                 },
                 .compile_error,
                 .ip_index,
+                // XXX
+                .aira_index,
                 => false,
             };
         }
@@ -3394,6 +3425,7 @@ pub const Type = struct {
             switch (data) {
                 .compile_error,
                 .ip_index,
+                .aira_index,
                 => unreachable,
                 .type_parameter => |token_handle| {
                     const t = bound_params.get(token_handle) orelse return data;
@@ -3661,6 +3693,7 @@ pub const Type = struct {
             .compile_error,
             .type_parameter,
             .ip_index,
+            .aira_index,
             => false,
         };
     }
@@ -3803,6 +3836,9 @@ pub const Type = struct {
                     }
                     try all_types.put(arena, .{ .data = .{ .function = new_info }, .is_type_val = ty.is_type_val }, {});
                 }
+            },
+            .aira_index => {
+                try all_types.put(arena, ty, {});
             },
         }
         return false;
@@ -4113,6 +4149,17 @@ pub const Type = struct {
                 }
                 return null;
             },
+            .aira_index => |aii| {
+                var aira = analyser.aira orelse return null;
+                if (Aira.getFieldType(aira.active.pt, aii, symbol)) |_| {
+                    if (aira.resolveSrcNode(aii)) |src_node_info| blk: {
+                        if (src_node_info.is_reified) break :blk;
+                        const zdoc = try analyser.store.getOrLoadHandle(src_node_info.zdoc_uri) orelse return null;
+                        return .{ .decl = .{ .ast_node = src_node_info.src_node }, .handle = zdoc };
+                    }
+                }
+                return null;
+            },
             else => {},
         }
         if (self.is_type_val) {
@@ -4365,6 +4412,7 @@ pub const Type = struct {
                     .truncate_container = options.truncate_container_decls,
                 });
             },
+            .aira_index => try writer.writeAll("<aira index>"),
             .either => try writer.writeAll("either type"), // TODO
             .compile_error => |node_handle| {
                 if (options.truncate_container_decls) {
@@ -6635,15 +6683,18 @@ pub const ReferencedType = struct {
 };
 
 pub fn airaResolveDecl(asta: *Analyser, decl: DeclWithHandle) Error!?Type {
-    // Need to figure out how to get fields for reified Ts
     const asta_ty = (try decl.resolveType(asta));
     if (decl.decl != .ast_node) return asta_ty;
-    var aira: Aira = try Aira.init(
+    if (asta.aira) |*aira| {
+        aira.deinit();
+        asta.aira = null;
+    }
+    asta.aira = try Aira.init(
         asta.store,
         decl.handle,
         decl.decl.ast_node,
     ) orelse return asta_ty;
-    defer aira.deinit();
+    var aira = asta.aira.?;
     const inst = try aira.resolveNode(decl.decl.ast_node) orelse return asta_ty;
     var ares = Aira.resolveInst(aira.air, inst) orelse return asta_ty;
     switch (ares.inst_tag) {
@@ -6656,6 +6707,7 @@ pub fn airaResolveDecl(asta: *Analyser, decl: DeclWithHandle) Error!?Type {
     }
     ares.ip_index = aira.derefOrUnwrap(ares.ip_index);
     const src_node_info = aira.resolveSrcNode(ares.ip_index) orelse return asta_ty;
+    if (src_node_info.is_reified) return .{ .data = .{ .aira_index = ares.ip_index }, .is_type_val = false };
     const zdoc = try asta.store.getOrLoadHandle(src_node_info.zdoc_uri) orelse return asta_ty;
     const new_decl: DeclWithHandle = .{ .decl = .{ .ast_node = src_node_info.src_node }, .handle = zdoc };
     var rty = (try new_decl.resolveType(asta)) orelse return asta_ty;
