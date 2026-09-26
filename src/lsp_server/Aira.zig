@@ -261,7 +261,7 @@ pub fn derefOrUnwrap(
     aira: *Aira,
     ip_index: InternPool.Index,
 ) InternPool.Index {
-    var ty = Type.fromInterned(ip_index);
+    var ty = toType(ip_index, aira.active.pt);
     while (switch (aira.active.pt.zcu.intern_pool.indexToKey(ty.ip_index)) {
         .ptr_type,
         .opt_type,
