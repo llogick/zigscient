@@ -29389,7 +29389,18 @@ pub fn coerceInMemoryAllowed(
         if (dest_ty.structFieldCount(zcu) != src_ty.structFieldCount(zcu)) break :tuple;
         const field_count = dest_ty.structFieldCount(zcu);
         for (0..field_count) |field_idx| {
-            if (dest_ty.structFieldIsComptime(field_idx, zcu) != src_ty.structFieldIsComptime(field_idx, zcu)) break :tuple;
+            const dest_is_comptime = dest_ty.structFieldIsComptime(field_idx, zcu);
+            const src_is_comptime = src_ty.structFieldIsComptime(field_idx, zcu);
+            if (dest_is_comptime != src_is_comptime) {
+                break :tuple;
+            }
+            if (dest_is_comptime) {
+                const dest_comptime_field_val = dest_ty.structFieldDefaultValue(field_idx, zcu).?;
+                const src_comptime_field_val = src_ty.structFieldDefaultValue(field_idx, zcu).?;
+                if (dest_comptime_field_val.ip_index != src_comptime_field_val.ip_index) {
+                    break :tuple;
+                }
+            }
             const dest_field_ty = dest_ty.fieldType(field_idx, zcu);
             const src_field_ty = src_ty.fieldType(field_idx, zcu);
             const field = try sema.coerceInMemoryAllowed(block, dest_field_ty, src_field_ty, dest_is_mut, target, dest_src, src_src, null);
