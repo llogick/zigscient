@@ -6685,6 +6685,10 @@ pub const ReferencedType = struct {
 pub fn airaResolveDecl(asta: *Analyser, decl: DeclWithHandle) Error!?Type {
     const asta_ty = (try decl.resolveType(asta));
     if (decl.decl != .ast_node) return asta_ty;
+    if (asta_ty) |aty| {
+        // XXX: These cause a hang in ip.indexToKey
+        if (aty.data == .pointer and aty.data.pointer.elem_ty.data == .ip_index) return asta_ty;
+    }
     if (asta.aira) |*aira| {
         aira.deinit();
         asta.aira = null;
