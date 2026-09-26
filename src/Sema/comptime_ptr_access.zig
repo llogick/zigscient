@@ -377,8 +377,15 @@ fn loadComptimePtrInner(
                 src,
                 null,
             )) {
-                // We already have a value which is IMC to the desired type.
-                return .{ .success = base_val };
+                // We already have a value which is IMC to the desired type. If the type matches
+                // exactly we can just return `base_val`, otherwise we need to do the coercion.
+                if (base_val.typeOf(zcu).toIntern() == load_ty.toIntern()) {
+                    return .{ .success = base_val };
+                } else {
+                    const interned_val = try base_val.intern(pt, sema.arena);
+                    const coerced_val = try pt.getCoerced(interned_val, load_ty);
+                    return .{ .success = .{ .interned = coerced_val.toIntern() } };
+                }
             }
         }
     }

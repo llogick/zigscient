@@ -1,7 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const endian = builtin.cpu.arch.endian();
-const testing = @import("std").testing;
+const testing = std.testing;
+const assert = std.debug.assert;
 const ptr_size = @sizeOf(usize);
 
 test "type pun signed and unsigned as single pointer" {
@@ -604,4 +605,14 @@ test "reinterpret sentinel-terminated array as packed struct" {
             try testing.expect(ptr.hi == 0x12);
         },
     }
+}
+
+test "reinterpret pointer as optional pointer via double-pointer coercion" {
+    const p0: *const *anyopaque = &@ptrFromInt(0x1000);
+    const p1: *const ?*anyopaque = p0;
+
+    const loaded = p1.*;
+
+    comptime assert(@TypeOf(loaded) == ?*anyopaque);
+    comptime assert(@intFromPtr(loaded) == 0x1000);
 }

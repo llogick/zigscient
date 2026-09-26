@@ -34262,9 +34262,15 @@ const DerefResult = union(enum) {
 
 fn pointerDerefExtra(sema: *Sema, block: *Block, src: LazySrcLoc, ptr_val: Value) CompileError!DerefResult {
     const pt = sema.pt;
-    const ip = &pt.zcu.intern_pool;
+    const zcu = pt.zcu;
+    const ip = &zcu.intern_pool;
     switch (try sema.loadComptimePtr(block, src, ptr_val)) {
-        .success => |mv| return .{ .val = try mv.intern(pt, sema.arena) },
+        .success => |mv| {
+            const loaded_val = try mv.intern(pt, sema.arena);
+            const elem_ty_ip = ptr_val.typeOf(zcu).ptrInfo(zcu).child;
+            assert(loaded_val.typeOf(zcu).toIntern() == elem_ty_ip);
+            return .{ .val = loaded_val };
+        },
         .runtime_load => return .runtime_load,
         .undef => return sema.failWithUseOfUndef(block, src, null),
         .err_payload => |err_name| return sema.fail(block, src, "attempt to unwrap error: {f}", .{err_name.fmt(ip)}),
