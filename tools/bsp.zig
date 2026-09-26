@@ -7,6 +7,7 @@ const Configuration = std.Build.Configuration;
 const Client = std.zig.Client;
 const Server = std.zig.Server;
 const log = std.log.scoped(.bsp);
+const panic = std.debug.panic;
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -32,7 +33,7 @@ pub fn main(init: std.process.Init) !void {
         .stdin = .pipe,
         .stdout = .pipe,
         .stderr = .pipe,
-    }) catch |err| std.debug.panic("failed to spawn process: {}", .{err});
+    }) catch |err| panic("failed to spawn process: {}", .{err});
     errdefer child_process.kill(io);
 
     var multi_reader_buffer: Io.File.MultiReader.Buffer(2) = undefined;
@@ -66,10 +67,10 @@ pub fn main(init: std.process.Init) !void {
                 },
             };
             const body = client_stdout.take(header.bytes_len) catch unreachable;
-            log.debug("received {f} ({d} bytes)", .{ fmtEnum(header.tag), body.len });
+            log.debug("received {} ({d} bytes)", .{ header.tag, body.len });
 
             if (header.tag != .bsp_handshake) {
-                log.err("received unexpected message: {f}", .{fmtEnum(header.tag)});
+                log.err("received unexpected message: {}", .{header.tag});
                 return error.UnexpectedMessage;
             }
 
@@ -94,17 +95,26 @@ pub fn main(init: std.process.Init) !void {
             const body = client_stdout.take(header.bytes_len) catch unreachable;
             log.debug("received {t} ({d} bytes)", .{ header.tag, body.len });
 
-            if (header.tag != .bsp_configuration) {
-                log.err("received unexpected message: {f}", .{fmtEnum(header.tag)});
-                return error.UnexpectedMessage;
+            switch (header.tag) {
+                .bsp_configuration => {},
+                .bsp_configuration_failed => {
+                    var eb = try Server.allocErrorBundle(gpa, body);
+                    defer eb.deinit(gpa);
+                    try eb.renderToStderr(io, .{}, .auto);
+                    panic("configuration failed", .{});
+                },
+                else => {
+                    log.err("received unexpected message: {}", .{header.tag});
+                    return error.UnexpectedMessage;
+                },
             }
 
             const configuration_path = body;
             var file = Io.Dir.cwd().openFile(io, configuration_path, .{}) catch |err|
-                std.debug.panic("failed to open configuration file {q}: {t}", .{ configuration_path, err });
+                panic("failed to open configuration file {q}: {t}", .{ configuration_path, err });
             defer file.close(io);
             break :configuration Configuration.loadFile(conf_arena, io, file) catch |err|
-                std.debug.panic("failed to load configuration file {q}: {t}", .{ configuration_path, err });
+                panic("failed to load configuration file {q}: {t}", .{ configuration_path, err });
         };
         const c = &configuration;
 
@@ -157,7 +167,7 @@ pub fn main(init: std.process.Init) !void {
                             if (std.fmt.parseInt(u32, arg, 10)) |i|
                                 @fromBackingInt(i)
                             else |_|
-                                top_level_steps.get(arg) orelse std.debug.panic("unexpected step name or index", .{});
+                                top_level_steps.get(arg) orelse panic("unexpected step name or index", .{});
                         try steps.append(gpa, step);
                     }
                 }
@@ -178,7 +188,7 @@ pub fn main(init: std.process.Init) !void {
                         },
                     };
                     const body = client_stdout.take(header.bytes_len) catch unreachable;
-                    log.debug("received {f} ({d} bytes)", .{ fmtEnum(header.tag), body.len });
+                    log.debug("received {} ({d} bytes)", .{ header.tag, body.len });
 
                     switch (header.tag) {
                         .bsp_build_started => {},
@@ -214,7 +224,7 @@ pub fn main(init: std.process.Init) !void {
                             }
                         },
                         .bsp_configuration => @panic("TODO"),
-                        else => std.debug.panic("received unexpected message: {f}", .{fmtEnum(header.tag)}),
+                        else => panic("received unexpected message: {}", .{header.tag}),
                     }
                 }
                 continue;
@@ -240,31 +250,5 @@ pub fn main(init: std.process.Init) !void {
 
     if (!term.success()) {
         log.err("maker {f}", .{term});
-    }
-}
-
-const FormatEnum = union(enum) {
-    named: []const u8,
-    unnamed: usize,
-
-    pub fn format(
-        e: FormatEnum,
-        writer: *std.Io.Writer,
-    ) std.Io.Writer.Error!void {
-        switch (e) {
-            .named => |name| {
-                try writer.writeByte('.');
-                try writer.writeAll(name);
-            },
-            .unnamed => |number| try writer.print("0x{x}", .{number}),
-        }
-    }
-};
-
-fn fmtEnum(e: anytype) FormatEnum {
-    if (std.enums.tagName(@TypeOf(e), e)) |name| {
-        return .{ .named = name };
-    } else {
-        return .{ .unnamed = @backingInt(e) };
     }
 }

@@ -1713,6 +1713,9 @@ pub const BuildExeSubprocessOptions = struct {
     cpu_features: ?[]const u8 = null,
     progress_node: std.Progress.Node = .none,
     skip_log_cmdline_on_compile_errors: bool = false,
+    /// If this is provided, compilation errors are sent here. Otherwise, they are printed to stderr.
+    /// Must be an initialized `ErrorBundle`; if it is updated then it is cleared first.
+    error_bundle: ?*ErrorBundle = null,
 
     skip_zig_protocol_version_check: bool = false,
 };
@@ -1783,8 +1786,10 @@ pub fn buildExeSubprocess(
     var result: ?Cache.Path = null;
     defer if (result) |r| gpa.free(r.sub_path);
 
-    var result_error_bundle: ErrorBundle = .empty;
-    defer result_error_bundle.deinit(gpa);
+    var default_error_bundle: ErrorBundle = .empty;
+    defer default_error_bundle.deinit(gpa);
+
+    const error_bundle = options.error_bundle orelse &default_error_bundle;
 
     var received_fs_inputs = false;
     var cache_hit = false;
@@ -1818,8 +1823,8 @@ pub fn buildExeSubprocess(
                 };
             },
             .error_bundle => {
-                result_error_bundle.deinit(gpa);
-                result_error_bundle = Server.allocErrorBundle(gpa, body) catch |err| switch (err) {
+                error_bundle.deinit(gpa);
+                error_bundle.* = Server.allocErrorBundle(gpa, body) catch |err| switch (err) {
                     error.EndOfStream => break,
                     else => |e| return e,
                 };
@@ -1886,8 +1891,8 @@ pub fn buildExeSubprocess(
         return error.AlreadyReported;
     }
 
-    if (result_error_bundle.errorMessageCount() > 0) {
-        result_error_bundle.renderToStderr(io, .{}, .auto) catch |err| switch (err) {
+    if (default_error_bundle.errorMessageCount() > 0) {
+        default_error_bundle.renderToStderr(io, .{}, .auto) catch |err| switch (err) {
             error.Canceled => |e| return e,
             else => |e| {
                 log.err("failed rendering error bundle: {t}", .{e});
@@ -1895,8 +1900,13 @@ pub fn buildExeSubprocess(
             },
         };
         if (!options.skip_log_cmdline_on_compile_errors) log.err("command reported {d} compilation errors: {f}", .{
-            result_error_bundle.errorMessageCount(), cmd,
+            default_error_bundle.errorMessageCount(), cmd,
         });
+        if (received_fs_inputs) return error.FailedButCacheIntact;
+        return error.AlreadyReported;
+    }
+
+    if (error_bundle.errorMessageCount() > 0) {
         if (received_fs_inputs) return error.FailedButCacheIntact;
         return error.AlreadyReported;
     }

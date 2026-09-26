@@ -704,7 +704,7 @@ const ErrorHandler = union(enum) {
                 var error_bundle = try cliDiagnosticsToErrorBundle(allocator, diagnostics);
                 defer error_bundle.deinit(allocator);
 
-                try server.serveErrorBundle(error_bundle);
+                try server.serveErrorBundle(.error_bundle, error_bundle);
             },
             .stderr => return diagnostics.renderToStderr(io, args),
         }
@@ -726,7 +726,7 @@ const ErrorHandler = union(enum) {
                 );
                 defer error_bundle.deinit(allocator);
 
-                try server.serveErrorBundle(error_bundle);
+                try server.serveErrorBundle(.error_bundle, error_bundle);
             },
             .stderr => {
                 // aro errors have already been emitted
@@ -751,7 +751,7 @@ const ErrorHandler = union(enum) {
                 var error_bundle = try diagnosticsToErrorBundle(allocator, source, diagnostics, mappings);
                 defer error_bundle.deinit(allocator);
 
-                try server.serveErrorBundle(error_bundle);
+                try server.serveErrorBundle(.error_bundle, error_bundle);
             },
             .stderr => return diagnostics.renderToStderr(io, cwd, source, mappings),
         }
@@ -773,7 +773,7 @@ const ErrorHandler = union(enum) {
                 var error_bundle = try errorStringToErrorBundle(allocator, format, args);
                 defer error_bundle.deinit(allocator);
 
-                try server.serveErrorBundle(error_bundle);
+                try server.serveErrorBundle(.error_bundle, error_bundle);
             },
             .stderr => {
                 const stderr = try io.lockStderr(&.{}, null);

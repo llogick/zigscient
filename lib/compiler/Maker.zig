@@ -763,6 +763,9 @@ pub fn main(init: process.Init.Minimal) !void {
         var configure_source_files: Cache.Manifest.SelfContainedFiles = .empty;
         defer configure_source_files.deinit(gpa);
 
+        var configure_error_bundle: std.zig.ErrorBundle = .empty;
+        defer configure_error_bundle.deinit(gpa);
+
         // If this fails, we can still start the server and wait for user
         // to request a rebuild. If it returns error.FailedButCacheIntact
         // we can even still do file system watching and automatically
@@ -785,6 +788,7 @@ pub fn main(init: process.Init.Minimal) !void {
             .print_configuration = print_configuration,
             .forks = forks.items,
             .src_files = &configure_source_files,
+            .error_bundle = if (protocol_server != null) &configure_error_bundle else null,
         })) |scanned_config| {
             if (help_menu) {
                 scanned_config.printUsage(&graph, initStdoutWriter(io)) catch |err| switch (err) {
@@ -1094,8 +1098,8 @@ pub fn main(init: process.Init.Minimal) !void {
                 _ = io.lockStderr(&.{}, graph.stderr_mode) catch {};
                 process.exit(1);
             }
-            if (protocol_server != null) {
-                fatal("(zig build system) TODO send error messages to client when build.zig compilation fails", .{});
+            if (protocol_server) |s| {
+                try s.serveErrorBundle(.bsp_configuration_failed, configure_error_bundle);
             }
             if (watch_flag and can_fs_watch) {
                 fatal("(zig build system) TODO set up fs watching even when build.zig compilation fails", .{});
@@ -1133,6 +1137,7 @@ const ConfigureOptions = struct {
     print_configuration: PrintConfiguration,
     forks: []Fork,
     src_files: *Cache.Manifest.SelfContainedFiles,
+    error_bundle: ?*std.zig.ErrorBundle = null,
 };
 
 fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
@@ -1517,6 +1522,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
                 .arch_os_abi = target_arch_os_abi,
                 .progress_node = compile_prog_node,
                 .skip_log_cmdline_on_compile_errors = !graph.verbose,
+                .error_bundle = options.error_bundle,
                 .skip_zig_protocol_version_check = true,
             })) |r| r.path else |err| return err;
             defer gpa.free(configure_exe_path.sub_path);
