@@ -30,6 +30,16 @@ pub fn make(
     var open_dirs_count: u32 = 0;
     defer Io.Dir.closeMany(io, open_dir_cache[0..open_dirs_count]);
 
+    for (directories, open_dir_cache) |conf_dir, *opened_dir| {
+        const src_lazy_path = conf_dir.src_path.get(conf);
+        const src_dir_path = try maker.resolveLazyPath(arena, src_lazy_path, step_index);
+
+        opened_dir.* = src_dir_path.root_dir.handle.openDir(io, src_dir_path.subPathOrDot(), .{ .iterate = true }) catch |err| {
+            return step.fail(maker, "failed opening source directory {f}: {t}", .{ src_dir_path, err });
+        };
+        open_dirs_count += 1;
+    }
+
     // Doesn't yet include contents of directories.
     var total_items: usize = conf_wf.embeds.slice.len + conf_wf.copies.slice.len + conf_wf.directories.slice.len;
     progress_node.setEstimatedTotalItems(total_items);
@@ -58,7 +68,7 @@ pub fn make(
                 try step.addWatchInput(maker, arena, src_lazy_path);
             }
 
-            for (directories, open_dir_cache) |conf_dir, *opened_dir| {
+            for (directories, open_dir_cache) |conf_dir, src_dir| {
                 const exclude_extensions = conf_dir.exclude_extensions.slice(conf) orelse &.{};
                 const include_extensions = conf_dir.include_extensions.slice(conf);
 
@@ -71,12 +81,6 @@ pub fn make(
                 const src_lazy_path = conf_dir.src_path.get(conf);
                 const need_derived_inputs = try step.addDirectoryWatchInput(maker, src_lazy_path);
                 const src_dir_path = try maker.resolveLazyPath(arena, src_lazy_path, step_index);
-
-                var src_dir = src_dir_path.root_dir.handle.openDir(io, src_dir_path.subPathOrDot(), .{ .iterate = true }) catch |err| {
-                    return step.fail(maker, "failed opening source directory {f}: {t}", .{ src_dir_path, err });
-                };
-                opened_dir.* = src_dir;
-                open_dirs_count += 1;
 
                 var it = try src_dir.walk(gpa);
                 defer it.deinit();
