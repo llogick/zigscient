@@ -1,0 +1,19 @@
+#update=initial version
+#file=main.zig
+const Foo = @Struct(.auto, null, &.{"reified_field"}, &.{void}, &.{.{}});
+pub fn main(init: std.process.Init) !void {
+    const field_name = @typeInfo(Foo).@"struct".field_names[0];
+    try std.Io.File.stdout().writeStreamingAll(init.io, field_name ++ "\n");
+}
+const std = @import("std");
+#expect_stdout="reified_field\n"
+
+#update=change to `@TypeOf` anonymous init
+#file=main.zig
+const Foo = @TypeOf(.{ .anon_field = 123 });
+pub fn main(init: std.process.Init) !void {
+    const field_name = @typeInfo(Foo).@"struct".field_names[0];
+    try std.Io.File.stdout().writeStreamingAll(init.io, field_name ++ "\n");
+}
+const std = @import("std");
+#expect_stdout="anon_field\n"

@@ -3551,9 +3551,23 @@ pub fn mapOldZirToNew(
             for (
                 old_contents.other.items[0..num_other],
                 new_contents.other.items[0..num_other],
-            ) |old_inst, new_inst| {
+            ) |old_inst_index, new_inst_index| {
                 // These instructions don't have declarations, so we just modify `inst_map` directly.
-                inst_map.putAssumeCapacity(old_inst, new_inst);
+
+                // But first: a mapping must not change an instruction's tag, so ignore any
+                // candidates which would.
+                const old_inst = old_zir.instructions.get(@backingInt(old_inst_index));
+                const new_inst = new_zir.instructions.get(@backingInt(new_inst_index));
+                if (old_inst.tag != new_inst.tag) {
+                    continue;
+                }
+                if (old_inst.tag == .extended and
+                    old_inst.data.extended.opcode != new_inst.data.extended.opcode)
+                {
+                    continue;
+                }
+
+                inst_map.putAssumeCapacity(old_inst_index, new_inst_index);
             }
         }
 
@@ -3644,9 +3658,23 @@ pub fn mapOldZirToNew(
             for (
                 old_contents.other.items[0..num_other],
                 new_contents.other.items[0..num_other],
-            ) |old_inst, new_inst| {
+            ) |old_inst_index, new_inst_index| {
                 // These instructions don't have declarations, so we just modify `inst_map` directly.
-                inst_map.putAssumeCapacity(old_inst, new_inst);
+
+                // But first: a mapping must not change an instruction's tag, so ignore any
+                // candidates which would.
+                const old_inst = old_zir.instructions.get(@backingInt(old_inst_index));
+                const new_inst = new_zir.instructions.get(@backingInt(new_inst_index));
+                if (old_inst.tag != new_inst.tag) {
+                    continue;
+                }
+                if (old_inst.tag == .extended and
+                    old_inst.data.extended.opcode != new_inst.data.extended.opcode)
+                {
+                    continue;
+                }
+
+                inst_map.putAssumeCapacity(old_inst_index, new_inst_index);
             }
 
             if (old_contents.func_decl) |old_func_inst| {
