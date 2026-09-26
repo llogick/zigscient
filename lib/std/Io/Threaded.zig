@@ -19087,7 +19087,13 @@ fn createFileMap(
             null,
             &section_size,
             page,
-            .{ .COMMIT = populate },
+            .{
+                // Required when calling NtCreateSection with a file handle, otherwise
+                // this call will fail with INVALID_PARAMETER. The higher level
+                // `CreateFileMapping` function will set this bit for you when it
+                // calls NtCreateSection.
+                .COMMIT = true,
+            },
             file.handle,
         )) {
             .SUCCESS => {},
@@ -19122,6 +19128,34 @@ fn createFileMap(
             const page_size = std.heap.pageSize();
             const alignment: Alignment = .fromByteUnits(page_size);
             assert(contents_len == alignment.forward(len));
+        }
+        if (populate) {
+            const addresses = [_]windows.MEMORY_RANGE_ENTRY{
+                .{ .VirtualAddress = contents_ptr.?, .NumberOfBytes = len },
+            };
+            var info: windows.VIRTUAL_MEMORY.MEMORY_PREFETCH_INFORMATION = .{
+                .Flags = .{
+                    // This flag requires Windows 11 >= 24H4. On earlier versions, this being set
+                    // will cause NtSetInformationVirtualMemory to fail with INVALID_PARAMETER_5.
+                    .TO_WORKING_SET = false,
+                },
+            };
+            // It appears that this is effectively a no-op, as it doesn't decrease page/hard faults.
+            // https://github.com/microsoft/Windows-Dev-Performance/issues/108
+            //
+            // We still call it, though, to signal the intention of doing something useful.
+            // It doesn't appear to make anything *worse*, so there's no harm in doing so.
+            switch (windows.ntdll.NtSetInformationVirtualMemory(
+                windows.current_process,
+                .Prefetch,
+                1,
+                &addresses,
+                &info,
+                @sizeOf(windows.VIRTUAL_MEMORY.MEMORY_PREFETCH_INFORMATION),
+            )) {
+                .SUCCESS => {},
+                else => |status| return windows.unexpectedStatus(status),
+            }
         }
         return .{
             .file = file,

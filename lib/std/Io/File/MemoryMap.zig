@@ -54,7 +54,7 @@ pub const CreateOptions = struct {
     undefined_contents: bool = false,
     /// Prefault the pages. If this option is unsupported, it is silently
     /// ignored. Aside from custom Io implementations, this option is only
-    /// supported on Linux.
+    /// supported on Linux and Windows.
     populate: bool = true,
     /// Asserted to be a multiple of page size which can be obtained via
     /// `std.heap.pageSize`.
