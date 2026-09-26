@@ -1294,7 +1294,6 @@ const module_test_targets = blk: {
                 .os_tag = .linux,
             },
             .new_linker = true,
-            .skip_modules = &.{ "compiler-rt", "behavior" }, // '@export' with '.internal' linkage
         },
         .{
             .target = .{
@@ -1304,7 +1303,6 @@ const module_test_targets = blk: {
             },
             .link_libc = true,
             .new_linker = true,
-            .skip_modules = &.{ "compiler-rt", "behavior" }, // '@export' with '.internal' linkage
         },
         .{
             .target = .{
@@ -1314,7 +1312,6 @@ const module_test_targets = blk: {
             },
             .link_libc = true,
             .new_linker = true,
-            .skip_modules = &.{ "compiler-rt", "behavior" }, // '@export' with '.internal' linkage
         },
 
         // Darwin Targets

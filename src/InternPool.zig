@@ -5435,7 +5435,7 @@ pub const Tag = enum(u8) {
             relocation: std.lang.ExternOptions.Relocation,
             source: Source,
             decoration_type: DecorationType,
-            _: u23 = 0,
+            _: u24 = 0,
 
             pub const Source = enum(u1) { builtin, syntax };
             pub const DecorationType = enum(u2) { none, location, descriptor, flat };

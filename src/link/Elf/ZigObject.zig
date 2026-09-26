@@ -1910,19 +1910,8 @@ pub fn updateExports(
             }
         }
         const stb_bits: u8 = switch (exp.opts.linkage) {
-            .internal => elf.STB_LOCAL,
             .strong => elf.STB_GLOBAL,
             .weak => elf.STB_WEAK,
-            .link_once => {
-                try zcu.failed_exports.ensureUnusedCapacity(gpa, 1);
-                zcu.failed_exports.putAssumeCapacityNoClobber(export_index, try Zcu.ErrorMsg.create(
-                    gpa,
-                    exp.src,
-                    "Unimplemented: GlobalLinkage.LinkOnce",
-                    .{},
-                ));
-                continue;
-            },
         };
         const stt_bits: u8 = @as(u4, @truncate(esym.st_info));
         const exp_name = exp.opts.name.toSlice(&zcu.intern_pool);

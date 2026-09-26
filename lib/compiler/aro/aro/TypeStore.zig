@@ -1201,9 +1201,8 @@ pub const QualType = packed struct(u32) {
     }
 
     pub fn linkage(qt: QualType, comp: *const Compilation) std.builtin.GlobalLinkage {
-        if (qt.hasAttribute(comp, .internal_linkage)) return .internal;
         if (qt.hasAttribute(comp, .weak)) return .weak;
-        if (qt.hasAttribute(comp, .selectany)) return .link_once;
+        if (qt.hasAttribute(comp, .selectany)) return .weak;
         return .strong;
     }
 

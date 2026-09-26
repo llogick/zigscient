@@ -1,5 +1,6 @@
 const std = @import("std");
 const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
 const builtin = @import("builtin");
 const assert = std.debug.assert;
 const memcpy = @import("memcpy.zig");
@@ -8,16 +9,7 @@ const Element = compiler_rt.PreferredLoadStoreElement;
 
 comptime {
     if (builtin.object_format != .c) {
-        const export_options: std.builtin.ExportOptions = .{
-            .name = "memmove",
-            .linkage = compiler_rt.linkage,
-            .visibility = compiler_rt.visibility,
-        };
-
-        if (builtin.mode == .small or builtin.zig_backend == .stage2_aarch64)
-            @export(&memmoveSmall, export_options)
-        else
-            @export(&memmoveFast, export_options);
+        symbol(if (builtin.mode == .small or builtin.zig_backend == .stage2_aarch64) &memmoveSmall else &memmoveFast, "memmove");
     }
 }
 

@@ -3717,7 +3717,7 @@ pub fn processExports(pt: Zcu.PerThread) (Allocator.Error || Io.Cancelable)!void
             const exp = export_index.ptr(zcu);
             switch (exp.opts.linkage) {
                 .strong => {},
-                .weak, .internal, .link_once => continue,
+                .weak => continue,
             }
             const gop = exports_by_name.getOrPutAssumeCapacity(exp.opts.name);
             if (gop.found_existing) {

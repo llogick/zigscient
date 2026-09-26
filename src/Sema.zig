@@ -23111,12 +23111,6 @@ fn resolveExportOptions(
         return sema.fail(block, name_src, "exported symbol name cannot be empty", .{});
     }
 
-    if (visibility != .default and linkage == .internal) {
-        return sema.fail(block, visibility_src, "symbol '{s}' exported with internal linkage has non-default visibility {s}", .{
-            name, @tagName(visibility),
-        });
-    }
-
     return .{
         .name = try ip.getOrPutString(gpa, io, pt.tid, name, .no_embedded_nulls),
         .linkage = linkage,
@@ -25294,13 +25288,6 @@ fn zirBuiltinExtern(
     }
 
     const options = try sema.resolveExternOptions(block, options_src, extra.rhs);
-    switch (options.linkage) {
-        .internal => if (options.visibility != .default) {
-            return sema.fail(block, options_src, "internal symbol cannot have non-default visibility", .{});
-        },
-        .strong, .weak => {},
-        .link_once => return sema.fail(block, options_src, "external symbol cannot have link once linkage", .{}),
-    }
     switch (options.relocation) {
         .any => {},
         .pcrel => if (options.visibility == .default) return sema.fail(block, options_src, "cannot require a pc-relative relocation to a symbol with default visibility", .{}),

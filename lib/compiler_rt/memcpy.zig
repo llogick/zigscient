@@ -1,20 +1,12 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const compiler_rt = @import("../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
 const builtin = @import("builtin");
 
 comptime {
     if (builtin.object_format != .c) {
-        const export_options: std.builtin.ExportOptions = .{
-            .name = "memcpy",
-            .linkage = compiler_rt.linkage,
-            .visibility = compiler_rt.visibility,
-        };
-
-        if (builtin.mode == .small or builtin.zig_backend == .stage2_aarch64)
-            @export(&memcpySmall, export_options)
-        else
-            @export(&memcpyFast, export_options);
+        symbol(if (builtin.mode == .small or builtin.zig_backend == .stage2_aarch64) &memcpySmall else &memcpyFast, "memcpy");
     }
 }
 

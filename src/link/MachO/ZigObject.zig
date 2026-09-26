@@ -1301,15 +1301,6 @@ pub fn updateExports(
                 continue;
             }
         }
-        if (exp.opts.linkage == .link_once) {
-            try zcu.failed_exports.putNoClobber(zcu.gpa, export_index, try Zcu.ErrorMsg.create(
-                gpa,
-                exp.src,
-                "Unimplemented: GlobalLinkage.link_once",
-                .{},
-            ));
-            continue;
-        }
 
         const exp_name = exp.opts.name.toSlice(&zcu.intern_pool);
         const global_nlist_index = try self.getGlobalSymbol(macho_file, exp_name, null);
@@ -1326,11 +1317,6 @@ pub fn updateExports(
         global_sym.atom_ref = .{ .index = atom_index, .file = self.index };
 
         switch (exp.opts.linkage) {
-            .internal => {
-                // Symbol should be hidden, or in MachO lingo, private extern.
-                global_nlist.n_type.bits.pext = true;
-                global_sym.visibility = .hidden;
-            },
             .strong => {
                 global_sym.visibility = .global;
             },
@@ -1341,7 +1327,6 @@ pub fn updateExports(
                 global_sym.visibility = .global;
                 global_sym.flags.weak = true;
             },
-            else => unreachable,
         }
     }
 }

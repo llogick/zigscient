@@ -2515,10 +2515,8 @@ pub fn genDeclFwd(dg: *DeclGen, w: *Writer) Error!void {
             },
             else => {
                 switch (@"extern".linkage) {
-                    .internal => try w.writeAll("static "),
                     .strong => try w.print("zig_extern zig_visibility({t}) ", .{@"extern".visibility}),
                     .weak => try w.print("zig_extern zig_weak_linkage zig_visibility({t}) ", .{@"extern".visibility}),
-                    .link_once => return dg.fail("TODO: CBE: implement linkonce linkage?", .{}),
                 }
                 if (nav.resolved.?.@"threadlocal" and !dg.mod.single_threaded) {
                     try w.writeAll("zig_threadlocal ");

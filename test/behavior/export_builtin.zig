@@ -16,18 +16,6 @@ test "exporting enum value" {
     try expect(S.e == .two);
 }
 
-test "exporting with internal linkage" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
-
-    const S = struct {
-        fn foo() callconv(.c) void {}
-        comptime {
-            @export(&foo, .{ .name = "exporting_with_internal_linkage_foo", .linkage = .internal });
-        }
-    };
-    S.foo();
-}
-
 test "exporting using namespace access" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
@@ -37,7 +25,7 @@ test "exporting using namespace access" {
             const x: u32 = 5;
         };
         comptime {
-            @export(&Inner.x, .{ .name = "foo", .linkage = .internal });
+            @export(&Inner.x, .{ .name = "foo", .linkage = .strong });
         }
     };
 

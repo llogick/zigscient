@@ -15,11 +15,9 @@ pub const StackTrace = struct {
 
 /// This data structure is used by the Zig language code generation and
 /// therefore must be kept in sync with the compiler implementation.
-pub const GlobalLinkage = enum(u2) {
-    internal,
+pub const GlobalLinkage = enum(u1) {
     strong,
     weak,
-    link_once,
 };
 
 /// This data structure is used by the Zig language code generation and

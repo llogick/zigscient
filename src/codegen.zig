@@ -830,53 +830,37 @@ pub fn genNavRef(
     log.debug("genNavRef({f})", .{nav.fqn.fmt(ip)});
 
     const is_threadlocal = nav.resolved.?.@"threadlocal" and zcu.comp.config.any_non_single_threaded;
-    const lib_name, const linkage = if (nav.getExtern(ip)) |e|
-        .{ e.lib_name, e.linkage }
-    else
-        .{ .none, .internal };
     if (lf.cast(.elf)) |elf_file| {
         const zo = elf_file.zigObjectPtr().?;
-        switch (linkage) {
-            .internal => {
-                const sym_index = try zo.getOrCreateMetadataForNav(zcu, nav_index);
-                if (is_threadlocal) zo.symbol(sym_index).flags.is_tls = true;
-                return @fromBackingInt(@intCast(sym_index));
-            },
-            .strong, .weak => {
-                const sym_index = try elf_file.getGlobalSymbol(nav.name.toSlice(ip), lib_name.toSlice(ip));
-                switch (linkage) {
-                    .internal => unreachable,
-                    .strong => {},
-                    .weak => zo.symbol(sym_index).flags.weak = true,
-                    .link_once => unreachable,
-                }
-                if (is_threadlocal) zo.symbol(sym_index).flags.is_tls = true;
-                return @fromBackingInt(@intCast(sym_index));
-            },
-            .link_once => unreachable,
+        if (nav.getExtern(ip)) |e| {
+            const sym_index = try elf_file.getGlobalSymbol(nav.name.toSlice(ip), e.lib_name.toSlice(ip));
+            switch (e.linkage) {
+                .strong => {},
+                .weak => zo.symbol(sym_index).flags.weak = true,
+            }
+            if (is_threadlocal) zo.symbol(sym_index).flags.is_tls = true;
+            return @fromBackingInt(@intCast(sym_index));
+        } else {
+            const sym_index = try zo.getOrCreateMetadataForNav(zcu, nav_index);
+            if (is_threadlocal) zo.symbol(sym_index).flags.is_tls = true;
+            return @fromBackingInt(@intCast(sym_index));
         }
     } else if (lf.cast(.elf2)) |elf| {
         return elf.navSymbol(nav_index);
     } else if (lf.cast(.macho)) |macho_file| {
         const zo = macho_file.getZigObject().?;
-        switch (linkage) {
-            .internal => {
-                const sym_index = try zo.getOrCreateMetadataForNav(macho_file, nav_index);
-                if (is_threadlocal) zo.symbols.items[sym_index].flags.tlv = true;
-                return @fromBackingInt(@intCast(sym_index));
-            },
-            .strong, .weak => {
-                const sym_index = try macho_file.getGlobalSymbol(nav.name.toSlice(ip), lib_name.toSlice(ip));
-                switch (linkage) {
-                    .internal => unreachable,
-                    .strong => {},
-                    .weak => zo.symbols.items[sym_index].flags.weak = true,
-                    .link_once => unreachable,
-                }
-                if (is_threadlocal) zo.symbols.items[sym_index].flags.tlv = true;
-                return @fromBackingInt(@intCast(sym_index));
-            },
-            .link_once => unreachable,
+        if (nav.getExtern(ip)) |e| {
+            const sym_index = try macho_file.getGlobalSymbol(nav.name.toSlice(ip), e.lib_name.toSlice(ip));
+            switch (e.linkage) {
+                .strong => {},
+                .weak => zo.symbols.items[sym_index].flags.weak = true,
+            }
+            if (is_threadlocal) zo.symbols.items[sym_index].flags.tlv = true;
+            return @fromBackingInt(@intCast(sym_index));
+        } else {
+            const sym_index = try zo.getOrCreateMetadataForNav(macho_file, nav_index);
+            if (is_threadlocal) zo.symbols.items[sym_index].flags.tlv = true;
+            return @fromBackingInt(@intCast(sym_index));
         }
     } else if (lf.cast(.coff2)) |coff| {
         return @fromBackingInt(@intCast(@backingInt(try coff.navSymbol(zcu, nav_index))));

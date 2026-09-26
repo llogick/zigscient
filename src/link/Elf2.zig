@@ -4245,8 +4245,6 @@ fn externSymbolInner(elf: *Elf, opts: ExternSymbolOpts) Error!Symbol.Id {
         .bind = switch (opts.linkage) {
             .strong => .strong,
             .weak => .weak,
-            .internal => return elf.base.comp.link_diags.fail("TODO(Elf2): '.internal' linkage", .{}),
-            .link_once => return elf.base.comp.link_diags.fail("TODO(Elf2): '.link_once' linkage", .{}),
         },
         .visibility = switch (opts.visibility) {
             .default => .DEFAULT,
@@ -7066,7 +7064,7 @@ fn uavMapIndex(
     const abi_align = Value.fromInterned(uav_val).typeOf(zcu).abiAlignment(zcu);
     const resolved_align: Alignment = switch (uav_align) {
         .none => .fromIp(abi_align),
-        else => |a| .fromIp(a.minStrict(abi_align)),
+        else => |a| .fromIp(a.maxStrict(abi_align)),
     };
 
     const uav_gop = elf.uavs.getOrPutAssumeCapacity(uav_val);
@@ -12205,8 +12203,6 @@ fn updateExportInner(
         .bind = switch (@"export".opts.linkage) {
             .strong => .strong,
             .weak => .weak,
-            .internal => return elf.base.comp.link_diags.fail("TODO(Elf2): '.internal' linkage", .{}),
-            .link_once => return elf.base.comp.link_diags.fail("TODO(Elf2): '.link_once' linkage", .{}),
         },
         .visibility = switch (@"export".opts.visibility) {
             .default => .DEFAULT,

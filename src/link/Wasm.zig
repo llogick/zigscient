@@ -972,10 +972,8 @@ pub const ZcuFunc = union {
                         const name_string = wasm.getExistingString(name_slice).?;
                         return .{
                             .binding = switch (ext.linkage) {
-                                .internal => .local,
                                 .strong => .strong,
                                 .weak => .weak,
-                                .link_once => @panic("TODO: COMDAT"),
                             },
                             .visibility_hidden = switch (ext.visibility) {
                                 .default => false,
@@ -1952,10 +1950,8 @@ pub const ObjectDataImport = extern struct {
                         const name_string = wasm.getExistingString(name_slice).?;
                         return .{
                             .binding = switch (ext.linkage) {
-                                .internal => .local,
                                 .strong => .strong,
                                 .weak => .weak,
-                                .link_once => @panic("TODO: COMDAT"),
                             },
                             .visibility_hidden = switch (ext.visibility) {
                                 .default => false,
@@ -2591,10 +2587,8 @@ pub const ZcuImportIndex = enum(u32) {
         const name_string = wasm.getExistingString(name_slice).?;
         return .{
             .binding = switch (ext.linkage) {
-                .internal => .local,
                 .strong => .strong,
                 .weak => .weak,
-                .link_once => @panic("TODO: COMDAT"),
             },
             .visibility_hidden = switch (ext.visibility) {
                 .default => false,

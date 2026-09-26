@@ -319,10 +319,8 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
                     .function_index = function_index,
                     .flags = .{
                         .binding = switch (opts.linkage) {
-                            .internal => .local,
                             .strong => .strong,
                             .weak => .weak,
-                            .link_once => @panic("TODO: COMDAT"),
                         },
                         .visibility_hidden = is_hidden,
                         .exported = !is_hidden,
@@ -346,10 +344,8 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
                     .resolution = .fromIpNav(wasm, nav_export.nav_index),
                     .flags = if (is_obj) .{
                         .binding = switch (opts.linkage) {
-                            .internal => .local,
                             .strong => .strong,
                             .weak => .weak,
-                            .link_once => @panic("TODO: COMDAT"),
                         },
                         .visibility_hidden = !explicit and switch (opts.visibility) {
                             .default => false,
@@ -383,10 +379,8 @@ pub fn finish(f: *Flush, wasm: *Wasm) !void {
                 .resolution = .fromIpIndex(wasm, uav_export.uav_index),
                 .flags = if (is_obj) .{
                     .binding = switch (opts.linkage) {
-                        .internal => .local,
                         .strong => .strong,
                         .weak => .weak,
-                        .link_once => @panic("TODO: COMDAT"),
                     },
                     .visibility_hidden = !explicit and switch (opts.visibility) {
                         .default => false,

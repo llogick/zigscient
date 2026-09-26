@@ -1077,10 +1077,8 @@ pub const Object = struct {
                 false => .default,
             };
             llvm_global.ptr(&o.builder).linkage = switch (@"extern".linkage) {
-                .internal => if (o.builder.strip and !workaroundPrivateSymbolBugs(zcu.getTarget(), &resolved)) .private else .internal,
                 .strong => .external,
                 .weak => .extern_weak,
-                .link_once => unreachable,
             };
             llvm_global.ptr(&o.builder).visibility = .fromSymbolVisibility(@"extern".visibility);
         } else {
@@ -1304,10 +1302,8 @@ pub const Object = struct {
         if (comp.config.dll_export_fns and exp.opts.visibility != .hidden)
             alias_global.setDllStorageClass(.dllexport, &o.builder);
         alias_global.setLinkage(switch (exp.opts.linkage) {
-            .internal => if (o.builder.strip) .private else .internal, // we still did useful work in replacing an existing symbol if there was one
             .strong => .external,
             .weak => .weak_odr,
-            .link_once => .linkonce_odr,
         }, &o.builder);
         alias_global.setVisibility(switch (exp.opts.visibility) {
             .default => .default,
