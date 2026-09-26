@@ -170,7 +170,7 @@ pub fn Integer(comptime size: u16) type {
 
         /// Set all bits to 1.
         pub fn setAll(self: *Self) void {
-            self.mask = ~self.mask;
+            self.mask = ~@as(MaskInt, 0);
         }
 
         /// Performs a union of two bit sets, and stores the
@@ -1671,6 +1671,7 @@ fn testBitSet(a: anytype, b: anytype, len: usize) !void {
     a.unsetAll();
     try testing.expectEqual(0, a.count());
 
+    fillEven(a, len);
     a.setAll();
     try testing.expectEqual(len, a.count());
 }
