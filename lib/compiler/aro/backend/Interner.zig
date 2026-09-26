@@ -8,7 +8,7 @@ const Limb = std.math.big.Limb;
 
 const Interner = @This();
 
-map: std.array_hash_map.Auto(void, void) = .empty,
+map: std.AutoArrayHashMapUnmanaged(void, void) = .empty,
 items: std.MultiArrayList(struct {
     tag: Tag,
     data: u32,
@@ -896,7 +896,7 @@ fn extraDataTrail(i: *const Interner, comptime T: type, index: usize) struct { d
     inline for (info.field_names, info.field_types, 0..) |field_name, field_type, field_i| {
         const int32 = i.extra.items[field_i + index];
         @field(result, field_name) = switch (field_type) {
-            Ref => @fromBackingInt(@intCast(int32)),
+            Ref => @fromBackingInt(int32),
             u32 => int32,
             else => @compileError("bad field type: " ++ @typeName(field_type)),
         };

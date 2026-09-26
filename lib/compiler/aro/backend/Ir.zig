@@ -7,7 +7,7 @@ const Object = @import("Object.zig");
 const Ir = @This();
 
 interner: *Interner,
-decls: std.array_hash_map.String(Decl),
+decls: std.StringArrayHashMapUnmanaged(Decl),
 
 pub const Decl = struct {
     instructions: std.MultiArrayList(Inst),
@@ -26,7 +26,7 @@ pub const Builder = struct {
     arena: std.heap.ArenaAllocator,
     interner: *Interner,
 
-    decls: std.array_hash_map.String(Decl) = .empty,
+    decls: std.StringArrayHashMapUnmanaged(Decl) = .empty,
     instructions: std.MultiArrayList(Ir.Inst) = .empty,
     body: std.ArrayList(Ref) = .empty,
     alloc_count: u32 = 0,
@@ -181,7 +181,7 @@ pub const Renderer = struct {
     ir: *const Ir,
     errors: ErrorList = .{},
 
-    pub const ErrorList = std.array_hash_map.String([]const u8);
+    pub const ErrorList = std.StringArrayHashMapUnmanaged([]const u8);
 
     pub const Error = Allocator.Error || error{LowerFail};
 
@@ -204,7 +204,7 @@ pub const Renderer = struct {
         args: anytype,
     ) Error {
         try r.errors.ensureUnusedCapacity(r.gpa, 1);
-        r.errors.putAssumeCapacity(name, try std.fmt.allocPrint(r.gpa, format, args));
+        r.errors.putAssumeCapacity(name, try r.gpa.print(format, args));
         return error.LowerFail;
     }
 };
@@ -380,7 +380,7 @@ const REF = std.Io.Terminal.Color.bright_blue;
 const LITERAL = std.Io.Terminal.Color.bright_green;
 const ATTRIBUTE = std.Io.Terminal.Color.bright_yellow;
 
-const RefMap = std.array_hash_map.Auto(Ref, void);
+const RefMap = std.AutoArrayHashMapUnmanaged(Ref, void);
 
 pub const DumpError = std.Io.Terminal.SetColorError || std.mem.Allocator.Error;
 

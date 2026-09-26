@@ -11,7 +11,7 @@ const Error = Translator.Error;
 pub const MacroProcessingError = Error || error{UnexpectedMacroToken};
 
 const Impl = std.meta.DeclEnum(std.zig.c_translation.helpers);
-const Template = struct { []const u8, Impl };
+const Template = struct { [:0]const u8, Impl };
 
 /// Templates must be function-like macros
 /// first element is macro source, second element is the name of the function
@@ -167,7 +167,7 @@ pub fn match(pl: PatternList, ms: MacroSlicer) Error!?Impl {
     return null;
 }
 
-fn tokenizeMacro(allocator: mem.Allocator, source: []const u8, tok_list: *std.ArrayList(CToken)) Error!MacroSlicer {
+fn tokenizeMacro(allocator: mem.Allocator, source: [:0]const u8, tok_list: *std.ArrayList(CToken)) Error!MacroSlicer {
     var param_count: u32 = 0;
     var param_buf: [8][]const u8 = undefined;
 
@@ -238,7 +238,7 @@ test "Macro matching" {
         fn checkMacro(
             allocator: mem.Allocator,
             pattern_list: PatternList,
-            source: []const u8,
+            source: [:0]const u8,
             comptime expected_match: ?Impl,
         ) !void {
             var tok_list: std.ArrayList(CToken) = .empty;

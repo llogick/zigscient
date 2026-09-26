@@ -7,7 +7,7 @@ const Translator = @import("Translator.zig");
 
 const Scope = @This();
 
-pub const SymbolTable = std.array_hash_map.String(ast.Node);
+pub const SymbolTable = std.StringArrayHashMapUnmanaged(ast.Node);
 pub const AliasList = std.ArrayList(struct {
     alias: []const u8,
     name: []const u8,
@@ -18,7 +18,7 @@ pub const ContainerMemberFns = struct {
     container_decl_ptr: *ast.Node,
     member_fns: std.ArrayList(*ast.Payload.Func) = .empty,
 };
-pub const ContainerMemberFnsHashMap = std.array_hash_map.Custom(
+pub const ContainerMemberFnsHashMap = std.ArrayHashMapUnmanaged(
     aro.QualType,
     ContainerMemberFns,
     struct {
@@ -44,6 +44,7 @@ pub const Id = enum {
     condition,
     loop,
     do_loop,
+    @"switch",
 };
 
 /// Used for the scope of condition expressions, for example `if (cond)`.
@@ -79,7 +80,7 @@ pub const Block = struct {
     /// will be used. This maps the variable's name to the Discard payload, so that if
     /// the variable is subsequently referenced we can indicate that the discard should
     /// be skipped during the intermediate AST -> Zig AST render step.
-    variable_discards: std.array_hash_map.String(*ast.Payload.Discard),
+    variable_discards: std.StringArrayHashMapUnmanaged(*ast.Payload.Discard),
 
     /// When the block corresponds to a function, keep track of the return type
     /// so that the return expression can be cast, if necessary
@@ -209,7 +210,7 @@ pub const Root = struct {
     base: Scope,
     translator: *Translator,
     sym_table: SymbolTable,
-    blank_macros: std.array_hash_map.String(void),
+    blank_macros: std.StringArrayHashMapUnmanaged(void),
     nodes: std.ArrayList(ast.Node),
     container_member_fns_map: ContainerMemberFnsHashMap,
 
@@ -267,7 +268,7 @@ pub const Root = struct {
         const gpa = root.translator.gpa;
         const arena = root.translator.arena;
 
-        var member_names: std.array_hash_map.String(void) = .empty;
+        var member_names: std.StringArrayHashMapUnmanaged(void) = .empty;
         defer member_names.deinit(gpa);
         for (root.container_member_fns_map.keys(), root.container_member_fns_map.values()) |container_qt, members| {
             // Get the container name
@@ -353,6 +354,15 @@ pub const Root = struct {
     }
 };
 
+/// Used for switch scoping because the `break`s should not escape this scope while
+/// still allowing `continue`s to pass. `label_used` is necessary because we only
+/// insert the label when we `break` to it.
+pub const Switch = struct {
+    base: Scope,
+    label: []const u8,
+    label_used: bool = false,
+};
+
 pub fn findBlockScope(inner: *Scope, t: *Translator) !*Block {
     var scope = inner;
     while (true) {
@@ -384,7 +394,7 @@ pub fn getAlias(scope: *Scope, name: []const u8) ?[]const u8 {
     return switch (scope.id) {
         .root => null,
         .block => @as(*Block, @fieldParentPtr("base", scope)).getAlias(name),
-        .loop, .do_loop, .condition => scope.parent.?.getAlias(name),
+        .loop, .do_loop, .condition, .@"switch" => scope.parent.?.getAlias(name),
     };
 }
 
@@ -392,7 +402,7 @@ fn contains(scope: *Scope, name: []const u8) bool {
     return switch (scope.id) {
         .root => @as(*Root, @fieldParentPtr("base", scope)).contains(name),
         .block => @as(*Block, @fieldParentPtr("base", scope)).contains(name),
-        .loop, .do_loop, .condition => scope.parent.?.contains(name),
+        .loop, .do_loop, .condition, .@"switch" => scope.parent.?.contains(name),
     };
 }
 

@@ -17,20 +17,40 @@ const Source = @import("Source.zig");
 const StringId = @import("StringInterner.zig").StringId;
 const SymbolStack = @import("SymbolStack.zig");
 const Symbol = SymbolStack.Symbol;
-const text_literal = @import("text_literal.zig");
 const Tokenizer = @import("Tokenizer.zig");
+const number_literal = Tokenizer.number_literal;
+const text_literal = Tokenizer.text_literal;
 const Tree = @import("Tree.zig");
 const Token = Tree.Token;
-const NumberPrefix = Token.NumberPrefix;
-const NumberSuffix = Token.NumberSuffix;
 const TokenIndex = Tree.TokenIndex;
 const Node = Tree.Node;
 const TypeStore = @import("TypeStore.zig");
 const Type = TypeStore.Type;
 const QualType = TypeStore.QualType;
 const Value = @import("Value.zig");
+const ArmLdrex = @import("LangOpts.zig").ArmLdrex;
+
+pub const Diagnostic = @import("Parser/Diagnostic.zig");
 
 const NodeList = std.ArrayList(Node.Index);
+const TentativeDefinitionKey = struct {
+    name: StringId,
+    kind: Kind,
+
+    const Kind = enum {
+        incomplete_type,
+        tentative_array,
+    };
+
+    fn incompleteType(name: StringId) TentativeDefinitionKey {
+        return .{ .name = name, .kind = .incomplete_type };
+    }
+
+    fn tentativeArray(name: StringId) TentativeDefinitionKey {
+        return .{ .name = name, .kind = .tentative_array };
+    }
+};
+
 const Switch = struct {
     default: ?TokenIndex = null,
     ranges: std.ArrayList(Range) = .empty,
@@ -60,7 +80,7 @@ const Switch = struct {
 
 const Label = union(enum) {
     unresolved_goto: TokenIndex,
-    label: TokenIndex,
+    label: Node.Index,
 };
 
 const InitContext = enum {
@@ -70,15 +90,6 @@ const InitContext = enum {
     constexpr,
     /// static and global variables, inits must be compile-time constants
     static,
-};
-
-pub const Error = Compilation.Error || error{ParsingFailed};
-
-/// An attribute that has been parsed but not yet validated in its context
-const TentativeAttribute = struct {
-    attr: Attribute,
-    tok: TokenIndex,
-    seen: bool = false,
 };
 
 /// How the parser handles const int decl references when it is expecting an integer
@@ -93,6 +104,8 @@ const ConstDeclFoldingMode = enum {
     /// folding const decls is prohibited; return an unavailable value
     no_const_decl_folding,
 };
+
+pub const Error = Compilation.Error || error{ParsingFailed};
 
 const Parser = @This();
 
@@ -119,25 +132,25 @@ param_buf: std.ArrayList(Type.Func.Param) = .empty,
 enum_buf: std.ArrayList(Type.Enum.Field) = .empty,
 /// Record type fields.
 record_buf: std.ArrayList(Type.Record.Field) = .empty,
-/// Attributes that have been parsed but not yet validated or applied.
-attr_buf: std.MultiArrayList(TentativeAttribute) = .empty,
-/// Used to store validated attributes before they are applied to types.
-attr_application_buf: std.ArrayList(Attribute) = .empty,
-/// type name -> variable name location for tentative definitions (top-level defs with thus-far-incomplete types)
-/// e.g. `struct Foo bar;` where `struct Foo` is not defined yet.
-/// The key is the StringId of `Foo` and the value is the TokenIndex of `bar`
-/// Items are removed if the type is subsequently completed with a definition.
-/// We only store the first tentative definition that uses a given type because this map is only used
-/// for issuing an error message, and correcting the first error for a type will fix all of them for that type.
-tentative_defs: std.AutoHashMapUnmanaged(StringId, TokenIndex) = .empty,
+
+wip_attrs: Attribute.Wip = .{},
+
+/// Tentative definitions that require a delayed diagnostic unless completed later.
+/// For incomplete records/enums, the key stores the type name and the value is a variable name token.
+/// For incomplete arrays, the key stores the variable name and the value is the name token.
+tentative_defs: std.AutoArrayHashMapUnmanaged(TentativeDefinitionKey, TokenIndex) = .empty,
+
+maybe_unused_decl: std.AutoArrayHashMapUnmanaged(Node.Index, bool) = .empty,
+/// Error count before the function body was parsed. No unused warnings are
+/// issued if there were errors in the body.
+local_unused_err_count: u32 = 0,
 
 // configuration and miscellaneous info
-no_eval: bool = false,
-in_macro: bool = false,
 extension_suppressed: bool = false,
 contains_address_of_label: bool = false,
 label_count: u32 = 0,
 const_decl_folding: ConstDeclFoldingMode = .fold_const_decls,
+record_static_assert_eval_note: bool = false,
 /// location of first computed goto in function currently being parsed
 /// if a computed goto is used, the function must contain an
 /// address-of-label expression (tracked with contains_address_of_label)
@@ -156,6 +169,7 @@ func: struct {
     name: TokenIndex = 0,
     ident: ?Result = null,
     pretty_ident: ?Result = null,
+    decl: Node.OptIndex = .null,
 } = .{},
 
 /// Various variables that are different for each record.
@@ -420,8 +434,6 @@ fn expectClosing(p: *Parser, opening: TokenIndex, id: Token.Id) Error!void {
     };
 }
 
-pub const Diagnostic = @import("Parser/Diagnostic.zig");
-
 pub fn err(p: *Parser, tok_i: TokenIndex, diagnostic: Diagnostic, args: anytype) Compilation.Error!void {
     if (p.extension_suppressed) {
         if (diagnostic.extension and diagnostic.kind == .off) return;
@@ -462,7 +474,6 @@ fn formatArgs(p: *Parser, w: *std.Io.Writer, fmt: []const u8, args: anytype) !vo
             []const u8 => try Diagnostics.formatString(w, fmt[i..], arg),
             Tree.Token.Id => try formatTokenId(w, fmt[i..], arg),
             QualType => try p.formatQualType(w, fmt[i..], arg),
-            text_literal.Ascii => try arg.format(w, fmt[i..]),
             Result => try p.formatResult(w, fmt[i..], arg),
             *Result => try p.formatResult(w, fmt[i..], arg.*),
             Enumerator, *Enumerator => try p.formatResult(w, fmt[i..], .{
@@ -470,12 +481,12 @@ fn formatArgs(p: *Parser, w: *std.Io.Writer, fmt: []const u8, args: anytype) !vo
                 .val = arg.val,
                 .qt = arg.qt,
             }),
-            Codepoint => try arg.format(w, fmt[i..]),
-            Normalized => try arg.format(w, fmt[i..]),
-            Escaped => try arg.format(w, fmt[i..]),
+            *const Attribute.Wip.Parsed, *Attribute.Wip.Parsed => try formatAttributeName(w, fmt[i..], arg),
+            Attribute => try formatAttributeName(w, fmt[i..], arg),
             else => switch (@typeInfo(@TypeOf(arg))) {
                 .int, .comptime_int => try Diagnostics.formatInt(w, fmt[i..], arg),
                 .pointer => try Diagnostics.formatString(w, fmt[i..], arg),
+                .@"struct" => try arg.format(w, fmt[i..]),
                 else => comptime unreachable,
             },
         };
@@ -495,7 +506,7 @@ fn formatQualType(p: *Parser, w: *std.Io.Writer, fmt: []const u8, qt: QualType) 
     try qt.print(p.comp, w);
     try w.writeByte('\'');
 
-    if (qt.isC23Auto()) return i;
+    if (qt.isAuto()) return i;
     if (qt.get(p.comp, .vector)) |vector_ty| {
         try w.print(" (vector of {d} '", .{vector_ty.len});
         try vector_ty.elem.printDesugared(p.comp, w);
@@ -515,12 +526,28 @@ fn formatResult(p: *Parser, w: *std.Io.Writer, fmt: []const u8, res: Result) !us
         .null => try w.writeAll("nullptr_t"),
         else => if (try res.val.print(res.qt, p.comp, w)) |nested| switch (nested) {
             .pointer => |ptr| {
-                const ptr_node: Node.Index = @fromBackingInt(@intCast(ptr.node));
+                const ptr_node: Node.Index = @fromBackingInt(ptr.node);
                 const decl_name = p.tree.tokSlice(ptr_node.tok(&p.tree));
                 try ptr.offset.printPointer(decl_name, p.comp, w);
             },
         },
     }
+    return i;
+}
+
+fn formatAttributeName(w: *std.Io.Writer, fmt: []const u8, attr: anytype) !usize {
+    const i = Diagnostics.templateIndex(w, fmt, "{at}");
+
+    try w.writeByte('\'');
+    if (attr.syntax == .standard and attr.name != .standard) {
+        try w.writeAll(@tagName(attr.name));
+        try w.writeAll("::");
+    }
+    switch (attr.name) {
+        .aro => {},
+        inline else => |tag| try w.writeAll(@tagName(tag)),
+    }
+    try w.writeByte('\'');
     return i;
 }
 
@@ -586,6 +613,66 @@ const Escaped = struct {
     }
 };
 
+pub fn Choices(comptime E: type) type {
+    return struct {
+        choices: []const E,
+        quote: ?u8,
+
+        pub fn init(choices: []const E, quote: ?u8) @This() {
+            return .{ .choices = choices, .quote = quote };
+        }
+
+        pub fn format(ctx: @This(), w: *std.Io.Writer, fmt: []const u8) !usize {
+            const i = Diagnostics.templateIndex(w, fmt, "{choices}");
+
+            for (ctx.choices, 0..) |choice, choice_i| {
+                if (choice_i != 0) {
+                    if (ctx.choices.len > 2) try w.writeByte(',');
+                    try w.writeByte(' ');
+                    if (choice_i == ctx.choices.len - 1) try w.writeAll("and ");
+                }
+
+                if (ctx.quote) |q| try w.writeByte(q);
+                if (@hasDecl(E, "str")) {
+                    try w.writeAll(choice.str());
+                } else {
+                    try w.writeAll(@tagName(choice));
+                }
+                if (ctx.quote) |q| try w.writeByte(q);
+            }
+
+            return i;
+        }
+    };
+}
+
+pub const ChoicesStr = struct {
+    choices: []const []const u8,
+    quote: ?u8,
+
+    pub fn init(choices: []const []const u8, quote: ?u8) @This() {
+        return .{ .choices = choices, .quote = quote };
+    }
+
+    pub fn format(ctx: @This(), w: *std.Io.Writer, fmt: []const u8) !usize {
+        const i = Diagnostics.templateIndex(w, fmt, "{choices}");
+
+        for (ctx.choices, 0..) |choice, choice_i| {
+            if (choice_i != 0) {
+                if (ctx.choices.len > 2) try w.writeByte(',');
+                try w.writeByte(' ');
+                if (choice_i == ctx.choices.len - 1) try w.writeAll("and ");
+            }
+
+            if (ctx.quote) |q| try w.writeByte(q);
+            try w.writeAll(choice);
+            if (ctx.quote) |q| try w.writeByte(q);
+        }
+
+        return i;
+    }
+};
+
 pub fn todo(p: *Parser, msg: []const u8) Error {
     try p.err(p.tok_i, .todo, .{msg});
     return error.ParsingFailed;
@@ -616,34 +703,66 @@ pub fn errValueChanged(p: *Parser, tok_i: TokenIndex, diagnostic: Diagnostic, re
     try p.err(tok_i, diagnostic, .{ res.qt, int_qt, zero_str, old_res, new_res });
 }
 
-fn checkDeprecatedUnavailable(p: *Parser, ty: QualType, usage_tok: TokenIndex, decl_tok: TokenIndex) !void {
-    if (ty.getAttribute(p.comp, .@"error")) |@"error"| {
-        const msg_str = p.comp.interner.get(@"error".msg.ref()).bytes;
-        try p.err(usage_tok, .error_attribute, .{ p.tokSlice(@"error".__name_tok), Escaped.init(msg_str) });
+fn checkDeprecatedUnavailable(p: *Parser, opt_node: anytype, usage_tok: TokenIndex) !void {
+    const node: Node.Index = opt_node.unpack() orelse return;
+    const am = &p.tree.attr_map;
+    if (am.getAttribute(node, .@"error")) |attr| {
+        try p.codegenDiagnostic(usage_tok, .error_attribute, .{ p.tokSlice(node.tok(&p.tree)), Escaped.init(attr.args.@"error") });
     }
-    if (ty.getAttribute(p.comp, .warning)) |warning| {
-        const msg_str = p.comp.interner.get(warning.msg.ref()).bytes;
-        try p.err(usage_tok, .warning_attribute, .{ p.tokSlice(warning.__name_tok), Escaped.init(msg_str) });
+    if (am.getAttribute(node, .warning)) |attr| {
+        try p.codegenDiagnostic(usage_tok, .warning_attribute, .{ p.tokSlice(node.tok(&p.tree)), Escaped.init(attr.args.warning) });
     }
-    if (ty.getAttribute(p.comp, .unavailable)) |unavailable| {
-        try p.errDeprecated(usage_tok, .unavailable, unavailable.msg);
-        try p.err(unavailable.__name_tok, .unavailable_note, .{p.tokSlice(decl_tok)});
+    if (am.getAttribute(node, .unavailable)) |attr| {
+        try p.errDeprecated(usage_tok, .unavailable, attr.args.unavailable);
+
+        const decl_name_tok = node.tok(&p.tree);
+        try p.err(attr.tok, .unavailable_note, .{p.tokSlice(decl_name_tok)});
         return error.ParsingFailed;
     }
-    if (ty.getAttribute(p.comp, .deprecated)) |deprecated| {
+    if (am.getAttribute(node, .deprecated)) |attr| {
+        const deprecated = attr.args.deprecated;
         try p.errDeprecated(usage_tok, .deprecated_declarations, deprecated.msg);
-        try p.err(deprecated.__name_tok, .deprecated_note, .{p.tokSlice(decl_tok)});
+        if (deprecated.replacement) |replacement| {
+            try p.err(usage_tok, .deprecated_alternative, .{replacement});
+        }
+        const decl_name_tok = node.tok(&p.tree);
+        try p.err(attr.tok, .deprecated_note, .{p.tokSlice(decl_name_tok)});
     }
 }
 
-fn errDeprecated(p: *Parser, tok_i: TokenIndex, diagnostic: Diagnostic, msg: ?Value) Compilation.Error!void {
+fn codegenDiagnostic(p: *Parser, usage_tok: TokenIndex, diagnostic: Diagnostic, args: anytype) !void {
+    assert(!diagnostic.extension);
+    assert(diagnostic.suppress_unless_version == null);
+    assert(diagnostic.suppress_version == null);
+    if (p.diagnostics.effectiveKind(diagnostic) == .off) return;
+
+    var bfa_buf: [1024]u8 align(4) = undefined;
+    var bfa: std.heap.BufferFirstAllocator = .init(&bfa_buf, p.comp.gpa);
+    var allocating: std.Io.Writer.Allocating = .initAligned(bfa.allocator(), .of(u32));
+    defer allocating.deinit();
+
+    p.formatArgs(&allocating.writer, diagnostic.fmt, args) catch return error.OutOfMemory;
+
+    const remainder = 4 - allocating.written().len % 4;
+    allocating.writer.splatByteAll(0, remainder) catch return error.OutOfMemory;
+
+    const node = try p.tree.addNode(.{
+        .codegen_diagnostic = .{
+            .tok = usage_tok,
+            .kind = diagnostic.kind,
+            .opt = diagnostic.opt,
+            .text = @ptrCast(@alignCast(allocating.written())),
+        },
+    });
+    try p.decl_buf.append(p.comp.gpa, node);
+}
+
+fn errDeprecated(p: *Parser, tok_i: TokenIndex, diagnostic: Diagnostic, msg: ?[]const u8) Compilation.Error!void {
     const colon_str: []const u8 = if (msg != null) ": " else "";
-    const msg_str: []const u8 = if (msg) |m| p.comp.interner.get(m.ref()).bytes else "";
-    return p.err(tok_i, diagnostic, .{ p.tokSlice(tok_i), colon_str, Escaped.init(msg_str) });
+    return p.err(tok_i, diagnostic, .{ p.tokSlice(tok_i), colon_str, Escaped.init(msg orelse "") });
 }
 
 fn addNode(p: *Parser, node: Tree.Node) Allocator.Error!Node.Index {
-    if (p.in_macro) return undefined;
     return p.tree.addNode(node);
 }
 
@@ -656,14 +775,6 @@ fn errExpectedToken(p: *Parser, expected: Token.Id, actual: Token.Id) Error {
     return error.ParsingFailed;
 }
 
-fn addList(p: *Parser, nodes: []const Node.Index) Allocator.Error!Tree.Node.Range {
-    if (p.in_macro) return Tree.Node.Range{ .start = 0, .end = 0 };
-    const start: u32 = @intCast(p.data.items.len);
-    try p.data.appendSlice(nodes);
-    const end: u32 = @intCast(p.data.items.len);
-    return Tree.Node.Range{ .start = start, .end = end };
-}
-
 /// Recursively sets the defintion field of `tentative_decl` to `definition`.
 pub fn setTentativeDeclDefinition(p: *Parser, tentative_decl: Node.Index, definition: Node.Index) void {
     const node_data = &p.tree.nodes.items(.data)[@backingInt(tentative_decl)];
@@ -673,7 +784,7 @@ pub fn setTentativeDeclDefinition(p: *Parser, tentative_decl: Node.Index, defini
         else => return,
     }
 
-    const prev: Node.OptIndex = @fromBackingInt(@intCast(node_data[2]));
+    const prev: Node.OptIndex = @fromBackingInt(node_data[2]);
 
     node_data[2] = @backingInt(definition);
     if (prev.unpack()) |some| {
@@ -681,12 +792,19 @@ pub fn setTentativeDeclDefinition(p: *Parser, tentative_decl: Node.Index, defini
     }
 }
 
-/// Clears the defintion field of declarations that were not defined so that
-/// the field always contains a _def if present.
-fn clearNonTentativeDefinitions(p: *Parser) void {
+/// Resolves file-scope tentative definitions, then clears definition fields of
+/// declarations that were not defined.
+fn finalizeTentativeDefinitions(p: *Parser) Allocator.Error!void {
+    var finalized: std.AutoHashMapUnmanaged(StringId, void) = .empty;
+    defer finalized.deinit(p.comp.gpa);
+
     const tags = p.tree.nodes.items(.tag);
     const data = p.tree.nodes.items(.data);
-    for (p.tree.root_decls.items) |root_decl| {
+
+    var i = p.tree.root_decls.items.len;
+    while (i > 0) {
+        i -= 1;
+        const root_decl = p.tree.root_decls.items[i];
         switch (tags[@backingInt(root_decl)]) {
             .fn_proto => {
                 const node_data = &data[@backingInt(root_decl)];
@@ -697,9 +815,19 @@ fn clearNonTentativeDefinitions(p: *Parser) void {
                 }
             },
             .variable => {
+                const variable = root_decl.get(&p.tree).variable;
                 const node_data = &data[@backingInt(root_decl)];
+                if (variable.storage_class != .@"extern") {
+                    const name = try p.comp.internString(p.tree.tokSlice(variable.name_tok));
+                    const gop = try finalized.getOrPut(p.comp.gpa, name);
+                    if (!gop.found_existing and (node_data[2] == @backingInt(Node.OptIndex.null) or tags[node_data[2]] != .variable_def)) {
+                        p.setTentativeDeclDefinition(root_decl, root_decl);
+                    }
+                }
                 if (node_data[2] != @backingInt(Node.OptIndex.null)) {
-                    if (tags[node_data[2]] != .variable_def) {
+                    if (node_data[2] == @backingInt(root_decl) or
+                        (tags[node_data[2]] != .variable_def and !p.isTentativeDefinitionNode(@fromBackingInt(node_data[2]))))
+                    {
                         node_data[2] = @backingInt(Node.OptIndex.null);
                     }
                 }
@@ -709,10 +837,34 @@ fn clearNonTentativeDefinitions(p: *Parser) void {
     }
 }
 
+fn isTentativeDefinitionNode(p: *Parser, node: Node.Index) bool {
+    const var_node = p.getNode(node, .variable) orelse return false;
+    return var_node.storage_class != .@"extern";
+}
+
+fn completesTentativeArray(p: *Parser, name: StringId, qt: QualType) bool {
+    if (!p.tentative_defs.contains(.tentativeArray(name))) return false;
+    const array_ty = qt.get(p.comp, .array) orelse return false;
+    if (array_ty.len != .fixed) return false;
+
+    const prev = p.syms.findSymbol(name) orelse return false;
+    if (prev.kind != .decl) return false;
+    const prev_array_ty = prev.qt.get(p.comp, .array) orelse return false;
+    if (prev_array_ty.len != .incomplete) return false;
+
+    return qt.eqlQualified(prev.qt, p.comp);
+}
+
 fn findLabel(p: *Parser, name: []const u8) ?TokenIndex {
     for (p.labels.items) |item| {
         switch (item) {
-            .label => |l| if (mem.eql(u8, p.tokSlice(l), name)) return l,
+            .label => |l| {
+                const prev_label = l.tok(&p.tree);
+                if (mem.eql(u8, p.tokSlice(prev_label), name)) {
+                    p.markUsed(l);
+                    return prev_label;
+                }
+            },
             .unresolved_goto => {},
         }
     }
@@ -751,6 +903,7 @@ pub fn isAddressOfStringLiteral(p: *Parser, node: Node.Index) bool {
     return p.nodeIs(addr_of.operand, .string_literal_expr);
 }
 
+// TODO pragma in any position and shoud be checked in eatToken
 fn pragma(p: *Parser) Compilation.Error!bool {
     var found_pragma = false;
     while (p.eatToken(.keyword_pragma)) |_| {
@@ -759,7 +912,7 @@ fn pragma(p: *Parser) Compilation.Error!bool {
         const name_tok = p.tok_i;
         const name = p.tokSlice(name_tok);
 
-        const end_idx = mem.indexOfScalarPos(Token.Id, p.tok_ids, p.tok_i, .nl).?;
+        const end_idx = mem.findScalarPos(Token.Id, p.tok_ids, p.tok_i, .nl).?;
         const pragma_len = @as(TokenIndex, @intCast(end_idx)) - p.tok_i;
         defer p.tok_i += pragma_len + 1; // skip past .nl as well
         if (p.comp.getPragma(name)) |prag| {
@@ -786,9 +939,146 @@ fn diagnoseIncompleteDefinitions(p: *Parser) !void {
             else => unreachable,
         };
 
-        const tentative_def_tok = p.tentative_defs.get(decl_type_name) orelse continue;
+        const tentative_def_tok = p.tentative_defs.get(.incompleteType(decl_type_name)) orelse continue;
         try p.err(tentative_def_tok, .tentative_definition_incomplete, .{forward.container_qt});
         try p.err(forward.name_or_kind_tok, .forward_declaration_here, .{forward.container_qt});
+    }
+}
+
+fn diagnoseTentativeArrays(p: *Parser) !void {
+    for (p.tentative_defs.keys(), p.tentative_defs.values()) |key, tok| {
+        if (key.kind != .tentative_array) continue;
+        try p.err(tok, .tentative_array, .{});
+    }
+}
+
+fn diagnoseUnusedLocals(p: *Parser) !void {
+    defer p.maybe_unused_decl.clearRetainingCapacity();
+    // Don't warn about unused locals if there were error in the function body.
+    if (p.diagnostics.errors != p.local_unused_err_count) return;
+
+    for (p.maybe_unused_decl.keys(), p.maybe_unused_decl.values()) |unused_decl, used| {
+        if (used) continue;
+        const name_tok = unused_decl.tok(&p.tree);
+        try p.err(name_tok, switch (unused_decl.get(&p.tree)) {
+            .variable => .unused_variable,
+            .param => .unused_param,
+            .typedef => .unused_typedef,
+            .labeled_stmt => .unused_label,
+            .empty_decl => continue,
+            else => unreachable,
+        }, .{p.tokSlice(name_tok)});
+    }
+}
+
+fn addMaybeUnusued(p: *Parser, decl_node: Node.Index) !void {
+    if (p.tree.attr_map.hasAttribute(decl_node, .unused)) {
+        p.markUsed(decl_node); // Might have added an empty_decl.
+        return;
+    }
+
+    switch (decl_node.get(&p.tree)) {
+        .variable => |variable| {
+            if (variable.storage_class == .@"extern") return;
+            if (p.func.qt == null) return;
+            if (p.diagnostics.severity(.@"unused-variable") == .off) return;
+        },
+        .param => {
+            if (p.diagnostics.severity(.@"unused-parameter") == .off) return;
+        },
+        .typedef => {
+            if (p.func.qt == null) return;
+            if (p.diagnostics.severity(.@"unused-local-typedef") == .off) return;
+        },
+        .labeled_stmt => {
+            if (p.diagnostics.severity(.@"unused-label") == .off) return;
+        },
+        .empty_decl => {
+            if (p.diagnostics.severity(.@"unused-variable") == .off) return;
+        },
+        else => return,
+    }
+
+    const got = try p.maybe_unused_decl.getOrPut(p.comp.gpa, decl_node);
+    if (!got.found_existing) got.value_ptr.* = false;
+}
+
+fn markUsed(p: *Parser, decl_node: Node.Index) void {
+    if (p.maybe_unused_decl.getPtr(decl_node)) |val| {
+        val.* = true;
+    }
+}
+
+fn diagnoseIgnoredAttrs(p: *Parser) !void {
+    for (p.wip_attrs.attrs.items[p.wip_attrs.top..]) |*attr| {
+        if (attr.used_as_type_attr) continue;
+        if (attr.syntax == .standard) {
+            try p.err(attr.tok, .invalid_on_types, .{attr});
+            continue;
+        }
+        try p.err(attr.tok, .ignored_on_types, .{attr});
+    }
+}
+
+fn diagnoseUnusedValue(p: *Parser, node: Node.Index, prev_total: usize) Error!void {
+    const qt = node.qt(&p.tree);
+    if (qt.is(p.comp, .void)) return;
+    if (qt.isInvalid()) return;
+    // Don't warn about unused result if the expression contained errors.
+    if (p.diagnostics.errors != prev_total) return;
+
+    var cur = node;
+    loop: switch (cur.get(&p.tree)) {
+        .assign_expr,
+        .mul_assign_expr,
+        .div_assign_expr,
+        .mod_assign_expr,
+        .add_assign_expr,
+        .sub_assign_expr,
+        .shl_assign_expr,
+        .shr_assign_expr,
+        .bit_and_assign_expr,
+        .bit_xor_assign_expr,
+        .bit_or_assign_expr,
+        .pre_inc_expr,
+        .pre_dec_expr,
+        .post_inc_expr,
+        .post_dec_expr,
+        => {},
+        .equal_expr => try p.err(cur.tok(&p.tree), .unused_comparison, .{"equality"}),
+        .not_equal_expr => try p.err(cur.tok(&p.tree), .unused_comparison, .{"inequality"}),
+        .less_than_expr,
+        .less_than_equal_expr,
+        .greater_than_expr,
+        .greater_than_equal_expr,
+        => try p.err(cur.tok(&p.tree), .unused_comparison, .{"relational"}),
+        .call_expr => |call| {
+            const call_info = p.tree.calledFunctionAttr(call.callee, .warn_unused_result) orelse return;
+            if (call_info.attr) |attr| {
+                const msg = attr.args.warn_unused_result;
+                const colon_str: []const u8 = if (msg != null) ": " else "";
+                try p.err(call.callee.tok(&p.tree), .warn_unused_result, .{ p.tokSlice(call_info.tok), attr, colon_str, Escaped.init(msg orelse "") });
+            }
+        },
+        .builtin_call_expr => |call| {
+            const expanded = p.comp.builtins.lookup(p.tokSlice(call.builtin_tok));
+            if (expanded.attributes.pure) try p.err(call.builtin_tok, .builtin_unused, .{"pure"});
+            if (expanded.attributes.@"const") try p.err(call.builtin_tok, .builtin_unused, .{"const"});
+        },
+        .stmt_expr => |stmt_expr| {
+            const compound = stmt_expr.operand.get(&p.tree).compound_stmt;
+            cur = compound.body[compound.body.len - 1];
+            continue :loop cur.get(&p.tree);
+        },
+        .comma_expr => |comma| {
+            cur = comma.rhs;
+            continue :loop cur.get(&p.tree);
+        },
+        .paren_expr => |grouped| {
+            cur = grouped.operand;
+            continue :loop cur.get(&p.tree);
+        },
+        else => try p.err(cur.tok(&p.tree), .unused_value, .{}),
     }
 }
 
@@ -830,9 +1120,9 @@ pub fn parse(pp: *Preprocessor) Compilation.Error!Tree {
         p.enum_buf.deinit(gpa);
         p.record_buf.deinit(gpa);
         p.record_members.deinit(gpa);
-        p.attr_buf.deinit(gpa);
-        p.attr_application_buf.deinit(gpa);
+        p.wip_attrs.deinit(gpa);
         p.tentative_defs.deinit(gpa);
+        p.maybe_unused_decl.deinit(gpa);
     }
 
     try p.syms.pushScope(&p);
@@ -844,6 +1134,10 @@ pub fn parse(pp: *Preprocessor) Compilation.Error!Tree {
         }
         try p.addImplicitTypedef("__int128_t", .int128);
         try p.addImplicitTypedef("__uint128_t", .uint128);
+        if (p.comp.langopts.has_int24) {
+            try p.addImplicitTypedef("__int24__", .int24);
+            try p.addImplicitTypedef("__uint24", .uint24);
+        }
 
         try p.addImplicitTypedef("__builtin_ms_va_list", .char_pointer);
 
@@ -856,6 +1150,9 @@ pub fn parse(pp: *Preprocessor) Compilation.Error!Tree {
         if (p.comp.float80Type()) |float80_ty| {
             try p.addImplicitTypedef("__float80", float80_ty);
         }
+        if (p.comp.target.hasAArch64ACLETypes()) {
+            try p.addImplicitTypedef("__mfp8", .mfp8);
+        }
 
         // Set here so that the newly generated tokens are included.
         p.tree.tokens = p.pp.tokens.slice();
@@ -865,6 +1162,17 @@ pub fn parse(pp: *Preprocessor) Compilation.Error!Tree {
 
     while (p.eatToken(.eof) == null) {
         if (try p.pragma()) continue;
+
+        const attr_state = p.wip_attrs.state(true);
+        defer p.wip_attrs.restore(attr_state);
+        p.attributeSpecifier() catch |er| switch (er) {
+            error.ParsingFailed => {
+                p.nextExternDecl();
+                continue;
+            },
+            else => |e| return e,
+        };
+
         if (try p.parseOrNextDecl(staticAssert)) continue;
         if (try p.parseOrNextDecl(decl)) continue;
         if (p.eatToken(.keyword_extension)) |_| {
@@ -910,6 +1218,7 @@ pub fn parse(pp: *Preprocessor) Compilation.Error!Tree {
     }
     if (p.tentative_defs.count() > 0) {
         try p.diagnoseIncompleteDefinitions();
+        try p.diagnoseTentativeArrays();
     }
 
     p.tree.root_decls = p.decl_buf;
@@ -920,7 +1229,7 @@ pub fn parse(pp: *Preprocessor) Compilation.Error!Tree {
     }
     pp.comp.pragmaEvent(.after_parse);
 
-    p.clearNonTentativeDefinitions();
+    try p.finalizeTentativeDefinitions();
 
     return p.tree;
 }
@@ -954,7 +1263,7 @@ fn addImplicitTypedef(p: *Parser, name: []const u8, qt: QualType) !void {
         .name = interned_name,
         .decl_node = node,
     } })).withQualifiers(qt);
-    try p.syms.defineTypedef(p, interned_name, typedef_qt, name_tok, node);
+    assert(try p.syms.defineTypedef(p, interned_name, typedef_qt, name_tok, node) == null);
     try p.decl_buf.append(gpa, node);
 }
 
@@ -991,6 +1300,7 @@ fn nextExternDecl(p: *Parser) void {
             .keyword_register,
             .keyword_thread_local,
             .keyword_c23_thread_local,
+            .keyword_thread,
             .keyword_inline,
             .keyword_inline1,
             .keyword_inline2,
@@ -1076,8 +1386,6 @@ fn decl(p: *Parser) Error!bool {
     const gpa = p.comp.gpa;
     _ = try p.pragma();
     const first_tok = p.tok_i;
-    const attr_buf_top = p.attr_buf.len;
-    defer p.attr_buf.len = attr_buf_top;
 
     try p.attributeSpecifier();
 
@@ -1108,14 +1416,15 @@ fn decl(p: *Parser) Error!bool {
         break :blk DeclSpec{ .qt = try builder.finish() };
     };
     if (decl_spec.noreturn) |tok| {
-        const attr = Attribute{ .tag = .noreturn, .args = .{ .noreturn = .{} }, .syntax = .keyword };
-        try p.attr_buf.append(gpa, .{ .attr = attr, .tok = tok });
+        try p.wip_attrs.addKeyword(p, tok, &.{});
     }
+
+    const declarator_attr_state = p.wip_attrs.state(false);
 
     var decl_node = try p.tree.addNode(.{ .empty_decl = .{
         .semicolon = first_tok,
     } });
-    var init_d = (try p.initDeclarator(&decl_spec, attr_buf_top, decl_node)) orelse {
+    var init_d = (try p.initDeclarator(&decl_spec, decl_node)) orelse {
         _ = try p.expectToken(.semicolon);
 
         missing_decl: {
@@ -1134,13 +1443,11 @@ fn decl(p: *Parser) Error!bool {
             return true;
         }
 
-        const attrs = p.attr_buf.items(.attr)[attr_buf_top..];
-        const toks = p.attr_buf.items(.tok)[attr_buf_top..];
-        for (attrs, toks) |attr, tok| {
-            try p.err(tok, .ignored_record_attr, .{
-                @tagName(attr.tag), @tagName(decl_spec.qt.base(p.comp).type),
-            });
+        const base_tag_name = @tagName(decl_spec.qt.base(p.comp).type);
+        for (p.wip_attrs.attrs.items[p.wip_attrs.top..]) |wip_attr| {
+            try p.err(wip_attr.tok, .ignored_record_attr, .{ &wip_attr, base_tag_name });
         }
+
         return true;
     };
 
@@ -1157,11 +1464,12 @@ fn decl(p: *Parser) Error!bool {
         if (p.func.qt != null) try p.err(p.tok_i, .func_not_in_root, .{});
 
         const interned_declarator_name = try p.comp.internString(p.tokSlice(init_d.d.name));
-        try p.syms.defineSymbol(p, interned_declarator_name, init_d.d.qt, init_d.d.name, decl_node, .{}, false);
+        const previous_decl = try p.syms.defineSymbol(p, interned_declarator_name, init_d.d.qt, init_d.d.name, decl_node, .{}, false);
         const func = p.func;
         p.func = .{
             .qt = init_d.d.qt,
             .name = init_d.d.name,
+            .decl = .pack(decl_node),
         };
         defer p.func = func;
 
@@ -1201,8 +1509,8 @@ fn decl(p: *Parser) Error!bool {
                 }
 
                 while (true) {
-                    const attr_buf_top_declarator = p.attr_buf.len;
-                    defer p.attr_buf.len = attr_buf_top_declarator;
+                    const param_attr_state = p.wip_attrs.state(true);
+                    defer p.wip_attrs.restore(param_attr_state);
 
                     var param_d = (try p.declarator(param_decl_spec.qt, .param)) orelse {
                         try p.err(first_tok, .missing_declaration, .{});
@@ -1220,15 +1528,15 @@ fn decl(p: *Parser) Error!bool {
                     } else {
                         // Decay params declared as functions or arrays to pointer.
                         param_d.qt = try param_d.qt.decay(p.comp);
+                        // Apply potential nullability attributes.
+                        param_d.qt = try p.wip_attrs.applyTypeAttrs(p, param_d.qt);
                     }
-
-                    const attributed_qt = try Attribute.applyParameterAttributes(p, param_d.qt, attr_buf_top_declarator, .alignas_on_param);
 
                     try param_decl_spec.validateParam(p);
                     const param_node = try p.addNode(.{
                         .param = .{
                             .name_tok = param_d.name,
-                            .qt = attributed_qt,
+                            .qt = param_d.qt,
                             .storage_class = switch (param_decl_spec.storage_class) {
                                 .none => .auto,
                                 .register => .register,
@@ -1236,20 +1544,23 @@ fn decl(p: *Parser) Error!bool {
                             },
                         },
                     });
+                    try p.wip_attrs.applyDeclAttrs(p, param_node, null);
 
                     const name_str = p.tokSlice(param_d.name);
                     const interned_name = try p.comp.internString(name_str);
-                    try p.syms.defineParam(p, interned_name, attributed_qt, param_d.name, param_node);
+                    try p.syms.defineParam(p, interned_name, param_d.qt, param_d.name, param_node);
 
                     // find and correct parameter types
                     for (func_qt.get(p.comp, .func).?.params, new_params) |param, *new_param| {
                         if (param.name == interned_name) {
+                            if (new_param.name == .empty) try p.addMaybeUnusued(param_node);
                             new_param.* = .{
-                                .qt = attributed_qt,
+                                .qt = param_d.qt,
                                 .name = param.name,
                                 .node = .pack(param_node),
                                 .name_tok = param.name_tok,
                             };
+                            p.markUsed(param.node.unpack().?);
                             break;
                         }
                     } else {
@@ -1265,12 +1576,8 @@ fn decl(p: *Parser) Error!bool {
             for (func_ty.params, new_params) |param, *new_param| {
                 if (new_param.name == .empty) {
                     try p.err(param.name_tok, .param_not_declared, .{param.name.lookup(p.comp)});
-                    new_param.* = .{
-                        .name = param.name,
-                        .name_tok = param.name_tok,
-                        .node = param.node,
-                        .qt = .int,
-                    };
+                    new_param.* = param;
+                    try p.syms.defineParam(p, param.name, .int, param.name_tok, param.node.unpack().?);
                 }
             }
             // Update the functio type to contain the declared parameters.
@@ -1293,7 +1600,7 @@ fn decl(p: *Parser) Error!bool {
                     .tok = param.name_tok,
                     .qt = param.qt,
                     .val = .{},
-                    .node = param.node,
+                    .node = param.node.unpack().?,
                 });
                 if (param.qt.isInvalid()) continue;
 
@@ -1312,21 +1619,26 @@ fn decl(p: *Parser) Error!bool {
             }
         }
 
-        const body = (try p.compoundStmt(true, null)) orelse {
-            assert(init_d.d.old_style_func != null);
-            try p.err(p.tok_i, .expected_fn_body, .{});
-            return true;
-        };
-
-        try decl_spec.validateFnDef(p);
-        try p.tree.setNode(.{ .function = .{
+        var function: Tree.Node.Function = .{
             .name_tok = init_d.d.name,
             .@"inline" = decl_spec.@"inline" != null,
             .static = decl_spec.storage_class == .static,
             .qt = p.func.qt.?,
-            .body = body,
+            .body = null,
             .definition = null,
-        } }, @backingInt(decl_node));
+        };
+
+        try decl_spec.validateFnDef(p);
+        try p.tree.setNode(.{ .function = function }, @backingInt(decl_node));
+        try p.wip_attrs.applyDeclAttrs(p, decl_node, previous_decl);
+
+        p.local_unused_err_count = p.diagnostics.errors;
+        function.body = (try p.compoundStmt(true, null)) orelse {
+            assert(init_d.d.old_style_func != null);
+            try p.err(p.tok_i, .expected_fn_body, .{});
+            return true;
+        };
+        try p.tree.setNode(.{ .function = function }, @backingInt(decl_node));
 
         try p.decl_buf.append(gpa, decl_node);
 
@@ -1344,6 +1656,7 @@ fn decl(p: *Parser) Error!bool {
             p.contains_address_of_label = false;
             p.computed_goto_tok = null;
         }
+        try p.diagnoseUnusedLocals();
         return true;
     }
 
@@ -1405,6 +1718,7 @@ fn decl(p: *Parser) Error!bool {
         try p.decl_buf.append(gpa, decl_node);
 
         const interned_name = try p.comp.internString(p.tokSlice(init_d.d.name));
+        const completes_tentative_array = p.completesTentativeArray(interned_name, init_d.d.qt);
         if (decl_spec.storage_class == .typedef) {
             const typedef_qt = if (init_d.d.qt.isInvalid())
                 init_d.d.qt
@@ -1414,11 +1728,12 @@ fn decl(p: *Parser) Error!bool {
                     .name = interned_name,
                     .decl_node = decl_node,
                 } })).withQualifiers(init_d.d.qt);
-            try p.syms.defineTypedef(p, interned_name, typedef_qt, init_d.d.name, decl_node);
+            const previous_decl = try p.syms.defineTypedef(p, interned_name, typedef_qt, init_d.d.name, decl_node);
             p.typedefDefined(interned_name, typedef_qt);
+            try p.wip_attrs.applyDeclAttrsExtra(p, decl_node, typedef_qt, previous_decl);
         } else if (init_d.initializer) |init| {
             // TODO validate global variable/constexpr initializer comptime known
-            try p.syms.defineSymbol(
+            const previous_decl = try p.syms.defineSymbol(
                 p,
                 interned_name,
                 init_d.d.qt,
@@ -1427,19 +1742,23 @@ fn decl(p: *Parser) Error!bool {
                 if (init_d.d.qt.@"const" or decl_spec.constexpr != null) init.val else .{},
                 decl_spec.constexpr != null,
             );
+            try p.wip_attrs.applyDeclAttrs(p, decl_node, previous_decl);
         } else if (init_d.d.qt.is(p.comp, .func)) {
-            try p.syms.declareSymbol(p, interned_name, init_d.d.qt, init_d.d.name, decl_node);
+            const previous_decl = try p.syms.declareSymbol(p, interned_name, init_d.d.qt, init_d.d.name, decl_node);
+            try p.wip_attrs.applyDeclAttrs(p, decl_node, previous_decl);
         } else if (p.func.qt != null and decl_spec.storage_class != .@"extern") {
-            try p.syms.defineSymbol(p, interned_name, init_d.d.qt, init_d.d.name, decl_node, .{}, false);
+            const previous_decl = try p.syms.defineSymbol(p, interned_name, init_d.d.qt, init_d.d.name, decl_node, .{}, false);
+            try p.wip_attrs.applyDeclAttrs(p, decl_node, previous_decl);
         } else {
-            try p.syms.declareSymbol(p, interned_name, init_d.d.qt, init_d.d.name, decl_node);
+            const previous_decl = try p.syms.declareSymbol(p, interned_name, init_d.d.qt, init_d.d.name, decl_node);
+            try p.wip_attrs.applyDeclAttrs(p, decl_node, previous_decl);
         }
+        if (completes_tentative_array) _ = p.tentative_defs.orderedRemove(.tentativeArray(interned_name));
+        try p.addMaybeUnusued(decl_node);
 
         if (p.eatToken(.comma) == null) break;
 
-        const attr_buf_top_declarator = p.attr_buf.len;
-        defer p.attr_buf.len = attr_buf_top_declarator;
-
+        p.wip_attrs.restore(declarator_attr_state);
         try p.attributeSpecifierGnu();
 
         if (!warned_auto) {
@@ -1457,7 +1776,7 @@ fn decl(p: *Parser) Error!bool {
         decl_node = try p.tree.addNode(.{ .empty_decl = .{
             .semicolon = p.tok_i - 1,
         } });
-        init_d = (try p.initDeclarator(&decl_spec, attr_buf_top, decl_node)) orelse {
+        init_d = (try p.initDeclarator(&decl_spec, decl_node)) orelse {
             try p.err(p.tok_i, .expected_ident_or_l_paren, .{});
             continue;
         };
@@ -1467,32 +1786,68 @@ fn decl(p: *Parser) Error!bool {
     return true;
 }
 
-fn staticAssertMessage(p: *Parser, cond_node: Node.Index, maybe_message: ?Result, allocating: *std.Io.Writer.Allocating) !?[]const u8 {
+const StaticAsssertMessage = struct {
+    full: []const u8,
+    req_start: u32,
+    req_end: u32,
+};
+
+fn staticAssertMessage(p: *Parser, cond: Node.Index, maybe_message: ?Result, allocating: *std.Io.Writer.Allocating) !StaticAsssertMessage {
     const w = &allocating.writer;
 
-    const cond = cond_node.get(&p.tree);
-    if (cond == .builtin_types_compatible_p) {
-        try w.writeAll("'__builtin_types_compatible_p(");
-
-        const lhs_ty = cond.builtin_types_compatible_p.lhs;
-        try lhs_ty.print(p.comp, w);
-        try w.writeAll(", ");
-
-        const rhs_ty = cond.builtin_types_compatible_p.rhs;
-        try rhs_ty.print(p.comp, w);
-
-        try w.writeAll(")'");
-    } else if (maybe_message == null) return null;
+    try w.writeAll(" due to requirement '");
+    const start = allocating.written().len;
+    try p.tree.write(cond, w);
+    const end = allocating.written().len;
+    try w.writeByte('\'');
 
     if (maybe_message) |message| {
-        assert(message.node.get(&p.tree) == .string_literal_expr);
-        if (allocating.written().len > 0) {
-            try w.writeByte(' ');
-        }
         const bytes = p.comp.interner.get(message.val.ref()).bytes;
-        try Value.printString(bytes, message.qt, p.comp, w);
+        const size: Compilation.CharUnitSize = @fromBackingInt(@intCast(message.qt.childType(p.comp).sizeof(p.comp)));
+        if (bytes.len > @backingInt(size)) {
+            try w.writeAll(": ");
+            try Value.printString(bytes, message.qt, p.comp, w, .bare);
+        }
     }
-    return allocating.written();
+    const written = allocating.written();
+    return .{
+        .full = written,
+        .req_start = @intCast(start),
+        .req_end = @intCast(end),
+    };
+}
+
+fn staticAssertEvaluationNote(p: *Parser, node: Node.Index, requirement: []const u8) Error!void {
+    const bin = loop: switch (node.get(&p.tree)) {
+        .cast => |cast_expr| continue :loop cast_expr.operand.get(&p.tree),
+        .paren_expr => |paren_expr| continue :loop paren_expr.operand.get(&p.tree),
+        .equal_expr,
+        .not_equal_expr,
+        .less_than_expr,
+        .less_than_equal_expr,
+        .greater_than_expr,
+        .greater_than_equal_expr,
+        => |bin| bin,
+        else => return,
+    };
+    var note_bfa_buf: [1024]u8 = undefined;
+    var note_bfa: std.heap.BufferFirstAllocator = .init(&note_bfa_buf, p.comp.gpa);
+    var note_allocating: std.Io.Writer.Allocating = .init(note_bfa.allocator());
+    defer note_allocating.deinit();
+
+    const lhs_val = p.tree.value_map.get(bin.lhs) orelse return;
+    const rhs_val = p.tree.value_map.get(bin.rhs) orelse return;
+
+    const w = &note_allocating.writer;
+    if (lhs_val.print(bin.lhs.qt(&p.tree), p.comp, w) catch return) |_| return;
+    w.print(" {s} ", .{p.tokSlice(bin.op_tok)}) catch return;
+    if (rhs_val.print(bin.rhs.qt(&p.tree), p.comp, w) catch return) |_| return;
+
+    const eval_text = note_allocating.written();
+
+    if (std.mem.eql(u8, eval_text, requirement)) return;
+
+    try p.err(bin.op_tok, .static_assert_expression_evaluates_to, .{eval_text});
 }
 
 /// staticAssert
@@ -1503,8 +1858,11 @@ fn staticAssert(p: *Parser) Error!bool {
     const static_assert = p.eatToken(.keyword_static_assert) orelse p.eatToken(.keyword_c23_static_assert) orelse return false;
     const l_paren = try p.expectToken(.l_paren);
     const res_token = p.tok_i;
+    const old_record_static_assert_eval_note = p.record_static_assert_eval_note;
+    p.record_static_assert_eval_note = true;
+    defer p.record_static_assert_eval_note = old_record_static_assert_eval_note;
+
     var res = try p.constExpr(.gnu_folding_extension);
-    const res_node = res.node;
     const str = if (p.eatToken(.comma) != null)
         switch (p.tok_ids[p.tok_i]) {
             .string_literal,
@@ -1544,11 +1902,9 @@ fn staticAssert(p: *Parser) Error!bool {
             var allocating: std.Io.Writer.Allocating = .init(bfa.allocator());
             defer allocating.deinit();
 
-            if (p.staticAssertMessage(res_node, str, &allocating) catch return error.OutOfMemory) |message| {
-                try p.err(static_assert, .static_assert_failure_message, .{message});
-            } else {
-                try p.err(static_assert, .static_assert_failure, .{});
-            }
+            const message = p.staticAssertMessage(res.node, str, &allocating) catch return error.OutOfMemory;
+            try p.err(res_token, .static_assert_failure_message, .{message.full});
+            try p.staticAssertEvaluationNote(res.node, message.full[message.req_start..message.req_end]);
         }
     }
 
@@ -1613,7 +1969,6 @@ pub const DeclSpec = struct {
 
     fn validateDecl(d: DeclSpec, p: *Parser, asm_label: ?Node.Index) Error!void {
         if (d.@"inline") |tok_i| try p.err(tok_i, .func_spec_non_func, .{"inline"});
-        // TODO move to attribute validation
         if (d.noreturn) |tok_i| try p.err(tok_i, .func_spec_non_func, .{"_Noreturn"});
         switch (d.storage_class) {
             .auto => {
@@ -1656,7 +2011,7 @@ fn typeof(p: *Parser) Error!?QualType {
             .expr = null,
         } })).withQualifiers(qt);
     }
-    const typeof_expr = try p.parseNoEval(expr);
+    const typeof_expr = try p.expectResult(try p.binaryExpr(.any, false));
     try p.expectClosing(l_paren, .r_paren);
     if (typeof_expr.qt.isInvalid()) return null;
 
@@ -1709,10 +2064,7 @@ fn declSpec(p: *Parser) Error!?DeclSpec {
                 continue;
             },
             .keyword_forceinline, .keyword_forceinline2 => {
-                try p.attr_buf.append(p.comp.gpa, .{
-                    .attr = .{ .tag = .always_inline, .args = .{ .always_inline = .{} }, .syntax = .keyword },
-                    .tok = p.tok_i,
-                });
+                try p.wip_attrs.addKeyword(p, p.tok_i, &.{});
                 p.tok_i += 1;
                 continue;
             },
@@ -1750,9 +2102,13 @@ fn storageClassSpec(p: *Parser, d: *DeclSpec) Error!bool {
                     try p.err(p.tok_i, .multiple_storage_class, .{@tagName(d.storage_class)});
                     return error.ParsingFailed;
                 }
-                if (d.thread_local != null) {
+                if (d.thread_local) |thread_tok| {
                     switch (id) {
-                        .keyword_extern, .keyword_static => {},
+                        .keyword_extern, .keyword_static => {
+                            if (p.tok_ids[thread_tok] == .keyword_thread) {
+                                try p.err(thread_tok, .thread_before_storage, .{id.lexeme().?});
+                            }
+                        },
                         else => try p.err(p.tok_i, .cannot_combine_spec, .{id.lexeme().?}),
                     }
                     if (d.constexpr) |tok| try p.err(p.tok_i, .cannot_combine_spec, .{p.tok_ids[tok].lexeme().?});
@@ -1775,6 +2131,7 @@ fn storageClassSpec(p: *Parser, d: *DeclSpec) Error!bool {
             },
             .keyword_thread_local,
             .keyword_c23_thread_local,
+            .keyword_thread,
             => {
                 if (d.thread_local != null) {
                     try p.err(p.tok_i, .duplicate_decl_spec, .{id.lexeme().?});
@@ -1812,130 +2169,114 @@ const InitDeclarator = struct {
 
 /// attribute
 ///  : attrIdentifier
-///  | attrIdentifier '(' identifier ')'
-///  | attrIdentifier '(' identifier (',' expr)+ ')'
 ///  | attrIdentifier '(' (expr (',' expr)*)? ')'
-fn attribute(p: *Parser, kind: Attribute.Kind, namespace: ?[]const u8) Error!?TentativeAttribute {
-    const name_tok = p.tok_i;
+/// c23Attribute : (attrIdentifier '::')? attribute
+fn attribute(p: *Parser, syntax: Attribute.Syntax) Error!void {
+    const first_tok = p.tok_i;
+    const namespaced = blk: {
+        var opt_namespace: ?[]const u8 = null;
+        var name: []const u8 = undefined;
+
+        const namespace_or_name = try p.attrIdentifier();
+        if (syntax == .standard and p.eatToken(.colon_colon) != null) {
+            opt_namespace = p.tokSlice(namespace_or_name);
+            name = p.tokSlice(try p.attrIdentifier());
+        } else {
+            name = p.tokSlice(namespace_or_name);
+        }
+
+        if (Attribute.Namespaced.fromString(syntax, opt_namespace, name)) |some| break :blk some;
+        if (syntax == .declspec) {
+            try p.err(first_tok, .declspec_attr_not_supported, .{name});
+        } else if (opt_namespace) |namespace| {
+            try p.err(first_tok, .unknown_namespaced_attribute, .{ namespace, name });
+        } else {
+            try p.err(first_tok, .unknown_attribute, .{name});
+        }
+        if (p.eatToken(.l_paren)) |_| p.skipTo(.r_paren);
+        return;
+    };
+    if (namespaced == .clang and namespaced.clang == .availability) {
+        return p.parseAvailabilityArgs();
+    }
+
+    const list_buf_top = p.list_buf.items.len;
+    defer p.list_buf.items.len = list_buf_top;
+    const gpa = p.comp.gpa;
+    const arg_top = p.wip_attrs.args.items.len;
+
+    if (p.eatToken(.l_paren)) |l_paren| args: {
+        if (p.eatToken(.r_paren)) |_| {
+            if (syntax == .declspec) try p.err(l_paren, .declspec_empty_args, .{@tagName(namespaced.declspec)});
+            break :args;
+        }
+
+        while (true) {
+            switch (p.tok_ids[p.tok_i]) {
+                .identifier, .extended_identifier => {
+                    if (p.list_buf.items.len == list_buf_top and namespaced.hasIdentifierArg()) {
+                        try p.wip_attrs.args.append(gpa, .{
+                            .node = try p.addNode(.{
+                                .identifier_arg = .{ .identifier_tok = p.tok_i },
+                            }),
+                        });
+                        p.tok_i += 1;
+
+                        if (p.eatToken(.r_paren)) |_| break;
+                        _ = try p.expectToken(.comma);
+                    }
+                },
+                else => {},
+            }
+
+            const arg = try p.expectWithClosing(assignExpr, .r_paren);
+            try p.wip_attrs.args.append(gpa, arg);
+
+            if (p.eatToken(.r_paren)) |_| break;
+            _ = try p.expectToken(.comma);
+        }
+    }
+
+    try p.wip_attrs.attrs.append(gpa, .{
+        .name = namespaced,
+        .syntax = syntax,
+        .args_len = @intCast(p.wip_attrs.args.items.len - arg_top),
+        .args_index = @intCast(arg_top),
+        .tok = first_tok,
+    });
+}
+
+/// attrIdentifier : identifier | keyword
+fn attrIdentifier(p: *Parser) !TokenIndex {
+    const res = p.tok_i;
     if (!p.tok_ids[p.tok_i].isMacroIdentifier()) {
         return p.errExpectedToken(.identifier, p.tok_ids[p.tok_i]);
     }
     _ = (try p.eatIdentifier()) orelse {
         p.tok_i += 1;
     };
-    const name = p.tokSlice(name_tok);
-
-    const attr = Attribute.fromString(kind, namespace, name) orelse {
-        try p.err(name_tok, if (kind == .declspec) .declspec_attr_not_supported else .unknown_attribute, .{name});
-        if (p.eatToken(.l_paren)) |_| p.skipTo(.r_paren);
-        return null;
-    };
-    if (attr == .availability) {
-        // TODO parse introduced=10.4 etc
-        if (p.eatToken(.l_paren)) |_| p.skipTo(.r_paren);
-        return null;
-    }
-
-    const required_count = Attribute.requiredArgCount(attr);
-    var arguments = Attribute.initArguments(attr, name_tok);
-    var arg_idx: u32 = 0;
-
-    switch (p.tok_ids[p.tok_i]) {
-        .comma, .r_paren => {}, // will be consumed in attributeList
-        .l_paren => blk: {
-            p.tok_i += 1;
-            if (p.eatToken(.r_paren)) |_| break :blk;
-
-            if (Attribute.wantsIdentEnum(attr)) {
-                if (try p.eatIdentifier()) |ident| {
-                    if (try Attribute.diagnoseIdent(attr, &arguments, ident, p)) {
-                        p.skipTo(.r_paren);
-                        return null;
-                    }
-                } else {
-                    try p.err(name_tok, .attribute_requires_identifier, .{name});
-                    return null;
-                }
-            } else {
-                const arg_start = p.tok_i;
-                const first_expr = try p.expect(assignExpr);
-                if (try p.diagnose(attr, &arguments, arg_idx, first_expr, arg_start)) {
-                    p.skipTo(.r_paren);
-                    return null;
-                }
-            }
-            arg_idx += 1;
-            while (p.eatToken(.r_paren) == null) : (arg_idx += 1) {
-                _ = try p.expectToken(.comma);
-
-                const arg_start = p.tok_i;
-                const arg_expr = try p.expect(assignExpr);
-                if (try p.diagnose(attr, &arguments, arg_idx, arg_expr, arg_start)) {
-                    p.skipTo(.r_paren);
-                    return null;
-                }
-            }
-        },
-        else => {},
-    }
-    if (arg_idx < required_count) {
-        try p.err(name_tok, .attribute_not_enough_args, .{
-            @tagName(attr), required_count,
-        });
-        return null;
-    }
-    return .{ .attr = .{ .tag = attr, .args = arguments, .syntax = kind.toSyntax() }, .tok = name_tok };
+    return res;
 }
 
-fn diagnose(p: *Parser, attr: Attribute.Tag, arguments: *Attribute.Arguments, arg_idx: u32, res: Result, arg_start: TokenIndex) !bool {
-    if (Attribute.wantsAlignment(attr, arg_idx)) {
-        return Attribute.diagnoseAlignment(attr, arguments, arg_idx, res, arg_start, p);
-    }
-    return Attribute.diagnose(attr, arguments, arg_idx, res, arg_start, res.node.get(&p.tree), p);
+fn parseAvailabilityArgs(p: *Parser) Error!void {
+    // TODO
+    if (p.eatToken(.l_paren)) |_| p.skipTo(.r_paren);
 }
 
-/// attributeList : (attribute (',' attribute)*)?
-fn gnuAttributeList(p: *Parser) Error!void {
-    if (p.tok_ids[p.tok_i] == .r_paren) return;
-    const gpa = p.comp.gpa;
-
-    if (try p.attribute(.gnu, null)) |attr| try p.attr_buf.append(gpa, attr);
-    while (p.tok_ids[p.tok_i] != .r_paren) {
-        _ = try p.expectToken(.comma);
-        if (try p.attribute(.gnu, null)) |attr| try p.attr_buf.append(gpa, attr);
-    }
-}
-
-fn c23AttributeList(p: *Parser) Error!void {
-    while (p.tok_ids[p.tok_i] != .r_bracket) {
-        const namespace_tok = try p.expectIdentifier();
-        var namespace: ?[]const u8 = null;
-        if (p.eatToken(.colon_colon)) |_| {
-            namespace = p.tokSlice(namespace_tok);
-        } else {
-            p.tok_i -= 1;
-        }
-        if (try p.attribute(.c23, namespace)) |attr| try p.attr_buf.append(p.comp.gpa, attr);
-        _ = p.eatToken(.comma);
-    }
-}
-
-fn msvcAttributeList(p: *Parser) Error!void {
-    while (p.tok_ids[p.tok_i] != .r_paren) {
-        if (try p.attribute(.declspec, null)) |attr| try p.attr_buf.append(p.comp.gpa, attr);
-        _ = p.eatToken(.comma);
-    }
-}
-
+/// c23Attribute : '[' '[' c23AttributeList ']' ']'
+/// c23AttributeList : ','* (c23Attribute ','+)*
 fn c23Attribute(p: *Parser) !bool {
-    if (!p.comp.langopts.standard.atLeast(.c23)) return false;
     const bracket1 = p.eatToken(.l_bracket) orelse return false;
     const bracket2 = p.eatToken(.l_bracket) orelse {
         p.tok_i -= 1;
         return false;
     };
+    try p.err(bracket1, .c23_attribute, .{});
 
-    try p.c23AttributeList();
+    while (p.tok_ids[p.tok_i] != .r_bracket) {
+        if (p.eatToken(.comma)) |_| continue;
+        try p.attribute(.standard);
+    }
 
     _ = try p.expectClosing(bracket2, .r_bracket);
     _ = try p.expectClosing(bracket1, .r_bracket);
@@ -1943,10 +2284,15 @@ fn c23Attribute(p: *Parser) !bool {
     return true;
 }
 
-fn msvcAttribute(p: *Parser) !bool {
+fn declspecAttribute(p: *Parser) !bool {
     _ = p.eatToken(.keyword_declspec) orelse return false;
     const l_paren = try p.expectToken(.l_paren);
-    try p.msvcAttributeList();
+
+    while (p.tok_ids[p.tok_i] != .r_paren) {
+        if (p.eatToken(.comma)) |_| continue;
+        try p.attribute(.declspec);
+    }
+
     _ = try p.expectClosing(l_paren, .r_paren);
 
     return true;
@@ -1960,7 +2306,10 @@ fn gnuAttribute(p: *Parser) !bool {
     const paren1 = try p.expectToken(.l_paren);
     const paren2 = try p.expectToken(.l_paren);
 
-    try p.gnuAttributeList();
+    while (p.tok_ids[p.tok_i] != .r_paren) {
+        if (p.eatToken(.comma)) |_| continue;
+        try p.attribute(.gnu);
+    }
 
     _ = try p.expectClosing(paren2, .r_paren);
     _ = try p.expectClosing(paren1, .r_paren);
@@ -1972,14 +2321,14 @@ fn attributeSpecifierGnu(p: *Parser) Error!void {
         if (try p.gnuAttribute()) continue;
 
         const tok = p.tok_i;
-        const attr_buf_top_declarator = p.attr_buf.len;
-        defer p.attr_buf.len = attr_buf_top_declarator;
+        const discarded_attr_state = p.wip_attrs.state(true);
+        defer p.wip_attrs.restore(discarded_attr_state);
 
         if (try p.c23Attribute()) {
             try p.err(tok, .invalid_attribute_location, .{"an attribute list"});
             continue;
         }
-        if (try p.msvcAttribute()) {
+        if (try p.declspecAttribute()) {
             try p.err(tok, .invalid_attribute_location, .{"a declspec attribute"});
             continue;
         }
@@ -1987,22 +2336,30 @@ fn attributeSpecifierGnu(p: *Parser) Error!void {
     }
 }
 
+/// attributeSpecifier
+///  : gnuAttribute
+///  | c23Attribute
+///  | declspecAttribute
+/// gnuAttribute : keyword_attribute '( '(' attributeList ')' ')'
+/// declspecAttribute : keyword_declspec '( attributeList ')'
+/// attributeList : ','* (attribute ','+)*
 fn attributeSpecifier(p: *Parser) Error!void {
     return attributeSpecifierExtra(p, null);
 }
 
-/// attributeSpecifier : (keyword_attribute '( '(' attributeList ')' ')')*
 fn attributeSpecifierExtra(p: *Parser, declarator_name: ?TokenIndex) Error!void {
     while (true) {
         if (try p.gnuAttribute()) continue;
         if (try p.c23Attribute()) continue;
+
+        const discarded_attr_state = p.wip_attrs.state(false);
+
         const maybe_declspec_tok = p.tok_i;
-        const attr_buf_top = p.attr_buf.len;
-        if (try p.msvcAttribute()) {
+        if (try p.declspecAttribute()) {
             if (declarator_name) |name_tok| {
+                defer p.wip_attrs.restore(discarded_attr_state);
                 try p.err(maybe_declspec_tok, .declspec_not_allowed_after_declarator, .{});
                 try p.err(name_tok, .declarator_name_tok, .{});
-                p.attr_buf.len = attr_buf_top;
             }
             continue;
         }
@@ -2011,9 +2368,7 @@ fn attributeSpecifierExtra(p: *Parser, declarator_name: ?TokenIndex) Error!void 
 }
 
 /// initDeclarator : declarator assembly? attributeSpecifier? ('=' initializer)?
-fn initDeclarator(p: *Parser, decl_spec: *DeclSpec, attr_buf_top: usize, decl_node: Node.Index) Error!?InitDeclarator {
-    const this_attr_buf_top = p.attr_buf.len;
-    defer p.attr_buf.len = this_attr_buf_top;
+fn initDeclarator(p: *Parser, decl_spec: *DeclSpec, decl_node: Node.Index) Error!?InitDeclarator {
     const gpa = p.comp.gpa;
 
     var init_d: InitDeclarator = .{
@@ -2024,13 +2379,20 @@ fn initDeclarator(p: *Parser, decl_spec: *DeclSpec, attr_buf_top: usize, decl_no
     init_d.asm_label = try p.assembly(.decl_label);
     try p.attributeSpecifierExtra(init_d.d.name);
 
+    init_d.d.qt = try p.wip_attrs.applyTypeAttrs(p, init_d.d.qt);
+
     switch (init_d.d.declarator_type) {
-        .func => {
+        inline .func, .block => |tag| {
+            const kind = switch (tag) {
+                .func => "function",
+                .block => "block",
+                else => comptime unreachable,
+            };
             if (decl_spec.auto_type) |tok_i| {
-                try p.err(tok_i, .auto_type_not_allowed, .{"function return type"});
+                try p.err(tok_i, .auto_type_not_allowed, .{kind ++ " return type"});
                 init_d.d.qt = .invalid;
             } else if (decl_spec.c23_auto) |tok_i| {
-                try p.err(tok_i, .c23_auto_not_allowed, .{"function return type"});
+                try p.err(tok_i, .c23_auto_not_allowed, .{kind ++ " return type"});
                 init_d.d.qt = .invalid;
             }
         },
@@ -2061,15 +2423,6 @@ fn initDeclarator(p: *Parser, decl_spec: *DeclSpec, attr_buf_top: usize, decl_no
         },
     }
 
-    var apply_var_attributes = false;
-    if (decl_spec.storage_class == .typedef) {
-        init_d.d.qt = try Attribute.applyTypeAttributes(p, init_d.d.qt, attr_buf_top, null);
-    } else if (init_d.d.declarator_type == .func or init_d.d.qt.is(p.comp, .func)) {
-        init_d.d.qt = try Attribute.applyFunctionAttributes(p, init_d.d.qt, attr_buf_top);
-    } else {
-        apply_var_attributes = true;
-    }
-
     if (p.eatToken(.equal)) |eq| {
         if (decl_spec.storage_class == .typedef or
             (init_d.d.declarator_type == .func and init_d.d.qt.is(p.comp, .func)))
@@ -2084,8 +2437,7 @@ fn initDeclarator(p: *Parser, decl_spec: *DeclSpec, attr_buf_top: usize, decl_no
 
         incomplete: {
             if (init_d.d.qt.isInvalid()) break :incomplete;
-            if (init_d.d.qt.isC23Auto()) break :incomplete;
-            if (init_d.d.qt.isAutoType()) break :incomplete;
+            if (init_d.d.qt.isAuto()) break :incomplete;
             if (!init_d.d.qt.hasIncompleteSize(p.comp)) break :incomplete;
             if (init_d.d.qt.get(p.comp, .array)) |array_ty| {
                 if (array_ty.len == .incomplete) break :incomplete;
@@ -2098,10 +2450,11 @@ fn initDeclarator(p: *Parser, decl_spec: *DeclSpec, attr_buf_top: usize, decl_no
         defer p.syms.popScope();
 
         const interned_name = try p.comp.internString(p.tokSlice(init_d.d.name));
-        try p.syms.declareSymbol(p, interned_name, init_d.d.qt, init_d.d.name, decl_node);
+        _ = try p.syms.declareSymbol(p, interned_name, init_d.d.qt, init_d.d.name, decl_node);
+        try p.addMaybeUnusued(decl_node);
 
         // TODO this should be a stack of auto type names because of statement expressions.
-        if (init_d.d.qt.isAutoType() or init_d.d.qt.isC23Auto()) {
+        if (init_d.d.qt.isAuto()) {
             p.auto_type_decl_name = interned_name;
         }
         defer p.auto_type_decl_name = .empty;
@@ -2129,7 +2482,7 @@ fn initDeclarator(p: *Parser, decl_spec: *DeclSpec, attr_buf_top: usize, decl_no
     }
 
     const name = init_d.d.name;
-    if (init_d.d.qt.isAutoType() or init_d.d.qt.isC23Auto()) {
+    if (init_d.d.qt.isAuto()) {
         if (init_d.initializer) |some| {
             init_d.d.qt = some.qt.withQualifiers(init_d.d.qt);
         } else {
@@ -2141,9 +2494,6 @@ fn initDeclarator(p: *Parser, decl_spec: *DeclSpec, attr_buf_top: usize, decl_no
             init_d.d.qt = .invalid;
             return init_d;
         }
-    }
-    if (apply_var_attributes) {
-        init_d.d.qt = try Attribute.applyVariableAttributes(p, init_d.d.qt, attr_buf_top, null);
     }
 
     incomplete: {
@@ -2163,16 +2513,16 @@ fn initDeclarator(p: *Parser, decl_spec: *DeclSpec, attr_buf_top: usize, decl_no
         if (p.func.qt == null) {
             switch (init_type) {
                 .array => |array_ty| if (array_ty.len == .incomplete) {
-                    // TODO properly check this after finishing parsing
-                    try p.err(name, .tentative_array, .{});
+                    const interned_name = try p.comp.internString(p.tokSlice(name));
+                    _ = try p.tentative_defs.getOrPutValue(gpa, .tentativeArray(interned_name), name);
                     break :incomplete;
                 },
                 .@"struct", .@"union" => |record_ty| {
-                    _ = try p.tentative_defs.getOrPutValue(gpa, record_ty.name, init_d.d.name);
+                    _ = try p.tentative_defs.getOrPutValue(gpa, .incompleteType(record_ty.name), init_d.d.name);
                     break :incomplete;
                 },
                 .@"enum" => |enum_ty| {
-                    _ = try p.tentative_defs.getOrPutValue(gpa, enum_ty.name, init_d.d.name);
+                    _ = try p.tentative_defs.getOrPutValue(gpa, .incompleteType(enum_ty.name), init_d.d.name);
                     break :incomplete;
                 },
                 else => {},
@@ -2182,6 +2532,25 @@ fn initDeclarator(p: *Parser, decl_spec: *DeclSpec, attr_buf_top: usize, decl_no
         init_d.d.qt = .invalid;
     }
     return init_d;
+}
+
+fn exactTypeKeywordToSpecMSVC(id: Tokenizer.Token.Id) TypeStore.Builder.Specifier {
+    return switch (id) {
+        .keyword_int8, .keyword_int8_2 => .char,
+        .keyword_int16, .keyword_int16_2 => .short,
+        .keyword_int32, .keyword_int32_2 => .int,
+        .keyword_int64, .keyword_int64_2 => .long_long,
+        else => unreachable,
+    };
+}
+
+fn getMSVCIntSuffixType(p: *Parser, bits: enum { @"8", @"16", @"32", @"64" }, signedness: std.builtin.Signedness) QualType {
+    return switch (bits) {
+        .@"8" => if (signedness == .signed) .char else .uchar,
+        .@"16" => p.comp.intLeastN(16, signedness),
+        .@"32" => p.comp.intLeastN(32, signedness),
+        .@"64" => if (p.comp.langopts.emulate != .msvc) p.comp.smallestNBitIntTargetIndependent(64, signedness) else if (signedness == .signed) .long_long else .ulong_long,
+    };
 }
 
 /// typeSpec
@@ -2223,12 +2592,23 @@ fn typeSpec(p: *Parser, builder: *TypeStore.Builder) Error!bool {
         switch (p.tok_ids[p.tok_i]) {
             .keyword_void => try builder.combine(.void, p.tok_i),
             .keyword_bool, .keyword_c23_bool => try builder.combine(.bool, p.tok_i),
-            .keyword_int8, .keyword_int8_2, .keyword_char => try builder.combine(.char, p.tok_i),
-            .keyword_int16, .keyword_int16_2, .keyword_short => try builder.combine(.short, p.tok_i),
-            .keyword_int32, .keyword_int32_2, .keyword_int => try builder.combine(.int, p.tok_i),
+            .keyword_char => try builder.combine(.char, p.tok_i),
+            .keyword_short => try builder.combine(.short, p.tok_i),
+            .keyword_int => try builder.combine(.int, p.tok_i),
             .keyword_long => try builder.combine(.long, p.tok_i),
-            .keyword_int64, .keyword_int64_2 => try builder.combine(.long_long, p.tok_i),
+
+            .keyword_int8,
+            .keyword_int8_2,
+            .keyword_int16,
+            .keyword_int16_2,
+            .keyword_int32,
+            .keyword_int32_2,
+            .keyword_int64,
+            .keyword_int64_2,
+            => |tok_id| try builder.combine(exactTypeKeywordToSpecMSVC(tok_id), p.tok_i),
+
             .keyword_int128 => try builder.combine(.int128, p.tok_i),
+            .keyword_int24 => try builder.combine(.int24, p.tok_i),
             .keyword_signed, .keyword_signed1, .keyword_signed2 => try builder.combine(.signed, p.tok_i),
             .keyword_unsigned => try builder.combine(.unsigned, p.tok_i),
             .keyword_fp16 => try builder.combine(.fp16, p.tok_i),
@@ -2263,10 +2643,7 @@ fn typeSpec(p: *Parser, builder: *TypeStore.Builder) Error!bool {
                     p.tok_i = atomic_tok;
                     break;
                 };
-                const base_qt = (try p.typeName()) orelse {
-                    try p.err(p.tok_i, .expected_type, .{});
-                    return error.ParsingFailed;
-                };
+                const base_qt = try p.expectTypeName(.r_paren);
                 try p.expectClosing(l_paren, .r_paren);
 
                 if (base_qt.isQualified() and !base_qt.isInvalid()) {
@@ -2283,34 +2660,22 @@ fn typeSpec(p: *Parser, builder: *TypeStore.Builder) Error!bool {
             => {
                 const align_tok = p.tok_i;
                 p.tok_i += 1;
-                const gpa = p.comp.gpa;
                 const l_paren = try p.expectToken(.l_paren);
                 const typename_start = p.tok_i;
                 if (try p.typeName()) |inner_qt| {
                     if (!inner_qt.alignable(p.comp)) {
                         try p.err(typename_start, .invalid_alignof, .{inner_qt});
                     }
-                    const alignment = Attribute.Alignment{ .requested = inner_qt.alignof(p.comp) };
-                    try p.attr_buf.append(gpa, .{
-                        .attr = .{ .tag = .aligned, .args = .{
-                            .aligned = .{ .alignment = alignment, .__name_tok = align_tok },
-                        }, .syntax = .keyword },
-                        .tok = align_tok,
-                    });
-                } else check: {
-                    const arg_start = p.tok_i;
+                    try p.wip_attrs.addKeyword(p, align_tok, &.{.{
+                        .node = try p.addNode(.{ .alignas_type = .{
+                            .alignas_tok = align_tok,
+                            .qt = inner_qt,
+                        } }),
+                        .qt = inner_qt,
+                    }});
+                } else {
                     const res = try p.integerConstExpr(.no_const_decl_folding);
-                    if (!res.val.isZero(p.comp)) {
-                        var args = Attribute.initArguments(.aligned, align_tok);
-                        if (try p.diagnose(.aligned, &args, 0, res, arg_start)) {
-                            break :check;
-                        }
-                        args.aligned.alignment.?.node = .pack(res.node);
-                        try p.attr_buf.append(gpa, .{
-                            .attr = .{ .tag = .aligned, .args = args, .syntax = .keyword },
-                            .tok = align_tok,
-                        });
-                    }
+                    try p.wip_attrs.addKeyword(p, align_tok, &.{res});
                 }
                 try p.expectClosing(l_paren, .r_paren);
                 continue;
@@ -2344,6 +2709,7 @@ fn typeSpec(p: *Parser, builder: *TypeStore.Builder) Error!bool {
                     interned_name = try p.comp.internString(p.tokSlice(p.tok_i));
                 }
                 const typedef = (try p.syms.findTypedef(p, interned_name, p.tok_i, builder.type != .none)) orelse break;
+                p.markUsed(typedef.node);
                 if (!builder.combineTypedef(typedef.qt)) break;
             },
             .keyword_bit_int => {
@@ -2356,8 +2722,9 @@ fn typeSpec(p: *Parser, builder: *TypeStore.Builder) Error!bool {
 
                 var bits: u64 = undefined;
                 if (res.val.opt_ref == .none) {
-                    try p.err(bit_int_tok, .expected_integer_constant_expr, .{});
-                    return error.ParsingFailed;
+                    if (builder.type == .none) try p.err(res.node.tok(&p.tree), .expected_integer_constant_expr, .{});
+                    try builder.combine(.{ .other = .invalid }, bit_int_tok);
+                    continue;
                 } else if (res.val.compare(.lte, .zero, p.comp)) {
                     bits = 0;
                 } else {
@@ -2387,8 +2754,7 @@ fn getAnonymousName(p: *Parser, kind_tok: TokenIndex) !StringId {
 
     var arena = p.comp.type_store.anon_name_arena.promote(p.comp.gpa);
     defer p.comp.type_store.anon_name_arena = arena.state;
-    const str = try std.fmt.allocPrint(
-        arena.allocator(),
+    const str = try arena.allocator().print(
         "(anonymous {s} at {s}:{d}:{d})",
         .{ kind_str, source.path, line_col.line_no, line_col.col },
     );
@@ -2404,13 +2770,17 @@ fn recordSpec(p: *Parser) Error!QualType {
     const kind_tok = p.tok_i;
     const is_struct = p.tok_ids[kind_tok] == .keyword_struct;
     p.tok_i += 1;
-    const attr_buf_top = p.attr_buf.len;
-    defer p.attr_buf.len = attr_buf_top;
+
+    const attr_state = p.wip_attrs.state(true);
+    defer p.wip_attrs.restore(attr_state);
     try p.attributeSpecifier();
 
     const reserved_index = try p.tree.nodes.addOne(gpa);
+    const record_decl: Tree.Node.Index = @fromBackingInt(@intCast(reserved_index));
 
     const maybe_ident = try p.eatIdentifier();
+    try p.attributeSpecifier();
+
     const l_brace = p.eatToken(.l_brace) orelse {
         const ident = maybe_ident orelse {
             try p.err(p.tok_i, .ident_or_l_brace, .{});
@@ -2425,7 +2795,7 @@ fn recordSpec(p: *Parser) Error!QualType {
             const record_ty: Type.Record = .{
                 .name = interned_name,
                 .layout = null,
-                .decl_node = @fromBackingInt(@intCast(reserved_index)),
+                .decl_node = .pack(record_decl),
                 .fields = &.{},
             };
             const record_qt = try p.comp.type_store.put(gpa, if (is_struct)
@@ -2433,26 +2803,28 @@ fn recordSpec(p: *Parser) Error!QualType {
             else
                 .{ .@"union" = record_ty });
 
-            const attributed_qt = try Attribute.applyTypeAttributes(p, record_qt, attr_buf_top, null);
             try p.syms.define(gpa, .{
                 .kind = if (is_struct) .@"struct" else .@"union",
                 .name = interned_name,
                 .tok = ident,
-                .qt = attributed_qt,
+                .qt = record_qt,
                 .val = .{},
+                .node = record_decl,
             });
 
             const fw: Node.ContainerForwardDecl = .{
                 .name_or_kind_tok = ident,
-                .container_qt = attributed_qt,
+                .container_qt = record_qt,
                 .definition = null,
             };
             try p.tree.setNode(if (is_struct)
                 .{ .struct_forward_decl = fw }
             else
                 .{ .union_forward_decl = fw }, reserved_index);
-            try p.decl_buf.append(gpa, @fromBackingInt(@intCast(reserved_index)));
-            return attributed_qt;
+            try p.decl_buf.append(gpa, record_decl);
+            assert(try p.wip_attrs.applyTypeAttrs(p, record_qt) == record_qt);
+            try p.wip_attrs.applyDeclAttrs(p, record_decl, null);
+            return record_qt;
         }
     };
 
@@ -2460,7 +2832,7 @@ fn recordSpec(p: *Parser) Error!QualType {
     errdefer if (!done) p.skipTo(.r_brace);
 
     // Get forward declared type or create a new one
-    var record_ty: Type.Record, const qt: QualType = blk: {
+    var record_ty: Type.Record, const qt: QualType, const prev_decl: ?Node.Index = blk: {
         const interned_name = if (maybe_ident) |ident| interned: {
             const ident_str = p.tokSlice(ident);
             const interned_name = try p.comp.internString(ident_str);
@@ -2471,7 +2843,7 @@ fn recordSpec(p: *Parser) Error!QualType {
                     try p.err(ident, .redefinition, .{ident_str});
                     try p.err(prev.tok, .previous_definition, .{});
                 } else {
-                    break :blk .{ record_ty, prev.qt };
+                    break :blk .{ record_ty, prev.qt, record_ty.decl_node.unpack() orelse null };
                 }
             }
             break :interned interned_name;
@@ -2481,7 +2853,7 @@ fn recordSpec(p: *Parser) Error!QualType {
         // can be specified after the closing rbrace, which we haven't encountered yet.
         const record_ty: Type.Record = .{
             .name = interned_name,
-            .decl_node = @fromBackingInt(@intCast(reserved_index)),
+            .decl_node = .pack(record_decl),
             .layout = null,
             .fields = &.{},
         };
@@ -2499,13 +2871,14 @@ fn recordSpec(p: *Parser) Error!QualType {
                 .tok = maybe_ident.?,
                 .qt = record_qt,
                 .val = .{},
+                .node = record_decl,
             });
         }
 
-        break :blk .{ record_ty, record_qt };
+        break :blk .{ record_ty, record_qt, null };
     };
 
-    try p.decl_buf.append(gpa, @fromBackingInt(@intCast(reserved_index)));
+    try p.decl_buf.append(gpa, record_decl);
     const decl_buf_top = p.decl_buf.items.len;
     const record_buf_top = p.record_buf.items.len;
     errdefer p.decl_buf.items.len = decl_buf_top - 1;
@@ -2545,95 +2918,54 @@ fn recordSpec(p: *Parser) Error!QualType {
     done = true;
     try p.attributeSpecifier();
 
-    const any_incomplete = blk: {
-        for (fields) |field| {
-            if (field.qt.hasIncompleteSize(p.comp) and !field.qt.is(p.comp, .array)) break :blk true;
-        }
-        // Set fields and a dummy layout before addign attributes.
-        record_ty.fields = fields;
-        record_ty.layout = .{
-            .size_bits = 8,
-            .field_alignment_bits = 8,
-            .pointer_alignment_bits = 8,
-            .required_alignment_bits = 8,
-        };
-        record_ty.decl_node = @fromBackingInt(@intCast(reserved_index));
-
-        const base_type = qt.base(p.comp);
-        if (is_struct) {
-            std.debug.assert(base_type.type.@"struct".name == record_ty.name);
-            try p.comp.type_store.set(gpa, .{ .@"struct" = record_ty }, @backingInt(base_type.qt._index));
-        } else {
-            std.debug.assert(base_type.type.@"union".name == record_ty.name);
-            try p.comp.type_store.set(gpa, .{ .@"union" = record_ty }, @backingInt(base_type.qt._index));
-        }
-        break :blk false;
-    };
-
-    const attributed_qt = try Attribute.applyTypeAttributes(p, qt, attr_buf_top, null);
-
-    // Make sure the symbol for this record points to the attributed type.
-    if (attributed_qt != qt and maybe_ident != null) {
-        const ident_str = p.tokSlice(maybe_ident.?);
-        const interned_name = try p.comp.internString(ident_str);
-        const ptr = p.syms.getPtr(interned_name, .tags);
-        ptr.qt = attributed_qt;
-    }
-
-    if (!any_incomplete) {
-        const pragma_pack_value = switch (p.comp.langopts.emulate) {
-            .clang, .no => starting_pragma_pack,
-            .gcc => p.pragma_pack,
-            // TODO: msvc considers `#pragma pack` on a per-field basis
-            .msvc => p.pragma_pack,
-        };
-        if (record_layout.compute(fields, attributed_qt, p.comp, pragma_pack_value)) |layout| {
-            record_ty.fields = fields;
-            record_ty.layout = layout;
-        } else |er| switch (er) {
-            error.Overflow => try p.err(maybe_ident orelse kind_tok, .record_too_large, .{qt}),
-        }
-
-        // Override previous incomplete layout and fields.
-        const base_qt = qt.base(p.comp).qt;
-        const ts = &p.comp.type_store;
-        var extra_index = ts.types.items(.data)[@backingInt(base_qt._index)][1];
-
-        const layout_size = 5;
-        comptime std.debug.assert(@sizeOf(Type.Record.Layout) == @sizeOf(u32) * layout_size);
-        const field_size = 10;
-        comptime std.debug.assert(@sizeOf(Type.Record.Field) == @sizeOf(u32) * field_size);
-
-        extra_index += 1; // For decl_node
-        const casted_layout: *const [layout_size]u32 = @ptrCast(&record_ty.layout);
-        ts.extra.items[extra_index..][0..layout_size].* = casted_layout.*;
-        extra_index += layout_size;
-        extra_index += 1; // For field length
-
-        for (record_ty.fields) |*field| {
-            const casted: *const [field_size]u32 = @ptrCast(field);
-            ts.extra.items[extra_index..][0..field_size].* = casted.*;
-            extra_index += field_size;
-        }
-    }
-
-    // finish by creating a node
+    // Set the node and apply attributes to it.
     const cd: Node.ContainerDecl = .{
         .name_or_kind_tok = maybe_ident orelse kind_tok,
-        .container_qt = attributed_qt,
+        .container_qt = qt,
         .fields = p.decl_buf.items[decl_buf_top..],
     };
     try p.tree.setNode(if (is_struct) .{ .struct_decl = cd } else .{ .union_decl = cd }, reserved_index);
     if (p.func.qt == null) {
-        _ = p.tentative_defs.remove(record_ty.name);
+        _ = p.tentative_defs.orderedRemove(.incompleteType(record_ty.name));
     }
-    return attributed_qt;
+    assert(try p.wip_attrs.applyTypeAttrs(p, qt) == qt);
+    try p.wip_attrs.applyDeclAttrs(p, record_decl, prev_decl);
+
+    for (fields) |field| {
+        if (field.qt.hasIncompleteSize(p.comp) and !field.qt.is(p.comp, .array)) return qt;
+    }
+
+    // Calculate record layout.
+    const pragma_pack_value = switch (p.comp.langopts.emulate) {
+        .clang, .no => starting_pragma_pack,
+        .gcc => p.pragma_pack,
+        // TODO: msvc considers `#pragma pack` on a per-field basis
+        .msvc => p.pragma_pack,
+    };
+    if (record_layout.compute(fields, .pack(record_decl), !is_struct, p.comp, &p.tree.attr_map, pragma_pack_value)) |layout| {
+        record_ty.fields = fields;
+        record_ty.layout = layout;
+    } else |er| switch (er) {
+        error.Overflow => try p.err(maybe_ident orelse kind_tok, .record_too_large, .{qt}),
+    }
+
+    if (is_struct) {
+        try p.comp.type_store.set(gpa, .{ .@"struct" = record_ty }, @backingInt(qt._index));
+    } else {
+        try p.comp.type_store.set(gpa, .{ .@"union" = record_ty }, @backingInt(qt._index));
+    }
+    return qt;
 }
 
 /// recordDecls : (keyword_extension? recordDecl | staticAssert)*
 fn recordDecls(p: *Parser) Error!void {
     while (true) {
         if (try p.pragma()) continue;
+
+        const attr_state = p.wip_attrs.state(true);
+        defer p.wip_attrs.restore(attr_state);
+        try p.attributeSpecifier();
+
         if (try p.parseOrNextDecl(staticAssert)) continue;
         if (p.eatToken(.keyword_extension)) |_| {
             const saved_extension = p.extension_suppressed;
@@ -2654,8 +2986,6 @@ fn recordDecls(p: *Parser) Error!void {
 /// recordDeclarator : declarator (':' integerConstExpr)?
 fn recordDecl(p: *Parser) Error!bool {
     const gpa = p.comp.gpa;
-    const attr_buf_top = p.attr_buf.len;
-    defer p.attr_buf.len = attr_buf_top;
 
     const base_qt: QualType = blk: {
         const start = p.tok_i;
@@ -2692,11 +3022,12 @@ fn recordDecl(p: *Parser) Error!bool {
         };
     };
 
-    try p.attributeSpecifier(); // .record
+    try p.attributeSpecifier();
+
     var error_on_unnamed = false;
     while (true) {
-        const this_decl_top = p.attr_buf.len;
-        defer p.attr_buf.len = this_decl_top;
+        const declarator_attr_state = p.wip_attrs.state(false);
+        defer p.wip_attrs.restore(declarator_attr_state);
 
         try p.attributeSpecifier();
 
@@ -2728,7 +3059,7 @@ fn recordDecl(p: *Parser) Error!bool {
                 break :bits;
             }
 
-            // incomplete size error is reported later
+            // Enums are allowed as bitfield types but may have incomplete size.
             const bit_size = qt.bitSizeofOrNull(p.comp) orelse break :bits;
             const bits_unchecked = res.val.toInt(u32, p.comp) orelse std.math.maxInt(u32);
             if (bits_unchecked > bit_size) {
@@ -2743,21 +3074,11 @@ fn recordDecl(p: *Parser) Error!bool {
             bits_node = res.node;
         }
 
-        try p.attributeSpecifier(); // .record
-
-        const to_append = try Attribute.applyFieldAttributes(p, &qt, attr_buf_top);
-
-        const attr_index: u32 = @intCast(p.comp.type_store.attributes.items.len);
-        const attr_len: u32 = @intCast(to_append.len);
-        try p.comp.type_store.attributes.appendSlice(gpa, to_append);
-
-        qt = try Attribute.applyTypeAttributes(p, qt, attr_buf_top, null);
-        @memset(p.attr_buf.items(.seen)[attr_buf_top..], false);
+        try p.attributeSpecifier();
 
         if (name_tok == 0 and bits == null) unnamed: {
             var is_typedef = false;
             if (!qt.isInvalid()) loop: switch (qt.type(p.comp)) {
-                .attributed => |attributed_ty| continue :loop attributed_ty.base.type(p.comp),
                 .typedef => |typedef_ty| {
                     is_typedef = true;
                     continue :loop typedef_ty.base.type(p.comp);
@@ -2770,13 +3091,6 @@ fn recordDecl(p: *Parser) Error!bool {
                     if (!(record_ty.isAnonymous(p.comp) and !is_typedef)) {
                         try p.err(first_tok, .anonymous_struct, .{});
                     }
-                    // An anonymous record appears as indirect fields on the parent
-                    try p.record_buf.append(gpa, .{
-                        .name = try p.getAnonymousName(first_tok),
-                        .qt = qt,
-                        ._attr_index = attr_index,
-                        ._attr_len = attr_len,
-                    });
 
                     const node = try p.addNode(.{
                         .record_field = .{
@@ -2785,8 +3099,17 @@ fn recordDecl(p: *Parser) Error!bool {
                             .bit_width = null,
                         },
                     });
+
+                    // An anonymous record appears as indirect fields on the parent
+                    try p.record_buf.append(gpa, .{
+                        .name = try p.getAnonymousName(first_tok),
+                        .qt = qt,
+                        .field_decl = .pack(node),
+                    });
+
                     try p.decl_buf.append(gpa, node);
                     try p.record.addFieldsFromAnonymous(p, record_ty);
+                    try p.wip_attrs.applyDeclAttrs(p, node, null);
                     break; // must be followed by a semicolon
                 },
                 else => {},
@@ -2799,16 +3122,6 @@ fn recordDecl(p: *Parser) Error!bool {
             if (p.eatToken(.comma) == null) break;
             continue;
         } else {
-            const interned_name = if (name_tok != 0) try p.comp.internString(p.tokSlice(name_tok)) else try p.getAnonymousName(first_tok);
-            try p.record_buf.append(gpa, .{
-                .name = interned_name,
-                .qt = qt,
-                .name_tok = name_tok,
-                .bit_width = if (bits) |some| @fromBackingInt(@intCast(some)) else .null,
-                ._attr_index = attr_index,
-                ._attr_len = attr_len,
-            });
-            if (name_tok != 0) try p.record.addField(p, interned_name, name_tok);
             const node = try p.addNode(.{
                 .record_field = .{
                     .name_or_first_tok = name_tok,
@@ -2816,7 +3129,18 @@ fn recordDecl(p: *Parser) Error!bool {
                     .bit_width = bits_node,
                 },
             });
+
+            const interned_name = if (name_tok != 0) try p.comp.internString(p.tokSlice(name_tok)) else try p.getAnonymousName(first_tok);
+            try p.record_buf.append(gpa, .{
+                .name = interned_name,
+                .qt = qt,
+                .name_tok = name_tok,
+                .bit_width = if (bits) |some| @fromBackingInt(some) else .null,
+                .field_decl = .pack(node),
+            });
+            if (name_tok != 0) try p.record.addField(p, interned_name, name_tok);
             try p.decl_buf.append(gpa, node);
+            try p.wip_attrs.applyDeclAttrs(p, node, null);
         }
 
         if (!qt.isInvalid()) {
@@ -2876,12 +3200,72 @@ fn recordDecl(p: *Parser) Error!bool {
 }
 
 /// specQual : typeSpec+
-fn specQual(p: *Parser) Error!?QualType {
+fn specQual(p: *Parser, start_with_type_spec: bool) Error!?QualType {
     var builder: TypeStore.Builder = .{ .parser = p };
-    if (try p.typeSpec(&builder)) {
-        return try builder.finish();
+    var any = false;
+
+    // If a typename can appear in the same place as an expression
+    // a non-type specifier should cause an expected expression error.
+    if (start_with_type_spec) {
+        if (!try p.typeSpec(&builder)) return null;
+        any = true;
     }
-    return null;
+
+    while (true) {
+        switch (p.tok_ids[p.tok_i]) {
+            .keyword_auto_type => {
+                try builder.combine(.auto_type, p.tok_i); // always invalid
+                p.tok_i += 1;
+                continue;
+            },
+            .keyword_auto => if (p.comp.langopts.standard.atLeast(.c23)) {
+                try builder.combine(.c23_auto, p.tok_i); // always invalid
+                p.tok_i += 1;
+                continue;
+            },
+            else => {},
+        }
+        switch (p.tok_ids[p.tok_i]) {
+            .keyword_inline,
+            .keyword_inline1,
+            .keyword_inline2,
+            .keyword_noreturn,
+            .keyword_forceinline,
+            .keyword_forceinline2,
+            => {
+                try p.err(p.tok_i, .typename_invalid_specifier, .{"function"});
+                p.tok_i += 1;
+                continue;
+            },
+            .keyword_typedef,
+            .keyword_extern,
+            .keyword_static,
+            .keyword_auto,
+            .keyword_register,
+            .keyword_thread_local,
+            .keyword_c23_thread_local,
+            .keyword_thread,
+            => {
+                try p.err(p.tok_i, .typename_invalid_specifier, .{"storage class"});
+                p.tok_i += 1;
+                continue;
+            },
+            .keyword_constexpr => {
+                try p.err(p.tok_i, .typename_invalid_specifier, .{"constexpr"});
+                p.tok_i += 1;
+                continue;
+            },
+            else => {},
+        }
+        if (try p.typeSpec(&builder)) {
+            any = true;
+            continue;
+        }
+        break;
+    }
+
+    if (!any) return null;
+    return try builder.finish();
 }
 
 /// enumSpec
@@ -2891,14 +3275,19 @@ fn enumSpec(p: *Parser) Error!QualType {
     const gpa = p.comp.gpa;
     const enum_tok = p.tok_i;
     p.tok_i += 1;
-    const attr_buf_top = p.attr_buf.len;
-    defer p.attr_buf.len = attr_buf_top;
+    const attr_state = p.wip_attrs.state(true);
+    defer p.wip_attrs.restore(attr_state);
     try p.attributeSpecifier();
 
     const maybe_ident = try p.eatIdentifier();
+    try p.attributeSpecifier();
+
     const fixed_qt: ?QualType = if (p.eatToken(.colon)) |colon| fixed: {
         const ty_start = p.tok_i;
-        const fixed = (try p.specQual()) orelse {
+
+        const fixed_attr_state = p.wip_attrs.state(true);
+        defer p.wip_attrs.restore(fixed_attr_state);
+        const fixed = (try p.specQual(false)) orelse {
             if (p.record.kind != .invalid) {
                 // This is a bit field.
                 p.tok_i -= 1;
@@ -2909,7 +3298,8 @@ fn enumSpec(p: *Parser) Error!QualType {
             break :fixed .int;
         };
 
-        var final = fixed;
+        var final = try p.wip_attrs.applyTypeAttrs(p, fixed);
+        try p.diagnoseIgnoredAttrs();
         while (true) {
             switch (final.base(p.comp).type) {
                 .int => {
@@ -2930,6 +3320,7 @@ fn enumSpec(p: *Parser) Error!QualType {
     } else null;
 
     const reserved_index = try p.tree.nodes.addOne(gpa);
+    const enum_decl: Tree.Node.Index = @fromBackingInt(@intCast(reserved_index));
 
     const l_brace = p.eatToken(.l_brace) orelse {
         const ident = maybe_ident orelse {
@@ -2951,25 +3342,29 @@ fn enumSpec(p: *Parser) Error!QualType {
                 .tag = fixed_qt,
                 .fixed = fixed_qt != null,
                 .incomplete = true,
-                .decl_node = @fromBackingInt(@intCast(reserved_index)),
+                .decl_node = enum_decl,
                 .fields = &.{},
             } });
 
-            const attributed_qt = try Attribute.applyTypeAttributes(p, enum_qt, attr_buf_top, null);
             try p.syms.define(gpa, .{
                 .kind = .@"enum",
                 .name = interned_name,
                 .tok = ident,
-                .qt = attributed_qt,
+                .qt = enum_qt,
                 .val = .{},
+                .node = enum_decl,
             });
 
-            try p.decl_buf.append(gpa, try p.addNode(.{ .enum_forward_decl = .{
+            const decl_node = try p.addNode(.{ .enum_forward_decl = .{
                 .name_or_kind_tok = ident,
-                .container_qt = attributed_qt,
+                .container_qt = enum_qt,
                 .definition = null,
-            } }));
-            return attributed_qt;
+            } });
+            try p.decl_buf.append(gpa, decl_node);
+            assert(try p.wip_attrs.applyTypeAttrs(p, enum_qt) == enum_qt);
+            try p.wip_attrs.applyDeclAttrs(p, decl_node, null);
+
+            return enum_qt;
         }
     };
 
@@ -2978,7 +3373,7 @@ fn enumSpec(p: *Parser) Error!QualType {
 
     // Get forward declared type or create a new one
     var defined = false;
-    var enum_ty: Type.Enum, const qt: QualType = blk: {
+    var enum_ty: Type.Enum, const qt: QualType, const prev_decl: ?Node.Index = blk: {
         const interned_name = if (maybe_ident) |ident| interned: {
             const ident_str = p.tokSlice(ident);
             const interned_name = try p.comp.internString(ident_str);
@@ -2991,7 +3386,7 @@ fn enumSpec(p: *Parser) Error!QualType {
                 } else {
                     try p.checkEnumFixedTy(fixed_qt, ident, prev);
                     defined = true;
-                    break :blk .{ enum_ty, prev.qt };
+                    break :blk .{ enum_ty, prev.qt, enum_ty.decl_node };
                 }
             }
             break :interned interned_name;
@@ -3001,18 +3396,18 @@ fn enumSpec(p: *Parser) Error!QualType {
         // can be specified after the closing rbrace, which we haven't encountered yet.
         const enum_ty: Type.Enum = .{
             .name = interned_name,
-            .decl_node = @fromBackingInt(@intCast(reserved_index)),
+            .decl_node = enum_decl,
             .tag = fixed_qt,
             .incomplete = true,
             .fixed = fixed_qt != null,
             .fields = &.{},
         };
         const enum_qt = try p.comp.type_store.put(gpa, .{ .@"enum" = enum_ty });
-        break :blk .{ enum_ty, enum_qt };
+        break :blk .{ enum_ty, enum_qt, null };
     };
 
     // reserve space for this enum
-    try p.decl_buf.append(gpa, @fromBackingInt(@intCast(reserved_index)));
+    try p.decl_buf.append(gpa, enum_decl);
     const decl_buf_top = p.decl_buf.items.len;
     const list_buf_top = p.list_buf.items.len;
     const enum_buf_top = p.enum_buf.items.len;
@@ -3033,19 +3428,28 @@ fn enumSpec(p: *Parser) Error!QualType {
     if (p.enum_buf.items.len == enum_buf_top) try p.err(p.tok_i, .empty_enum, .{});
     try p.expectClosing(l_brace, .r_brace);
     done = true;
+
     try p.attributeSpecifier();
 
-    const attributed_qt = try Attribute.applyTypeAttributes(p, qt, attr_buf_top, null);
-    if (!enum_ty.fixed) {
-        enum_ty.tag = try e.getTypeSpecifier(p, attributed_qt.enumIsPacked(p.comp), maybe_ident orelse enum_tok);
-    }
+    // Set temporary node to apply attributes to.
+    try p.tree.setNode(.{ .enum_decl = .{
+        .name_or_kind_tok = maybe_ident orelse enum_tok,
+        .container_qt = qt,
+        .fields = &.{},
+    } }, reserved_index);
+    assert(try p.wip_attrs.applyTypeAttrs(p, qt) == qt);
+    try p.wip_attrs.applyDeclAttrs(p, enum_decl, prev_decl);
 
     const enum_fields = p.enum_buf.items[enum_buf_top..];
     const field_nodes = p.list_buf.items[list_buf_top..];
 
     if (fixed_qt == null) {
+        // Set tag type.
+        const enum_is_packed = p.comp.langopts.short_enums or p.comp.target.packAllEnums() or qt.hasAttribute(&p.tree, .@"packed");
+        const tag_qt = try e.getTypeSpecifier(p, enum_is_packed, maybe_ident orelse enum_tok);
+        enum_ty.tag = tag_qt;
+
         // Coerce all fields to final type.
-        const tag_qt = enum_ty.tag.?;
         const keep_int = e.num_positive_bits < Type.Int.int.bits(p.comp);
         for (enum_fields, field_nodes) |*field, field_node| {
             const sym = p.syms.get(field.name, .vars) orelse continue;
@@ -3072,7 +3476,7 @@ fn enumSpec(p: *Parser) Error!QualType {
 
             if (new_field_node.enum_field.init) |some| {
                 res.node = some;
-                try res.implicitCast(p, .int_cast, some.tok(&p.tree));
+                try res.implicitCast(p, .int_cast);
                 new_field_node.enum_field.init = res.node;
             }
 
@@ -3083,8 +3487,8 @@ fn enumSpec(p: *Parser) Error!QualType {
     { // Override previous incomplete type
         enum_ty.fields = enum_fields;
         enum_ty.incomplete = false;
-        enum_ty.decl_node = @fromBackingInt(@intCast(reserved_index));
-        const base_type = attributed_qt.base(p.comp);
+        enum_ty.decl_node = enum_decl;
+        const base_type = qt.base(p.comp);
         std.debug.assert(base_type.type.@"enum".name == enum_ty.name);
         try p.comp.type_store.set(gpa, .{ .@"enum" = enum_ty }, @backingInt(base_type.qt._index));
     }
@@ -3094,23 +3498,24 @@ fn enumSpec(p: *Parser) Error!QualType {
         try p.syms.define(gpa, .{
             .kind = .@"enum",
             .name = enum_ty.name,
-            .qt = attributed_qt,
+            .qt = qt,
             .tok = maybe_ident.?,
             .val = .{},
+            .node = enum_decl,
         });
     }
 
     // finish by creating a node
     try p.tree.setNode(.{ .enum_decl = .{
         .name_or_kind_tok = maybe_ident orelse enum_tok,
-        .container_qt = attributed_qt,
+        .container_qt = qt,
         .fields = field_nodes,
     } }, reserved_index);
 
     if (p.func.qt == null) {
-        _ = p.tentative_defs.remove(enum_ty.name);
+        _ = p.tentative_defs.orderedRemove(.incompleteType(enum_ty.name));
     }
-    return attributed_qt;
+    return qt;
 }
 
 fn checkEnumFixedTy(p: *Parser, fixed_qt: ?QualType, ident_tok: TokenIndex, prev: Symbol) !void {
@@ -3189,7 +3594,7 @@ const Enumerator = struct {
                 return error.ParsingFailed;
             }
             res.qt = e.qt;
-            try res.implicitCast(p, .int_cast, tok);
+            try res.implicitCast(p, .int_cast);
             e.val = res.val;
         } else {
             try res.castToInt(p, res.qt.promoteInt(p.comp), tok);
@@ -3213,6 +3618,9 @@ const Enumerator = struct {
                 return .int;
             }
             const long_width = Type.Int.long.bits(p.comp);
+            if (e.num_negative_bits == 24 and e.num_positive_bits < 24 and p.comp.langopts.has_int24) {
+                return .int24;
+            }
             if (e.num_negative_bits <= long_width and e.num_positive_bits < long_width) {
                 return .long;
             }
@@ -3228,6 +3636,8 @@ const Enumerator = struct {
             return .ushort;
         } else if (e.num_positive_bits <= int_width) {
             return .uint;
+        } else if (e.num_positive_bits == 24 and p.comp.langopts.has_int24) {
+            return .uint24;
         } else if (e.num_positive_bits <= Type.Int.long.bits(p.comp)) {
             return .ulong;
         }
@@ -3246,8 +3656,10 @@ fn enumerator(p: *Parser, e: *Enumerator) Error!?EnumFieldAndNode {
         p.skipTo(.r_brace);
         return error.ParsingFailed;
     };
-    const attr_buf_top = p.attr_buf.len;
-    defer p.attr_buf.len = attr_buf_top;
+
+    const attr_state = p.wip_attrs.state(true);
+    defer p.wip_attrs.restore(attr_state);
+    // TODO __declspec not allowed here
     try p.attributeSpecifier();
 
     const prev_total = p.diagnostics.total;
@@ -3287,22 +3699,22 @@ fn enumerator(p: *Parser, e: *Enumerator) Error!?EnumFieldAndNode {
         }
     }
 
-    const attributed_qt = try Attribute.applyEnumeratorAttributes(p, e.qt, attr_buf_top);
     const node = try p.addNode(.{
         .enum_field = .{
             .name_tok = name_tok,
-            .qt = attributed_qt,
+            .qt = e.qt,
             .init = field_init,
         },
     });
+    try p.wip_attrs.applyDeclAttrs(p, node, null);
     try p.tree.value_map.put(p.comp.gpa, node, e.val);
 
     const interned_name = try p.comp.internString(p.tokSlice(name_tok));
-    try p.syms.defineEnumeration(p, interned_name, attributed_qt, name_tok, e.val, node);
+    try p.syms.defineEnumeration(p, interned_name, e.qt, name_tok, e.val, node);
 
     return .{ .field = .{
         .name = interned_name,
-        .qt = attributed_qt,
+        .qt = e.qt,
         .name_tok = name_tok,
     }, .node = node };
 }
@@ -3361,18 +3773,7 @@ fn typeQual(p: *Parser, b: *TypeStore.Builder, allow_attr: bool) Error!bool {
                 } else switch (b.nullability) {
                     .none => {
                         b.nullability = new;
-                        try p.attr_buf.append(p.comp.gpa, .{
-                            .attr = .{ .tag = .nullability, .args = .{
-                                .nullability = .{ .kind = switch (tok_id) {
-                                    .keyword_nonnull => .nonnull,
-                                    .keyword_nullable => .nullable,
-                                    .keyword_nullable_result => .nullable_result,
-                                    .keyword_null_unspecified => .unspecified,
-                                    else => unreachable,
-                                } },
-                            }, .syntax = .keyword },
-                            .tok = p.tok_i,
-                        });
+                        try p.wip_attrs.addKeyword(p, p.tok_i, &.{});
                     },
                     .nonnull,
                     .nullable,
@@ -3405,31 +3806,17 @@ fn msTypeAttribute(p: *Parser) !bool {
             .keyword_cdecl,
             .keyword_cdecl2,
             => {
-                try p.attr_buf.append(p.comp.gpa, .{
-                    .attr = .{ .tag = .calling_convention, .args = .{
-                        .calling_convention = .{ .cc = switch (p.tok_ids[p.tok_i]) {
-                            .keyword_stdcall,
-                            .keyword_stdcall2,
-                            => .stdcall,
-                            .keyword_thiscall,
-                            .keyword_thiscall2,
-                            => .thiscall,
-                            .keyword_vectorcall,
-                            .keyword_vectorcall2,
-                            => .vectorcall,
-                            .keyword_fastcall,
-                            .keyword_fastcall2,
-                            => .fastcall,
-                            .keyword_regcall,
-                            => .regcall,
-                            .keyword_cdecl,
-                            .keyword_cdecl2,
-                            => .c,
-                            else => unreachable,
-                        } },
-                    }, .syntax = .keyword },
-                    .tok = p.tok_i,
-                });
+                try p.wip_attrs.addKeyword(p, p.tok_i, &.{});
+                any = true;
+                p.tok_i += 1;
+            },
+            .keyword_ptr64,
+            .keyword_ptr32,
+            .keyword_sptr,
+            .keyword_uptr,
+            => {
+                try p.err(p.tok_i, .extension_token_used, .{});
+                try p.wip_attrs.addKeyword(p, p.tok_i, &.{});
                 any = true;
                 p.tok_i += 1;
             },
@@ -3446,7 +3833,7 @@ const Declarator = struct {
 
     /// What kind of a type did this declarator declare?
     /// Used redundantly with `qt` in case it was set to `.invalid` by `validate`.
-    declarator_type: enum { other, func, array, pointer } = .other,
+    declarator_type: enum { other, func, array, pointer, block } = .other,
 
     const Kind = enum { normal, abstract, param, record };
 
@@ -3456,7 +3843,7 @@ const Declarator = struct {
             .nested_invalid => if (d.declarator_type == .func) return,
             .nested_auto => {
                 if (d.declarator_type == .func) return;
-                if (d.qt.isAutoType() or d.qt.isC23Auto()) return;
+                if (d.qt.isAuto()) return;
             },
             .declarator_combine => return,
         }
@@ -3472,8 +3859,7 @@ const Declarator = struct {
 
     fn validateExtra(p: *Parser, cur: QualType, source_tok: TokenIndex) Parser.Error!ValidationResult {
         if (cur.isInvalid()) return .nested_invalid;
-        if (cur.isAutoType()) return .nested_auto;
-        if (cur.isC23Auto()) return .nested_auto;
+        if (cur.isAuto()) return .nested_auto;
         if (cur._index == .declarator_combine) return .declarator_combine;
 
         switch (cur.type(p.comp)) {
@@ -3512,8 +3898,16 @@ const Declarator = struct {
                     if (elem_array_ty.len == .static) {
                         try p.err(source_tok, .static_non_outermost_array, .{});
                     }
-                    if (elem_qt.isQualified()) {
+                    if (elem_qt.isQualified() and elem_qt.type(p.comp) != .typedef) {
                         try p.err(source_tok, .qualifier_non_outermost_array, .{});
+                    }
+                } else if (p.comp.langopts.emulate != .msvc) {
+                    if (elem_qt.sizeofOrNull(p.comp)) |elem_size| {
+                        const elem_align = elem_qt.alignof(p.comp);
+                        if (elem_size % elem_align != 0) {
+                            try p.err(source_tok, .array_elem_size_not_multiple, .{ elem_qt, elem_size, elem_align });
+                            return .nested_invalid;
+                        }
                     }
                 }
                 return .normal;
@@ -3538,14 +3932,23 @@ const Declarator = struct {
                 }
                 return .normal;
             },
+            .block => |block_ty| {
+                const func_qt = block_ty.func;
+                const child_res = try validateExtra(p, func_qt, source_tok);
+                if (child_res != .normal) return child_res;
+                if (!func_qt.is(p.comp, .func)) {
+                    try p.err(source_tok, .block_to_non_function, .{});
+                    return .nested_invalid;
+                }
+                return .normal;
+            },
             else => return .normal,
         }
     }
 };
 
-/// declarator : pointer? (IDENTIFIER | '(' declarator ')') directDeclarator*
-/// abstractDeclarator
-/// : pointer? ('(' abstractDeclarator ')')? directAbstractDeclarator*
+/// declarator : '^'? pointer? (IDENTIFIER | '(' declarator ')') directDeclarator*
+/// abstractDeclarator : '^'? pointer? ('(' abstractDeclarator ')')? directAbstractDeclarator*
 /// pointer : '*' typeQual* pointer?
 fn declarator(
     p: *Parser,
@@ -3555,21 +3958,43 @@ fn declarator(
     var d = Declarator{ .name = 0, .qt = base_qt };
 
     // Parse potential pointer declarators first.
-    while (p.eatToken(.asterisk)) |_| {
-        d.declarator_type = .pointer;
-        var builder: TypeStore.Builder = .{ .parser = p };
-        _ = try p.typeQual(&builder, true);
+    while (true) switch (p.tok_ids[p.tok_i]) {
+        .caret => {
+            const caret = p.tok_i;
+            p.tok_i += 1;
+            d.qt = try p.wip_attrs.applyTypeAttrs(p, d.qt);
+            if (!p.comp.langopts.blocks) try p.err(caret, .blocks_not_enabled, .{});
+            try p.err(caret, .blocks_are_clang_extension, .{});
 
-        const pointer_qt = try p.comp.type_store.put(p.comp.gpa, .{ .pointer = .{
-            .child = d.qt,
-        } });
-        d.qt = try builder.finishQuals(pointer_qt);
-    }
+            d.declarator_type = .block;
+            var builder: TypeStore.Builder = .{ .parser = p };
+            _ = try p.typeQual(&builder, true);
+
+            const block_qt = try p.comp.type_store.put(p.comp.gpa, .{ .block = .{
+                .func = d.qt,
+            } });
+            d.qt = try builder.finishQuals(block_qt);
+        },
+        .asterisk => {
+            p.tok_i += 1;
+            d.qt = try p.wip_attrs.applyTypeAttrs(p, d.qt);
+            d.declarator_type = .pointer;
+            var builder: TypeStore.Builder = .{ .parser = p };
+            _ = try p.typeQual(&builder, true);
+
+            const pointer_qt = try p.comp.type_store.put(p.comp.gpa, .{ .pointer = .{
+                .child = d.qt,
+            } });
+            d.qt = try builder.finishQuals(pointer_qt);
+        },
+        else => break,
+    };
 
     const maybe_ident = p.tok_i;
     if (kind != .abstract and (try p.eatIdentifier()) != null) {
         d.name = maybe_ident;
         const combine_tok = p.tok_i;
+        d.qt = try p.wip_attrs.applyTypeAttrs(p, d.qt);
         d.qt = try p.directDeclarator(&d, kind);
         try d.validate(p, combine_tok);
         return d;
@@ -3580,6 +4005,7 @@ fn declarator(
         // Parse Microsoft keyword type attributes.
         _ = try p.msTypeAttribute();
 
+        d.qt = try p.wip_attrs.applyTypeAttrs(p, d.qt);
         const special_marker: QualType = .{ ._index = .declarator_combine };
         var res = (try p.declarator(special_marker, kind)) orelse {
             p.tok_i = l_paren;
@@ -3616,6 +4042,10 @@ fn declarator(
                         cur = func_ty.return_type;
                         continue;
                     },
+                    .block => |block_ty| if (block_ty.func._index != .declarator_combine) {
+                        cur = block_ty.func;
+                        continue;
+                    },
                     else => unreachable,
                 }
                 // Child type is always stored in repr.data[0]
@@ -3640,7 +4070,6 @@ fn declarator(
             switch (cur.type(p.comp)) {
                 .typeof => |typeof_ty| cur = typeof_ty.base,
                 .typedef => |typedef_ty| cur = typedef_ty.base,
-                .attributed => |attributed_ty| cur = attributed_ty.base,
                 else => |ty| switch (ty) {
                     .@"enum", .@"struct", .@"union" => break,
                     else => {
@@ -3678,15 +4107,8 @@ fn directDeclarator(
     if (p.eatToken(.l_bracket)) |l_bracket| {
         // Check for C23 attribute
         if (p.tok_ids[p.tok_i] == .l_bracket) {
-            switch (kind) {
-                .normal, .record => if (p.comp.langopts.standard.atLeast(.c23)) {
-                    p.tok_i -= 1;
-                    return base_declarator.qt;
-                },
-                .param, .abstract => {},
-            }
-            try p.err(p.tok_i, .expected_expr, .{});
-            return error.ParsingFailed;
+            p.tok_i -= 1;
+            return base_declarator.qt;
         }
 
         var builder: TypeStore.Builder = .{ .parser = p };
@@ -3819,12 +4241,18 @@ fn directDeclarator(
             while (true) {
                 const name_tok = try p.expectIdentifier();
                 const interned_name = try p.comp.internString(p.tokSlice(name_tok));
-                try p.syms.defineParam(p, interned_name, undefined, name_tok, null);
+                const param_node = try p.addNode(.{ .param = .{
+                    .name_tok = name_tok,
+                    .qt = .int,
+                    .storage_class = .auto,
+                } });
+                try p.syms.defineParam(p, interned_name, undefined, name_tok, param_node);
+                try p.addMaybeUnusued(param_node);
                 try p.param_buf.append(gpa, .{
                     .name = interned_name,
                     .name_tok = name_tok,
                     .qt = .int,
-                    .node = .null,
+                    .node = .pack(param_node),
                 });
                 if (p.eatToken(.comma) == null) break;
             }
@@ -3856,8 +4284,10 @@ fn paramDecls(p: *Parser) Error!?[]Type.Func.Param {
     const gpa = p.comp.gpa;
 
     while (true) {
-        const attr_buf_top = p.attr_buf.len;
-        defer p.attr_buf.len = attr_buf_top;
+        const first_tok = p.tok_i;
+        const param_attr_state = p.wip_attrs.state(true);
+        defer p.wip_attrs.restore(param_attr_state);
+
         const param_decl_spec = if (try p.declSpec()) |some|
             some
         else if (p.comp.langopts.standard.atLeast(.c23) and
@@ -3886,7 +4316,6 @@ fn paramDecls(p: *Parser) Error!?[]Type.Func.Param {
 
         var name_tok: TokenIndex = 0;
         var interned_name: StringId = .empty;
-        const first_tok = p.tok_i;
         var param_qt = param_decl_spec.qt;
         if (param_decl_spec.auto_type) |tok_i| {
             try p.err(tok_i, .auto_type_not_allowed, .{"function prototype"});
@@ -3901,8 +4330,9 @@ fn paramDecls(p: *Parser) Error!?[]Type.Func.Param {
             if (some.old_style_func) |tok_i| try p.err(tok_i, .invalid_old_style_params, .{});
             try p.attributeSpecifier();
             name_tok = some.name;
-            param_qt = some.qt;
+            param_qt = try p.wip_attrs.applyTypeAttrs(p, some.qt);
         }
+        const param_tok = if (name_tok != 0) name_tok else first_tok;
 
         if (param_qt.is(p.comp, .void)) {
             // validate void parameters
@@ -3919,39 +4349,41 @@ fn paramDecls(p: *Parser) Error!?[]Type.Func.Param {
         } else {
             // Decay params declared as functions or arrays to pointer.
             param_qt = try param_qt.decay(p.comp);
+            // Apply potential nullability attributes.
+            param_qt = try p.wip_attrs.applyTypeAttrs(p, param_qt);
         }
         try param_decl_spec.validateParam(p);
-        param_qt = try Attribute.applyParameterAttributes(p, param_qt, attr_buf_top, .alignas_on_param);
 
         if (param_qt.get(p.comp, .float)) |float| {
             if (float == .fp16 and !p.comp.hasHalfPrecisionFloatABI()) {
-                try p.err(first_tok, .suggest_pointer_for_invalid_fp16, .{"parameters"});
+                try p.err(param_tok, .suggest_pointer_for_invalid_fp16, .{"parameters"});
             }
         }
 
-        var param_node: Node.OptIndex = .null;
-        if (name_tok != 0) {
-            const node = try p.addNode(.{
-                .param = .{
-                    .name_tok = name_tok,
-                    .qt = param_qt,
-                    .storage_class = switch (param_decl_spec.storage_class) {
-                        .none => .auto,
-                        .register => .register,
-                        else => .auto, // Error reported in `validateParam`
-                    },
+        const param_node = try p.addNode(.{
+            .param = .{
+                .name_tok = param_tok,
+                .qt = param_qt,
+                .storage_class = switch (param_decl_spec.storage_class) {
+                    .none => .auto,
+                    .register => .register,
+                    else => .auto, // Error reported in `validateParam`
                 },
-            });
-            param_node = .pack(node);
+            },
+        });
+        try p.wip_attrs.applyDeclAttrs(p, param_node, null);
+        try p.addMaybeUnusued(param_node);
+
+        if (name_tok != 0) {
             interned_name = try p.comp.internString(p.tokSlice(name_tok));
-            try p.syms.defineParam(p, interned_name, param_qt, name_tok, node);
+            try p.syms.defineParam(p, interned_name, param_qt, name_tok, param_node);
         }
 
         try p.param_buf.append(gpa, .{
             .name = interned_name,
-            .name_tok = if (name_tok == 0) first_tok else name_tok,
+            .name_tok = param_tok,
             .qt = param_qt,
-            .node = param_node,
+            .node = .pack(param_node),
         });
 
         if (p.eatToken(.comma) == null) break;
@@ -3962,14 +4394,30 @@ fn paramDecls(p: *Parser) Error!?[]Type.Func.Param {
 
 /// typeName : specQual abstractDeclarator
 fn typeName(p: *Parser) Error!?QualType {
-    const attr_buf_top = p.attr_buf.len;
-    defer p.attr_buf.len = attr_buf_top;
-    const ty = (try p.specQual()) orelse return null;
-    if (try p.declarator(ty, .abstract)) |some| {
-        if (some.old_style_func) |tok_i| try p.err(tok_i, .invalid_old_style_params, .{});
-        return try Attribute.applyTypeAttributes(p, some.qt, attr_buf_top, .align_ignored);
+    return p.typeNameExtra(true);
+}
+
+fn expectTypeName(p: *Parser, closing: Token.Id) Error!QualType {
+    return (try p.typeNameExtra(false)) orelse {
+        try p.err(p.tok_i, .expected_type, .{});
+        p.skipTo(closing);
+        p.tok_i -= 1;
+        return .invalid;
+    };
+}
+
+fn typeNameExtra(p: *Parser, start_with_type_spec: bool) Error!?QualType {
+    const attr_state = p.wip_attrs.state(true);
+    defer p.wip_attrs.restore(attr_state);
+
+    var qt = (try p.specQual(start_with_type_spec)) orelse return null;
+    qt = try p.wip_attrs.applyTypeAttrs(p, qt);
+    if (try p.declarator(qt, .abstract)) |abstract_d| {
+        if (abstract_d.old_style_func) |tok_i| try p.err(tok_i, .invalid_old_style_params, .{});
+        qt = try p.wip_attrs.applyTypeAttrs(p, abstract_d.qt);
     }
-    return try Attribute.applyTypeAttributes(p, ty, attr_buf_top, .align_ignored);
+    try p.diagnoseIgnoredAttrs();
+    return qt;
 }
 
 /// initializer
@@ -4036,7 +4484,7 @@ fn initializerItem(p: *Parser, il: *InitList, init_qt: QualType, l_brace: TokenI
         errdefer p.skipTo(.r_brace);
 
         const designated = try p.designation(il, init_qt, &index_list);
-        if (!designated and init_qt.hasAttribute(p.comp, .designated_init)) {
+        if (!designated and init_qt.hasAttribute(&p.tree, .designated_init)) {
             try p.err(p.tok_i, .designated_init_needed, .{});
         }
 
@@ -4213,7 +4661,12 @@ fn findScalarInitializer(
                 warned_excess.* = true;
                 return true;
             }
-            if (res.qt.eql(qt, p.comp) and il.list.items.len == 0) {
+            const is_direct_complex_init = index_list_top == 0;
+            const is_last_init_item = p.tok_ids[p.tok_i] == .r_brace or
+                (p.tok_ids[p.tok_i] == .comma and p.tok_ids[p.tok_i + 1] == .r_brace);
+            const last_is_complex = is_last_init_item and res.qt.is(p.comp, .complex);
+            const can_init_whole_complex = il.list.items.len == 0 and (!is_direct_complex_init or last_is_complex);
+            if (can_init_whole_complex) {
                 try p.setInitializer(il, qt, first_tok, res);
                 return true;
             }
@@ -4526,11 +4979,11 @@ fn coerceInit(p: *Parser, item: *Result, tok: TokenIndex, target: QualType) !voi
     if (target.isInvalid()) return;
 
     const node = item.node;
-    if (target.isAutoType() or target.isC23Auto()) {
+    if (target.isAuto()) {
         if (p.getNode(node, .member_access_expr) orelse p.getNode(node, .member_access_ptr_expr)) |access| {
             if (access.isBitFieldWidth(&p.tree) != null) try p.err(tok, .auto_type_from_bitfield, .{});
         }
-        try item.lvalConversion(p, tok);
+        try item.lvalConversion(p);
         return;
     }
 
@@ -4795,13 +5248,12 @@ fn asmOperand(p: *Parser, kind: enum { output, input }) Error!Tree.Node.AsmStmt.
         try p.err(p.tok_i, .expected_token, .{ p.tok_ids[p.tok_i], Token.Id.l_paren });
         return error.ParsingFailed;
     };
-    const maybe_res = try p.expr();
+    var res = try p.expectWithClosing(expr, .r_paren);
     try p.expectClosing(l_paren, .r_paren);
-    var res = try p.expectResult(maybe_res);
     if (kind == .output and !p.tree.isLval(res.node)) {
         try p.err(l_paren + 1, .invalid_asm_output, .{});
     } else if (kind == .input) {
-        try res.lvalConversion(p, l_paren + 1);
+        try res.lvalConversion(p);
     }
     return .{
         .name = name,
@@ -4922,14 +5374,12 @@ fn gnuAsmStmt(p: *Parser, quals: Tree.GNUAssemblyQualifiers, asm_tok: TokenIndex
                 return error.ParsingFailed;
             };
             const ident_str = p.tokSlice(ident);
-            const label = p.findLabel(ident_str) orelse blk: {
+            _ = p.findLabel(ident_str) orelse
                 try p.labels.append(gpa, .{ .unresolved_goto = ident });
-                break :blk ident;
-            };
 
             const label_addr_node = try p.addNode(.{
                 .addr_of_label = .{
-                    .label_tok = label,
+                    .label_tok = ident,
                     .qt = .void_pointer,
                 },
             });
@@ -5009,10 +5459,9 @@ fn assembly(p: *Parser, kind: enum { global, decl_label, stmt }) Error!?Node.Ind
     const res = switch (kind) {
         .decl_label => blk: {
             const asm_str = try p.asmStr();
-            const str = try p.removeNull(asm_str.val);
+            // const str = try p.removeNull(asm_str.val);
 
-            const attr = Attribute{ .tag = .asm_label, .args = .{ .asm_label = .{ .name = str } }, .syntax = .keyword };
-            try p.attr_buf.append(p.comp.gpa, .{ .attr = attr, .tok = asm_tok });
+            try p.wip_attrs.addKeyword(p, asm_tok, &.{asm_str});
             break :blk asm_str.node;
         },
         .global => blk: {
@@ -5073,7 +5522,20 @@ fn asmStr(p: *Parser) Error!Result {
 ///  | keyword_return expr? ';'
 ///  | assembly ';'
 ///  | expr? ';'
-fn stmt(p: *Parser) Error!Node.Index {
+fn stmt(p: *Parser, check_unused: bool) Error!Node.Index {
+    const bare_stmt = blk: {
+        const attr_state = p.wip_attrs.state(true);
+        defer p.wip_attrs.restore(attr_state);
+
+        try p.attributeSpecifier();
+
+        break :blk try p.attributedStmt(check_unused);
+    };
+    try p.wip_attrs.applyStmtAttrs(p, bare_stmt);
+    return bare_stmt;
+}
+
+fn attributedStmt(p: *Parser, check_unused: bool) Error!Node.Index {
     if (try p.labeledStmt()) |some| return some;
     if (try p.compoundStmt(false, null)) |some| return some;
     const gpa = p.comp.gpa;
@@ -5082,7 +5544,7 @@ fn stmt(p: *Parser) Error!Node.Index {
 
         const cond_tok = p.tok_i;
         var cond = try p.expect(expr);
-        try cond.lvalConversion(p, cond_tok);
+        try cond.lvalConversion(p);
         try cond.usualUnaryConversion(p, cond_tok);
         if (!cond.qt.isInvalid() and cond.qt.scalarKind(p.comp) == .none)
             try p.err(l_paren + 1, .statement_scalar, .{cond.qt});
@@ -5090,8 +5552,8 @@ fn stmt(p: *Parser) Error!Node.Index {
 
         try p.expectClosing(l_paren, .r_paren);
 
-        const then_body = try p.stmt();
-        const else_body = if (p.eatToken(.keyword_else)) |_| try p.stmt() else null;
+        const then_body = try p.stmt(true);
+        const else_body = if (p.eatToken(.keyword_else)) |_| try p.stmt(true) else null;
 
         if (p.nodeIs(then_body, .null_stmt) and else_body == null) {
             const semicolon_tok = then_body.get(&p.tree).null_stmt.semicolon_or_r_brace_tok;
@@ -5115,7 +5577,7 @@ fn stmt(p: *Parser) Error!Node.Index {
         const l_paren = try p.expectToken(.l_paren);
         const cond_tok = p.tok_i;
         var cond = try p.expect(expr);
-        try cond.lvalConversion(p, cond_tok);
+        try cond.lvalConversion(p);
         try cond.usualUnaryConversion(p, cond_tok);
 
         // Switch condition can't be complex.
@@ -5137,7 +5599,7 @@ fn stmt(p: *Parser) Error!Node.Index {
             p.@"switch" = old_switch;
         }
 
-        const body = try p.stmt();
+        const body = try p.stmt(true);
 
         return p.addNode(.{ .switch_stmt = .{
             .switch_tok = kw_switch,
@@ -5150,7 +5612,7 @@ fn stmt(p: *Parser) Error!Node.Index {
 
         const cond_tok = p.tok_i;
         var cond = try p.expect(expr);
-        try cond.lvalConversion(p, cond_tok);
+        try cond.lvalConversion(p);
         try cond.usualUnaryConversion(p, cond_tok);
         if (!cond.qt.isInvalid() and cond.qt.scalarKind(p.comp) == .none)
             try p.err(l_paren + 1, .statement_scalar, .{cond.qt});
@@ -5162,7 +5624,7 @@ fn stmt(p: *Parser) Error!Node.Index {
             const old_loop = p.in_loop;
             p.in_loop = true;
             defer p.in_loop = old_loop;
-            break :body try p.stmt();
+            break :body try p.stmt(true);
         };
 
         return p.addNode(.{ .while_stmt = .{
@@ -5176,7 +5638,7 @@ fn stmt(p: *Parser) Error!Node.Index {
             const old_loop = p.in_loop;
             p.in_loop = true;
             defer p.in_loop = old_loop;
-            break :body try p.stmt();
+            break :body try p.stmt(true);
         };
 
         _ = try p.expectToken(.keyword_while);
@@ -5184,7 +5646,7 @@ fn stmt(p: *Parser) Error!Node.Index {
 
         const cond_tok = p.tok_i;
         var cond = try p.expect(expr);
-        try cond.lvalConversion(p, cond_tok);
+        try cond.lvalConversion(p);
         try cond.usualUnaryConversion(p, cond_tok);
 
         if (!cond.qt.isInvalid() and cond.qt.scalarKind(p.comp) == .none)
@@ -5207,27 +5669,26 @@ fn stmt(p: *Parser) Error!Node.Index {
         defer p.decl_buf.items.len = decl_buf_top;
 
         const l_paren = try p.expectToken(.l_paren);
-        const got_decl = try p.decl();
 
         // for (init
-        const init_start = p.tok_i;
-        var prev_total = p.diagnostics.total;
+        var prev_errors = p.diagnostics.errors;
         const init = init: {
-            if (got_decl) break :init null;
-            var init = (try p.expr()) orelse break :init null;
+            if (try p.declStmt()) |decl_stmt| break :init decl_stmt;
+            const opt_init = try p.expr();
+            _ = try p.expectToken(.semicolon);
+            var init = opt_init orelse break :init null;
 
             try init.saveValue(p);
-            try init.maybeWarnUnused(p, init_start, prev_total);
+            try p.diagnoseUnusedValue(init.node, prev_errors);
             break :init init.node;
         };
-        if (!got_decl) _ = try p.expectToken(.semicolon);
 
         // for (init; cond
         const cond = cond: {
             const cond_tok = p.tok_i;
             var cond = (try p.expr()) orelse break :cond null;
 
-            try cond.lvalConversion(p, cond_tok);
+            try cond.lvalConversion(p);
             try cond.usualUnaryConversion(p, cond_tok);
             if (!cond.qt.isInvalid() and cond.qt.scalarKind(p.comp) == .none)
                 try p.err(l_paren + 1, .statement_scalar, .{cond.qt});
@@ -5237,12 +5698,11 @@ fn stmt(p: *Parser) Error!Node.Index {
         _ = try p.expectToken(.semicolon);
 
         // for (init; cond; incr
-        const incr_start = p.tok_i;
-        prev_total = p.diagnostics.total;
+        prev_errors = p.diagnostics.errors;
         const incr = incr: {
             var incr = (try p.expr()) orelse break :incr null;
 
-            try incr.maybeWarnUnused(p, incr_start, prev_total);
+            try p.diagnoseUnusedValue(incr.node, prev_errors);
             try incr.saveValue(p);
             break :incr incr.node;
         };
@@ -5252,15 +5712,12 @@ fn stmt(p: *Parser) Error!Node.Index {
             const old_loop = p.in_loop;
             p.in_loop = true;
             defer p.in_loop = old_loop;
-            break :body try p.stmt();
+            break :body try p.stmt(true);
         };
 
         return p.addNode(.{ .for_stmt = .{
             .for_tok = kw_for,
-            .init = if (decl_buf_top == p.decl_buf.items.len)
-                .{ .expr = init }
-            else
-                .{ .decls = p.decl_buf.items[decl_buf_top..] },
+            .init = init,
             .cond = cond,
             .incr = incr,
             .body = body,
@@ -5270,7 +5727,7 @@ fn stmt(p: *Parser) Error!Node.Index {
         if (p.eatToken(.asterisk)) |_| {
             const expr_tok = p.tok_i;
             var goto_expr = try p.expect(expr);
-            try goto_expr.lvalConversion(p, expr_tok);
+            try goto_expr.lvalConversion(p);
             p.computed_goto_tok = p.computed_goto_tok orelse goto_tok;
 
             if (!goto_expr.qt.isInvalid() and !goto_expr.qt.isPointer(p.comp)) {
@@ -5282,10 +5739,10 @@ fn stmt(p: *Parser) Error!Node.Index {
                     return error.ParsingFailed;
                 }
                 if (goto_expr.val.isZero(p.comp)) {
-                    try goto_expr.nullToPointer(p, result_qt, expr_tok);
+                    try goto_expr.nullToPointer(p, result_qt);
                 } else {
                     try p.err(expr_tok, .implicit_int_to_ptr, .{ goto_expr.qt, result_qt });
-                    try goto_expr.castToPointer(p, result_qt, expr_tok);
+                    try goto_expr.castToPointer(p, result_qt);
                 }
             }
 
@@ -5312,28 +5769,35 @@ fn stmt(p: *Parser) Error!Node.Index {
     if (try p.returnStmt()) |some| return some;
     if (try p.assembly(.stmt)) |some| return some;
 
-    const expr_start = p.tok_i;
-    const prev_total = p.diagnostics.total;
-
+    const prev_errors = p.diagnostics.errors;
     if (try p.expr()) |some| {
         _ = try p.expectToken(.semicolon);
-        try some.maybeWarnUnused(p, expr_start, prev_total);
+        if (check_unused) try p.diagnoseUnusedValue(some.node, prev_errors);
+        try some.putValue(p);
         return some.node;
     }
-
-    const attr_buf_top = p.attr_buf.len;
-    defer p.attr_buf.len = attr_buf_top;
-    try p.attributeSpecifier();
 
     if (p.eatToken(.semicolon)) |semicolon| {
         return p.addNode(.{ .null_stmt = .{
             .semicolon_or_r_brace_tok = semicolon,
-            .qt = try Attribute.applyStatementAttributes(p, expr_start, attr_buf_top),
         } });
     }
 
     try p.err(p.tok_i, .expected_stmt, .{});
     return error.ParsingFailed;
+}
+
+fn declStmt(p: *Parser) Error!?Node.Index {
+    const decl_buf_top = p.decl_buf.items.len;
+    defer p.decl_buf.items.len = decl_buf_top;
+    const first = p.tok_i;
+    if (try p.decl()) {
+        return try p.addNode(.{ .decl_stmt = .{
+            .decls = p.decl_buf.items[decl_buf_top..],
+            .first_tok = first,
+        } });
+    }
+    return null;
 }
 
 /// labeledStmt
@@ -5344,32 +5808,53 @@ fn labeledStmt(p: *Parser) Error!?Node.Index {
     if ((p.tok_ids[p.tok_i] == .identifier or p.tok_ids[p.tok_i] == .extended_identifier) and p.tok_ids[p.tok_i + 1] == .colon) {
         const name_tok = try p.expectIdentifier();
         const str = p.tokSlice(name_tok);
+        p.tok_i += 1; // colon
+
+        var node: Tree.Node = .{ .labeled_stmt = .{
+            .body = undefined,
+            .label_tok = name_tok,
+        } };
+        const labeled_stmt = try p.addNode(node);
+
+        // Any gnu attributes between the label and the body statement apply to
+        // this labeled statement rather than that body statement.
+        const attr_tok = p.tok_i;
+        {
+            const attr_state = p.wip_attrs.state(true);
+            defer p.wip_attrs.restore(attr_state);
+
+            while (try p.gnuAttribute()) {}
+            try p.wip_attrs.applyStmtAttrs(p, labeled_stmt);
+        }
+        const applied_any = p.wip_attrs.applied.items.len != 0;
+
         if (p.findLabel(str)) |some| {
             try p.err(name_tok, .duplicate_label, .{str});
             try p.err(some, .previous_label, .{str});
         } else {
             p.label_count += 1;
-            try p.labels.append(p.comp.gpa, .{ .label = name_tok });
+            try p.labels.append(p.comp.gpa, .{ .label = labeled_stmt });
             var i: usize = 0;
+            var any_unresolved = false;
             while (i < p.labels.items.len) {
                 if (p.labels.items[i] == .unresolved_goto and
                     mem.eql(u8, p.tokSlice(p.labels.items[i].unresolved_goto), str))
                 {
+                    any_unresolved = true;
                     _ = p.labels.swapRemove(i);
                 } else i += 1;
             }
+            if (!any_unresolved) try p.addMaybeUnusued(labeled_stmt);
         }
 
-        p.tok_i += 1;
-        const attr_buf_top = p.attr_buf.len;
-        defer p.attr_buf.len = attr_buf_top;
-        try p.attributeSpecifier();
+        node.labeled_stmt.body = try p.labelableStmt();
+        try p.tree.setNode(node, @backingInt(labeled_stmt));
 
-        return try p.addNode(.{ .labeled_stmt = .{
-            .qt = try Attribute.applyLabelAttributes(p, attr_buf_top),
-            .body = try p.labelableStmt(),
-            .label_tok = name_tok,
-        } });
+        if (applied_any and node.labeled_stmt.body.get(&p.tree) == .decl_stmt) {
+            try p.err(attr_tok, .gnu_label_attr, .{});
+        }
+
+        return labeled_stmt;
     } else if (p.eatToken(.keyword_case)) |case| {
         var first_item = try p.integerConstExpr(.gnu_folding_extension);
         const ellipsis = p.tok_i;
@@ -5445,19 +5930,18 @@ fn labelableStmt(p: *Parser) Error!Node.Index {
         try p.err(p.tok_i, .label_compound_end, .{});
         return p.addNode(.{ .null_stmt = .{
             .semicolon_or_r_brace_tok = p.tok_i,
-            .qt = .void,
         } });
     }
-    return p.stmt();
+    const start = p.tok_i;
+    if (try p.declStmt()) |decl_stmt| {
+        try p.err(start, .label_decl, .{});
+        return decl_stmt;
+    }
+    return p.stmt(true);
 }
 
-const StmtExprState = struct {
-    last_expr_tok: TokenIndex = 0,
-    last_expr_qt: QualType = .void,
-};
-
 /// compoundStmt : '{' ( decl | keyword_extension decl | staticAssert | stmt)* '}'
-fn compoundStmt(p: *Parser, is_fn_body: bool, stmt_expr_state: ?*StmtExprState) Error!?Node.Index {
+fn compoundStmt(p: *Parser, is_fn_body: bool, stmt_expr_state: ?*?Node.Index) Error!?Node.Index {
     const l_brace = p.eatToken(.l_brace) orelse return null;
 
     const gpa = p.comp.gpa;
@@ -5470,10 +5954,20 @@ fn compoundStmt(p: *Parser, is_fn_body: bool, stmt_expr_state: ?*StmtExprState) 
 
     var noreturn_index: ?TokenIndex = null;
     var noreturn_label_count: u32 = 0;
+    var prev_errors = p.diagnostics.errors;
 
     while (p.eatToken(.r_brace) == null) : (_ = try p.pragma()) {
-        if (stmt_expr_state) |state| state.* = .{};
+        const attr_state = p.wip_attrs.state(true);
+        defer p.wip_attrs.restore(attr_state);
+        try p.attributeSpecifier();
+
+        if (stmt_expr_state) |opt_node| {
+            if (opt_node.*) |node| try p.diagnoseUnusedValue(node, prev_errors);
+            opt_node.* = null;
+        }
+        prev_errors = p.diagnostics.errors;
         if (try p.parseOrNextStmt(staticAssert, l_brace)) continue;
+        // TODO use declStmt?
         if (try p.parseOrNextStmt(decl, l_brace)) continue;
         if (p.eatToken(.keyword_extension)) |ext| {
             const saved_extension = p.extension_suppressed;
@@ -5483,19 +5977,15 @@ fn compoundStmt(p: *Parser, is_fn_body: bool, stmt_expr_state: ?*StmtExprState) 
             if (try p.parseOrNextStmt(decl, l_brace)) continue;
             p.tok_i = ext;
         }
-        const stmt_tok = p.tok_i;
-        const s = p.stmt() catch |er| switch (er) {
+        const s = p.stmt(stmt_expr_state == null) catch |er| switch (er) {
             error.ParsingFailed => {
                 try p.nextStmt(l_brace);
                 continue;
             },
             else => |e| return e,
         };
-        if (stmt_expr_state) |state| {
-            state.* = .{
-                .last_expr_tok = stmt_tok,
-                .last_expr_qt = s.qt(&p.tree),
-            };
+        if (stmt_expr_state) |opt_node| {
+            opt_node.* = s;
         }
         try p.decl_buf.append(gpa, s);
 
@@ -5564,8 +6054,7 @@ fn pointerValue(p: *Parser, node: Node.Index, offset: Value) !Value {
         .decl_ref_expr => |decl_ref| {
             const var_name = try p.comp.internString(p.tokSlice(decl_ref.name_tok));
             const sym = p.syms.findSymbol(var_name) orelse return .{};
-            const sym_node = sym.node.unpack() orelse return .{};
-            return Value.pointer(.{ .node = @backingInt(sym_node), .offset = offset.ref() }, p.comp);
+            return Value.pointer(.{ .node = @backingInt(sym.node), .offset = offset.ref() }, p.comp);
         },
         .string_literal_expr => return p.tree.value_map.get(node).?,
         else => return .{},
@@ -5598,6 +6087,7 @@ fn nodeIsNoreturn(p: *Parser, node: Node.Index) NoreturnKind {
             return p.nodeIsNoreturn(default.body);
         },
         .while_stmt, .do_while_stmt, .for_stmt, .switch_stmt => return .complex,
+        .goto_stmt, .computed_goto_stmt => return .complex,
         else => return .no,
     }
 }
@@ -5647,6 +6137,7 @@ fn nextStmt(p: *Parser, l_brace: TokenIndex) !void {
             .keyword_register,
             .keyword_thread_local,
             .keyword_c23_thread_local,
+            .keyword_thread,
             .keyword_inline,
             .keyword_inline1,
             .keyword_inline2,
@@ -5697,7 +6188,7 @@ fn returnStmt(p: *Parser) Error!?Node.Index {
     const ret_qt: QualType = if (func_qt.get(p.comp, .func)) |func_ty| func_ty.return_type else .invalid;
     const ret_void = !ret_qt.isInvalid() and ret_qt.is(p.comp, .void);
 
-    if (func_qt.hasAttribute(p.comp, .noreturn)) {
+    if (p.tree.attr_map.hasAttribute(p.func.decl, .noreturn)) {
         try p.err(e_tok, .invalid_noreturn, .{p.tokSlice(p.func.name)});
     }
 
@@ -5723,14 +6214,6 @@ fn returnStmt(p: *Parser) Error!?Node.Index {
 }
 
 // ====== expressions ======
-
-pub fn macroExpr(p: *Parser) Compilation.Error!bool {
-    const res = p.expect(condExpr) catch |er| switch (er) {
-        error.OutOfMemory, error.FatalError => |e| return e,
-        error.ParsingFailed => return false,
-    };
-    return res.val.toBool(p.comp);
-}
 
 const CallExpr = union(enum) {
     standard: Node.Index,
@@ -5816,6 +6299,10 @@ const CallExpr = union(enum) {
                 .__builtin_elementwise_add_sat,
                 .__builtin_elementwise_sub_sat,
                 .__builtin_elementwise_popcount,
+                .__builtin_elementwise_fshl,
+                .__builtin_elementwise_fshr,
+                .__builtin_elementwise_clzg,
+                .__builtin_elementwise_ctzg,
                 => return p.checkElementwiseArg(param_tok, arg, arg_idx, .int),
                 .__builtin_elementwise_canonicalize,
                 .__builtin_elementwise_ceil,
@@ -5836,10 +6323,18 @@ const CallExpr = union(enum) {
                 .__builtin_elementwise_copysign,
                 .__builtin_elementwise_pow,
                 .__builtin_elementwise_fma,
+                .__builtin_elementwise_maximumnum,
+                .__builtin_elementwise_minimumnum,
                 => return p.checkElementwiseArg(param_tok, arg, arg_idx, .float),
                 .__builtin_elementwise_max,
                 .__builtin_elementwise_min,
                 => return p.checkElementwiseArg(param_tok, arg, arg_idx, .both),
+                .__builtin_elementwise_ldexp,
+                => if (arg_idx == 0) {
+                    return p.checkElementwiseArg(param_tok, arg, 0, .float);
+                } else {
+                    return p.checkElementwiseArg(param_tok, arg, 0, .int);
+                },
 
                 .__builtin_reduce_add,
                 .__builtin_reduce_mul,
@@ -5874,6 +6369,24 @@ const CallExpr = union(enum) {
                 .__sync_bool_compare_and_swap,
                 .__sync_val_compare_and_swap,
                 => return p.checkSyncArg(param_tok, arg, arg_idx, 3),
+                else => {},
+            },
+            .aarch64 => |tag| switch (tag) {
+                .__builtin_arm_ldrex,
+                .__builtin_arm_ldaex,
+                .__builtin_arm_strex,
+                .__builtin_arm_stlex,
+                => return p.checkARMExclusive(self.builtin.expanded.tag, builtin_tok, param_tok, arg, arg_idx),
+                else => {},
+            },
+            .arm => |tag| switch (tag) {
+                .__builtin_arm_ldrex,
+                .__builtin_arm_ldrexd,
+                .__builtin_arm_ldaex,
+                .__builtin_arm_strex,
+                .__builtin_arm_strexd,
+                .__builtin_arm_stlex,
+                => return p.checkARMExclusive(self.builtin.expanded.tag, builtin_tok, param_tok, arg, arg_idx),
                 else => {},
             },
             else => {},
@@ -5940,6 +6453,9 @@ const CallExpr = union(enum) {
                     .__builtin_elementwise_pow,
                     .__builtin_elementwise_sub_sat,
                     .__builtin_nontemporal_store,
+                    .__builtin_elementwise_ldexp,
+                    .__builtin_elementwise_maximumnum,
+                    .__builtin_elementwise_minimumnum,
                     => 2,
 
                     .__c11_atomic_store,
@@ -5970,6 +6486,8 @@ const CallExpr = union(enum) {
                     .__builtin_mul_overflow,
                     .__builtin_elementwise_fma,
                     .__atomic_exchange_n,
+                    .__builtin_elementwise_fshl,
+                    .__builtin_elementwise_fshr,
                     => 3,
 
                     .__atomic_exchange,
@@ -5982,6 +6500,33 @@ const CallExpr = union(enum) {
                     .__atomic_compare_exchange,
                     .__atomic_compare_exchange_n,
                     => 6,
+
+                    // TODO handle optional second argument
+                    .__builtin_elementwise_clzg,
+                    .__builtin_elementwise_ctzg,
+                    => null,
+                    else => null,
+                },
+                .aarch64 => |tag| switch (tag) {
+                    .__builtin_arm_ldrex,
+                    .__builtin_arm_ldaex,
+                    => 1,
+
+                    .__builtin_arm_strex,
+                    .__builtin_arm_stlex,
+                    => 2,
+                    else => null,
+                },
+                .arm => |tag| switch (tag) {
+                    .__builtin_arm_ldrex,
+                    .__builtin_arm_ldrexd,
+                    .__builtin_arm_ldaex,
+                    => 1,
+
+                    .__builtin_arm_strex,
+                    .__builtin_arm_strexd,
+                    .__builtin_arm_stlex,
+                    => 2,
                     else => null,
                 },
                 else => null,
@@ -6095,12 +6640,27 @@ const CallExpr = union(enum) {
                 .__builtin_elementwise_sub_sat,
                 .__builtin_elementwise_fma,
                 .__builtin_elementwise_popcount,
+                .__builtin_elementwise_fshl,
+                .__builtin_elementwise_fshr,
+                .__builtin_elementwise_ldexp,
+                .__builtin_elementwise_maximumnum,
+                .__builtin_elementwise_minimumnum,
 
                 .__builtin_nondeterministic_value,
                 => {
                     const first_param = args[0].qt(&p.tree);
                     return first_param;
                 },
+
+                // TODO handle optional second argument
+                .__builtin_elementwise_clzg,
+                .__builtin_elementwise_ctzg,
+                => {
+                    if (args.len < 1) return .invalid;
+                    const first_param = args[0].qt(&p.tree);
+                    return first_param;
+                },
+
                 .__builtin_reduce_add,
                 .__builtin_reduce_mul,
                 .__builtin_reduce_and,
@@ -6123,6 +6683,34 @@ const CallExpr = union(enum) {
                     if (!first_param.isPointer(p.comp)) return .invalid;
                     return first_param.childType(p.comp);
                 },
+                else => func_ty.return_type,
+            },
+            .aarch64 => |tag| switch (tag) {
+                .__builtin_arm_ldrex,
+                .__builtin_arm_ldaex,
+                => {
+                    const first_param = args[0].qt(&p.tree);
+                    if (!first_param.isPointer(p.comp)) return .invalid;
+                    return first_param.childType(p.comp);
+                },
+                .__builtin_arm_strex,
+                .__builtin_arm_stlex,
+                => .int, // STREX/STREXD returns int
+                else => func_ty.return_type,
+            },
+            .arm => |tag| switch (tag) {
+                .__builtin_arm_ldrex,
+                .__builtin_arm_ldrexd,
+                .__builtin_arm_ldaex,
+                => {
+                    const first_param = args[0].qt(&p.tree);
+                    if (!first_param.isPointer(p.comp)) return .invalid;
+                    return first_param.childType(p.comp);
+                },
+                .__builtin_arm_strex,
+                .__builtin_arm_strexd,
+                .__builtin_arm_stlex,
+                => .int, // STREX/STREXD returns int
                 else => func_ty.return_type,
             },
             else => func_ty.return_type,
@@ -6167,61 +6755,19 @@ pub const Result = struct {
     qt: QualType = .int,
     val: Value = .{},
 
-    fn maybeWarnUnused(res: Result, p: *Parser, expr_start: TokenIndex, prev_total: usize) Error!void {
-        if (res.qt.is(p.comp, .void)) return;
-        if (res.qt.isInvalid()) return;
-        // // don't warn about unused result if the expression contained errors besides other unused results
-        if (p.diagnostics.total != prev_total) return; // TODO improve
-        // for (p.diagnostics.list.items[err_start..]) |err_item| {
-        //     if (err_item.tag != .unused_value) return;
-        // }
-        loop: switch (res.node.get(&p.tree)) {
-            .assign_expr,
-            .mul_assign_expr,
-            .div_assign_expr,
-            .mod_assign_expr,
-            .add_assign_expr,
-            .sub_assign_expr,
-            .shl_assign_expr,
-            .shr_assign_expr,
-            .bit_and_assign_expr,
-            .bit_xor_assign_expr,
-            .bit_or_assign_expr,
-            .pre_inc_expr,
-            .pre_dec_expr,
-            .post_inc_expr,
-            .post_dec_expr,
-            => {},
-            .call_expr => |call| {
-                const call_info = p.tree.callableResultUsage(call.callee) orelse return;
-                if (call_info.nodiscard) try p.err(expr_start, .nodiscard_unused, .{p.tokSlice(call_info.tok)});
-                if (call_info.warn_unused_result) try p.err(expr_start, .warn_unused_result, .{p.tokSlice(call_info.tok)});
-            },
-            .builtin_call_expr => |call| {
-                const expanded = p.comp.builtins.lookup(p.tokSlice(call.builtin_tok));
-                const attributes = expanded.attributes;
-                if (attributes.pure) try p.err(call.builtin_tok, .builtin_unused, .{"pure"});
-                if (attributes.@"const") try p.err(call.builtin_tok, .builtin_unused, .{"const"});
-            },
-            .stmt_expr => |stmt_expr| {
-                const compound = stmt_expr.operand.get(&p.tree).compound_stmt;
-                continue :loop compound.body[compound.body.len - 1].get(&p.tree);
-            },
-            .comma_expr => |comma| continue :loop comma.rhs.get(&p.tree),
-            .paren_expr => |grouped| continue :loop grouped.operand.get(&p.tree),
-            else => try p.err(expr_start, .unused_value, .{}),
-        }
-    }
-
     fn boolRes(lhs: *Result, p: *Parser, tag: std.meta.Tag(Node), rhs: Result, tok_i: TokenIndex) !void {
         if (lhs.val.opt_ref == .null) {
             lhs.val = .zero;
         }
         if (!lhs.qt.isInvalid()) {
             if (lhs.qt.get(p.comp, .vector)) |vec| {
-                if (!vec.elem.isInt(p.comp)) {
+                if (!vec.elem.isInt(p.comp) or vec.kind != .generic) {
                     lhs.qt = try p.comp.type_store.put(p.comp.gpa, .{
-                        .vector = .{ .elem = .int, .len = vec.len },
+                        .vector = .{
+                            .elem = p.comp.smallestNBitIntTargetIndependent(@intCast(vec.elem.bitSizeof(p.comp)), .signed),
+                            .len = vec.len,
+                            .kind = .generic,
+                        },
                     });
                 }
             } else {
@@ -6272,10 +6818,10 @@ pub const Result = struct {
         }
     }
 
-    fn implicitCast(operand: *Result, p: *Parser, kind: Node.Cast.Kind, tok: TokenIndex) Error!void {
+    fn implicitCast(operand: *Result, p: *Parser, kind: Node.Cast.Kind) Error!void {
         operand.node = try p.addNode(.{
             .cast = .{
-                .l_paren = tok,
+                .l_paren = operand.node.tok(&p.tree),
                 .kind = kind,
                 .operand = operand.node,
                 .qt = operand.qt,
@@ -6284,13 +6830,13 @@ pub const Result = struct {
         });
     }
 
-    fn adjustCondExprPtrs(a: *Result, tok: TokenIndex, b: *Result, p: *Parser) !bool {
+    fn adjustCondExprPtrs(a: *Result, tok: TokenIndex, b: *Result, p: *Parser) !void {
         assert(a.qt.isPointer(p.comp) and b.qt.isPointer(p.comp));
         const gpa = p.comp.gpa;
 
         const a_elem = a.qt.childType(p.comp);
         const b_elem = b.qt.childType(p.comp);
-        if (a_elem.eqlQualified(b_elem, p.comp)) return true;
+        if (a_elem.eqlQualified(b_elem, p.comp)) return;
 
         const has_void_pointer_branch = a.qt.scalarKind(p.comp) == .void_pointer or
             b.qt.scalarKind(p.comp) == .void_pointer;
@@ -6316,16 +6862,14 @@ pub const Result = struct {
             a.qt = try p.comp.type_store.put(gpa, .{ .pointer = .{
                 .child = adjusted_elem_qt,
             } });
-            try a.implicitCast(p, .bitcast, tok);
+            try a.implicitCast(p, .bitcast);
         }
         if (!adjusted_elem_qt.eqlQualified(b_elem, p.comp)) {
             b.qt = try p.comp.type_store.put(gpa, .{ .pointer = .{
                 .child = adjusted_elem_qt,
             } });
-            try b.implicitCast(p, .bitcast, tok);
+            try b.implicitCast(p, .bitcast);
         }
-
-        return true;
     }
 
     /// Adjust types for binary operation, returns true if the result can and should be evaluated.
@@ -6338,52 +6882,54 @@ pub const Result = struct {
         conditional,
         add,
         sub,
-    }) !bool {
+    }) !void {
         if (b.qt.isInvalid()) {
             try a.saveValue(p);
             a.qt = .invalid;
         }
         if (a.qt.isInvalid()) {
-            return false;
+            return;
         }
-        try a.lvalConversion(p, tok);
-        try b.lvalConversion(p, tok);
+        try a.lvalConversion(p);
+        try b.lvalConversion(p);
 
-        const a_vec = a.qt.is(p.comp, .vector);
-        const b_vec = b.qt.is(p.comp, .vector);
-        if (a_vec and b_vec) {
+        const opt_a_vec = a.qt.get(p.comp, .vector);
+        const opt_b_vec = b.qt.get(p.comp, .vector);
+        if (opt_a_vec != null and opt_b_vec != null) {
+            const a_vec = opt_a_vec.?;
+            const b_vec = opt_b_vec.?;
             if (kind == .boolean_logic) {
                 return a.invalidBinTy(tok, b, p);
             }
-            if (a.qt.eql(b.qt, p.comp)) {
-                return a.shouldEval(b, p);
+            if (a_vec.eql(b_vec, p.comp, true) and a_vec.kind == .generic) {
+                return;
             }
             if (a.qt.sizeCompare(b.qt, p.comp) == .eq) {
                 b.qt = a.qt;
-                try b.implicitCast(p, .bitcast, tok);
-                return a.shouldEval(b, p);
+                try b.implicitCast(p, .bitcast);
+                return;
             }
             try p.err(tok, .incompatible_vec_types, .{ a.qt, b.qt });
             a.val = .{};
             b.val = .{};
             a.qt = .invalid;
-            return false;
-        } else if (a_vec) {
-            if (b.coerceExtra(p, a.qt.childType(p.comp), tok, .test_coerce)) {
+            return;
+        } else if (opt_a_vec) |a_vec| {
+            if (b.coerceExtra(p, a_vec.elem, tok, .test_coerce)) {
                 try b.saveValue(p);
                 b.qt = a.qt;
-                try b.implicitCast(p, .vector_splat, tok);
-                return a.shouldEval(b, p);
+                try b.implicitCast(p, .vector_splat);
+                return;
             } else |er| switch (er) {
                 error.CoercionFailed => return a.invalidBinTy(tok, b, p),
                 else => |e| return e,
             }
-        } else if (b_vec) {
-            if (a.coerceExtra(p, b.qt.childType(p.comp), tok, .test_coerce)) {
+        } else if (opt_b_vec) |b_vec| {
+            if (a.coerceExtra(p, b_vec.elem, tok, .test_coerce)) {
                 try a.saveValue(p);
                 a.qt = b.qt;
-                try a.implicitCast(p, .vector_splat, tok);
-                return a.shouldEval(b, p);
+                try a.implicitCast(p, .vector_splat);
+                return;
             } else |er| switch (er) {
                 error.CoercionFailed => return a.invalidBinTy(tok, b, p),
                 else => |e| return e,
@@ -6395,7 +6941,7 @@ pub const Result = struct {
 
         if (a_sk.isInt() and b_sk.isInt()) {
             try a.usualArithmeticConversion(b, p, tok);
-            return a.shouldEval(b, p);
+            return;
         }
         if (kind == .integer) return a.invalidBinTy(tok, b, p);
 
@@ -6405,7 +6951,7 @@ pub const Result = struct {
                 return a.invalidBinTy(tok, b, p);
 
             try a.usualArithmeticConversion(b, p, tok);
-            return a.shouldEval(b, p);
+            return;
         }
         if (kind == .arithmetic) return a.invalidBinTy(tok, b, p);
 
@@ -6420,22 +6966,21 @@ pub const Result = struct {
                 // Do integer promotions but nothing else
                 if (a_sk.isInt()) try a.castToInt(p, a.qt.promoteInt(p.comp), tok);
                 if (b_sk.isInt()) try b.castToInt(p, b.qt.promoteInt(p.comp), tok);
-                return a.shouldEval(b, p);
             },
             .relational, .equality => {
                 if (kind == .equality and (a_sk == .nullptr_t or b_sk == .nullptr_t)) {
-                    if (a_sk == .nullptr_t and b_sk == .nullptr_t) return a.shouldEval(b, p);
+                    if (a_sk == .nullptr_t and b_sk == .nullptr_t) return;
 
                     const nullptr_res = if (a_sk == .nullptr_t) a else b;
                     const other_res = if (a_sk == .nullptr_t) b else a;
 
                     if (other_res.qt.isPointer(p.comp)) {
-                        try nullptr_res.nullToPointer(p, other_res.qt, tok);
-                        return other_res.shouldEval(nullptr_res, p);
+                        try nullptr_res.nullToPointer(p, other_res.qt);
+                        return;
                     } else if (other_res.val.isZero(p.comp)) {
                         other_res.val = .null;
-                        try other_res.nullToPointer(p, nullptr_res.qt, tok);
-                        return other_res.shouldEval(nullptr_res, p);
+                        try other_res.nullToPointer(p, nullptr_res.qt);
+                        return;
                     }
                     return a.invalidBinTy(tok, b, p);
                 }
@@ -6453,55 +6998,55 @@ pub const Result = struct {
                         const b_elem = b.qt.childType(p.comp);
                         if (!a_elem.eql(b_elem, p.comp)) {
                             try p.err(tok, .comparison_distinct_ptr, .{ a.qt, b.qt });
-                            try b.castToPointer(p, a.qt, tok);
+                            try b.castToPointer(p, a.qt);
                         }
                     } else if (a_sk == .void_pointer) {
-                        try b.castToPointer(p, a.qt, tok);
+                        try b.castToPointer(p, a.qt);
                     } else if (b_sk == .void_pointer) {
-                        try a.castToPointer(p, b.qt, tok);
+                        try a.castToPointer(p, b.qt);
                     }
                 } else if (a_sk.isPointer()) {
-                    try b.castToPointer(p, a.qt, tok);
+                    try b.castToPointer(p, a.qt);
                 } else {
                     assert(b_sk.isPointer());
-                    try a.castToPointer(p, b.qt, tok);
+                    try a.castToPointer(p, b.qt);
                 }
-
-                return a.shouldEval(b, p);
             },
             .conditional => {
                 // doesn't matter what we return here, as the result is ignored
                 if (a.qt.is(p.comp, .void) or b.qt.is(p.comp, .void)) {
-                    try a.castToVoid(p, tok);
-                    try b.castToVoid(p, tok);
-                    return true;
+                    try a.castToVoid(p);
+                    try b.castToVoid(p);
+                    return;
                 }
 
-                if (a_sk == .nullptr_t and b_sk == .nullptr_t) return true;
+                if (a_sk == .nullptr_t and b_sk == .nullptr_t) return;
 
                 if ((a_sk.isPointer() and b_sk.isInt()) or (a_sk.isInt() and b_sk.isPointer())) {
                     if (a.val.isZero(p.comp) or b.val.isZero(p.comp)) {
-                        try a.nullToPointer(p, b.qt, tok);
-                        try b.nullToPointer(p, a.qt, tok);
-                        return true;
+                        try a.nullToPointer(p, b.qt);
+                        try b.nullToPointer(p, a.qt);
+                        return;
                     }
                     const int_ty = if (a_sk.isInt()) a else b;
                     const ptr_ty = if (a_sk.isPointer()) a else b;
                     try p.err(tok, .implicit_int_to_ptr, .{ int_ty.qt, ptr_ty.qt });
-                    try int_ty.castToPointer(p, ptr_ty.qt, tok);
+                    try int_ty.castToPointer(p, ptr_ty.qt);
 
-                    return true;
+                    return;
                 }
                 if ((a_sk.isPointer() and b_sk == .nullptr_t) or (a_sk == .nullptr_t and b_sk.isPointer())) {
                     const nullptr_res = if (a_sk == .nullptr_t) a else b;
                     const ptr_res = if (a_sk == .nullptr_t) b else a;
-                    try nullptr_res.nullToPointer(p, ptr_res.qt, tok);
-                    return true;
+                    try nullptr_res.nullToPointer(p, ptr_res.qt);
+                    return;
                 }
                 if (a_sk.isPointer() and b_sk.isPointer()) return a.adjustCondExprPtrs(tok, b, p);
 
+                if (a.qt.is(p.comp, .storage_float) and a.qt.eql(b.qt, p.comp)) return;
+
                 if (a.qt.getRecord(p.comp) != null and b.qt.getRecord(p.comp) != null and a.qt.eql(b.qt, p.comp)) {
-                    return true;
+                    return;
                 }
                 return a.invalidBinTy(tok, b, p);
             },
@@ -6513,8 +7058,8 @@ pub const Result = struct {
                 if (a_sk == .void_pointer or b_sk == .void_pointer)
                     try p.err(tok, .gnu_pointer_arith, .{});
 
-                if (a_sk == .nullptr_t) try a.nullToPointer(p, .void_pointer, tok);
-                if (b_sk == .nullptr_t) try b.nullToPointer(p, .void_pointer, tok);
+                if (a_sk == .nullptr_t) try a.nullToPointer(p, .void_pointer);
+                if (b_sk == .nullptr_t) try b.nullToPointer(p, .void_pointer);
 
                 // Do integer promotions but nothing else
                 if (a_sk.isInt()) try a.castToInt(p, a.qt.promoteInt(p.comp), tok);
@@ -6522,7 +7067,6 @@ pub const Result = struct {
 
                 // The result type is the type of the pointer operand
                 if (a_sk.isInt()) a.qt = b.qt else b.qt = a.qt;
-                return a.shouldEval(b, p);
             },
             .sub => {
                 // if both aren't arithmetic then either both should be pointers or just the left one.
@@ -6532,8 +7076,8 @@ pub const Result = struct {
                 if (a_sk == .void_pointer)
                     try p.err(tok, .gnu_pointer_arith, .{});
 
-                if (a_sk == .nullptr_t) try a.nullToPointer(p, .void_pointer, tok);
-                if (b_sk == .nullptr_t) try b.nullToPointer(p, .void_pointer, tok);
+                if (a_sk == .nullptr_t) try a.nullToPointer(p, .void_pointer);
+                if (b_sk == .nullptr_t) try b.nullToPointer(p, .void_pointer);
 
                 if (a_sk.isPointer() and b_sk.isPointer()) {
                     const a_child_qt = a.qt.get(p.comp, .pointer).?.child;
@@ -6546,26 +7090,25 @@ pub const Result = struct {
 
                 // Do integer promotion on b if needed
                 if (b_sk.isInt()) try b.castToInt(p, b.qt.promoteInt(p.comp), tok);
-                return a.shouldEval(b, p);
             },
             else => return a.invalidBinTy(tok, b, p),
         }
     }
 
-    fn lvalConversion(res: *Result, p: *Parser, tok: TokenIndex) Error!void {
+    fn lvalConversion(res: *Result, p: *Parser) Error!void {
         if (res.qt.is(p.comp, .func)) {
             res.val = try p.pointerValue(res.node, .zero);
 
             res.qt = try res.qt.decay(p.comp);
-            try res.implicitCast(p, .function_to_pointer, tok);
+            try res.implicitCast(p, .function_to_pointer);
         } else if (res.qt.is(p.comp, .array)) {
             res.val = try p.pointerValue(res.node, .zero);
 
             res.qt = try res.qt.decay(p.comp);
-            try res.implicitCast(p, .array_to_pointer, tok);
-        } else if (!p.in_macro and p.tree.isLval(res.node)) {
+            try res.implicitCast(p, .array_to_pointer);
+        } else if (p.tree.isLval(res.node)) {
             res.qt = res.qt.unqualified();
-            try res.implicitCast(p, .lval_to_rval, tok);
+            try res.implicitCast(p, .lval_to_rval);
         }
     }
 
@@ -6580,32 +7123,32 @@ pub const Result = struct {
             } else {
                 try p.err(tok, .array_address_to_bool, .{p.tokSlice(tok)});
             }
-            try res.lvalConversion(p, tok);
+            try res.lvalConversion(p);
             res.val = .one;
             res.qt = bool_qt;
-            try res.implicitCast(p, .pointer_to_bool, tok);
+            try res.implicitCast(p, .pointer_to_bool);
         } else if (src_sk.isPointer()) {
             res.val.boolCast(p.comp);
             res.qt = bool_qt;
-            try res.implicitCast(p, .pointer_to_bool, tok);
+            try res.implicitCast(p, .pointer_to_bool);
         } else if (src_sk.isInt() and src_sk != .bool) {
             res.val.boolCast(p.comp);
             if (!src_sk.isReal()) {
                 res.qt = res.qt.toReal(p.comp);
-                try res.implicitCast(p, .complex_int_to_real, tok);
+                try res.implicitCast(p, .complex_int_to_real);
             }
             res.qt = bool_qt;
-            try res.implicitCast(p, .int_to_bool, tok);
+            try res.implicitCast(p, .int_to_bool);
         } else if (src_sk.isFloat()) {
             const old_val = res.val;
             const value_change_kind = try res.val.floatToInt(bool_qt, p.comp);
             try res.floatToIntWarning(p, bool_qt, old_val, value_change_kind, tok);
             if (!src_sk.isReal()) {
                 res.qt = res.qt.toReal(p.comp);
-                try res.implicitCast(p, .complex_float_to_real, tok);
+                try res.implicitCast(p, .complex_float_to_real);
             }
             res.qt = bool_qt;
-            try res.implicitCast(p, .float_to_bool, tok);
+            try res.implicitCast(p, .float_to_bool);
         }
     }
 
@@ -6621,18 +7164,18 @@ pub const Result = struct {
 
         if (src_sk == .bool) {
             res.qt = int_qt.toReal(p.comp);
-            try res.implicitCast(p, .bool_to_int, tok);
+            try res.implicitCast(p, .bool_to_int);
             if (!dest_sk.isReal()) {
                 res.qt = int_qt;
-                try res.implicitCast(p, .real_to_complex_int, tok);
+                try res.implicitCast(p, .real_to_complex_int);
             }
         } else if (src_sk.isPointer()) {
             res.val = .{};
             res.qt = int_qt.toReal(p.comp);
-            try res.implicitCast(p, .pointer_to_int, tok);
+            try res.implicitCast(p, .pointer_to_int);
             if (!dest_sk.isReal()) {
                 res.qt = int_qt;
-                try res.implicitCast(p, .real_to_complex_int, tok);
+                try res.implicitCast(p, .real_to_complex_int);
             }
         } else if (res.qt.isFloat(p.comp)) {
             const old_val = res.val;
@@ -6640,20 +7183,20 @@ pub const Result = struct {
             try res.floatToIntWarning(p, int_qt, old_val, value_change_kind, tok);
             if (src_sk.isReal() and dest_sk.isReal()) {
                 res.qt = int_qt;
-                try res.implicitCast(p, .float_to_int, tok);
+                try res.implicitCast(p, .float_to_int);
             } else if (src_sk.isReal()) {
                 res.qt = int_qt.toReal(p.comp);
-                try res.implicitCast(p, .float_to_int, tok);
+                try res.implicitCast(p, .float_to_int);
                 res.qt = int_qt;
-                try res.implicitCast(p, .real_to_complex_int, tok);
+                try res.implicitCast(p, .real_to_complex_int);
             } else if (dest_sk.isReal()) {
                 res.qt = res.qt.toReal(p.comp);
-                try res.implicitCast(p, .complex_float_to_real, tok);
+                try res.implicitCast(p, .complex_float_to_real);
                 res.qt = int_qt;
-                try res.implicitCast(p, .float_to_int, tok);
+                try res.implicitCast(p, .float_to_int);
             } else {
                 res.qt = int_qt;
-                try res.implicitCast(p, .complex_float_to_complex_int, tok);
+                try res.implicitCast(p, .complex_float_to_complex_int);
             }
         } else if (!res.qt.eql(int_qt, p.comp)) {
             const old_val = res.val;
@@ -6666,23 +7209,23 @@ pub const Result = struct {
 
             if (src_sk.isReal() and dest_sk.isReal()) {
                 res.qt = int_qt;
-                try res.implicitCast(p, .int_cast, tok);
+                try res.implicitCast(p, .int_cast);
             } else if (src_sk.isReal()) {
                 const real_int_qt = int_qt.toReal(p.comp);
                 if (!res.qt.eql(real_int_qt, p.comp)) {
                     res.qt = real_int_qt;
-                    try res.implicitCast(p, .int_cast, tok);
+                    try res.implicitCast(p, .int_cast);
                 }
                 res.qt = int_qt;
-                try res.implicitCast(p, .real_to_complex_int, tok);
+                try res.implicitCast(p, .real_to_complex_int);
             } else if (dest_sk.isReal()) {
                 res.qt = res.qt.toReal(p.comp);
-                try res.implicitCast(p, .complex_int_to_real, tok);
+                try res.implicitCast(p, .complex_int_to_real);
                 res.qt = int_qt;
-                try res.implicitCast(p, .int_cast, tok);
+                try res.implicitCast(p, .int_cast);
             } else {
                 res.qt = int_qt;
-                try res.implicitCast(p, .complex_int_cast, tok);
+                try res.implicitCast(p, .complex_int_cast);
             }
         }
     }
@@ -6704,75 +7247,75 @@ pub const Result = struct {
         }
     }
 
-    fn castToFloat(res: *Result, p: *Parser, float_qt: QualType, tok: TokenIndex) Error!void {
+    fn castToFloat(res: *Result, p: *Parser, float_qt: QualType) Error!void {
         const src_sk = res.qt.scalarKind(p.comp);
         const dest_sk = float_qt.scalarKind(p.comp);
 
         if (src_sk == .bool) {
             try res.val.intToFloat(float_qt, p.comp);
             res.qt = float_qt.toReal(p.comp);
-            try res.implicitCast(p, .bool_to_float, tok);
+            try res.implicitCast(p, .bool_to_float);
             if (!dest_sk.isReal()) {
                 res.qt = float_qt;
-                try res.implicitCast(p, .real_to_complex_float, tok);
+                try res.implicitCast(p, .real_to_complex_float);
             }
         } else if (src_sk.isInt()) {
             try res.val.intToFloat(float_qt, p.comp);
             if (src_sk.isReal() and dest_sk.isReal()) {
                 res.qt = float_qt;
-                try res.implicitCast(p, .int_to_float, tok);
+                try res.implicitCast(p, .int_to_float);
             } else if (src_sk.isReal()) {
                 res.qt = float_qt.toReal(p.comp);
-                try res.implicitCast(p, .int_to_float, tok);
+                try res.implicitCast(p, .int_to_float);
                 res.qt = float_qt;
-                try res.implicitCast(p, .real_to_complex_float, tok);
+                try res.implicitCast(p, .real_to_complex_float);
             } else if (dest_sk.isReal()) {
                 res.qt = res.qt.toReal(p.comp);
-                try res.implicitCast(p, .complex_int_to_real, tok);
+                try res.implicitCast(p, .complex_int_to_real);
                 res.qt = float_qt;
-                try res.implicitCast(p, .int_to_float, tok);
+                try res.implicitCast(p, .int_to_float);
             } else {
                 res.qt = float_qt;
-                try res.implicitCast(p, .complex_int_to_complex_float, tok);
+                try res.implicitCast(p, .complex_int_to_complex_float);
             }
         } else if (!res.qt.eql(float_qt, p.comp)) {
             try res.val.floatCast(float_qt, p.comp);
             if (src_sk.isReal() and dest_sk.isReal()) {
                 res.qt = float_qt;
-                try res.implicitCast(p, .float_cast, tok);
+                try res.implicitCast(p, .float_cast);
             } else if (src_sk.isReal()) {
                 if (res.qt.floatRank(p.comp) != float_qt.floatRank(p.comp)) {
                     res.qt = float_qt.toReal(p.comp);
-                    try res.implicitCast(p, .float_cast, tok);
+                    try res.implicitCast(p, .float_cast);
                 }
                 res.qt = float_qt;
-                try res.implicitCast(p, .real_to_complex_float, tok);
+                try res.implicitCast(p, .real_to_complex_float);
             } else if (dest_sk.isReal()) {
                 res.qt = res.qt.toReal(p.comp);
-                try res.implicitCast(p, .complex_float_to_real, tok);
+                try res.implicitCast(p, .complex_float_to_real);
                 if (res.qt.floatRank(p.comp) != float_qt.floatRank(p.comp)) {
                     res.qt = float_qt;
-                    try res.implicitCast(p, .float_cast, tok);
+                    try res.implicitCast(p, .float_cast);
                 }
             } else {
                 res.qt = float_qt;
-                try res.implicitCast(p, .complex_float_cast, tok);
+                try res.implicitCast(p, .complex_float_cast);
             }
         }
     }
 
     /// Converts a bool or integer to a pointer
-    fn castToPointer(res: *Result, p: *Parser, ptr_qt: QualType, tok: TokenIndex) Error!void {
+    fn castToPointer(res: *Result, p: *Parser, ptr_qt: QualType) Error!void {
         const src_sk = res.qt.scalarKind(p.comp);
         if (src_sk == .bool) {
             res.qt = ptr_qt;
-            try res.implicitCast(p, .bool_to_pointer, tok);
+            try res.implicitCast(p, .bool_to_pointer);
         } else if (src_sk.isInt()) {
             _ = try res.val.intCast(ptr_qt, p.comp);
             res.qt = ptr_qt;
-            try res.implicitCast(p, .int_to_pointer, tok);
+            try res.implicitCast(p, .int_to_pointer);
         } else if (src_sk == .nullptr_t) {
-            try res.nullToPointer(p, ptr_qt, tok);
+            try res.nullToPointer(p, ptr_qt);
         } else if (src_sk.isPointer() and !res.qt.eql(ptr_qt, p.comp)) {
             if (ptr_qt.is(p.comp, .nullptr_t)) {
                 res.qt = .invalid;
@@ -6788,25 +7331,25 @@ pub const Result = struct {
                 (dest_elem.@"volatile" == src_elem.@"volatile" or dest_elem.@"volatile"))
             {
                 // Gaining qualifiers is a no-op.
-                try res.implicitCast(p, .no_op, tok);
+                try res.implicitCast(p, .no_op);
             } else {
-                try res.implicitCast(p, .bitcast, tok);
+                try res.implicitCast(p, .bitcast);
             }
         }
     }
 
-    fn castToVoid(res: *Result, p: *Parser, tok: TokenIndex) Error!void {
+    fn castToVoid(res: *Result, p: *Parser) Error!void {
         if (!res.qt.is(p.comp, .void)) {
             res.qt = .void;
-            try res.implicitCast(p, .to_void, tok);
+            try res.implicitCast(p, .to_void);
         }
     }
 
-    fn nullToPointer(res: *Result, p: *Parser, ptr_ty: QualType, tok: TokenIndex) Error!void {
+    fn nullToPointer(res: *Result, p: *Parser, ptr_ty: QualType) Error!void {
         if (!res.qt.is(p.comp, .nullptr_t) and !res.val.isZero(p.comp)) return;
         res.val = .null;
         res.qt = ptr_ty;
-        try res.implicitCast(p, .null_to_pointer, tok);
+        try res.implicitCast(p, .null_to_pointer);
     }
 
     fn usualUnaryConversion(res: *Result, p: *Parser, tok: TokenIndex) Error!void {
@@ -6820,14 +7363,14 @@ pub const Result = struct {
                     if (res.qt.floatRank(p.comp) < QualType.double.floatRank(p.comp)) {
                         var res_qt: QualType = .double;
                         if (res.qt.is(p.comp, .complex)) res_qt = try res_qt.toComplex(p.comp);
-                        return res.castToFloat(p, res_qt, tok);
+                        return res.castToFloat(p, res_qt);
                     }
                 },
                 .extended => {
                     if (res.qt.floatRank(p.comp) < QualType.long_double.floatRank(p.comp)) {
                         var res_qt: QualType = .long_double;
                         if (res.qt.is(p.comp, .complex)) res_qt = try res_qt.toComplex(p.comp);
-                        return res.castToFloat(p, res_qt, tok);
+                        return res.castToFloat(p, res_qt);
                     }
                 },
             }
@@ -6836,12 +7379,12 @@ pub const Result = struct {
         if (!p.comp.langopts.use_native_half_type) {
             if (res.qt.get(p.comp, .float)) |float_ty| {
                 if (float_ty == .fp16) {
-                    return res.castToFloat(p, .float, tok);
+                    return res.castToFloat(p, .float);
                 }
             }
         }
 
-        if (res.qt.isInt(p.comp) and !p.in_macro) {
+        if (res.qt.isInt(p.comp)) {
             if (p.tree.bitfieldWidth(res.node, true)) |width| {
                 if (res.qt.promoteBitfield(p.comp, width)) |promotion_ty| {
                     return res.castToInt(p, promotion_ty, tok);
@@ -6879,14 +7422,14 @@ pub const Result = struct {
                 else
                     b.qt);
 
-            try a.castToFloat(p, res_qt, tok);
-            try b.castToFloat(p, res_qt, tok);
+            try a.castToFloat(p, res_qt);
+            try b.castToFloat(p, res_qt);
             return;
         } else if (a_float) {
-            try b.castToFloat(p, a.qt, tok);
+            try b.castToFloat(p, a.qt);
             return;
         } else if (b_float) {
-            try a.castToFloat(p, b.qt, tok);
+            try a.castToFloat(p, b.qt);
             return;
         }
 
@@ -6939,27 +7482,25 @@ pub const Result = struct {
         try b.castToInt(p, target_qt, tok);
     }
 
-    fn invalidBinTy(a: *Result, tok: TokenIndex, b: *Result, p: *Parser) Error!bool {
+    fn invalidBinTy(a: *Result, tok: TokenIndex, b: *Result, p: *Parser) Error!void {
         try p.err(tok, .invalid_bin_types, .{ a.qt, b.qt });
         a.val = .{};
         b.val = .{};
         a.qt = .invalid;
-        return false;
     }
 
-    fn shouldEval(a: *Result, b: *Result, p: *Parser) Error!bool {
-        if (p.no_eval) return false;
+    fn shouldEval(a: *Result, b: *Result, p: *Parser, eval: bool) Error!bool {
+        if (!eval) return false;
         if (a.val.opt_ref != .none and b.val.opt_ref != .none)
             return true;
 
         try a.saveValue(p);
         try b.saveValue(p);
-        return p.no_eval;
+        return false;
     }
 
     /// Saves value and replaces it with `.unavailable`.
     fn saveValue(res: *Result, p: *Parser) !void {
-        assert(!p.in_macro);
         try res.putValue(p);
         res.val = .{};
     }
@@ -6967,7 +7508,7 @@ pub const Result = struct {
     /// Saves value without altering the result.
     fn putValue(res: *const Result, p: *Parser) !void {
         if (res.val.opt_ref == .none or res.val.opt_ref == .null) return;
-        if (!p.in_macro) try p.tree.value_map.put(p.comp.gpa, res.node, res.val);
+        try p.tree.value_map.put(p.comp.gpa, res.node, res.val);
     }
 
     fn castType(res: *Result, p: *Parser, dest_qt: QualType, operand_tok: TokenIndex, l_paren: TokenIndex) !void {
@@ -6994,6 +7535,16 @@ pub const Result = struct {
         } else if (res.qt.is(p.comp, .void)) {
             try p.err(operand_tok, .invalid_cast_operand_type, .{res.qt});
             return error.ParsingFailed;
+        } else if (dest_qt.is(p.comp, .storage_float) or res.qt.is(p.comp, .storage_float)) {
+            if (dest_qt.is(p.comp, .storage_float) and dest_qt.eql(res.qt, p.comp)) {
+                cast_kind = .no_op;
+            } else if (dest_qt.is(p.comp, .storage_float)) {
+                try p.err(l_paren, .invalid_cast_type, .{dest_qt});
+                return error.ParsingFailed;
+            } else {
+                try p.err(operand_tok, .invalid_cast_operand_type, .{res.qt});
+                return error.ParsingFailed;
+            }
         } else if (dest_vec and src_vec) {
             if (dest_qt.eql(res.qt, p.comp)) {
                 cast_kind = .no_op;
@@ -7030,13 +7581,13 @@ pub const Result = struct {
             }
         } else if (src_sk == .nullptr_t) {
             if (dest_sk == .bool) {
-                try res.nullToPointer(p, res.qt, l_paren);
+                try res.nullToPointer(p, res.qt);
                 res.val.boolCast(p.comp);
                 res.qt = .bool;
-                try res.implicitCast(p, .pointer_to_bool, l_paren);
+                try res.implicitCast(p, .pointer_to_bool);
                 try res.saveValue(p);
             } else if (dest_sk.isPointer()) {
-                try res.nullToPointer(p, dest_qt, l_paren);
+                try res.nullToPointer(p, dest_qt);
             } else {
                 try p.err(l_paren, .invalid_object_cast, .{ res.qt, dest_qt });
                 return error.ParsingFailed;
@@ -7061,13 +7612,13 @@ pub const Result = struct {
                 } else if (src_sk.isInt()) {
                     if (!src_sk.isReal()) {
                         res.qt = res.qt.toReal(p.comp);
-                        try res.implicitCast(p, .complex_int_to_real, l_paren);
+                        try res.implicitCast(p, .complex_int_to_real);
                     }
                     cast_kind = .int_to_bool;
                 } else if (src_sk.isFloat()) {
                     if (!src_sk.isReal()) {
                         res.qt = res.qt.toReal(p.comp);
-                        try res.implicitCast(p, .complex_float_to_real, l_paren);
+                        try res.implicitCast(p, .complex_float_to_real);
                     }
                     cast_kind = .float_to_bool;
                 }
@@ -7075,7 +7626,7 @@ pub const Result = struct {
                 if (src_sk == .bool) {
                     if (!dest_sk.isReal()) {
                         res.qt = dest_qt.toReal(p.comp);
-                        try res.implicitCast(p, .bool_to_int, l_paren);
+                        try res.implicitCast(p, .bool_to_int);
                         cast_kind = .real_to_complex_int;
                     } else {
                         cast_kind = .bool_to_int;
@@ -7085,11 +7636,11 @@ pub const Result = struct {
                         cast_kind = .int_cast;
                     } else if (src_sk.isReal()) {
                         res.qt = dest_qt.toReal(p.comp);
-                        try res.implicitCast(p, .int_cast, l_paren);
+                        try res.implicitCast(p, .int_cast);
                         cast_kind = .real_to_complex_int;
                     } else if (dest_sk.isReal()) {
                         res.qt = res.qt.toReal(p.comp);
-                        try res.implicitCast(p, .complex_int_to_real, l_paren);
+                        try res.implicitCast(p, .complex_int_to_real);
                         cast_kind = .int_cast;
                     } else {
                         cast_kind = .complex_int_cast;
@@ -7098,7 +7649,7 @@ pub const Result = struct {
                     res.val = .{};
                     if (!dest_sk.isReal()) {
                         res.qt = dest_qt.toReal(p.comp);
-                        try res.implicitCast(p, .pointer_to_int, l_paren);
+                        try res.implicitCast(p, .pointer_to_int);
                         cast_kind = .real_to_complex_int;
                     } else {
                         cast_kind = .pointer_to_int;
@@ -7107,11 +7658,11 @@ pub const Result = struct {
                     cast_kind = .float_to_int;
                 } else if (src_sk.isReal()) {
                     res.qt = dest_qt.toReal(p.comp);
-                    try res.implicitCast(p, .float_to_int, l_paren);
+                    try res.implicitCast(p, .float_to_int);
                     cast_kind = .real_to_complex_int;
                 } else if (dest_sk.isReal()) {
                     res.qt = res.qt.toReal(p.comp);
-                    try res.implicitCast(p, .complex_float_to_real, l_paren);
+                    try res.implicitCast(p, .complex_float_to_real);
                     cast_kind = .float_to_int;
                 } else {
                     cast_kind = .complex_float_to_complex_int;
@@ -7124,7 +7675,7 @@ pub const Result = struct {
                 } else if (src_sk.isInt()) {
                     if (!src_sk.isReal()) {
                         res.qt = res.qt.toReal(p.comp);
-                        try res.implicitCast(p, .complex_int_to_real, l_paren);
+                        try res.implicitCast(p, .complex_int_to_real);
                     }
                     cast_kind = .int_to_pointer;
                 } else if (res.qt.is(p.comp, .array)) {
@@ -7139,7 +7690,7 @@ pub const Result = struct {
                 if (src_sk == .bool) {
                     if (!dest_sk.isReal()) {
                         res.qt = dest_qt.toReal(p.comp);
-                        try res.implicitCast(p, .bool_to_float, l_paren);
+                        try res.implicitCast(p, .bool_to_float);
                         cast_kind = .real_to_complex_float;
                     } else {
                         cast_kind = .bool_to_float;
@@ -7149,11 +7700,11 @@ pub const Result = struct {
                         cast_kind = .int_to_float;
                     } else if (src_sk.isReal()) {
                         res.qt = dest_qt.toReal(p.comp);
-                        try res.implicitCast(p, .int_to_float, l_paren);
+                        try res.implicitCast(p, .int_to_float);
                         cast_kind = .real_to_complex_float;
                     } else if (dest_sk.isReal()) {
                         res.qt = res.qt.toReal(p.comp);
-                        try res.implicitCast(p, .complex_int_to_real, l_paren);
+                        try res.implicitCast(p, .complex_int_to_real);
                         cast_kind = .int_to_float;
                     } else {
                         cast_kind = .complex_int_to_complex_float;
@@ -7162,11 +7713,11 @@ pub const Result = struct {
                     cast_kind = .float_cast;
                 } else if (src_sk.isReal()) {
                     res.qt = dest_qt.toReal(p.comp);
-                    try res.implicitCast(p, .float_cast, l_paren);
+                    try res.implicitCast(p, .float_cast);
                     cast_kind = .real_to_complex_float;
                 } else if (dest_sk.isReal()) {
                     res.qt = res.qt.toReal(p.comp);
-                    try res.implicitCast(p, .complex_float_to_real, l_paren);
+                    try res.implicitCast(p, .complex_float_to_real);
                     cast_kind = .float_cast;
                 } else {
                     cast_kind = .complex_float_cast;
@@ -7282,7 +7833,7 @@ pub const Result = struct {
         // Subject of the coercion does not need to be qualified.
         const src_original_qt = res.qt;
         switch (c) {
-            .init, .ret, .assign => try res.lvalConversion(p, tok),
+            .init, .ret, .assign => try res.lvalConversion(p),
             else => {},
         }
         if (res.qt.isInvalid()) return;
@@ -7290,11 +7841,31 @@ pub const Result = struct {
         const dest_sk = dest_unqual.scalarKind(p.comp);
         const src_sk = res.qt.scalarKind(p.comp);
 
-        if (dest_qt.is(p.comp, .vector) and res.qt.is(p.comp, .vector)) {
-            if (dest_unqual.eql(res.qt, p.comp)) return;
+        if (dest_unqual.is(p.comp, .storage_float) and dest_unqual.eql(res.qt, p.comp)) {
+            return;
+        }
+        if (c == .assign) {
+            const base_type = dest_unqual.base(p.comp);
+            switch (base_type.type) {
+                .array => return p.err(tok, .array_not_assignable, .{dest_qt}),
+                .func => return p.err(tok, .non_object_not_assignable, .{dest_qt}),
+                else => if (base_type.qt.hasIncompleteSize(p.comp)) {
+                    return p.err(tok, .incomplete_type_not_assignable, .{dest_qt});
+                },
+            }
+        }
+
+        const dest_opt_vec = dest_qt.get(p.comp, .vector);
+        const res_opt_vec = res.qt.get(p.comp, .vector);
+
+        if (dest_opt_vec != null and res_opt_vec != null) {
+            const dest_vector = dest_opt_vec.?;
+            const res_vector = res_opt_vec.?;
+
+            if (dest_vector.eql(res_vector, p.comp, true)) return;
             if (dest_unqual.sizeCompare(res.qt, p.comp) == .eq) {
                 res.qt = dest_unqual;
-                return res.implicitCast(p, .bitcast, tok);
+                return res.implicitCast(p, .bitcast);
             }
         } else if (dest_sk == .nullptr_t) {
             if (src_sk == .nullptr_t) return;
@@ -7308,7 +7879,7 @@ pub const Result = struct {
             if (src_sk.isInt() or src_sk.isFloat()) {
                 try res.castToInt(p, dest_unqual, tok);
                 return;
-            } else if (src_sk.isPointer()) {
+            } else if (src_sk.isPointer() and src_sk != .block_pointer) {
                 if (c == .test_coerce) return error.CoercionFailed;
                 try p.err(tok, .implicit_ptr_to_int, .{ src_original_qt, dest_unqual });
                 try c.note(p);
@@ -7317,24 +7888,28 @@ pub const Result = struct {
             }
         } else if (dest_sk.isFloat()) {
             if (src_sk.isInt() or src_sk.isFloat()) {
-                try res.castToFloat(p, dest_unqual, tok);
+                try res.castToFloat(p, dest_unqual);
                 return;
             }
-        } else if (dest_sk.isPointer()) {
+        } else if (dest_unqual.is(p.comp, .storage_float)) {
+            // Storage floats are copy-only; conversions from other scalar types
+            // are diagnosed by the common switch statement below this
+            // large if/else block
+        } else if (dest_sk.isPointer() and dest_sk != .block_pointer) {
             if (src_sk == .nullptr_t or res.val.isZero(p.comp)) {
-                try res.nullToPointer(p, dest_unqual, tok);
+                try res.nullToPointer(p, dest_unqual);
                 return;
             } else if (src_sk.isInt() and src_sk.isReal()) {
                 if (c == .test_coerce) return error.CoercionFailed;
                 try p.err(tok, .implicit_int_to_ptr, .{ src_original_qt, dest_unqual });
                 try c.note(p);
-                try res.castToPointer(p, dest_unqual, tok);
+                try res.castToPointer(p, dest_unqual);
                 return;
             } else if (src_sk == .void_pointer or dest_unqual.eql(res.qt, p.comp)) {
-                return res.castToPointer(p, dest_unqual, tok);
+                return res.castToPointer(p, dest_unqual);
             } else if (dest_sk == .void_pointer and src_sk.isPointer()) {
-                return res.castToPointer(p, dest_unqual, tok);
-            } else if (src_sk.isPointer()) {
+                return res.castToPointer(p, dest_unqual);
+            } else if (src_sk.isPointer() and src_sk != .block_pointer) {
                 const src_child = res.qt.childType(p.comp);
                 const dest_child = dest_unqual.childType(p.comp);
                 if (src_child.eql(dest_child, p.comp)) {
@@ -7342,15 +7917,16 @@ pub const Result = struct {
                         (src_child.@"volatile" and !dest_child.@"volatile") or
                         (src_child.restrict and !dest_child.restrict))
                     {
-                        try p.err(tok, switch (c) {
-                            .assign => .ptr_assign_discards_quals,
-                            .init => .ptr_init_discards_quals,
-                            .ret => .ptr_ret_discards_quals,
-                            .arg => .ptr_arg_discards_quals,
+                        const data: struct { diag: Diagnostic, qts: [2]QualType } = switch (c) {
+                            .assign => .{ .diag = .ptr_assign_discards_quals, .qts = .{ dest_qt, src_original_qt } },
+                            .init => .{ .diag = .ptr_init_discards_quals, .qts = .{ dest_qt, src_original_qt } },
+                            .ret => .{ .diag = .ptr_ret_discards_quals, .qts = .{ src_original_qt, dest_qt } },
+                            .arg => .{ .diag = .ptr_arg_discards_quals, .qts = .{ src_original_qt, dest_qt } },
                             .test_coerce => return error.CoercionFailed,
-                        }, .{ dest_qt, src_original_qt });
+                        };
+                        try p.err(tok, data.diag, .{ data.qts[0], data.qts[1] });
                     }
-                    try res.castToPointer(p, dest_unqual, tok);
+                    try res.castToPointer(p, dest_unqual);
                     return;
                 }
 
@@ -7365,7 +7941,11 @@ pub const Result = struct {
                 try c.note(p);
 
                 res.qt = dest_unqual;
-                return res.implicitCast(p, .bitcast, tok);
+                return res.implicitCast(p, .bitcast);
+            } else if (src_sk == .block_pointer) {
+                try p.err(tok, .incompatible_assign, .{ dest_qt, src_original_qt });
+                try c.note(p);
+                return;
             }
         } else if (dest_unqual.getRecord(p.comp) != null) {
             if (dest_unqual.eql(res.qt, p.comp)) {
@@ -7373,7 +7953,7 @@ pub const Result = struct {
             }
 
             if (c == .arg) if (dest_unqual.get(p.comp, .@"union")) |union_ty| {
-                if (dest_unqual.hasAttribute(p.comp, .transparent_union)) transparent_union: {
+                if (dest_unqual.hasAttribute(&p.tree, .transparent_union)) transparent_union: {
                     res.coerceExtra(p, union_ty.fields[0].qt, tok, .test_coerce) catch |er| switch (er) {
                         error.CoercionFailed => break :transparent_union,
                         else => |e| return e,
@@ -7392,15 +7972,18 @@ pub const Result = struct {
             if (dest_unqual.eql(res.qt, p.comp)) {
                 return; // ok
             }
+        } else if (dest_sk == .block_pointer) {
+            if (src_sk == .nullptr_t or res.val.isZero(p.comp)) {
+                try res.nullToPointer(p, dest_unqual);
+                return; // ok
+            } else if (src_sk == .void_pointer) {
+                try res.implicitCast(p, .bitcast);
+                return; // ok
+            } else if (dest_unqual.eql(res.qt, p.comp)) {
+                return; // ok
+            }
         } else {
-            if (c == .assign) {
-                const base_type = dest_unqual.base(p.comp);
-                switch (base_type.type) {
-                    .array => return p.err(tok, .array_not_assignable, .{base_type.qt}),
-                    .func => return p.err(tok, .non_object_not_assignable, .{base_type.qt}),
-                    else => {},
-                }
-            } else if (c == .test_coerce) {
+            if (c == .test_coerce) {
                 return error.CoercionFailed;
             }
             // This case should not be possible and an error should have already been emitted but we
@@ -7423,6 +8006,18 @@ fn expect(p: *Parser, comptime func: fn (*Parser) Error!?Result) Error!Result {
     return p.expectResult(try func(p));
 }
 
+fn expectWithClosing(p: *Parser, comptime func: fn (*Parser) Error!?Result, closing: Token.Id) Error!Result {
+    const opt_res = func(p) catch |er| {
+        if (er == error.ParsingFailed) p.skipTo(closing);
+        return er;
+    };
+    return opt_res orelse {
+        try p.err(p.tok_i, .expected_expr, .{});
+        p.skipTo(closing);
+        return error.ParsingFailed;
+    };
+}
+
 fn expectResult(p: *Parser, res: ?Result) Error!Result {
     return res orelse {
         try p.err(p.tok_i, .expected_expr, .{});
@@ -7430,72 +8025,39 @@ fn expectResult(p: *Parser, res: ?Result) Error!Result {
     };
 }
 
-/// expr : assignExpr (',' assignExpr)*
 fn expr(p: *Parser) Error!?Result {
-    var expr_start = p.tok_i;
-    var prev_total = p.diagnostics.total;
-    var lhs = (try p.assignExpr()) orelse {
-        if (p.tok_ids[p.tok_i] == .comma) _ = try p.expectResult(null);
-        return null;
-    };
-    while (p.eatToken(.comma)) |comma| {
-        try lhs.maybeWarnUnused(p, expr_start, prev_total);
-        expr_start = p.tok_i;
-        prev_total = p.diagnostics.total;
+    return p.binaryExpr(.any, true);
+}
 
-        var rhs = try p.expect(assignExpr);
-        try rhs.lvalConversion(p, expr_start);
-        lhs.val = rhs.val;
-        lhs.qt = rhs.qt;
-        try lhs.bin(p, .comma_expr, rhs, comma);
+fn assignExpr(p: *Parser) Error!?Result {
+    return p.binaryExpr(.assign, true);
+}
+
+/// Returns a parse error if the expression is not an integer constant
+/// integerConstExpr : constExpr
+fn integerConstExpr(p: *Parser, decl_folding: ConstDeclFoldingMode) Error!Result {
+    const start = p.tok_i;
+    const res = try p.constExpr(decl_folding);
+    if (!res.qt.isInvalid() and !res.qt.isRealInt(p.comp)) {
+        try p.err(start, .expected_integer_constant_expr, .{});
+        return error.ParsingFailed;
     }
-    return lhs;
+    return res;
 }
 
-fn eatTag(p: *Parser, id: Token.Id) ?std.meta.Tag(Node) {
-    if (p.eatToken(id)) |_| return switch (id) {
-        .equal => .assign_expr,
-        .asterisk_equal => .mul_assign_expr,
-        .slash_equal => .div_assign_expr,
-        .percent_equal => .mod_assign_expr,
-        .plus_equal => .add_assign_expr,
-        .minus_equal => .sub_assign_expr,
-        .angle_bracket_angle_bracket_left_equal => .shl_assign_expr,
-        .angle_bracket_angle_bracket_right_equal => .shr_assign_expr,
-        .ampersand_equal => .bit_and_assign_expr,
-        .caret_equal => .bit_xor_assign_expr,
-        .pipe_equal => .bit_or_assign_expr,
-        .equal_equal => .equal_expr,
-        .bang_equal => .not_equal_expr,
-        .angle_bracket_left => .less_than_expr,
-        .angle_bracket_left_equal => .less_than_equal_expr,
-        .angle_bracket_right => .greater_than_expr,
-        .angle_bracket_right_equal => .greater_than_equal_expr,
-        .angle_bracket_angle_bracket_left => .shl_expr,
-        .angle_bracket_angle_bracket_right => .shr_expr,
-        .plus => .add_expr,
-        .minus => .sub_expr,
-        .asterisk => .mul_expr,
-        .slash => .div_expr,
-        .percent => .mod_expr,
-        else => unreachable,
-    } else return null;
-}
+/// Caller is responsible for issuing a diagnostic if result is invalid/unavailable
+/// constExpr : condExpr
+fn constExpr(p: *Parser, decl_folding: ConstDeclFoldingMode) Error!Result {
+    const const_decl_folding = p.const_decl_folding;
+    defer p.const_decl_folding = const_decl_folding;
+    p.const_decl_folding = decl_folding;
 
-fn nonAssignExpr(assign_node: std.meta.Tag(Node)) std.meta.Tag(Node) {
-    return switch (assign_node) {
-        .mul_assign_expr => .mul_expr,
-        .div_assign_expr => .div_expr,
-        .mod_assign_expr => .mod_expr,
-        .add_assign_expr => .add_expr,
-        .sub_assign_expr => .sub_expr,
-        .shl_assign_expr => .shl_expr,
-        .shr_assign_expr => .shr_expr,
-        .bit_and_assign_expr => .bit_and_expr,
-        .bit_xor_assign_expr => .bit_xor_expr,
-        .bit_or_assign_expr => .bit_or_expr,
-        else => unreachable,
-    };
+    const res = try p.expect(assignExpr);
+
+    if (res.qt.isInvalid() or res.val.opt_ref == .none) return res;
+
+    try res.putValue(p);
+    return res;
 }
 
 fn unwrapNestedOperation(p: *Parser, node_idx: Node.Index) ?Node.DeclRef {
@@ -7504,13 +8066,16 @@ fn unwrapNestedOperation(p: *Parser, node_idx: Node.Index) ?Node.DeclRef {
         .member_access_ptr_expr,
         .member_access_expr,
         => |memb_or_arr_access| continue :loop memb_or_arr_access.base.get(&p.tree),
-        inline .cast,
+        .cast => |cast| {
+            if (!cast.implicit) return null;
+            continue :loop cast.operand.get(&p.tree);
+        },
         .paren_expr,
         .pre_inc_expr,
         .post_inc_expr,
         .pre_dec_expr,
         .post_dec_expr,
-        => |cast_or_unary| continue :loop cast_or_unary.operand.get(&p.tree),
+        => |unary| continue :loop unary.operand.get(&p.tree),
         .sub_expr,
         .add_expr,
         => |bin| continue :loop bin.lhs.get(&p.tree),
@@ -7543,522 +8108,431 @@ fn issueConstAssignmentDiagnostics(p: *Parser, node_idx: Node.Index, tok: TokenI
         const name = p.tokSlice(unwrapped.name_tok);
         try p.err(tok, .const_var_assignment, .{ name, unwrapped.qt });
         try p.issueDeclaredConstHereNote(unwrapped, name);
+    } else if (node_idx.get(&p.tree) == .cast) {
+        try p.err(tok, .cast_not_assignable, .{});
     } else {
         try p.err(tok, .not_assignable, .{});
     }
 }
 
+/// expr : assignExpr (',' assignExpr)*
 /// assignExpr
 ///  : condExpr
 ///  | unExpr ('=' | '*=' | '/=' | '%=' | '+=' | '-=' | '<<=' | '>>=' | '&=' | '^=' | '|=') assignExpr
-fn assignExpr(p: *Parser) Error!?Result {
-    var lhs = (try p.condExpr()) orelse return null;
-
-    const tok = p.tok_i;
-    const tag = p.eatTag(.equal) orelse
-        p.eatTag(.asterisk_equal) orelse
-        p.eatTag(.slash_equal) orelse
-        p.eatTag(.percent_equal) orelse
-        p.eatTag(.plus_equal) orelse
-        p.eatTag(.minus_equal) orelse
-        p.eatTag(.angle_bracket_angle_bracket_left_equal) orelse
-        p.eatTag(.angle_bracket_angle_bracket_right_equal) orelse
-        p.eatTag(.ampersand_equal) orelse
-        p.eatTag(.caret_equal) orelse
-        p.eatTag(.pipe_equal) orelse return lhs;
-
-    var rhs = try p.expect(assignExpr);
-
-    var is_const: bool = undefined;
-    if (!p.tree.isLvalExtra(lhs.node, &is_const) or is_const) {
-        try p.issueConstAssignmentDiagnostics(lhs.node, tok);
-        lhs.qt = .invalid;
-    }
-
-    if (tag == .assign_expr) {
-        try rhs.coerce(p, lhs.qt, tok, .assign);
-
-        try lhs.bin(p, tag, rhs, tok);
-        return lhs;
-    }
-
-    var lhs_dummy = blk: {
-        var lhs_copy = lhs;
-        try lhs_copy.un(p, .compound_assign_dummy_expr, tok);
-        try lhs_copy.lvalConversion(p, tok);
-        break :blk lhs_copy;
-    };
-    switch (tag) {
-        .mul_assign_expr,
-        .div_assign_expr,
-        .mod_assign_expr,
-        => {
-            if (!lhs.qt.isInvalid() and rhs.val.isZero(p.comp) and lhs.qt.isInt(p.comp) and rhs.qt.isInt(p.comp)) {
-                switch (tag) {
-                    .div_assign_expr => try p.err(tok, .division_by_zero, .{"division"}),
-                    .mod_assign_expr => try p.err(tok, .division_by_zero, .{"remainder"}),
-                    else => {},
-                }
-            }
-            _ = try lhs_dummy.adjustTypes(tok, &rhs, p, if (tag == .mod_assign_expr) .integer else .arithmetic);
-        },
-        .sub_assign_expr => {
-            _ = try lhs_dummy.adjustTypes(tok, &rhs, p, .sub);
-        },
-        .add_assign_expr => {
-            _ = try lhs_dummy.adjustTypes(tok, &rhs, p, .add);
-        },
-        .shl_assign_expr,
-        .shr_assign_expr,
-        .bit_and_assign_expr,
-        .bit_xor_assign_expr,
-        .bit_or_assign_expr,
-        => {
-            _ = try lhs_dummy.adjustTypes(tok, &rhs, p, .integer);
-        },
-        else => unreachable,
-    }
-
-    _ = try lhs_dummy.bin(p, nonAssignExpr(tag), rhs, tok);
-    try lhs_dummy.coerce(p, lhs.qt, tok, .assign);
-    try lhs.bin(p, tag, lhs_dummy, tok);
-    return lhs;
-}
-
-/// Returns a parse error if the expression is not an integer constant
-/// integerConstExpr : constExpr
-fn integerConstExpr(p: *Parser, decl_folding: ConstDeclFoldingMode) Error!Result {
-    const start = p.tok_i;
-    const res = try p.constExpr(decl_folding);
-    if (!res.qt.isInvalid() and !res.qt.isRealInt(p.comp)) {
-        try p.err(start, .expected_integer_constant_expr, .{});
-        return error.ParsingFailed;
-    }
-    return res;
-}
-
-/// Caller is responsible for issuing a diagnostic if result is invalid/unavailable
-/// constExpr : condExpr
-fn constExpr(p: *Parser, decl_folding: ConstDeclFoldingMode) Error!Result {
-    const const_decl_folding = p.const_decl_folding;
-    defer p.const_decl_folding = const_decl_folding;
-    p.const_decl_folding = decl_folding;
-
-    const res = try p.expect(condExpr);
-
-    if (res.qt.isInvalid() or res.val.opt_ref == .none) return res;
-
-    try res.putValue(p);
-    return res;
-}
-
 /// condExpr : lorExpr ('?' expression? ':' condExpr)?
-fn condExpr(p: *Parser) Error!?Result {
-    const cond_tok = p.tok_i;
-    var cond = (try p.lorExpr()) orelse return null;
-    if (p.eatToken(.question_mark) == null) return cond;
-    try cond.lvalConversion(p, cond_tok);
-    const saved_eval = p.no_eval;
-
-    if (cond.qt.scalarKind(p.comp) == .none) {
-        try p.err(cond_tok, .cond_expr_type, .{cond.qt});
-        return error.ParsingFailed;
-    }
-
-    // Prepare for possible binary conditional expression.
-    const maybe_colon = p.eatToken(.colon);
-
-    // Depending on the value of the condition, avoid evaluating unreachable branches.
-    var then_expr = blk: {
-        defer p.no_eval = saved_eval;
-        if (cond.val.opt_ref != .none and !cond.val.toBool(p.comp)) p.no_eval = true;
-        break :blk try p.expect(expr);
-    };
-
-    // If we saw a colon then this is a binary conditional expression.
-    if (maybe_colon) |colon| {
-        var cond_then = cond;
-        cond_then.node = try p.addNode(.{
-            .cond_dummy_expr = .{
-                .op_tok = colon,
-                .operand = cond.node,
-                .qt = cond.qt,
-            },
-        });
-        _ = try cond_then.adjustTypes(colon, &then_expr, p, .conditional);
-        cond.qt = then_expr.qt;
-        cond.node = try p.addNode(.{
-            .binary_cond_expr = .{
-                .cond_tok = cond_tok,
-                .cond = cond.node,
-                .then_expr = cond_then.node,
-                .else_expr = then_expr.node,
-                .qt = cond.qt,
-            },
-        });
-        return cond;
-    }
-
-    const colon = try p.expectToken(.colon);
-    var else_expr = blk: {
-        defer p.no_eval = saved_eval;
-        if (cond.val.opt_ref != .none and cond.val.toBool(p.comp)) p.no_eval = true;
-        break :blk try p.expect(condExpr);
-    };
-
-    _ = try then_expr.adjustTypes(colon, &else_expr, p, .conditional);
-
-    if (cond.val.opt_ref != .none) {
-        cond.val = if (cond.val.toBool(p.comp)) then_expr.val else else_expr.val;
-    } else {
-        try then_expr.saveValue(p);
-        try else_expr.saveValue(p);
-    }
-    cond.qt = then_expr.qt;
-    cond.node = try p.addNode(.{
-        .cond_expr = .{
-            .cond_tok = cond_tok,
-            .qt = cond.qt,
-            .cond = cond.node,
-            .then_expr = then_expr.node,
-            .else_expr = else_expr.node,
-        },
-    });
-    return cond;
-}
-
 /// lorExpr : landExpr ('||' landExpr)*
-fn lorExpr(p: *Parser) Error!?Result {
-    var lhs = (try p.landExpr()) orelse return null;
-    const saved_eval = p.no_eval;
-    defer p.no_eval = saved_eval;
-
-    while (p.eatToken(.pipe_pipe)) |tok| {
-        if (lhs.val.opt_ref != .none and lhs.val.toBool(p.comp)) p.no_eval = true;
-        var rhs = try p.expect(landExpr);
-
-        if (try lhs.adjustTypes(tok, &rhs, p, .boolean_logic)) {
-            const res = lhs.val.toBool(p.comp) or rhs.val.toBool(p.comp);
-            lhs.val = Value.fromBool(res);
-        } else {
-            lhs.val.boolCast(p.comp);
-        }
-        try lhs.boolRes(p, .bool_or_expr, rhs, tok);
-    }
-    return lhs;
-}
-
 /// landExpr : orExpr ('&&' orExpr)*
-fn landExpr(p: *Parser) Error!?Result {
-    var lhs = (try p.orExpr()) orelse return null;
-    const saved_eval = p.no_eval;
-    defer p.no_eval = saved_eval;
-
-    while (p.eatToken(.ampersand_ampersand)) |tok| {
-        if (lhs.val.opt_ref != .none and !lhs.val.toBool(p.comp)) p.no_eval = true;
-        var rhs = try p.expect(orExpr);
-
-        if (try lhs.adjustTypes(tok, &rhs, p, .boolean_logic)) {
-            const res = lhs.val.toBool(p.comp) and rhs.val.toBool(p.comp);
-            lhs.val = Value.fromBool(res);
-        } else {
-            lhs.val.boolCast(p.comp);
-        }
-        try lhs.boolRes(p, .bool_and_expr, rhs, tok);
-    }
-    return lhs;
-}
-
 /// orExpr : xorExpr ('|' xorExpr)*
-fn orExpr(p: *Parser) Error!?Result {
-    var lhs = (try p.xorExpr()) orelse return null;
-    while (p.eatToken(.pipe)) |tok| {
-        var rhs = try p.expect(xorExpr);
-
-        if (try lhs.adjustTypes(tok, &rhs, p, .integer)) {
-            lhs.val = try lhs.val.bitOr(rhs.val, p.comp);
-        }
-        try lhs.bin(p, .bit_or_expr, rhs, tok);
-    }
-    return lhs;
-}
-
 /// xorExpr : andExpr ('^' andExpr)*
-fn xorExpr(p: *Parser) Error!?Result {
-    var lhs = (try p.andExpr()) orelse return null;
-    while (p.eatToken(.caret)) |tok| {
-        var rhs = try p.expect(andExpr);
-
-        if (try lhs.adjustTypes(tok, &rhs, p, .integer)) {
-            lhs.val = try lhs.val.bitXor(rhs.val, p.comp);
-        }
-        try lhs.bin(p, .bit_xor_expr, rhs, tok);
-    }
-    return lhs;
-}
-
 /// andExpr : eqExpr ('&' eqExpr)*
-fn andExpr(p: *Parser) Error!?Result {
-    var lhs = (try p.eqExpr()) orelse return null;
-    while (p.eatToken(.ampersand)) |tok| {
-        var rhs = try p.expect(eqExpr);
-
-        if (try lhs.adjustTypes(tok, &rhs, p, .integer)) {
-            lhs.val = try lhs.val.bitAnd(rhs.val, p.comp);
-        }
-        try lhs.bin(p, .bit_and_expr, rhs, tok);
-    }
-    return lhs;
-}
-
 /// eqExpr : compExpr (('==' | '!=') compExpr)*
-fn eqExpr(p: *Parser) Error!?Result {
-    var lhs = (try p.compExpr()) orelse return null;
-    while (true) {
-        const tok = p.tok_i;
-        const tag = p.eatTag(.equal_equal) orelse
-            p.eatTag(.bang_equal) orelse break;
-        var rhs = try p.expect(compExpr);
-
-        if (try lhs.adjustTypes(tok, &rhs, p, .equality)) {
-            const op: std.math.CompareOperator = if (tag == .equal_expr) .eq else .neq;
-
-            const res: ?bool = if (lhs.qt.isPointer(p.comp) or rhs.qt.isPointer(p.comp))
-                lhs.val.comparePointers(op, rhs.val, p.comp)
-            else
-                lhs.val.compare(op, rhs.val, p.comp);
-
-            lhs.val = if (res) |val| Value.fromBool(val) else .{};
-        } else {
-            lhs.val.boolCast(p.comp);
-        }
-        try lhs.boolRes(p, tag, rhs, tok);
-    }
-    return lhs;
-}
-
 /// compExpr : shiftExpr (('<' | '<=' | '>' | '>=') shiftExpr)*
-fn compExpr(p: *Parser) Error!?Result {
-    var lhs = (try p.shiftExpr()) orelse return null;
-    while (true) {
-        const tok = p.tok_i;
-        const tag = p.eatTag(.angle_bracket_left) orelse
-            p.eatTag(.angle_bracket_left_equal) orelse
-            p.eatTag(.angle_bracket_right) orelse
-            p.eatTag(.angle_bracket_right_equal) orelse break;
-        var rhs = try p.expect(shiftExpr);
-
-        if (try lhs.adjustTypes(tok, &rhs, p, .relational)) {
-            const op: std.math.CompareOperator = switch (tag) {
-                .less_than_expr => .lt,
-                .less_than_equal_expr => .lte,
-                .greater_than_expr => .gt,
-                .greater_than_equal_expr => .gte,
-                else => unreachable,
-            };
-
-            const res: ?bool = if (lhs.qt.isPointer(p.comp) or rhs.qt.isPointer(p.comp))
-                lhs.val.comparePointers(op, rhs.val, p.comp)
-            else
-                lhs.val.compare(op, rhs.val, p.comp);
-            lhs.val = if (res) |val| Value.fromBool(val) else .{};
-        } else {
-            lhs.val.boolCast(p.comp);
-        }
-        try lhs.boolRes(p, tag, rhs, tok);
-    }
-    return lhs;
-}
-
 /// shiftExpr : addExpr (('<<' | '>>') addExpr)*
-fn shiftExpr(p: *Parser) Error!?Result {
-    var lhs = (try p.addExpr()) orelse return null;
-    while (true) {
-        const tok = p.tok_i;
-        const tag = p.eatTag(.angle_bracket_angle_bracket_left) orelse
-            p.eatTag(.angle_bracket_angle_bracket_right) orelse break;
-        var rhs = try p.expect(addExpr);
-
-        if (try lhs.adjustTypes(tok, &rhs, p, .integer)) {
-            if (rhs.val.compare(.lt, .zero, p.comp)) {
-                try p.err(tok, .negative_shift_count, .{});
-            }
-            if (rhs.val.compare(.gte, try Value.int(lhs.qt.bitSizeof(p.comp), p.comp), p.comp)) {
-                try p.err(tok, .too_big_shift_count, .{});
-            }
-            if (tag == .shl_expr) {
-                if (try lhs.val.shl(lhs.val, rhs.val, lhs.qt, p.comp) and
-                    lhs.qt.signedness(p.comp) != .unsigned) try p.err(tok, .overflow, .{lhs});
-            } else {
-                lhs.val = try lhs.val.shr(rhs.val, lhs.qt, p.comp);
-            }
-        }
-        try lhs.bin(p, tag, rhs, tok);
-    }
-    return lhs;
-}
-
 /// addExpr : mulExpr (('+' | '-') mulExpr)*
-fn addExpr(p: *Parser) Error!?Result {
-    var lhs = (try p.mulExpr()) orelse return null;
+/// mulExpr : unExpr (('*' | '/' | '%') unExpr)*´
+fn binaryExpr(p: *Parser, min_prec: Token.Precedence, eval: bool) Error!?Result {
+    var prev_errors = p.diagnostics.errors;
+
+    var lhs = try p.unExpr(eval) orelse {
+        if (min_prec.lt(.comma) and p.tok_ids[p.tok_i] == .comma) {
+            try p.err(p.tok_i, .expected_expr, .{});
+            return error.ParsingFailed;
+        }
+        return null;
+    };
+
     while (true) {
-        const tok = p.tok_i;
-        const tag = p.eatTag(.plus) orelse
-            p.eatTag(.minus) orelse break;
-        var rhs = try p.expect(mulExpr);
-
-        // We'll want to check this for invalid pointer arithmetic.
-        const original_lhs_qt = lhs.qt;
-
-        if (try lhs.adjustTypes(tok, &rhs, p, if (tag == .add_expr) .add else .sub)) {
-            const lhs_sk = lhs.qt.scalarKind(p.comp);
-            if (tag == .add_expr) {
-                if (try lhs.val.add(lhs.val, rhs.val, lhs.qt, p.comp)) {
-                    if (lhs_sk.isPointer()) {
-                        const increment = lhs;
-                        const ptr_bits = p.comp.type_store.intptr.bitSizeof(p.comp);
-                        const element_size = increment.qt.childType(p.comp).sizeofOrNull(p.comp) orelse 1;
-                        const max_elems = p.comp.maxArrayBytes() / element_size;
-
-                        try p.err(tok, .array_overflow, .{ increment, ptr_bits, element_size * 8, element_size, max_elems });
-                    } else if (lhs.qt.signedness(p.comp) != .unsigned) {
-                        try p.err(tok, .overflow, .{lhs});
-                    }
-                }
-            } else {
-                const elem_size = if (original_lhs_qt.isPointer(p.comp)) original_lhs_qt.childType(p.comp).sizeofOrNull(p.comp) orelse 1 else 1;
-                if (elem_size == 0 and rhs.qt.isPointer(p.comp)) {
-                    lhs.val = .{};
-                } else {
-                    if (try lhs.val.sub(lhs.val, rhs.val, lhs.qt, elem_size, p.comp) and
-                        lhs.qt.signedness(p.comp) != .unsigned)
-                    {
-                        try p.err(tok, .overflow, .{lhs});
-                    }
-                }
-            }
-        }
-        if (!lhs.qt.isInvalid()) {
-            const lhs_sk = original_lhs_qt.scalarKind(p.comp);
-            if (lhs_sk == .pointer and original_lhs_qt.childType(p.comp).hasIncompleteSize(p.comp)) {
-                try p.err(tok, .ptr_arithmetic_incomplete, .{original_lhs_qt.childType(p.comp)});
-                lhs.qt = .invalid;
-            }
-        }
-        try lhs.bin(p, tag, rhs, tok);
-    }
-    return lhs;
-}
-
-/// mulExpr : castExpr (('*' | '/' | '%') castExpr)*´
-fn mulExpr(p: *Parser) Error!?Result {
-    var lhs = (try p.castExpr()) orelse return null;
-    while (true) {
-        const tok = p.tok_i;
-        const tag = p.eatTag(.asterisk) orelse
-            p.eatTag(.slash) orelse
-            p.eatTag(.percent) orelse break;
-        var rhs = try p.expect(castExpr);
-
-        if (rhs.val.isZero(p.comp) and tag != .mul_expr and !p.no_eval and lhs.qt.isInt(p.comp) and rhs.qt.isInt(p.comp)) {
-            lhs.val = .{};
-            try p.err(tok, if (p.in_macro) .division_by_zero_macro else .division_by_zero, if (tag == .div_expr) .{"division"} else .{"remainder"});
-            if (p.in_macro) return error.ParsingFailed;
-        }
-
-        if (try lhs.adjustTypes(tok, &rhs, p, if (tag == .mod_expr) .integer else .arithmetic)) {
-            switch (tag) {
-                .mul_expr => if (try lhs.val.mul(lhs.val, rhs.val, lhs.qt, p.comp) and
-                    lhs.qt.signedness(p.comp) != .unsigned) try p.err(tok, .overflow, .{lhs}),
-                .div_expr => if (try lhs.val.div(lhs.val, rhs.val, lhs.qt, p.comp) and
-                    lhs.qt.signedness(p.comp) != .unsigned) try p.err(tok, .overflow, .{lhs}),
-                .mod_expr => {
-                    var res = try Value.rem(lhs.val, rhs.val, lhs.qt, p.comp);
-                    if (res.opt_ref == .none) {
-                        if (p.in_macro) {
-                            // match clang behavior by defining invalid remainder to be zero in macros
-                            res = .zero;
-                        } else {
-                            try lhs.saveValue(p);
-                            try rhs.saveValue(p);
-                        }
-                    }
-                    lhs.val = res;
-                },
-                else => unreachable,
-            }
-        }
-
-        try lhs.bin(p, tag, rhs, tok);
-    }
-    return lhs;
-}
-
-/// castExpr
-///  :  '(' compoundStmt ')' suffixExpr*
-///  |  '(' typeName ')' castExpr
-///  | '(' typeName ')' '{' initializerItems '}'
-///  | unExpr
-fn castExpr(p: *Parser) Error!?Result {
-    if (p.eatToken(.l_paren)) |l_paren| cast_expr: {
-        if (p.tok_ids[p.tok_i] == .l_brace) {
-            const tok = p.tok_i;
-            try p.err(p.tok_i, .gnu_statement_expression, .{});
-            if (p.func.qt == null) {
-                try p.err(p.tok_i, .stmt_expr_not_allowed_file_scope, .{});
-                return error.ParsingFailed;
-            }
-            var stmt_expr_state: StmtExprState = .{};
-            const body_node = (try p.compoundStmt(false, &stmt_expr_state)).?; // compoundStmt only returns null if .l_brace isn't the first token
-
-            var res: Result = .{
-                .node = body_node,
-                .qt = stmt_expr_state.last_expr_qt,
-            };
-            try p.expectClosing(l_paren, .r_paren);
-            try res.un(p, .stmt_expr, tok);
-            while (try p.suffixExpr(res)) |suffix| {
-                res = suffix;
-            }
-            return res;
-        }
-        const ty = (try p.typeName()) orelse {
-            p.tok_i -= 1;
-            break :cast_expr;
-        };
-        try p.expectClosing(l_paren, .r_paren);
-
-        if (p.tok_ids[p.tok_i] == .l_brace) {
-            var lhs = (try p.compoundLiteral(ty, l_paren)).?;
-            while (try p.suffixExpr(lhs)) |suffix| {
-                lhs = suffix;
-            }
+        var op_prec = Token.precedence[@backingInt(p.tok_ids[p.tok_i])];
+        if (op_prec.lt(min_prec)) {
             return lhs;
         }
 
-        const operand_tok = p.tok_i;
-        var operand = try p.expect(castExpr);
-        try operand.lvalConversion(p, operand_tok);
-        try operand.castType(p, ty, operand_tok, l_paren);
-        return operand;
+        const operator = p.tok_i;
+        p.tok_i += 1;
+
+        // Special handling for binary conditionals.
+        if (op_prec == .conditional and p.eatToken(.colon) != null) op_prec = .binary_conditional;
+
+        const eval_rhs = switch (op_prec) {
+            .bool_and, .conditional => if (lhs.val.opt_ref != .none) eval and lhs.val.toBool(p.comp) else eval,
+            .bool_or, .binary_conditional => if (lhs.val.opt_ref != .none) eval and !lhs.val.toBool(p.comp) else eval,
+            else => eval,
+        };
+        var rhs = try p.expectResult(try p.binaryExpr(op_prec.next(min_prec), eval_rhs));
+
+        switch (op_prec) {
+            _ => unreachable,
+            .comma => {
+                try p.diagnoseUnusedValue(lhs.node, prev_errors);
+                prev_errors = p.diagnostics.total;
+
+                try lhs.lvalConversion(p);
+                try rhs.lvalConversion(p);
+                lhs.val = rhs.val;
+                lhs.qt = rhs.qt;
+                try lhs.bin(p, .comma_expr, rhs, operator);
+            },
+            .assign => {
+                const tag: std.meta.Tag(Node) = switch (p.tok_ids[operator]) {
+                    .equal => .assign_expr,
+                    .asterisk_equal => .mul_assign_expr,
+                    .slash_equal => .div_assign_expr,
+                    .percent_equal => .mod_assign_expr,
+                    .plus_equal => .add_assign_expr,
+                    .minus_equal => .sub_assign_expr,
+                    .angle_bracket_angle_bracket_left_equal => .shl_assign_expr,
+                    .angle_bracket_angle_bracket_right_equal => .shr_assign_expr,
+                    .ampersand_equal => .bit_and_assign_expr,
+                    .caret_equal => .bit_xor_assign_expr,
+                    .pipe_equal => .bit_or_assign_expr,
+                    else => unreachable,
+                };
+
+                var is_const: bool = undefined;
+                if (!p.tree.isLvalExtra(lhs.node, &is_const) or is_const) {
+                    try p.issueConstAssignmentDiagnostics(lhs.node, operator);
+                    lhs.qt = .invalid;
+                }
+                lhs.val = .{};
+
+                if (tag == .assign_expr) {
+                    try rhs.coerce(p, lhs.qt, operator, .assign);
+
+                    try lhs.bin(p, tag, rhs, operator);
+                    continue;
+                }
+
+                var lhs_dummy = lhs;
+                try lhs_dummy.un(p, .compound_assign_dummy_expr, operator);
+                try lhs_dummy.lvalConversion(p);
+
+                switch (tag) {
+                    .mul_assign_expr,
+                    .div_assign_expr,
+                    .mod_assign_expr,
+                    => {
+                        try lhs_dummy.adjustTypes(operator, &rhs, p, if (tag == .mod_assign_expr) .integer else .arithmetic);
+                        if (eval and !lhs.qt.isInvalid() and rhs.val.isZero(p.comp) and lhs_dummy.qt.isInt(p.comp)) {
+                            switch (tag) {
+                                .div_assign_expr => try p.err(operator, .division_by_zero, .{"division"}),
+                                .mod_assign_expr => try p.err(operator, .division_by_zero, .{"remainder"}),
+                                else => {},
+                            }
+                        }
+                    },
+                    .sub_assign_expr => try lhs_dummy.adjustTypes(operator, &rhs, p, .sub),
+                    .add_assign_expr => try lhs_dummy.adjustTypes(operator, &rhs, p, .add),
+                    .shl_assign_expr,
+                    .shr_assign_expr,
+                    .bit_and_assign_expr,
+                    .bit_xor_assign_expr,
+                    .bit_or_assign_expr,
+                    => try lhs_dummy.adjustTypes(operator, &rhs, p, .integer),
+                    else => unreachable,
+                }
+
+                const non_assign_tag: std.meta.Tag(Node) = switch (tag) {
+                    .mul_assign_expr => .mul_expr,
+                    .div_assign_expr => .div_expr,
+                    .mod_assign_expr => .mod_expr,
+                    .add_assign_expr => .add_expr,
+                    .sub_assign_expr => .sub_expr,
+                    .shl_assign_expr => .shl_expr,
+                    .shr_assign_expr => .shr_expr,
+                    .bit_and_assign_expr => .bit_and_expr,
+                    .bit_xor_assign_expr => .bit_xor_expr,
+                    .bit_or_assign_expr => .bit_or_expr,
+                    else => unreachable,
+                };
+
+                _ = try lhs_dummy.bin(p, non_assign_tag, rhs, operator);
+                try lhs_dummy.coerce(p, lhs.qt, operator, .assign);
+                try lhs.bin(p, tag, lhs_dummy, operator);
+            },
+            .binary_conditional => {
+                try lhs.lvalConversion(p);
+                const cond_known = lhs.val.opt_ref != .none;
+                const cond_true = cond_known and lhs.val.toBool(p.comp);
+
+                if (!lhs.qt.isInvalid() and lhs.qt.scalarKind(p.comp) == .none) {
+                    try p.err(operator, .cond_expr_type, .{lhs.qt});
+                    lhs.qt = .invalid;
+                }
+
+                const cond_node = lhs.node;
+                lhs.node = try p.addNode(.{
+                    .cond_dummy_expr = .{
+                        .op_tok = operator,
+                        .operand = lhs.node,
+                        .qt = lhs.qt,
+                    },
+                });
+                try lhs.adjustTypes(operator, &rhs, p, .conditional);
+                if (cond_known) {
+                    lhs.val = if (cond_true) lhs.val else rhs.val;
+                    try lhs.putValue(p);
+                }
+                lhs.qt = rhs.qt;
+                lhs.node = try p.addNode(.{
+                    .binary_cond_expr = .{
+                        .cond_tok = operator,
+                        .cond = cond_node,
+                        .then_expr = lhs.node,
+                        .else_expr = rhs.node,
+                        .qt = lhs.qt,
+                    },
+                });
+            },
+            .conditional => {
+                try lhs.lvalConversion(p);
+                const cond_known = lhs.val.opt_ref != .none;
+                const cond_true = cond_known and lhs.val.toBool(p.comp);
+
+                if (!lhs.qt.isInvalid() and lhs.qt.scalarKind(p.comp) == .none) {
+                    try p.err(operator, .cond_expr_type, .{lhs.qt});
+                }
+
+                const colon = try p.expectToken(.colon);
+
+                var else_expr = try p.expectResult(try p.binaryExpr(op_prec, eval and !cond_true));
+
+                try rhs.adjustTypes(colon, &else_expr, p, .conditional);
+
+                lhs.qt = rhs.qt;
+                lhs.node = try p.addNode(.{
+                    .cond_expr = .{
+                        .cond_tok = operator,
+                        .qt = lhs.qt,
+                        .cond = lhs.node,
+                        .then_expr = rhs.node,
+                        .else_expr = else_expr.node,
+                    },
+                });
+
+                if (cond_known) {
+                    lhs.val = if (cond_true) rhs.val else else_expr.val;
+                    try lhs.putValue(p);
+                } else {
+                    try rhs.saveValue(p);
+                    try else_expr.saveValue(p);
+                }
+            },
+            .bool_or => {
+                try lhs.adjustTypes(operator, &rhs, p, .boolean_logic);
+                if (try lhs.shouldEval(&rhs, p, eval)) {
+                    lhs.val = .fromBool(lhs.val.toBool(p.comp) or rhs.val.toBool(p.comp));
+                } else {
+                    lhs.val.boolCast(p.comp);
+                }
+                try lhs.boolRes(p, .bool_or_expr, rhs, operator);
+            },
+            .bool_and => {
+                try lhs.adjustTypes(operator, &rhs, p, .boolean_logic);
+                if (try lhs.shouldEval(&rhs, p, eval)) {
+                    lhs.val = .fromBool(lhs.val.toBool(p.comp) and rhs.val.toBool(p.comp));
+                } else {
+                    lhs.val.boolCast(p.comp);
+                }
+                try lhs.boolRes(p, .bool_and_expr, rhs, operator);
+            },
+            .bit_or => {
+                try lhs.adjustTypes(operator, &rhs, p, .integer);
+                if (try lhs.shouldEval(&rhs, p, eval)) {
+                    lhs.val = try lhs.val.bitOr(rhs.val, p.comp);
+                }
+                try lhs.bin(p, .bit_or_expr, rhs, operator);
+            },
+            .bit_xor => {
+                try lhs.adjustTypes(operator, &rhs, p, .integer);
+                if (try lhs.shouldEval(&rhs, p, eval)) {
+                    lhs.val = try lhs.val.bitXor(rhs.val, p.comp);
+                }
+                try lhs.bin(p, .bit_xor_expr, rhs, operator);
+            },
+            .bit_and => {
+                try lhs.adjustTypes(operator, &rhs, p, .integer);
+                if (try lhs.shouldEval(&rhs, p, eval)) {
+                    lhs.val = try lhs.val.bitAnd(rhs.val, p.comp);
+                }
+                try lhs.bin(p, .bit_and_expr, rhs, operator);
+            },
+            .equality => {
+                const tag: std.meta.Tag(Node) = switch (p.tok_ids[operator]) {
+                    .equal_equal => .equal_expr,
+                    .bang_equal => .not_equal_expr,
+                    else => unreachable,
+                };
+
+                try lhs.adjustTypes(operator, &rhs, p, .equality);
+                if (try lhs.shouldEval(&rhs, p, eval)) {
+                    const op: std.math.CompareOperator = if (tag == .equal_expr) .eq else .neq;
+
+                    const res: ?bool = if (lhs.qt.isPointer(p.comp) or rhs.qt.isPointer(p.comp))
+                        lhs.val.comparePointers(op, rhs.val, p.comp)
+                    else
+                        lhs.val.compare(op, rhs.val, p.comp);
+
+                    if (p.record_static_assert_eval_note and res == false) {
+                        try lhs.putValue(p);
+                        try rhs.putValue(p);
+                    }
+                    lhs.val = if (res) |val| .fromBool(val) else .{};
+                } else {
+                    lhs.val.boolCast(p.comp);
+                }
+                try lhs.boolRes(p, tag, rhs, operator);
+            },
+            .comparison => {
+                const tag: std.meta.Tag(Node) = switch (p.tok_ids[operator]) {
+                    .angle_bracket_left => .less_than_expr,
+                    .angle_bracket_left_equal => .less_than_equal_expr,
+                    .angle_bracket_right => .greater_than_expr,
+                    .angle_bracket_right_equal => .greater_than_equal_expr,
+                    else => unreachable,
+                };
+
+                try lhs.adjustTypes(operator, &rhs, p, .relational);
+                if (try lhs.shouldEval(&rhs, p, eval)) {
+                    const op: std.math.CompareOperator = switch (tag) {
+                        .less_than_expr => .lt,
+                        .less_than_equal_expr => .lte,
+                        .greater_than_expr => .gt,
+                        .greater_than_equal_expr => .gte,
+                        else => unreachable,
+                    };
+
+                    const res: ?bool = if (lhs.qt.isPointer(p.comp) or rhs.qt.isPointer(p.comp))
+                        lhs.val.comparePointers(op, rhs.val, p.comp)
+                    else
+                        lhs.val.compare(op, rhs.val, p.comp);
+                    if (p.record_static_assert_eval_note and res == false) {
+                        try lhs.putValue(p);
+                        try rhs.putValue(p);
+                    }
+                    lhs.val = if (res) |val| .fromBool(val) else .{};
+                } else {
+                    lhs.val.boolCast(p.comp);
+                }
+                try lhs.boolRes(p, tag, rhs, operator);
+            },
+            .shift => {
+                const tag: std.meta.Tag(Node) = switch (p.tok_ids[operator]) {
+                    .angle_bracket_angle_bracket_left => .shl_expr,
+                    .angle_bracket_angle_bracket_right => .shr_expr,
+                    else => unreachable,
+                };
+
+                try lhs.adjustTypes(operator, &rhs, p, .integer);
+                if (try lhs.shouldEval(&rhs, p, eval)) {
+                    if (rhs.val.compare(.lt, .zero, p.comp)) {
+                        try p.err(operator, .negative_shift_count, .{});
+                    }
+                    if (rhs.val.compare(.gte, try .int(lhs.qt.bitSizeof(p.comp), p.comp), p.comp)) {
+                        try p.err(operator, .too_big_shift_count, .{});
+                    }
+                    if (tag == .shl_expr) {
+                        if (try lhs.val.shl(lhs.val, rhs.val, lhs.qt, p.comp) and
+                            lhs.qt.signedness(p.comp) != .unsigned) try p.err(operator, .overflow, .{lhs});
+                    } else {
+                        lhs.val = try lhs.val.shr(rhs.val, lhs.qt, p.comp);
+                    }
+                }
+                try lhs.bin(p, tag, rhs, operator);
+            },
+            .additive => {
+                const tag: std.meta.Tag(Node) = switch (p.tok_ids[operator]) {
+                    .plus => .add_expr,
+                    .minus => .sub_expr,
+                    else => unreachable,
+                };
+                // We'll want to check this for invalid pointer arithmetic.
+                const original_lhs_qt = lhs.qt;
+
+                try lhs.adjustTypes(operator, &rhs, p, if (tag == .add_expr) .add else .sub);
+                if (try lhs.shouldEval(&rhs, p, eval)) {
+                    const lhs_sk = lhs.qt.scalarKind(p.comp);
+                    if (tag == .add_expr) {
+                        if (try lhs.val.add(lhs.val, rhs.val, lhs.qt, p.comp)) {
+                            if (lhs_sk.isPointer()) {
+                                const increment = lhs;
+                                const ptr_bits = p.comp.type_store.intptr.bitSizeof(p.comp);
+                                const element_size = increment.qt.childType(p.comp).sizeofOrNull(p.comp) orelse 1;
+                                const max_elems = p.comp.maxArrayBytes() / element_size;
+
+                                try p.err(operator, .array_overflow, .{ increment, ptr_bits, element_size * 8, element_size, max_elems });
+                            } else if (lhs.qt.signedness(p.comp) != .unsigned) {
+                                try p.err(operator, .overflow, .{lhs});
+                            }
+                        }
+                    } else {
+                        const elem_size = if (original_lhs_qt.isPointer(p.comp)) original_lhs_qt.childType(p.comp).sizeofOrNull(p.comp) orelse 1 else 1;
+                        if (elem_size == 0 and rhs.qt.isPointer(p.comp)) {
+                            lhs.val = .{};
+                        } else {
+                            if (try lhs.val.sub(lhs.val, rhs.val, lhs.qt, elem_size, p.comp) and
+                                lhs.qt.signedness(p.comp) != .unsigned)
+                            {
+                                try p.err(operator, .overflow, .{lhs});
+                            }
+                        }
+                    }
+                }
+                if (!lhs.qt.isInvalid()) {
+                    const lhs_sk = original_lhs_qt.scalarKind(p.comp);
+                    if (lhs_sk == .pointer and original_lhs_qt.childType(p.comp).hasIncompleteSize(p.comp)) {
+                        try p.err(operator, .ptr_arithmetic_incomplete, .{original_lhs_qt.childType(p.comp)});
+                        lhs.qt = .invalid;
+                    }
+                }
+                try lhs.bin(p, tag, rhs, operator);
+            },
+            .multiplicative => {
+                const tag: std.meta.Tag(Node) = switch (p.tok_ids[operator]) {
+                    .asterisk => .mul_expr,
+                    .slash => .div_expr,
+                    .percent => .mod_expr,
+                    else => unreachable,
+                };
+
+                try lhs.adjustTypes(operator, &rhs, p, if (tag == .mod_expr) .integer else .arithmetic);
+                if (eval and tag != .mul_expr and !lhs.qt.isInvalid() and lhs.qt.isInt(p.comp) and rhs.val.isZero(p.comp)) {
+                    lhs.val = .{};
+                    try p.err(operator, .division_by_zero, if (tag == .div_expr) .{"division"} else .{"remainder"});
+                }
+
+                if (try lhs.shouldEval(&rhs, p, eval)) {
+                    switch (tag) {
+                        .mul_expr => if (try lhs.val.mul(lhs.val, rhs.val, lhs.qt, p.comp) and
+                            lhs.qt.signedness(p.comp) != .unsigned) try p.err(operator, .overflow, .{lhs}),
+                        .div_expr => if (try lhs.val.div(lhs.val, rhs.val, lhs.qt, p.comp) and
+                            lhs.qt.signedness(p.comp) != .unsigned) try p.err(operator, .overflow, .{lhs}),
+                        .mod_expr => {
+                            const res = try Value.rem(lhs.val, rhs.val, lhs.qt, p.comp);
+                            if (res.opt_ref == .none) {
+                                try lhs.saveValue(p);
+                                try rhs.saveValue(p);
+                            }
+                            lhs.val = res;
+                        },
+                        else => unreachable,
+                    }
+                }
+
+                try lhs.bin(p, tag, rhs, operator);
+            },
+        }
     }
-    return p.unExpr();
 }
 
 /// builtinBitCast : __builtin_bit_cast '(' typeName ',' assignExpr ')'
 fn builtinBitCast(p: *Parser, builtin_tok: TokenIndex) Error!Result {
     const l_paren = try p.expectToken(.l_paren);
 
-    const res_qt = (try p.typeName()) orelse {
-        try p.err(p.tok_i, .expected_type, .{});
-        return error.ParsingFailed;
-    };
-
+    const res_qt = try p.expectTypeName(.comma);
     _ = try p.expectToken(.comma);
 
-    const operand_tok = p.tok_i;
-    var operand = try p.expect(assignExpr);
-    try operand.lvalConversion(p, operand_tok);
+    var operand = try p.expectWithClosing(assignExpr, .r_paren);
+    try operand.lvalConversion(p);
 
     try p.expectClosing(l_paren, .r_paren);
 
@@ -8148,15 +8622,10 @@ fn convertvector(p: *Parser, builtin_tok: TokenIndex) Error!Result {
     const operand = try p.expect(assignExpr);
     _ = try p.expectToken(.comma);
 
-    var dest_qt = (try p.typeName()) orelse {
-        try p.err(p.tok_i, .expected_type, .{});
-        p.skipTo(.r_paren);
-        return error.ParsingFailed;
-    };
-
+    var dest_qt = try p.expectTypeName(.r_paren);
     try p.expectClosing(l_paren, .r_paren);
 
-    if (operand.qt.isInvalid() or operand.qt.isInvalid()) {
+    if (operand.qt.isInvalid() or dest_qt.isInvalid()) {
         dest_qt = .invalid;
     } else check: {
         const operand_vec = operand.qt.get(p.comp, .vector) orelse {
@@ -8191,25 +8660,16 @@ fn convertvector(p: *Parser, builtin_tok: TokenIndex) Error!Result {
 fn typesCompatible(p: *Parser, builtin_tok: TokenIndex) Error!Result {
     const l_paren = try p.expectToken(.l_paren);
 
-    const lhs = (try p.typeName()) orelse {
-        try p.err(p.tok_i, .expected_type, .{});
-        p.skipTo(.r_paren);
-        return error.ParsingFailed;
-    };
+    const lhs = try p.expectTypeName(.comma);
     _ = try p.expectToken(.comma);
 
-    const rhs = (try p.typeName()) orelse {
-        try p.err(p.tok_i, .expected_type, .{});
-        p.skipTo(.r_paren);
-        return error.ParsingFailed;
-    };
-
+    const rhs = try p.expectTypeName(.r_paren);
     try p.expectClosing(l_paren, .r_paren);
 
-    const compatible = lhs.eql(rhs, p.comp);
+    const any_invalid = lhs.isInvalid() or rhs.isInvalid();
     const res: Result = .{
-        .val = Value.fromBool(compatible),
-        .qt = .int,
+        .val = if (any_invalid) .{} else Value.fromBool(lhs.eql(rhs, p.comp)),
+        .qt = if (any_invalid) .invalid else .int,
         .node = try p.addNode(.{
             .builtin_types_compatible_p = .{
                 .builtin_tok = builtin_tok,
@@ -8234,17 +8694,9 @@ fn builtinChooseExpr(p: *Parser) Error!Result {
 
     _ = try p.expectToken(.comma);
 
-    const then_expr = if (cond.val.toBool(p.comp))
-        try p.expect(assignExpr)
-    else
-        try p.parseNoEval(assignExpr);
-
+    const then_expr = try p.expectResult(try p.binaryExpr(.conditional, cond.val.toBool(p.comp)));
     _ = try p.expectToken(.comma);
-
-    const else_expr = if (!cond.val.toBool(p.comp))
-        try p.expect(assignExpr)
-    else
-        try p.parseNoEval(assignExpr);
+    const else_expr = try p.expectResult(try p.binaryExpr(.conditional, !cond.val.toBool(p.comp)));
 
     try p.expectClosing(l_paren, .r_paren);
 
@@ -8272,14 +8724,11 @@ fn builtinVaArg(p: *Parser, builtin_tok: TokenIndex) Error!Result {
     const l_paren = try p.expectToken(.l_paren);
     const va_list_tok = p.tok_i;
     var va_list = try p.expect(assignExpr);
-    try va_list.lvalConversion(p, va_list_tok);
+    try va_list.lvalConversion(p);
 
     _ = try p.expectToken(.comma);
 
-    const ty = (try p.typeName()) orelse {
-        try p.err(p.tok_i, .expected_type, .{});
-        return error.ParsingFailed;
-    };
+    const ty = try p.expectTypeName(.r_paren);
     try p.expectClosing(l_paren, .r_paren);
 
     if (!va_list.qt.eql(p.comp.type_store.va_list, p.comp)) {
@@ -8342,12 +8791,15 @@ fn builtinVaArgPackLen(p: *Parser, builtin_tok: TokenIndex) Error!Result {
 }
 
 fn checkVaPackFunc(p: *Parser, builtin_tok: TokenIndex, va_func_name: []const u8) !bool {
-    const func_qt, _ = (try p.checkVaFunc(builtin_tok, va_func_name)) orelse return false;
+    _ = (try p.checkVaFunc(builtin_tok, va_func_name)) orelse return false;
 
-    var it = Attribute.Iterator.initType(func_qt, p.comp);
-    while (it.next()) |item| switch (item[0].tag) {
-        .always_inline, .gnu_inline => break,
-        else => {},
+    const am = &p.tree.attr_map;
+    for (am.attrs(p.func.decl)) |ref| {
+        const attr = am.get(ref);
+        switch (attr.args) {
+            .always_inline, .gnu_inline => break,
+            else => {},
+        }
     } else {
         try p.err(builtin_tok, .va_func_not_always_inline, .{va_func_name});
         return false;
@@ -8364,11 +8816,8 @@ fn builtinOffsetof(p: *Parser, builtin_tok: TokenIndex, offset_kind: OffsetKind)
     const l_paren = try p.expectToken(.l_paren);
     const ty_tok = p.tok_i;
 
-    const operand_qt = (try p.typeName()) orelse {
-        try p.err(p.tok_i, .expected_type, .{});
-        p.skipTo(.r_paren);
-        return error.ParsingFailed;
-    };
+    const operand_qt = try p.expectTypeName(.r_paren);
+    if (operand_qt.isInvalid()) return error.ParsingFailed;
 
     const record_ty = operand_qt.getRecord(p.comp) orelse {
         try p.err(ty_tok, .offsetof_ty, .{operand_qt});
@@ -8461,8 +8910,8 @@ fn offsetofMemberDesignator(
                 return error.ParsingFailed;
             };
             var ptr = lhs;
-            try ptr.lvalConversion(p, l_bracket_tok);
-            try index.lvalConversion(p, l_bracket_tok);
+            try ptr.lvalConversion(p);
+            try index.lvalConversion(p);
 
             if (!index.qt.isInvalid() and index.qt.isRealInt(p.comp)) {
                 try p.checkArrayBounds(index, lhs, l_bracket_tok);
@@ -8537,14 +8986,14 @@ fn computeOffset(p: *Parser, res: Result) !Value {
 }
 
 /// unExpr
-///  : (compoundLiteral | primaryExpr) suffixExpr*
+///  : primaryExpr suffixExpr*
+///  | ('&' | '*' | '+' | '-' | '~' | '!' | '++' | '--' | keyword_extension | keyword_imag | keyword_real) unExpr
 ///  | '&&' IDENTIFIER
-///  | ('&' | '*' | '+' | '-' | '~' | '!' | '++' | '--' | keyword_extension | keyword_imag | keyword_real) castExpr
 ///  | keyword_sizeof unExpr
 ///  | keyword_sizeof '(' typeName ')'
 ///  | keyword_alignof '(' typeName ')'
 ///  | keyword_c23_alignof '(' typeName ')'
-fn unExpr(p: *Parser) Error!?Result {
+fn unExpr(p: *Parser, eval: bool) Error!?Result {
     const gpa = p.comp.gpa;
     const tok = p.tok_i;
     switch (p.tok_ids[tok]) {
@@ -8571,13 +9020,9 @@ fn unExpr(p: *Parser) Error!?Result {
             };
         },
         .ampersand => {
-            if (p.in_macro) {
-                try p.err(p.tok_i, .invalid_preproc_operator, .{});
-                return error.ParsingFailed;
-            }
             const orig_tok_i = p.tok_i;
             p.tok_i += 1;
-            var operand = try p.expect(castExpr);
+            var operand = try p.expectResult(try p.unExpr(eval));
             var addr_val: Value = .{};
 
             if (p.getNode(operand.node, .member_access_expr) orelse
@@ -8585,7 +9030,7 @@ fn unExpr(p: *Parser) Error!?Result {
             {
                 if (access.isBitFieldWidth(&p.tree) != null) try p.err(tok, .addr_of_bitfield, .{});
                 const lhs_qt = access.base.qt(&p.tree);
-                if (lhs_qt.hasAttribute(p.comp, .@"packed")) {
+                if (lhs_qt.hasAttribute(&p.tree, .@"packed")) {
                     const record_ty = lhs_qt.getRecord(p.comp).?;
                     try p.err(orig_tok_i, .packed_member_address, .{
                         record_ty.fields[access.member_index].name.lookup(p.comp),
@@ -8624,11 +9069,11 @@ fn unExpr(p: *Parser) Error!?Result {
         },
         .asterisk => {
             p.tok_i += 1;
-            var operand = try p.expect(castExpr);
+            var operand = try p.expectResult(try p.unExpr(eval));
 
             switch (operand.qt.base(p.comp).type) {
                 .array, .func, .pointer => {
-                    try operand.lvalConversion(p, tok);
+                    try operand.lvalConversion(p);
                     operand.qt = operand.qt.childType(p.comp);
                     operand.val = .{};
                 },
@@ -8648,8 +9093,8 @@ fn unExpr(p: *Parser) Error!?Result {
         .plus => {
             p.tok_i += 1;
 
-            var operand = try p.expect(castExpr);
-            try operand.lvalConversion(p, tok);
+            var operand = try p.expectResult(try p.unExpr(eval));
+            try operand.lvalConversion(p);
             const scalar_qt = if (operand.qt.get(p.comp, .vector)) |vec| vec.elem else operand.qt;
             if (!scalar_qt.isInt(p.comp) and !scalar_qt.isFloat(p.comp))
                 try p.err(tok, .invalid_argument_un, .{operand.qt});
@@ -8661,8 +9106,8 @@ fn unExpr(p: *Parser) Error!?Result {
         .minus => {
             p.tok_i += 1;
 
-            var operand = try p.expect(castExpr);
-            try operand.lvalConversion(p, tok);
+            var operand = try p.expectResult(try p.unExpr(eval));
+            try operand.lvalConversion(p);
             const scalar_qt = if (operand.qt.get(p.comp, .vector)) |vec| vec.elem else operand.qt;
             if (!scalar_qt.isInt(p.comp) and !scalar_qt.isFloat(p.comp))
                 try p.err(tok, .invalid_argument_un, .{operand.qt});
@@ -8679,7 +9124,7 @@ fn unExpr(p: *Parser) Error!?Result {
         .plus_plus => {
             p.tok_i += 1;
 
-            var operand = try p.expect(castExpr);
+            var operand = try p.expectResult(try p.unExpr(eval));
             const scalar_kind = operand.qt.scalarKind(p.comp);
             if (scalar_kind == .void_pointer)
                 try p.err(tok, .gnu_pointer_arith, .{});
@@ -8695,7 +9140,6 @@ fn unExpr(p: *Parser) Error!?Result {
             if (operand.qt.get(p.comp, .pointer)) |pointer| {
                 try p.checkPtrArithmeticAllowed(pointer, p.tok_i, operand.node);
             }
-            try operand.usualUnaryConversion(p, tok);
 
             if (operand.val.is(.int, p.comp) or operand.val.is(.int, p.comp)) {
                 if (try operand.val.add(operand.val, .one, operand.qt, p.comp))
@@ -8710,7 +9154,7 @@ fn unExpr(p: *Parser) Error!?Result {
         .minus_minus => {
             p.tok_i += 1;
 
-            var operand = try p.expect(castExpr);
+            var operand = try p.expectResult(try p.unExpr(eval));
             const scalar_kind = operand.qt.scalarKind(p.comp);
             if (scalar_kind == .void_pointer)
                 try p.err(tok, .gnu_pointer_arith, .{});
@@ -8726,7 +9170,6 @@ fn unExpr(p: *Parser) Error!?Result {
             if (operand.qt.get(p.comp, .pointer)) |pointer| {
                 try p.checkPtrArithmeticAllowed(pointer, p.tok_i, operand.node);
             }
-            try operand.usualUnaryConversion(p, tok);
 
             if (operand.val.is(.int, p.comp) or operand.val.is(.int, p.comp)) {
                 if (try operand.val.decrement(operand.val, operand.qt, p.comp))
@@ -8741,8 +9184,8 @@ fn unExpr(p: *Parser) Error!?Result {
         .tilde => {
             p.tok_i += 1;
 
-            var operand = try p.expect(castExpr);
-            try operand.lvalConversion(p, tok);
+            var operand = try p.expectResult(try p.unExpr(eval));
+            try operand.lvalConversion(p);
             try operand.usualUnaryConversion(p, tok);
 
             const scalar_qt = if (operand.qt.get(p.comp, .vector)) |vec| vec.elem else operand.qt;
@@ -8766,8 +9209,8 @@ fn unExpr(p: *Parser) Error!?Result {
         .bang => {
             p.tok_i += 1;
 
-            var operand = try p.expect(castExpr);
-            try operand.lvalConversion(p, tok);
+            var operand = try p.expectResult(try p.unExpr(eval));
+            try operand.lvalConversion(p);
             if (operand.qt.scalarKind(p.comp) == .none)
                 try p.err(tok, .invalid_argument_un, .{operand.qt});
 
@@ -8788,120 +9231,88 @@ fn unExpr(p: *Parser) Error!?Result {
         },
         .keyword_sizeof => {
             p.tok_i += 1;
-            const expected_paren = p.tok_i;
+            const operand_tok = p.tok_i;
 
-            var has_expr = false;
-            var res: Result = .{
-                .node = undefined, // check has_expr
-            };
-            if (try p.typeName()) |qt| {
-                res.qt = qt;
-                try p.err(expected_paren, .expected_parens_around_typename, .{});
-            } else if (p.eatToken(.l_paren)) |l_paren| {
-                if (try p.typeName()) |ty| {
-                    res.qt = ty;
-                    try p.expectClosing(l_paren, .r_paren);
-                } else {
-                    p.tok_i = expected_paren;
-                    res = try p.parseNoEval(unExpr);
-                    has_expr = true;
-                }
-            } else {
-                res = try p.parseNoEval(unExpr);
-                has_expr = true;
-            }
-            const operand_qt = res.qt;
+            const operand_qt, const opt_node = try p.nonCastUnExpr();
+            var qt: QualType = .invalid;
+            var val: Value = .{};
 
-            if (res.qt.isInvalid()) {
-                res.val = .{};
-            } else {
-                const base_type = res.qt.base(p.comp);
+            if (!operand_qt.isInvalid()) {
+                const base_type = operand_qt.base(p.comp);
                 switch (base_type.type) {
                     .void => try p.err(tok, .pointer_arith_void, .{"sizeof"}),
                     .pointer => |pointer_ty| if (pointer_ty.decayed) |decayed_qt| {
-                        try p.err(tok, .sizeof_array_arg, .{ res.qt, decayed_qt });
+                        try p.err(operand_tok, .sizeof_array_arg, .{ operand_qt, decayed_qt });
                     },
                     else => {},
                 }
 
-                if (base_type.qt.sizeofOrNull(p.comp)) |size| {
+                if (operand_qt.sizeofOrNull(p.comp)) |size| {
                     if (size == 0 and p.comp.langopts.emulate == .msvc) {
                         try p.err(tok, .sizeof_returns_zero, .{});
                     }
-                    res.val = try Value.int(size, p.comp);
-                    res.qt = p.comp.type_store.size;
+                    val = try Value.int(size, p.comp);
+                    qt = p.comp.type_store.size;
+                } else if (!operand_qt.hasIncompleteSize(p.comp)) {
+                    // sizeof variable lenght array
+                    qt = p.comp.type_store.size;
                 } else {
-                    res.val = .{};
-                    if (res.qt.hasIncompleteSize(p.comp)) {
-                        try p.err(expected_paren - 1, .invalid_sizeof, .{res.qt});
-                        res.qt = .invalid;
-                    } else {
-                        res.qt = p.comp.type_store.size;
-                    }
+                    try p.err(tok, .invalid_sizeof, .{operand_qt});
                 }
             }
 
-            res.node = try p.addNode(.{ .sizeof_expr = .{
-                .op_tok = tok,
-                .qt = res.qt,
-                .expr = if (has_expr) res.node else null,
-                .operand_qt = operand_qt,
-            } });
-            return res;
+            return .{
+                .qt = qt,
+                .node = try p.addNode(.{ .sizeof_expr = .{
+                    .op_tok = tok,
+                    .qt = qt,
+                    .expr = opt_node,
+                    .operand_qt = operand_qt,
+                } }),
+                .val = val,
+            };
         },
         .keyword_alignof,
         .keyword_alignof1,
         .keyword_alignof2,
         .keyword_c23_alignof,
-        => {
-            p.tok_i += 1;
-            const expected_paren = p.tok_i;
-
-            var has_expr = false;
-            var res: Result = .{
-                .node = undefined, // check has_expr
+        => |id| {
+            const gnu_keyword = switch (id) {
+                .keyword_alignof1, .keyword_alignof2 => true,
+                else => false,
             };
-            if (try p.typeName()) |qt| {
-                res.qt = qt;
-                try p.err(expected_paren, .expected_parens_around_typename, .{});
-            } else if (p.eatToken(.l_paren)) |l_paren| {
-                if (try p.typeName()) |qt| {
-                    res.qt = qt;
-                    try p.expectClosing(l_paren, .r_paren);
-                } else {
-                    p.tok_i = expected_paren;
-                    res = try p.parseNoEval(unExpr);
-                    has_expr = true;
+            p.tok_i += 1;
 
-                    try p.err(expected_paren, .alignof_expr, .{});
-                }
-            } else {
-                res = try p.parseNoEval(unExpr);
-                has_expr = true;
+            const operand_qt, const opt_node = try p.nonCastUnExpr();
+            if (opt_node != null and !gnu_keyword) try p.err(tok, .gnu_alignof_expr, .{p.tokSlice(tok)});
+            var qt: QualType = .invalid;
+            var val: Value = .{};
 
-                try p.err(expected_paren, .alignof_expr, .{});
-            }
-            const operand_qt = res.qt;
-
-            if (res.qt.is(p.comp, .void)) {
-                try p.err(tok, .pointer_arith_void, .{"alignof"});
+            if (operand_qt.is(p.comp, .void)) {
+                try p.err(tok, .pointer_arith_void, .{p.tokSlice(tok)});
             }
 
-            if (res.qt.sizeofOrNull(p.comp) != null) {
-                res.val = try Value.int(res.qt.alignof(p.comp), p.comp);
-                res.qt = p.comp.type_store.size;
-            } else if (!res.qt.isInvalid()) {
-                try p.err(expected_paren, .invalid_alignof, .{res.qt});
-                res.qt = .invalid;
+            if (operand_qt.sizeofOrNull(p.comp) != null) {
+                var requested_align: ?u32 = null;
+                if (opt_node) |node| if (p.getNode(node, .decl_ref_expr)) |decl_ref| {
+                    requested_align = p.tree.attr_map.requestedAlignment(decl_ref.decl, p.comp);
+                };
+                val = try Value.int(requested_align orelse operand_qt.alignof(p.comp), p.comp);
+                qt = p.comp.type_store.size;
+            } else if (!operand_qt.isInvalid()) {
+                try p.err(tok, .invalid_alignof, .{operand_qt});
             }
 
-            res.node = try p.addNode(.{ .alignof_expr = .{
-                .op_tok = tok,
-                .qt = res.qt,
-                .expr = if (has_expr) res.node else null,
-                .operand_qt = operand_qt,
-            } });
-            return res;
+            return .{
+                .qt = qt,
+                .node = try p.addNode(.{ .alignof_expr = .{
+                    .op_tok = tok,
+                    .qt = qt,
+                    .expr = opt_node,
+                    .operand_qt = operand_qt,
+                } }),
+                .val = val,
+            };
         },
         .keyword_extension => {
             p.tok_i += 1;
@@ -8909,14 +9320,14 @@ fn unExpr(p: *Parser) Error!?Result {
             defer p.extension_suppressed = saved_extension;
             p.extension_suppressed = true;
 
-            return try p.expect(castExpr);
+            return try p.expectResult(try p.unExpr(eval));
         },
         .keyword_imag1, .keyword_imag2 => {
             const imag_tok = p.tok_i;
             p.tok_i += 1;
 
-            var operand = try p.expect(castExpr);
-            try operand.lvalConversion(p, tok);
+            var operand = try p.expectResult(try p.unExpr(eval));
+            try operand.lvalConversion(p);
             if (operand.qt.isInvalid()) return operand;
 
             const scalar_kind = operand.qt.scalarKind(p.comp);
@@ -8945,8 +9356,8 @@ fn unExpr(p: *Parser) Error!?Result {
             const real_tok = p.tok_i;
             p.tok_i += 1;
 
-            var operand = try p.expect(castExpr);
-            try operand.lvalConversion(p, tok);
+            var operand = try p.expectResult(try p.unExpr(eval));
+            try operand.lvalConversion(p);
             if (operand.qt.isInvalid()) return operand;
             if (!operand.qt.isInt(p.comp) and !operand.qt.isFloat(p.comp)) {
                 try p.err(real_tok, .invalid_real, .{operand.qt});
@@ -8958,10 +9369,7 @@ fn unExpr(p: *Parser) Error!?Result {
             return operand;
         },
         else => {
-            var lhs = (try p.compoundLiteral(null, null)) orelse
-                (try p.primaryExpr()) orelse
-                return null;
-
+            var lhs = (try p.primaryExpr(eval)) orelse return null;
             while (try p.suffixExpr(lhs)) |suffix| {
                 lhs = suffix;
             }
@@ -8970,40 +9378,46 @@ fn unExpr(p: *Parser) Error!?Result {
     }
 }
 
+/// The operand of a sizeof/alignof expression is any non-cast unary expression.
+fn nonCastUnExpr(p: *Parser) !struct { QualType, ?Node.Index } {
+    const expected_paren = p.tok_i;
+
+    if (try p.typeName()) |qt| {
+        try p.err(expected_paren, .expected_parens_around_typename, .{});
+        return .{ qt, null };
+    }
+
+    if (p.eatToken(.l_paren)) |l_paren| {
+        if (try p.typeName()) |qt| {
+            try p.expectClosing(l_paren, .r_paren);
+            if (p.tok_ids[p.tok_i] == .l_brace) {
+                const res = try p.compoundLiteral(l_paren, .{ .qt = qt });
+                return .{ res.qt, res.node };
+            }
+            return .{ qt, null };
+        }
+
+        p.tok_i = expected_paren;
+    }
+
+    const res = try p.expectResult(try p.unExpr(false));
+    return .{ res.qt, res.node };
+}
+
 /// compoundLiteral
 ///  : '(' storageClassSpec* type_name ')' '{' initializer_list '}'
 ///  | '(' storageClassSpec* type_name ')' '{' initializer_list ',' '}'
-fn compoundLiteral(p: *Parser, qt_opt: ?QualType, opt_l_paren: ?TokenIndex) Error!?Result {
-    const l_paren, const d = if (qt_opt) |some| .{ opt_l_paren.?, DeclSpec{ .qt = some } } else blk: {
-        const l_paren = p.eatToken(.l_paren) orelse return null;
-
-        var d: DeclSpec = .{ .qt = .invalid };
-        const any = if (p.comp.langopts.standard.atLeast(.c23))
-            try p.storageClassSpec(&d)
-        else
-            false;
-
-        switch (d.storage_class) {
-            .auto, .@"extern", .typedef => |tok| {
-                try p.err(tok, .invalid_compound_literal_storage_class, .{@tagName(d.storage_class)});
-                d.storage_class = .none;
-            },
-            .register => if (p.func.qt == null) try p.err(p.tok_i, .register_on_global_compound_literal, .{}),
-            else => {},
-        }
-
-        d.qt = (try p.typeName()) orelse {
-            p.tok_i = l_paren;
-            if (any) {
-                try p.err(p.tok_i, .expected_type, .{});
-                return error.ParsingFailed;
-            }
-            return null;
-        };
-        try p.expectClosing(l_paren, .r_paren);
-        break :blk .{ l_paren, d };
-    };
-    var qt = d.qt;
+fn compoundLiteral(p: *Parser, l_paren: TokenIndex, decl_spec: DeclSpec) Error!Result {
+    var d = decl_spec;
+    switch (d.storage_class) {
+        .auto, .@"extern", .typedef => |tok| {
+            try p.err(tok, .invalid_compound_literal_storage_class, .{@tagName(d.storage_class)});
+            d.storage_class = .none;
+        },
+        .register => if (p.func.qt == null) try p.err(p.tok_i, .register_on_global_compound_literal, .{}),
+        .static, .none => {},
+    }
+    const qt = d.qt;
 
     var incomplete_array_ty = false;
     switch (qt.base(p.comp).type) {
@@ -9073,7 +9487,6 @@ fn suffixExpr(p: *Parser, lhs: Result) Error!?Result {
             if (operand.qt.get(p.comp, .pointer)) |pointer| {
                 try p.checkPtrArithmeticAllowed(pointer, p.tok_i, operand.node);
             }
-            try operand.usualUnaryConversion(p, p.tok_i);
 
             try operand.un(p, .post_inc_expr, p.tok_i);
             return operand;
@@ -9097,7 +9510,6 @@ fn suffixExpr(p: *Parser, lhs: Result) Error!?Result {
             if (operand.qt.get(p.comp, .pointer)) |pointer| {
                 try p.checkPtrArithmeticAllowed(pointer, p.tok_i, operand.node);
             }
-            try operand.usualUnaryConversion(p, p.tok_i);
 
             try operand.un(p, .post_dec_expr, p.tok_i);
             return operand;
@@ -9112,8 +9524,8 @@ fn suffixExpr(p: *Parser, lhs: Result) Error!?Result {
             const index_before_conversion = index;
             var ptr = lhs;
 
-            try ptr.lvalConversion(p, l_bracket);
-            try index.lvalConversion(p, l_bracket);
+            try ptr.lvalConversion(p);
+            try index.lvalConversion(p);
             if (ptr.qt.get(p.comp, .pointer)) |pointer_ty| {
                 ptr.qt = pointer_ty.child;
                 if (index.qt.isRealInt(p.comp)) {
@@ -9139,6 +9551,8 @@ fn suffixExpr(p: *Parser, lhs: Result) Error!?Result {
                 try p.err(l_bracket, .invalid_subscript, .{});
             }
 
+            const item = try ptr.val.elem(index.val, p.comp);
+
             try ptr.saveValue(p);
             try index.saveValue(p);
             ptr.node = try p.addNode(.{ .array_access_expr = .{
@@ -9147,6 +9561,7 @@ fn suffixExpr(p: *Parser, lhs: Result) Error!?Result {
                 .index = index.node,
                 .qt = ptr.qt,
             } });
+            ptr.val = item;
             return ptr;
         },
         .period => {
@@ -9162,7 +9577,7 @@ fn suffixExpr(p: *Parser, lhs: Result) Error!?Result {
             if (lhs.qt.is(p.comp, .array)) {
                 var copy = lhs;
                 copy.qt = try copy.qt.decay(p.comp);
-                try copy.implicitCast(p, .array_to_pointer, arrow);
+                try copy.implicitCast(p, .array_to_pointer);
                 return try p.fieldAccess(copy, name, true, arrow);
             }
             return try p.fieldAccess(lhs, name, true, arrow);
@@ -9259,7 +9674,7 @@ fn fieldAccessExtra(
             return .{ ret, offset_bits + field.layout.offset_bits };
         };
         if (ctx.target_name == field.name) {
-            if (ctx.check_deprecated) try p.checkDeprecatedUnavailable(field.qt, ctx.name_tok, field.name_tok);
+            if (ctx.check_deprecated) try p.checkDeprecatedUnavailable(field.field_decl, ctx.name_tok);
 
             const access: Node.MemberAccess = .{
                 .access_tok = ctx.access_tok,
@@ -9332,6 +9747,146 @@ fn checkComplexArg(p: *Parser, builtin_tok: TokenIndex, first_after: TokenIndex,
             try p.err(param_tok, .argument_types_differ, .{ prev_qt, arg.qt });
         }
     }
+}
+
+fn checkARMExclusive(
+    p: *Parser,
+    tag: Builtins.Tag,
+    builtin_tok: TokenIndex,
+    param_tok: TokenIndex,
+    arg: *Result,
+    idx: u32,
+) !void {
+    const name = p.tokSlice(builtin_tok);
+    const is_ldrex = switch (tag) {
+        .aarch64 => |t| switch (t) {
+            .__builtin_arm_ldrex, .__builtin_arm_ldaex => true,
+            else => false,
+        },
+        .arm => |t| switch (t) {
+            .__builtin_arm_ldrex, .__builtin_arm_ldrexd, .__builtin_arm_ldaex => true,
+            else => false,
+        },
+        else => false,
+    };
+    const is_dword = switch (tag) {
+        .arm => |t| switch (t) {
+            .__builtin_arm_ldrexd, .__builtin_arm_strexd => true,
+            else => false,
+        },
+        else => false,
+    };
+
+    // Fast-path return based on arg index
+    switch (is_ldrex) {
+        true => switch (idx) {
+            0 => {},
+            else => return, // Too many arguments
+        },
+        false => switch (idx) {
+            0 => return, // We check source args for strex after checking the destination
+            1 => {},
+            else => return, // Too many arguments
+        },
+    }
+
+    // Arg should be a pointer
+    const orig_ptr_arg = arg.qt; // For errors
+    const ptr_arg = orig_ptr_arg.get(p.comp, .pointer) orelse
+        return p.err(param_tok, .builtin_arm_ldrex_strex_invalid_ptr_type, .{ name, orig_ptr_arg });
+
+    const ptr_arg_child = ptr_arg.child;
+    {
+        // Insert implicit cast to "const volatile" (ldrex) or "volatile"
+        // (strex).
+        var ptr_arg_child_coerced = ptr_arg_child.unqualified();
+        switch (is_ldrex) {
+            true => {
+                ptr_arg_child_coerced.@"const" = true;
+                ptr_arg_child_coerced.@"volatile" = true;
+            },
+            false => {
+                ptr_arg_child_coerced.@"volatile" = true;
+            },
+        }
+        const qt = try p.comp.type_store.put(p.comp.gpa, .{ .pointer = .{
+            .child = ptr_arg_child_coerced,
+        } });
+        try arg.coerce(p, qt, param_tok, .{ .arg = null });
+    }
+
+    // Child should be a int, float, or pointer
+    const ptr_arg_child_scalar = ptr_arg_child.scalarKind(p.comp);
+    const is_valid_number = (ptr_arg_child_scalar.isInt() or
+        ptr_arg_child_scalar.isFloat()) and
+        ptr_arg_child_scalar.isReal();
+    if (!is_valid_number and !ptr_arg_child_scalar.isPointer()) {
+        // Cannot continue without a valid child type
+        return p.err(param_tok, .builtin_arm_ldrex_strex_invalid_ptr_type, .{ name, orig_ptr_arg });
+    }
+
+    {
+        // Check child type size
+        const ptr_arg_bit_size = ptr_arg_child.bitSizeof(p.comp);
+        var mask: u4 = @bitCast(p.comp.langopts.arm_ldrex orelse ArmLdrex.none);
+
+        if (is_dword) {
+            // ldrexd has been used explicitly
+            mask &= ArmLdrex.d_int;
+        }
+
+        if (mask == 0) {
+            // Unsupported on this CPU, no point in continuing
+            return p.err(builtin_tok, .builtin_arm_ldrex_strex_unsupported, .{name});
+        }
+
+        const supported = std.math.isPowerOfTwo(ptr_arg_bit_size) and
+            ptr_arg_bit_size <= 64 and
+            ptr_arg_bit_size >= 8 and
+            (mask & (ptr_arg_bit_size / 8) != 0);
+        if (!supported) {
+            // "1, 2, 4 or 8" is max 12 bytes
+            var buf: [12]u8 = undefined;
+            var writer: std.Io.Writer = .fixed(&buf);
+            const sizes: [4]u4 = .{ ArmLdrex.b_int, ArmLdrex.h_int, ArmLdrex.w_int, ArmLdrex.d_int };
+            for (sizes) |size| {
+                if (mask & size != 0) {
+                    mask &= ~size;
+                    if (writer.end == 0) {
+                        // First element
+                        writer.print("{d}", .{size}) catch break;
+                    } else if (mask != 0) {
+                        // Middle item(s) w/separator
+                        writer.print(", {d}", .{size}) catch break;
+                    } else {
+                        // Last size with multiple sizes
+                        writer.print(" or {d}", .{size}) catch break;
+                    }
+                }
+            }
+
+            try p.err(param_tok, .builtin_arm_ldrex_strex_unsupported_size, .{
+                name,
+                writer.buffered(),
+                orig_ptr_arg,
+            });
+        }
+    }
+
+    if (is_ldrex) {
+        return; // Done for ldrex
+    }
+
+    assert(idx == 1); // strex only has 2 args and we skip idx 0 at the start
+
+    // Set up the coercion for the value arg for strex
+    const value_idx = p.list_buf.items[p.list_buf.items.len - 1]; // Always previous arg to ptr arg
+    var value_arg: Result = .{
+        .node = value_idx,
+        .qt = value_idx.qt(&p.tree),
+    };
+    try value_arg.coerce(p, ptr_arg_child, value_idx.tok(&p.tree), .{ .arg = null });
+    p.list_buf.items[p.list_buf.items.len - 1] = value_arg.node;
 }
 
 fn checkElementwiseArg(
@@ -9435,21 +9990,26 @@ fn callExpr(p: *Parser, lhs: Result) Error!Result {
 
     // We cannot refer to the function type here because the pointer to
     // type_store.extra might get invalidated while parsing args.
-    const func_qt, const typed_params_len, const func_kind_base = blk: {
+    const func_qt, const typed_params_len, const func_kind_base, const maybe_nonnull: ?Attribute = blk: {
         var base_qt = lhs.qt;
-        if (base_qt.get(p.comp, .pointer)) |pointer_ty| base_qt = pointer_ty.child;
-        if (base_qt.isInvalid()) break :blk .{ base_qt, std.math.maxInt(usize), undefined };
+        if (base_qt.get(p.comp, .pointer)) |pointer_ty| base_qt = pointer_ty.child else if (base_qt.get(p.comp, .block)) |block_ty| base_qt = block_ty.func;
+        if (base_qt.isInvalid()) break :blk .{ base_qt, std.math.maxInt(usize), undefined, null };
 
         const func_type_qt = base_qt.base(p.comp);
         if (func_type_qt.type != .func) {
             try p.err(l_paren, .not_callable, .{lhs.qt});
             return error.ParsingFailed;
         }
-        break :blk .{ func_type_qt.qt, func_type_qt.type.func.params.len, func_type_qt.type.func.kind };
+        break :blk .{
+            func_type_qt.qt,
+            func_type_qt.type.func.params.len,
+            func_type_qt.type.func.kind,
+            if (p.tree.calledFunctionAttr(lhs.node, .nonnull)) |info| info.attr else null,
+        };
     };
 
     var func = lhs;
-    try func.lvalConversion(p, l_paren);
+    try func.lvalConversion(p);
 
     const list_buf_top = p.list_buf.items.len;
     defer p.list_buf.items.len = list_buf_top;
@@ -9499,14 +10059,14 @@ fn callExpr(p: *Parser, lhs: Result) Error!Result {
         var arg = try p.expect(assignExpr);
 
         if (call_expr.shouldPerformLvalConversion(arg_count)) {
-            try arg.lvalConversion(p, param_tok);
+            try arg.lvalConversion(p);
         }
         if ((arg.qt.hasIncompleteSize(p.comp) and !arg.qt.is(p.comp, .void)) or arg.qt.isInvalid()) return error.ParsingFailed;
 
         if (arg_count >= typed_params_len) {
             if (call_expr.shouldPromoteVarArg(arg_count)) switch (arg.qt.base(p.comp).type) {
                 .int => |int_ty| if (int_ty == .int) try arg.castToInt(p, arg.qt.promoteInt(p.comp), param_tok),
-                .float => |float_ty| if (float_ty == .double) try arg.castToFloat(p, .double, param_tok),
+                .float => |float_ty| if (float_ty == .double) try arg.castToFloat(p, .double),
                 else => {},
             };
 
@@ -9523,7 +10083,7 @@ fn callExpr(p: *Parser, lhs: Result) Error!Result {
         }
 
         if (func_qt.get(p.comp, .func)) |func_ty| {
-            const param = func_ty.params[arg_count];
+            const param: Type.Func.Param = func_ty.params[arg_count];
 
             if (param.qt.get(p.comp, .pointer)) |pointer_ty| static_check: {
                 const decayed_child_qt = pointer_ty.decayed orelse break :static_check;
@@ -9540,6 +10100,19 @@ fn callExpr(p: *Parser, lhs: Result) Error!Result {
                     try p.err(param_tok, .non_null_argument, .{});
                     try p.err(param.name_tok, .callee_with_static_array, .{});
                 }
+            }
+
+            const needs_nonnull = if (maybe_nonnull) |attr|
+                if (attr.args.nonnull.len == 0)
+                    param.qt.isPointer(p.comp)
+                else
+                    mem.findScalar(u32, attr.args.nonnull, @intCast(arg_count + 1)) != null
+            else if (param.node.unpack()) |some|
+                p.tree.attr_map.hasAttribute(some, .nonnull)
+            else
+                false;
+            if (needs_nonnull and arg.val.isZero(p.comp)) {
+                try p.err(param_tok, .non_null_argument, .{});
             }
 
             if (call_expr.shouldCoerceArg(arg_count)) {
@@ -9683,6 +10256,8 @@ fn checkArrayBounds(p: *Parser, index: Result, array: Result, tok: TokenIndex) !
 ///  | CHAR_LITERAL
 ///  | STRING_LITERAL
 ///  | '(' expr ')'
+///  | '(' compoundStmt ')'
+///  | compoundLiteral
 ///  | genericSelection
 ///  | shufflevector
 ///  | convertvector
@@ -9690,16 +10265,79 @@ fn checkArrayBounds(p: *Parser, index: Result, array: Result, tok: TokenIndex) !
 ///  | chooseExpr
 ///  | vaStart
 ///  | offsetof
-fn primaryExpr(p: *Parser) Error!?Result {
-    if (p.eatToken(.l_paren)) |l_paren| {
-        var grouped_expr = try p.expect(expr);
-        try p.expectClosing(l_paren, .r_paren);
-        try grouped_expr.un(p, .paren_expr, l_paren);
-        return grouped_expr;
-    }
-
+fn primaryExpr(p: *Parser, eval: bool) Error!?Result {
     const gpa = p.comp.gpa;
     switch (p.tok_ids[p.tok_i]) {
+        .l_paren => {
+            const l_paren = p.tok_i;
+            p.tok_i += 1;
+
+            // Statement expression ({ ... })
+            if (p.tok_ids[p.tok_i] == .l_brace) {
+                const l_brace = p.tok_i;
+
+                try p.err(l_brace, .gnu_statement_expression, .{});
+                if (p.func.qt == null) {
+                    try p.err(l_brace, .stmt_expr_not_allowed_file_scope, .{});
+                    return error.ParsingFailed;
+                }
+                var opt_node: ?Node.Index = null;
+                const body_node = (try p.compoundStmt(false, &opt_node)).?; // compoundStmt only returns null if .l_brace isn't the first token
+
+                var res: Result = .{
+                    .node = body_node,
+                    .qt = if (opt_node) |node| node.qt(&p.tree) else .void,
+                };
+                try p.expectClosing(l_paren, .r_paren);
+                try res.un(p, .stmt_expr, l_brace);
+                return res;
+            }
+
+            var decl_spec: DeclSpec = .{ .qt = .invalid };
+            const any = if (p.comp.langopts.standard.atLeast(.c23))
+                try p.storageClassSpec(&decl_spec)
+            else
+                false;
+
+            if (try p.typeName()) |ty| {
+                try p.expectClosing(l_paren, .r_paren);
+
+                // Compound literal (type){ ... }
+                if (p.tok_ids[p.tok_i] == .l_brace) {
+                    decl_spec.qt = ty;
+                    return try p.compoundLiteral(l_paren, decl_spec);
+                } else if (any) {
+                    try p.err(l_paren + 1, .expected_expr, .{});
+                    return error.ParsingFailed;
+                }
+
+                // Cast (type)unExpr
+                const operand_tok = p.tok_i;
+                var operand = try p.expectResult(try p.unExpr(eval));
+                try operand.lvalConversion(p);
+                try operand.castType(p, ty, operand_tok, l_paren);
+                return operand;
+            } else if (any) {
+                // If we saw a storage class specifier then this should
+                // have been a compound literal
+                try p.err(p.tok_i, .expected_type, .{});
+                return error.ParsingFailed;
+            }
+
+            // Grouped expression (expr)
+            var grouped_expr = (p.binaryExpr(.any, eval) catch |er| {
+                if (er == error.ParsingFailed) p.skipTo(.r_paren);
+                return er;
+            }) orelse {
+                try p.err(p.tok_i, .expected_expr, .{});
+                p.skipTo(.r_paren);
+                return error.ParsingFailed;
+            };
+
+            try p.expectClosing(l_paren, .r_paren);
+            try grouped_expr.un(p, .paren_expr, l_paren);
+            return grouped_expr;
+        },
         .identifier, .extended_identifier => {
             const name_tok = try p.expectIdentifier();
             const name = p.tokSlice(name_tok);
@@ -9718,7 +10356,10 @@ fn primaryExpr(p: *Parser) Error!?Result {
                     try p.err(name_tok, .out_of_scope_use, .{name});
                     try p.err(sym.tok, .previous_definition, .{});
                 }
-                try p.checkDeprecatedUnavailable(sym.qt, name_tok, sym.tok);
+
+                try p.checkDeprecatedUnavailable(sym.node, name_tok);
+                p.markUsed(sym.node);
+
                 if (sym.kind == .constexpr) {
                     return .{
                         .val = sym.val,
@@ -9727,7 +10368,7 @@ fn primaryExpr(p: *Parser) Error!?Result {
                             .decl_ref_expr = .{
                                 .name_tok = name_tok,
                                 .qt = sym.qt,
-                                .decl = sym.node.unpack().?,
+                                .decl = sym.node,
                             },
                         }),
                     };
@@ -9744,13 +10385,13 @@ fn primaryExpr(p: *Parser) Error!?Result {
                     .{ .enumeration_ref = .{
                         .name_tok = name_tok,
                         .qt = sym.qt,
-                        .decl = sym.node.unpack().?,
+                        .decl = sym.node,
                     } }
                 else
                     .{ .decl_ref_expr = .{
                         .name_tok = name_tok,
                         .qt = sym.qt,
-                        .decl = sym.node.unpack().?,
+                        .decl = sym.node,
                     } });
 
                 const res: Result = .{
@@ -9832,7 +10473,7 @@ fn primaryExpr(p: *Parser) Error!?Result {
                 });
 
                 try p.decl_buf.append(gpa, node);
-                try p.syms.declareSymbol(p, interned_name, func_qt, name_tok, node);
+                _ = try p.syms.declareSymbol(p, interned_name, func_qt, name_tok, node);
 
                 return .{
                     .qt = func_qt,
@@ -9862,7 +10503,6 @@ fn primaryExpr(p: *Parser) Error!?Result {
                     },
                 }),
             };
-            std.debug.assert(!p.in_macro); // Should have been replaced with .one / .zero
             try res.putValue(p);
             return res;
         },
@@ -9969,31 +10609,8 @@ fn primaryExpr(p: *Parser) Error!?Result {
         .empty_char_literal,
         .unterminated_char_literal,
         => return try p.charLiteral(),
-        .zero => {
-            defer p.tok_i += 1;
-            const int_qt: QualType = if (p.in_macro) p.comp.type_store.intmax else .int;
-            const res: Result = .{
-                .val = .zero,
-                .qt = int_qt,
-                .node = try p.addNode(.{ .int_literal = .{ .qt = int_qt, .literal_tok = p.tok_i } }),
-            };
-            try res.putValue(p);
-            return res;
-        },
-        .one => {
-            defer p.tok_i += 1;
-            const int_qt: QualType = if (p.in_macro) p.comp.type_store.intmax else .int;
-            const res: Result = .{
-                .val = .one,
-                .qt = int_qt,
-                .node = try p.addNode(.{ .int_literal = .{ .qt = int_qt, .literal_tok = p.tok_i } }),
-            };
-            try res.putValue(p);
-            return res;
-        },
         .pp_num => return try p.ppNum(),
         .embed_byte => {
-            assert(!p.in_macro);
             const loc = p.pp.tokens.items(.loc)[p.tok_i];
             defer p.tok_i += 1;
             const buf = p.comp.getSource(.generated).buf[loc.byte_offset..];
@@ -10026,7 +10643,7 @@ fn makePredefinedIdentifier(p: *Parser, slice: []const u8) !Result {
     const val = try Value.intern(p.comp, .{ .bytes = slice });
 
     const str_lit = try p.addNode(.{ .string_literal_expr = .{ .qt = array_qt, .literal_tok = p.tok_i, .kind = .ascii } });
-    if (!p.in_macro) try p.tree.value_map.put(gpa, str_lit, val);
+    try p.tree.value_map.put(gpa, str_lit, val);
 
     return .{ .qt = array_qt, .node = try p.addNode(.{
         .variable = .{
@@ -10180,127 +10797,42 @@ fn stringLiteral(p: *Parser) Error!Result {
 }
 
 fn charLiteral(p: *Parser) Error!?Result {
-    defer p.tok_i += 1;
-    const tok_id = p.tok_ids[p.tok_i];
+    const literal = p.tok_i;
+    p.tok_i += 1;
+
+    const tok_id = p.tok_ids[literal];
     const char_kind = text_literal.Kind.classify(tok_id, .char_literal) orelse {
         if (tok_id == .empty_char_literal) {
-            try p.err(p.tok_i, .empty_char_literal_error, .{});
+            try p.err(literal, .empty_char_literal_error, .{});
         } else if (tok_id == .unterminated_char_literal) {
-            try p.err(p.tok_i, .unterminated_char_literal_error, .{});
+            try p.err(literal, .unterminated_char_literal_error, .{});
         } else unreachable;
         return .{
             .qt = .int,
             .val = .zero,
-            .node = try p.addNode(.{ .char_literal = .{ .qt = .int, .literal_tok = p.tok_i, .kind = .ascii } }),
+            .node = try p.addNode(.{ .char_literal = .{ .qt = .int, .literal_tok = literal, .kind = .ascii } }),
         };
     };
-    if (char_kind == .utf_8) try p.err(p.tok_i, .u8_char_lit, .{});
-    var val: u32 = 0;
 
-    const gpa = p.comp.gpa;
-    const slice = char_kind.contentSlice(p.tokSlice(p.tok_i));
-
-    var is_multichar = false;
-    if (slice.len == 1 and std.ascii.isAscii(slice[0])) {
-        // fast path: single unescaped ASCII char
-        val = slice[0];
-    } else {
-        const max_codepoint = char_kind.maxCodepoint(p.comp);
-        var char_literal_parser: text_literal.Parser = .{
-            .comp = p.comp,
-            .literal = slice,
-            .kind = char_kind,
-            .max_codepoint = max_codepoint,
-            .loc = p.pp.tokens.items(.loc)[p.tok_i],
-            .expansion_locs = p.pp.expansionSlice(p.tok_i),
-        };
-
-        const max_chars_expected = 4;
-        var bfa_buf: [max_chars_expected]u32 = undefined;
-        var bfa: std.heap.BufferFirstAllocator = .init(@ptrCast(&bfa_buf), gpa);
-        const allocator = bfa.allocator();
-        var chars: std.ArrayList(u32) = .empty;
-        defer chars.deinit(allocator);
-
-        chars.ensureUnusedCapacity(allocator, max_chars_expected) catch unreachable; // stack allocation already succeeded
-
-        while (try char_literal_parser.next()) |item| switch (item) {
-            .value => |v| try chars.append(allocator, v),
-            .codepoint => |c| try chars.append(allocator, c),
-            .improperly_encoded => |s| {
-                try chars.ensureUnusedCapacity(allocator, s.len);
-                for (s) |c| chars.appendAssumeCapacity(c);
-            },
-            .utf8_text => |view| {
-                var it = view.iterator();
-                var max_codepoint_seen: u21 = 0;
-                try chars.ensureUnusedCapacity(allocator, view.bytes.len);
-                while (it.nextCodepoint()) |c| {
-                    max_codepoint_seen = @max(max_codepoint_seen, c);
-                    chars.appendAssumeCapacity(c);
-                }
-                if (max_codepoint_seen > max_codepoint) {
-                    try char_literal_parser.err(.char_too_large, .{});
-                }
-            },
-        };
-
-        is_multichar = chars.items.len > 1;
-        if (is_multichar) {
-            if (char_kind == .char and chars.items.len == 4) {
-                try char_literal_parser.warn(.four_char_char_literal, .{});
-            } else if (char_kind == .char) {
-                try char_literal_parser.warn(.multichar_literal_warning, .{});
-            } else {
-                const kind: []const u8 = switch (char_kind) {
-                    .wide => "wide",
-                    .utf_8, .utf_16, .utf_32 => "Unicode",
-                    else => unreachable,
-                };
-                try char_literal_parser.err(.invalid_multichar_literal, .{kind});
-            }
-        }
-
-        var multichar_overflow = false;
-        if (char_kind == .char and is_multichar) {
-            for (chars.items) |item| {
-                val, const overflowed = @shlWithOverflow(val, 8);
-                multichar_overflow = multichar_overflow or overflowed != 0;
-                val += @as(u8, @truncate(item));
-            }
-        } else if (chars.items.len > 0) {
-            val = chars.items[chars.items.len - 1];
-        }
-
-        if (multichar_overflow) {
-            try char_literal_parser.err(.char_lit_too_wide, .{});
-        }
-    }
+    var char_literal_parser: text_literal.Parser = .{
+        .comp = p.comp,
+        .literal = char_kind.contentSlice(p.tokSlice(literal)),
+        .kind = char_kind,
+        .max_codepoint = char_kind.maxCodepoint(p.comp),
+        .loc = p.pp.tokens.items(.loc)[literal],
+        .expansion_locs = p.pp.expansionSlice(literal),
+    };
+    const parsed = try char_literal_parser.parse();
 
     const char_literal_qt = char_kind.charLiteralType(p.comp);
-    // This is the type the literal will have if we're in a macro; macros always operate on intmax_t/uintmax_t values
-    const macro_qt = if (char_literal_qt.signedness(p.comp) == .unsigned or
-        (char_kind == .char and p.comp.getCharSignedness() == .unsigned))
-        try p.comp.type_store.intmax.makeIntUnsigned(p.comp)
-    else
-        p.comp.type_store.intmax;
-
-    var value = try Value.int(val, p.comp);
-    // C99 6.4.4.4.10
-    // > If an integer character constant contains a single character or escape sequence,
-    // > its value is the one that results when an object with type char whose value is
-    // > that of the single character or escape sequence is converted to type int.
-    // This conversion only matters if `char` is signed and has a high-order bit of `1`
-    if (char_kind == .char and !is_multichar and val > 0x7F and p.comp.getCharSignedness() == .signed) {
-        _ = try value.intCast(.char, p.comp);
-    }
-
     const res: Result = .{
-        .qt = if (p.in_macro) macro_qt else char_literal_qt,
-        .val = value,
+        .qt = char_literal_qt,
+        .val = switch (parsed) {
+            inline else => |v| try Value.int(v, p.comp),
+        },
         .node = try p.addNode(.{ .char_literal = .{
             .qt = char_literal_qt,
-            .literal_tok = p.tok_i,
+            .literal_tok = literal,
             .kind = switch (char_kind) {
                 .char, .unterminated => .ascii,
                 .wide => .wide,
@@ -10310,11 +10842,11 @@ fn charLiteral(p: *Parser) Error!?Result {
             },
         } }),
     };
-    if (!p.in_macro) try p.tree.value_map.put(gpa, res.node, res.val);
+    try p.tree.value_map.put(p.comp.gpa, res.node, res.val);
     return res;
 }
 
-fn parseFloat(p: *Parser, buf: []const u8, suffix: NumberSuffix, tok_i: TokenIndex) !Result {
+fn parseFloat(p: *Parser, buf: []const u8, suffix: number_literal.Suffix, tok_i: TokenIndex) !Result {
     const qt: QualType = switch (suffix) {
         .None, .I => .double,
         .F, .IF => .float,
@@ -10352,21 +10884,21 @@ fn parseFloat(p: *Parser, buf: []const u8, suffix: NumberSuffix, tok_i: TokenInd
             else => unreachable,
         };
     });
-    var res = Result{
+    var res: Result = .{
         .qt = qt,
         .node = try p.addNode(.{ .float_literal = .{ .qt = qt, .literal_tok = tok_i } }),
         .val = val,
     };
     if (suffix.isImaginary()) {
-        try p.err(p.tok_i, .gnu_imaginary_constant, .{});
+        try p.err(tok_i, .gnu_imaginary_constant, .{});
         res.qt = try qt.toComplex(p.comp);
 
-        res.val = try Value.intern(p.comp, switch (res.qt.bitSizeof(p.comp)) {
-            32 => .{ .complex = .{ .cf16 = .{ 0.0, val.toFloat(f16, p.comp) } } },
-            64 => .{ .complex = .{ .cf32 = .{ 0.0, val.toFloat(f32, p.comp) } } },
-            128 => .{ .complex = .{ .cf64 = .{ 0.0, val.toFloat(f64, p.comp) } } },
-            160 => .{ .complex = .{ .cf80 = .{ 0.0, val.toFloat(f80, p.comp) } } },
-            256 => .{ .complex = .{ .cf128 = .{ 0.0, val.toFloat(f128, p.comp) } } },
+        res.val = try Value.intern(p.comp, switch (qt.bitSizeof(p.comp)) {
+            16 => .{ .complex = .{ .cf16 = .{ 0.0, val.toFloat(f16, p.comp) } } },
+            32 => .{ .complex = .{ .cf32 = .{ 0.0, val.toFloat(f32, p.comp) } } },
+            64 => .{ .complex = .{ .cf64 = .{ 0.0, val.toFloat(f64, p.comp) } } },
+            80 => .{ .complex = .{ .cf80 = .{ 0.0, val.toFloat(f80, p.comp) } } },
+            128 => .{ .complex = .{ .cf128 = .{ 0.0, val.toFloat(f128, p.comp) } } },
             else => unreachable,
         });
         try res.un(p, .imaginary_literal, tok_i);
@@ -10374,54 +10906,7 @@ fn parseFloat(p: *Parser, buf: []const u8, suffix: NumberSuffix, tok_i: TokenInd
     return res;
 }
 
-fn getIntegerPart(p: *Parser, buf: []const u8, prefix: NumberPrefix, tok_i: TokenIndex) ![]const u8 {
-    if (buf[0] == '.') return "";
-
-    if (!prefix.digitAllowed(buf[0])) {
-        switch (prefix) {
-            .binary => try p.err(tok_i, .invalid_binary_digit, .{text_literal.Ascii.init(buf[0])}),
-            .octal => try p.err(tok_i, .invalid_octal_digit, .{text_literal.Ascii.init(buf[0])}),
-            .hex => try p.err(tok_i, .invalid_int_suffix, .{buf}),
-            .decimal => unreachable,
-        }
-        return error.ParsingFailed;
-    }
-
-    for (buf, 0..) |c, idx| {
-        if (idx == 0) continue;
-        switch (c) {
-            '.' => return buf[0..idx],
-            'p', 'P' => return if (prefix == .hex) buf[0..idx] else {
-                try p.err(tok_i, .invalid_int_suffix, .{buf[idx..]});
-                return error.ParsingFailed;
-            },
-            'e', 'E' => {
-                switch (prefix) {
-                    .hex => continue,
-                    .decimal => return buf[0..idx],
-                    .binary => try p.err(tok_i, .invalid_binary_digit, .{text_literal.Ascii.init(c)}),
-                    .octal => try p.err(tok_i, .invalid_octal_digit, .{text_literal.Ascii.init(c)}),
-                }
-                return error.ParsingFailed;
-            },
-            '0'...'9', 'a'...'d', 'A'...'D', 'f', 'F' => {
-                if (!prefix.digitAllowed(c)) {
-                    switch (prefix) {
-                        .binary => try p.err(tok_i, .invalid_binary_digit, .{text_literal.Ascii.init(c)}),
-                        .octal => try p.err(tok_i, .invalid_octal_digit, .{text_literal.Ascii.init(c)}),
-                        .decimal, .hex => try p.err(tok_i, .invalid_int_suffix, .{buf[idx..]}),
-                    }
-                    return error.ParsingFailed;
-                }
-            },
-            '\'' => {},
-            else => return buf[0..idx],
-        }
-    }
-    return buf;
-}
-
-fn fixedSizeInt(p: *Parser, base: u8, buf: []const u8, suffix: NumberSuffix, tok_i: TokenIndex) !Result {
+fn fixedSizeInt(p: *Parser, base: u8, buf: []const u8, suffix: number_literal.Suffix, tok_i: TokenIndex) !Result {
     var val: u64 = 0;
     var overflow = false;
     for (buf) |c| {
@@ -10477,21 +10962,34 @@ fn fixedSizeInt(p: *Parser, base: u8, buf: []const u8, suffix: NumberSuffix, tok
         .ULL, .IULL => .ulong_long,
         .L, .IL => .long,
         .LL, .ILL => .long_long,
+        .I8 => p.getMSVCIntSuffixType(.@"8", .signed),
+        .UI8 => p.getMSVCIntSuffixType(.@"8", .unsigned),
+        .I16 => p.getMSVCIntSuffixType(.@"16", .signed),
+        .UI16 => p.getMSVCIntSuffixType(.@"16", .unsigned),
+        .I32 => p.getMSVCIntSuffixType(.@"32", .signed),
+        .UI32 => p.getMSVCIntSuffixType(.@"32", .unsigned),
+        .I64 => p.getMSVCIntSuffixType(.@"64", .signed),
+        .UI64 => p.getMSVCIntSuffixType(.@"64", .unsigned),
         else => unreachable,
     };
 
-    for (qts) |qt| {
-        res.qt = qt;
-        if (res.qt.intRankOrder(suffix_qt, p.comp).compare(.lt)) continue;
-        const max_int = try Value.maxInt(res.qt, p.comp);
-        if (interned_val.compare(.lte, max_int, p.comp)) break;
-    } else switch (p.comp.langopts.emulate) {
-        .no, .gcc => if (p.comp.target.hasInt128()) {
-            res.qt = .int128;
-        } else {
-            res.qt = .long_long;
-        },
-        .msvc, .clang => res.qt = .ulong_long,
+    if (suffix.isMSVCExtension()) {
+        res.qt = suffix_qt; // No type promotion for MSVC suffixes
+        _ = try res.val.intCast(suffix_qt, p.comp); // No diagnostic for truncation or sign change for MSVC exact-width types
+    } else {
+        for (qts) |qt| {
+            res.qt = qt;
+            if (res.qt.intRankOrder(suffix_qt, p.comp).compare(.lt)) continue;
+            const max_int = try Value.maxInt(res.qt, p.comp);
+            if (interned_val.compare(.lte, max_int, p.comp)) break;
+        } else switch (p.comp.langopts.emulate) {
+            .no, .gcc => if (p.comp.target.hasInt128()) {
+                res.qt = .int128;
+            } else {
+                res.qt = .long_long;
+            },
+            .msvc, .clang => res.qt = .ulong_long,
+        }
     }
 
     res.node = try p.addNode(.{ .int_literal = .{ .qt = res.qt, .literal_tok = tok_i } });
@@ -10499,10 +10997,7 @@ fn fixedSizeInt(p: *Parser, base: u8, buf: []const u8, suffix: NumberSuffix, tok
     return res;
 }
 
-fn parseInt(p: *Parser, prefix: NumberPrefix, buf: []const u8, suffix: NumberSuffix, tok_i: TokenIndex) !Result {
-    if (prefix == .binary) {
-        try p.err(tok_i, .binary_integer_literal, .{});
-    }
+fn parseInt(p: *Parser, prefix: number_literal.Prefix, buf: []const u8, suffix: number_literal.Suffix, tok_i: TokenIndex) !Result {
     const base = @backingInt(prefix);
     var res = if (suffix.isBitInt())
         try p.bitInt(base, buf, suffix, tok_i)
@@ -10518,10 +11013,8 @@ fn parseInt(p: *Parser, prefix: NumberPrefix, buf: []const u8, suffix: NumberSuf
     return res;
 }
 
-fn bitInt(p: *Parser, base: u8, buf: []const u8, suffix: NumberSuffix, tok_i: TokenIndex) Error!Result {
+fn bitInt(p: *Parser, base: u8, buf: []const u8, suffix: number_literal.Suffix, tok_i: TokenIndex) Error!Result {
     const gpa = p.comp.gpa;
-    try p.err(tok_i, .pre_c23_compat, .{"'_BitInt' suffix for literals"});
-    try p.err(tok_i, .bitint_suffix, .{});
 
     var managed = try big.int.Managed.init(gpa);
     defer managed.deinit();
@@ -10565,119 +11058,30 @@ fn bitInt(p: *Parser, base: u8, buf: []const u8, suffix: NumberSuffix, tok_i: To
     return res;
 }
 
-fn getFracPart(p: *Parser, buf: []const u8, prefix: NumberPrefix, tok_i: TokenIndex) ![]const u8 {
-    if (buf.len == 0 or buf[0] != '.') return "";
-    assert(prefix != .octal);
-    if (prefix == .binary) {
-        try p.err(tok_i, .invalid_int_suffix, .{buf});
-        return error.ParsingFailed;
-    }
-    for (buf, 0..) |c, idx| {
-        if (idx == 0) continue;
-        if (c == '\'') continue;
-        if (!prefix.digitAllowed(c)) return buf[0..idx];
-    }
-    return buf;
-}
-
-fn getExponent(p: *Parser, buf: []const u8, prefix: NumberPrefix, tok_i: TokenIndex) ![]const u8 {
-    if (buf.len == 0) return "";
-
-    switch (buf[0]) {
-        'e', 'E' => assert(prefix == .decimal),
-        'p', 'P' => if (prefix != .hex) {
-            try p.err(tok_i, .invalid_float_suffix, .{buf});
-            return error.ParsingFailed;
-        },
-        else => return "",
-    }
-    const end = for (buf, 0..) |c, idx| {
-        if (idx == 0) continue;
-        if (idx == 1 and (c == '+' or c == '-')) continue;
-        switch (c) {
-            '0'...'9' => {},
-            '\'' => continue,
-            else => break idx,
-        }
-    } else buf.len;
-    const exponent = buf[0..end];
-    if (std.mem.indexOfAny(u8, exponent, "0123456789") == null) {
-        try p.err(tok_i, .exponent_has_no_digits, .{});
-        return error.ParsingFailed;
-    }
-    return exponent;
-}
-
 /// Using an explicit `tok_i` parameter instead of `p.tok_i` makes it easier
 /// to parse numbers in pragma handlers.
-pub fn parseNumberToken(p: *Parser, tok_i: TokenIndex) !Result {
-    const buf = p.tokSlice(tok_i);
-    const prefix = NumberPrefix.fromString(buf);
-    const after_prefix = buf[prefix.stringLen()..];
-
-    const int_part = try p.getIntegerPart(after_prefix, prefix, tok_i);
-
-    const after_int = after_prefix[int_part.len..];
-
-    const frac = try p.getFracPart(after_int, prefix, tok_i);
-    const after_frac = after_int[frac.len..];
-
-    const exponent = try p.getExponent(after_frac, prefix, tok_i);
-    const suffix_str = after_frac[exponent.len..];
-    const is_float = (exponent.len > 0 or frac.len > 0);
-    const suffix = NumberSuffix.fromString(suffix_str, if (is_float) .float else .int) orelse {
-        if (is_float) {
-            try p.err(tok_i, .invalid_float_suffix, .{suffix_str});
-        } else {
-            try p.err(tok_i, .invalid_int_suffix, .{suffix_str});
-        }
-        return error.ParsingFailed;
+pub fn parseNumberToken(p: *Parser, num: TokenIndex) !Result {
+    var number_literal_parser: number_literal.Parser = .{
+        .comp = p.comp,
+        .literal = p.tokSlice(num),
+        .loc = p.pp.tokens.items(.loc)[num],
+        .expansion_locs = p.pp.expansionSlice(num),
     };
-    if (suffix.isFloat80() and p.comp.float80Type() == null) {
-        try p.err(tok_i, .invalid_float_suffix, .{suffix_str});
-        return error.ParsingFailed;
-    }
+    const parsed = try number_literal_parser.parse();
 
-    if (is_float) {
-        assert(prefix == .hex or prefix == .decimal);
-        if (prefix == .hex and exponent.len == 0) {
-            try p.err(tok_i, .hex_floating_constant_requires_exponent, .{});
-            return error.ParsingFailed;
-        }
-        const number = buf[0 .. buf.len - suffix_str.len];
-        return p.parseFloat(number, suffix, tok_i);
+    if (parsed.is_float) {
+        return p.parseFloat(parsed.bytes, parsed.suffix, num);
     } else {
-        return p.parseInt(prefix, int_part, suffix, tok_i);
+        return p.parseInt(parsed.prefix, parsed.bytes, parsed.suffix, num);
     }
 }
 
 fn ppNum(p: *Parser) Error!Result {
-    defer p.tok_i += 1;
-    var res = try p.parseNumberToken(p.tok_i);
-    if (p.in_macro) {
-        const res_sk = res.qt.scalarKind(p.comp);
-        if (res_sk.isFloat() or !res_sk.isReal()) {
-            try p.err(p.tok_i, .float_literal_in_pp_expr, .{});
-            return error.ParsingFailed;
-        }
-        res.qt = if (res.qt.signedness(p.comp) == .unsigned)
-            try p.comp.type_store.intmax.makeIntUnsigned(p.comp)
-        else
-            p.comp.type_store.intmax;
-    } else if (res.val.opt_ref != .none) {
-        try res.putValue(p);
-    }
+    const num = p.tok_i;
+    p.tok_i += 1;
+    var res = try p.parseNumberToken(num);
+    try res.putValue(p);
     return res;
-}
-
-/// Run a parser function but do not evaluate the result
-fn parseNoEval(p: *Parser, comptime func: fn (*Parser) Error!?Result) Error!Result {
-    const no_eval = p.no_eval;
-    defer p.no_eval = no_eval;
-    p.no_eval = true;
-
-    const parsed = try func(p);
-    return p.expectResult(parsed);
 }
 
 /// genericSelection : keyword_generic '(' assignExpr ',' genericAssoc (',' genericAssoc)* ')'
@@ -10691,7 +11095,7 @@ fn genericSelection(p: *Parser) Error!?Result {
     const l_paren = try p.expectToken(.l_paren);
     const controlling_tok = p.tok_i;
 
-    const controlling = try p.parseNoEval(assignExpr);
+    const controlling = try p.expectResult(try p.binaryExpr(.conditional, false));
     var controlling_qt = controlling.qt;
     if (controlling_qt.is(p.comp, .array)) {
         controlling_qt = try controlling_qt.decay(p.comp);
@@ -10809,8 +11213,12 @@ fn genericSelection(p: *Parser) Error!?Result {
 }
 
 test "Node locations" {
+    var diagnostics: Diagnostics = .{
+        .output = .ignore,
+    };
     var comp = try Compilation.init(.testing);
     defer comp.deinit();
+    comp.diagnostics = &diagnostics;
 
     const file = try comp.addSourceFromBuffer("file.c",
         \\int foo = 5;

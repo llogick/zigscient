@@ -5,6 +5,7 @@ const std = @import("std");
 
 const Attribute = @import("Attribute.zig");
 const Compilation = @import("Compilation.zig");
+const Node = @import("Tree.zig").Node;
 const Parser = @import("Parser.zig");
 const Target = @import("Target.zig");
 const TypeStore = @import("TypeStore.zig");
@@ -44,34 +45,20 @@ const SysVContext = struct {
     ongoing_bitfield: ?OngoingBitfield,
 
     comp: *const Compilation,
-
-    fn init(qt: QualType, comp: *const Compilation, pragma_pack: ?u8) SysVContext {
-        const pack_value: ?u64 = if (pragma_pack) |pak| @as(u64, pak) * BITS_PER_BYTE else null;
-        const req_align = @as(u32, (qt.requestedAlignment(comp) orelse 1)) * BITS_PER_BYTE;
-        return SysVContext{
-            .attr_packed = qt.hasAttribute(comp, .@"packed"),
-            .max_field_align_bits = pack_value,
-            .aligned_bits = req_align,
-            .is_union = qt.is(comp, .@"union"),
-            .size_bits = 0,
-            .comp = comp,
-            .ongoing_bitfield = null,
-        };
-    }
+    am: *const Attribute.Map,
 
     fn layoutFields(self: *SysVContext, fields: []Type.Record.Field) !void {
         for (fields) |*field| {
             if (field.qt.isInvalid()) continue;
             const type_layout = computeLayout(field.qt, self.comp);
 
-            const attributes = field.attributes(self.comp);
             if (self.comp.target.isMinGW()) {
-                field.layout = try self.layoutMinGWField(field, attributes, type_layout);
+                field.layout = try self.layoutMinGWField(field, type_layout);
             } else {
                 if (field.bit_width.unpack()) |bit_width| {
-                    field.layout = try self.layoutBitField(attributes, type_layout, field.name_tok != 0, bit_width);
+                    field.layout = try self.layoutBitField(type_layout, field, bit_width);
                 } else {
-                    field.layout = try self.layoutRegularField(attributes, type_layout);
+                    field.layout = try self.layoutRegularField(type_layout, field);
                 }
             }
         }
@@ -98,11 +85,10 @@ const SysVContext = struct {
     fn layoutMinGWField(
         self: *SysVContext,
         field: *const Field,
-        field_attrs: []const Attribute,
         field_layout: RecordLayout,
     ) !FieldLayout {
-        const annotation_alignment_bits = BITS_PER_BYTE * (QualType.annotationAlignment(self.comp, Attribute.Iterator.initSlice(field_attrs)) orelse 1);
-        const is_attr_packed = self.attr_packed or isPacked(field_attrs);
+        const annotation_alignment_bits = BITS_PER_BYTE * (self.am.requestedAlignment(field.field_decl, self.comp) orelse 1);
+        const is_attr_packed = self.attr_packed or self.am.hasAttribute(field.field_decl, .@"packed");
         const ignore_type_alignment = ignoreTypeAlignment(is_attr_packed, field.bit_width.unpack(), self.ongoing_bitfield, field_layout);
 
         var field_alignment_bits: u64 = field_layout.field_alignment_bits;
@@ -227,20 +213,20 @@ const SysVContext = struct {
 
     fn layoutRegularField(
         self: *SysVContext,
-        fld_attrs: []const Attribute,
         fld_layout: RecordLayout,
+        field: *const Record.Field,
     ) !FieldLayout {
         var fld_align_bits = fld_layout.field_alignment_bits;
 
         // If the struct or the field is packed, then the alignment of the underlying type is
         // ignored. See test case 0084.
-        if (self.attr_packed or isPacked(fld_attrs)) {
+        if (self.attr_packed or self.am.hasAttribute(field.field_decl, .@"packed")) {
             fld_align_bits = BITS_PER_BYTE;
         }
 
         // The field alignment can be increased by __attribute__((aligned)) annotations on the
         // field. See test case 0085.
-        if (QualType.annotationAlignment(self.comp, Attribute.Iterator.initSlice(fld_attrs))) |anno| {
+        if (self.am.requestedAlignment(field.field_decl, self.comp)) |anno| {
             fld_align_bits = @max(fld_align_bits, @as(u32, anno) * BITS_PER_BYTE);
         }
 
@@ -268,48 +254,50 @@ const SysVContext = struct {
 
     fn layoutBitField(
         self: *SysVContext,
-        fld_attrs: []const Attribute,
         fld_layout: RecordLayout,
-        is_named: bool,
+        field: *const Record.Field,
         bit_width: u64,
     ) !FieldLayout {
+        const is_named = field.name_tok != 0;
         const ty_size_bits = fld_layout.size_bits;
         var ty_fld_algn_bits: u32 = fld_layout.field_alignment_bits;
+        const target = &self.comp.target;
 
         if (bit_width > 0) {
             std.debug.assert(bit_width <= ty_size_bits); // Checked in parser
             // Some targets ignore the alignment of the underlying type when laying out
             // non-zero-sized bit-fields. See test case 0072. On such targets, bit-fields never
             // cross a storage boundary. See test case 0081.
-            if (self.comp.target.ignoreNonZeroSizedBitfieldTypeAlignment()) {
+            if (target.ignoreNonZeroSizedBitfieldTypeAlignment()) {
                 ty_fld_algn_bits = 1;
             }
         } else {
             // Some targets ignore the alignment of the underlying type when laying out
             // zero-sized bit-fields. See test case 0073.
-            if (self.comp.target.ignoreZeroSizedBitfieldTypeAlignment()) {
+            if (target.ignoreZeroSizedBitfieldTypeAlignment()) {
                 ty_fld_algn_bits = 1;
             }
             // Some targets have a minimum alignment of zero-sized bit-fields. See test case
             // 0074.
-            if (self.comp.target.minZeroWidthBitfieldAlignment()) |target_align| {
+            if (target.minZeroWidthBitfieldAlignment()) |target_align| {
                 ty_fld_algn_bits = @max(ty_fld_algn_bits, target_align);
             }
         }
 
         // __attribute__((packed)) on the record is identical to __attribute__((packed)) on each
         // field. See test case 0067.
-        const attr_packed = self.attr_packed or isPacked(fld_attrs);
+        const attr_packed = self.attr_packed or self.am.hasAttribute(field.field_decl, .@"packed");
         const has_packing_annotation = attr_packed or self.max_field_align_bits != null;
 
-        const annotation_alignment = if (QualType.annotationAlignment(self.comp, Attribute.Iterator.initSlice(fld_attrs))) |anno| @as(u32, anno) * BITS_PER_BYTE else 1;
+        const annotation_alignment = if (self.am.requestedAlignment(field.field_decl, self.comp)) |anno| @as(u32, anno) * BITS_PER_BYTE else 1;
 
         const first_unused_bit: u64 = if (self.is_union) 0 else self.size_bits;
         var field_align_bits: u64 = 1;
+        const emulate = self.comp.langopts.emulate;
 
         if (bit_width == 0) {
             field_align_bits = @max(ty_fld_algn_bits, annotation_alignment);
-        } else if (self.comp.langopts.emulate == .gcc) {
+        } else if (emulate == .gcc) {
             // On GCC, the field alignment is at least the alignment requested by annotations
             // except as restricted by #pragma pack. See test case 0083.
             field_align_bits = annotation_alignment;
@@ -332,7 +320,7 @@ const SysVContext = struct {
                 }
             }
         } else {
-            std.debug.assert(self.comp.langopts.emulate == .no or self.comp.langopts.emulate == .clang);
+            std.debug.assert(emulate == .no or emulate == .clang);
 
             // On Clang, the alignment requested by annotations is not respected if it is
             // larger than the value of #pragma pack. See test case 0083.
@@ -355,7 +343,7 @@ const SysVContext = struct {
 
         // Unnamed fields do not contribute to the record alignment except on a few targets.
         // See test case 0079.
-        if (is_named or self.comp.target.unnamedFieldAffectsAlignment()) {
+        if (is_named or target.unnamedFieldAffectsAlignment()) {
             var inherited_align_bits: u32 = undefined;
 
             if (bit_width == 0) {
@@ -401,11 +389,20 @@ const MsvcContext = struct {
     ongoing_bitfield: ?OngoingBitfield,
     contains_non_bitfield: bool,
     is_union: bool,
-    comp: *const Compilation,
 
-    fn init(qt: QualType, comp: *const Compilation, pragma_pack: ?u8) MsvcContext {
+    comp: *const Compilation,
+    am: *const Attribute.Map,
+
+    fn init(
+        packed_attr: bool,
+        requested_align: ?u32,
+        is_union: bool,
+        comp: *const Compilation,
+        am: *const Attribute.Map,
+        pragma_pack: ?u8,
+    ) MsvcContext {
         var pack_value: ?u32 = null;
-        if (qt.hasAttribute(comp, .@"packed")) {
+        if (packed_attr) {
             // __attribute__((packed)) behaves like #pragma pack(1) in clang. See test case 0056.
             pack_value = BITS_PER_BYTE;
         }
@@ -414,13 +411,10 @@ const MsvcContext = struct {
                 pack_value = pack * BITS_PER_BYTE;
             }
         }
-        if (pack_value) |pack| {
-            pack_value = msvcPragmaPack(comp, pack);
-        }
-
+        pack_value = msvcPragmaPack(comp, pack_value);
         // The required alignment can be increased by adding a __declspec(align)
         // annotation. See test case 0023.
-        const must_align = @as(u32, (qt.requestedAlignment(comp) orelse 1)) * BITS_PER_BYTE;
+        const must_align = @as(u32, (requested_align orelse 1)) * BITS_PER_BYTE;
         return .{
             .req_align_bits = must_align,
             .pointer_align_bits = must_align,
@@ -429,19 +423,20 @@ const MsvcContext = struct {
             .max_field_align_bits = pack_value,
             .ongoing_bitfield = null,
             .contains_non_bitfield = false,
-            .is_union = qt.is(comp, .@"union"),
+            .is_union = is_union,
             .comp = comp,
+            .am = am,
         };
     }
 
-    fn layoutField(self: *MsvcContext, fld: *const Field, fld_attrs: []const Attribute) !FieldLayout {
+    fn layoutField(self: *MsvcContext, fld: *const Field) !FieldLayout {
         const type_layout = computeLayout(fld.qt, self.comp);
 
         // The required alignment of the field is the maximum of the required alignment of the
         // underlying type and the __declspec(align) annotation on the field itself.
         // See test case 0028.
         var req_align = type_layout.required_alignment_bits;
-        if (QualType.annotationAlignment(self.comp, Attribute.Iterator.initSlice(fld_attrs))) |anno| {
+        if (self.am.requestedAlignment(fld.field_decl, self.comp)) |anno| {
             req_align = @max(@as(u32, anno) * BITS_PER_BYTE, req_align);
         }
 
@@ -463,7 +458,7 @@ const MsvcContext = struct {
             fld_align_bits = @max(fld_align_bits, type_req_align * 8);
         }
 
-        if (isPacked(fld_attrs)) {
+        if (self.am.hasAttribute(fld.field_decl, .@"packed")) {
             // __attribute__((packed)) on a field is a clang extension. It behaves as if #pragma
             // pack(1) had been applied only to this field. See test case 0057.
             fld_align_bits = BITS_PER_BYTE;
@@ -567,54 +562,79 @@ const MsvcContext = struct {
     }
 };
 
-pub fn compute(fields: []Type.Record.Field, qt: QualType, comp: *const Compilation, pragma_pack: ?u8) Error!Type.Record.Layout {
-    switch (comp.langopts.emulate) {
-        .no, .gcc, .clang => {
-            var context = SysVContext.init(qt, comp, pragma_pack);
+pub fn compute(
+    fields: []Type.Record.Field,
+    opt_decl: Node.OptIndex,
+    is_union: bool,
+    comp: *const Compilation,
+    am: *const Attribute.Map,
+    pragma_pack: ?u8,
+) Error!Type.Record.Layout {
+    const packed_attr = am.hasAttribute(opt_decl, .@"packed");
+    const requested_align = am.requestedAlignment(opt_decl, comp);
 
-            try context.layoutFields(fields);
+    const use_sysv_layout = switch (comp.langopts.emulate) {
+        .msvc => false,
+        .clang, .no => comp.target.abi != .msvc,
+        .gcc => true,
+    };
 
-            context.size_bits = try alignForward(context.size_bits, context.aligned_bits);
+    if (use_sysv_layout) {
+        var context: SysVContext = .{
+            .attr_packed = packed_attr,
+            .max_field_align_bits = if (pragma_pack) |pak| @as(u64, pak) * BITS_PER_BYTE else null,
+            .aligned_bits = (requested_align orelse 1) * BITS_PER_BYTE,
+            .is_union = is_union,
+            .size_bits = 0,
+            .comp = comp,
+            .am = am,
+            .ongoing_bitfield = null,
+        };
 
-            return .{
-                .size_bits = context.size_bits,
-                .field_alignment_bits = context.aligned_bits,
-                .pointer_alignment_bits = context.aligned_bits,
-                .required_alignment_bits = BITS_PER_BYTE,
-            };
-        },
-        .msvc => {
-            var context = MsvcContext.init(qt, comp, pragma_pack);
-            for (fields) |*field| {
-                if (field.qt.isInvalid()) continue;
-                field.layout = try context.layoutField(field, field.attributes(comp));
-            }
-            if (context.size_bits == 0) {
-                // As an extension, MSVC allows records that only contain zero-sized bitfields and empty
-                // arrays. Such records would be zero-sized but this case is handled here separately to
-                // ensure that there are no zero-sized records.
-                context.handleZeroSizedRecord();
-            }
-            context.size_bits = try alignForward(context.size_bits, context.pointer_align_bits);
-            return .{
-                .size_bits = context.size_bits,
-                .field_alignment_bits = context.field_align_bits,
-                .pointer_alignment_bits = context.pointer_align_bits,
-                .required_alignment_bits = context.req_align_bits,
-            };
-        },
+        try context.layoutFields(fields);
+
+        context.size_bits = try alignForward(context.size_bits, context.aligned_bits);
+
+        return .{
+            .size_bits = context.size_bits,
+            .field_alignment_bits = context.aligned_bits,
+            .pointer_alignment_bits = context.aligned_bits,
+            .required_alignment_bits = BITS_PER_BYTE,
+        };
+    } else {
+        var context = MsvcContext.init(packed_attr, requested_align, is_union, comp, am, pragma_pack);
+        for (fields) |*field| {
+            if (field.qt.isInvalid()) continue;
+            field.layout = try context.layoutField(field);
+        }
+        if (context.size_bits == 0) {
+            // As an extension, MSVC allows records that only contain zero-sized bitfields and empty
+            // arrays. Such records would be zero-sized but this case is handled here separately to
+            // ensure that there are no zero-sized records.
+            context.handleZeroSizedRecord();
+        }
+        context.size_bits = try alignForward(context.size_bits, context.pointer_align_bits);
+        return .{
+            .size_bits = context.size_bits,
+            .field_alignment_bits = context.field_align_bits,
+            .pointer_alignment_bits = context.pointer_align_bits,
+            .required_alignment_bits = context.req_align_bits,
+        };
     }
 }
 
 fn computeLayout(qt: QualType, comp: *const Compilation) RecordLayout {
+    const requested = BITS_PER_BYTE * (if (comp.langopts.emulate == .msvc)
+        msvcRequiredAlignment(qt, comp) orelse 0
+    else
+        qt.requestedAlignment(comp) orelse 0);
     switch (qt.base(comp).type) {
         .@"struct", .@"union" => |record| {
-            const requested = BITS_PER_BYTE * (qt.requestedAlignment(comp) orelse 0);
             return .{
                 .size_bits = record.layout.?.size_bits,
                 .pointer_alignment_bits = @max(requested, record.layout.?.pointer_alignment_bits),
                 .field_alignment_bits = @max(requested, record.layout.?.field_alignment_bits),
-                .required_alignment_bits = record.layout.?.required_alignment_bits,
+                .required_alignment_bits = @max(requested, record.layout.?.required_alignment_bits),
             };
         },
         else => {
@@ -623,20 +643,27 @@ fn computeLayout(qt: QualType, comp: *const Compilation) RecordLayout {
                 .size_bits = BITS_PER_BYTE * (qt.sizeofOrNull(comp) orelse 0),
                 .pointer_alignment_bits = type_align,
                 .field_alignment_bits = type_align,
-                .required_alignment_bits = BITS_PER_BYTE,
+                .required_alignment_bits = @max(requested, BITS_PER_BYTE),
             };
         },
     }
 }
 
-fn isPacked(attrs: ?[]const Attribute) bool {
-    const a = attrs orelse return false;
-
-    for (a) |attribute| {
-        if (attribute.tag != .@"packed") continue;
-        return true;
-    }
-    return false;
+fn msvcRequiredAlignment(qt: QualType, comp: *const Compilation) ?u32 {
+    const child = switch (qt.type(comp)) {
+        .array => |array| msvcRequiredAlignment(array.elem, comp),
+        .typedef => |typedef| msvcRequiredAlignment(typedef.base, comp),
+        .typeof => |typeof| msvcRequiredAlignment(typeof.base, comp),
+        .@"struct", .@"union" => |record| if (record.layout) |layout|
+            layout.required_alignment_bits / BITS_PER_BYTE
+        else
+            null,
+        else => null,
+    };
+    return if (qt.requestedAlignment(comp)) |own|
+        if (child) |child_alignment| @max(own, child_alignment) else own
+    else
+        child;
 }
 
 // The effect of #pragma pack(N) depends on the target.
@@ -652,8 +679,8 @@ fn isPacked(attrs: ?[]const Attribute) bool {
 //        activate the default.
 //
 // See test case 0020.
-pub fn msvcPragmaPack(comp: *const Compilation, pack: u32) ?u32 {
-    return switch (pack) {
+pub fn msvcPragmaPack(comp: *const Compilation, pack: ?u32) ?u32 {
+    return switch (pack orelse 0) {
         8, 16, 32 => pack,
         64 => if (comp.target.cpu.arch == .x86) null else pack,
         128 => if (comp.target.cpu.arch == .thumb) pack else null,

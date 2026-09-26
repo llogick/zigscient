@@ -269,7 +269,8 @@ fn parseCNumLit(mt: *MacroTranslator) ParseError!ZigNode {
     // +3 for prefix and +2 for suffix
     var bytes = try std.ArrayList(u8).initCapacity(arena, lit_bytes.len + 3 + 2);
 
-    const prefix = aro.Tree.Token.NumberPrefix.fromString(lit_bytes);
+    const allow_msvc_suffixes = mt.t.comp.langopts.allowFixedSizedIntSuffixes();
+    const prefix = aro.Tokenizer.number_literal.Prefix.fromString(lit_bytes, allow_msvc_suffixes);
     switch (prefix) {
         .binary => bytes.appendSliceAssumeCapacity("0b"),
         .octal => bytes.appendSliceAssumeCapacity("0o"),
@@ -335,7 +336,7 @@ fn parseCNumLit(mt: *MacroTranslator) ParseError!ZigNode {
     };
 
     const is_float = after_int.len != suffix_str.len;
-    const suffix = aro.Tree.Token.NumberSuffix.fromString(suffix_str, if (is_float) .float else .int) orelse {
+    const suffix = aro.Tokenizer.number_literal.Suffix.fromString(suffix_str, if (is_float) .float else .int, allow_msvc_suffixes) orelse {
         try mt.fail("invalid number suffix: '{s}'", .{suffix_str});
         return error.ParseError;
     };
@@ -361,7 +362,7 @@ fn parseCNumLit(mt: *MacroTranslator) ParseError!ZigNode {
                 return error.ParseError;
             },
         });
-        if (bytes.last().? == '.') {
+        if (bytes.last() == '.') {
             bytes.appendAssumeCapacity('0');
         } else if (mem.findAny(u8, bytes.items, ".eEpP") == null) {
             bytes.appendSliceAssumeCapacity(".0");
@@ -376,6 +377,14 @@ fn parseCNumLit(mt: *MacroTranslator) ParseError!ZigNode {
             .UL => "c_ulong",
             .LL => "c_longlong",
             .ULL => "c_ulonglong",
+            .I8 => "i8",
+            .UI8 => "u8",
+            .I16 => "i16",
+            .UI16 => "u16",
+            .I32 => "i32",
+            .UI32 => "u32",
+            .I64 => "i64",
+            .UI64 => "u64",
             else => unreachable,
         });
         const value = std.fmt.parseInt(i128, bytes.items, 0) catch math.maxInt(i128);
@@ -389,6 +398,14 @@ fn parseCNumLit(mt: *MacroTranslator) ParseError!ZigNode {
             .UL => math.cast(u32, value) != null,
             .LL => math.cast(i64, value) != null,
             .ULL => math.cast(u64, value) != null,
+            .I8 => math.cast(i8, value) != null,
+            .UI8 => math.cast(u8, value) != null,
+            .I16 => math.cast(i16, value) != null,
+            .UI16 => math.cast(u16, value) != null,
+            .I32 => math.cast(i32, value) != null,
+            .UI32 => math.cast(u32, value) != null,
+            .I64 => math.cast(i64, value) != null,
+            .UI64 => math.cast(u64, value) != null,
             else => unreachable,
         };
 
@@ -583,7 +600,7 @@ fn escapeUnprintables(mt: *MacroTranslator) ![]const u8 {
     const formatter = std.ascii.hexEscape(zigified, .lower);
     const encoded_size = @as(usize, @intCast(std.fmt.count("{f}", .{formatter})));
     const output = try mt.t.arena.alloc(u8, encoded_size);
-    return std.mem.print(output, "{f}", .{formatter}) catch |err| switch (err) {
+    return std.fmt.bufPrint(output, "{f}", .{formatter}) catch |err| switch (err) {
         error.NoSpaceLeft => unreachable,
         else => |e| return e,
     };
@@ -1270,8 +1287,24 @@ fn parseCPostfixExprInner(mt: *MacroTranslator, scope: *Scope, type_name: ?ZigNo
                     var args: std.ArrayList(ZigNode) = .empty;
                     defer args.deinit(gpa);
 
-                    while (true) {
-                        const arg = try mt.parseCCondExpr(scope);
+                    const func_params = if (mt.t.getFnProto(node)) |func| func.data.params else &.{};
+                    var arg_idx: usize = 0;
+                    while (true) : (arg_idx += 1) {
+                        var arg = try mt.parseCCondExpr(scope);
+                        if (arg_idx < func_params.len) {
+                            if (func_params[arg_idx].type.castTag(.type)) |t| {
+                                if (std.mem.eql(u8, t.data, "bool")) {
+                                    // If a C bool function parameter has been
+                                    // actually lowered to the Zig bool type,
+                                    // we need to cast; likely the parameter in
+                                    // the call is still int and will not
+                                    // coerce.
+                                    const bool_ty = try ZigTag.type.create(mt.t.arena, "bool");
+                                    arg = try mt.t.createHelperCallNode(.cast, &.{ bool_ty, arg });
+                                }
+                            }
+                        }
+
                         try args.append(gpa, arg);
 
                         const next_id = mt.peek();
@@ -1313,6 +1346,11 @@ fn parseCPostfixExprInner(mt: *MacroTranslator, scope: *Scope, type_name: ?ZigNo
                         switch (next_id) {
                             .comma => {
                                 mt.i += 1;
+                                // Check for trailing comma
+                                if (mt.peek() == .r_brace) {
+                                    mt.i += 1;
+                                    break;
+                                }
                             },
                             .r_brace => {
                                 mt.i += 1;
@@ -1340,6 +1378,11 @@ fn parseCPostfixExprInner(mt: *MacroTranslator, scope: *Scope, type_name: ?ZigNo
                     switch (next_id) {
                         .comma => {
                             mt.i += 1;
+                            // Check for trailing comma
+                            if (mt.peek() == .r_brace) {
+                                mt.i += 1;
+                                break;
+                            }
                         },
                         .r_brace => {
                             mt.i += 1;

@@ -50,7 +50,7 @@ pub const ExpandedLocation = struct {
 const Source = @This();
 
 path: []const u8,
-buf: []const u8,
+buf: [:0]const u8,
 id: Id,
 /// each entry represents a byte position within `buf` where a backslash+newline was deleted
 /// from the original raw buffer. The same position can appear multiple times if multiple
@@ -58,10 +58,13 @@ id: Id,
 splice_locs: []const u32,
 kind: Kind,
 
+// Path of the umbrella framework. Slice of `path`.
+umbrella_framework_path: ?[]const u8 = null,
+
 pub fn lineCol(source: Source, loc: Location) ExpandedLocation {
     var start: usize = 0;
     // find the start of the line which is either a newline or a splice
-    if (std.mem.lastIndexOfScalar(u8, source.buf[0..loc.byte_offset], '\n')) |some| start = some + 1;
+    if (std.mem.findScalarLast(u8, source.buf[0..loc.byte_offset], '\n')) |some| start = some + 1;
     const splice_index: u32 = for (source.splice_locs, 0..) |splice_offset, i| {
         if (splice_offset > start) {
             if (splice_offset < loc.byte_offset) {
@@ -101,7 +104,7 @@ pub fn lineCol(source: Source, loc: Location) ExpandedLocation {
     // find the end of the line which is either a newline, EOF or a splice
     var nl = source.buf.len;
     var end_with_splice = false;
-    if (std.mem.indexOfScalar(u8, source.buf[start..], '\n')) |some| nl = some + start;
+    if (std.mem.findScalar(u8, source.buf[start..], '\n')) |some| nl = some + start;
     if (source.splice_locs.len > splice_index and nl > source.splice_locs[splice_index] and source.splice_locs[splice_index] > start) {
         end_with_splice = true;
         nl = source.splice_locs[splice_index];

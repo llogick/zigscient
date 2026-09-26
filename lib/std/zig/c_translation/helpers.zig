@@ -86,8 +86,8 @@ pub fn FlexibleArrayType(comptime SelfType: type, comptime ElementType: type) ty
     switch (@typeInfo(SelfType)) {
         .pointer => |ptr| {
             return @Pointer(.c, .{
-                .@"const" = ptr.is_const,
-                .@"volatile" = ptr.is_volatile,
+                .@"const" = ptr.attrs.@"const",
+                .@"volatile" = ptr.attrs.@"volatile",
                 .@"allowzero" = true,
                 .@"addrspace" = .generic,
                 .@"align" = null,
@@ -98,7 +98,7 @@ pub fn FlexibleArrayType(comptime SelfType: type, comptime ElementType: type) ty
 }
 
 /// Promote the type of an integer literal until it fits as C would.
-pub fn promoteIntLiteral(
+pub inline fn promoteIntLiteral(
     comptime SuffixType: type,
     comptime number: comptime_int,
     comptime base: CIntLiteralBase,
@@ -295,7 +295,7 @@ pub fn sizeof(target: anytype) usize {
             // in the .array case above, but strings remain literals
             // and are therefore always pointers, so they need to be
             // specially handled here.
-            if (ptr.size == .one and ptr.is_const and @typeInfo(ptr.child) == .array) {
+            if (ptr.size == .one and ptr.attrs.@"const" and @typeInfo(ptr.child) == .array) {
                 const array_info = @typeInfo(ptr.child).array;
                 if ((array_info.child == u8 or array_info.child == u16) and array_info.sentinel() == 0) {
                     // length of the string plus one for the null terminator.
@@ -381,7 +381,7 @@ fn L_SUFFIX_ReturnType(comptime number: anytype) type {
     }
 }
 
-pub fn L_SUFFIX(comptime number: anytype) L_SUFFIX_ReturnType(number) {
+pub inline fn L_SUFFIX(comptime number: anytype) L_SUFFIX_ReturnType(number) {
     switch (@typeInfo(@TypeOf(number))) {
         .int, .comptime_int => return promoteIntLiteral(c_long, number, .decimal),
         .float, .comptime_float => @compileError("TODO: c_longdouble initialization from comptime_float not supported"),
@@ -389,19 +389,19 @@ pub fn L_SUFFIX(comptime number: anytype) L_SUFFIX_ReturnType(number) {
     }
 }
 
-pub fn LL_SUFFIX(comptime n: comptime_int) @TypeOf(promoteIntLiteral(c_longlong, n, .decimal)) {
+pub inline fn LL_SUFFIX(comptime n: comptime_int) @TypeOf(promoteIntLiteral(c_longlong, n, .decimal)) {
     return promoteIntLiteral(c_longlong, n, .decimal);
 }
 
-pub fn U_SUFFIX(comptime n: comptime_int) @TypeOf(promoteIntLiteral(c_uint, n, .decimal)) {
+pub inline fn U_SUFFIX(comptime n: comptime_int) @TypeOf(promoteIntLiteral(c_uint, n, .decimal)) {
     return promoteIntLiteral(c_uint, n, .decimal);
 }
 
-pub fn UL_SUFFIX(comptime n: comptime_int) @TypeOf(promoteIntLiteral(c_ulong, n, .decimal)) {
+pub inline fn UL_SUFFIX(comptime n: comptime_int) @TypeOf(promoteIntLiteral(c_ulong, n, .decimal)) {
     return promoteIntLiteral(c_ulong, n, .decimal);
 }
 
-pub fn ULL_SUFFIX(comptime n: comptime_int) @TypeOf(promoteIntLiteral(c_ulonglong, n, .decimal)) {
+pub inline fn ULL_SUFFIX(comptime n: comptime_int) @TypeOf(promoteIntLiteral(c_ulonglong, n, .decimal)) {
     return promoteIntLiteral(c_ulonglong, n, .decimal);
 }
 

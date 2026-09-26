@@ -5,6 +5,12 @@ pub inline fn abs(val: c_int) c_int {
     return if (val == std.math.minInt(c_int)) val else @intCast(@abs(val));
 }
 
+pub fn add_overflow(a: anytype, b: anytype, result: *@TypeOf(a, b)) bool {
+    const res = @addWithOverflow(a, b);
+    result.* = res[0];
+    return res[1] == 1;
+}
+
 pub inline fn assume(cond: bool) void {
     if (!cond) unreachable;
 }
@@ -93,6 +99,120 @@ pub inline fn floorf(val: f32) f32 {
 
 pub inline fn floor(val: f64) f64 {
     return @floor(val);
+}
+
+// Single argument variant is mapped to @clz
+pub inline fn elementwise_clzg(x: anytype, y: anytype) @TypeOf(x, y) {
+    switch (@typeInfo(@TypeOf(x, y))) {
+        .int => |int| {
+            const U = @Int(.unsigned, int.bits);
+            const value: U = @bitCast(x);
+            if (value == 0) return y;
+
+            const result: U = @clz(value);
+            return @bitCast(result);
+        },
+        .vector => |vector| {
+            const Elem = @Int(.unsigned, @bitSizeOf(vector.child));
+            const U = @Vector(vector.len, Elem);
+            const value: U = @bitCast(x);
+            const fallback: U = @bitCast(y);
+            const zero: U = @splat(0);
+            const count: U = @clz(value);
+            const result: U = @select(Elem, value == zero, fallback, count);
+            return @bitCast(result);
+        },
+        else => unreachable,
+    }
+}
+
+// Single argument variant is mapped to @ctz
+pub inline fn elementwise_ctzg(x: anytype, y: anytype) @TypeOf(x, y) {
+    switch (@typeInfo(@TypeOf(x, y))) {
+        .int => |int| {
+            const U = @Int(.unsigned, int.bits);
+            const value: U = @bitCast(x);
+            if (value == 0) return y;
+
+            const result: U = @ctz(value);
+            return @bitCast(result);
+        },
+        .vector => |vector| {
+            const Elem = @Int(.unsigned, @bitSizeOf(vector.child));
+            const U = @Vector(vector.len, Elem);
+            const value: U = @bitCast(x);
+            const fallback: U = @bitCast(y);
+            const zero: U = @splat(0);
+            const count: U = @ctz(value);
+            const result: U = @select(Elem, value == zero, fallback, count);
+            return @bitCast(result);
+        },
+        else => unreachable,
+    }
+}
+
+pub inline fn elementwise_fshl(a: anytype, b: anytype, c: anytype) @TypeOf(a, b, c) {
+    switch (@typeInfo(@TypeOf(a, b, c))) {
+        .int => |int| {
+            const U = @Int(.unsigned, int.bits);
+            const lhs: U = @bitCast(a);
+            const rhs: U = @bitCast(b);
+            const bits = @bitSizeOf(U);
+            const shift = @as(U, @bitCast(c)) % bits;
+            if (shift == 0) return a;
+
+            const inverse_shift: U = @as(U, bits) - shift;
+            const result: U = (lhs << @intCast(shift)) | (rhs >> @intCast(inverse_shift));
+            return @bitCast(result);
+        },
+        .vector => |vector| {
+            const Elem = @Int(.unsigned, @bitSizeOf(vector.child));
+            const U = @Vector(vector.len, Elem);
+            const lhs: U = @bitCast(a);
+            const rhs: U = @bitCast(b);
+            const bits: U = @splat(@bitSizeOf(vector.child));
+            const zero: U = @splat(0);
+            const shift = @as(U, @bitCast(c)) % bits;
+            const inverse_shift = @select(Elem, shift == zero, zero, bits - shift);
+
+            const rhs_term = @select(Elem, shift == zero, zero, rhs >> @intCast(inverse_shift));
+            const result: U = (lhs << @intCast(shift)) | rhs_term;
+            return @bitCast(result);
+        },
+        else => unreachable,
+    }
+}
+
+pub inline fn elementwise_fshr(a: anytype, b: anytype, c: anytype) @TypeOf(a, b, c) {
+    switch (@typeInfo(@TypeOf(a, b, c))) {
+        .int => |int| {
+            const U = @Int(.unsigned, int.bits);
+            const lhs: U = @bitCast(a);
+            const rhs: U = @bitCast(b);
+            const bits = @bitSizeOf(U);
+            const shift = @as(U, @bitCast(c)) % bits;
+            if (shift == 0) return b;
+
+            const inverse_shift: U = @as(U, bits) - shift;
+            const result: U = (lhs << @intCast(inverse_shift)) | (rhs >> @intCast(shift));
+            return @bitCast(result);
+        },
+        .vector => |vector| {
+            const Elem = @Int(.unsigned, @bitSizeOf(vector.child));
+            const U = @Vector(vector.len, Elem);
+            const lhs: U = @bitCast(a);
+            const rhs: U = @bitCast(b);
+            const bits: U = @splat(@bitSizeOf(vector.child));
+            const zero: U = @splat(0);
+            const shift = @as(U, @bitCast(c)) % bits;
+            const inverse_shift = @select(Elem, shift == zero, zero, bits - shift);
+
+            const lhs_term = @select(Elem, shift == zero, zero, lhs << @intCast(inverse_shift));
+            const result: U = lhs_term | (rhs >> @intCast(shift));
+            return @bitCast(result);
+        },
+        else => unreachable,
+    }
 }
 
 pub inline fn has_builtin(func: anytype) c_int {
@@ -200,10 +320,10 @@ pub inline fn memset(dst: ?*anyopaque, val: c_int, len: usize) ?*anyopaque {
     return dst;
 }
 
-pub fn mul_overflow(a: anytype, b: anytype, result: *@TypeOf(a, b)) c_int {
+pub fn mul_overflow(a: anytype, b: anytype, result: *@TypeOf(a, b)) bool {
     const res = @mulWithOverflow(a, b);
     result.* = res[0];
-    return res[1];
+    return res[1] == 1;
 }
 
 /// returns a quiet NaN. Quiet NaNs have many representations; tagp is used to select one in an
@@ -286,6 +406,12 @@ pub inline fn strcmp(s1: [*c]const u8, s2: [*c]const u8) c_int {
 
 pub inline fn strlen(s: [*c]const u8) usize {
     return std.mem.sliceTo(s, 0).len;
+}
+
+pub fn sub_overflow(a: anytype, b: anytype, result: *@TypeOf(a, b)) bool {
+    const res = @subWithOverflow(a, b);
+    result.* = res[0];
+    return res[1] == 1;
 }
 
 pub inline fn truncf(val: f32) f32 {

@@ -19,7 +19,7 @@ pub const StringId = enum(u32) {
     }
 };
 
-table: std.array_hash_map.String(void) = .empty,
+table: std.StringArrayHashMapUnmanaged(void) = .empty,
 
 pub fn deinit(si: *StringInterner, allocator: mem.Allocator) void {
     si.table.deinit(allocator);

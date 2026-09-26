@@ -225,6 +225,8 @@ pub const usage =
     \\                          Use `# <num>` linemarkers in preprocessed output
     \\  -fvisibility=[default|hidden|internal|protected]
     \\                          Set the default ELF image symbol visibility to the specified option—all symbols are marked with this unless overridden within the code
+    \\  -fblocks                Enable support for clang's Blocks language extension
+    \\  -fno-blocks             Disable support for clang's Blocks language extension
     \\  -iquote <dir>           Add directory to QUOTE include search path
     \\  -I <dir>                Add directory to include search path
     \\  -idirafter <dir>        Add directory to AFTER include search path
@@ -309,6 +311,8 @@ pub fn parseArgs(
     var strip = true;
     var debug: ?backend.CodeGenOptions.DebugFormat = null;
     var emulate: ?LangOpts.Compiler = null;
+    var m_args: std.ArrayList([]const u8) = .empty;
+    defer m_args.deinit(gpa);
     while (i < args.len) : (i += 1) {
         const arg = args[i];
         if (arg.len > 1 and arg[0] == '-') {
@@ -317,7 +321,7 @@ pub fn parseArgs(
                 try stdout.flush();
                 return true;
             } else if (mem.eql(u8, arg, "--version")) {
-                try stdout.writeAll(@import("../backend.zig").version_str ++ "\n");
+                try stdout.writeAll(backend.version_str ++ "\n");
                 try stdout.flush();
                 return true;
             } else if (mem.startsWith(u8, arg, "-D")) {
@@ -331,7 +335,7 @@ pub fn parseArgs(
                     macro = args[i];
                 }
                 var value: []const u8 = "1";
-                if (mem.indexOfScalar(u8, macro, '=')) |some| {
+                if (mem.findScalar(u8, macro, '=')) |some| {
                     value = macro[some + 1 ..];
                     macro = macro[0..some];
                 }
@@ -383,7 +387,7 @@ pub fn parseArgs(
             } else if (mem.eql(u8, arg, "-fapple-kext")) {
                 d.apple_kext = true;
             } else if (option(arg, "-fvisibility=")) |visibility| {
-                d.comp.langopts.default_symbol_visibility = Attribute.visibilityFromString(visibility) orelse
+                d.comp.langopts.default_symbol_visibility = Attribute.Args.Visibility.opts.map.get(visibility) orelse
                     return d.fatal("unsupported value '{s}'' in '{s}'", .{ visibility, arg });
             } else if (option(arg, "-frandom-seed=")) |_| {
                 // Ignore
@@ -507,12 +511,16 @@ pub fn parseArgs(
                 pic_arg = arg;
             } else if (mem.eql(u8, arg, "-fropi")) {
                 d.ropi = true;
+                d.comp.code_gen_options.is_ropi = true;
             } else if (mem.eql(u8, arg, "-fno-ropi")) {
                 d.ropi = false;
+                d.comp.code_gen_options.is_ropi = false;
             } else if (mem.eql(u8, arg, "-frwpi")) {
                 d.rwpi = true;
+                d.comp.code_gen_options.is_rwpi = true;
             } else if (mem.eql(u8, arg, "-fno-rwpi")) {
                 d.rwpi = false;
+                d.comp.code_gen_options.is_rwpi = false;
             } else if (mem.eql(u8, arg, "-fshort-enums")) {
                 d.comp.langopts.short_enums = true;
             } else if (mem.eql(u8, arg, "-fno-short-enums")) {
@@ -848,10 +856,18 @@ pub fn parseArgs(
                 }
             } else if (mem.eql(u8, arg, "-fno-lto")) {
                 // nothing to do
+            } else if (mem.eql(u8, arg, "-fblocks")) {
+                d.comp.langopts.blocks = true;
+            } else if (mem.eql(u8, arg, "-fno-blocks")) {
+                d.comp.langopts.blocks = false;
+            } else if (mem.eql(u8, arg, "-pthread")) {
+                d.comp.langopts.pthread = true;
+            } else if (mem.startsWith(u8, arg, "-m")) {
+                try m_args.append(gpa, arg);
             } else {
                 try d.warn("unknown argument '{s}'", .{arg});
             }
-        } else if (std.mem.endsWith(u8, arg, ".o") or std.mem.endsWith(u8, arg, ".obj")) {
+        } else if (mem.endsWith(u8, arg, ".o") or mem.endsWith(u8, arg, ".obj")) {
             try d.link_objects.append(gpa, arg);
         } else {
             const source = d.addSource(arg) catch |er| {
@@ -861,10 +877,11 @@ pub fn parseArgs(
         }
     }
     {
-        d.comp.target = try d.parseTarget(d.raw_target_triple orelse "native", d.raw_cpu);
+        d.comp.target = try d.parseTarget(d.raw_target_triple orelse "native", d.raw_cpu, m_args.items);
         if (d.raw_darwin_variant_target_triple) |darwin_triple| {
-            d.comp.darwin_target_variant = try d.parseTarget(darwin_triple, null);
+            d.comp.darwin_target_variant = try d.parseTarget(darwin_triple, null, &.{});
         }
+        d.comp.langopts.setTargetOptions(d.comp.target);
     }
     if (emulate != null or d.raw_target_triple != null) {
         d.comp.langopts.setEmulatedCompiler(emulate orelse d.comp.target.systemCompiler());
@@ -874,6 +891,13 @@ pub fn parseArgs(
             .msvc => try d.diagnostics.set("microsoft", .off),
             .no => {},
         }
+    }
+    switch (d.comp.langopts.emulate) {
+        // clang automatically enables Blocks for Darwin targets
+        .clang, .no => if (d.comp.target.os.tag.isDarwin()) {
+            d.comp.langopts.blocks |= d.comp.target.isBlocksSupported();
+        },
+        else => {},
     }
     if (d.comp.langopts.preserve_comments and !d.only_preprocess) {
         return d.fatal("invalid argument '{s}' only allowed with '-E'", .{comment_arg});
@@ -916,7 +940,7 @@ pub fn parseArgs(
 }
 
 fn option(arg: []const u8, name: []const u8) ?[]const u8 {
-    if (std.mem.startsWith(u8, arg, name) and arg.len > name.len) {
+    if (mem.startsWith(u8, arg, name) and arg.len > name.len) {
         return arg[name.len..];
     }
     return null;
@@ -973,7 +997,12 @@ fn unsupportedOptionForTarget(d: *Driver, target: *const Target, opt: []const u8
     );
 }
 
-fn parseTarget(d: *Driver, arch_os_abi: []const u8, opt_cpu_features: ?[]const u8) Compilation.Error!Target {
+fn parseTarget(
+    d: *Driver,
+    arch_os_abi: []const u8,
+    opt_cpu_features: ?[]const u8,
+    m_args: []const []const u8,
+) Compilation.Error!Target {
     var query: std.Target.Query = .{
         .dynamic_linker = .init(null),
     };
@@ -1023,6 +1052,38 @@ fn parseTarget(d: *Driver, arch_os_abi: []const u8, opt_cpu_features: ?[]const u
         return d.fatal("unexpected extra field in target: '{s}'", .{arch_os_abi});
     }
 
+    if (m_args.len != 0) {
+        var llvm_to_index: std.StringHashMapUnmanaged(std.Target.Cpu.Feature.Set.Index) = .empty;
+        defer llvm_to_index.deinit(d.comp.gpa);
+
+        const features = arch.allFeaturesList();
+        try llvm_to_index.ensureUnusedCapacity(d.comp.gpa, @intCast(features.len));
+        for (features) |feature| {
+            const llvm_name = feature.llvm_name orelse continue;
+            llvm_to_index.putAssumeCapacity(llvm_name, feature.index);
+        }
+
+        const add_set = &query.cpu_features_add;
+        const sub_set = &query.cpu_features_sub;
+        for (m_args) |m_arg| {
+            if (mem.cutPrefix(u8, m_arg, "-mno-")) |llvm_name| {
+                const index = llvm_to_index.get(llvm_name) orelse {
+                    try d.warn("unknown CPU feature '{s}'", .{llvm_name});
+                    continue;
+                };
+                sub_set.addFeature(index);
+            } else if (mem.cutPrefix(u8, m_arg, "-m")) |llvm_name| {
+                const index = llvm_to_index.get(llvm_name) orelse {
+                    try d.warn("unknown CPU feature '{s}'", .{llvm_name});
+                    continue;
+                };
+                add_set.addFeature(index);
+            } else {
+                unreachable;
+            }
+        }
+    }
+
     if (opt_cpu_features) |cpu_features| {
         const all_features = arch.allFeaturesList();
         var index: usize = 0;
@@ -1041,10 +1102,8 @@ fn parseTarget(d: *Driver, arch_os_abi: []const u8, opt_cpu_features: ?[]const u
         } else if (mem.eql(u8, cpu_name, "baseline")) {
             query.cpu_model = .baseline;
         } else {
-            query.cpu_model = .{
-                .explicit = arch.parseCpuModel(cpu_name) orelse
-                    return d.fatal("unknown CPU model: '{s}'", .{cpu_name}),
-            };
+            query.cpu_model = .{ .explicit = arch.parseCpuModel(cpu_name) orelse
+                return d.fatal("unknown CPU model: '{s}'", .{cpu_name}) };
         }
 
         if (opt_sub_arch) |sub_arch| {
@@ -1079,9 +1138,16 @@ fn parseTarget(d: *Driver, arch_os_abi: []const u8, opt_cpu_features: ?[]const u
                 return d.fatal("unknown CPU feature: '{s}'", .{feature_name});
             }
         }
-    } else if (opt_sub_arch) |sub_arch| {
-        if (sub_arch.toFeature(arch)) |feature| {
-            query.cpu_features_add.addFeature(feature);
+    } else if (!arch_is_native) {
+        if (Target.cpuModelForTargetQuadruple(arch, query.os_tag, query.abi, vendor, opt_sub_arch)) |model| {
+            query.cpu_model = .{ .explicit = model };
+        } else if (opt_sub_arch) |sub_arch| {
+            if (sub_arch.toCpuModel(arch)) |model| {
+                query.cpu_model = .{ .explicit = model };
+            } else if (sub_arch.toFeature(arch)) |feature| {
+                query.cpu_model = .{ .explicit = &.{ .name = "empty", .llvm_name = null, .features = .empty } };
+                query.cpu_features_add.addFeature(feature);
+            }
         }
     }
 
@@ -1183,12 +1249,13 @@ pub fn main(d: *Driver, tc: *Toolchain, args: []const []const u8, comptime fast_
         var stdout = std.Io.File.stdout().writer(d.comp.io, &stdout_buf);
         if (parseArgs(d, &stdout.interface, &macro_buf, args) catch |er| switch (er) {
             error.WriteFailed => return d.fatal("failed to write to stdout: {s}", .{errorDescription(er)}),
-            error.OutOfMemory, error.FatalError => |e| return e,
+            error.OutOfMemory => return error.OutOfMemory,
+            error.FatalError => return error.FatalError,
         }) return;
         if (macro_buf.items.len > std.math.maxInt(u32)) {
             return d.fatal("user provided macro source exceeded max size", .{});
         }
-        const contents = try macro_buf.toOwnedSlice(d.comp.gpa);
+        const contents = try macro_buf.toOwnedSliceSentinel(d.comp.gpa, 0);
         errdefer d.comp.gpa.free(contents);
 
         break :macros try d.comp.addSourceFromOwnedBuffer("<command line>", contents, .user);
@@ -1207,11 +1274,12 @@ pub fn main(d: *Driver, tc: *Toolchain, args: []const []const u8, comptime fast_
     };
 
     tc.discover() catch |er| switch (er) {
-        error.OutOfMemory => |e| return e,
+        error.OutOfMemory => return error.OutOfMemory,
         error.TooManyMultilibs => return d.fatal("found more than one multilib with the same priority", .{}),
     };
     tc.defineSystemIncludes() catch |er| switch (er) {
-        error.OutOfMemory, error.FatalError => |e| return e,
+        error.OutOfMemory => return error.OutOfMemory,
+        error.FatalError => return error.FatalError,
     };
     try d.comp.initSearchPath(d.includes.items, d.verbose_search_path);
 
@@ -1238,12 +1306,7 @@ pub fn main(d: *Driver, tc: *Toolchain, args: []const []const u8, comptime fast_
 }
 
 /// Initializes a DepFile if requested by driver options.
-pub fn initDepFile(
-    d: *Driver,
-    source: Source,
-    buf: *[std.fs.max_name_bytes]u8,
-    omit_source: bool,
-) Compilation.Error!?DepFile {
+pub fn initDepFile(d: *Driver, source: Source, buf: *[std.fs.max_name_bytes]u8) Compilation.Error!?DepFile {
     if (!d.dependencies.m and !d.dependencies.md) return null;
     var dep_file: DepFile = .{
         .target = undefined,
@@ -1257,11 +1320,11 @@ pub fn initDepFile(
             std.fs.path.stem(source.path),
             d.comp.target.ofmt.fileExt(d.comp.target.cpu.arch),
         };
-        dep_file.target = std.fmt.bufPrint(buf, "{s}{s}", args) catch
+        dep_file.target = mem.print(buf, "{s}{s}", args) catch
             return d.fatal("dependency file name too long for filesystem '{s}{s}'", args);
     }
 
-    if (!omit_source) try dep_file.addDependency(d.comp.gpa, source.path);
+    try dep_file.addDependency(d.comp.gpa, source.path);
     errdefer comptime unreachable;
 
     return dep_file;
@@ -1270,7 +1333,7 @@ pub fn initDepFile(
 /// Returns name requested for the dependency file or null for stdout.
 pub fn getDepFileName(d: *Driver, source: Source, buf: *[std.fs.max_name_bytes]u8) Compilation.Error!?[]const u8 {
     if (d.dependencies.file) |file| {
-        if (std.mem.eql(u8, file, "-")) return null;
+        if (mem.eql(u8, file, "-")) return null;
         return file;
     }
     if (!d.dependencies.md) {
@@ -1279,7 +1342,7 @@ pub fn getDepFileName(d: *Driver, source: Source, buf: *[std.fs.max_name_bytes]u
     }
 
     const base_name = std.fs.path.stem(d.output_name orelse source.path);
-    return std.fmt.bufPrint(buf, "{s}.d", .{base_name}) catch
+    return mem.print(buf, "{s}.d", .{base_name}) catch
         return d.fatal("dependency file name too long for filesystem: {s}.d", .{base_name});
 }
 
@@ -1297,7 +1360,7 @@ fn getRandomFilename(d: *Driver, buf: *[std.fs.max_name_bytes]u8, extension: []c
         @as([]const u8, &random_name),
         extension,
     };
-    return std.fmt.bufPrint(buf, fmt_template, fmt_args) catch return d.fatal("Filename too long for filesystem: " ++ fmt_template, fmt_args);
+    return mem.print(buf, fmt_template, fmt_args) catch return d.fatal("Filename too long for filesystem: " ++ fmt_template, fmt_args);
 }
 
 /// If it's used, buf will either hold a filename or `/tmp/<12 random bytes with base-64 encoding>.<extension>`
@@ -1310,7 +1373,7 @@ fn getOutFileName(d: *Driver, source: Source, buf: *[std.fs.max_name_bytes]u8) !
             if (d.only_preprocess_and_compile) ".s" else d.comp.target.ofmt.fileExt(d.comp.target.cpu.arch),
         };
         return d.output_name orelse
-            std.fmt.bufPrint(buf, fmt_template, fmt_args) catch return d.fatal("Filename too long for filesystem: " ++ fmt_template, fmt_args);
+            mem.print(buf, fmt_template, fmt_args) catch return d.fatal("Filename too long for filesystem: " ++ fmt_template, fmt_args);
     }
 
     return d.getRandomFilename(buf, d.comp.target.ofmt.fileExt(d.comp.target.cpu.arch));
@@ -1367,7 +1430,7 @@ fn processSource(
     defer pp.deinit();
 
     var name_buf: [std.fs.max_name_bytes]u8 = undefined;
-    var opt_dep_file = try d.initDepFile(source, &name_buf, false);
+    var opt_dep_file = try d.initDepFile(source, &name_buf);
     defer if (opt_dep_file) |*dep_file| dep_file.deinit(gpa);
 
     if (opt_dep_file) |*dep_file| pp.dep_file = dep_file;
@@ -1414,11 +1477,6 @@ fn processSource(
 
     if (d.only_preprocess) {
         d.printDiagnosticsStats();
-
-        if (d.diagnostics.errors != prev_total) {
-            if (fast_exit) std.process.exit(1); // Not linking, no need for cleanup.
-            return;
-        }
 
         if (d.dependencies.m and !d.dependencies.md) {
             if (fast_exit) std.process.exit(1); // Not linking, no need for cleanup.
@@ -1507,7 +1565,7 @@ fn processSource(
             return;
         }
     } else {
-        var ir = try tree.genIr();
+        var ir = try tree.genIr(&pp);
         defer ir.deinit(gpa);
 
         if (d.verbose_ir) {
@@ -1524,8 +1582,8 @@ fn processSource(
             render_errors.deinit(gpa);
         }
 
-        var obj = ir.render(gpa, d.comp.target.toZigTarget(), &render_errors) catch |er| switch (er) {
-            error.OutOfMemory => |e| return e,
+        var obj = ir.render(gpa, d.comp.target.toZigTarget(), &render_errors) catch |e| switch (e) {
+            error.OutOfMemory => return error.OutOfMemory,
             error.LowerFail => {
                 return d.fatal(
                     "unable to render Ir to machine code: {s}",

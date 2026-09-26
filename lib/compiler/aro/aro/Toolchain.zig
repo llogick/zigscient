@@ -127,7 +127,7 @@ pub fn getLinkerPath(tc: *const Toolchain, buf: []u8) ![]const u8 {
     // for the linker flavor is brittle. In addition, prepending "ld." or "ld64."
     // to a relative path is surprising. This is more complex due to priorities
     // among -B, COMPILER_PATH and PATH. --ld-path= should be used instead.
-    if (mem.indexOfScalar(u8, use_linker, '/') != null) {
+    if (mem.findScalar(u8, use_linker, '/') != null) {
         try tc.driver.comp.diagnostics.add(.{
             .text = "'-fuse-ld=' taking a path is deprecated; use '--ld-path=' instead",
             .kind = .off,
@@ -180,7 +180,7 @@ fn possibleProgramNames(
 ) []const []const u8 {
     var i: u32 = 0;
     if (raw_triple) |triple| {
-        if (std.fmt.bufPrint(buf, "{s}-{s}", .{ triple, name })) |res| {
+        if (mem.print(buf, "{s}-{s}", .{ triple, name })) |res| {
             possible_name_buf[i] = res;
             i += 1;
         } else |_| {}
@@ -564,7 +564,7 @@ pub fn findProgramByName(tc: *const Toolchain, name: []const u8, buf: []u8) ?[]c
     const comp = tc.driver.comp;
 
     // TODO: does WASI need special handling?
-    if (mem.indexOfScalar(u8, name, '/') != null) {
+    if (mem.findScalar(u8, name, '/') != null) {
         @memcpy(buf[0..name.len], name);
         return buf[0..name.len];
     }

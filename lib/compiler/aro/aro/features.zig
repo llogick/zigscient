@@ -1,9 +1,12 @@
 const std = @import("std");
+
+const Attribute = @import("Attribute.zig");
 const Compilation = @import("Compilation.zig");
-const Target = @import("Target.zig");
 
 /// Used to implement the __has_feature macro.
-pub fn hasFeature(comp: *Compilation, ext: []const u8) bool {
+pub fn hasFeature(comp: *Compilation, ext_raw: []const u8) bool {
+    const ext = Attribute.normalize(ext_raw);
+
     const list = .{
         .assume_nonnull = true,
         .attribute_analyzer_noreturn = true,
@@ -44,6 +47,8 @@ pub fn hasFeature(comp: *Compilation, ext: []const u8) bool {
         .c_generic_selections = comp.langopts.standard.atLeast(.c11),
         .c_static_assert = comp.langopts.standard.atLeast(.c11),
         .c_thread_local = comp.langopts.standard.atLeast(.c11) and comp.target.isTlsSupported(),
+        .c_attributes = comp.langopts.standard.atLeast(.c23),
+        .c_fixed_enum = comp.langopts.standard.atLeast(.c23),
         .bounds_attributes = comp.langopts.bounds_safety == .clang,
     };
     inline for (@typeInfo(@TypeOf(list)).@"struct".field_names) |f_name| {
@@ -53,7 +58,22 @@ pub fn hasFeature(comp: *Compilation, ext: []const u8) bool {
 }
 
 /// Used to implement the __has_extension macro.
-pub fn hasExtension(comp: *Compilation, ext: []const u8) bool {
+pub fn hasExtension(comp: *Compilation, ext_raw: []const u8) bool {
+    const ext = Attribute.normalize(ext_raw);
+
+    // Extensions are a superset of features, so check all features first.
+    if (hasFeature(comp, ext)) {
+        return true;
+    }
+
+    // "-pedantic-errors" effectively disables extensions by erroring out on
+    // them, so we just return early. This makes "__has_extension" the same as
+    // "__has_feature" when this is set.
+    switch (comp.diagnostics.state.extensions) {
+        .@"error", .@"fatal error" => return false,
+        else => {},
+    }
+
     const list = .{
         // C11 features
         .c_alignas = true,
@@ -62,13 +82,17 @@ pub fn hasExtension(comp: *Compilation, ext: []const u8) bool {
         .c_generic_selections = true,
         .c_static_assert = true,
         .c_thread_local = comp.target.isTlsSupported(),
+        // C23 features
+        .c_attributes = true,
+        .c_fixed_enum = true,
         // misc
         .overloadable_unmarked = false, // TODO
         .statement_attributes_with_gnu_syntax = true,
-        .gnu_asm = true,
-        .gnu_asm_goto_with_outputs = true,
+        .gnu_asm = comp.langopts.gnu_asm,
+        .gnu_asm_goto_with_outputs = comp.langopts.gnu_asm,
         .matrix_types = false, // TODO
         .matrix_types_scalar_division = false, // TODO
+        .define_target_os_macros = comp.langopts.hasTargetOsMacros(),
     };
     inline for (@typeInfo(@TypeOf(list)).@"struct".field_names) |f_name| {
         if (std.mem.eql(u8, f_name, ext)) return @field(list, f_name);

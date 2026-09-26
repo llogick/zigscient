@@ -68,7 +68,7 @@ fn serializeFloat(comptime T: type, value: T, w: *std.Io.Writer) !void {
 pub fn todo(c: *AsmCodeGen, msg: []const u8, tok: Tree.TokenIndex) Error {
     const loc: Source.Location = c.tree.tokens.items(.loc)[tok];
 
-    var bfa_buf: [u8]1024 = undefined;
+    var bfa_buf: [1024]u8 = undefined;
     var bfa: std.heap.BufferFirstAllocator = .init(&bfa_buf, c.comp.gpa);
     const allocator = bfa.allocator();
     var buf: std.ArrayList(u8) = .empty;
@@ -118,7 +118,7 @@ fn emitSingleValue(c: *AsmCodeGen, qt: QualType, node: Node.Index) !void {
         const bytes = value.toBytes(c.comp);
         const directive = if (bytes.len > bit_size / 8) "ascii" else "string";
         try c.data.print("  .{s} ", .{directive});
-        try Value.printString(bytes, qt, c.comp, c.data);
+        try Value.printString(bytes, qt, c.comp, c.data, .quoted);
 
         try c.data.writeByte('\n');
     } else unreachable;
@@ -150,7 +150,8 @@ pub fn genAsm(tree: *const Tree) Error!Assembly {
 
     codegen.genDecls() catch |err| switch (err) {
         error.WriteFailed => return error.OutOfMemory,
-        error.OutOfMemory, error.FatalError => |e| return e,
+        error.OutOfMemory => return error.OutOfMemory,
+        error.FatalError => return error.FatalError,
     };
 
     const text_slice = try text.toOwnedSlice();

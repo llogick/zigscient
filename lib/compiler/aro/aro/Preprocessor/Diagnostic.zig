@@ -112,12 +112,8 @@ pub const macro_name_missing: Diagnostic = .{
 
 pub const extra_tokens_directive_end: Diagnostic = .{
     .fmt = "extra tokens at end of macro directive",
-    .kind = .@"error",
-};
-
-pub const expected_value_in_expr: Diagnostic = .{
-    .fmt = "expected value in expression",
-    .kind = .@"error",
+    .kind = .warning,
+    .opt = .@"extra-tokens",
 };
 
 pub const defined_as_macro_name: Diagnostic = .{
@@ -197,11 +193,6 @@ pub const header_str_match: Diagnostic = .{
     .kind = .note,
 };
 
-pub const string_literal_in_pp_expr: Diagnostic = .{
-    .fmt = "string literal in preprocessor expression",
-    .kind = .@"error",
-};
-
 pub const empty_char_literal_warning: Diagnostic = .{
     .fmt = "empty character constant",
     .kind = .warning,
@@ -228,13 +219,32 @@ pub const unterminated_comment: Diagnostic = .{
     .kind = .@"error",
 };
 
-pub const malformed_embed_param: Diagnostic = .{
-    .fmt = "unexpected token in embed parameter",
+pub const warning_extension: Diagnostic = .{
+    .fmt = "#warning is a C23 extension",
+    .kind = .off,
+    .opt = .@"c23-extensions",
+    .extension = true,
+};
+
+pub const c23_extension: Diagnostic = .{
+    .fmt = "{s} is a C23 extension",
+    .kind = .warning,
+    .opt = .@"c23-extensions",
+    .extension = true,
+};
+
+pub const embed_param_identifier: Diagnostic = .{
+    .fmt = "expected identifier",
     .kind = .@"error",
 };
 
-pub const malformed_embed_limit: Diagnostic = .{
-    .fmt = "the limit parameter expects one non-negative integer as a parameter",
+pub const embed_param_args: Diagnostic = .{
+    .fmt = "expected '('",
+    .kind = .@"error",
+};
+
+pub const invalid_embed_limit: Diagnostic = .{
+    .fmt = "the limit parameter expects a non-negative integer as a parameter",
     .kind = .@"error",
 };
 
@@ -244,10 +254,9 @@ pub const duplicate_embed_param: Diagnostic = .{
     .opt = .@"duplicate-embed-param",
 };
 
-pub const unsupported_embed_param: Diagnostic = .{
-    .fmt = "unsupported embed parameter '{s}' embed parameter",
-    .kind = .warning,
-    .opt = .@"unsupported-embed-param",
+pub const unknown_embed_param: Diagnostic = .{
+    .fmt = "unknown embed parameter '{s}'",
+    .kind = .@"error",
 };
 
 pub const va_opt_lparen: Diagnostic = .{
@@ -278,14 +287,13 @@ pub const fn_macro_undefined: Diagnostic = .{
     .kind = .@"error",
 };
 
-// pub const preprocessing_directive_only: Diagnostic = .{
-//     .fmt = "'{s}' must be used within a preprocessing directive",
-//     .extra = .tok_id_expected,
-//     .kind = .@"error",
-// };
+pub const preprocessing_directive_only: Diagnostic = .{
+    .fmt = "'__{s}' must be used within a preprocessing directive",
+    .kind = .@"error",
+};
 
 pub const missing_lparen_after_builtin: Diagnostic = .{
-    .fmt = "Missing '(' after built-in macro '{s}'",
+    .fmt = "missing '(' after built-in macro '{s}'",
     .kind = .@"error",
 };
 
@@ -347,6 +355,64 @@ pub const pragma_operator_string_literal: Diagnostic = .{
 pub const invalid_preproc_expr_start: Diagnostic = .{
     .fmt = "invalid token at start of a preprocessor expression",
     .kind = .@"error",
+};
+
+pub const expected_value_in_expr: Diagnostic = .{
+    .fmt = "expected value in expression",
+    .kind = .@"error",
+};
+
+pub const invalid_preproc_operator: Diagnostic = .{
+    .fmt = "token is not a valid binary operator in a preprocessor subexpression",
+    .kind = .@"error",
+};
+
+pub const convert_to_positive: Diagnostic = .{
+    .fmt = "{s} side of operator converted from negative value to unsigned: {d} to {d}",
+    .kind = .warning,
+};
+
+pub const division_by_zero: Diagnostic = .{
+    .fmt = "{s} by zero in preprocessor expression",
+    .kind = .@"error",
+};
+
+pub const comma_operator: Diagnostic = .{
+    .fmt = "comma operator in operand of #if",
+    .kind = .warning,
+    .extension = true,
+};
+
+pub const overflow: Diagnostic = .{
+    .fmt = "integer overflow in preprocessor expression",
+    .kind = .warning,
+};
+
+pub const expected_colon: Diagnostic = .{
+    .fmt = "expected ':'",
+    .kind = .@"error",
+};
+
+pub const to_match_question: Diagnostic = .{
+    .fmt = "to match this '?'",
+    .kind = .note,
+};
+
+pub const float_literal_in_expr: Diagnostic = .{
+    .fmt = "floating point literal in preprocessor expression",
+    .kind = .@"error",
+};
+
+pub const int_literal_too_big: Diagnostic = .{
+    .fmt = "integer literal is too large to be represented in any integer type",
+    .kind = .@"error",
+};
+
+pub const implicitly_unsigned_literal: Diagnostic = .{
+    .fmt = "integer literal is too large to be represented in a signed integer type, interpreting as unsigned",
+    .opt = .@"implicitly-unsigned-literal",
+    .kind = .warning,
+    .extension = true,
 };
 
 pub const newline_eof: Diagnostic = .{
@@ -415,11 +481,6 @@ pub const expected_arguments: Diagnostic = .{
 pub const expected_at_least_arguments: Diagnostic = .{
     .fmt = "expected at least {d} argument(s) got {d}",
     .kind = .warning,
-};
-
-pub const invalid_preproc_operator: Diagnostic = .{
-    .fmt = "token is not a valid binary operator in a preprocessor subexpression",
-    .kind = .@"error",
 };
 
 pub const expected_str_literal_in: Diagnostic = .{

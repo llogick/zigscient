@@ -48,6 +48,7 @@ pub const Node = extern union {
         /// items => body,
         switch_prong,
         break_val,
+        break_label,
         @"return",
         field_access,
         field_builtin,
@@ -56,8 +57,6 @@ pub const Node = extern union {
         var_decl,
         /// const name = struct { init }
         wrapped_local,
-        /// var name = init.*
-        mut_str,
         func,
         warning,
         @"struct",
@@ -145,10 +144,6 @@ pub const Node = extern union {
         ptr_cast,
         /// @divExact(lhs, rhs)
         div_exact,
-        /// @offsetOf(lhs, rhs)
-        offset_of,
-        /// @splat(operand)
-        vector_zero_init,
         /// @shuffle(type, a, b, mask)
         shuffle,
         /// @extern(ty, .{ .name = n })
@@ -156,6 +151,10 @@ pub const Node = extern union {
 
         /// @byteSwap(operand)
         byte_swap,
+        /// @clz(operand)
+        clz,
+        /// @ctz(operand)
+        ctz,
         /// @ceil(operand)
         ceil,
         /// @cos(operand)
@@ -242,7 +241,7 @@ pub const Node = extern union {
 
         /// array_type{}
         empty_array,
-        /// @as([count]type, @splat(val))
+        /// [1]type{val} ** count
         array_filler,
 
         /// comptime { if (!(lhs)) @compileError(rhs); }
@@ -309,8 +308,9 @@ pub const Node = extern union {
                 .int_cast,
                 .const_cast,
                 .volatile_cast,
-                .vector_zero_init,
                 .byte_swap,
+                .clz,
+                .ctz,
                 .ceil,
                 .cos,
                 .sin,
@@ -370,7 +370,6 @@ pub const Node = extern union {
                 .std_mem_zeroinit,
                 .vector,
                 .div_exact,
-                .offset_of,
                 .static_assert,
                 .field_builtin,
                 => Payload.BinOp,
@@ -389,6 +388,7 @@ pub const Node = extern union {
                 .@"while" => Payload.While,
                 .@"switch", .array_init, .switch_prong => Payload.Switch,
                 .break_val => Payload.BreakVal,
+                .break_label => Payload.BreakLabel,
                 .call => Payload.Call,
                 .var_decl => Payload.VarDecl,
                 .func => Payload.Func,
@@ -401,7 +401,7 @@ pub const Node = extern union {
                 .array_type, .null_sentinel_array_type => Payload.Array,
                 .arg_redecl, .alias => Payload.ArgRedecl,
                 .fail_decl => Payload.FailDecl,
-                .var_simple, .pub_var_simple, .wrapped_local, .mut_str => Payload.SimpleVarDecl,
+                .var_simple, .pub_var_simple, .wrapped_local => Payload.SimpleVarDecl,
                 .enum_constant => Payload.EnumConstant,
                 .array_filler => Payload.ArrayFiller,
                 .pub_inline_fn => Payload.PubInlineFn,
@@ -436,7 +436,7 @@ pub const Node = extern union {
 
     pub fn tag(self: Node) Tag {
         if (self.tag_if_small_enough < Tag.no_payload_count) {
-            return @fromBackingInt(@intCast(@as(std.meta.Tag(Tag), @intCast(self.tag_if_small_enough))));
+            return @fromBackingInt(@as(std.meta.Tag(Tag), @intCast(self.tag_if_small_enough)));
         } else {
             return self.ptr_otherwise.tag;
         }
@@ -461,6 +461,9 @@ pub const Node = extern union {
         return switch (node.tag()) {
             .block => {
                 const block_node = node.castTag(.block).?;
+                // A labeled block can always be exited early via `break :label`,
+                // so control may resume after it regardless of the final statement.
+                if (block_node.data.label != null) return false;
                 if (block_node.data.stmts.len == 0) return false;
 
                 const last = block_node.data.stmts[block_node.data.stmts.len - 1];
@@ -482,7 +485,7 @@ pub const Node = extern union {
                 return true;
             },
             .@"return", .return_void => true,
-            .@"break" => true,
+            .@"break", .break_label => true,
             .@"continue" => true,
             .@"unreachable" => true,
             else => false,
@@ -571,6 +574,13 @@ pub const Payload = struct {
         },
     };
 
+    pub const BreakLabel = struct {
+        base: Payload,
+        data: struct {
+            label: []const u8,
+        },
+    };
+
     pub const Call = struct {
         base: Payload,
         data: struct {
@@ -587,7 +597,7 @@ pub const Payload = struct {
             is_extern: bool,
             is_export: bool,
             is_threadlocal: bool,
-            alignment: ?c_uint,
+            alignment: ?u32,
             linksection_string: ?[]const u8,
             name: []const u8,
             type: Node,
@@ -609,13 +619,14 @@ pub const Payload = struct {
             params: []Param,
             return_type: Node,
             body: ?Node,
-            alignment: ?c_uint,
+            alignment: ?u32,
         },
 
         pub const CallingConvention = enum {
             c,
             x86_64_sysv,
             x86_64_win,
+            x86_64_vectorcall,
             x86_stdcall,
             x86_fastcall,
             x86_thiscall,
@@ -623,10 +634,12 @@ pub const Payload = struct {
             x86_regcall,
             aarch64_vfabi,
             aarch64_sve_pcs,
+            aarch64_aapcs_win,
             arm_aapcs,
             arm_aapcs_vfp,
             m68k_rtd,
-            riscv_vector,
+            riscv32_ilp32_v,
+            riscv64_lp64_v,
         };
     };
 
@@ -647,7 +660,7 @@ pub const Payload = struct {
         pub const Field = struct {
             name: []const u8,
             type: Node,
-            alignment: ?c_uint,
+            alignment: ?u32,
             default_value: ?Node,
         };
     };
@@ -863,14 +876,11 @@ pub fn render(gpa: Allocator, nodes: []const Node) !std.zig.Ast {
         .start = @as(u32, @intCast(ctx.buf.items.len)),
     });
 
-    try ctx.buf.shrinkToLenSentinel(gpa);
-    try ctx.extra_data.shrinkToLen(gpa);
-
     return .{
-        .source = ctx.buf.toOwnedSliceSentinelAssert(0),
+        .source = try ctx.buf.toOwnedSliceSentinel(gpa, 0),
         .tokens = ctx.tokens.toOwnedSlice(),
         .nodes = ctx.nodes.toOwnedSlice(),
-        .extra_data = ctx.extra_data.toOwnedSliceAssert(),
+        .extra_data = try ctx.extra_data.toOwnedSlice(gpa),
         .errors = &.{},
         .mode = .zig,
     };
@@ -925,10 +935,11 @@ const Context = struct {
     }
 
     fn addExtra(c: *Context, extra: anytype) Allocator.Error!std.zig.Ast.ExtraIndex {
-        const info = @typeInfo(@TypeOf(extra)).@"struct";
-        try c.extra_data.ensureUnusedCapacity(c.gpa, info.field_names.len);
+        const field_names = comptime std.meta.fieldNames(@TypeOf(extra));
+        const field_types = comptime std.meta.fieldTypes(@TypeOf(extra));
+        try c.extra_data.ensureUnusedCapacity(c.gpa, field_names.len);
         const result: std.zig.Ast.ExtraIndex = @fromBackingInt(@intCast(c.extra_data.items.len));
-        inline for (info.field_names, info.field_types) |field_name, field_type| {
+        inline for (field_names, field_types) |field_name, field_type| {
             const data: u32 = switch (field_type) {
                 NodeIndex,
                 std.zig.Ast.Node.OptionalIndex,
@@ -949,6 +960,7 @@ fn renderNodeOpt(c: *Context, node: Node) Allocator.Error!?NodeIndex {
     switch (node.tag()) {
         .warning => {
             const payload = node.castTag(.warning).?.data;
+            try c.buf.append(c.gpa, '\n');
             try c.buf.appendSlice(c.gpa, payload);
             try c.buf.append(c.gpa, '\n');
             return null;
@@ -1096,6 +1108,20 @@ fn renderNode(c: *Context, node: Node) Allocator.Error!NodeIndex {
                 .main_token = tok,
                 .data = .{ .opt_token_and_opt_node = .{
                     .fromToken(break_label), (try renderNode(c, payload.val)).toOptional(),
+                } },
+            });
+        },
+        .break_label => {
+            const payload = node.castTag(.break_label).?.data;
+            const tok = try c.addToken(.keyword_break, "break");
+            _ = try c.addToken(.colon, ":");
+            const label = try c.addIdentifier(payload.label);
+            return c.addNode(.{
+                .tag = .@"break",
+                .main_token = tok,
+                .data = .{ .opt_token_and_opt_node = .{
+                    .fromToken(label),
+                    .none,
                 } },
             });
         },
@@ -1338,33 +1364,6 @@ fn renderNode(c: *Context, node: Node) Allocator.Error!NodeIndex {
                 },
             });
         },
-        .mut_str => {
-            const payload = node.castTag(.mut_str).?.data;
-
-            const var_tok = try c.addToken(.keyword_var, "var");
-            _ = try c.addIdentifier(payload.name);
-            _ = try c.addToken(.equal, "=");
-
-            const deref = try c.addNode(.{
-                .tag = .deref,
-                .data = .{
-                    .node = try renderNodeGrouped(c, payload.init),
-                },
-                .main_token = try c.addToken(.period_asterisk, ".*"),
-            });
-            _ = try c.addToken(.semicolon, ";");
-
-            return c.addNode(.{
-                .tag = .simple_var_decl,
-                .main_token = var_tok,
-                .data = .{
-                    .opt_node_and_opt_node = .{
-                        .none, // Type expression
-                        deref.toOptional(), // Init expression
-                    },
-                },
-            });
-        },
         .var_decl => return renderVar(c, node),
         .arg_redecl, .alias => {
             const payload = @as(*Payload.ArgRedecl, @alignCast(@fieldParentPtr("base", node.ptr_otherwise))).data;
@@ -1458,10 +1457,6 @@ fn renderNode(c: *Context, node: Node) Allocator.Error!NodeIndex {
             const payload = node.castTag(.div_exact).?.data;
             return renderBuiltinCall(c, "@divExact", &.{ payload.lhs, payload.rhs });
         },
-        .offset_of => {
-            const payload = node.castTag(.offset_of).?.data;
-            return renderBuiltinCall(c, "@offsetOf", &.{ payload.lhs, payload.rhs });
-        },
         .sizeof => {
             const payload = node.castTag(.sizeof).?.data;
             return renderBuiltinCall(c, "@sizeOf", &.{payload});
@@ -1525,6 +1520,14 @@ fn renderNode(c: *Context, node: Node) Allocator.Error!NodeIndex {
         .byte_swap => {
             const payload = node.castTag(.byte_swap).?.data;
             return renderBuiltinCall(c, "@byteSwap", &.{payload});
+        },
+        .clz => {
+            const payload = node.castTag(.clz).?.data;
+            return renderBuiltinCall(c, "@clz", &.{payload});
+        },
+        .ctz => {
+            const payload = node.castTag(.ctz).?.data;
+            return renderBuiltinCall(c, "@ctz", &.{payload});
         },
         .ceil => {
             const payload = node.castTag(.ceil).?.data;
@@ -1978,16 +1981,17 @@ fn renderNode(c: *Context, node: Node) Allocator.Error!NodeIndex {
 
             const as_tok = try c.addToken(.builtin, "@as");
             _ = try c.addToken(.l_paren, "(");
-            const type_node = try renderArrayType(c, payload.count, payload.type);
+            const type_expr = try renderArrayType(c, payload.count, payload.type);
             _ = try c.addToken(.comma, ",");
-            const splat_node = try renderBuiltinCall(c, "@splat", &.{payload.filler});
+
+            const splat = try renderBuiltinCall(c, "@splat", &.{payload.filler});
             _ = try c.addToken(.r_paren, ")");
 
             return c.addNode(.{
                 .tag = .builtin_call_two,
                 .main_token = as_tok,
                 .data = .{ .opt_node_and_opt_node = .{
-                    .fromOptional(type_node), .fromOptional(splat_node),
+                    .fromOptional(type_expr), .fromOptional(splat),
                 } },
             });
         },
@@ -2001,10 +2005,6 @@ fn renderNode(c: *Context, node: Node) Allocator.Error!NodeIndex {
             const payload = node.castTag(.array_init).?.data;
             const type_expr = try renderNode(c, payload.cond);
             return renderArrayInit(c, type_expr, payload.cases);
-        },
-        .vector_zero_init => {
-            const payload = node.castTag(.vector_zero_init).?.data;
-            return renderBuiltinCall(c, "@splat", &.{payload});
         },
         .field_access => {
             const payload = node.castTag(.field_access).?.data;
@@ -2424,7 +2424,7 @@ fn renderNullSentinelArrayType(c: *Context, len: u64, elem_type: Node) !NodeInde
 fn addSemicolonIfNeeded(c: *Context, node: Node) !void {
     switch (node.tag()) {
         .warning => unreachable,
-        .static_assert, .var_decl, .var_simple, .arg_redecl, .alias, .block, .empty_block, .block_single, .@"switch", .wrapped_local, .mut_str => {},
+        .static_assert, .var_decl, .var_simple, .arg_redecl, .alias, .block, .empty_block, .block_single, .@"switch", .wrapped_local => {},
         .while_true => {
             const payload = node.castTag(.while_true).?.data;
             return addSemicolonIfNotBlock(c, payload);
@@ -2509,14 +2509,14 @@ fn renderNodeGrouped(c: *Context, node: Node) !NodeIndex {
         .null_sentinel_array_type,
         .int_from_bool,
         .div_exact,
-        .offset_of,
         .shuffle,
         .builtin_extern,
         .wrapped_local,
-        .mut_str,
         .helper_call,
         .helper_ref,
         .byte_swap,
+        .clz,
+        .ctz,
         .ceil,
         .cos,
         .sin,
@@ -2571,7 +2571,6 @@ fn renderNodeGrouped(c: *Context, node: Node) !NodeIndex {
         .@"struct",
         .@"union",
         .array_init,
-        .vector_zero_init,
         .tuple,
         .container_init,
         .container_init_dot,
@@ -2598,6 +2597,7 @@ fn renderNodeGrouped(c: *Context, node: Node) !NodeIndex {
         .@"while",
         .@"break",
         .break_val,
+        .break_label,
         .pub_inline_fn,
         .discard,
         .@"continue",
@@ -2926,6 +2926,7 @@ fn renderFunc(c: *Context, node: Node) !NodeIndex {
             },
             .x86_64_sysv,
             .x86_64_win,
+            .x86_64_vectorcall,
             .x86_stdcall,
             .x86_fastcall,
             .x86_thiscall,
@@ -2933,10 +2934,12 @@ fn renderFunc(c: *Context, node: Node) !NodeIndex {
             .x86_regcall,
             .aarch64_vfabi,
             .aarch64_sve_pcs,
+            .aarch64_aapcs_win,
             .arm_aapcs,
             .arm_aapcs_vfp,
             .m68k_rtd,
-            .riscv_vector,
+            .riscv32_ilp32_v,
+            .riscv64_lp64_v,
             => cc_node: {
                 // .{ .foo = .{} }
                 _ = try c.addToken(.period, ".");

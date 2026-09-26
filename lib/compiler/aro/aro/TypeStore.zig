@@ -20,23 +20,30 @@ const Repr = struct {
         complex,
         bit_int,
         atomic,
+        block,
         func,
         func_variadic,
         func_old_style,
+        func_attributed,
         func_zero,
         func_variadic_zero,
         func_old_style_zero,
+        func_attributed_zero,
         func_one,
         func_variadic_one,
         func_old_style_one,
+        func_attributed_one,
         pointer,
         pointer_decayed,
+        pointer_decayed_attributed,
         array_incomplete,
         array_fixed,
         array_static,
         array_variable,
         array_unspecified_variable,
         vector,
+        vector_neon,
+        vector_neon_poly,
         @"struct",
         struct_incomplete,
         @"union",
@@ -48,8 +55,18 @@ const Repr = struct {
         typeof,
         typeof_expr,
         typedef,
-        attributed,
-        attributed_one,
+    };
+
+    const FuncAttrs = packed struct(u32) {
+        kind: Type.Func.Kind,
+        cc: Type.Func.CallingConvention,
+        _: u26 = 0,
+    };
+
+    const PointerAttrs = packed struct(u32) {
+        bounds: Type.Pointer.Bounds,
+        nullability: Type.Pointer.Nullability,
+        _: u27 = 0,
     };
 };
 
@@ -101,6 +118,9 @@ const Index = enum(u29) {
     float_dfloat64 = std.math.maxInt(u29) - 36,
     float_dfloat128 = std.math.maxInt(u29) - 37,
     float_dfloat64x = std.math.maxInt(u29) - 38,
+    mfp8 = std.math.maxInt(u29) - 39,
+    int_int24 = std.math.maxInt(u29) - 40,
+    int_uint24 = std.math.maxInt(u29) - 41,
     _,
 };
 
@@ -132,6 +152,8 @@ pub const QualType = packed struct(u32) {
     pub const ulong_long: QualType = .{ ._index = .int_ulong_long };
     pub const int128: QualType = .{ ._index = .int_int128 };
     pub const uint128: QualType = .{ ._index = .int_uint128 };
+    pub const int24: QualType = .{ ._index = .int_int24 };
+    pub const uint24: QualType = .{ ._index = .int_uint24 };
     pub const bf16: QualType = .{ ._index = .float_bf16 };
     pub const fp16: QualType = .{ ._index = .float_fp16 };
     pub const float16: QualType = .{ ._index = .float_float16 };
@@ -148,6 +170,7 @@ pub const QualType = packed struct(u32) {
     pub const dfloat64: QualType = .{ ._index = .float_dfloat64 };
     pub const dfloat128: QualType = .{ ._index = .float_dfloat128 };
     pub const dfloat64x: QualType = .{ ._index = .float_dfloat64x };
+    pub const mfp8: QualType = .{ ._index = .mfp8 };
     pub const void_pointer: QualType = .{ ._index = .void_pointer };
     pub const char_pointer: QualType = .{ ._index = .char_pointer };
     pub const int_pointer: QualType = .{ ._index = .int_pointer };
@@ -162,6 +185,10 @@ pub const QualType = packed struct(u32) {
 
     pub fn isC23Auto(qt: QualType) bool {
         return qt._index == .c23_auto;
+    }
+
+    pub fn isAuto(qt: QualType) bool {
+        return qt._index == .auto_type or qt._index == .c23_auto;
     }
 
     pub fn isQualified(qt: QualType) bool {
@@ -203,6 +230,8 @@ pub const QualType = packed struct(u32) {
             .int_ulong_long => return .{ .int = .ulong_long },
             .int_int128 => return .{ .int = .int128 },
             .int_uint128 => return .{ .int = .uint128 },
+            .int_int24 => return .{ .int = .int24 },
+            .int_uint24 => return .{ .int = .uint24 },
             .float_bf16 => return .{ .float = .bf16 },
             .float_fp16 => return .{ .float = .fp16 },
             .float_float16 => return .{ .float = .float16 },
@@ -219,6 +248,7 @@ pub const QualType = packed struct(u32) {
             .float_dfloat64 => return .{ .float = .dfloat64 },
             .float_dfloat128 => return .{ .float = .dfloat128 },
             .float_dfloat64x => return .{ .float = .dfloat64x },
+            .mfp8 => return .{ .storage_float = .mfp8 },
             .void_pointer => return .{ .pointer = .{ .child = .void } },
             .char_pointer => return .{ .pointer = .{ .child = .char } },
             .int_pointer => return .{ .pointer = .{ .child = .int } },
@@ -234,6 +264,7 @@ pub const QualType = packed struct(u32) {
                 .bits = @intCast(repr.data[0]),
                 .signedness = @fromBackingInt(@intCast(repr.data[1])),
             } },
+            .block => .{ .block = .{ .func = @bitCast(repr.data[0]) } },
             .func_zero => .{ .func = .{
                 .return_type = @bitCast(repr.data[0]),
                 .kind = .normal,
@@ -249,23 +280,47 @@ pub const QualType = packed struct(u32) {
                 .kind = .old_style,
                 .params = &.{},
             } },
+            .func_attributed_zero => {
+                const attr: Repr.FuncAttrs = @bitCast(repr.data[1]);
+                return .{ .func = .{
+                    .return_type = @bitCast(repr.data[0]),
+                    .kind = attr.kind,
+                    .params = &.{},
+                    .cc = attr.cc,
+                } };
+            },
             .func_one,
             .func_variadic_one,
             .func_old_style_one,
             .func,
             .func_variadic,
             .func_old_style,
+            .func_attributed,
+            .func_attributed_one,
             => {
                 const param_size = 4;
                 comptime std.debug.assert(@sizeOf(Type.Func.Param) == @sizeOf(u32) * param_size);
 
                 const extra = comp.type_store.extra.items;
                 const params_len = switch (repr.tag) {
-                    .func_one, .func_variadic_one, .func_old_style_one => 1,
-                    .func, .func_variadic, .func_old_style => extra[repr.data[1]],
+                    .func_one, .func_variadic_one, .func_old_style_one, .func_attributed_one => 1,
+                    .func, .func_variadic, .func_old_style, .func_attributed => extra[repr.data[1]],
                     else => unreachable,
                 };
-                const extra_params = extra[repr.data[1] + @intFromBool(params_len > 1) ..][0 .. params_len * param_size];
+                const param_index = repr.data[1] + @intFromBool(params_len > 1);
+                const param_u32_len = params_len * param_size;
+                const extra_params = extra[param_index..][0..param_u32_len];
+
+                if (repr.tag == .func_attributed or repr.tag == .func_attributed_one or repr.tag == .func_attributed_zero) {
+                    const attr_index = param_index + param_u32_len;
+                    const attr: Repr.FuncAttrs = @bitCast(extra[attr_index]);
+                    return .{ .func = .{
+                        .return_type = @bitCast(repr.data[0]),
+                        .kind = attr.kind,
+                        .params = std.mem.bytesAsSlice(Type.Func.Param, std.mem.sliceAsBytes(extra_params)),
+                        .cc = attr.cc,
+                    } };
+                }
 
                 return .{ .func = .{
                     .return_type = @bitCast(repr.data[0]),
@@ -278,14 +333,28 @@ pub const QualType = packed struct(u32) {
                     .params = std.mem.bytesAsSlice(Type.Func.Param, std.mem.sliceAsBytes(extra_params)),
                 } };
             },
-            .pointer => .{ .pointer = .{
-                .child = @bitCast(repr.data[0]),
-                .bounds = @fromBackingInt(@intCast(repr.data[1])),
-            } },
+            .pointer => {
+                const attr: Repr.PointerAttrs = @bitCast(repr.data[1]);
+                return .{ .pointer = .{
+                    .child = @bitCast(repr.data[0]),
+                    .bounds = attr.bounds,
+                    .nullability = attr.nullability,
+                } };
+            },
             .pointer_decayed => .{ .pointer = .{
                 .child = @bitCast(repr.data[0]),
                 .decayed = @bitCast(repr.data[1]),
             } },
+            .pointer_decayed_attributed => {
+                const extra = comp.type_store.extra.items;
+                const attr: Repr.PointerAttrs = @bitCast(extra[repr.data[1] + 1]);
+                return .{ .pointer = .{
+                    .child = @bitCast(repr.data[0]),
+                    .decayed = @bitCast(extra[repr.data[1]]),
+                    .bounds = attr.bounds,
+                    .nullability = attr.nullability,
+                } };
+            },
             .array_incomplete => .{ .array = .{
                 .elem = @bitCast(repr.data[0]),
                 .len = .incomplete,
@@ -300,7 +369,7 @@ pub const QualType = packed struct(u32) {
             } },
             .array_variable => .{ .array = .{
                 .elem = @bitCast(repr.data[0]),
-                .len = .{ .variable = @fromBackingInt(@intCast(repr.data[1])) },
+                .len = .{ .variable = @fromBackingInt(repr.data[1]) },
             } },
             .array_unspecified_variable => .{ .array = .{
                 .elem = @bitCast(repr.data[0]),
@@ -309,11 +378,22 @@ pub const QualType = packed struct(u32) {
             .vector => .{ .vector = .{
                 .elem = @bitCast(repr.data[0]),
                 .len = repr.data[1],
+                .kind = .generic,
+            } },
+            .vector_neon => .{ .vector = .{
+                .elem = @bitCast(repr.data[0]),
+                .len = repr.data[1],
+                .kind = .neon,
+            } },
+            .vector_neon_poly => .{ .vector = .{
+                .elem = @bitCast(repr.data[0]),
+                .len = repr.data[1],
+                .kind = .neon_poly,
             } },
             .@"struct", .@"union" => {
                 const layout_size = 5;
                 comptime std.debug.assert(@sizeOf(Type.Record.Layout) == @sizeOf(u32) * layout_size);
-                const field_size = 10;
+                const field_size = 9;
                 comptime std.debug.assert(@sizeOf(Type.Record.Field) == @sizeOf(u32) * field_size);
 
                 const extra = comp.type_store.extra.items;
@@ -322,8 +402,8 @@ pub const QualType = packed struct(u32) {
                 const extra_fields = extra[repr.data[1] + layout_size + 2 ..][0 .. fields_len * field_size];
 
                 const record: Type.Record = .{
-                    .name = @fromBackingInt(@intCast(repr.data[0])),
-                    .decl_node = @fromBackingInt(@intCast(extra[repr.data[1]])),
+                    .name = @fromBackingInt(repr.data[0]),
+                    .decl_node = @fromBackingInt(extra[repr.data[1]]),
                     .layout = layout,
                     .fields = std.mem.bytesAsSlice(Type.Record.Field, std.mem.sliceAsBytes(extra_fields)),
                 };
@@ -334,14 +414,14 @@ pub const QualType = packed struct(u32) {
                 };
             },
             .struct_incomplete => .{ .@"struct" = .{
-                .name = @fromBackingInt(@intCast(repr.data[0])),
-                .decl_node = @fromBackingInt(@intCast(repr.data[1])),
+                .name = @fromBackingInt(repr.data[0]),
+                .decl_node = @fromBackingInt(repr.data[1]),
                 .layout = null,
                 .fields = &.{},
             } },
             .union_incomplete => .{ .@"union" = .{
-                .name = @fromBackingInt(@intCast(repr.data[0])),
-                .decl_node = @fromBackingInt(@intCast(repr.data[1])),
+                .name = @fromBackingInt(repr.data[0]),
+                .decl_node = @fromBackingInt(repr.data[1]),
                 .layout = null,
                 .fields = &.{},
             } },
@@ -354,8 +434,8 @@ pub const QualType = packed struct(u32) {
                 const extra_fields = extra[repr.data[1] + 3 ..][0 .. fields_len * field_size];
 
                 return .{ .@"enum" = .{
-                    .name = @fromBackingInt(@intCast(extra[repr.data[1]])),
-                    .decl_node = @fromBackingInt(@intCast(extra[repr.data[1] + 1])),
+                    .name = @fromBackingInt(extra[repr.data[1]]),
+                    .decl_node = @fromBackingInt(extra[repr.data[1] + 1]),
                     .tag = @bitCast(repr.data[0]),
                     .incomplete = false,
                     .fixed = repr.tag == .enum_fixed,
@@ -365,8 +445,8 @@ pub const QualType = packed struct(u32) {
             .enum_incomplete => .{
                 .@"enum" = .{
                     .tag = null,
-                    .name = @fromBackingInt(@intCast(repr.data[0])),
-                    .decl_node = @fromBackingInt(@intCast(repr.data[1])),
+                    .name = @fromBackingInt(repr.data[0]),
+                    .decl_node = @fromBackingInt(repr.data[1]),
                     .incomplete = true,
                     .fixed = false,
                     .fields = &.{},
@@ -375,8 +455,8 @@ pub const QualType = packed struct(u32) {
             .enum_incomplete_fixed => .{
                 .@"enum" = .{
                     .tag = @bitCast(repr.data[0]),
-                    .name = @fromBackingInt(@intCast(comp.type_store.extra.items[repr.data[1]])),
-                    .decl_node = @fromBackingInt(@intCast(comp.type_store.extra.items[repr.data[1] + 1])),
+                    .name = @fromBackingInt(comp.type_store.extra.items[repr.data[1]]),
+                    .decl_node = @fromBackingInt(comp.type_store.extra.items[repr.data[1] + 1]),
                     .incomplete = true,
                     .fixed = true,
                     .fields = &.{},
@@ -388,23 +468,12 @@ pub const QualType = packed struct(u32) {
             } },
             .typeof_expr => .{ .typeof = .{
                 .base = @bitCast(repr.data[0]),
-                .expr = @fromBackingInt(@intCast(repr.data[1])),
+                .expr = @fromBackingInt(repr.data[1]),
             } },
             .typedef => .{ .typedef = .{
                 .base = @bitCast(repr.data[0]),
-                .name = @fromBackingInt(@intCast(comp.type_store.extra.items[repr.data[1]])),
-                .decl_node = @fromBackingInt(@intCast(comp.type_store.extra.items[repr.data[1] + 1])),
-            } },
-            .attributed => {
-                const extra = comp.type_store.extra.items;
-                return .{ .attributed = .{
-                    .base = @bitCast(repr.data[0]),
-                    .attributes = comp.type_store.attributes.items[extra[repr.data[1]]..][0..extra[repr.data[1] + 1]],
-                } };
-            },
-            .attributed_one => .{ .attributed = .{
-                .base = @bitCast(repr.data[0]),
-                .attributes = comp.type_store.attributes.items[repr.data[1]..][0..1],
+                .name = @fromBackingInt(comp.type_store.extra.items[repr.data[1]]),
+                .decl_node = @fromBackingInt(comp.type_store.extra.items[repr.data[1] + 1]),
             } },
         };
     }
@@ -414,12 +483,21 @@ pub const QualType = packed struct(u32) {
         while (true) switch (cur.type(comp)) {
             .typeof => |typeof| cur = typeof.base,
             .typedef => |typedef| cur = typedef.base,
-            .attributed => |attributed| cur = attributed.base,
             else => |ty| return .{ .type = ty, .qt = cur },
         };
     }
 
+    /// Function or function pointer
+    pub fn getFunc(qt: QualType, comp: *const Compilation) ?Type.Func {
+        const base_qt = if (qt.get(comp, .pointer)) |pointer| pointer.child else qt;
+        return base_qt.get(comp, .func);
+    }
+
     pub fn getRecord(qt: QualType, comp: *const Compilation) ?Type.Record {
+        switch (qt._index) {
+            .invalid, .auto_type, .c23_auto => return null,
+            else => {},
+        }
         return switch (qt.base(comp).type) {
             .@"struct", .@"union" => |record| record,
             else => null,
@@ -427,7 +505,7 @@ pub const QualType = packed struct(u32) {
     }
 
     pub fn get(qt: QualType, comp: *const Compilation, comptime tag: std.meta.Tag(Type)) ?@FieldType(Type, @tagName(tag)) {
-        comptime std.debug.assert(tag != .typeof and tag != .attributed and tag != .typedef);
+        comptime std.debug.assert(tag != .typeof and tag != .typedef);
         switch (qt._index) {
             .invalid, .auto_type, .c23_auto => return null,
             else => {},
@@ -449,6 +527,7 @@ pub const QualType = packed struct(u32) {
             .pointer => |pointer| pointer.child,
             .array => |array| array.elem,
             .vector => |vector| vector.elem,
+            .block => qt.base(comp).qt, // special case: block's childType is always itself
             else => unreachable,
         };
     }
@@ -493,12 +572,25 @@ pub const QualType = packed struct(u32) {
             .void => 1,
             .bool => 1,
             .func => 1,
-            .nullptr_t, .pointer => comp.target.ptrBitWidth() / 8,
+            .nullptr_t, .block => comp.target.ptrBitWidth() / 8,
+            .pointer => |pointer| {
+                _ = pointer;
+                // switch (pointer.size) {
+                //     .ptr32 => return 32,
+                //     .ptr64 => return 64,
+                //     .default => {},
+                // }
+                // switch (pointer.address_space) {
+                // }
+                return comp.target.ptrBitWidth() / 8;
+            },
+            .storage_float => |storage_float| storage_float.bits() / 8,
             .int => |int_ty| int_ty.bits(comp) / 8,
             .float => |float_ty| float_ty.bits(comp) / 8,
-            .complex => |complex| complex.sizeofOrNull(comp),
+            .complex => |complex| (complex.sizeofOrNull(comp) orelse return null) * 2,
             .bit_int => |bit_int| {
-                return std.mem.alignForward(u64, (@as(u32, bit_int.bits) + 7) / 8, qt.alignof(comp));
+                const base_qt = qt.base(comp).qt;
+                return std.mem.alignForward(u64, (@as(u32, bit_int.bits) + 7) / 8, base_qt.alignof(comp));
             },
             .atomic => |atomic| atomic.sizeofOrNull(comp),
             .vector => |vector| {
@@ -522,12 +614,34 @@ pub const QualType = packed struct(u32) {
                     // for the field alignment. A flexible array has size 0. See test case 0018.
                     return arr_size;
                 } else {
-                    return std.mem.alignForward(u64, arr_size, qt.alignof(comp));
+                    const base_qt = qt.base(comp).qt;
+                    return std.mem.alignForward(u64, arr_size, base_qt.alignof(comp));
                 }
             },
             .@"struct", .@"union" => |record| {
                 const layout = record.layout orelse return null;
-                return layout.size_bits / 8;
+                const size = layout.size_bits / 8;
+                if (comp.langopts.emulate != .msvc) return size;
+                switch (qt.type(comp)) {
+                    .typedef => |typedef| {
+                        if (comp.type_store.requested_aligns.get(qt) == null) {
+                            return typedef.base.sizeofOrNull(comp);
+                        }
+                    },
+                    else => {},
+                }
+                const alignment = qt.requestedAlignment(comp) orelse return size;
+
+                const should_round_size = switch (qt.type(comp)) {
+                    .typedef => |typedef| switch (typedef.base.type(comp)) {
+                        .@"struct", .@"union" => true,
+                        else => false,
+                    },
+                    else => true,
+                };
+                if (!should_round_size) return size;
+
+                return std.mem.alignForward(u64, size, alignment);
             },
             .@"enum" => |enum_ty| {
                 const tag = enum_ty.tag orelse return null;
@@ -535,7 +649,6 @@ pub const QualType = packed struct(u32) {
             },
             .typeof => unreachable,
             .typedef => unreachable,
-            .attributed => unreachable,
         };
     }
 
@@ -548,17 +661,12 @@ pub const QualType = packed struct(u32) {
     /// Returns null for incomplete types.
     pub fn bitSizeofOrNull(qt: QualType, comp: *const Compilation) ?u64 {
         if (qt.isInvalid()) return null;
-        return loop: switch (qt.base(comp).type) {
+        return switch (qt.base(comp).type) {
             .bool => if (comp.langopts.emulate == .msvc) 8 else 1,
             .bit_int => |bit_int| bit_int.bits,
+            .storage_float => |storage_float| storage_float.bits(),
             .float => |float_ty| float_ty.bits(comp),
             .int => |int_ty| int_ty.bits(comp),
-            .nullptr_t, .pointer => comp.target.ptrBitWidth(),
-            .atomic => |atomic| continue :loop atomic.base(comp).type,
-            .complex => |complex| {
-                const child_size = complex.bitSizeofOrNull(comp) orelse return null;
-                return child_size * 2;
-            },
             else => 8 * (qt.sizeofOrNull(comp) orelse return null),
         };
     }
@@ -582,11 +690,11 @@ pub const QualType = packed struct(u32) {
             .bit_int => |bit_int| bit_int.signedness,
             .int => |int_ty| switch (int_ty) {
                 .char => comp.getCharSignedness(),
-                .schar, .short, .int, .long, .long_long, .int128 => .signed,
-                .uchar, .ushort, .uint, .ulong, .ulong_long, .uint128 => .unsigned,
+                .schar, .short, .int, .int24, .long, .long_long, .int128 => .signed,
+                .uchar, .ushort, .uint, .uint24, .ulong, .ulong_long, .uint128 => .unsigned,
             },
             // Pointer values are signed.
-            .pointer, .nullptr_t => .signed,
+            .pointer, .nullptr_t, .block => .signed,
             .@"enum" => .signed,
             else => unreachable,
         };
@@ -596,27 +704,25 @@ pub const QualType = packed struct(u32) {
     pub fn alignof(qt: QualType, comp: *const Compilation) u32 {
         if (qt.requestedAlignment(comp)) |requested| request: {
             if (qt.is(comp, .@"enum")) {
-                if (comp.langopts.emulate == .gcc) {
-                    // gcc does not respect alignment on enums
-                    break :request;
+                switch (comp.langopts.emulate) {
+                    .gcc => break :request, // gcc does not respect alignment on enums
+                    .msvc => return @max(requested, qt.base(comp).qt.alignof(comp)),
+                    .clang, .no => {},
                 }
-            } else if (qt.getRecord(comp)) |record_ty| {
-                const layout = record_ty.layout orelse return 0;
-
-                // don't return the attribute for records
-                // layout has already accounted for requested alignment
-                const computed = @divExact(layout.field_alignment_bits, 8);
-                return @max(requested, computed);
             } else if (comp.langopts.emulate == .msvc) {
-                const type_align = qt.base(comp).qt.alignof(comp);
+                const type_align = switch (qt.type(comp)) {
+                    .typedef => |typedef| typedef.base.alignof(comp),
+                    else => qt.base(comp).qt.alignof(comp),
+                };
                 return @max(requested, type_align);
             }
             return requested;
         }
 
-        return loop: switch (qt.base(comp).type) {
+        return loop: switch (qt.type(comp)) {
             .void => 1,
             .bool => 1,
+            .storage_float => |storage_float| storage_float.alignment(),
             .int => |int_ty| switch (int_ty) {
                 .char,
                 .schar,
@@ -631,6 +737,7 @@ pub const QualType = packed struct(u32) {
                 .ulong => comp.target.cTypeAlignment(.ulong),
                 .long_long => comp.target.cTypeAlignment(.longlong),
                 .ulong_long => comp.target.cTypeAlignment(.ulonglong),
+                .int24, .uint24 => 1,
                 .int128, .uint128 => if (comp.target.cpu.arch == .s390x and comp.target.os.tag == .linux and comp.target.abi.isGnu()) 8 else 16,
             },
             .float => |float_ty| switch (float_ty) {
@@ -661,14 +768,14 @@ pub const QualType = packed struct(u32) {
             .atomic => |atomic| continue :loop atomic.base(comp).type,
             .complex => |complex| continue :loop complex.base(comp).type,
 
-            .pointer, .nullptr_t => switch (comp.target.cpu.arch) {
+            .pointer, .nullptr_t, .block => switch (comp.target.cpu.arch) {
                 .avr => 1,
-                else => comp.target.ptrBitWidth() / 8,
+                else => @intCast(qt.bitSizeof(comp) / 8),
             },
 
             .func => comp.target.defaultFunctionAlignment(),
 
-            .array => |array| continue :loop array.elem.base(comp).type,
+            .array => |array| return array.elem.alignof(comp),
             .vector => |vector| continue :loop vector.elem.base(comp).type,
 
             .@"struct", .@"union" => |record| {
@@ -679,9 +786,8 @@ pub const QualType = packed struct(u32) {
                 const tag = enum_ty.tag orelse return 0;
                 continue :loop tag.base(comp).type;
             },
-            .typeof => unreachable,
-            .typedef => unreachable,
-            .attributed => unreachable,
+            .typeof => |typeof| return typeof.base.alignof(comp),
+            .typedef => |typedef| continue :loop typedef.base.base(comp).type,
         };
     }
 
@@ -694,7 +800,7 @@ pub const QualType = packed struct(u32) {
             .schar, .uchar, .char => {
                 // Only 8-bit char supported currently;
                 // TODO: handle platforms with 16-bit int + 16-bit char
-                std.debug.assert(qt.sizeof(comp) == 1);
+                std.debug.assert(qt.bitSizeof(comp) == 8);
                 return "";
             },
             .ushort => {
@@ -740,6 +846,8 @@ pub const QualType = packed struct(u32) {
                 .ulong_long => return .ulong_long,
                 .int128 => return .uint128,
                 .uint128 => return .uint128,
+                .int24 => return .uint24,
+                .uint24 => return .uint24,
             },
             .bit_int => |bit_int| {
                 return try comp.type_store.put(comp.gpa, .{ .bit_int = .{
@@ -847,9 +955,10 @@ pub const QualType = packed struct(u32) {
                 .char, .schar, .uchar => 2 + (int_ty.bits(comp) * 8),
                 .short, .ushort => 3 + (int_ty.bits(comp) * 8),
                 .int, .uint => 4 + (int_ty.bits(comp) * 8),
-                .long, .ulong => 5 + (int_ty.bits(comp) * 8),
-                .long_long, .ulong_long => 6 + (int_ty.bits(comp) * 8),
-                .int128, .uint128 => 7 + (int_ty.bits(comp) * 8),
+                .int24, .uint24 => 5 + (int_ty.bits(comp) * 8),
+                .long, .ulong => 6 + (int_ty.bits(comp) * 8),
+                .long_long, .ulong_long => 7 + (int_ty.bits(comp) * 8),
+                .int128, .uint128 => 8 + (int_ty.bits(comp) * 8),
             },
             .complex => |complex| continue :loop complex.base(comp).type,
             .atomic => |atomic| continue :loop atomic.base(comp).type,
@@ -932,6 +1041,7 @@ pub const QualType = packed struct(u32) {
         void_pointer,
         complex_int,
         complex_float,
+        block_pointer,
         none,
 
         pub fn isInt(sk: ScalarKind) bool {
@@ -957,7 +1067,7 @@ pub const QualType = packed struct(u32) {
 
         pub fn isPointer(sk: ScalarKind) bool {
             return switch (sk) {
-                .pointer, .void_pointer => true,
+                .pointer, .void_pointer, .block_pointer => true,
                 else => false,
             };
         }
@@ -988,6 +1098,7 @@ pub const QualType = packed struct(u32) {
                 else => unreachable,
             },
             .atomic => |atomic| continue :loop atomic.base(comp).type,
+            .block => return .block_pointer,
             else => return .none,
         }
     }
@@ -1010,15 +1121,6 @@ pub const QualType = packed struct(u32) {
     // Prefer calling scalarKind directly if checking multiple kinds.
     pub fn isPointer(qt: QualType, comp: *const Compilation) bool {
         return qt.scalarKind(comp).isPointer();
-    }
-
-    /// Function or function pointer
-    pub fn isCallable(qt: QualType, comp: *const Compilation) bool {
-        return switch (qt.base(comp).type) {
-            .func => true,
-            .pointer => |ptr| ptr.child.is(comp, .func),
-            else => false,
-        };
     }
 
     pub fn eqlQualified(a_qt: QualType, b_qt: QualType, comp: *const Compilation) bool {
@@ -1051,6 +1153,7 @@ pub const QualType = packed struct(u32) {
             .void => return true,
             .bool => return true,
             .nullptr_t => return true,
+            .storage_float => |a_storage_float| return a_storage_float == b_type.storage_float,
             .int => |a_int| return a_int == b_type.int,
             .float => |a_float| return a_float == b_type.float,
             .complex => |a_complex| {
@@ -1135,36 +1238,39 @@ pub const QualType = packed struct(u32) {
             },
             .vector => |a_vector| {
                 const b_vector = b_type.vector;
-                if (a_vector.len != b_vector.len) return false;
-
-                // Vector elemnent qualifiers are checked.
-                return a_vector.elem.eqlQualified(b_vector.elem, comp);
+                return a_vector.eql(b_vector, comp, false);
             },
             .@"struct", .@"union", .@"enum" => return a_type_qt.qt._index == b_type_qt.qt._index,
+            .block => |a_block| return a_block.func.eql(b_type.block.func, comp),
 
             .typeof => unreachable, // Never returned from base()
             .typedef => unreachable, // Never returned from base()
-            .attributed => unreachable, // Never returned from base()
         }
     }
 
-    pub fn getAttribute(qt: QualType, comp: *const Compilation, comptime tag: Attribute.Tag) ?Attribute.ArgumentsForTag(tag) {
-        if (tag == .aligned) @compileError("use requestedAlignment");
-        var it = Attribute.Iterator.initType(qt, comp);
-        while (it.next()) |item| {
-            const attribute, _ = item;
-            if (attribute.tag == tag) return @field(attribute.args, @tagName(tag));
+    /// Checks for attributes on the declarations of struct, union, enum and typedef types.
+    pub fn getAttribute(qt: QualType, tree: *const Tree, tag: Attribute.Tag) ?Attribute {
+        if (qt.isInvalid()) return null;
+        const comp = tree.comp;
+        const am = &tree.attr_map;
+        loop: switch (qt.type(comp)) {
+            .@"struct", .@"union" => |record| {
+                return am.getAttribute(record.decl_node, tag);
+            },
+            .@"enum" => |@"enum"| {
+                return am.getAttribute(@"enum".decl_node, tag);
+            },
+            .typeof => |typeof| continue :loop typeof.base.type(comp),
+            .typedef => |typedef| {
+                if (am.getAttribute(typedef.decl_node, tag)) |attr| return attr;
+                continue :loop typedef.base.type(comp);
+            },
+            else => return null,
         }
-        return null;
     }
 
-    pub fn hasAttribute(qt: QualType, comp: *const Compilation, tag: Attribute.Tag) bool {
-        var it = Attribute.Iterator.initType(qt, comp);
-        while (it.next()) |item| {
-            const attr, _ = item;
-            if (attr.tag == tag) return true;
-        }
-        return false;
+    pub fn hasAttribute(qt: QualType, tree: *const Tree, tag: Attribute.Tag) bool {
+        return qt.getAttribute(tree, tag) != null;
     }
 
     pub fn alignable(qt: QualType, comp: *const Compilation) bool {
@@ -1177,43 +1283,24 @@ pub const QualType = packed struct(u32) {
     }
 
     pub fn requestedAlignment(qt: QualType, comp: *const Compilation) ?u32 {
-        return annotationAlignment(comp, Attribute.Iterator.initType(qt, comp));
-    }
-
-    pub fn annotationAlignment(comp: *const Compilation, attrs: Attribute.Iterator) ?u32 {
-        var it = attrs;
-        var max_requested: ?u32 = null;
-        var last_aligned_index: ?usize = null;
-        while (it.next()) |item| {
-            const attribute, const index = item;
-            if (attribute.tag != .aligned) continue;
-            if (last_aligned_index) |aligned_index| {
-                // once we recurse into a new type, after an `aligned` attribute was found, we're done
-                if (index <= aligned_index) break;
-            }
-            last_aligned_index = index;
-            const requested = if (attribute.args.aligned.alignment) |alignment| alignment.requested else comp.target.defaultAlignment();
-            if (max_requested == null or max_requested.? < requested) {
-                max_requested = requested;
-            }
-        }
-        return max_requested;
-    }
-
-    pub fn linkage(qt: QualType, comp: *const Compilation) std.builtin.GlobalLinkage {
-        if (qt.hasAttribute(comp, .weak)) return .weak;
-        if (qt.hasAttribute(comp, .selectany)) return .weak;
-        return .strong;
-    }
-
-    pub fn enumIsPacked(qt: QualType, comp: *const Compilation) bool {
-        std.debug.assert(qt.is(comp, .@"enum"));
-        return comp.langopts.short_enums or comp.target.packAllEnums() or qt.hasAttribute(comp, .@"packed");
+        if (qt.isInvalid()) return null;
+        const own_alignment = comp.type_store.requested_aligns.get(qt);
+        const base_alignment = switch (qt.type(comp)) {
+            .typeof => |typeof| typeof.base.requestedAlignment(comp),
+            .typedef => |typedef| typedef.base.requestedAlignment(comp),
+            else => null,
+        };
+        return if (own_alignment) |own|
+            if (comp.langopts.emulate == .msvc and base_alignment != null)
+                @max(own, base_alignment.?)
+            else
+                own
+        else
+            base_alignment;
     }
 
     pub fn shouldDesugar(qt: QualType, comp: *const Compilation) bool {
         loop: switch (qt.type(comp)) {
-            .attributed => |attributed| continue :loop attributed.base.type(comp),
             .pointer => |pointer| continue :loop pointer.child.type(comp),
             .func => |func| {
                 for (func.params) |param| {
@@ -1222,7 +1309,12 @@ pub const QualType = packed struct(u32) {
                 continue :loop func.return_type.type(comp);
             },
             .typeof => return true,
-            .typedef => |typedef| return !typedef.base.is(comp, .nullptr_t),
+            .typedef => |typedef| {
+                if (Builder.fromType(comp, typedef.base).str(comp.langopts)) |some| {
+                    return !std.mem.eql(u8, some, typedef.name.lookup(comp));
+                }
+                return true;
+            },
             else => return false,
         }
     }
@@ -1232,6 +1324,10 @@ pub const QualType = packed struct(u32) {
             try w.writeAll("auto");
             return;
         }
+        if (qt.isAutoType()) {
+            try w.writeAll("__auto_type");
+            return;
+        }
         _ = try qt.printPrologue(comp, false, w);
         try qt.printEpilogue(comp, false, w);
     }
@@ -1239,6 +1335,10 @@ pub const QualType = packed struct(u32) {
     pub fn printNamed(qt: QualType, name: []const u8, comp: *const Compilation, w: *std.Io.Writer) std.Io.Writer.Error!void {
         if (qt.isC23Auto()) {
             try w.print("auto {s}", .{name});
+            return;
+        }
+        if (qt.isAutoType()) {
+            try w.print("__auto_type {s}", .{name});
             return;
         }
         const simple = try qt.printPrologue(comp, false, w);
@@ -1271,11 +1371,32 @@ pub const QualType = packed struct(u32) {
                     if (qt.@"const" or qt.@"volatile") try w.writeByte(' ');
                     try w.writeAll("restrict");
                 }
+                if (pointer.nullability != .default) {
+                    try w.writeByte(' ');
+                    try w.writeAll(pointer.nullability.str());
+                }
                 return false;
             },
             .func => |func| {
                 const simple = try func.return_type.printPrologue(comp, desugar, w);
                 if (simple) try w.writeByte(' ');
+                return false;
+            },
+            .block => |block| {
+                if (!block.func.is(comp, .func)) unreachable;
+
+                const simple = try block.func.printPrologue(comp, desugar, w);
+                try w.writeAll(if (simple) " ^" else "(^");
+                if (qt.@"const") try w.writeAll("const");
+                if (qt.@"volatile") {
+                    if (qt.@"const") try w.writeByte(' ');
+                    try w.writeAll("volatile");
+                }
+                if (qt.restrict) {
+                    if (qt.@"const" or qt.@"volatile") try w.writeByte(' ');
+                    try w.writeAll("restrict");
+                }
+                if (!simple) try w.writeByte(')');
                 return false;
             },
             .array => |array| {
@@ -1293,6 +1414,13 @@ pub const QualType = packed struct(u32) {
             .typeof => |typeof| if (desugar) {
                 continue :loop typeof.base.type(comp);
             } else {
+                if (qt.@"const" and !typeof.base.@"const") {
+                    try w.writeAll("const ");
+                }
+                if (qt.@"volatile" and !typeof.base.@"volatile") {
+                    try w.writeAll("volatile ");
+                }
+
                 try w.writeAll("typeof(");
                 try typeof.base.print(comp, w);
                 try w.writeAll(")");
@@ -1301,10 +1429,12 @@ pub const QualType = packed struct(u32) {
             .typedef => |typedef| if (desugar) {
                 continue :loop typedef.base.type(comp);
             } else {
+                if (qt.@"const") try w.writeAll("const ");
+                if (qt.@"volatile") try w.writeAll("volatile ");
+
                 try w.writeAll(typedef.name.lookup(comp));
                 return true;
             },
-            .attributed => |attributed| continue :loop attributed.base.type(comp),
             else => {},
         }
         if (qt.@"const") try w.writeAll("const ");
@@ -1316,11 +1446,12 @@ pub const QualType = packed struct(u32) {
             .array => unreachable,
             .typeof => unreachable,
             .typedef => unreachable,
-            .attributed => unreachable,
+            .block => unreachable,
 
             .void => try w.writeAll("void"),
             .bool => try w.writeAll(if (comp.langopts.standard.atLeast(.c23)) "bool" else "_Bool"),
             .nullptr_t => try w.writeAll("nullptr_t"),
+            .storage_float => |storage_float| try w.writeAll(storage_float.name()),
             .int => |int_ty| switch (int_ty) {
                 .char => try w.writeAll("char"),
                 .schar => try w.writeAll("signed char"),
@@ -1335,8 +1466,10 @@ pub const QualType = packed struct(u32) {
                 .ulong_long => try w.writeAll("unsigned long long"),
                 .int128 => try w.writeAll("__int128"),
                 .uint128 => try w.writeAll("unsigned __int128"),
+                .int24 => try w.writeAll("__int24"),
+                .uint24 => try w.writeAll("unsigned __int24"),
             },
-            .bit_int => |bit_int| try w.print("{s} _BitInt({d})", .{ @tagName(bit_int.signedness), bit_int.bits }),
+            .bit_int => |bit_int| try w.print("{t} _BitInt({d})", .{ bit_int.signedness, bit_int.bits }),
             .float => |float_ty| switch (float_ty) {
                 .bf16 => try w.writeAll("__bf16"),
                 .fp16 => try w.writeAll("__fp16"),
@@ -1367,9 +1500,15 @@ pub const QualType = packed struct(u32) {
             },
 
             .vector => |vector| {
-                try w.print("__attribute__((__vector_size__({d} * sizeof(", .{vector.len});
-                _ = try vector.elem.printPrologue(comp, desugar, w);
-                try w.writeAll(")))) ");
+                switch (vector.kind) {
+                    .generic => {
+                        try w.print("__attribute__((__vector_size__({d} * sizeof(", .{vector.len});
+                        _ = try vector.elem.printPrologue(comp, desugar, w);
+                        try w.writeAll(")))) ");
+                    },
+                    .neon => try w.print("__attribute__((neon_vector_type({d}))) ", .{vector.len}),
+                    .neon_poly => try w.print("__attribute__((neon_polyvector_type({d}))) ", .{vector.len}),
+                }
                 _ = try vector.elem.printPrologue(comp, desugar, w);
             },
 
@@ -1394,6 +1533,7 @@ pub const QualType = packed struct(u32) {
                 }
                 continue :loop pointer.child.type(comp);
             },
+            .block => |block| continue :loop block.func.type(comp),
             .func => |func| {
                 try w.writeByte('(');
                 for (func.params, 0..) |param, i| {
@@ -1408,6 +1548,9 @@ pub const QualType = packed struct(u32) {
                     try w.writeAll("void");
                 }
                 try w.writeByte(')');
+                if (func.cc != .default) {
+                    try w.print(" __attribute__(({t}))", .{func.cc});
+                }
                 continue :loop func.return_type.type(comp);
             },
             .array => |array| {
@@ -1429,7 +1572,8 @@ pub const QualType = packed struct(u32) {
 
                 continue :loop array.elem.type(comp);
             },
-            .attributed => |attributed| continue :loop attributed.base.type(comp),
+            .typeof => |typeof| if (desugar) continue :loop typeof.base.type(comp),
+            .typedef => |typedef| if (desugar) continue :loop typedef.base.type(comp),
             else => {},
         }
     }
@@ -1441,11 +1585,20 @@ pub const QualType = packed struct(u32) {
         if (qt.isInvalid()) return w.writeAll("invalid");
         switch (qt.type(comp)) {
             .pointer => |pointer| {
+                if (pointer.nullability != .default) {
+                    try w.writeAll(pointer.nullability.str());
+                    try w.writeByte(' ');
+                }
                 if (pointer.decayed) |decayed| {
                     try w.writeAll("decayed *");
                     try decayed.dump(comp, w);
                 } else {
                     try w.writeAll("*");
+                    switch (pointer.bounds) {
+                        .single => try w.writeAll("single "),
+                        .unsafe_indexable => try w.writeAll("unsafe_indexable "),
+                        .c => {},
+                    }
                     try pointer.child.dump(comp, w);
                 }
             },
@@ -1465,6 +1618,27 @@ pub const QualType = packed struct(u32) {
                     try w.writeAll("...");
                 }
                 try w.writeAll(") ");
+                if (func.cc != .default) {
+                    try w.print("cc({t}) ", .{func.cc});
+                }
+                try func.return_type.dump(comp, w);
+            },
+            .block => |block| {
+                const func = block.func.get(comp, .func).?; // `validateExtra` ensures this invariant
+                try w.writeAll("block (");
+                for (func.params, 0..) |param, i| {
+                    if (i != 0) try w.writeAll(", ");
+                    if (param.name != .empty) try w.print("{s}: ", .{param.name.lookup(comp)});
+                    try param.qt.dump(comp, w);
+                }
+                if (func.kind != .normal) {
+                    if (func.params.len != 0) try w.writeAll(", ");
+                    try w.writeAll("...");
+                }
+                try w.writeAll(") ");
+                if (func.cc != .default) {
+                    try w.print("cc({t}) ", .{func.cc});
+                }
                 try func.return_type.dump(comp, w);
             },
             .array => |array| {
@@ -1478,7 +1652,12 @@ pub const QualType = packed struct(u32) {
                 try array.elem.dump(comp, w);
             },
             .vector => |vector| {
-                try w.print("vector({d}, ", .{vector.len});
+                const kind = switch (vector.kind) {
+                    .generic => "vector",
+                    .neon => "neon_vector",
+                    .neon_poly => "neon_polyvector",
+                };
+                try w.print("{s}({d}, ", .{ kind, vector.len });
                 try vector.elem.dump(comp, w);
                 try w.writeAll(")");
             },
@@ -1486,11 +1665,6 @@ pub const QualType = packed struct(u32) {
                 try w.writeAll("typeof(");
                 if (typeof.expr != null) try w.writeAll("<expr>: ");
                 try typeof.base.dump(comp, w);
-                try w.writeAll(")");
-            },
-            .attributed => |attributed| {
-                try w.writeAll("attributed(");
-                try attributed.base.dump(comp, w);
                 try w.writeAll(")");
             },
             .typedef => |typedef| {
@@ -1519,10 +1693,12 @@ pub const Type = union(enum) {
 
     int: Int,
     float: Float,
+    storage_float: StorageFloat,
     complex: QualType,
     bit_int: BitInt,
     atomic: QualType,
 
+    block: Block,
     func: Func,
     pointer: Pointer,
     array: Array,
@@ -1534,7 +1710,6 @@ pub const Type = union(enum) {
 
     typeof: TypeOf,
     typedef: TypeDef,
-    attributed: Attributed,
 
     pub const Int = enum {
         char,
@@ -1550,6 +1725,8 @@ pub const Type = union(enum) {
         ulong_long,
         int128,
         uint128,
+        int24,
+        uint24,
 
         pub fn bits(int: Int, comp: *const Compilation) u16 {
             return switch (int) {
@@ -1566,6 +1743,7 @@ pub const Type = union(enum) {
                 .ulong_long => comp.target.cTypeBitSize(.ulonglong),
                 .int128 => 128,
                 .uint128 => 128,
+                .int24, .uint24 => 24,
             };
         }
     };
@@ -1610,15 +1788,47 @@ pub const Type = union(enum) {
         }
     };
 
+    /// non-arithmetic floats
+    pub const StorageFloat = enum {
+        mfp8,
+
+        pub fn bits(storage_float: StorageFloat) u16 {
+            return switch (storage_float) {
+                .mfp8 => 8,
+            };
+        }
+
+        pub fn alignment(storage_float: StorageFloat) u32 {
+            return switch (storage_float) {
+                .mfp8 => 1,
+            };
+        }
+
+        pub fn name(storage_float: StorageFloat) []const u8 {
+            return switch (storage_float) {
+                .mfp8 => "__mfp8",
+            };
+        }
+    };
+
     pub const BitInt = struct {
         /// Must be >= 1 if unsigned and >= 2 if signed
         bits: u16,
         signedness: std.builtin.Signedness,
     };
 
+    pub const Block = struct {
+        func: QualType,
+        nullability: Pointer.Nullability = .default,
+    };
+
     pub const Func = struct {
         return_type: QualType,
-        kind: enum {
+        kind: Kind,
+        params: []const Param,
+        cc: CallingConvention = .default,
+
+        pub const Kind = enum(u2) {
             /// int foo(int bar, char baz) and int (void)
             normal,
             /// int foo(int bar, char baz, ...)
@@ -1626,8 +1836,7 @@ pub const Type = union(enum) {
             /// int foo(bar, baz) and int foo()
             /// is also var args, but we can give warnings about incorrect amounts of parameters
             old_style,
-        },
-        params: []const Param,
+        };
 
         pub const Param = extern struct {
             qt: QualType,
@@ -1635,29 +1844,81 @@ pub const Type = union(enum) {
             name_tok: TokenIndex,
             node: Node.OptIndex,
         };
+
+        pub const CallingConvention = enum(u4) {
+            default,
+            cdecl,
+            aarch64_sve_pcs,
+            aarch64_vector_pcs,
+            arm_aapcs_vfp,
+            arm_aapcs,
+            fastcall,
+            ms_abi,
+            regcall,
+            riscv_vector_cc,
+            riscv_vls_cc,
+            stdcall,
+            sysv_abi,
+            thiscall,
+            vectorcall,
+        };
     };
 
     pub const Pointer = struct {
         child: QualType,
         decayed: ?QualType = null,
         bounds: Bounds = .c,
+        nullability: Nullability = .default,
+        // size: Size = .default,
+        // extend: Extend = .default,
+        // address_space: AddressSpace = .default,
 
-        pub const Bounds = enum {
+        pub const Bounds = enum(u2) {
             /// C pointer with no bounds attribute
             c,
             /// No pointer arithmetic or non-zero indexing
             single,
             /// Explicitly specified as a traditional C pointer
             unsafe_indexable,
+        };
 
-            pub fn fromTag(tag: Attribute.Tag) Bounds {
-                return switch (tag) {
-                    .single => .single,
-                    .unsafe_indexable => .unsafe_indexable,
-                    else => unreachable,
+        pub const Nullability = enum(u3) {
+            default,
+            nonnull,
+            nullable,
+            nullable_result,
+            unspecified,
+
+            pub fn str(n: Nullability) []const u8 {
+                return switch (n) {
+                    .default => unreachable,
+                    .nonnull => "_Nonnull",
+                    .nullable => "_Nullable",
+                    .nullable_result => "_Nullable_result",
+                    .unspecified => "_Null_unspecified",
                 };
             }
         };
+
+        pub const Size = enum {
+            default,
+            ptr64,
+            ptr32,
+        };
+
+        pub const Extend = enum {
+            default,
+            sign,
+            zero,
+        };
+
+        pub const AddressSpace = enum {
+            default,
+        };
+
+        pub fn anyAttrs(p: Pointer) bool {
+            return p.bounds != .c or p.nullability != .default;
+        }
     };
 
     pub const Array = struct {
@@ -1674,11 +1935,25 @@ pub const Type = union(enum) {
     pub const Vector = struct {
         elem: QualType,
         len: u32,
+        kind: Kind = .generic,
+
+        pub const Kind = enum {
+            generic,
+            neon,
+            neon_poly,
+        };
+
+        pub fn eql(a: Vector, b: Vector, comp: *const Compilation, check_kind: bool) bool {
+            if (a.len != b.len) return false;
+            if (!a.elem.eqlQualified(b.elem, comp)) return false;
+            if (check_kind and a.kind != b.kind) return false;
+            return true;
+        }
     };
 
     pub const Record = struct {
         name: StringId,
-        decl_node: Node.Index,
+        decl_node: Node.OptIndex = .null,
         layout: ?Layout = null,
         fields: []const Field,
 
@@ -1700,12 +1975,7 @@ pub const Type = union(enum) {
                 .offset_bits = 0,
                 .size_bits = 0,
             },
-            _attr_index: u32 = 0,
-            _attr_len: u32 = 0,
-
-            pub fn attributes(field: Field, comp: *const Compilation) []const Attribute {
-                return comp.type_store.attributes.items[field._attr_index..][0..field._attr_len];
-            }
+            field_decl: Node.OptIndex = .null,
 
             pub const Layout = extern struct {
                 /// `offset_bits` and `size_bits` should both be INVALID if and only if the field
@@ -1796,17 +2066,14 @@ pub const Type = union(enum) {
         name: StringId,
         decl_node: Node.Index,
     };
-
-    pub const Attributed = struct {
-        base: QualType,
-        attributes: []const Attribute,
-    };
 };
 
 types: std.MultiArrayList(Repr) = .empty,
 extra: std.ArrayList(u32) = .empty,
-attributes: std.ArrayList(Attribute) = .empty,
 anon_name_arena: std.heap.ArenaAllocator.State = .{},
+/// Alignment is a decl attribute in C but since it matters for sizeof calculations
+/// it is additionally stored here.
+requested_aligns: std.AutoHashMapUnmanaged(QualType, u32) = .empty,
 
 wchar: QualType = .invalid,
 wint: QualType = .invalid,
@@ -1829,8 +2096,8 @@ int64: QualType = .invalid,
 pub fn deinit(ts: *TypeStore, gpa: std.mem.Allocator) void {
     ts.types.deinit(gpa);
     ts.extra.deinit(gpa);
-    ts.attributes.deinit(gpa);
     ts.anon_name_arena.promote(gpa).deinit();
+    ts.requested_aligns.deinit(gpa);
     ts.* = undefined;
 }
 
@@ -1857,6 +2124,8 @@ pub fn putExtra(ts: *TypeStore, gpa: std.mem.Allocator, ty: Type) !Index {
             .ulong_long => return .int_ulong_long,
             .int128 => return .int_int128,
             .uint128 => return .int_uint128,
+            .int24 => return .int_int24,
+            .uint24 => return .int_uint24,
         },
         .float => |float| switch (float) {
             .bf16 => return .float_bf16,
@@ -1876,6 +2145,9 @@ pub fn putExtra(ts: *TypeStore, gpa: std.mem.Allocator, ty: Type) !Index {
             .dfloat128 => return .float_dfloat128,
             .dfloat64x => return .float_dfloat64x,
         },
+        .storage_float => |storage_float| switch (storage_float) {
+            .mfp8 => return .mfp8,
+        },
         else => {},
     }
     const index = try ts.types.addOne(gpa);
@@ -1891,6 +2163,7 @@ pub fn set(ts: *TypeStore, gpa: std.mem.Allocator, ty: Type, index: usize) !void
         .nullptr_t => unreachable,
         .int => unreachable,
         .float => unreachable,
+        .storage_float => unreachable,
         .complex => |complex| {
             repr.tag = .complex;
             repr.data[0] = @bitCast(complex);
@@ -1904,6 +2177,10 @@ pub fn set(ts: *TypeStore, gpa: std.mem.Allocator, ty: Type, index: usize) !void
             repr.tag = .atomic;
             std.debug.assert(!atomic.@"const" and !atomic.@"volatile");
             repr.data[0] = @bitCast(atomic);
+        },
+        .block => |block| {
+            repr.tag = .block;
+            repr.data[0] = @bitCast(block.func);
         },
         .func => |func| {
             repr.data[0] = @bitCast(func.return_type);
@@ -1940,16 +2217,43 @@ pub fn set(ts: *TypeStore, gpa: std.mem.Allocator, ty: Type, index: usize) !void
                     else => .func_old_style,
                 },
             };
+
+            if (func.cc != .default) {
+                const attr: Repr.FuncAttrs = .{
+                    .kind = func.kind,
+                    .cc = func.cc,
+                };
+                if (func.params.len == 0) {
+                    repr.data[1] = @bitCast(attr);
+                } else {
+                    try ts.extra.append(gpa, @bitCast(attr));
+                }
+                repr.tag = switch (func.params.len) {
+                    0 => .func_attributed_zero,
+                    1 => .func_attributed_one,
+                    else => .func_attributed,
+                };
+            }
         },
         .pointer => |pointer| {
             repr.data[0] = @bitCast(pointer.child);
+            const attr: Repr.PointerAttrs = .{
+                .bounds = pointer.bounds,
+                .nullability = pointer.nullability,
+            };
             if (pointer.decayed) |array| {
-                std.debug.assert(pointer.bounds == .c);
-                repr.tag = .pointer_decayed;
-                repr.data[1] = @bitCast(array);
+                if (pointer.anyAttrs()) {
+                    repr.tag = .pointer_decayed_attributed;
+                    repr.data[1] = @intCast(ts.extra.items.len);
+                    try ts.extra.append(gpa, @bitCast(array));
+                    try ts.extra.append(gpa, @bitCast(attr));
+                } else {
+                    repr.tag = .pointer_decayed;
+                    repr.data[1] = @bitCast(array);
+                }
             } else {
                 repr.tag = .pointer;
-                repr.data[1] = @backingInt(pointer.bounds);
+                repr.data[1] = @bitCast(attr);
             }
         },
         .array => |array| {
@@ -1980,7 +2284,11 @@ pub fn set(ts: *TypeStore, gpa: std.mem.Allocator, ty: Type, index: usize) !void
             }
         },
         .vector => |vector| {
-            repr.tag = .vector;
+            repr.tag = switch (vector.kind) {
+                .generic => .vector,
+                .neon => .vector_neon,
+                .neon_poly => .vector_neon_poly,
+            };
             repr.data[0] = @bitCast(vector.elem);
             repr.data[1] = vector.len;
         },
@@ -2007,7 +2315,7 @@ pub fn set(ts: *TypeStore, gpa: std.mem.Allocator, ty: Type, index: usize) !void
 
             const layout_size = 5;
             comptime std.debug.assert(@sizeOf(Type.Record.Layout) == @sizeOf(u32) * layout_size);
-            const field_size = 10;
+            const field_size = 9;
             comptime std.debug.assert(@sizeOf(Type.Record.Field) == @sizeOf(u32) * field_size);
             try ts.extra.ensureUnusedCapacity(gpa, record.fields.len * field_size + layout_size + 2);
 
@@ -2075,22 +2383,6 @@ pub fn set(ts: *TypeStore, gpa: std.mem.Allocator, ty: Type, index: usize) !void
                 @backingInt(typedef.name),
                 @backingInt(typedef.decl_node),
             });
-        },
-        .attributed => |attributed| {
-            repr.data[0] = @bitCast(attributed.base);
-
-            const attr_index: u32 = @intCast(ts.attributes.items.len);
-            const attr_count: u32 = @intCast(attributed.attributes.len);
-            try ts.attributes.appendSlice(gpa, attributed.attributes);
-            if (attr_count > 1) {
-                repr.tag = .attributed;
-                const extra_index: u32 = @intCast(ts.extra.items.len);
-                repr.data[1] = extra_index;
-                try ts.extra.appendSlice(gpa, &.{ attr_index, attr_count });
-            } else {
-                repr.tag = .attributed_one;
-                repr.data[1] = attr_index;
-            }
         },
     }
     ts.types.set(index, repr);
@@ -2180,10 +2472,8 @@ fn generateNsConstantStringType(ts: *TypeStore, comp: *Compilation) !QualType {
     var record: Type.Record = .{
         .name = try comp.internString("__NSConstantString_tag"),
         .layout = null,
-        .decl_node = undefined, // TODO
         .fields = &.{},
     };
-    const qt = try ts.put(comp.gpa, .{ .@"struct" = record });
 
     var fields: [4]Type.Record.Field = .{
         .{ .name = try comp.internString("isa"), .qt = const_int_ptr },
@@ -2192,10 +2482,9 @@ fn generateNsConstantStringType(ts: *TypeStore, comp: *Compilation) !QualType {
         .{ .name = try comp.internString("length"), .qt = .long },
     };
     record.fields = &fields;
-    record.layout = record_layout.compute(&fields, qt, comp, null) catch unreachable;
-    try ts.set(comp.gpa, .{ .@"struct" = record }, @backingInt(qt._index));
+    record.layout = record_layout.compute(&fields, .null, false, comp, &.{}, null) catch unreachable;
 
-    return qt;
+    return try ts.put(comp.gpa, .{ .@"struct" = record });
 }
 
 fn generateVaListType(ts: *TypeStore, comp: *Compilation) !QualType {
@@ -2266,11 +2555,9 @@ fn generateVaListType(ts: *TypeStore, comp: *Compilation) !QualType {
         .aarch64_va_list => {
             var record: Type.Record = .{
                 .name = try comp.internString("__va_list"),
-                .decl_node = undefined, // TODO
                 .layout = null,
                 .fields = &.{},
             };
-            const qt = try ts.put(comp.gpa, .{ .@"struct" = record });
 
             var fields: [5]Type.Record.Field = .{
                 .{ .name = try comp.internString("__stack"), .qt = .void_pointer },
@@ -2280,37 +2567,31 @@ fn generateVaListType(ts: *TypeStore, comp: *Compilation) !QualType {
                 .{ .name = try comp.internString("__vr_offs"), .qt = .int },
             };
             record.fields = &fields;
-            record.layout = record_layout.compute(&fields, qt, comp, null) catch unreachable;
-            try ts.set(comp.gpa, .{ .@"struct" = record }, @backingInt(qt._index));
+            record.layout = record_layout.compute(&fields, .null, false, comp, &.{}, null) catch unreachable;
 
-            return qt;
+            return ts.put(comp.gpa, .{ .@"struct" = record });
         },
         .arm_va_list => {
             var record: Type.Record = .{
                 .name = try comp.internString("__va_list"),
-                .decl_node = undefined, // TODO
                 .layout = null,
                 .fields = &.{},
             };
-            const qt = try ts.put(comp.gpa, .{ .@"struct" = record });
 
             var fields: [1]Type.Record.Field = .{
                 .{ .name = try comp.internString("__ap"), .qt = .void_pointer },
             };
             record.fields = &fields;
-            record.layout = record_layout.compute(&fields, qt, comp, null) catch unreachable;
-            try ts.set(comp.gpa, .{ .@"struct" = record }, @backingInt(qt._index));
+            record.layout = record_layout.compute(&fields, .null, false, comp, &.{}, null) catch unreachable;
 
-            return qt;
+            return ts.put(comp.gpa, .{ .@"struct" = record });
         },
-        .hexagon_va_list => blk: {
+        .s390x_va_list => blk: {
             var record: Type.Record = .{
                 .name = try comp.internString("__va_list_tag"),
-                .decl_node = undefined, // TODO
                 .layout = null,
                 .fields = &.{},
             };
-            const qt = try ts.put(comp.gpa, .{ .@"struct" = record });
 
             var fields: [4]Type.Record.Field = .{
                 .{ .name = try comp.internString("__gpr"), .qt = .long },
@@ -2319,19 +2600,16 @@ fn generateVaListType(ts: *TypeStore, comp: *Compilation) !QualType {
                 .{ .name = try comp.internString("__reg_save_area"), .qt = .void_pointer },
             };
             record.fields = &fields;
-            record.layout = record_layout.compute(&fields, qt, comp, null) catch unreachable;
-            try ts.set(comp.gpa, .{ .@"struct" = record }, @backingInt(qt._index));
+            record.layout = record_layout.compute(&fields, .null, false, comp, &.{}, null) catch unreachable;
 
-            break :blk qt;
+            break :blk try ts.put(comp.gpa, .{ .@"struct" = record });
         },
         .powerpc_va_list => blk: {
             var record: Type.Record = .{
                 .name = try comp.internString("__va_list_tag"),
-                .decl_node = undefined, // TODO
                 .layout = null,
                 .fields = &.{},
             };
-            const qt = try ts.put(comp.gpa, .{ .@"struct" = record });
 
             var fields: [5]Type.Record.Field = .{
                 .{ .name = try comp.internString("gpr"), .qt = .uchar },
@@ -2341,19 +2619,16 @@ fn generateVaListType(ts: *TypeStore, comp: *Compilation) !QualType {
                 .{ .name = try comp.internString("reg_save_area"), .qt = .void_pointer },
             };
             record.fields = &fields;
-            record.layout = record_layout.compute(&fields, qt, comp, null) catch unreachable;
-            try ts.set(comp.gpa, .{ .@"struct" = record }, @backingInt(qt._index));
+            record.layout = record_layout.compute(&fields, .null, false, comp, &.{}, null) catch unreachable;
 
-            break :blk qt;
+            break :blk try ts.put(comp.gpa, .{ .@"struct" = record });
         },
-        .s390x_va_list => blk: {
+        .hexagon_va_list => blk: {
             var record: Type.Record = .{
                 .name = try comp.internString("__va_list_tag"),
-                .decl_node = undefined, // TODO
                 .layout = null,
                 .fields = &.{},
             };
-            const qt = try ts.put(comp.gpa, .{ .@"struct" = record });
 
             var fields: [3]Type.Record.Field = .{
                 .{ .name = try comp.internString("__current_saved_reg_area_pointer"), .qt = .void_pointer },
@@ -2361,19 +2636,16 @@ fn generateVaListType(ts: *TypeStore, comp: *Compilation) !QualType {
                 .{ .name = try comp.internString("__overflow_area_pointer"), .qt = .void_pointer },
             };
             record.fields = &fields;
-            record.layout = record_layout.compute(&fields, qt, comp, null) catch unreachable;
-            try ts.set(comp.gpa, .{ .@"struct" = record }, @backingInt(qt._index));
+            record.layout = record_layout.compute(&fields, .null, false, comp, &.{}, null) catch unreachable;
 
-            break :blk qt;
+            break :blk try ts.put(comp.gpa, .{ .@"struct" = record });
         },
         .x86_64_va_list => blk: {
             var record: Type.Record = .{
                 .name = try comp.internString("__va_list_tag"),
-                .decl_node = undefined, // TODO
                 .layout = null,
                 .fields = &.{},
             };
-            const qt = try ts.put(comp.gpa, .{ .@"struct" = record });
 
             var fields: [4]Type.Record.Field = .{
                 .{ .name = try comp.internString("gp_offset"), .qt = .uint },
@@ -2382,19 +2654,16 @@ fn generateVaListType(ts: *TypeStore, comp: *Compilation) !QualType {
                 .{ .name = try comp.internString("reg_save_area"), .qt = .void_pointer },
             };
             record.fields = &fields;
-            record.layout = record_layout.compute(&fields, qt, comp, null) catch unreachable;
-            try ts.set(comp.gpa, .{ .@"struct" = record }, @backingInt(qt._index));
+            record.layout = record_layout.compute(&fields, .null, false, comp, &.{}, null) catch unreachable;
 
-            break :blk qt;
+            break :blk try ts.put(comp.gpa, .{ .@"struct" = record });
         },
         .xtensa_va_list => {
             var record: Type.Record = .{
                 .name = try comp.internString("__va_list_tag"),
-                .decl_node = undefined, // TODO
                 .layout = null,
                 .fields = &.{},
             };
-            const qt = try ts.put(comp.gpa, .{ .@"struct" = record });
 
             var fields: [3]Type.Record.Field = .{
                 .{ .name = try comp.internString("__va_stk"), .qt = .int_pointer },
@@ -2402,10 +2671,9 @@ fn generateVaListType(ts: *TypeStore, comp: *Compilation) !QualType {
                 .{ .name = try comp.internString("__va_ndx"), .qt = .int },
             };
             record.fields = &fields;
-            record.layout = record_layout.compute(&fields, qt, comp, null) catch unreachable;
-            try ts.set(comp.gpa, .{ .@"struct" = record }, @backingInt(qt._index));
+            record.layout = record_layout.compute(&fields, .null, false, comp, &.{}, null) catch unreachable;
 
-            return qt;
+            return try ts.put(comp.gpa, .{ .@"struct" = record });
         },
     };
 
@@ -2487,6 +2755,9 @@ pub const Builder = struct {
         int128,
         sint128,
         uint128,
+        int24,
+        sint24,
+        uint24,
         complex_unsigned,
         complex_signed,
         complex_short,
@@ -2513,6 +2784,9 @@ pub const Builder = struct {
         complex_int128,
         complex_sint128,
         complex_uint128,
+        complex_int24,
+        complex_sint24,
+        complex_uint24,
         bit_int: u64,
         sbit_int: u64,
         ubit_int: u64,
@@ -2522,6 +2796,7 @@ pub const Builder = struct {
 
         bf16,
         fp16,
+        mfp8,
         float16,
         float,
         double,
@@ -2588,6 +2863,9 @@ pub const Builder = struct {
                 .int128 => "__int128",
                 .sint128 => "signed __int128",
                 .uint128 => "unsigned __int128",
+                .int24 => "__int24",
+                .sint24 => "signed __int24",
+                .uint24 => "unsigned __int24",
                 .complex_char => "_Complex char",
                 .complex_schar => "_Complex signed char",
                 .complex_uchar => "_Complex unsigned char",
@@ -2617,9 +2895,13 @@ pub const Builder = struct {
                 .complex_int128 => "_Complex __int128",
                 .complex_sint128 => "_Complex signed __int128",
                 .complex_uint128 => "_Complex unsigned __int128",
+                .complex_int24 => "_Complex __int24",
+                .complex_sint24 => "_Complex signed __int24",
+                .complex_uint24 => "_Complex unsigned __int24",
 
                 .bf16 => "__bf16",
                 .fp16 => "__fp16",
+                .mfp8 => "__mfp8",
                 .float16 => "_Float16",
                 .float => "float",
                 .double => "double",
@@ -2668,6 +2950,8 @@ pub const Builder = struct {
             .ulong_long, .ulong_long_int => .ulong_long,
             .int128, .sint128 => .int128,
             .uint128 => .uint128,
+            .int24, .sint24 => .int24,
+            .uint24 => .uint24,
 
             .complex_char,
             .complex_schar,
@@ -2698,6 +2982,9 @@ pub const Builder = struct {
             .complex_int128,
             .complex_sint128,
             .complex_uint128,
+            .complex_int24,
+            .complex_sint24,
+            .complex_uint24,
             => blk: {
                 const base_qt: QualType = switch (b.type) {
                     .complex_char => .char,
@@ -2715,30 +3002,30 @@ pub const Builder = struct {
                     .complex_ulong_long, .complex_ulong_long_int => .ulong_long,
                     .complex_int128, .complex_sint128 => .int128,
                     .complex_uint128 => .uint128,
+                    .complex_int24, .complex_sint24 => .int24,
+                    .complex_uint24 => .uint24,
                     else => unreachable,
                 };
                 if (b.complex_tok) |tok| try b.parser.err(tok, .complex_int, .{});
                 break :blk try base_qt.toComplex(b.parser.comp);
             },
 
-            .bit_int, .sbit_int, .ubit_int, .complex_bit_int, .complex_ubit_int, .complex_sbit_int => |bits| blk: {
-                const unsigned = b.type == .ubit_int or b.type == .complex_ubit_int;
-                const complex = b.type == .complex_bit_int or b.type == .complex_ubit_int or b.type == .complex_sbit_int;
-                const complex_str = if (complex) "_Complex " else "";
+            .bit_int, .sbit_int, .ubit_int => |bits| blk: {
+                const unsigned = b.type == .ubit_int;
 
                 if (unsigned) {
                     if (bits < 1) {
-                        try b.parser.err(b.bit_int_tok.?, .unsigned_bit_int_too_small, .{complex_str});
+                        try b.parser.err(b.bit_int_tok.?, .unsigned_bit_int_too_small, .{});
                         return .invalid;
                     }
                 } else {
                     if (bits < 2) {
-                        try b.parser.err(b.bit_int_tok.?, .signed_bit_int_too_small, .{complex_str});
+                        try b.parser.err(b.bit_int_tok.?, .signed_bit_int_too_small, .{});
                         return .invalid;
                     }
                 }
                 if (bits > Compilation.bit_int_max_bits) {
-                    try b.parser.err(b.bit_int_tok.?, if (unsigned) .unsigned_bit_int_too_big else .signed_bit_int_too_big, .{complex_str});
+                    try b.parser.err(b.bit_int_tok.?, if (unsigned) .unsigned_bit_int_too_big else .signed_bit_int_too_big, .{});
                     return .invalid;
                 }
                 if (b.complex_tok) |tok| try b.parser.err(tok, .complex_int, .{});
@@ -2747,11 +3034,16 @@ pub const Builder = struct {
                     .signedness = if (unsigned) .unsigned else .signed,
                     .bits = @intCast(bits),
                 } });
-                break :blk if (complex) try qt.toComplex(b.parser.comp) else qt;
+                break :blk qt;
+            },
+            .complex_bit_int, .complex_ubit_int, .complex_sbit_int => {
+                try b.parser.err(b.complex_tok.?, .complex_bit_int, .{});
+                return .invalid;
             },
 
             .bf16 => .bf16,
             .fp16 => .fp16,
+            .mfp8 => .mfp8,
             .float16 => .float16,
             .float => .float,
             .double => .double,
@@ -2833,6 +3125,10 @@ pub const Builder = struct {
                     try b.parser.err(atomic_tok, .atomic_complex, .{qt});
                     return .invalid;
                 },
+                .bit_int => {
+                    try b.parser.err(atomic_tok, .atomic_bit_int, .{qt});
+                    return .invalid;
+                },
                 else => {
                     result_qt = try b.parser.comp.type_store.put(gpa, .{ .atomic = result_qt });
                 },
@@ -2840,24 +3136,17 @@ pub const Builder = struct {
         }
 
         // We can't use `qt.isPointer()` because `qt` might contain a `.declarator_combine`.
-        const is_pointer = qt.isAutoType() or qt.isC23Auto() or qt.base(b.parser.comp).type == .pointer;
+        const is_pointer = qt.isAuto() or switch (qt.base(b.parser.comp).type) {
+            .array, .pointer => true,
+            else => false,
+        };
 
         if (b.unaligned != null and !is_pointer) {
-            result_qt = (try b.parser.comp.type_store.put(gpa, .{ .attributed = .{
-                .base = result_qt,
-                .attributes = &.{.{ .tag = .unaligned, .args = .{ .unaligned = .{} }, .syntax = .keyword }},
-            } })).withQualifiers(result_qt);
-        }
-        switch (b.nullability) {
-            .none => {},
-            .nonnull,
-            .nullable,
-            .nullable_result,
-            .null_unspecified,
-            => |tok| if (!is_pointer) {
-                // TODO this should be checked later so that auto types can be properly validated.
-                try b.parser.err(tok, .invalid_nullability, .{qt});
-            },
+            // TODO should be a qualifier?
+            // result_qt = (try b.parser.comp.type_store.put(gpa, .{ .attributed = .{
+            //     .base = result_qt,
+            //     .attributes = undefined,
+            // } })).withQualifiers(result_qt);
         }
 
         if (b.@"const" != null) result_qt.@"const" = true;
@@ -2958,6 +3247,7 @@ pub const Builder = struct {
                 .long_long => .slong_long,
                 .long_long_int => .slong_long_int,
                 .int128 => .sint128,
+                .int24 => .sint24,
                 .bit_int => |bits| .{ .sbit_int = bits },
                 .complex => .complex_signed,
                 .complex_char => .complex_schar,
@@ -2969,6 +3259,7 @@ pub const Builder = struct {
                 .complex_long_long => .complex_slong_long,
                 .complex_long_long_int => .complex_slong_long_int,
                 .complex_int128 => .sint128,
+                .complex_int24 => .complex_sint24,
                 .complex_bit_int => |bits| .{ .complex_sbit_int = bits },
                 .signed,
                 .sshort,
@@ -2979,6 +3270,7 @@ pub const Builder = struct {
                 .slong_long,
                 .slong_long_int,
                 .sint128,
+                .sint24,
                 .sbit_int,
                 .complex_schar,
                 .complex_signed,
@@ -2990,6 +3282,7 @@ pub const Builder = struct {
                 .complex_slong_long,
                 .complex_slong_long_int,
                 .complex_sint128,
+                .complex_sint24,
                 .complex_sbit_int,
                 => return b.duplicateSpec(source_tok, "signed"),
                 else => return b.cannotCombine(source_tok),
@@ -3005,6 +3298,7 @@ pub const Builder = struct {
                 .long_long => .ulong_long,
                 .long_long_int => .ulong_long_int,
                 .int128 => .uint128,
+                .int24 => .uint24,
                 .bit_int => |bits| .{ .ubit_int = bits },
                 .complex => .complex_unsigned,
                 .complex_char => .complex_uchar,
@@ -3016,6 +3310,7 @@ pub const Builder = struct {
                 .complex_long_long => .complex_ulong_long,
                 .complex_long_long_int => .complex_ulong_long_int,
                 .complex_int128 => .complex_uint128,
+                .complex_int24 => .complex_uint24,
                 .complex_bit_int => |bits| .{ .complex_ubit_int = bits },
                 .unsigned,
                 .ushort,
@@ -3026,6 +3321,7 @@ pub const Builder = struct {
                 .ulong_long,
                 .ulong_long_int,
                 .uint128,
+                .uint24,
                 .ubit_int,
                 .complex_uchar,
                 .complex_unsigned,
@@ -3037,6 +3333,7 @@ pub const Builder = struct {
                 .complex_ulong_long,
                 .complex_ulong_long_int,
                 .complex_uint128,
+                .complex_uint24,
                 .complex_ubit_int,
                 => return b.duplicateSpec(source_tok, "unsigned"),
                 else => return b.cannotCombine(source_tok),
@@ -3100,6 +3397,9 @@ pub const Builder = struct {
                 .long => .long_long,
                 .slong => .slong_long,
                 .ulong => .ulong_long,
+                .long_int => .long_long_int,
+                .ulong_int => .ulong_long_int,
+                .slong_int => .slong_long_int,
                 .complex => .complex_long,
                 .complex_signed => .complex_slong,
                 .complex_unsigned => .complex_ulong,
@@ -3142,6 +3442,15 @@ pub const Builder = struct {
                 .complex_unsigned => .complex_uint128,
                 else => return b.cannotCombine(source_tok),
             },
+            .int24 => switch (b.type) {
+                .none => .int24,
+                .unsigned => .uint24,
+                .signed => .sint24,
+                .complex => .complex_int24,
+                .complex_signed => .complex_sint24,
+                .complex_unsigned => .complex_uint24,
+                else => return b.cannotCombine(source_tok),
+            },
             .bit_int => switch (b.type) {
                 .none => .{ .bit_int = new.bit_int },
                 .unsigned => .{ .ubit_int = new.bit_int },
@@ -3161,6 +3470,10 @@ pub const Builder = struct {
             },
             .fp16 => switch (b.type) {
                 .none => .fp16,
+                else => return b.cannotCombine(source_tok),
+            },
+            .mfp8 => switch (b.type) {
+                .none => .mfp8,
                 else => return b.cannotCombine(source_tok),
             },
             .float16 => switch (b.type) {
@@ -3267,6 +3580,9 @@ pub const Builder = struct {
                 .int128 => .complex_int128,
                 .sint128 => .complex_sint128,
                 .uint128 => .complex_uint128,
+                .int24 => .complex_int24,
+                .sint24 => .complex_sint24,
+                .uint24 => .complex_uint24,
                 .bit_int => |bits| .{ .complex_bit_int = bits },
                 .sbit_int => |bits| .{ .complex_sbit_int = bits },
                 .ubit_int => |bits| .{ .complex_ubit_int = bits },
@@ -3304,6 +3620,9 @@ pub const Builder = struct {
                 .complex_int128,
                 .complex_sint128,
                 .complex_uint128,
+                .complex_int24,
+                .complex_sint24,
+                .complex_uint24,
                 .complex_bit_int,
                 .complex_sbit_int,
                 .complex_ubit_int,
@@ -3337,6 +3656,8 @@ pub const Builder = struct {
                 .ulong_long => .ulong_long,
                 .int128 => .int128,
                 .uint128 => .uint128,
+                .int24 => .int24,
+                .uint24 => .uint24,
             },
             .bit_int => |bit_int| if (bit_int.signedness == .unsigned) {
                 return .{ .ubit_int = bit_int.bits };
@@ -3361,6 +3682,9 @@ pub const Builder = struct {
                 .dfloat128 => .dfloat128,
                 .dfloat64x => .dfloat64x,
             },
+            .storage_float => |storage_float| switch (storage_float) {
+                .mfp8 => .mfp8,
+            },
             .complex => |complex| switch (complex.base(comp).type) {
                 .int => |int| switch (int) {
                     .char => .complex_char,
@@ -3376,6 +3700,8 @@ pub const Builder = struct {
                     .ulong_long => .complex_ulong_long,
                     .int128 => .complex_int128,
                     .uint128 => .complex_uint128,
+                    .int24 => .complex_int24,
+                    .uint24 => .complex_uint24,
                 },
                 .bit_int => |bit_int| if (bit_int.signedness == .unsigned) {
                     return .{ .complex_ubit_int = bit_int.bits };

@@ -63,6 +63,7 @@ pub const ComponentIterator = struct {
             'h' => return .{ .spec = .h },
             'x' => return .{ .spec = .x },
             'y' => return .{ .spec = .y },
+            'm' => return .{ .spec = .m },
             'f' => return .{ .spec = .f },
             'd' => return .{ .spec = .d },
             'z' => return .{ .spec = .z },
@@ -70,12 +71,13 @@ pub const ComponentIterator = struct {
             'F' => return .{ .spec = .F },
             'a' => return .{ .spec = .a },
             'A' => return .{ .spec = .A },
-            'V', 'E' => {
+            'V', 'q', 'E' => {
                 const start = self.idx;
                 while (std.ascii.isDigit(self.str[self.idx])) : (self.idx += 1) {}
                 const count = std.fmt.parseUnsigned(u32, self.str[start..self.idx], 10) catch unreachable;
                 return switch (c) {
                     'V' => .{ .spec = .{ .V = count } },
+                    'q' => .{ .spec = .{ .q = count } },
                     'E' => .{ .spec = .{ .E = count } },
                     else => unreachable,
                 };
@@ -120,6 +122,7 @@ pub const ComponentIterator = struct {
                 switch (self.str[self.idx]) {
                     'a' => return .{ .spec = .{ .Q = .aarch64_svcount_t } },
                     'b' => return .{ .spec = .{ .Q = .amdgpu_buffer_rsrc_t } },
+                    't' => return .{ .spec = .{ .Q = .amdgpu_texture_t } },
                     else => unreachable,
                 }
             },
@@ -226,6 +229,8 @@ const Spec = union(enum) {
     x,
     /// half (__bf16)
     y,
+    /// __mfp8
+    m,
     /// float
     f,
     /// double
@@ -242,10 +247,13 @@ const Spec = union(enum) {
     A,
     /// Vector, followed by the number of elements and the base type.
     V: u32,
+    /// Scalable vector, followed by the number of elements and the base type.
+    q: u32,
     /// target builtin type, followed by a character to distinguish the builtin type
     Q: enum {
         aarch64_svcount_t,
         amdgpu_buffer_rsrc_t,
+        amdgpu_texture_t,
     },
     /// ext_vector, followed by the number of elements and the base type.
     E: u32,

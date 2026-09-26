@@ -6,7 +6,7 @@ pub const Format = enum { make, nmake };
 const DepFile = @This();
 
 target: []const u8,
-deps: std.array_hash_map.String(void) = .empty,
+deps: std.StringArrayHashMapUnmanaged(void) = .empty,
 format: Format,
 
 pub fn deinit(d: *DepFile, gpa: Allocator) void {
@@ -71,7 +71,7 @@ fn writeTarget(path: []const u8, w: *std.Io.Writer) !void {
 fn writePath(d: *const DepFile, path: []const u8, w: *std.Io.Writer) !void {
     switch (d.format) {
         .nmake => {
-            if (std.mem.indexOfAny(u8, path, " #${}^!")) |_|
+            if (std.mem.findAny(u8, path, " #${}^!")) |_|
                 try w.print("\"{s}\"", .{path})
             else
                 try w.writeAll(path);

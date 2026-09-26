@@ -43,11 +43,6 @@ pub const to_match_bracket: Diagnostic = .{
     .kind = .note,
 };
 
-pub const float_literal_in_pp_expr: Diagnostic = .{
-    .fmt = "floating point literal in preprocessor expression",
-    .kind = .@"error",
-};
-
 pub const expected_invalid: Diagnostic = .{
     .fmt = "expected '{tok_id}', found invalid bytes",
     .kind = .@"error",
@@ -82,6 +77,7 @@ pub const missing_type_specifier: Diagnostic = .{
     .fmt = "type specifier missing, defaults to 'int'; ISO C99 and later do not support implicit int",
     .opt = .@"implicit-int",
     .kind = .@"error",
+    .suppress_unless_version = .c99,
 };
 
 pub const missing_type_specifier_c23: Diagnostic = .{
@@ -94,6 +90,7 @@ pub const param_not_declared: Diagnostic = .{
     .opt = .@"implicit-int",
     .kind = .@"error",
     .extension = true,
+    .suppress_unless_version = .c99,
 };
 
 pub const multiple_storage_class: Diagnostic = .{
@@ -101,14 +98,14 @@ pub const multiple_storage_class: Diagnostic = .{
     .kind = .@"error",
 };
 
-pub const static_assert_failure: Diagnostic = .{
-    .fmt = "static assertion failed",
+pub const static_assert_failure_message: Diagnostic = .{
+    .fmt = "static assertion failed{s}",
     .kind = .@"error",
 };
 
-pub const static_assert_failure_message: Diagnostic = .{
-    .fmt = "static assertion failed {s}",
-    .kind = .@"error",
+pub const static_assert_expression_evaluates_to: Diagnostic = .{
+    .fmt = "expression evaluates to '{s}'",
+    .kind = .note,
 };
 
 pub const expected_type: Diagnostic = .{
@@ -206,6 +203,12 @@ pub const threadlocal_non_var: Diagnostic = .{
     .kind = .@"error",
 };
 
+pub const thread_before_storage: Diagnostic = .{
+    .fmt = "'__thread' before '{s}'",
+    .kind = .off,
+    .extension = true,
+};
+
 pub const func_spec_non_func: Diagnostic = .{
     .fmt = "'{s}' can only appear on functions",
     .kind = .@"error",
@@ -265,6 +268,7 @@ pub const implicit_func_decl: Diagnostic = .{
     .fmt = "call to undeclared function '{s}'; ISO C99 and later do not support implicit function declarations",
     .opt = .@"implicit-function-declaration",
     .kind = .@"error",
+    .suppress_unless_version = .c99,
 };
 
 pub const unknown_builtin: Diagnostic = .{
@@ -428,6 +432,11 @@ pub const array_incomplete_elem: Diagnostic = .{
     .kind = .@"error",
 };
 
+pub const array_elem_size_not_multiple: Diagnostic = .{
+    .fmt = "size of array element of type {qt} ({d} bytes) isn't a multiple of its alignment ({d} bytes)",
+    .kind = .@"error",
+};
+
 pub const array_func_elem: Diagnostic = .{
     .fmt = "arrays cannot have functions as their element type",
     .kind = .@"error",
@@ -477,6 +486,11 @@ pub const addr_of_bitfield: Diagnostic = .{
 
 pub const not_assignable: Diagnostic = .{
     .fmt = "expression is not assignable",
+    .kind = .@"error",
+};
+
+pub const cast_not_assignable: Diagnostic = .{
+    .fmt = "assignment to cast is not allowed",
     .kind = .@"error",
 };
 
@@ -554,8 +568,8 @@ pub const expected_parens_around_typename: Diagnostic = .{
     .kind = .@"error",
 };
 
-pub const alignof_expr: Diagnostic = .{
-    .fmt = "'_Alignof' applied to an expression is a GNU extension",
+pub const gnu_alignof_expr: Diagnostic = .{
+    .fmt = "'{s}' applied to an expression is a GNU extension",
     .opt = .@"gnu-alignof-expression",
     .kind = .warning,
     .extension = true,
@@ -855,6 +869,11 @@ pub const atomic_auto: Diagnostic = .{
     .kind = .@"error",
 };
 
+pub const atomic_bit_int: Diagnostic = .{
+    .fmt = "_Atomic cannot be applied to integer type {qt}",
+    .kind = .@"error",
+};
+
 // pub const atomic_access: Diagnostic = .{
 //     .fmt = "accessing a member of an atomic structure or union is undefined behavior",
 //     .opt = .@"atomic-access",
@@ -883,46 +902,6 @@ pub const tentative_array: Diagnostic = .{
 
 pub const deref_incomplete_ty_ptr: Diagnostic = .{
     .fmt = "dereferencing pointer to incomplete type {qt}",
-    .kind = .@"error",
-};
-
-pub const alignas_on_func: Diagnostic = .{
-    .fmt = "'_Alignas' attribute only applies to variables and fields",
-    .kind = .@"error",
-};
-
-pub const alignas_on_param: Diagnostic = .{
-    .fmt = "'_Alignas' attribute cannot be applied to a function parameter",
-    .kind = .@"error",
-};
-
-pub const minimum_alignment: Diagnostic = .{
-    .fmt = "requested alignment is less than minimum alignment of {d}",
-    .kind = .@"error",
-};
-
-pub const maximum_alignment: Diagnostic = .{
-    .fmt = "requested alignment of {value} is too large",
-    .kind = .@"error",
-};
-
-pub const negative_alignment: Diagnostic = .{
-    .fmt = "requested negative alignment of {value} is invalid",
-    .kind = .@"error",
-};
-
-pub const align_ignored: Diagnostic = .{
-    .fmt = "'_Alignas' attribute is ignored here",
-    .kind = .warning,
-};
-
-// pub const zero_align_ignored: Diagnostic = .{
-//     .fmt = "requested alignment of zero is ignored",
-//     .kind = .warning,
-// };
-
-pub const non_pow2_align: Diagnostic = .{
-    .fmt = "requested alignment is not a power of 2",
     .kind = .@"error",
 };
 
@@ -1069,11 +1048,6 @@ pub const division_by_zero: Diagnostic = .{
     .opt = .@"division-by-zero",
 };
 
-pub const division_by_zero_macro: Diagnostic = .{
-    .fmt = "{s} by zero in preprocessor expression",
-    .kind = .@"error",
-};
-
 pub const builtin_choose_cond: Diagnostic = .{
     .fmt = "'__builtin_choose_expr' requires a constant expression",
     .kind = .@"error",
@@ -1106,11 +1080,6 @@ pub const shufflevector_negative_index: Diagnostic = .{
 
 pub const shufflevector_index_too_big: Diagnostic = .{
     .fmt = "index for __builtin_shufflevector must be less than the total number of vector elements",
-    .kind = .@"error",
-};
-
-pub const alignas_unavailable: Diagnostic = .{
-    .fmt = "'_Alignas' attribute requires integer constant expression",
     .kind = .@"error",
 };
 
@@ -1205,19 +1174,25 @@ pub const unknown_attribute: Diagnostic = .{
     .opt = .@"unknown-attributes",
 };
 
-pub const ignored_attribute: Diagnostic = .{
-    .fmt = "attribute '{s}' ignored on {s}",
+pub const unknown_namespaced_attribute: Diagnostic = .{
+    .fmt = "unknown attribute '{s}::{s}' ignored",
+    .kind = .warning,
+    .opt = .@"unknown-attributes",
+};
+
+pub const ignored_on_types: Diagnostic = .{
+    .fmt = "{at} attribute ignored when parsing type",
     .kind = .warning,
     .opt = .@"ignored-attributes",
 };
 
-pub const invalid_fallthrough: Diagnostic = .{
-    .fmt = "fallthrough annotation does not directly precede switch label",
+pub const invalid_on_types: Diagnostic = .{
+    .fmt = "{at} attribute cannot be applied to types",
     .kind = .@"error",
 };
 
-pub const cannot_apply_attribute_to_statement: Diagnostic = .{
-    .fmt = "'{s}' attribute cannot be applied to a statement",
+pub const declspec_empty_args: Diagnostic = .{
+    .fmt = "parentheses must be omitted if '{s}' attribute's argument list is empty",
     .kind = .@"error",
 };
 
@@ -1303,11 +1278,6 @@ pub const implicitly_unsigned_literal: Diagnostic = .{
     .opt = .@"implicitly-unsigned-literal",
     .kind = .warning,
     .extension = true,
-};
-
-pub const invalid_preproc_operator: Diagnostic = .{
-    .fmt = "token is not a valid binary operator in a preprocessor subexpression",
-    .kind = .@"error",
 };
 
 pub const c99_compat: Diagnostic = .{
@@ -1553,37 +1523,6 @@ pub const va_start_not_last_param: Diagnostic = .{
     .kind = .warning,
 };
 
-pub const attribute_not_enough_args: Diagnostic = .{
-    .fmt = "'{s}' attribute takes at least {d} argument(s)",
-    .kind = .@"error",
-};
-
-pub const attribute_too_many_args: Diagnostic = .{
-    .fmt = "'{s}' attribute takes at most {d} argument(s)",
-    .kind = .@"error",
-};
-
-pub const attribute_arg_invalid: Diagnostic = .{
-    .fmt = "attribute argument is invalid, expected {s} but got {s}",
-    .kind = .@"error",
-};
-
-pub const unknown_attr_enum: Diagnostic = .{
-    .fmt = "unknown `{s}` argument. Possible values are: {s}",
-    .kind = .warning,
-    .opt = .@"ignored-attributes",
-};
-
-pub const attribute_requires_identifier: Diagnostic = .{
-    .fmt = "'{s}' attribute requires an identifier",
-    .kind = .@"error",
-};
-
-pub const attribute_int_out_of_range: Diagnostic = .{
-    .fmt = "attribute value '{value}' out of range",
-    .kind = .@"error",
-};
-
 pub const declspec_not_enabled: Diagnostic = .{
     .fmt = "'__declspec' attributes are not enabled; use '-fdeclspec' or '-fms-extensions' to enable support for __declspec attributes",
     .kind = .@"error",
@@ -1601,9 +1540,13 @@ pub const deprecated_declarations: Diagnostic = .{
     .kind = .warning,
 };
 
+pub const deprecated_alternative: Diagnostic = .{
+    .fmt = "use '{s}' instead",
+    .kind = .note,
+};
+
 pub const deprecated_note: Diagnostic = .{
     .fmt = "'{s}' has been explicitly marked deprecated here",
-    .opt = .@"deprecated-declarations",
     .kind = .note,
 };
 
@@ -1629,7 +1572,7 @@ pub const error_attribute: Diagnostic = .{
 };
 
 pub const ignored_record_attr: Diagnostic = .{
-    .fmt = "attribute '{s}' is ignored, place it after \"{s}\" to apply attribute to type declaration",
+    .fmt = "attribute {at} is ignored, place it after \"{s}\" to apply attribute to type declaration",
     .kind = .warning,
     .opt = .@"ignored-attributes",
 };
@@ -1826,85 +1769,9 @@ pub const enum_invalid_underlying_type: Diagnostic = .{
     .kind = .@"error",
 };
 
-pub const transparent_union_wrong_type: Diagnostic = .{
-    .fmt = "'transparent_union' attribute only applies to unions",
-    .opt = .@"ignored-attributes",
-    .kind = .warning,
-};
-
-pub const transparent_union_one_field: Diagnostic = .{
-    .fmt = "transparent union definition must contain at least one field; transparent_union attribute ignored",
-    .opt = .@"ignored-attributes",
-    .kind = .warning,
-};
-
-pub const transparent_union_size: Diagnostic = .{
-    .fmt = "size of field '{s}' ({d} bits) does not match the size of the first field in transparent union; transparent_union attribute ignored",
-    .kind = .warning,
-    .opt = .@"ignored-attributes",
-};
-
-pub const transparent_union_size_note: Diagnostic = .{
-    .fmt = "size of first field is {d}",
-    .kind = .note,
-};
-
-pub const designated_init_invalid: Diagnostic = .{
-    .fmt = "'designated_init' attribute is only valid on 'struct' type'",
-    .kind = .@"error",
-};
-
 pub const designated_init_needed: Diagnostic = .{
     .fmt = "positional initialization of field in 'struct' declared with 'designated_init' attribute",
     .opt = .@"designated-init",
-    .kind = .warning,
-};
-
-pub const ignore_common: Diagnostic = .{
-    .fmt = "ignoring attribute 'common' because it conflicts with attribute 'nocommon'",
-    .opt = .@"ignored-attributes",
-    .kind = .warning,
-};
-
-pub const ignore_nocommon: Diagnostic = .{
-    .fmt = "ignoring attribute 'nocommon' because it conflicts with attribute 'common'",
-    .opt = .@"ignored-attributes",
-    .kind = .warning,
-};
-
-pub const non_string_ignored: Diagnostic = .{
-    .fmt = "'nonstring' attribute ignored on objects of type {qt}",
-    .opt = .@"ignored-attributes",
-    .kind = .warning,
-};
-
-pub const local_variable_attribute: Diagnostic = .{
-    .fmt = "'{s}' attribute only applies to local variables",
-    .opt = .@"ignored-attributes",
-    .kind = .warning,
-};
-
-pub const ignore_cold: Diagnostic = .{
-    .fmt = "ignoring attribute 'cold' because it conflicts with attribute 'hot'",
-    .opt = .@"ignored-attributes",
-    .kind = .warning,
-};
-
-pub const ignore_hot: Diagnostic = .{
-    .fmt = "ignoring attribute 'hot' because it conflicts with attribute 'cold'",
-    .opt = .@"ignored-attributes",
-    .kind = .warning,
-};
-
-pub const ignore_noinline: Diagnostic = .{
-    .fmt = "ignoring attribute 'noinline' because it conflicts with attribute 'always_inline'",
-    .opt = .@"ignored-attributes",
-    .kind = .warning,
-};
-
-pub const ignore_always_inline: Diagnostic = .{
-    .fmt = "ignoring attribute 'always_inline' because it conflicts with attribute 'noinline'",
-    .opt = .@"ignored-attributes",
     .kind = .warning,
 };
 
@@ -1914,14 +1781,8 @@ pub const invalid_noreturn: Diagnostic = .{
     .opt = .@"invalid-noreturn",
 };
 
-pub const nodiscard_unused: Diagnostic = .{
-    .fmt = "ignoring return value of '{s}', declared with 'nodiscard' attribute",
-    .kind = .warning,
-    .opt = .@"unused-result",
-};
-
 pub const warn_unused_result: Diagnostic = .{
-    .fmt = "ignoring return value of '{s}', declared with 'warn_unused_result' attribute",
+    .fmt = "ignoring return value of '{s}', declared with {at} attribute{s}{s}",
     .kind = .warning,
     .opt = .@"unused-result",
 };
@@ -1938,24 +1799,34 @@ pub const unused_value: Diagnostic = .{
     .opt = .@"unused-value",
 };
 
-pub const invalid_vec_elem_ty: Diagnostic = .{
-    .fmt = "invalid vector element type {qt}",
-    .kind = .@"error",
+pub const unused_variable: Diagnostic = .{
+    .fmt = "unused variable '{s}'",
+    .kind = .warning,
+    .opt = .@"unused-variable",
 };
 
-pub const bit_int_vec_too_small: Diagnostic = .{
-    .fmt = "'_BitInt' vector element width must be at least as wide as 'CHAR_BIT'",
-    .kind = .@"error",
+pub const unused_param: Diagnostic = .{
+    .fmt = "unused parameter '{s}'",
+    .kind = .warning,
+    .opt = .@"unused-parameter",
 };
 
-pub const bit_int_vec_not_pow2: Diagnostic = .{
-    .fmt = "'_BitInt' vector element width must be a power of 2",
-    .kind = .@"error",
+pub const unused_typedef: Diagnostic = .{
+    .fmt = "unused typedef '{s}'",
+    .kind = .warning,
+    .opt = .@"unused-local-typedef",
 };
 
-pub const vec_size_not_multiple: Diagnostic = .{
-    .fmt = "vector size not an integral multiple of component size",
-    .kind = .@"error",
+pub const unused_label: Diagnostic = .{
+    .fmt = "unused label '{s}'",
+    .kind = .warning,
+    .opt = .@"unused-label",
+};
+
+pub const unused_comparison: Diagnostic = .{
+    .fmt = "{s} comparison result unused",
+    .kind = .warning,
+    .opt = .@"unused-comparison",
 };
 
 pub const invalid_imag: Diagnostic = .{
@@ -1988,36 +1859,6 @@ pub const main_return_type: Diagnostic = .{
     .extension = true,
 };
 
-pub const invalid_int_suffix: Diagnostic = .{
-    .fmt = "invalid suffix '{s}' on integer constant",
-    .kind = .@"error",
-};
-
-pub const invalid_float_suffix: Diagnostic = .{
-    .fmt = "invalid suffix '{s}' on floating constant",
-    .kind = .@"error",
-};
-
-pub const invalid_octal_digit: Diagnostic = .{
-    .fmt = "invalid digit '{c}' in octal constant",
-    .kind = .@"error",
-};
-
-pub const invalid_binary_digit: Diagnostic = .{
-    .fmt = "invalid digit '{c}' in binary constant",
-    .kind = .@"error",
-};
-
-pub const exponent_has_no_digits: Diagnostic = .{
-    .fmt = "exponent has no digits",
-    .kind = .@"error",
-};
-
-pub const hex_floating_constant_requires_exponent: Diagnostic = .{
-    .fmt = "hexadecimal floating constant requires an exponent",
-    .kind = .@"error",
-};
-
 pub const sizeof_returns_zero: Diagnostic = .{
     .fmt = "sizeof returns 0",
     .kind = .warning,
@@ -2047,12 +1888,12 @@ pub const bit_int: Diagnostic = .{
 };
 
 pub const unsigned_bit_int_too_small: Diagnostic = .{
-    .fmt = "{s}unsigned _BitInt must have a bit size of at least 1",
+    .fmt = "unsigned _BitInt must have a bit size of at least 1",
     .kind = .@"error",
 };
 
 pub const signed_bit_int_too_small: Diagnostic = .{
-    .fmt = "{s}signed _BitInt must have a bit size of at least 2",
+    .fmt = "signed _BitInt must have a bit size of at least 2",
     .kind = .@"error",
 };
 
@@ -2062,25 +1903,18 @@ pub const unsigned_bit_int_too_big: Diagnostic = .{
 };
 
 pub const signed_bit_int_too_big: Diagnostic = .{
-    .fmt = "{s}signed _BitInt of bit sizes greater than " ++ std.fmt.comptimePrint("{d}", .{Compilation.bit_int_max_bits}) ++ " not supported",
+    .fmt = "signed _BitInt of bit sizes greater than " ++ std.fmt.comptimePrint("{d}", .{Compilation.bit_int_max_bits}) ++ " not supported",
+    .kind = .@"error",
+};
+
+pub const complex_bit_int: Diagnostic = .{
+    .fmt = "'_Complex _BitInt' is invalid",
     .kind = .@"error",
 };
 
 pub const ptr_arithmetic_incomplete: Diagnostic = .{
     .fmt = "arithmetic on a pointer to an incomplete type {qt}",
     .kind = .@"error",
-};
-
-pub const callconv_not_supported: Diagnostic = .{
-    .fmt = "'{s}' calling convention is not supported for this target",
-    .kind = .warning,
-    .opt = .@"ignored-attributes",
-};
-
-pub const callconv_non_func: Diagnostic = .{
-    .fmt = "'{s}' only applies to function types; type here is {qt}",
-    .kind = .warning,
-    .opt = .@"ignored-attributes",
 };
 
 pub const pointer_arith_void: Diagnostic = .{
@@ -2121,14 +1955,6 @@ pub const invalid_object_cast: Diagnostic = .{
 pub const suggest_pointer_for_invalid_fp16: Diagnostic = .{
     .fmt = "{s} cannot have __fp16 type; did you forget * ?",
     .kind = .@"error",
-};
-
-pub const bitint_suffix: Diagnostic = .{
-    .fmt = "'_BitInt' suffix for literals is a C23 extension",
-    .opt = .@"c23-extensions",
-    .kind = .warning,
-    .suppress_version = .c23,
-    .extension = true,
 };
 
 pub const auto_type_extension: Diagnostic = .{
@@ -2273,11 +2099,6 @@ pub const argument_types_differ: Diagnostic = .{
     .kind = .@"error",
 };
 
-pub const attribute_requires_string: Diagnostic = .{
-    .fmt = "attribute '{s}' requires an ordinary string",
-    .kind = .@"error",
-};
-
 pub const empty_char_literal_error: Diagnostic = .{
     .fmt = "empty character constant",
     .kind = .@"error",
@@ -2313,11 +2134,18 @@ pub const label_compound_end: Diagnostic = .{
     .extension = true,
 };
 
-pub const u8_char_lit: Diagnostic = .{
-    .fmt = "UTF-8 character literal is a C23 extension",
+pub const label_decl: Diagnostic = .{
+    .fmt = "label followed by a declaration is a C23 extension",
     .opt = .@"c23-extensions",
     .kind = .warning,
     .suppress_version = .c23,
+    .extension = true,
+};
+
+pub const gnu_label_attr: Diagnostic = .{
+    .fmt = "GNU-style attribute between label and declaration applies to the label",
+    .opt = .@"label-attribute",
+    .kind = .warning,
     .extension = true,
 };
 
@@ -2390,11 +2218,6 @@ pub const overflow_result_requires_ptr: Diagnostic = .{
     .kind = .@"error",
 };
 
-pub const attribute_todo: Diagnostic = .{
-    .fmt = "TODO: implement '{s}' attribute for {s}",
-    .kind = .warning,
-};
-
 pub const auto_type_self_initialized: Diagnostic = .{
     .fmt = "variable '{s}' declared with deduced type '__auto_type' cannot appear in its own initializer",
     .kind = .@"error",
@@ -2420,22 +2243,6 @@ pub const packed_member_address: Diagnostic = .{
     .fmt = "taking address of packed member '{s}' of class or structure '{s}' may result in an unaligned pointer value",
     .kind = .warning,
     .opt = .@"address-of-packed-member",
-};
-
-pub const attribute_param_out_of_bounds: Diagnostic = .{
-    .fmt = "'{s}' attribute parameter {d} is out of bounds",
-    .kind = .@"error",
-};
-
-pub const alloc_align_requires_ptr_return: Diagnostic = .{
-    .fmt = "'alloc_align' attribute only applies to return values that are pointers",
-    .opt = .@"ignored-attributes",
-    .kind = .warning,
-};
-
-pub const alloc_align_required_int_param: Diagnostic = .{
-    .fmt = "'alloc_align' attribute argument may only refer to a function parameter of integer type",
-    .kind = .@"error",
 };
 
 pub const gnu_missing_eq_designator: Diagnostic = .{
@@ -2471,12 +2278,7 @@ pub const duplicate_nullability: Diagnostic = .{
 };
 
 pub const conflicting_nullability: Diagnostic = .{
-    .fmt = "nullaibility specifier '{tok_id}' conflicts with existing specifier '{tok_id}'",
-    .kind = .@"error",
-};
-
-pub const invalid_nullability: Diagnostic = .{
-    .fmt = "nullability specifier cannot be applied to non-pointer type {qt}",
+    .fmt = "nullability specifier '{tok_id}' conflicts with existing specifier '{tok_id}'",
     .kind = .@"error",
 };
 
@@ -2487,6 +2289,11 @@ pub const array_not_assignable: Diagnostic = .{
 
 pub const non_object_not_assignable: Diagnostic = .{
     .fmt = "non-object type {qt} is not assignable",
+    .kind = .@"error",
+};
+
+pub const incomplete_type_not_assignable: Diagnostic = .{
+    .fmt = "incomplete type {qt} is not assignable",
     .kind = .@"error",
 };
 
@@ -2515,11 +2322,6 @@ pub const invalid_attribute_location: Diagnostic = .{
     .kind = .@"error",
 };
 
-pub const attribute_requires_pointer: Diagnostic = .{
-    .fmt = "'{s}' attribute only applies to pointer arguments",
-    .kind = .@"error",
-};
-
 pub const single_requires_zero_index: Diagnostic = .{
     .fmt = "array subscript on single pointer must use a constant index of 0 to be in bounds",
     .kind = .@"error",
@@ -2530,13 +2332,47 @@ pub const pointer_arith_single: Diagnostic = .{
     .kind = .@"error",
 };
 
-pub const redundant_bounds_annotation: Diagnostic = .{
-    .fmt = "pointer annotated with {s} multiple times. Annotate only once to remove this warning",
-    .kind = .warning,
-    .opt = .@"bounds-attributes-redundant",
+pub const blocks_not_enabled: Diagnostic = .{
+    .fmt = "blocks are not enabled",
+    .kind = .@"error",
 };
 
-pub const multiple_bounds_annotations: Diagnostic = .{
-    .fmt = "pointer cannot have more than one bound attribute",
+pub const blocks_are_clang_extension: Diagnostic = .{
+    .fmt = "blocks are a Clang extension",
+    .opt = .@"blocks-extension",
+    .kind = .off,
+    .extension = true,
+};
+
+pub const block_to_non_function: Diagnostic = .{
+    .fmt = "block pointer to non-function type is invalid",
+    .kind = .@"error",
+};
+
+pub const c23_attribute: Diagnostic = .{
+    .fmt = "[[]] attributes are a C23 extension",
+    .opt = .@"c23-extensions",
+    .kind = .off,
+    .suppress_version = .c23,
+    .extension = true,
+};
+
+pub const builtin_arm_ldrex_strex_invalid_ptr_type: Diagnostic = .{
+    .fmt = "address argument to {s} must be a pointer to integer, floating-point, or pointer ({qt} invalid)",
+    .kind = .@"error",
+};
+
+pub const builtin_arm_ldrex_strex_unsupported: Diagnostic = .{
+    .fmt = "{s} is not supported on this architecture",
+    .kind = .@"error",
+};
+
+pub const builtin_arm_ldrex_strex_unsupported_size: Diagnostic = .{
+    .fmt = "address argument to {s} must be a pointer to {s} byte type ({qt} invalid)",
+    .kind = .@"error",
+};
+
+pub const typename_invalid_specifier: Diagnostic = .{
+    .fmt = "type name does not allow {s} specifier to be specified",
     .kind = .@"error",
 };
