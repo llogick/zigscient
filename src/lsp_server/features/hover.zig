@@ -368,7 +368,7 @@ fn hoverDefinitionGlobal(
         const nav_info = try lookupNav(b.ds, arena, b.zdoc, source_index, b.markup_kind) orelse "";
         const extra_info = if (nav_info.len != 0) try std.fmt.allocPrint(arena, "{s}" ++ "\n" ++ "{s}", .{ basic_info, nav_info }) else basic_info;
 
-        const air = try getAirSlice(b.ds, arena, decl) orelse "";
+        const air = try getAirSlice(b, arena, decl) orelse "";
         const full_info = if (air.len != 0) try std.fmt.allocPrint(arena, "{s}" ++ "\n" ++ "```\n\n{s}\n```", .{ extra_info, air }) else extra_info;
         break :blk full_info;
     };
@@ -760,17 +760,18 @@ fn lookupNav(
 }
 
 fn getAirSlice(
-    ds: *DocumentStore,
+    b: *Builder,
     arena: std.mem.Allocator,
     decl: Analyser.DeclWithHandle,
 ) Analyser.Error!?[]const u8 {
-    decl.handle.computed_data.lock.lockSharedUncancelable(ds.io);
-    defer decl.handle.computed_data.lock.unlockShared(ds.io);
+    decl.handle.computed_data.lock.lockSharedUncancelable(b.ds.io);
+    defer decl.handle.computed_data.lock.unlockShared(b.ds.io);
 
     const build = decl.handle.computed_data.build orelse return null;
 
-    if (!build.mutex.tryLock()) return null;
-    defer build.mutex.unlock(ds.io);
+    const build_already_locked = b.asta.aira != null;
+    if (!build_already_locked and !build.mutex.tryLock()) return null;
+    defer if (!build_already_locked) build.mutex.unlock(b.ds.io);
 
     if (!build.has_completed_once) return null;
 
