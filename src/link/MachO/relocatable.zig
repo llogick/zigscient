@@ -1,25 +1,25 @@
-pub fn flushObject(macho_file: *MachO, comp: *Compilation, module_obj_path: ?Path) link.Error!void {
-    const gpa = comp.gpa;
+pub fn flushObject(macho_file: *MachO, comp: *Compilation) link.Error!void {
     const io = comp.io;
     const diags = &comp.link_diags;
 
-    // TODO: "positional arguments" is a CLI concept, not a linker concept. Delete this unnecessary array list.
-    var positionals = std.array_list.Managed(link.Input).init(gpa);
-    defer positionals.deinit();
-    try positionals.ensureUnusedCapacity(comp.link_inputs.len);
-    positionals.appendSliceAssumeCapacity(comp.link_inputs);
-
-    for (comp.c_objects.items) |c_object| {
-        try positionals.append(try link.openObjectInput(io, diags, c_object.status.success.object_path));
-    }
-
-    if (module_obj_path) |path| try positionals.append(try link.openObjectInput(io, diags, path));
-
-    if (macho_file.getZigObject() == null and positionals.items.len == 1) {
+    one_input: {
+        if (macho_file.getZigObject() != null) {
+            break :one_input;
+        }
+        var only_input: ?link.Input = null;
+        for (macho_file.all_inputs.items) |input| switch (input) {
+            .res => unreachable,
+            .dso, .tbd => {},
+            .object, .archive => if (only_input == null) {
+                only_input = input;
+            } else {
+                break :one_input;
+            },
+        };
         // Instead of invoking a full-blown `-r` mode on the input which sadly will strip all
         // debug info segments/sections (this is apparently by design by Apple), we copy
         // the *only* input file over.
-        const path = positionals.items[0].path();
+        const path = (only_input orelse break :one_input).path();
         const in_file = path.root_dir.handle.openFile(io, path.sub_path, .{}) catch |err|
             return diags.fail("failed to open {f}: {s}", .{ path, @errorName(err) });
         const stat = in_file.stat(io) catch |err|
@@ -29,10 +29,12 @@ pub fn flushObject(macho_file: *MachO, comp: *Compilation, module_obj_path: ?Pat
         return;
     }
 
-    for (positionals.items) |link_input| {
-        macho_file.classifyInputFile(link_input) catch |err|
-            diags.addParseError(link_input.path(), "failed to read input file: {t}", .{err});
-    }
+    for (macho_file.all_inputs.items) |input| switch (input) {
+        .res => unreachable,
+        .dso, .tbd => {},
+        .object, .archive => macho_file.classifyInputFile(input) catch |err|
+            diags.addParseError(input.path(), "failed to read input file: {t}", .{err}),
+    };
 
     if (diags.hasErrors()) return error.AlreadyReported;
 
@@ -75,35 +77,16 @@ pub fn flushObject(macho_file: *MachO, comp: *Compilation, module_obj_path: ?Pat
     try writeHeader(macho_file, ncmds, sizeofcmds);
 }
 
-pub fn flushStaticLib(macho_file: *MachO, comp: *Compilation, module_obj_path: ?Path) link.Error!void {
+pub fn flushStaticLib(macho_file: *MachO, comp: *Compilation) link.Error!void {
     const gpa = comp.gpa;
-    const io = comp.io;
     const diags = &macho_file.base.comp.link_diags;
 
-    var positionals = std.array_list.Managed(link.Input).init(gpa);
-    defer positionals.deinit();
-
-    try positionals.ensureUnusedCapacity(comp.link_inputs.len);
-    positionals.appendSliceAssumeCapacity(comp.link_inputs);
-
-    for (comp.c_objects.items) |c_object| {
-        try positionals.append(try link.openObjectInput(io, diags, c_object.status.success.object_path));
-    }
-
-    if (module_obj_path) |path| try positionals.append(try link.openObjectInput(io, diags, path));
-
-    if (comp.compiler_rt_strat == .obj) {
-        try positionals.append(try link.openObjectInput(io, diags, comp.compiler_rt_obj.?.full_object_path));
-    }
-
-    if (comp.ubsan_rt_strat == .obj) {
-        try positionals.append(try link.openObjectInput(io, diags, comp.ubsan_rt_obj.?.full_object_path));
-    }
-
-    for (positionals.items) |link_input| {
-        macho_file.classifyInputFile(link_input) catch |err|
-            diags.addParseError(link_input.path(), "failed to read input file: {t}", .{err});
-    }
+    for (macho_file.all_inputs.items) |input| switch (input) {
+        .res => unreachable,
+        .dso, .tbd => {},
+        .object, .archive => macho_file.classifyInputFile(input) catch |err|
+            diags.addParseError(input.path(), "failed to read input file: {t}", .{err}),
+    };
 
     if (diags.hasErrors()) return error.AlreadyReported;
 
@@ -168,7 +151,7 @@ pub fn flushStaticLib(macho_file: *MachO, comp: *Compilation, module_obj_path: ?
 
     // Update file offsets of contributing objects
     const total_size: usize = blk: {
-        var pos: usize = Archive.SARMAG;
+        var pos: usize = macho.ARMAG.len;
         pos += @sizeOf(Archive.ar_hdr);
         pos += Archive.SYMDEF.len + 1;
         pos = mem.alignForward(usize, pos, 8);
@@ -211,7 +194,7 @@ pub fn flushStaticLib(macho_file: *MachO, comp: *Compilation, module_obj_path: ?
     var writer: Writer = .fixed(buffer);
 
     // Write magic
-    writer.writeAll(Archive.ARMAG) catch unreachable;
+    writer.writeAll(macho.ARMAG) catch unreachable;
 
     // Write symtab
     ar_symtab.write(format, macho_file, &writer) catch |err|

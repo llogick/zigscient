@@ -84,7 +84,7 @@ zigc_strat: RtStrat,
 /// Resolved into known paths, any GNU ld scripts already resolved.
 link_inputs: []const link.Input,
 /// Needed only for passing -F args to clang.
-framework_dirs: []const []const u8,
+framework_dirs: []const Cache.Directory,
 /// These are only for DLLs dependencies fulfilled by the `.def` files shipped
 /// with Zig. Static libraries are provided as `link.Input` values.
 windows_libs: std.array_hash_map.String(void),
@@ -1353,7 +1353,6 @@ pub const ClangPreprocessorMode = enum {
     version,
 };
 
-pub const Framework = link.File.MachO.Framework;
 pub const SystemLib = link.SystemLib;
 
 pub const CacheMode = enum {
@@ -1490,6 +1489,7 @@ pub const CreateOptions = struct {
     /// The ELF implementation no longer uses this data, however the MachO and COFF
     /// implementations still do.
     lib_directories: []const Cache.Directory = &.{},
+    framework_directories: []const Cache.Directory = &.{},
     rpath_list: []const []const u8 = &[0][]const u8{},
     symbol_wrap_set: std.array_hash_map.String(void) = .empty,
     c_source_files: []const CSourceFile = &.{},
@@ -1497,8 +1497,6 @@ pub const CreateOptions = struct {
     manifest_file: ?[]const u8 = null,
     rc_includes: std.zig.RcIncludes = .any,
     link_inputs: []const link.Input = &.{},
-    framework_dirs: []const []const u8 = &[0][]const u8{},
-    frameworks: []const Framework = &.{},
     windows_lib_names: []const []const u8 = &.{},
     /// This means that if the output mode is an executable it will be a
     /// Position Independent Executable. If the output mode is not an
@@ -2153,7 +2151,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
             .ubsan_rt_strat = ubsan_rt_strat,
             .zigc_strat = zigc_strat,
             .link_inputs = options.link_inputs,
-            .framework_dirs = options.framework_dirs,
+            .framework_dirs = options.framework_directories,
             .llvm_opt_bisect_limit = options.llvm_opt_bisect_limit,
             .skip_linker_dependencies = options.skip_linker_dependencies,
             .queued_jobs = .{},
@@ -2215,10 +2213,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
             .z_relro = options.linker_z_relro,
             .z_common_page_size = options.linker_z_common_page_size,
             .z_max_page_size = options.linker_z_max_page_size,
-            .darwin_sdk_layout = libc_dirs.darwin_sdk_layout,
-            .frameworks = options.frameworks,
             .lib_directories = options.lib_directories,
-            .framework_dirs = options.framework_dirs,
             .rpath_list = options.rpath_list,
             .symbol_wrap_set = options.symbol_wrap_set,
             .repro = options.linker_repro orelse (options.root_mod.optimize_mode != .debug),
@@ -2436,11 +2431,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
             // If linking against host libc installation, instead queue up jobs
             // for loading those files in the linker.
             if (comp.config.link_libc and is_exe_or_dyn_lib) {
-                // If the "is darwin" check is moved below the libc_installation check below,
-                // error.LibCInstallationMissingCrtDir is returned from lci.resolveCrtPaths().
-                if (target.isDarwinLibC()) {
-                    // TODO delete logic from MachO flush() and queue up tasks here instead.
-                } else if (comp.libc_installation) |lci| {
+                if (comp.libc_installation) |lci| {
                     const basenames = LibCInstallation.CrtBasenames.get(.{
                         .target = target,
                         .link_libc = comp.config.link_libc,
@@ -2463,6 +2454,18 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
                     }
                     // Loads the libraries provided by `target_util.libcFullLinkFlags(target)`.
                     comp.oneshot_prelink_tasks.appendAssumeCapacity(.load_host_libc);
+                } else if (target.isDarwinLibC()) {
+                    try comp.oneshot_prelink_tasks.appendSlice(gpa, &.{
+                        .{ .load_tbd = .{
+                            .root_dir = comp.dirs.zig_lib,
+                            .sub_path = "libc" ++ fs.path.sep_str ++ "darwin" ++ fs.path.sep_str ++ "libSystem.tbd",
+                        } },
+                        .{ .load_darwin_sdk_settings = .{
+                            .root_dir = comp.dirs.zig_lib,
+                            .sub_path = "libc" ++ fs.path.sep_str ++ "darwin" ++ fs.path.sep_str ++ "SDKSettings.json",
+                        } },
+                    });
+                    // TODO delete logic from MachO flush() and queue up tasks here instead.
                 } else if (target.isMuslLibC()) {
                     if (!std.zig.target.canBuildLibC(target)) return diag.fail(.cross_libc_unavailable);
 
@@ -3416,7 +3419,10 @@ fn addNonIncrementalStuffToCacheManifest(comp: *Compilation, man: *Cache.Manifes
     man.hash.add(comp.zigc_strat);
     man.hash.add(comp.rc_includes);
     man.hash.addListOfBytes(comp.force_undefined_symbols.keys());
-    man.hash.addListOfBytes(comp.framework_dirs);
+    man.hash.add(comp.framework_dirs.len);
+    for (comp.framework_dirs) |framework_dir| {
+        man.hash.addBytes(framework_dir.path orelse ".");
+    }
     man.hash.addListOfBytes(comp.windows_libs.keys());
 
     man.hash.addListOfBytes(comp.global_cc_argv);
@@ -3482,7 +3488,6 @@ fn addNonIncrementalStuffToCacheManifest(comp: *Compilation, man: *Cache.Manifes
     man.hash.add(opts.growable_table);
 
     // Mach-O specific stuff
-    try link.File.MachO.hashAddFrameworks(man, opts.frameworks);
     try man.addInputPathOptional(opts.entitlements, .{});
     man.hash.addOptional(opts.pagezero_size);
     man.hash.addOptional(opts.headerpad_size);
@@ -3492,7 +3497,6 @@ fn addNonIncrementalStuffToCacheManifest(comp: *Compilation, man: *Cache.Manifes
     man.hash.add(opts.discard_local_symbols);
     man.hash.addOptional(opts.compatibility_version);
     man.hash.addOptionalBytes(opts.install_name);
-    man.hash.addOptional(opts.darwin_sdk_layout);
 
     // COFF specific stuff
     man.hash.addOptional(opts.subsystem);
@@ -6466,7 +6470,7 @@ fn addCommonCCArgs(
 
             try argv.ensureUnusedCapacity(comp.framework_dirs.len * 2);
             for (comp.framework_dirs) |framework_dir| {
-                try argv.appendSlice(&.{ "-F", framework_dir });
+                try argv.appendSlice(&.{ "-F", framework_dir.path orelse "." });
             }
         }
     }

@@ -3783,6 +3783,7 @@ pub fn loadInput(wasm: *Wasm, input: link.Input) !void {
         switch (input) {
             .res => unreachable,
             .dso => unreachable,
+            .tbd => unreachable,
             .object, .archive => |obj| {
                 try argv.append(gpa, try obj.path.toString(comp.arena));
             },
@@ -3792,6 +3793,7 @@ pub fn loadInput(wasm: *Wasm, input: link.Input) !void {
     switch (input) {
         .res => unreachable,
         .dso => unreachable,
+        .tbd => unreachable,
         .object => |obj| try parseObject(wasm, obj),
         .archive => |obj| try parseArchive(wasm, obj),
     }

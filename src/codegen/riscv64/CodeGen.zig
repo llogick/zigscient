@@ -8160,7 +8160,7 @@ fn genTypedValue(func: *Func, val: Value) InnerError!MCValue {
     const lf = func.bin_file;
 
     const result: codegen.MCValue = if (val.isUndef(pt.zcu))
-        .{ .load_symbol = try lf.lowerUav(pt, val.toIntern(), .none) }
+        .{ .load_symbol = try lf.uavSymbol(pt, val.toIntern(), .none) }
     else
         try codegen.genTypedValue(lf, pt, val, func.target);
     const mcv: MCValue = switch (result) {

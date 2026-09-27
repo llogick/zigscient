@@ -463,21 +463,21 @@ pub fn deinit(self: *Elf) void {
     self.dump_argv_list.deinit(gpa);
 }
 
-pub fn getNavVAddr(self: *Elf, pt: Zcu.PerThread, nav_index: InternPool.Nav.Index, reloc_info: link.File.RelocInfo) !u64 {
-    return self.zigObjectPtr().?.getNavVAddr(self, pt, nav_index, reloc_info);
+pub fn navSymbol(self: *Elf, nav: InternPool.Nav.Index) link.Error!link.File.SymbolId {
+    return self.zigObjectPtr().?.navSymbol(self, nav);
 }
 
-pub fn lowerUav(
+pub fn relocSymAddr(self: *Elf, reloc_info: link.File.RelocInfo) !void {
+    return self.zigObjectPtr().?.relocSymAddr(self, reloc_info);
+}
+
+pub fn uavSymbol(
     self: *Elf,
     pt: Zcu.PerThread,
     uav: InternPool.Index,
     explicit_alignment: InternPool.Alignment,
 ) !link.File.SymbolId {
-    return self.zigObjectPtr().?.lowerUav(self, pt, uav, explicit_alignment);
-}
-
-pub fn getUavVAddr(self: *Elf, uav: InternPool.Index, reloc_info: link.File.RelocInfo) !u64 {
-    return self.zigObjectPtr().?.getUavVAddr(self, uav, reloc_info);
+    return self.zigObjectPtr().?.uavSymbol(self, pt, uav, explicit_alignment);
 }
 
 /// Returns end pos of collision, if any.
@@ -722,6 +722,7 @@ pub fn loadInput(self: *Elf, input: link.Input) !void {
         const argv = &self.dump_argv_list;
         switch (input) {
             .res => unreachable,
+            .tbd => unreachable,
             .object, .archive => |obj| try argv.append(gpa, try obj.path.toString(comp.arena)),
             .dso => |dso| try argv.append(gpa, try dso.path.toString(comp.arena)),
         }
@@ -729,6 +730,7 @@ pub fn loadInput(self: *Elf, input: link.Input) !void {
 
     switch (input) {
         .res => unreachable,
+        .tbd => unreachable,
         .object => |obj| try parseObject(self, obj),
         .archive => |obj| if (self.base.isStaticLib()) {
             // Ignore static library inputs when generating a static library.

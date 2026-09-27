@@ -9,6 +9,7 @@ const Allocator = std.mem.Allocator;
 const DebugSymbols = @import("DebugSymbols.zig");
 const Dylib = @import("Dylib.zig");
 const MachO = @import("../MachO.zig");
+const link = @import("../../link.zig");
 
 pub const default_dyld_path: [*:0]const u8 = "/usr/lib/dyld";
 
@@ -296,7 +297,7 @@ pub fn writeRpathLC(rpath: []const u8, writer: *Writer) !void {
     }
 }
 
-pub fn writeVersionMinLC(platform: MachO.Platform, sdk_version: ?std.SemanticVersion, writer: *Writer) !void {
+pub fn writeVersionMinLC(platform: MachO.Platform, sdk_version: ?link.DarwinSdkVersion, writer: *Writer) !void {
     const cmd: macho.LC = switch (platform.os_tag) {
         .macos => .VERSION_MIN_MACOSX,
         .ios, .maccatalyst => .VERSION_MIN_IPHONEOS,
@@ -306,24 +307,18 @@ pub fn writeVersionMinLC(platform: MachO.Platform, sdk_version: ?std.SemanticVer
     };
     try writer.writeAll(mem.asBytes(&macho.version_min_command{
         .cmd = cmd,
-        .version = platform.toAppleVersion(),
-        .sdk = if (sdk_version) |ver|
-            MachO.semanticVersionToAppleVersion(ver)
-        else
-            platform.toAppleVersion(),
+        .version = @backingInt(platform.version),
+        .sdk = @backingInt(sdk_version orelse platform.version),
     }));
 }
 
-pub fn writeBuildVersionLC(platform: MachO.Platform, sdk_version: ?std.SemanticVersion, writer: *Writer) !void {
+pub fn writeBuildVersionLC(platform: MachO.Platform, sdk_version: ?link.DarwinSdkVersion, writer: *Writer) !void {
     const cmdsize = @sizeOf(macho.build_version_command) + @sizeOf(macho.build_tool_version);
     try writer.writeStruct(@as(macho.build_version_command, .{
         .cmdsize = cmdsize,
         .platform = platform.toApplePlatform(),
-        .minos = platform.toAppleVersion(),
-        .sdk = if (sdk_version) |ver|
-            MachO.semanticVersionToAppleVersion(ver)
-        else
-            platform.toAppleVersion(),
+        .minos = @backingInt(platform.version),
+        .sdk = @backingInt(sdk_version orelse platform.version),
         .ntools = 1,
     }), .little);
     try writer.writeAll(mem.asBytes(&macho.build_tool_version{

@@ -4,6 +4,8 @@ pub const Relocation = @import("MachO/Relocation.zig");
 
 base: link.File,
 
+all_inputs: std.ArrayList(link.Input),
+
 rpath_list: []const []const u8,
 
 /// Debug symbols bundle (or dSym).
@@ -104,9 +106,7 @@ has_tlv: AtomicBool = AtomicBool.init(false),
 binds_to_weak: AtomicBool = AtomicBool.init(false),
 weak_defines: AtomicBool = AtomicBool.init(false),
 
-/// Options
-/// SDK layout
-sdk_layout: ?SdkLayout,
+// Options
 /// Size of the __PAGEZERO segment.
 pagezero_size: ?u64,
 /// Minimum space for future expansion of the load commands.
@@ -119,10 +119,6 @@ dead_strip_dylibs: bool,
 undefined_treatment: UndefinedTreatment,
 /// TODO: delete this, libraries need to be resolved by the frontend instead
 lib_directories: []const Directory,
-/// Resolved list of framework search directories
-framework_dirs: []const []const u8,
-/// List of input frameworks
-frameworks: []const Framework,
 /// Install name for the dylib.
 /// TODO: unify with soname
 install_name: ?[]const u8,
@@ -132,7 +128,7 @@ compatibility_version: ?std.SemanticVersion,
 /// Entry name
 entry_name: ?[]const u8,
 platform: Platform,
-sdk_version: ?std.SemanticVersion,
+sdk_version: ?link.DarwinSdkVersion,
 /// When set to true, the linker will hoist all dylibs including system dependent dylibs.
 no_implicit_dylibs: bool = false,
 /// Whether the linker should parse and always force load objects containing ObjC in archives.
@@ -190,13 +186,12 @@ pub fn createEmpty(
             .file = null,
             .build_id = options.build_id,
         },
+        .all_inputs = .empty,
         .rpath_list = options.rpath_list,
         .pagezero_size = options.pagezero_size,
         .headerpad_size = options.headerpad_size,
         .headerpad_max_install_names = options.headerpad_max_install_names,
         .dead_strip_dylibs = options.dead_strip_dylibs,
-        .sdk_layout = options.darwin_sdk_layout,
-        .frameworks = options.frameworks,
         .install_name = options.install_name,
         .entitlements = options.entitlements,
         .compatibility_version = options.compatibility_version,
@@ -207,11 +202,10 @@ pub fn createEmpty(
             .named => |name| name,
         },
         .platform = Platform.fromTarget(target),
-        .sdk_version = if (options.darwin_sdk_layout) |layout| inferSdkVersion(comp, layout) else null,
+        .sdk_version = null,
         .undefined_treatment = if (allow_shlib_undefined) .dynamic_lookup else .@"error",
         // TODO delete this, directories must instead be resolved by the frontend
         .lib_directories = options.lib_directories,
-        .framework_dirs = options.framework_dirs,
         .force_load_objc = options.force_load_objc,
         .discard_local_symbols = options.discard_local_symbols,
     };
@@ -270,6 +264,8 @@ pub fn deinit(self: *MachO) void {
     const comp = self.base.comp;
     const gpa = comp.gpa;
     const io = comp.io;
+
+    self.all_inputs.deinit(gpa);
 
     if (self.d_sym) |*d_sym| {
         d_sym.deinit();
@@ -334,6 +330,11 @@ pub fn deinit(self: *MachO) void {
     self.thunks.deinit(gpa);
 }
 
+pub fn loadInput(self: *MachO, input: link.Input) link.Error!void {
+    const gpa = self.base.comp.gpa;
+    try self.all_inputs.append(gpa, input);
+}
+
 pub fn flush(
     self: *MachO,
     arena: Allocator,
@@ -343,6 +344,8 @@ pub fn flush(
     const tracy = trace(@src());
     defer tracy.end();
 
+    _ = arena;
+
     const comp = self.base.comp;
     const gpa = comp.gpa;
     const io = comp.io;
@@ -351,146 +354,40 @@ pub fn flush(
     const sub_prog_node = prog_node.start("MachO Flush", 0);
     defer sub_prog_node.end();
 
-    const zcu_obj_path: ?Path = p: {
-        const zcu = comp.zcu orelse break :p null;
-        const llvm_object = zcu.llvm_object orelse break :p null;
-        break :p try comp.resolveEmitPathFlush(arena, .temp, llvm_object.out_bin_basename);
-    };
+    // TODO: due to https://codeberg.org/ziglang/zig/issues/36946, we receive link inputs in a
+    // non-deterministic order. To ensure that this linker behaves deterministically, sort the
+    // inputs into a consistent order now.
+    {
+        const InputSortContext = struct {
+            fn lessThan(ctx: @This(), lhs: link.Input, rhs: link.Input) bool {
+                _ = ctx;
+                // We can't sort by full path because that could vary between runs where we still
+                // want reproducibility (e.g. the path is affected by cwd). So instead, let's sort
+                // by basename---that's good enough for our purposes since we never link two
+                // vendored libraries/objects with the same name.
+                const lhs_name = fs.path.basename(lhs.path().sub_path);
+                const rhs_name = fs.path.basename(rhs.path().sub_path);
+                return std.mem.order(u8, lhs_name, rhs_name).compare(.lt);
+            }
+        };
+        std.mem.sort(
+            link.Input,
+            self.all_inputs.items,
+            @as(InputSortContext, .{}),
+            InputSortContext.lessThan,
+        );
+    }
 
     // --verbose-link
     if (comp.verbose_link) try self.dumpArgv(comp);
 
     if (self.getZigObject()) |zo| try zo.flush(self, tid);
-    if (self.base.isStaticLib()) return relocatable.flushStaticLib(self, comp, zcu_obj_path);
-    if (self.base.isObject()) return relocatable.flushObject(self, comp, zcu_obj_path);
+    if (self.base.isStaticLib()) return relocatable.flushStaticLib(self, comp);
+    if (self.base.isObject()) return relocatable.flushObject(self, comp);
 
-    var positionals = std.array_list.Managed(link.Input).init(gpa);
-    defer positionals.deinit();
-
-    try positionals.ensureUnusedCapacity(comp.link_inputs.len);
-
-    for (comp.link_inputs) |link_input| switch (link_input) {
-        .dso => continue, // handled below
-        .object, .archive => positionals.appendAssumeCapacity(link_input),
-        .res => unreachable,
-    };
-
-    // This is a set of object files emitted by clang in a single `build-exe` invocation.
-    // For instance, the implicit `a.o` as compiled by `zig build-exe a.c` will end up
-    // in this set.
-    try positionals.ensureUnusedCapacity(comp.c_objects.items.len);
-    for (comp.c_objects.items) |c_object| {
-        positionals.appendAssumeCapacity(try link.openObjectInput(io, diags, c_object.status.success.object_path));
-    }
-
-    if (zcu_obj_path) |path| try positionals.append(try link.openObjectInput(io, diags, path));
-
-    if (comp.config.any_sanitize_thread) {
-        try positionals.append(try link.openObjectInput(io, diags, comp.tsan_lib.?.full_object_path));
-    }
-
-    if (comp.config.any_fuzz) {
-        try positionals.append(try link.openArchiveInput(io, diags, comp.fuzzer_lib.?.full_object_path, false, false));
-    }
-
-    if (comp.ubsan_rt_lib) |crt_file| {
-        const path = crt_file.full_object_path;
-        self.classifyInputFile(try link.openArchiveInput(io, diags, path, false, false)) catch |err|
-            diags.addParseError(path, "failed to parse archive: {s}", .{@errorName(err)});
-    } else if (comp.ubsan_rt_obj) |crt_file| {
-        const path = crt_file.full_object_path;
-        self.classifyInputFile(try link.openObjectInput(io, diags, path)) catch |err|
-            diags.addParseError(path, "failed to parse archive: {s}", .{@errorName(err)});
-    }
-
-    for (positionals.items) |link_input| {
-        self.classifyInputFile(link_input) catch |err|
-            diags.addParseError(link_input.path(), "failed to read input file: {t}", .{err});
-    }
-
-    var system_libs = std.array_list.Managed(SystemLib).init(gpa);
-    defer system_libs.deinit();
-
-    // frameworks
-    try system_libs.ensureUnusedCapacity(self.frameworks.len);
-    for (self.frameworks) |info| {
-        system_libs.appendAssumeCapacity(.{
-            .needed = info.needed,
-            .weak = info.weak,
-            .path = info.path,
-        });
-    }
-
-    // libc++ dep
-    if (comp.config.link_libcpp) {
-        try system_libs.ensureUnusedCapacity(2);
-        system_libs.appendAssumeCapacity(.{ .path = comp.libcxxabi_static_lib.?.full_object_path });
-        system_libs.appendAssumeCapacity(.{ .path = comp.libcxx_static_lib.?.full_object_path });
-    }
-
-    const is_exe_or_dyn_lib = comp.config.output_mode == .Exe or
-        (comp.config.output_mode == .Lib and comp.config.link_mode == .dynamic);
-
-    if (comp.config.link_libc and is_exe_or_dyn_lib) {
-        if (comp.zigc_static_lib) |zigc| {
-            const path = zigc.full_object_path;
-            self.classifyInputFile(try link.openArchiveInput(io, diags, path, false, false)) catch |err|
-                diags.addParseError(path, "failed to parse archive: {s}", .{@errorName(err)});
-        }
-    }
-
-    // libc/libSystem dep
-    self.resolveLibSystem(arena, comp, &system_libs) catch |err| switch (err) {
-        error.MissingLibSystem => {}, // already reported
-        else => |e| return diags.fail("failed to resolve libSystem: {s}", .{@errorName(e)}),
-    };
-
-    for (comp.link_inputs) |link_input| switch (link_input) {
-        .object, .archive => continue,
-        .res => unreachable,
-        .dso => {
-            self.classifyInputFile(link_input) catch |err|
-                diags.addParseError(link_input.path(), "failed to parse input file: {t}", .{err});
-        },
-    };
-
-    for (system_libs.items) |lib| {
-        switch (Compilation.classifyFileExt(lib.path.sub_path)) {
-            .shared_library => {
-                const dso_input = try link.openDsoInput(io, diags, lib.path, lib.needed, lib.weak, lib.reexport);
-                self.classifyInputFile(dso_input) catch |err|
-                    diags.addParseError(lib.path, "failed to parse input file: {s}", .{@errorName(err)});
-            },
-            .static_library => {
-                const archive_input = try link.openArchiveInput(io, diags, lib.path, lib.must_link, lib.hidden);
-                self.classifyInputFile(archive_input) catch |err|
-                    diags.addParseError(lib.path, "failed to parse input file: {s}", .{@errorName(err)});
-            },
-            else => {
-                dso: {
-                    const dso_input = link.openDsoInput(io, diags, lib.path, lib.needed, lib.weak, lib.reexport) catch break :dso;
-                    self.classifyInputFile(dso_input) catch break :dso;
-                    continue;
-                }
-                ar: {
-                    const archive_input = link.openArchiveInput(io, diags, lib.path, lib.must_link, lib.hidden) catch break :ar;
-                    self.classifyInputFile(archive_input) catch break :ar;
-                    continue;
-                }
-                diags.addParseError(lib.path, "unknown file extension", .{});
-            },
-        }
-    }
-
-    // Finally, link against compiler_rt.
-    if (comp.compiler_rt_lib) |crt_file| {
-        const path = crt_file.full_object_path;
-        self.classifyInputFile(try link.openArchiveInput(io, diags, path, false, false)) catch |err|
-            diags.addParseError(path, "failed to parse archive: {s}", .{@errorName(err)});
-    } else if (comp.compiler_rt_obj) |crt_file| {
-        const path = crt_file.full_object_path;
-        self.classifyInputFile(try link.openObjectInput(io, diags, path)) catch |err|
-            diags.addParseError(path, "failed to parse archive: {s}", .{@errorName(err)});
+    for (self.all_inputs.items) |input| {
+        self.classifyInputFile(input) catch |err|
+            diags.addParseError(input.path(), "failed to read input file: {t}", .{err});
     }
 
     try self.parseInputFiles();
@@ -666,9 +563,8 @@ fn dumpArgv(self: *MachO, comp: *Compilation) !void {
         for (comp.link_inputs) |link_input| switch (link_input) {
             .object, .archive => |obj| try argv.append(try obj.path.toString(arena)),
             .res => |res| try argv.append(try res.path.toString(arena)),
-            .dso => |dso| {
-                try argv.append(try dso.path.toString(arena));
-            },
+            .dso => |dso| try argv.append(try dso.path.toString(arena)),
+            .tbd => |tbd| try argv.append(try tbd.path.toString(arena)),
         };
 
         for (comp.c_objects.items) |c_object| {
@@ -694,12 +590,20 @@ fn dumpArgv(self: *MachO, comp: *Compilation) !void {
 
         try argv.append("-platform_version");
         try argv.append(@tagName(self.platform.os_tag));
-        try argv.append(try std.fmt.allocPrint(arena, "{f}", .{self.platform.version}));
+        try argv.append(try std.fmt.allocPrint(arena, "{d}.{d}.{d}", .{
+            self.platform.version.major,
+            self.platform.version.minor,
+            self.platform.version.patch,
+        }));
 
         if (self.sdk_version) |ver| {
             try argv.append(try std.fmt.allocPrint(arena, "{d}.{d}", .{ ver.major, ver.minor }));
         } else {
-            try argv.append(try std.fmt.allocPrint(arena, "{f}", .{self.platform.version}));
+            try argv.append(try std.fmt.allocPrint(arena, "{d}.{d}.{d}", .{
+                self.platform.version.major,
+                self.platform.version.minor,
+                self.platform.version.patch,
+            }));
         }
 
         if (comp.sysroot) |syslibroot| {
@@ -754,7 +658,7 @@ fn dumpArgv(self: *MachO, comp: *Compilation) !void {
         }
 
         for (comp.link_inputs) |link_input| switch (link_input) {
-            .dso => continue, // handled below
+            .dso, .tbd => continue, // handled below
             .res => unreachable, // windows only
             .object, .archive => |obj| {
                 if (obj.must_link) try argv.append("-force_load"); // TODO: verify this
@@ -788,7 +692,7 @@ fn dumpArgv(self: *MachO, comp: *Compilation) !void {
         for (comp.link_inputs) |link_input| switch (link_input) {
             .object, .archive => continue, // handled above
             .res => unreachable, // windows only
-            .dso => |dso| {
+            inline .dso, .tbd => |dso| {
                 try argv.ensureUnusedCapacity(2);
                 if (dso.needed) {
                     argv.appendAssumeCapacity("-needed-l");
@@ -801,20 +705,9 @@ fn dumpArgv(self: *MachO, comp: *Compilation) !void {
             },
         };
 
-        for (self.framework_dirs) |f_dir| {
+        for (comp.framework_dirs) |f_dir| {
             try argv.append("-F");
-            try argv.append(f_dir);
-        }
-
-        for (self.frameworks) |framework| {
-            const name = framework.path.stem();
-            const arg = if (framework.needed)
-                try std.fmt.allocPrint(arena, "-needed_framework {s}", .{name})
-            else if (framework.weak)
-                try std.fmt.allocPrint(arena, "-weak_framework {s}", .{name})
-            else
-                try std.fmt.allocPrint(arena, "-framework {s}", .{name});
-            try argv.append(arg);
+            try argv.append(f_dir.path orelse ".");
         }
 
         if (comp.config.link_libcpp) {
@@ -836,46 +729,6 @@ fn dumpArgv(self: *MachO, comp: *Compilation) !void {
     try Compilation.dumpArgv(io, argv.items);
 }
 
-/// TODO delete this, libsystem must be resolved when setting up the compilation pipeline
-pub fn resolveLibSystem(
-    self: *MachO,
-    arena: Allocator,
-    comp: *Compilation,
-    out_libs: anytype,
-) !void {
-    const io = comp.io;
-    const diags = &comp.link_diags;
-
-    var test_path = std.array_list.Managed(u8).init(arena);
-    var checked_paths = std.array_list.Managed([]const u8).init(arena);
-
-    success: {
-        if (self.sdk_layout) |sdk_layout| switch (sdk_layout) {
-            .sdk => {
-                const dir = try fs.path.join(arena, &.{ comp.sysroot.?, "usr", "lib" });
-                if (try accessLibPath(arena, io, &test_path, &checked_paths, dir, "System")) break :success;
-            },
-            .vendored => {
-                const dir = try comp.dirs.zig_lib.join(arena, &.{ "libc", "darwin" });
-                if (try accessLibPath(arena, io, &test_path, &checked_paths, dir, "System")) break :success;
-            },
-        };
-
-        for (self.lib_directories) |directory| {
-            if (try accessLibPath(arena, io, &test_path, &checked_paths, directory.path orelse ".", "System")) break :success;
-        }
-
-        diags.addMissingLibraryError(checked_paths.items, "unable to find libSystem system library", .{});
-        return error.MissingLibSystem;
-    }
-
-    const libsystem_path = Path.initCwd(try arena.dupe(u8, test_path.items));
-    try out_libs.append(.{
-        .needed = true,
-        .path = libsystem_path,
-    });
-}
-
 pub fn classifyInputFile(self: *MachO, input: link.Input) !void {
     const tracy = trace(@src());
     defer tracy.end();
@@ -888,7 +741,7 @@ pub fn classifyInputFile(self: *MachO, input: link.Input) !void {
     log.debug("classifying input file {f}", .{path});
 
     const fh = try self.addFileHandle(file);
-    var buffer: [Archive.SARMAG]u8 = undefined;
+    var buffer: [macho.ARMAG.len]u8 = undefined;
 
     const fat_arch: ?fat.Arch = try self.parseFatFile(file, path);
     const offset = if (fat_arch) |fa| fa.offset else 0;
@@ -903,7 +756,7 @@ pub fn classifyInputFile(self: *MachO, input: link.Input) !void {
         return;
     }
     if (readArMagic(io, file, offset, &buffer) catch null) |ar_magic| blk: {
-        if (!mem.eql(u8, ar_magic, Archive.ARMAG)) break :blk;
+        if (!mem.eql(u8, ar_magic, macho.ARMAG)) break :blk;
         try self.addArchive(input.archive, fh, fat_arch);
         return;
     }
@@ -933,10 +786,10 @@ pub fn readMachHeader(io: Io, file: Io.File, offset: usize) !macho.mach_header_6
     return hdr;
 }
 
-pub fn readArMagic(io: Io, file: Io.File, offset: usize, buffer: *[Archive.SARMAG]u8) ![]const u8 {
+pub fn readArMagic(io: Io, file: Io.File, offset: usize, buffer: *[macho.ARMAG.len]u8) ![]const u8 {
     const nread = try file.readPositionalAll(io, buffer, offset);
     if (nread != buffer.len) return error.InputOutput;
-    return buffer[0..Archive.SARMAG];
+    return buffer[0..macho.ARMAG.len];
 }
 
 fn addObject(self: *MachO, path: Path, handle_index: File.HandleIndex, offset: u64) !void {
@@ -1159,10 +1012,6 @@ fn parseDependentDylibs(self: *MachO) !void {
     const comp = self.base.comp;
     const gpa = comp.gpa;
     const io = comp.io;
-    const framework_dirs = self.framework_dirs;
-
-    // TODO delete this, directories must instead be resolved by the frontend
-    const lib_directories = self.lib_directories;
 
     var arena_alloc = std.heap.ArenaAllocator.init(gpa);
     defer arena_alloc.deinit();
@@ -1197,14 +1046,14 @@ fn parseDependentDylibs(self: *MachO) !void {
                     const stem = fs.path.stem(id.name);
 
                     // Framework
-                    for (framework_dirs) |dir| {
+                    for (comp.framework_dirs) |dir| {
                         test_path.clearRetainingCapacity();
-                        if (try accessFrameworkPath(arena, io, &test_path, &checked_paths, dir, stem)) break :full_path test_path.items;
+                        if (try accessFrameworkPath(arena, io, &test_path, &checked_paths, dir.path orelse ".", stem)) break :full_path test_path.items;
                     }
 
                     // Library
                     const lib_name = eatPrefix(stem, "lib") orelse stem;
-                    for (lib_directories) |lib_directory| {
+                    for (self.lib_directories) |lib_directory| {
                         test_path.clearRetainingCapacity();
                         if (try accessLibPath(arena, io, &test_path, &checked_paths, lib_directory.path orelse ".", lib_name)) break :full_path test_path.items;
                     }
@@ -3124,21 +2973,21 @@ pub fn freeNav(self: *MachO, nav: InternPool.Nav.Index) void {
     return self.getZigObject().?.freeNav(nav);
 }
 
-pub fn getNavVAddr(self: *MachO, pt: Zcu.PerThread, nav_index: InternPool.Nav.Index, reloc_info: link.File.RelocInfo) !u64 {
-    return self.getZigObject().?.getNavVAddr(self, pt, nav_index, reloc_info);
+pub fn navSymbol(self: *MachO, nav: InternPool.Nav.Index) link.Error!link.File.SymbolId {
+    return self.getZigObject().?.navSymbol(self, nav);
 }
 
-pub fn lowerUav(
+pub fn relocSymAddr(self: *MachO, reloc_info: link.File.RelocInfo) link.Error!void {
+    return self.getZigObject().?.relocSymAddr(self, reloc_info);
+}
+
+pub fn uavSymbol(
     self: *MachO,
     pt: Zcu.PerThread,
     uav: InternPool.Index,
     explicit_alignment: InternPool.Alignment,
 ) !link.File.SymbolId {
-    return self.getZigObject().?.lowerUav(self, pt, uav, explicit_alignment);
-}
-
-pub fn getUavVAddr(self: *MachO, uav: InternPool.Index, reloc_info: link.File.RelocInfo) !u64 {
-    return self.getZigObject().?.getUavVAddr(self, uav, reloc_info);
+    return self.getZigObject().?.uavSymbol(self, pt, uav, explicit_alignment);
 }
 
 pub fn getGlobalSymbol(self: *MachO, name: []const u8, lib_name: ?[]const u8) !u32 {
@@ -4231,7 +4080,7 @@ pub const null_sym = macho.nlist_64{
 pub const Platform = struct {
     os_tag: std.Target.Os.Tag,
     abi: std.Target.Abi,
-    version: std.SemanticVersion,
+    version: link.DarwinSdkVersion,
 
     /// Using Apple's ld64 as our blueprint, `min_version` as well as `sdk_version` are set to
     /// the extracted minimum platform version.
@@ -4258,7 +4107,7 @@ pub const Platform = struct {
                         => .simulator,
                         else => .none,
                     },
-                    .version = appleVersionToSemanticVersion(cmd.minos),
+                    .version = @fromBackingInt(cmd.minos),
                 };
             },
             .VERSION_MIN_IPHONEOS,
@@ -4277,7 +4126,7 @@ pub const Platform = struct {
                         else => unreachable,
                     },
                     .abi = .none,
-                    .version = appleVersionToSemanticVersion(cmd.version),
+                    .version = @fromBackingInt(cmd.version),
                 };
             },
             else => unreachable,
@@ -4285,15 +4134,16 @@ pub const Platform = struct {
     }
 
     pub fn fromTarget(target: *const std.Target) Platform {
+        const semver = target.os.version_range.semver.min;
         return .{
             .os_tag = target.os.tag,
             .abi = target.abi,
-            .version = target.os.version_range.semver.min,
+            .version = .{
+                .major = @intCast(semver.major),
+                .minor = @intCast(semver.minor),
+                .patch = @intCast(semver.patch),
+            },
         };
-    }
-
-    pub fn toAppleVersion(plat: Platform) u32 {
-        return semanticVersionToAppleVersion(plat.version);
     }
 
     pub fn toApplePlatform(plat: Platform) macho.PLATFORM {
@@ -4312,7 +4162,7 @@ pub const Platform = struct {
     pub fn isBuildVersionCompatible(plat: Platform) bool {
         inline for (supported_platforms) |sup_plat| {
             if (sup_plat[0] == plat.os_tag and sup_plat[1] == plat.abi) {
-                return sup_plat[2] <= plat.toAppleVersion();
+                return sup_plat[2] <= @backingInt(plat.version);
             }
         }
         return false;
@@ -4321,7 +4171,7 @@ pub const Platform = struct {
     pub fn isVersionMinCompatible(plat: Platform) bool {
         inline for (supported_platforms) |sup_plat| {
             if (sup_plat[0] == plat.os_tag and sup_plat[1] == plat.abi) {
-                return sup_plat[3] <= plat.toAppleVersion();
+                return sup_plat[3] <= @backingInt(plat.version);
             }
         }
         return false;
@@ -4380,86 +4230,8 @@ const supported_platforms = [_]SupportedPlatforms{
 };
 // zig fmt: on
 
-pub inline fn semanticVersionToAppleVersion(version: std.SemanticVersion) u32 {
-    const major = version.major;
-    const minor = version.minor;
-    const patch = version.patch;
-    return (@as(u32, @intCast(major)) << 16) | (@as(u32, @intCast(minor)) << 8) | @as(u32, @intCast(patch));
-}
-
-pub inline fn appleVersionToSemanticVersion(version: u32) std.SemanticVersion {
-    return .{
-        .major = @as(u16, @truncate(version >> 16)),
-        .minor = @as(u8, @truncate(version >> 8)),
-        .patch = @as(u8, @truncate(version)),
-    };
-}
-
-fn inferSdkVersion(comp: *Compilation, sdk_layout: SdkLayout) ?std.SemanticVersion {
-    const gpa = comp.gpa;
-
-    var arena_allocator = std.heap.ArenaAllocator.init(gpa);
-    defer arena_allocator.deinit();
-    const arena = arena_allocator.allocator();
-
-    const io = comp.io;
-
-    const sdk_dir = switch (sdk_layout) {
-        .sdk => comp.sysroot.?,
-        .vendored => fs.path.join(arena, &.{ comp.dirs.zig_lib.path.?, "libc", "darwin" }) catch return null,
-    };
-    if (readSdkVersionFromSettings(arena, io, sdk_dir)) |ver| {
-        return parseSdkVersion(ver);
-    } else |_| {
-        // Read from settings should always succeed when vendored.
-        // TODO: convert to fatal linker error
-        if (sdk_layout == .vendored) @panic("zig installation bug: unable to parse SDK version");
-    }
-
-    // infer from pathname
-    const stem = fs.path.stem(sdk_dir);
-    const start = for (stem, 0..) |c, i| {
-        if (std.ascii.isDigit(c)) break i;
-    } else stem.len;
-    const end = for (stem[start..], start..) |c, i| {
-        if (std.ascii.isDigit(c) or c == '.') continue;
-        break i;
-    } else stem.len;
-    return parseSdkVersion(stem[start..end]);
-}
-
-// Official Apple SDKs ship with a `SDKSettings.json` located at the top of SDK fs layout.
-// Use property `MinimalDisplayName` to determine version.
-// The file/property is also available with vendored libc.
-fn readSdkVersionFromSettings(arena: Allocator, io: Io, dir: []const u8) ![]const u8 {
-    const sdk_path = try fs.path.join(arena, &.{ dir, "SDKSettings.json" });
-    const contents = try Io.Dir.cwd().readFileAlloc(io, sdk_path, arena, .limited(std.math.maxInt(u16)));
-    const parsed = try std.json.parseFromSlice(std.json.Value, arena, contents, .{});
-    if (parsed.value.object.get("MinimalDisplayName")) |ver| return ver.string;
-    return error.SdkVersionFailure;
-}
-
-// Versions reported by Apple aren't exactly semantically valid as they usually omit
-// the patch component, so we parse SDK value by hand.
-fn parseSdkVersion(raw: []const u8) ?std.SemanticVersion {
-    var parsed: std.SemanticVersion = .{
-        .major = 0,
-        .minor = 0,
-        .patch = 0,
-    };
-
-    const parseNext = struct {
-        fn parseNext(it: anytype) ?u16 {
-            const nn = it.next() orelse return null;
-            return std.fmt.parseInt(u16, nn, 10) catch null;
-        }
-    }.parseNext;
-
-    var it = std.mem.splitAny(u8, raw, ".");
-    parsed.major = parseNext(&it) orelse return null;
-    parsed.minor = parseNext(&it) orelse return null;
-    parsed.patch = parseNext(&it) orelse 0;
-    return parsed;
+pub fn setDarwinSdkVersion(self: *MachO, version: link.DarwinSdkVersion) link.Error!void {
+    self.sdk_version = version;
 }
 
 /// When allocating, the ideal_capacity is calculated by
@@ -4497,7 +4269,7 @@ const SystemLib = struct {
                 .must_link = obj.must_link,
                 .hidden = obj.hidden,
             },
-            .dso => |dso| .{
+            inline .dso, .tbd => |dso| .{
                 .path = dso.path,
                 .needed = dso.needed,
                 .weak = dso.weak,
@@ -4506,8 +4278,6 @@ const SystemLib = struct {
         };
     }
 };
-
-pub const SdkLayout = std.zig.LibCDirs.DarwinSdkLayout;
 
 const UndefinedTreatment = enum {
     @"error",

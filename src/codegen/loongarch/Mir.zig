@@ -83,11 +83,7 @@ pub fn emit(
         lf,
         zcu,
         atom_index,
-        try @import("../../codegen.zig").genNavRef(
-            lf,
-            pt,
-            nav_reloc.nav,
-        ),
+        try lf.navSymbol(nav_reloc.nav),
         nav_reloc.reloc.type,
         body_end - @sizeOf(Instruction) * (1 + nav_reloc.reloc.label),
         nav_reloc.reloc.addend,
@@ -97,7 +93,7 @@ pub fn emit(
         lf,
         zcu,
         atom_index,
-        try lf.lowerUav(
+        try lf.uavSymbol(
             pt,
             uav_reloc.uav.val,
             ZigType.fromInterned(uav_reloc.uav.orig_ty).ptrAlignment(zcu),
@@ -142,16 +138,11 @@ pub fn emit(
     ) catch |err|
         return zcu.codegenFail(func.owner_nav, "emit reloc failed: {t}", .{err});
 
-    const func_nav = try @import("../../codegen.zig").genNavRef(
-        lf,
-        pt,
-        func.owner_nav,
-    );
     for (mir.internal_relocs) |internal_reloc| emitReloc(
         lf,
         zcu,
         atom_index,
-        func_nav,
+        try lf.navSymbol(func.owner_nav),
         internal_reloc.reloc.type,
         body_end - @sizeOf(Instruction) * (1 + internal_reloc.reloc.label),
         @sizeOf(Instruction) * (@as(i64, @intCast(mir.prologue.len + mir.body.len - internal_reloc.target))),

@@ -299,7 +299,7 @@ pub fn preferNewLinkerOverLld(target: *const std.Target) bool {
 /// Returns `true` if `ofmt` has two linker implementations, so `-fnew-linker` is meaningful.
 pub fn hasNewLinker(ofmt: std.Target.ObjectFormat) bool {
     return switch (ofmt) {
-        .elf => true,
+        .elf, .macho => true,
         else => false,
     };
 }
@@ -510,7 +510,7 @@ pub fn libcFullLinkFlags(target: *const std.Target) []const []const u8 {
         },
         // On SerenityOS libc includes libm, libpthread, libdl, and libssp.
         .serenity => &.{"-lc"},
-        else => &.{},
+        else => if (target.os.tag.isDarwin()) &.{"-lSystem"} else &.{},
     };
     return result;
 }

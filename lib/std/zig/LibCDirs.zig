@@ -11,15 +11,6 @@ libc_include_dir_list: []const []const u8,
 libc_installation: ?*const LibCInstallation,
 libc_framework_dir_list: []const []const u8,
 sysroot: ?[]const u8,
-darwin_sdk_layout: ?DarwinSdkLayout,
-
-/// The filesystem layout of darwin SDK elements.
-pub const DarwinSdkLayout = enum {
-    /// macOS SDK layout: TOP { /usr/include, /usr/lib, /System/Library/Frameworks }.
-    sdk,
-    /// Shipped libc layout: TOP { /lib/libc/include,  /lib/libc/darwin, <NONE> }.
-    vendored,
-};
 
 pub fn detect(
     arena: Allocator,
@@ -37,7 +28,6 @@ pub fn detect(
             .libc_installation = null,
             .libc_framework_dir_list = &.{},
             .sysroot = null,
-            .darwin_sdk_layout = null,
         };
     }
 
@@ -102,13 +92,11 @@ pub fn detect(
         .libc_installation = null,
         .libc_framework_dir_list = &.{},
         .sysroot = null,
-        .darwin_sdk_layout = null,
     };
 }
 
 fn detectFromInstallation(arena: Allocator, target: *const std.Target, lci: *const LibCInstallation) !LibCDirs {
     var list = try std.array_list.Managed([]const u8).initCapacity(arena, 5);
-    var framework_list = std.array_list.Managed([]const u8).init(arena);
 
     list.appendAssumeCapacity(lci.include_dir.?);
 
@@ -149,21 +137,15 @@ fn detectFromInstallation(arena: Allocator, target: *const std.Target, lci: *con
         }
     }
 
-    var sysroot: ?[]const u8 = null;
-
-    if (target.os.tag.isDarwin()) d: {
-        const down1 = std.fs.path.dirname(lci.sys_include_dir.?) orelse break :d;
-        const down2 = std.fs.path.dirname(down1) orelse break :d;
-        try framework_list.append(try std.fs.path.join(arena, &.{ down2, "System", "Library", "Frameworks" }));
-        sysroot = down2;
-    }
+    const frameworks: []const []const u8 = if (target.os.tag.isDarwin()) try arena.dupe([]const u8, &.{
+        try std.fs.path.join(arena, &.{ lci.darwin_sdk_dir.?, "System", "Library", "Frameworks" }),
+    }) else &.{};
 
     return .{
         .libc_include_dir_list = list.items,
         .libc_installation = lci,
-        .libc_framework_dir_list = framework_list.items,
-        .sysroot = sysroot,
-        .darwin_sdk_layout = if (sysroot == null) null else .sdk,
+        .libc_framework_dir_list = frameworks,
+        .sysroot = if (target.os.tag.isDarwin()) lci.darwin_sdk_dir.? else null,
     };
 }
 
@@ -178,7 +160,6 @@ pub fn detectFromBuilding(arena: Allocator, zig_lib_dir: Path, target: *const st
             .libc_installation = null,
             .libc_framework_dir_list = &.{},
             .sysroot = null,
-            .darwin_sdk_layout = .vendored,
         };
     }
 
@@ -230,7 +211,6 @@ pub fn detectFromBuilding(arena: Allocator, zig_lib_dir: Path, target: *const st
         .libc_installation = null,
         .libc_framework_dir_list = &.{},
         .sysroot = null,
-        .darwin_sdk_layout = .vendored,
     };
 }
 

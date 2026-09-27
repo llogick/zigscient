@@ -1145,16 +1145,16 @@ pub const LC = enum(u32) {
 };
 
 /// the mach magic number
-pub const MH_MAGIC = 0xfeedface;
+pub const MH_MAGIC: u32 = 0xfeedface;
 
 /// NXSwapInt(MH_MAGIC)
-pub const MH_CIGAM = 0xcefaedfe;
+pub const MH_CIGAM: u32 = 0xcefaedfe;
 
 /// the 64-bit mach magic number
-pub const MH_MAGIC_64 = 0xfeedfacf;
+pub const MH_MAGIC_64: u32 = 0xfeedfacf;
 
 /// NXSwapInt(MH_MAGIC_64)
-pub const MH_CIGAM_64 = 0xcffaedfe;
+pub const MH_CIGAM_64: u32 = 0xcffaedfe;
 
 /// relocatable object file
 pub const MH_OBJECT = 0x1;
@@ -1281,16 +1281,16 @@ pub const MH_DYLIB_IN_CACHE = 0x80000000;
 // Constants for the flags field of the fat_header
 
 /// the fat magic number
-pub const FAT_MAGIC = 0xcafebabe;
+pub const FAT_MAGIC: u32 = 0xcafebabe;
 
 /// NXSwapLong(FAT_MAGIC)
-pub const FAT_CIGAM = 0xbebafeca;
+pub const FAT_CIGAM: u32 = 0xbebafeca;
 
 /// the 64-bit fat magic number
-pub const FAT_MAGIC_64 = 0xcafebabf;
+pub const FAT_MAGIC_64: u32 = 0xcafebabf;
 
 /// NXSwapLong(FAT_MAGIC_64)
-pub const FAT_CIGAM_64 = 0xbfbafeca;
+pub const FAT_CIGAM_64: u32 = 0xbfbafeca;
 
 /// Segment flags
 /// The file contents for this segment is for the high part of the VM space, the low part
@@ -2212,3 +2212,11 @@ pub const CompactUnwindEncoding = packed struct(u32) {
     has_lsda: u1,
     start: u1,
 };
+
+// Archive files start with the ARMAG identifying string.  Then follows a
+// `struct ar_hdr', and as many bytes of member file data as its `ar_size'
+// member indicates, for each member file.
+/// String that begins an archive file.
+pub const ARMAG = "!<arch>\n";
+/// String in ar_fmag at the end of each header.
+pub const ARFMAG = "`\n";

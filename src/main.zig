@@ -912,13 +912,6 @@ const ArgsIterator = struct {
     }
 };
 
-/// Similar to `link.Framework` except it doesn't store yet unresolved
-/// path to the framework.
-const Framework = struct {
-    needed: bool = false,
-    weak: bool = false,
-};
-
 const CliModule = struct {
     root_path: []const u8,
     root_src_path: []const u8,
@@ -1127,12 +1120,12 @@ pub const CompilationState = struct {
 
         .llvm_m_args = .empty,
         .sysroot = null,
-        .lib_directories = .empty, // populated by createModule()
         .lib_dir_args = .empty, // populated from CLI arg parsing
+        .lib_directories = .empty, // populated by createModule()
+        .framework_dir_args = .empty, // populated from CLI arg parsing
+        .framework_directories = .empty, // populated by createModule()
         .libc_installation = null,
         .want_native_include_dirs = false,
-        .frameworks = .empty,
-        .framework_dirs = .empty,
         .rpath_list = .empty,
         .each_lib_rpath = null,
         .libc_paths_file = undefined,
@@ -1360,12 +1353,12 @@ pub fn buildOutputType(
 
         .llvm_m_args = .empty,
         .sysroot = null,
-        .lib_directories = .empty, // populated by createModule()
         .lib_dir_args = .empty, // populated from CLI arg parsing
+        .lib_directories = .empty, // populated by createModule()
+        .framework_dir_args = .empty, // populated from CLI arg parsing
+        .framework_directories = .empty, // populated by createModule()
         .libc_installation = null,
         .want_native_include_dirs = false,
-        .frameworks = .empty,
-        .framework_dirs = .empty,
         .rpath_list = .empty,
         .each_lib_rpath = null,
         .libc_paths_file = EnvVar.ZIG_LIBC.get(environ_map),
@@ -1517,13 +1510,25 @@ pub fn buildOutputType(
                     } else if (mem.eql(u8, arg, "--library-directory") or mem.eql(u8, arg, "-L")) {
                         try cs.create_module.lib_dir_args.append(arena, args_iter.nextOrFatal());
                     } else if (mem.eql(u8, arg, "-F")) {
-                        try cs.create_module.framework_dirs.append(arena, args_iter.nextOrFatal());
+                        try cs.create_module.framework_dir_args.append(arena, args_iter.nextOrFatal());
                     } else if (mem.eql(u8, arg, "-framework")) {
-                        try cs.create_module.frameworks.put(arena, args_iter.nextOrFatal(), .{});
+                        try cs.create_module.cli_link_inputs.append(arena, .{ .framework_query = .{
+                            .name = args_iter.nextOrFatal(),
+                            .needed = false,
+                            .weak = false,
+                        } });
                     } else if (mem.eql(u8, arg, "-weak_framework")) {
-                        try cs.create_module.frameworks.put(arena, args_iter.nextOrFatal(), .{ .weak = true });
+                        try cs.create_module.cli_link_inputs.append(arena, .{ .framework_query = .{
+                            .name = args_iter.nextOrFatal(),
+                            .needed = false,
+                            .weak = true,
+                        } });
                     } else if (mem.eql(u8, arg, "-needed_framework")) {
-                        try cs.create_module.frameworks.put(arena, args_iter.nextOrFatal(), .{ .needed = true });
+                        try cs.create_module.cli_link_inputs.append(arena, .{ .framework_query = .{
+                            .name = args_iter.nextOrFatal(),
+                            .needed = true,
+                            .weak = false,
+                        } });
                     } else if (mem.eql(u8, arg, "-install_name")) {
                         cs.install_name = args_iter.nextOrFatal();
                     } else if (mem.cutPrefix(u8, arg, "--compress-debug-sections=")) |param| {
@@ -1638,11 +1643,11 @@ pub fn buildOutputType(
                     } else if (mem.eql(u8, arg, "-iframework")) {
                         const path = args_iter.nextOrFatal();
                         try cs.cssan.addIncludePath(arena, &cs.cc_argv, .iframework, arg, path, false);
-                        try cs.create_module.framework_dirs.append(arena, path); // Forward to the backend as -F
+                        try cs.create_module.framework_dir_args.append(arena, path); // Forward to the backend as -F
                     } else if (mem.eql(u8, arg, "-iframeworkwithsysroot")) {
                         const path = args_iter.nextOrFatal();
                         try cs.cssan.addIncludePath(arena, &cs.cc_argv, .iframeworkwithsysroot, arg, path, false);
-                        try cs.create_module.framework_dirs.append(arena, path); // Forward to the backend as -F
+                        try cs.create_module.framework_dir_args.append(arena, path); // Forward to the backend as -F
                     } else if (mem.eql(u8, arg, "--version")) {
                         const next_arg = args_iter.nextOrFatal();
                         cs.version = std.SemanticVersion.parse(next_arg) catch |err| {
@@ -2070,7 +2075,7 @@ pub fn buildOutputType(
                     } else if (mem.cutPrefix(u8, arg, "-L")) |rest| {
                         try cs.create_module.lib_dir_args.append(arena, rest);
                     } else if (mem.cutPrefix(u8, arg, "-F")) |rest| {
-                        try cs.create_module.framework_dirs.append(arena, rest);
+                        try cs.create_module.framework_dir_args.append(arena, rest);
                     } else if (mem.cutPrefix(u8, arg, "-l")) |name| {
                         // We don't know whether this library is part of libc
                         // or libc++ until we resolve the target, so we append
@@ -2842,8 +2847,12 @@ pub fn buildOutputType(
                         cs.disable_c_depfile = true;
                         try cs.cc_argv.appendSlice(arena, it.other_args);
                     },
-                    .framework_dir => try cs.create_module.framework_dirs.append(arena, it.only_arg),
-                    .framework => try cs.create_module.frameworks.put(arena, it.only_arg, .{}),
+                    .framework_dir => try cs.create_module.framework_dir_args.append(arena, it.only_arg),
+                    .framework => try cs.create_module.cli_link_inputs.append(arena, .{ .framework_query = .{
+                        .name = it.only_arg,
+                        .needed = false,
+                        .weak = false,
+                    } }),
                     .nostdlibinc => cs.create_module.want_native_include_dirs = false,
                     .strip => cs.mod_opts.strip = true,
                     .exec_model => {
@@ -2871,7 +2880,11 @@ pub fn buildOutputType(
                         },
                         .name_done = false,
                     } }),
-                    .weak_framework => try cs.create_module.frameworks.put(arena, it.only_arg, .{ .weak = true }),
+                    .weak_framework => try cs.create_module.cli_link_inputs.append(arena, .{ .framework_query = .{
+                        .name = it.only_arg,
+                        .needed = false,
+                        .weak = true,
+                    } }),
                     .headerpad_max_install_names => cs.headerpad_max_install_names = true,
                     .compress_debug_sections => {
                         if (it.only_arg.len == 0) {
@@ -3224,11 +3237,23 @@ pub fn buildOutputType(
                         fatal("unable to parse minor subsystem version {q}: {t}", .{ minor, err });
                     };
                 } else if (mem.eql(u8, arg, "-framework")) {
-                    try cs.create_module.frameworks.put(arena, linker_args_it.nextOrFatal(), .{});
+                    try cs.create_module.cli_link_inputs.append(arena, .{ .framework_query = .{
+                        .name = linker_args_it.nextOrFatal(),
+                        .needed = false,
+                        .weak = false,
+                    } });
                 } else if (mem.eql(u8, arg, "-weak_framework")) {
-                    try cs.create_module.frameworks.put(arena, linker_args_it.nextOrFatal(), .{ .weak = true });
+                    try cs.create_module.cli_link_inputs.append(arena, .{ .framework_query = .{
+                        .name = linker_args_it.nextOrFatal(),
+                        .needed = false,
+                        .weak = true,
+                    } });
                 } else if (mem.eql(u8, arg, "-needed_framework")) {
-                    try cs.create_module.frameworks.put(arena, linker_args_it.nextOrFatal(), .{ .needed = true });
+                    try cs.create_module.cli_link_inputs.append(arena, .{ .framework_query = .{
+                        .name = linker_args_it.nextOrFatal(),
+                        .needed = true,
+                        .weak = false,
+                    } });
                 } else if (mem.eql(u8, arg, "-needed_library")) {
                     try cs.create_module.cli_link_inputs.append(arena, .{ .name_query = .{
                         .name = linker_args_it.nextOrFatal(),
@@ -3725,59 +3750,6 @@ pub fn buildOutputType(
         }
     }
 
-    var resolved_frameworks = std.array_list.Managed(Compilation.Framework).init(arena);
-
-    if (cs.create_module.frameworks.keys().len > 0) {
-        var test_path = std.array_list.Managed(u8).init(gpa);
-        defer test_path.deinit();
-
-        var checked_paths = std.array_list.Managed(u8).init(gpa);
-        defer checked_paths.deinit();
-
-        var failed_frameworks = std.array_list.Managed(struct {
-            name: []const u8,
-            checked_paths: []const u8,
-        }).init(arena);
-
-        framework: for (cs.create_module.frameworks.keys(), cs.create_module.frameworks.values()) |framework_name, info| {
-            checked_paths.clearRetainingCapacity();
-
-            for (cs.create_module.framework_dirs.items) |framework_dir_path| {
-                if (try accessFrameworkPath(
-                    io,
-                    &test_path,
-                    &checked_paths,
-                    framework_dir_path,
-                    framework_name,
-                )) {
-                    const path = Path.initCwd(try arena.dupe(u8, test_path.items));
-                    try resolved_frameworks.append(.{
-                        .needed = info.needed,
-                        .weak = info.weak,
-                        .path = path,
-                    });
-                    continue :framework;
-                }
-            }
-
-            try failed_frameworks.append(.{
-                .name = framework_name,
-                .checked_paths = try arena.dupe(u8, checked_paths.items),
-            });
-        }
-
-        if (failed_frameworks.items.len > 0) {
-            for (failed_frameworks.items) |f| {
-                const searched_paths = if (f.checked_paths.len == 0) " none" else f.checked_paths;
-                std.log.err("unable to find framework {q}. searched paths: {s}", .{
-                    f.name, searched_paths,
-                });
-            }
-            process.exit(1);
-        }
-    }
-    // After this point, resolved_frameworks is used instead of frameworks.
-
     if (cs.create_module.resolved_options.output_mode == .Obj and target.ofmt == .coff) {
         const total_obj_count = cs.create_module.c_source_files.items.len +
             @intFromBool(cs.root_src_file != null) +
@@ -4011,6 +3983,7 @@ pub fn buildOutputType(
         .emit_docs = emit_docs_resolved,
         .emit_implib = emit_implib_resolved,
         .lib_directories = cs.create_module.lib_directories.items,
+        .framework_directories = cs.create_module.framework_directories.items,
         .rpath_list = cs.create_module.rpath_list.items,
         .symbol_wrap_set = cs.symbol_wrap_set,
         .c_source_files = cs.create_module.c_source_files.items,
@@ -4019,8 +3992,6 @@ pub fn buildOutputType(
         .rc_includes = cs.rc_includes,
         .mingw_unicode_entry_point = cs.mingw_unicode_entry_point,
         .link_inputs = cs.create_module.link_inputs.items,
-        .framework_dirs = cs.create_module.framework_dirs.items,
-        .frameworks = resolved_frameworks.items,
         .windows_lib_names = cs.create_module.windows_libs.keys(),
         .want_compiler_rt = if (cs.zig_cc_explicitly_link_compiler_rt) true else cs.want_compiler_rt,
         .want_ubsan_rt = cs.want_ubsan_rt,
@@ -4371,13 +4342,13 @@ const CreateModule = struct {
     /// CPU features.
     llvm_m_args: std.ArrayList([]const u8),
     sysroot: ?[]const u8,
-    lib_directories: std.ArrayList(Directory),
     lib_dir_args: std.ArrayList([]const u8),
+    lib_directories: std.ArrayList(Directory),
+    framework_dir_args: std.ArrayList([]const u8),
+    framework_directories: std.ArrayList(Directory),
     libc_installation: ?LibCInstallation,
     want_native_include_dirs: bool,
-    frameworks: std.array_hash_map.String(Framework),
     native_system_include_paths: []const []const u8,
-    framework_dirs: std.ArrayList([]const u8),
     rpath_list: std.ArrayList([]const u8),
     each_lib_rpath: ?bool,
     libc_paths_file: ?[]const u8,
@@ -4488,7 +4459,7 @@ fn createModule(
         var unresolved_link_inputs: std.ArrayList(link.UnresolvedInput) = .empty;
         defer unresolved_link_inputs.deinit(gpa);
         try unresolved_link_inputs.ensureUnusedCapacity(gpa, create_module.cli_link_inputs.items.len);
-        var any_name_queries_remaining = false;
+        var any_named_library_queries = false;
         for (create_module.cli_link_inputs.items) |cli_link_input| switch (cli_link_input) {
             .name_query => |nq| {
                 const lib_name = nq.name;
@@ -4529,39 +4500,52 @@ fn createModule(
                 }
 
                 unresolved_link_inputs.appendAssumeCapacity(cli_link_input);
-                any_name_queries_remaining = true;
+                any_named_library_queries = true;
+            },
+            .framework_query => {
+                unresolved_link_inputs.appendAssumeCapacity(cli_link_input);
+                any_named_library_queries = true;
             },
             else => {
                 unresolved_link_inputs.appendAssumeCapacity(cli_link_input);
             },
         }; // After this point, unresolved_link_inputs is used instead of cli_link_inputs.
 
-        if (any_name_queries_remaining) create_module.want_native_include_dirs = true;
+        if (any_named_library_queries) create_module.want_native_include_dirs = true;
 
         // Resolve the library path arguments with respect to sysroot.
         try create_module.lib_directories.ensureUnusedCapacity(arena, create_module.lib_dir_args.items.len);
-        if (create_module.sysroot) |root| {
-            for (create_module.lib_dir_args.items) |lib_dir_arg| {
-                if (fs.path.isAbsolute(lib_dir_arg)) {
-                    const stripped_dir = lib_dir_arg[fs.path.parsePath(lib_dir_arg).root.len..];
-                    const full_path = try fs.path.join(arena, &[_][]const u8{ root, stripped_dir });
-                    addLibDirectoryWarn(io, &create_module.lib_directories, full_path);
-                } else {
-                    addLibDirectoryWarn(io, &create_module.lib_directories, lib_dir_arg);
+        for (create_module.lib_dir_args.items) |dir_arg| {
+            const path: []const u8 = path: {
+                if (fs.path.isAbsolute(dir_arg)) {
+                    if (create_module.sysroot) |sysroot| {
+                        // Change the path root to the given sysroot.
+                        const stripped_dir = dir_arg[fs.path.parsePath(dir_arg).root.len..];
+                        break :path try fs.path.join(arena, &.{ sysroot, stripped_dir });
+                    }
                 }
-            }
-        } else {
-            for (create_module.lib_dir_args.items) |lib_dir_arg| {
-                addLibDirectoryWarn(io, &create_module.lib_directories, lib_dir_arg);
-            }
+                break :path dir_arg;
+            };
+            appendLibDirOrWarn(io, &create_module.lib_directories, path);
         }
         create_module.lib_dir_args = undefined; // From here we use lib_directories instead.
 
-        if (resolved_target.is_native_os and target.os.tag.isDarwin()) {
-            // If we want to link against frameworks, we need system headers.
-            if (create_module.frameworks.count() > 0)
-                create_module.want_native_include_dirs = true;
+        // Likewise for framework path arguments.
+        try create_module.framework_directories.ensureUnusedCapacity(arena, create_module.framework_dir_args.items.len);
+        for (create_module.framework_dir_args.items) |dir_arg| {
+            const path: []const u8 = path: {
+                if (fs.path.isAbsolute(dir_arg)) {
+                    if (create_module.sysroot) |sysroot| {
+                        // Change the path root to the given sysroot.
+                        const stripped_dir = dir_arg[fs.path.parsePath(dir_arg).root.len..];
+                        break :path try fs.path.join(arena, &.{ sysroot, stripped_dir });
+                    }
+                }
+                break :path dir_arg;
+            };
+            appendLibDirOrWarn(io, &create_module.framework_directories, path);
         }
+        create_module.framework_dir_args = undefined; // From here we use framework_directories instead.
 
         if (create_module.each_lib_rpath orelse resolved_target.is_native_os) {
             try create_module.rpath_list.ensureUnusedCapacity(arena, create_module.lib_directories.items.len);
@@ -4583,11 +4567,17 @@ fn createModule(
 
             create_module.native_system_include_paths = try paths.include_dirs.toOwnedSlice(arena);
 
-            try create_module.framework_dirs.appendSlice(arena, paths.framework_dirs.items);
             try create_module.rpath_list.appendSlice(arena, paths.rpaths.items);
 
             try create_module.lib_directories.ensureUnusedCapacity(arena, paths.lib_dirs.items.len);
-            for (paths.lib_dirs.items) |path| addLibDirectoryWarn2(io, &create_module.lib_directories, path, true);
+            for (paths.lib_dirs.items) |path| {
+                appendLibDirOrWarnAllowMissing(io, &create_module.lib_directories, path);
+            }
+
+            try create_module.framework_directories.ensureUnusedCapacity(arena, paths.framework_dirs.items.len);
+            for (paths.framework_dirs.items) |path| {
+                appendLibDirOrWarnAllowMissing(io, &create_module.framework_directories, path);
+            }
         }
 
         if (create_module.libc_paths_file) |paths_file| {
@@ -4596,7 +4586,7 @@ fn createModule(
         }
 
         if (target.os.tag == .windows and (target.abi == .msvc or target.abi == .itanium) and
-            any_name_queries_remaining)
+            any_named_library_queries)
         {
             if (create_module.libc_installation == null) {
                 create_module.libc_installation = LibCInstallation.findNative(arena, io, .{
@@ -4607,9 +4597,19 @@ fn createModule(
                     fatal("unable to find native libc installation: {t}", .{err});
                 };
             }
+
             try create_module.lib_directories.ensureUnusedCapacity(arena, 2);
-            addLibDirectoryWarn(io, &create_module.lib_directories, create_module.libc_installation.?.msvc_lib_dir.?);
-            addLibDirectoryWarn(io, &create_module.lib_directories, create_module.libc_installation.?.kernel32_lib_dir.?);
+
+            appendLibDirOrWarn(
+                io,
+                &create_module.lib_directories,
+                create_module.libc_installation.?.msvc_lib_dir.?,
+            );
+            appendLibDirOrWarn(
+                io,
+                &create_module.lib_directories,
+                create_module.libc_installation.?.kernel32_lib_dir.?,
+            );
         }
 
         // Destructively mutates but does not transfer ownership of `unresolved_link_inputs`.
@@ -4621,6 +4621,7 @@ fn createModule(
             &unresolved_link_inputs,
             &create_module.link_inputs,
             create_module.lib_directories.items,
+            create_module.framework_directories.items,
             color,
         ) catch |err| fatal("failed to resolve link inputs: {t}", .{err});
 
@@ -6437,33 +6438,6 @@ const ClangSearchSanitizer = struct {
     };
 };
 
-fn accessFrameworkPath(
-    io: Io,
-    test_path: *std.array_list.Managed(u8),
-    checked_paths: *std.array_list.Managed(u8),
-    framework_dir_path: []const u8,
-    framework_name: []const u8,
-) !bool {
-    const sep = fs.path.sep_str;
-
-    for (&[_][]const u8{ ".tbd", ".dylib", "" }) |ext| {
-        test_path.clearRetainingCapacity();
-        try test_path.print("{s}" ++ sep ++ "{s}.framework" ++ sep ++ "{s}{s}", .{
-            framework_dir_path, framework_name, framework_name, ext,
-        });
-        try checked_paths.print("\n {s}", .{test_path.items});
-        Io.Dir.cwd().access(io, test_path.items, .{}) catch |err| switch (err) {
-            error.FileNotFound => continue,
-            else => |e| fatal("unable to search for {s} framework {q}: {t}", .{
-                ext, test_path.items, e,
-            }),
-        };
-        return true;
-    }
-
-    return false;
-}
-
 fn parseRcIncludes(arg: []const u8) std.zig.RcIncludes {
     return stringToEnum(std.zig.RcIncludes, arg) orelse
         fatal("unsupported rc includes type: {q}", .{arg});
@@ -6574,24 +6548,26 @@ fn anyObjectLinkInputs(link_inputs: []const link.UnresolvedInput) bool {
     return false;
 }
 
-fn addLibDirectoryWarn(io: Io, lib_directories: *std.ArrayList(Directory), path: []const u8) void {
-    return addLibDirectoryWarn2(io, lib_directories, path, false);
+fn appendLibDirOrWarn(io: Io, dirs: *std.ArrayList(Directory), path: []const u8) void {
+    if (Io.Dir.cwd().openDir(io, path, .{})) |handle| {
+        dirs.appendAssumeCapacity(.{
+            .path = path,
+            .handle = handle,
+        });
+    } else |err| {
+        warn("unable to open library directory {q}: {t}", .{ path, err });
+    }
 }
-
-fn addLibDirectoryWarn2(
-    io: Io,
-    lib_directories: *std.ArrayList(Directory),
-    path: []const u8,
-    ignore_not_found: bool,
-) void {
-    lib_directories.appendAssumeCapacity(.{
-        .handle = Io.Dir.cwd().openDir(io, path, .{}) catch |err| {
-            if (err == error.FileNotFound and ignore_not_found) return;
-            warn("unable to open library directory {q}: {t}", .{ path, err });
-            return;
-        },
-        .path = path,
-    });
+fn appendLibDirOrWarnAllowMissing(io: Io, dirs: *std.ArrayList(Directory), path: []const u8) void {
+    if (Io.Dir.cwd().openDir(io, path, .{})) |handle| {
+        dirs.appendAssumeCapacity(.{
+            .path = path,
+            .handle = handle,
+        });
+    } else |err| switch (err) {
+        error.FileNotFound => {}, // ignore
+        else => |e| warn("unable to open library directory {q}: {t}", .{ path, e }),
+    }
 }
 
 pub const globals = struct {

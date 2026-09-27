@@ -917,24 +917,42 @@ pub fn codeAlloc(self: *ZigObject, elf_file: *Elf, atom_index: Atom.Index) ![]u8
     return code;
 }
 
-pub fn getNavVAddr(
-    self: *ZigObject,
+pub fn navSymbol(
+    zo: *ZigObject,
     elf_file: *Elf,
-    pt: Zcu.PerThread,
     nav_index: InternPool.Nav.Index,
-    reloc_info: link.File.RelocInfo,
-) !u64 {
-    const zcu = pt.zcu;
+) link.Error!link.File.SymbolId {
+    const zcu = elf_file.base.comp.zcu.?;
     const ip = &zcu.intern_pool;
     const nav = ip.getNav(nav_index);
-    log.debug("getNavVAddr {f}({d})", .{ nav.fqn.fmt(ip), nav_index });
-    const this_sym_index = if (nav.getExtern(ip)) |@"extern"| try self.getGlobalSymbol(
-        elf_file,
-        nav.name.toSlice(ip),
-        @"extern".lib_name.toSlice(ip),
-    ) else try self.getOrCreateMetadataForNav(zcu, nav_index);
-    const this_sym = self.symbol(this_sym_index);
-    const vaddr = this_sym.address(.{}, elf_file);
+    if (nav.getExtern(ip)) |@"extern"| {
+        const sym_index = try zo.getGlobalSymbol(
+            elf_file,
+            nav.name.toSlice(ip),
+            @"extern".lib_name.toSlice(ip),
+        );
+        if (@"extern".linkage == .weak) {
+            zo.symbol(sym_index).flags.weak = true;
+        }
+        if (nav.resolved.?.@"threadlocal") {
+            zo.symbol(sym_index).flags.is_tls = true;
+        }
+        return @fromBackingInt(sym_index);
+    } else {
+        const sym_index = try zo.getOrCreateMetadataForNav(zcu, nav_index);
+        if (nav.resolved.?.@"threadlocal") {
+            zo.symbol(sym_index).flags.is_tls = true;
+        }
+        return @fromBackingInt(sym_index);
+    }
+}
+
+pub fn relocSymAddr(
+    self: *ZigObject,
+    elf_file: *Elf,
+    reloc_info: link.File.RelocInfo,
+) !void {
+    const this_sym_index = @backingInt(reloc_info.target);
     switch (reloc_info.parent) {
         .none => unreachable,
         .atom_index => |atom_index| {
@@ -952,39 +970,9 @@ pub fn getNavVAddr(
             .target_off = reloc_info.addend,
         }),
     }
-    return @intCast(vaddr);
 }
 
-pub fn getUavVAddr(
-    self: *ZigObject,
-    elf_file: *Elf,
-    uav: InternPool.Index,
-    reloc_info: link.File.RelocInfo,
-) !u64 {
-    const sym_index = self.uavs.get(uav).?.symbol_index;
-    const sym = self.symbol(sym_index);
-    const vaddr = sym.address(.{}, elf_file);
-    switch (reloc_info.parent) {
-        .none => unreachable,
-        .atom_index => |atom_index| {
-            const parent_atom = self.symbol(@backingInt(atom_index)).atom(elf_file).?;
-            const r_type = relocation.encode(.abs, elf_file.getTarget().cpu.arch);
-            try parent_atom.addReloc(elf_file.base.comp.gpa, .{
-                .r_offset = reloc_info.offset,
-                .r_info = (@as(u64, @intCast(sym_index)) << 32) | r_type,
-                .r_addend = reloc_info.addend,
-            }, self);
-        },
-        .debug_output => |debug_output| try debug_output.dwarf.infoExternalReloc(.{
-            .source_off = @intCast(reloc_info.offset),
-            .target_sym = @fromBackingInt(@intCast(sym_index)),
-            .target_off = reloc_info.addend,
-        }),
-    }
-    return @intCast(vaddr);
-}
-
-pub fn lowerUav(
+pub fn uavSymbol(
     self: *ZigObject,
     elf_file: *Elf,
     pt: Zcu.PerThread,
@@ -1889,7 +1877,7 @@ pub fn updateExports(
                 break :blk self.navs.getPtr(nav).?;
             },
             .uav => |uav| self.uavs.getPtr(uav) orelse blk: {
-                _ = try self.lowerUav(elf_file, pt, uav, .none);
+                _ = try self.uavSymbol(elf_file, pt, uav, .none);
                 break :blk self.uavs.getPtr(uav).?;
             },
         };

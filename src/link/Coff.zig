@@ -1607,7 +1607,7 @@ fn create(
     errdefer file.close(io);
     coff.* = .{
         .base = .{
-            .tag = .coff2,
+            .tag = .coff,
 
             .comp = comp,
             .emit = path,
@@ -2935,18 +2935,19 @@ fn navMapIndex(coff: *Coff, zcu: *Zcu, nav_index: InternPool.Nav.Index) !Node.Na
     if (!sym_gop.found_existing) sym_gop.value_ptr.* = coff.addSymbolAssumeCapacity();
     return @fromBackingInt(@intCast(sym_gop.index));
 }
-pub fn navSymbol(coff: *Coff, zcu: *Zcu, nav_index: InternPool.Nav.Index) !Symbol.Index {
+pub fn navSymbol(coff: *Coff, nav_index: InternPool.Nav.Index) link.Error!link.File.SymbolId {
+    const zcu = coff.base.comp.zcu.?;
     const ip = &zcu.intern_pool;
     const nav = ip.getNav(nav_index);
-    if (nav.getExtern(ip)) |@"extern"| return coff.globalSymbol(.{
+    if (nav.getExtern(ip)) |@"extern"| return @bitCast(try coff.globalSymbol(.{
         .name = @"extern".name.toSlice(ip),
         .lib_name = @"extern".lib_name.toSlice(ip),
         // TODO: Threadlocal as well?
         .type = if (ip.isFunctionType(nav.resolved.?.type)) .code else .data,
         .dll_storage_class = if (@"extern".is_dll_import) .dllimport else .default,
-    });
+    }));
     const nmi = try coff.navMapIndex(zcu, nav_index);
-    return nmi.symbol(coff);
+    return @bitCast(nmi.symbol(coff));
 }
 
 fn uavMapIndex(coff: *Coff, uav_val: InternPool.Index) !Node.UavMapIndex {
@@ -2955,10 +2956,6 @@ fn uavMapIndex(coff: *Coff, uav_val: InternPool.Index) !Node.UavMapIndex {
     const sym_gop = try coff.uavs.getOrPut(gpa, uav_val);
     if (!sym_gop.found_existing) sym_gop.value_ptr.* = coff.addSymbolAssumeCapacity();
     return @fromBackingInt(@intCast(sym_gop.index));
-}
-pub fn uavSymbol(coff: *Coff, uav_val: InternPool.Index) !Symbol.Index {
-    const umi = try coff.uavMapIndex(uav_val);
-    return umi.symbol(coff);
 }
 
 pub fn lazySymbol(coff: *Coff, lazy: link.File.LazySymbol) !Symbol.Index {
@@ -2972,24 +2969,8 @@ pub fn lazySymbol(coff: *Coff, lazy: link.File.LazySymbol) !Symbol.Index {
     return sym_gop.value_ptr.*;
 }
 
-pub fn getNavVAddr(
-    coff: *Coff,
-    pt: Zcu.PerThread,
-    nav: InternPool.Nav.Index,
-    reloc_info: link.File.RelocInfo,
-) link.Error!u64 {
-    return coff.getVAddr(reloc_info, try coff.navSymbol(pt.zcu, nav));
-}
-
-pub fn getUavVAddr(
-    coff: *Coff,
-    uav: InternPool.Index,
-    reloc_info: link.File.RelocInfo,
-) link.Error!u64 {
-    return coff.getVAddr(reloc_info, try coff.uavSymbol(uav));
-}
-
-pub fn getVAddr(coff: *Coff, reloc_info: link.File.RelocInfo, target_si: Symbol.Index) link.Error!u64 {
+pub fn relocSymAddr(coff: *Coff, reloc_info: link.File.RelocInfo) link.Error!void {
+    const target_si: Symbol.Index = @bitCast(reloc_info.target);
     try coff.addReloc(
         @fromBackingInt(@intCast(@backingInt(reloc_info.parent.atom_index))),
         reloc_info.offset,
@@ -3001,10 +2982,6 @@ pub fn getVAddr(coff: *Coff, reloc_info: link.File.RelocInfo, target_si: Symbol.
             .I386 => .{ .I386 = .DIR32 },
         },
     );
-
-    var vaddr: u64 = target_si.get(coff).rva;
-    if (coff.isImage()) vaddr += coff.optionalHeaderField(.image_base);
-    return vaddr;
 }
 
 /// Caller guarantees there is capacity for one member and two nodes
@@ -3935,6 +3912,7 @@ pub fn loadInput(coff: *Coff, input: link.Input) link.Error!void {
             coff.loadDll(dso.path, &fr) catch |err|
                 return coff.failLoadInput(err, &fr, dso.path);
         },
+        .tbd => unreachable,
     }
 }
 
@@ -5580,13 +5558,15 @@ pub fn updateContainerType(
     };
 }
 
-pub fn lowerUav(
+pub fn uavSymbol(
     coff: *Coff,
     pt: Zcu.PerThread,
     uav_val: InternPool.Index,
     uav_align: InternPool.Alignment,
 ) link.Error!link.File.SymbolId {
-    const zcu = pt.zcu;
+    _ = pt;
+
+    const zcu = coff.base.comp.zcu.?;
     const gpa = zcu.gpa;
 
     try coff.pending_uavs.ensureUnusedCapacity(gpa, 1);
@@ -7471,8 +7451,8 @@ fn updateExportInner(
 
     try coff.symbols.ensureUnusedCapacity(gpa, 1);
     const exported_si: Symbol.Index = switch (exp.exported) {
-        .nav => |nav| try coff.navSymbol(zcu, nav),
-        .uav => |uav| @fromBackingInt(@intCast(@backingInt(try coff.lowerUav(
+        .nav => |nav| @bitCast(try coff.navSymbol(nav)),
+        .uav => |uav| @fromBackingInt(@intCast(@backingInt(try coff.uavSymbol(
             pt,
             uav,
             Type.fromInterned(ip.typeOf(uav)).abiAlignment(zcu),

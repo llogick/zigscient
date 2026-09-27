@@ -17,7 +17,7 @@ pub fn unpack(self: *Archive, macho_file: *MachO, path: Path, handle_index: File
     const offset = if (fat_arch) |ar| ar.offset else 0;
     const end_pos = if (fat_arch) |ar| offset + ar.size else (try handle.stat(io)).size;
 
-    var pos: usize = offset + SARMAG;
+    var pos: usize = offset + macho.ARMAG.len;
     while (true) {
         if (pos >= end_pos) break;
         if (!mem.isAligned(pos, 2)) pos += 1;
@@ -30,9 +30,9 @@ pub fn unpack(self: *Archive, macho_file: *MachO, path: Path, handle_index: File
         const hdr = @as(*align(1) const ar_hdr, @ptrCast(&hdr_buffer)).*;
         pos += @sizeOf(ar_hdr);
 
-        if (!mem.eql(u8, &hdr.ar_fmag, ARFMAG)) {
+        if (!mem.eql(u8, &hdr.ar_fmag, macho.ARFMAG)) {
             return diags.failParse(path, "invalid header delimiter: expected '{f}', found '{f}'", .{
-                std.ascii.hexEscape(ARFMAG, .lower), std.ascii.hexEscape(&hdr.ar_fmag, .lower),
+                std.ascii.hexEscape(macho.ARFMAG, .lower), std.ascii.hexEscape(&hdr.ar_fmag, .lower),
             });
         }
 
@@ -116,17 +116,6 @@ pub fn writeHeader(
     }
 }
 
-// Archive files start with the ARMAG identifying string.  Then follows a
-// `struct ar_hdr', and as many bytes of member file data as its `ar_size'
-// member indicates, for each member file.
-/// String that begins an archive file.
-pub const ARMAG: *const [SARMAG:0]u8 = "!<arch>\n";
-/// Size of that string.
-pub const SARMAG: u4 = 8;
-
-/// String in ar_fmag at the end of each header.
-const ARFMAG: *const [2:0]u8 = "`\n";
-
 pub const SYMDEF = "__.SYMDEF";
 pub const SYMDEF64 = "__.SYMDEF_64";
 pub const SYMDEF_SORTED = "__.SYMDEF SORTED";
@@ -146,7 +135,7 @@ pub const ar_hdr = extern struct {
     /// File size, in ASCII decimal.
     ar_size: [10]u8 = "0\x20\x20\x20\x20\x20\x20\x20\x20\x20".*,
     /// Always contains ARFMAG.
-    ar_fmag: [2]u8 = ARFMAG.*,
+    ar_fmag: [2]u8 = macho.ARFMAG.*,
 
     fn date(self: ar_hdr) !u64 {
         const value = mem.trimEnd(u8, &self.ar_date, &[_]u8{@as(u8, 0x20)});

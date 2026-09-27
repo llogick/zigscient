@@ -309,7 +309,7 @@ fn linkAsArchive(lld: *Lld, arena: Allocator) link.Error!void {
 
     try object_files.ensureUnusedCapacity(arena, comp.link_inputs.len);
     for (comp.link_inputs) |input| switch (input) {
-        .dso, .archive => {}, // static archives should not contain shared libraries or other static archives
+        .dso, .tbd, .archive => {}, // static archives should not contain shared libraries or other static archives
         .res, .object => {
             const path = try input.path().toStringZ(arena);
             object_files.appendAssumeCapacity(path);
@@ -561,6 +561,7 @@ fn coffLink(lld: *Lld, arena: Allocator) !void {
                     argv.appendAssumeCapacity(try obj.path.toString(arena));
                 }
             },
+            .tbd => unreachable,
         };
 
         for (comp.c_objects.items) |c_object| {
@@ -1102,6 +1103,7 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
 
         for (base.comp.link_inputs) |link_input| switch (link_input) {
             .res => unreachable, // Windows-only
+            .tbd => unreachable, // Darwin-only
             .dso => continue,
             .object, .archive => |obj| {
                 if (obj.must_link and !whole_archive) {
@@ -1163,6 +1165,7 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
 
             for (base.comp.link_inputs) |link_input| switch (link_input) {
                 .res => unreachable, // Windows-only
+                .tbd => unreachable, // Darwin-only
                 .object, .archive => continue,
                 .dso => |dso| {
                     const lib_as_needed = !dso.needed;
@@ -1596,6 +1599,7 @@ fn wasmLink(lld: *Lld, arena: Allocator) !void {
             .dso => |dso| {
                 try argv.append(try dso.path.toString(arena));
             },
+            .tbd => unreachable,
             .res => unreachable,
         };
         if (whole_archive) {

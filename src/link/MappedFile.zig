@@ -495,12 +495,12 @@ pub const Node = extern struct {
         }
 
         pub fn hasMoved(ni: Node.Index, mf: *const MappedFile) bool {
-            var parent_ni = ni;
-            while (parent_ni != .root) {
-                const parent_node = parent_ni.get(mf);
-                if (!parent_node.flags.bubbles_moved) break;
-                if (parent_node.flags.moved) return true;
-                parent_ni = parent_node.parent.unwrap().?;
+            var cur_ni = ni;
+            while (cur_ni != .root) {
+                if (cur_ni.get(mf).flags.moved) return true;
+                const parent_ni = cur_ni.parent(mf).unwrap().?;
+                if (!parent_ni.get(mf).flags.bubbles_moved) break;
+                cur_ni = parent_ni;
             }
             return false;
         }

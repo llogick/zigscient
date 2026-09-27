@@ -23,6 +23,7 @@ crt_dir: ?[]const u8 = null,
 msvc_lib_dir: ?[]const u8 = null,
 kernel32_lib_dir: ?[]const u8 = null,
 cc_dir: ?[]const u8 = null,
+darwin_sdk_dir: ?[]const u8 = null,
 
 pub const FindError = error{
     OutOfMemory,
@@ -96,6 +97,10 @@ pub fn parse(allocator: Allocator, io: Io, libc_file: []const u8, target: *const
         log.err("sys_include_dir may not be empty", .{});
         return error.ParseError;
     }
+    if (self.crt_dir == null) {
+        log.err("crt_dir may not be empty", .{});
+        return error.ParseError;
+    }
 
     const os_tag = target.os.tag;
 
@@ -103,12 +108,6 @@ pub fn parse(allocator: Allocator, io: Io, libc_file: []const u8, target: *const
         log.err("cc_dir may not be empty for {s}", .{@tagName(os_tag)});
         return error.ParseError;
     }
-
-    if (self.crt_dir == null and !target.os.tag.isDarwin()) {
-        log.err("crt_dir may not be empty for {s}", .{@tagName(os_tag)});
-        return error.ParseError;
-    }
-
     if (self.msvc_lib_dir == null and os_tag == .windows and (target.abi == .msvc or target.abi == .itanium)) {
         log.err("msvc_lib_dir may not be empty for {s}-{s}", .{
             @tagName(os_tag),
@@ -123,19 +122,16 @@ pub fn parse(allocator: Allocator, io: Io, libc_file: []const u8, target: *const
         });
         return error.ParseError;
     }
+    if (self.darwin_sdk_dir == null and os_tag.isDarwin()) {
+        log.err("darwin_sdk_dir may not be empty for {t}", .{os_tag});
+        return error.ParseError;
+    }
 
     return self;
 }
 
 pub fn render(self: LibCInstallation, out: *std.Io.Writer) !void {
     @setEvalBranchQuota(4000);
-    const include_dir = self.include_dir orelse "";
-    const sys_include_dir = self.sys_include_dir orelse "";
-    const crt_dir = self.crt_dir orelse "";
-    const msvc_lib_dir = self.msvc_lib_dir orelse "";
-    const kernel32_lib_dir = self.kernel32_lib_dir orelse "";
-    const cc_dir = self.cc_dir orelse "";
-
     try out.print(
         \\# The directory that contains `stdlib.h`.
         \\# On POSIX, can be found with: `cc -E -Wp,-v -xc /dev/null`
@@ -153,7 +149,6 @@ pub fn render(self: LibCInstallation, out: *std.Io.Writer) !void {
         \\
         \\# The directory that contains `crt1.o` or `crt2.o`.
         \\# On POSIX, can be found with `cc -print-file-name=crt1.o`.
-        \\# Not needed when targeting macOS.
         \\crt_dir={s}
         \\
         \\# The directory that contains `vcruntime.lib`.
@@ -164,13 +159,18 @@ pub fn render(self: LibCInstallation, out: *std.Io.Writer) !void {
         \\# Only needed when targeting MSVC on Windows.
         \\kernel32_lib_dir={s}
         \\
+        \\# The directory that contains `SDKSettings.json`
+        \\# Only needed when targeting Darwin.
+        \\darwin_sdk_dir={s}
+        \\
     , .{
-        include_dir,
-        sys_include_dir,
-        crt_dir,
-        msvc_lib_dir,
-        kernel32_lib_dir,
-        cc_dir,
+        self.include_dir orelse "",
+        self.sys_include_dir orelse "",
+        self.cc_dir orelse "",
+        self.crt_dir orelse "",
+        self.msvc_lib_dir orelse "",
+        self.kernel32_lib_dir orelse "",
+        self.darwin_sdk_dir orelse "",
     });
 }
 
@@ -189,16 +189,13 @@ pub fn findNative(gpa: Allocator, io: Io, args: FindNativeOptions) FindError!Lib
     if (is_darwin and args.target.os.tag.isDarwin()) {
         if (!std.zig.system.darwin.isSdkInstalled(gpa, io))
             return error.DarwinSdkNotFound;
-        const sdk = std.zig.system.darwin.getSdk(gpa, io, args.target) orelse
+        self.darwin_sdk_dir = std.zig.system.darwin.getSdk(gpa, io, args.target) orelse
             return error.DarwinSdkNotFound;
-        defer gpa.free(sdk);
 
-        self.include_dir = try fs.path.join(gpa, &.{
-            sdk, "usr/include",
-        });
-        self.sys_include_dir = try fs.path.join(gpa, &.{
-            sdk, "usr/include",
-        });
+        const sdk = self.darwin_sdk_dir.?;
+        self.include_dir = try fs.path.join(gpa, &.{ sdk, "usr/include" });
+        self.sys_include_dir = try fs.path.join(gpa, &.{ sdk, "usr/include" });
+        self.crt_dir = try fs.path.join(gpa, &.{ sdk, "usr/lib" });
         return self;
     } else if (is_windows) {
         const sdk = std.zig.WindowsSdk.find(gpa, io, args.target.cpu.arch, args.environ_map) catch |err| switch (err) {
