@@ -2599,13 +2599,16 @@ pub fn structFieldOffset(ty: Type, index: usize, zcu: *const Zcu) u64 {
 pub fn srcLocOrNull(ty: Type, zcu: *Zcu) ?Zcu.LazySrcLoc {
     const ip = &zcu.intern_pool;
     return .{
-        .base_node_inst = switch (ip.indexToKey(ty.toIntern())) {
-            .struct_type, .union_type, .opaque_type, .enum_type => |info| switch (info) {
-                .declared => |d| d.zir_index,
-                .reified => |r| r.zir_index,
-                .generated_union_tag => |union_ty| ip.loadUnionType(union_ty).zir_index,
+        .baseline = .{
+            .inst = switch (ip.indexToKey(ty.toIntern())) {
+                .struct_type, .union_type, .opaque_type, .enum_type => |info| switch (info) {
+                    .declared => |d| d.zir_index,
+                    .reified => |r| r.zir_index,
+                    .generated_union_tag => |union_ty| ip.loadUnionType(union_ty).zir_index,
+                },
+                else => return null,
             },
-            else => return null,
+            .node = .main,
         },
         .offset = Zcu.LazySrcLoc.Offset.nodeOffset(.zero),
     };

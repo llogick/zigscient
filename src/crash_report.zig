@@ -150,11 +150,12 @@ fn dumpCrashContextSema(anal: *AnalyzeBody, stderr: *Io.Writer, crash_heap: []u8
 
     var fba: std.heap.FixedBufferAllocator = .init(crash_heap);
 
-    const file, const src_base_node = Zcu.LazySrcLoc.resolveBaseNode(block.src_base_inst, zcu) orelse {
-        const file = zcu.fileByIndex(block.src_base_inst.resolveFile(&zcu.intern_pool));
+    const file_index, const src_base_node = block.src_baseline.resolve(zcu) orelse {
+        const file = zcu.fileByIndex(block.src_baseline.inst.resolveFile(&zcu.intern_pool));
         try stderr.print("Analyzing lost instruction in file '{f}'. This should not happen!\n\n", .{file.path.fmt(comp)});
         return;
     };
+    const file = zcu.fileByIndex(file_index);
 
     try stderr.print("Analyzing '{f}'\n", .{file.path.fmt(comp)});
 
@@ -180,9 +181,9 @@ fn dumpCrashContextSema(anal: *AnalyzeBody, stderr: *Io.Writer, crash_heap: []u8
     var parent = anal.parent;
     while (parent) |curr| {
         fba.reset();
-        const cur_block_file = zcu.fileByIndex(curr.block.src_base_inst.resolveFile(&zcu.intern_pool));
+        const cur_block_file = zcu.fileByIndex(curr.block.src_baseline.inst.resolveFile(&zcu.intern_pool));
         try stderr.print("  in {f}\n", .{cur_block_file.path.fmt(comp)});
-        _, const cur_block_src_base_node = Zcu.LazySrcLoc.resolveBaseNode(curr.block.src_base_inst, zcu) orelse {
+        _, const cur_block_src_base_node = curr.block.src_baseline.resolve(zcu) orelse {
             try stderr.writeAll("    > [lost instruction; this should not happen]\n");
             parent = curr.parent;
             continue;

@@ -176,7 +176,7 @@ pub fn generate(gpa: Allocator, tree: Ast) Allocator.Error!Zir {
     var gen_scope: GenZir = .{
         .is_comptime = true,
         .parent = &top_scope.base,
-        .decl_node_index = .root,
+        .src_baseline = .root,
         .decl_line = 0,
         .astgen = &astgen,
         .instructions = &gz_instructions,
@@ -4048,7 +4048,7 @@ fn fnDecl(
 
     var type_gz: GenZir = .{
         .is_comptime = true,
-        .decl_node_index = fn_proto.ast.proto_node,
+        .src_baseline = fn_proto.ast.proto_node,
         .decl_line = astgen.source_line,
         .parent = scope,
         .astgen = astgen,
@@ -4314,7 +4314,7 @@ fn fnDeclInner(
 
     var body_gz: GenZir = .{
         .is_comptime = false,
-        .decl_node_index = fn_proto.ast.proto_node,
+        .src_baseline = fn_proto.ast.proto_node,
         .decl_line = decl_gz.decl_line,
         .parent = params_scope,
         .astgen = astgen,
@@ -4468,7 +4468,7 @@ fn globalVarDecl(
 
     var type_gz: GenZir = .{
         .parent = scope,
-        .decl_node_index = node,
+        .src_baseline = node,
         .decl_line = astgen.source_line,
         .astgen = astgen,
         .is_comptime = true,
@@ -4570,7 +4570,7 @@ fn comptimeDecl(
 
     var comptime_gz: GenZir = .{
         .is_comptime = true,
-        .decl_node_index = node,
+        .src_baseline = node,
         .decl_line = astgen.source_line,
         .parent = scope,
         .astgen = astgen,
@@ -4634,7 +4634,7 @@ fn testDecl(
 
     var decl_block: GenZir = .{
         .is_comptime = true,
-        .decl_node_index = node,
+        .src_baseline = node,
         .decl_line = astgen.source_line,
         .parent = scope,
         .astgen = astgen,
@@ -4732,7 +4732,7 @@ fn testDecl(
 
     var fn_block: GenZir = .{
         .is_comptime = false,
-        .decl_node_index = node,
+        .src_baseline = node,
         .decl_line = decl_block.decl_line,
         .parent = &decl_block.base,
         .astgen = astgen,
@@ -4857,6 +4857,8 @@ fn structDeclInner(
             .src_column = src_column,
             .src_node = node,
             .name_strat = name_strat,
+            .arg_baseline_src_node = .none,
+            .fields_baseline_src_node = .none,
             .layout = layout,
             .backing_int_type_body_len = null,
             .decls_len = 0,
@@ -4886,7 +4888,7 @@ fn structDeclInner(
     // can refer to decls within the struct itself.
     var block_scope: GenZir = .{
         .parent = &namespace.base,
-        .decl_node_index = node,
+        .src_baseline = node,
         .decl_line = gz.decl_line,
         .astgen = astgen,
         .is_comptime = true,
@@ -4933,6 +4935,7 @@ fn structDeclInner(
         break :len body_len;
     } else null;
 
+    var fields_src_baseline: Ast.Node.OptionalIndex = .none;
     var next_field_idx: u32 = 0;
     for (container_decl.ast.members) |member_node| {
         var member = switch (try containerMember(&block_scope, &namespace.base, &wip_decls, member_node)) {
@@ -4941,6 +4944,13 @@ fn structDeclInner(
         };
         const field_idx = next_field_idx;
         next_field_idx += 1;
+
+        if (field_idx == 0) {
+            assert(fields_src_baseline == .none);
+            fields_src_baseline = member_node.toOptional();
+        }
+        block_scope.src_baseline = fields_src_baseline.unwrap().?;
+        defer block_scope.src_baseline = node;
 
         astgen.src_hasher.update(tree.getNodeSource(member_node));
 
@@ -5013,6 +5023,8 @@ fn structDeclInner(
         .src_column = src_column,
         .src_node = node,
         .name_strat = name_strat,
+        .arg_baseline_src_node = maybe_backing_int_node,
+        .fields_baseline_src_node = fields_src_baseline,
         .layout = layout,
         .backing_int_type_body_len = backing_int_type_body_len,
         .decls_len = scan_result.decls_len,
@@ -5176,7 +5188,7 @@ fn unionDeclInner(
     // can refer to decls within the union itself.
     var block_scope: GenZir = .{
         .parent = &namespace.base,
-        .decl_node_index = node,
+        .src_baseline = node,
         .decl_line = gz.decl_line,
         .astgen = astgen,
         .is_comptime = true,
@@ -5213,6 +5225,7 @@ fn unionDeclInner(
         break :len body_len;
     } else null;
 
+    var fields_src_baseline: Ast.Node.OptionalIndex = .none;
     var next_field_idx: u32 = 0;
     for (members) |member_node| {
         var member = switch (try containerMember(&block_scope, &namespace.base, &wip_decls, member_node)) {
@@ -5221,6 +5234,13 @@ fn unionDeclInner(
         };
         const field_idx = next_field_idx;
         next_field_idx += 1;
+
+        if (field_idx == 0) {
+            assert(fields_src_baseline == .none);
+            fields_src_baseline = member_node.toOptional();
+        }
+        block_scope.src_baseline = fields_src_baseline.unwrap().?;
+        defer block_scope.src_baseline = node;
 
         astgen.src_hasher.update(astgen.tree.getNodeSource(member_node));
         member.convertToNonTupleLike(astgen.tree);
@@ -5298,6 +5318,8 @@ fn unionDeclInner(
         .src_column = src_column,
         .src_node = node,
         .name_strat = name_strat,
+        .arg_baseline_src_node = opt_arg_node,
+        .fields_baseline_src_node = fields_src_baseline,
         .kind = switch (layout) {
             .auto => if (auto_enum_tok == null) l: {
                 break :l if (opt_arg_node == .none) .auto else .tagged_explicit;
@@ -5386,7 +5408,7 @@ fn containerDecl(
             // are in scope, so that tag values can refer to decls within the enum itself.
             var block_scope: GenZir = .{
                 .parent = &namespace.base,
-                .decl_node_index = node,
+                .src_baseline = node,
                 .decl_line = gz.decl_line,
                 .astgen = astgen,
                 .is_comptime = true,
@@ -5424,6 +5446,7 @@ fn containerDecl(
             } else null;
 
             var next_field_idx: u32 = 0;
+            var fields_src_baseline: Ast.Node.OptionalIndex = .none;
             var opt_nonexhaustive_node: Ast.Node.OptionalIndex = .none;
             for (container_decl.ast.members) |member_node| {
                 var member = switch (try containerMember(&block_scope, &namespace.base, &wip_decls, member_node)) {
@@ -5466,6 +5489,13 @@ fn containerDecl(
                 const field_idx = next_field_idx;
                 next_field_idx += 1;
 
+                if (field_idx == 0) {
+                    assert(fields_src_baseline == .none);
+                    fields_src_baseline = member_node.toOptional();
+                }
+                block_scope.src_baseline = fields_src_baseline.unwrap().?;
+                defer block_scope.src_baseline = node;
+
                 astgen.src_hasher.update(tree.getNodeSource(member_node));
 
                 field_names.get(astgen)[field_idx] = @backingInt(try astgen.identAsString(member.ast.main_token));
@@ -5500,6 +5530,8 @@ fn containerDecl(
                 .src_column = src_column,
                 .src_node = node,
                 .name_strat = name_strat,
+                .arg_baseline_src_node = container_decl.ast.arg,
+                .fields_baseline_src_node = fields_src_baseline,
                 .tag_type_body_len = tag_type_body_len,
                 .nonexhaustive = scan_result.has_underscore_field,
                 .decls_len = scan_result.decls_len,
@@ -5534,7 +5566,7 @@ fn containerDecl(
 
             var block_scope: GenZir = .{
                 .parent = &namespace.base,
-                .decl_node_index = node,
+                .src_baseline = node,
                 .decl_line = gz.decl_line,
                 .astgen = astgen,
                 .is_comptime = true,
@@ -11252,7 +11284,7 @@ const GenZir = struct {
     /// exits from this block should use `break_inline` rather than `break`.
     is_inline: bool = false,
     /// The containing decl AST node.
-    decl_node_index: Ast.Node.Index,
+    src_baseline: Ast.Node.Index,
     /// The containing decl line index, absolute.
     decl_line: u32,
     /// Parents can be: `LocalVal`, `LocalPtr`, `GenZir`, `Defer`, `Namespace`.
@@ -11338,7 +11370,7 @@ const GenZir = struct {
         return .{
             .is_comptime = gz.is_comptime,
             .is_typeof = gz.is_typeof,
-            .decl_node_index = gz.decl_node_index,
+            .src_baseline = gz.src_baseline,
             .decl_line = gz.decl_line,
             .parent = scope,
             .astgen = gz.astgen,
@@ -11374,15 +11406,11 @@ const GenZir = struct {
     }
 
     fn nodeIndexToRelative(gz: GenZir, node_index: Ast.Node.Index) Ast.Node.Offset {
-        return gz.decl_node_index.toOffset(node_index);
+        return gz.src_baseline.toOffset(node_index);
     }
 
     fn tokenIndexToRelative(gz: GenZir, token: Ast.TokenIndex) Ast.TokenOffset {
-        return .init(gz.srcToken(), token);
-    }
-
-    fn srcToken(gz: GenZir) Ast.TokenIndex {
-        return gz.astgen.tree.firstToken(gz.decl_node_index);
+        return .init(gz.astgen.tree.firstToken(gz.src_baseline), token);
     }
 
     fn setBreakResultInfo(gz: *GenZir, parent_ri: AstGen.ResultInfo) void {
@@ -12420,6 +12448,8 @@ const GenZir = struct {
         src_column: u32,
         src_node: Ast.Node.Index,
         name_strat: Zir.Inst.NameStrategy,
+        arg_baseline_src_node: Ast.Node.OptionalIndex,
+        fields_baseline_src_node: Ast.Node.OptionalIndex,
         layout: std.lang.Type.ContainerLayout,
         backing_int_type_body_len: ?u32,
         decls_len: u32,
@@ -12445,7 +12475,9 @@ const GenZir = struct {
         const fields_hash_arr: [4]u32 = @bitCast(args.fields_hash);
 
         try astgen.extra.ensureUnusedCapacity(gpa, @typeInfo(Zir.Inst.StructDecl).@"struct".field_names.len +
-            4 + // `captures_len`, `decls_len`, `fields_len`, `backing_int_type_body_len`
+            3 + // `captures_len`, `decls_len`, `fields_len`
+            2 + // `arg_baseline_src_node`, `fields_baseline_src_node`
+            1 + // `backing_int_type_body_len`
             captures_len * 2 + // `capture`, `capture_name`
             args.remaining.len);
 
@@ -12462,6 +12494,12 @@ const GenZir = struct {
         if (captures_len != 0) astgen.extra.appendAssumeCapacity(captures_len);
         if (args.decls_len != 0) astgen.extra.appendAssumeCapacity(args.decls_len);
         if (args.fields_len != 0) astgen.extra.appendAssumeCapacity(args.fields_len);
+        if (args.backing_int_type_body_len != null) astgen.extra.appendAssumeCapacity(
+            @backingInt(args.arg_baseline_src_node.unwrap().?),
+        );
+        if (args.fields_len != 0) astgen.extra.appendAssumeCapacity(
+            @backingInt(args.fields_baseline_src_node.unwrap().?),
+        );
         if (args.backing_int_type_body_len) |n| astgen.extra.appendAssumeCapacity(n);
         astgen.extra.appendSliceAssumeCapacity(@ptrCast(args.captures));
         astgen.extra.appendSliceAssumeCapacity(@ptrCast(args.capture_names));
@@ -12492,6 +12530,8 @@ const GenZir = struct {
         src_column: u32,
         src_node: Ast.Node.Index,
         name_strat: Zir.Inst.NameStrategy,
+        arg_baseline_src_node: Ast.Node.OptionalIndex,
+        fields_baseline_src_node: Ast.Node.OptionalIndex,
         kind: Zir.Inst.UnionDecl.Kind,
         arg_type_body_len: ?u32,
         decls_len: u32,
@@ -12515,7 +12555,9 @@ const GenZir = struct {
         const fields_hash_arr: [4]u32 = @bitCast(args.fields_hash);
 
         try astgen.extra.ensureUnusedCapacity(gpa, @typeInfo(Zir.Inst.UnionDecl).@"struct".field_names.len +
-            4 + // `captures_len`, `decls_len`, `fields_len`, `arg_type_body_len`
+            3 + // `captures_len`, `decls_len`, `fields_len`
+            2 + // `arg_baseline_src_node`, `fields_baseline_src_node`
+            1 + // `arg_type_body_len`
             captures_len * 2 + // `capture`, `capture_name`
             args.remaining.len);
 
@@ -12532,6 +12574,12 @@ const GenZir = struct {
         if (captures_len != 0) astgen.extra.appendAssumeCapacity(captures_len);
         if (args.decls_len != 0) astgen.extra.appendAssumeCapacity(args.decls_len);
         if (args.fields_len != 0) astgen.extra.appendAssumeCapacity(args.fields_len);
+        if (args.kind.hasArgType()) astgen.extra.appendAssumeCapacity(
+            @backingInt(args.arg_baseline_src_node.unwrap().?),
+        );
+        if (args.fields_len != 0) astgen.extra.appendAssumeCapacity(
+            @backingInt(args.fields_baseline_src_node.unwrap().?),
+        );
         if (args.kind.hasArgType()) {
             astgen.extra.appendAssumeCapacity(args.arg_type_body_len.?);
         } else {
@@ -12564,6 +12612,8 @@ const GenZir = struct {
         src_column: u32,
         src_node: Ast.Node.Index,
         name_strat: Zir.Inst.NameStrategy,
+        arg_baseline_src_node: Ast.Node.OptionalIndex,
+        fields_baseline_src_node: Ast.Node.OptionalIndex,
         tag_type_body_len: ?u32,
         nonexhaustive: bool,
         decls_len: u32,
@@ -12586,7 +12636,9 @@ const GenZir = struct {
         const fields_hash_arr: [4]u32 = @bitCast(args.fields_hash);
 
         try astgen.extra.ensureUnusedCapacity(gpa, @typeInfo(Zir.Inst.EnumDecl).@"struct".field_names.len +
-            4 + // `captures_len`, `decls_len`, `fields_len`, `tag_type_body_len`
+            3 + // `captures_len`, `decls_len`, `fields_len`
+            2 + // `arg_baseline_src_node`, `fields_baseline_src_node`
+            1 + // `tag_type_body_len`
             captures_len * 2 + // `capture`, `capture_name`
             args.remaining.len);
 
@@ -12603,6 +12655,12 @@ const GenZir = struct {
         if (captures_len != 0) astgen.extra.appendAssumeCapacity(captures_len);
         if (args.decls_len != 0) astgen.extra.appendAssumeCapacity(args.decls_len);
         if (args.fields_len != 0) astgen.extra.appendAssumeCapacity(args.fields_len);
+        if (args.tag_type_body_len != null) astgen.extra.appendAssumeCapacity(
+            @backingInt(args.arg_baseline_src_node.unwrap().?),
+        );
+        if (args.fields_len != 0) astgen.extra.appendAssumeCapacity(
+            @backingInt(args.fields_baseline_src_node.unwrap().?),
+        );
         if (args.tag_type_body_len) |n| astgen.extra.appendAssumeCapacity(n);
         astgen.extra.appendSliceAssumeCapacity(@ptrCast(args.captures));
         astgen.extra.appendSliceAssumeCapacity(@ptrCast(args.capture_names));

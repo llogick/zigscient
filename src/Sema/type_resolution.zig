@@ -205,7 +205,10 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
         .instructions = .empty,
         .inlining = null,
         .comptime_reason = undefined, // always set before using `block`
-        .src_base_inst = struct_obj.zir_index,
+        .src_baseline = .{
+            .inst = struct_obj.zir_index,
+            .node = .main,
+        },
         .type_name_ctx = struct_obj.name,
         .type_fqn_ctx = struct_obj.fqn,
     };
@@ -261,6 +264,8 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
             {
                 const field_ty_src = block.src(.{ .container_field_type = zir_field.idx });
                 const field_ty: Type = field_ty: {
+                    block.src_baseline.node = .type_decl_fields;
+                    defer block.src_baseline.node = .main;
                     block.comptime_reason = .{ .reason = .{
                         .src = field_ty_src,
                         .r = .{ .simple = .struct_field_types },
@@ -276,6 +281,8 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
             } else {
                 const field_align_src = block.src(.{ .container_field_align = zir_field.idx });
                 const field_align: Alignment = a: {
+                    block.src_baseline.node = .type_decl_fields;
+                    defer block.src_baseline.node = .main;
                     block.comptime_reason = .{ .reason = .{
                         .src = field_align_src,
                         .r = .{ .simple = .struct_field_attrs },
@@ -538,6 +545,8 @@ fn resolvePackedStructLayout(
         field_bits += field_ty.bitSize(zcu);
     }
 
+    const backing_int_ty_src = block.src(.container_arg);
+
     const explicit_backing_int_ty: ?Type = if (struct_obj.is_reified) ty: {
         break :ty switch (struct_obj.packed_backing_mode) {
             .explicit => .fromInterned(struct_obj.packed_backing_int_type),
@@ -550,20 +559,21 @@ fn resolvePackedStructLayout(
             break :ty null; // inferred backing type
         };
         // Explicitly specified, so evaluate the backing int type expression.
-        const backing_int_type_src = block.src(.container_arg);
+        block.src_baseline.node = .type_decl_arg;
+        defer block.src_baseline.node = .main;
         block.comptime_reason = .{ .reason = .{
-            .src = backing_int_type_src,
+            .src = backing_int_ty_src,
             .r = .{ .simple = .packed_struct_backing_int_type },
         } };
         const type_ref = try sema.resolveInlineBody(block, backing_int_type_body, zir_index);
-        break :ty try sema.analyzeAsType(block, backing_int_type_src, .packed_struct_backing_int_type, type_ref);
+        break :ty try sema.analyzeAsType(block, backing_int_ty_src, .packed_struct_backing_int_type, type_ref);
     };
 
     // Finally, either validate or infer the backing int type.
     const backing_int_ty: Type = if (explicit_backing_int_ty) |backing_ty| ty: {
         if (backing_ty.zigTypeTag(zcu) != .int) return sema.fail(
             block,
-            block.src(.container_arg),
+            backing_int_ty_src,
             "expected backing integer type, found '{f}'",
             .{backing_ty.fmt(pt)},
         );
@@ -572,7 +582,7 @@ fn resolvePackedStructLayout(
             const msg = try sema.errMsg(src, "backing integer bit width does not match total bit width of fields", .{});
             errdefer msg.destroy(gpa);
             try sema.errNote(
-                block.src(.container_arg),
+                backing_int_ty_src,
                 msg,
                 "backing integer '{f}' has bit width '{d}'",
                 .{ backing_ty.fmt(pt), backing_ty.bitSize(zcu) },
@@ -652,7 +662,10 @@ pub fn resolveStructDefaults(sema: *Sema, struct_ty: Type) CompileError!void {
         .instructions = .empty,
         .inlining = null,
         .comptime_reason = undefined, // always set before using `block`
-        .src_base_inst = struct_obj.zir_index,
+        .src_baseline = .{
+            .inst = struct_obj.zir_index,
+            .node = .main,
+        },
         .type_name_ctx = struct_obj.name,
         .type_fqn_ctx = struct_obj.fqn,
     };
@@ -675,6 +688,7 @@ fn resolveStructDefaultsInner(
     const ip = &zcu.intern_pool;
 
     assert(struct_obj.field_defaults.len > 0);
+    assert(block.src_baseline.node == .main);
 
     // We'll need to map the struct decl instruction to provide result types
     const zir_index = struct_obj.zir_index.resolve(ip) orelse {
@@ -693,6 +707,8 @@ fn resolveStructDefaultsInner(
         }
 
         const default_val_src = block.src(.{ .container_field_value = zir_field.idx });
+        block.src_baseline.node = .type_decl_fields;
+        defer block.src_baseline.node = .main;
         block.comptime_reason = .{ .reason = .{
             .src = default_val_src,
             .r = .{ .simple = .struct_field_default_value },
@@ -747,7 +763,10 @@ pub fn resolveUnionLayout(sema: *Sema, union_ty: Type) CompileError!void {
         .instructions = .empty,
         .inlining = null,
         .comptime_reason = undefined, // always set before using `block`
-        .src_base_inst = union_obj.zir_index,
+        .src_baseline = .{
+            .inst = union_obj.zir_index,
+            .node = .main,
+        },
         .type_name_ctx = union_obj.name,
         .type_fqn_ctx = union_obj.fqn,
     };
@@ -764,6 +783,8 @@ pub fn resolveUnionLayout(sema: *Sema, union_ty: Type) CompileError!void {
                     assert(zir_union.kind == .tagged_explicit); // `Zcu.mapOldZirToNew` guarantees that the ZIR mapping preserves `kind`
                     const tag_type_body = zir_union.arg_type_body.?;
                     const tag_type_src = block.src(.container_arg);
+                    block.src_baseline.node = .type_decl_fields;
+                    defer block.src_baseline.node = .main;
                     block.comptime_reason = .{ .reason = .{
                         .src = tag_type_src,
                         .r = .{ .simple = .union_enum_tag_type },
@@ -882,6 +903,8 @@ pub fn resolveUnionLayout(sema: *Sema, union_ty: Type) CompileError!void {
         while (field_it.next()) |zir_field| {
             const field_ty_src = block.src(.{ .container_field_type = zir_field.idx });
             const field_ty: Type = field_ty: {
+                block.src_baseline.node = .type_decl_fields;
+                defer block.src_baseline.node = .main;
                 block.comptime_reason = .{ .reason = .{
                     .src = field_ty_src,
                     .r = .{ .simple = .union_field_types },
@@ -894,6 +917,8 @@ pub fn resolveUnionLayout(sema: *Sema, union_ty: Type) CompileError!void {
 
             const field_align_src = block.src(.{ .container_field_align = zir_field.idx });
             const explicit_field_align: Alignment = a: {
+                block.src_baseline.node = .type_decl_fields;
+                defer block.src_baseline.node = .main;
                 block.comptime_reason = .{ .reason = .{
                     .src = field_align_src,
                     .r = .{ .simple = .union_field_attrs },
@@ -1066,7 +1091,10 @@ fn failUnionFieldMismatch(sema: *Sema, block: *Block, union_field_names: []const
         if (union_field_index != null) continue;
         const field_name_ip = enum_obj.field_names.get(ip)[enum_field_index];
         const enum_field_src: LazySrcLoc = .{
-            .base_node_inst = enum_tag_ty.typeDeclInstAllowGeneratedTag(zcu).?,
+            .baseline = .{
+                .inst = enum_tag_ty.typeDeclInstAllowGeneratedTag(zcu).?,
+                .node = .main,
+            },
             .offset = .{ .container_field_name = @intCast(enum_field_index) },
         };
         return sema.failWithOwnedErrorMsg(block, msg: {
@@ -1082,7 +1110,10 @@ fn failUnionFieldMismatch(sema: *Sema, block: *Block, union_field_names: []const
         const field_name = enum_obj.field_names.get(ip)[enum_field_index];
         const union_field_src = block.src(.{ .container_field_name = union_field_index.? });
         const enum_field_src: LazySrcLoc = .{
-            .base_node_inst = enum_tag_ty.typeDeclInstAllowGeneratedTag(zcu).?,
+            .baseline = .{
+                .inst = enum_tag_ty.typeDeclInstAllowGeneratedTag(zcu).?,
+                .node = .main,
+            },
             .offset = .{ .container_field_name = @intCast(enum_field_index) },
         };
         return sema.failWithOwnedErrorMsg(block, msg: {
@@ -1138,6 +1169,8 @@ fn resolvePackedUnionLayout(
         assert(!field_ty.comptimeOnly(zcu)); // packable types are not comptime-only
     }
 
+    const backing_int_ty_src = block.src(.container_arg);
+
     const explicit_backing_int_ty: ?Type = if (union_obj.is_reified) ty: {
         switch (union_obj.packed_backing_mode) {
             .explicit => break :ty .fromInterned(union_obj.packed_backing_int_type),
@@ -1150,20 +1183,21 @@ fn resolvePackedUnionLayout(
             break :ty null; // inferred backing type
         };
         // Explicitly specified, so evaluate the backing int type expression.
-        const backing_int_type_src = block.src(.container_arg);
+        block.src_baseline.node = .type_decl_arg;
+        defer block.src_baseline.node = .main;
         block.comptime_reason = .{ .reason = .{
-            .src = backing_int_type_src,
+            .src = backing_int_ty_src,
             .r = .{ .simple = .packed_union_backing_int_type },
         } };
         const type_ref = try sema.resolveInlineBody(block, backing_int_type_body, zir_index);
-        break :ty try sema.analyzeAsType(block, backing_int_type_src, .packed_union_backing_int_type, type_ref);
+        break :ty try sema.analyzeAsType(block, backing_int_ty_src, .packed_union_backing_int_type, type_ref);
     };
 
     // Finally, either validate or infer the backing int type.
     const backing_int_ty: Type = if (explicit_backing_int_ty) |backing_ty| ty: {
         if (backing_ty.zigTypeTag(zcu) != .int) return sema.fail(
             block,
-            block.src(.container_arg),
+            backing_int_ty_src,
             "expected backing integer type, found '{f}'",
             .{backing_ty.fmt(pt)},
         );
@@ -1177,7 +1211,7 @@ fn resolvePackedUnionLayout(
                 errdefer msg.destroy(gpa);
                 try sema.errNote(field_ty_src, msg, "field type '{f}' has bit width '{d}'", .{ field_type.fmt(pt), field_bits });
                 try sema.errNote(
-                    block.src(.container_arg),
+                    backing_int_ty_src,
                     msg,
                     "backing integer '{f}' has bit width '{d}'",
                     .{ backing_ty.fmt(pt), backing_int_bits },
@@ -1256,7 +1290,10 @@ pub fn resolveEnumLayout(sema: *Sema, enum_ty: Type) CompileError!void {
         .instructions = .empty,
         .inlining = null,
         .comptime_reason = undefined, // always set before using `block`
-        .src_base_inst = tracked_inst,
+        .src_baseline = .{
+            .inst = tracked_inst,
+            .node = .main,
+        },
         .type_name_ctx = enum_obj.name,
         .type_fqn_ctx = enum_obj.fqn,
     };
@@ -1341,6 +1378,8 @@ pub fn resolveEnumLayout(sema: *Sema, enum_ty: Type) CompileError!void {
         // Explicitly specified, so evaluate the int tag type expression.
         const tag_type_body = zir_union.arg_type_body.?;
         const tag_type_src = block.src(.container_arg);
+        block.src_baseline.node = .type_decl_arg;
+        defer block.src_baseline.node = .main;
         block.comptime_reason = .{ .reason = .{
             .src = tag_type_src,
             .r = .{ .simple = .enum_int_tag_type },
@@ -1354,6 +1393,8 @@ pub fn resolveEnumLayout(sema: *Sema, enum_ty: Type) CompileError!void {
         };
         // Explicitly specified, so evaluate the int tag type expression.
         const tag_type_src = block.src(.container_arg);
+        block.src_baseline.node = .type_decl_arg;
+        defer block.src_baseline.node = .main;
         block.comptime_reason = .{ .reason = .{
             .src = tag_type_src,
             .r = .{ .simple = .enum_int_tag_type },
@@ -1425,6 +1466,8 @@ pub fn resolveEnumLayout(sema: *Sema, enum_ty: Type) CompileError!void {
             var field_it = zir_union.iterateFields();
             while (field_it.next()) |zir_field| {
                 const field_val_src = block.src(.{ .container_field_value = zir_field.idx });
+                block.src_baseline.node = .type_decl_fields;
+                defer block.src_baseline.node = .main;
                 block.comptime_reason = .{ .reason = .{
                     .src = field_val_src,
                     .r = .{ .simple = .enum_field_values },
@@ -1447,6 +1490,8 @@ pub fn resolveEnumLayout(sema: *Sema, enum_ty: Type) CompileError!void {
         var field_it = zir_enum.iterateFields();
         while (field_it.next()) |zir_field| {
             const field_val_src = block.src(.{ .container_field_value = zir_field.idx });
+            block.src_baseline.node = .type_decl_fields;
+            defer block.src_baseline.node = .main;
             block.comptime_reason = .{ .reason = .{
                 .src = field_val_src,
                 .r = .{ .simple = .enum_field_values },

@@ -210,14 +210,14 @@ dependency_loop_nodes: std.array_hash_map.Auto(AnalUnit, struct {
 /// Keep track of `@compileLog`s per `AnalUnit`.
 /// We track the source location of the first `@compileLog` call, and all logged lines as a linked list.
 /// The list is singly linked, but we do track its tail for fast appends (optimizing many logs in one unit).
-compile_logs: std.array_hash_map.Auto(AnalUnit, extern struct {
-    base_node_inst: InternPool.TrackedInst.Index,
+compile_logs: std.array_hash_map.Auto(AnalUnit, struct {
+    baseline: LazySrcLoc.Baseline,
     node_offset: Ast.Node.Offset,
     first_line: CompileLogLine.Index,
     last_line: CompileLogLine.Index,
     pub fn src(self: @This()) LazySrcLoc {
         return .{
-            .base_node_inst = self.base_node_inst,
+            .baseline = self.baseline,
             .offset = LazySrcLoc.Offset.nodeOffset(self.node_offset),
         };
     }
@@ -2382,13 +2382,107 @@ pub const SrcLoc = struct {
 };
 
 pub const LazySrcLoc = struct {
-    /// This instruction provides the source node locations are resolved relative to.
-    /// It is a `declaration`, `struct_decl`, `union_decl`, `enum_decl`, or `opaque_decl`.
-    /// This must be valid even if `relative` is an absolute value, since it is required to
-    /// determine the file which the `LazySrcLoc` refers to.
-    base_node_inst: InternPool.TrackedInst.Index,
-    /// This field determines the source location relative to `base_node_inst`.
+    /// The baseline is a reference to a single AST node which `offset` is relative to. We use this
+    /// offset-based approach because AST node indices change across incremental updates, but we can
+    /// track the changes for certain instructions (e.g. declarations). `Baseline` is a stable
+    /// reference to a source location in such an instruction. By representing all source locations
+    /// as relative to one of these baselines, we make them independent of changes in a file which
+    /// happen outside of (e.g.) a specific declaration.
+    baseline: Baseline,
+    /// This field determines the source location relative to `baseline`.
     offset: Offset,
+
+    pub const Baseline = struct {
+        inst: InternPool.TrackedInst.Index,
+        node: enum {
+            /// `inst` refers to any trackable instruction (see `Zir.assertTrackable`).
+            ///
+            /// The baseline node is its main source node.
+            main,
+            /// `inst` refers to a `.struct_decl`, `.union_decl`, or `.enum_decl`.
+            ///
+            /// The baseline node is the `Zir.Unwrapped[Type]Decl.fields_baseline_src_node`.
+            type_decl_fields,
+            /// `inst` refers to a `.struct_decl`, `.union_decl`, or `.enum_decl`.
+            ///
+            /// The baseline node is the `Zir.Unwrapped[Type]Decl.arg_baseline_src_node`.
+            type_decl_arg,
+        },
+
+        /// Returns `null` if the ZIR instruction has been lost across incremental updates.
+        pub fn resolve(b: Baseline, zcu: *Zcu) ?struct { File.Index, Ast.Node.Index } {
+            const ip = &zcu.intern_pool;
+            const resolved_ti = b.inst.resolveFull(ip) orelse return null;
+            const file = zcu.fileByIndex(resolved_ti.file);
+            const zir = switch (file.getMode()) {
+                .zig => &file.zir.?,
+                .zon => {
+                    // ZON files don't have ZIR. Instead they will always set their baseline to a
+                    // specific dummy value which must resolve to the file's root node.
+                    assert(resolved_ti.inst == .main_struct_inst);
+                    assert(b.node == .main);
+                    return .{ resolved_ti.file, .root };
+                },
+            };
+
+            comptime assert(Zir.inst_tracking_version == 0);
+            const inst = zir.instructions.get(@backingInt(resolved_ti.inst));
+            return .{
+                resolved_ti.file,
+                switch (b.node) {
+                    .main => switch (inst.tag) {
+                        .declaration => inst.data.declaration.src_node,
+                        .struct_init, .struct_init_ref => zir.extraData(
+                            Zir.Inst.StructInit,
+                            inst.data.pl_node.payload_index,
+                        ).data.abs_node,
+                        .struct_init_anon => zir.extraData(
+                            Zir.Inst.StructInitAnon,
+                            inst.data.pl_node.payload_index,
+                        ).data.abs_node,
+                        .extended => switch (inst.data.extended.opcode) {
+                            .struct_decl => zir.getStructDecl(resolved_ti.inst).src_node,
+                            .union_decl => zir.getUnionDecl(resolved_ti.inst).src_node,
+                            .enum_decl => zir.getEnumDecl(resolved_ti.inst).src_node,
+                            .opaque_decl => zir.getOpaqueDecl(resolved_ti.inst).src_node,
+                            .reify_enum => zir.extraData(
+                                Zir.Inst.ReifyEnum,
+                                inst.data.extended.operand,
+                            ).data.node,
+                            .reify_struct => zir.extraData(
+                                Zir.Inst.ReifyStruct,
+                                inst.data.extended.operand,
+                            ).data.node,
+                            .reify_union => zir.extraData(
+                                Zir.Inst.ReifyUnion,
+                                inst.data.extended.operand,
+                            ).data.node,
+                            .reify_spirv_type => zir.extraData(
+                                Zir.Inst.ReifySpirvType,
+                                inst.data.extended.operand,
+                            ).data.node,
+                            else => unreachable,
+                        },
+                        else => unreachable,
+                    },
+                    .type_decl_fields => switch (inst.data.extended.opcode) {
+                        .struct_decl => zir.getStructDecl(resolved_ti.inst).fields_baseline_src_node,
+                        .union_decl => zir.getUnionDecl(resolved_ti.inst).fields_baseline_src_node,
+                        .enum_decl => zir.getEnumDecl(resolved_ti.inst).fields_baseline_src_node,
+                        .opaque_decl => unreachable, // opaque type decls do not have fields
+                        else => unreachable,
+                    },
+                    .type_decl_arg => switch (inst.data.extended.opcode) {
+                        .struct_decl => zir.getStructDecl(resolved_ti.inst).arg_baseline_src_node,
+                        .union_decl => zir.getUnionDecl(resolved_ti.inst).arg_baseline_src_node,
+                        .enum_decl => zir.getEnumDecl(resolved_ti.inst).arg_baseline_src_node,
+                        .opaque_decl => unreachable, // opaque type decls do not accept an argument ('opaque(...)')
+                        else => unreachable,
+                    },
+                },
+            };
+        }
+    };
 
     pub const Offset = union(enum) {
         /// When this tag is set, the code that constructed this `LazySrcLoc` is asserting
@@ -2396,7 +2490,7 @@ pub const LazySrcLoc = struct {
         /// unreachable. If you are debugging this tag incorrectly being this value,
         /// look into using reverse-continue with a memory watchpoint to see where the
         /// value is being set to this tag.
-        /// `base_node_inst` is unused.
+        /// `baseline` is unused.
         unneeded,
         /// The source location points to a byte offset within a source file,
         /// offset from 0. The source file is determined contextually.
@@ -2775,50 +2869,11 @@ pub const LazySrcLoc = struct {
     };
 
     pub const unneeded: LazySrcLoc = .{
-        .base_node_inst = undefined,
+        .baseline = undefined,
         .offset = .unneeded,
     };
 
-    /// Returns `null` if the ZIR instruction has been lost across incremental updates.
-    pub fn resolveBaseNode(base_node_inst: InternPool.TrackedInst.Index, zcu: *Zcu) ?struct { *File, Ast.Node.Index } {
-        comptime assert(Zir.inst_tracking_version == 0);
-
-        const ip = &zcu.intern_pool;
-        const file_index, const zir_inst = inst: {
-            const info = base_node_inst.resolveFull(ip) orelse return null;
-            break :inst .{ info.file, info.inst };
-        };
-        const file = zcu.fileByIndex(file_index);
-
-        // If we're relative to .main_struct_inst, we know the ast node is the root and don't need to resolve the ZIR,
-        // which may not exist e.g. in the case of errors in ZON files.
-        if (zir_inst == .main_struct_inst) return .{ file, .root };
-
-        // Otherwise, make sure ZIR is loaded.
-        const zir = &file.zir.?;
-
-        const inst = zir.instructions.get(@backingInt(zir_inst));
-        const base_node: Ast.Node.Index = switch (inst.tag) {
-            .declaration => inst.data.declaration.src_node,
-            .struct_init, .struct_init_ref => zir.extraData(Zir.Inst.StructInit, inst.data.pl_node.payload_index).data.abs_node,
-            .struct_init_anon => zir.extraData(Zir.Inst.StructInitAnon, inst.data.pl_node.payload_index).data.abs_node,
-            .extended => switch (inst.data.extended.opcode) {
-                .struct_decl => zir.getStructDecl(zir_inst).src_node,
-                .union_decl => zir.getUnionDecl(zir_inst).src_node,
-                .enum_decl => zir.getEnumDecl(zir_inst).src_node,
-                .opaque_decl => zir.getOpaqueDecl(zir_inst).src_node,
-                .reify_enum => zir.extraData(Zir.Inst.ReifyEnum, inst.data.extended.operand).data.node,
-                .reify_struct => zir.extraData(Zir.Inst.ReifyStruct, inst.data.extended.operand).data.node,
-                .reify_union => zir.extraData(Zir.Inst.ReifyUnion, inst.data.extended.operand).data.node,
-                .reify_spirv_type => zir.extraData(Zir.Inst.ReifySpirvType, inst.data.extended.operand).data.node,
-                else => unreachable,
-            },
-            else => unreachable,
-        };
-        return .{ file, base_node };
-    }
-
-    /// Resolve the file and AST node of `base_node_inst` to get a resolved `SrcLoc`.
+    /// Resolve the file and AST node of `baseline` to get a resolved `SrcLoc`.
     /// The resulting `SrcLoc` should only be used ephemerally, as it is not correct across incremental updates.
     pub fn upgrade(lazy: LazySrcLoc, zcu: *Zcu) SrcLoc {
         return lazy.upgradeOrLost(zcu).?;
@@ -2826,9 +2881,9 @@ pub const LazySrcLoc = struct {
 
     /// Like `upgrade`, but returns `null` if the source location has been lost across incremental updates.
     pub fn upgradeOrLost(lazy: LazySrcLoc, zcu: *Zcu) ?SrcLoc {
-        const file, const base_node: Ast.Node.Index = resolveBaseNode(lazy.base_node_inst, zcu) orelse return null;
+        const file, const base_node: Ast.Node.Index = lazy.baseline.resolve(zcu) orelse return null;
         return .{
-            .file_scope = file,
+            .file_scope = zcu.fileByIndex(file),
             .base_node = base_node,
             .lazy = lazy.offset,
         };
@@ -4501,7 +4556,7 @@ pub fn setFileRootType(zcu: *Zcu, file_index: File.Index, root_type: InternPool.
 pub fn navSrcLoc(zcu: *const Zcu, nav_index: InternPool.Nav.Index) LazySrcLoc {
     const ip = &zcu.intern_pool;
     return .{
-        .base_node_inst = ip.getNav(nav_index).srcInst(ip),
+        .baseline = .{ .inst = ip.getNav(nav_index).srcInst(ip), .node = .main },
         .offset = LazySrcLoc.Offset.nodeOffset(.zero),
     };
 }
