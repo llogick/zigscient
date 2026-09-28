@@ -228,14 +228,22 @@ pub fn Uint(comptime max_bits: comptime_int) type {
             return ct.eql((x_limbs[0] ^ 1) | orLimbs(x_limbs[1..]), 0);
         }
 
-        /// Adds `y` to `x`, and returns `true` if the operation overflowed.
+        /// Adds `y` to `x`, wrapping at the larger active width. Returns 1 on overflow.
         pub fn addWithOverflow(x: *Self, y: Self) u1 {
+            x.expandTo(@max(x.limbs_len, y.limbs_len));
             return x.conditionalAddWithOverflow(true, y);
         }
 
-        /// Subtracts `y` from `x`, and returns `true` if the operation overflowed.
+        /// Subtracts `y` from `x`, wrapping at the larger active width. Returns 1 on underflow.
         pub fn subWithOverflow(x: *Self, y: Self) u1 {
+            x.expandTo(@max(x.limbs_len, y.limbs_len));
             return x.conditionalSubWithOverflow(true, y);
+        }
+
+        fn expandTo(x: *Self, new_len: usize) void {
+            assert(new_len >= x.limbs_len and new_len <= x.limbs_buffer.len);
+            @memset(x.limbs_buffer[x.limbs_len..new_len], 0);
+            x.limbs_len = new_len;
         }
 
         // Replaces the limbs of `x` with the limbs of `y` if `on` is `true`.
@@ -245,24 +253,24 @@ pub fn Uint(comptime max_bits: comptime_int) type {
             }
         }
 
-        // Adds `y` to `x` if `on` is `true`, and returns `true` if the
-        // operation overflowed.
+        // Zeroed unused limbs allow `y` to be narrower than `x`.
         fn conditionalAddWithOverflow(x: *Self, on: bool, y: Self) u1 {
             var carry: u1 = 0;
-            for (x.limbs(), y.limbsConst()) |*x_limb, y_limb| {
-                const res = x_limb.* + y_limb + carry;
+            assert(y.limbs_len <= x.limbs_len);
+            for (x.limbs(), 0..) |*x_limb, i| {
+                const res = x_limb.* + y.limbs_buffer[i] + carry;
                 x_limb.* = ct.select(on, @as(TLimb, @truncate(res)), x_limb.*);
                 carry = @truncate(res >> t_bits);
             }
             return carry;
         }
 
-        // Subtracts `y` from `x` if `on` is `true`, and returns `true` if the
-        // operation overflowed.
+        // Zeroed unused limbs allow `y` to be narrower than `x`.
         fn conditionalSubWithOverflow(x: *Self, on: bool, y: Self) u1 {
             var borrow: u1 = 0;
-            for (x.limbs(), y.limbsConst()) |*x_limb, y_limb| {
-                const res = x_limb.* -% y_limb -% borrow;
+            assert(y.limbs_len <= x.limbs_len);
+            for (x.limbs(), 0..) |*x_limb, i| {
+                const res = x_limb.* -% y.limbs_buffer[i] -% borrow;
                 x_limb.* = ct.select(on, @as(TLimb, @truncate(res)), x_limb.*);
                 borrow = @truncate(res >> t_bits);
             }
@@ -1209,4 +1217,23 @@ test "field element decoding" {
         try x.toBytes(&buf, endian);
         try testing.expect(x.eql(try M.Fe.fromBytes(m, &buf, endian)));
     }
+}
+
+test "Uint addition and multiply-add" {
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
+
+    const U = Uint(256);
+    const full = try U.fromBytes(&maxUintBytes(U), .big);
+    const one = try U.fromPrimitive(u8, 1);
+    var carry = (try U.fromPrimitive(u64, math.maxInt(TLimb))).normalize();
+    try testing.expectEqual(0, carry.addWithOverflow(one));
+    try testing.expectEqual(one.limbs_len, carry.limbs_len);
+    try testing.expectEqual(1 << t_bits, try carry.toPrimitive(u128));
+    try testing.expectEqual(0, carry.subWithOverflow(one.normalize()));
+    try testing.expectEqual(math.maxInt(TLimb), try carry.toPrimitive(u64));
+    var wrapped = U.zero.normalize();
+    try testing.expectEqual(1, wrapped.subWithOverflow(one));
+    try testing.expect(wrapped.eql(full));
+    try testing.expectEqual(1, wrapped.addWithOverflow(one));
+    try testing.expect(wrapped.isZero());
 }
