@@ -488,6 +488,8 @@ test fmtId {
     try expectFmt("@\"11\\\"23\"", "{f}", .{fmtId("11\"23")});
     try expectFmt("@\"11\\x0f23\"", "{f}", .{fmtId("11\x0F23")});
 
+    try expectFmt("@\"\\r\\\"\\n\\xff😎\\xe2\\x80\\xa8\"", "{f}", .{fmtId("\r\"\n\xFF😎\u{2028}")});
+
     // These are technically not currently legal in Zig.
     try expectFmt("@\"\"", "{f}", .{fmtId("")});
     try expectFmt("@\"\\x00\"", "{f}", .{fmtId("\x00")});
@@ -541,93 +543,213 @@ test fmtChar {
 ///
 /// The following transformations are made:
 /// * escaped: '\n', '\r', '\t', '\\', '"'
-/// * hex-encoded: ascii control characters
+/// * hex-encoded:
+///   * ascii control characters
+///   * invalid UTF-8 sequences
+///   * non-ascii line endings (U+0085, U+2028, U+2029)
+///   * byte order marks (U+FEFF)
 ///
 /// Everything else is passed through unmodified.
 pub fn stringEscape(bytes: []const u8, w: *Writer) Writer.Error!void {
-    _ = try stringEscapeCounting(bytes, w);
+    var remaining = bytes.len;
+    while (remaining > 0) {
+        remaining -= try stringEscapeInner(bytes[bytes.len - remaining ..], w);
+
+        // Escape the first byte and try again.
+        // Needing to escape the rest is not guaranteed.
+        if (remaining > 0) {
+            try w.writeAll("\\x");
+            try w.printInt(bytes[bytes.len - remaining], 16, .lower, .{ .width = 2, .fill = '0' });
+            remaining -= 1;
+        }
+    }
 }
 
-pub fn stringEscapeCounting(bytes: []const u8, w: *Writer) Writer.Error!usize {
-    var n: usize = 0;
-    for (bytes) |byte| switch (byte) {
-        '\t' => {
-            try w.writeAll("\\t");
-            n += 2;
-        },
-        '\n' => {
-            try w.writeAll("\\n");
-            n += 2;
-        },
-        '\r' => {
-            try w.writeAll("\\r");
-            n += 2;
-        },
-        '\\' => {
-            try w.writeAll("\\\\");
-            n += 2;
-        },
-        '"' => {
-            try w.writeAll("\\\"");
-            n += 2;
-        },
-        0...8, 11, 12, 14...0x1f, 0x7f => {
-            try w.writeAll("\\x");
-            try w.printInt(byte, 16, .lower, .{ .width = 2, .fill = '0' });
-            n += 4;
-        },
-        else => {
-            try w.writeByte(byte);
-            n += 1;
-        },
-    };
-    return n;
+/// Returns the number of bytes consumed from `bytes`, which may be less than `bytes.len`.
+fn stringEscapeInner(bytes: []const u8, w: *Writer) Writer.Error!usize {
+    var i: usize = 0;
+    while (i < bytes.len) {
+        const byte = bytes[i];
+        switch (byte) {
+            '\t' => {
+                try w.writeAll("\\t");
+            },
+            '\n' => {
+                try w.writeAll("\\n");
+            },
+            '\r' => {
+                try w.writeAll("\\r");
+            },
+            '\\' => {
+                try w.writeAll("\\\\");
+            },
+            '"' => {
+                try w.writeAll("\\\"");
+            },
+            0...8, 11, 12, 14...0x1f, 0x7f => {
+                try w.writeAll("\\x");
+                try w.printInt(byte, 16, .lower, .{ .width = 2, .fill = '0' });
+            },
+            0x20, 0x21, 0x23...0x5b, 0x5d...0x7e => {
+                try w.writeByte(byte);
+            },
+            0x80...0xff => {
+                const len, const escape = blk: {
+                    const len = std.unicode.utf8ByteSequenceLength(byte) catch break :blk .{ 1, true };
+                    if (i + len > bytes.len) {
+                        return i;
+                    }
+                    const sequence = bytes[i..][0..len];
+                    const code_point = std.unicode.utf8Decode(sequence) catch |err| switch (err) {
+                        error.Utf8CodepointTooLarge => break :blk .{ len, true },
+                        else => break :blk .{ 1, true },
+                    };
+                    switch (code_point) {
+                        '\u{feff}', '\u{0085}', '\u{2028}', '\u{2029}' => break :blk .{ len, true },
+                        else => break :blk .{ len, false },
+                    }
+                };
+
+                const sequence = bytes[i..][0..len];
+                if (escape) {
+                    for (sequence) |b| {
+                        try w.writeAll("\\x");
+                        try w.printInt(b, 16, .lower, .{ .width = 2, .fill = '0' });
+                    }
+                } else {
+                    try w.writeAll(sequence);
+                }
+                i += len;
+                continue;
+            },
+        }
+        i += 1;
+    }
+    return i;
 }
 
 pub const StringEscapeWriter = struct {
     out: *Writer,
     writer: Writer,
 
+    pub const min_buffer_len = 4;
+
     pub fn init(out: *Writer, buffer: []u8) @This() {
+        assert(buffer.len >= min_buffer_len);
         return .{
             .out = out,
             .writer = .{
-                .vtable = &.{ .drain = @This().drain },
+                .vtable = &.{ .drain = @This().drain, .flush = @This().flush },
                 .buffer = buffer,
             },
         };
     }
 
     fn drain(w: *Writer, data: []const []const u8, splat: usize) Io.Writer.Error!usize {
-        const sew: *StringEscapeWriter = @alignCast(@fieldParentPtr("writer", w));
-        const out = sew.out;
-        try stringEscape(w.buffered(), out);
-        w.end = 0;
-        var n: usize = 0;
+        var n: usize = try drainBufferRemaining(w, "");
         for (data[0 .. data.len - 1]) |bytes| {
-            try stringEscape(bytes, out);
-            n += bytes.len;
+            n += try drainBufferRemaining(w, bytes);
         }
         const pattern = data[data.len - 1];
         for (0..splat) |_| {
-            try stringEscape(pattern, out);
-            n += pattern.len;
+            n += try drainBufferRemaining(w, pattern);
         }
         return n;
     }
+
+    fn flush(w: *Writer) Io.Writer.Error!void {
+        const sew: *StringEscapeWriter = @alignCast(@fieldParentPtr("writer", w));
+        const out = sew.out;
+        while (w.end != 0) {
+            _ = try drainBufferRemaining(w, "");
+
+            // Escape the first byte and try again.
+            // Needing to escape the rest is not guaranteed.
+            const remaining = w.buffered();
+            if (remaining.len > 0) {
+                try out.writeAll("\\x");
+                try out.printInt(remaining[0], 16, .lower, .{ .width = 2, .fill = '0' });
+                _ = w.consume(1);
+            }
+        }
+    }
+
+    /// Drain from the buffer first, taking from `bytes` as necessary to complete any
+    /// incomplete UTF-8 sequences. Then, consume whatever is remaining of `bytes`,
+    /// storing a possible trailing incomplete UTF-8 sequence in the buffer.
+    ///
+    /// On success, `w.buffered().len` is guaranteed to be < 4.
+    fn drainBufferRemaining(w: *Writer, bytes: []const u8) Io.Writer.Error!usize {
+        const sew: *StringEscapeWriter = @alignCast(@fieldParentPtr("writer", w));
+        const out = sew.out;
+        var remaining_bytes = bytes;
+        while (w.end != 0) {
+            const n = try stringEscapeInner(w.buffered(), out);
+            _ = w.consume(n);
+
+            if (w.end != 0) {
+                if (remaining_bytes.len == 0) return bytes.len;
+                const len = std.unicode.utf8ByteSequenceLength(w.buffer[0]) catch unreachable;
+                const missing = len - w.end;
+                const available = remaining_bytes.len;
+                const copy_len = @min(missing, available);
+                const start = len - missing;
+                @memcpy(w.buffer[start..][0..copy_len], remaining_bytes[0..copy_len]);
+                w.end = start + copy_len;
+                remaining_bytes = remaining_bytes[copy_len..];
+            }
+        }
+
+        const n = try stringEscapeInner(remaining_bytes, out);
+        if (n < remaining_bytes.len) {
+            const remaining = remaining_bytes.len - n;
+            @memcpy(w.buffer[0..remaining], remaining_bytes[n..]);
+            w.end = remaining;
+        }
+
+        return bytes.len;
+    }
 };
 
-test StringEscapeWriter {
-    const bytes = "\x7f\t\n\r\\\"abc";
-    const escaped = "\\x7f\\t\\n\\r\\\\\\\"abc";
+test stringEscape {
+    const bytes = "\x7f\t\n\r\\\"abc\xff\u{feff}\u{0085}\u{2028}\u{2029}\xed\xa0\x80\xf4\x90\x80\x80\xf4\x90a";
+    const escaped = "\\x7f\\t\\n\\r\\\\\\\"abc\\xff\\xef\\xbb\\xbf\\xc2\\x85\\xe2\\x80\\xa8\\xe2\\x80\\xa9\\xed\\xa0\\x80\\xf4\\x90\\x80\\x80\\xf4\\x90a";
 
     var out_buf: [escaped.len]u8 = undefined;
     var out: Io.Writer = .fixed(&out_buf);
-    var w: StringEscapeWriter = .init(&out, &.{});
 
-    const n = try w.writer.write(bytes);
-    try std.testing.expectEqual(bytes.len, n);
+    try stringEscape(bytes, &out);
     try std.testing.expectEqualStrings(escaped, out.buffered());
+}
+
+test StringEscapeWriter {
+    const bytes = "\x7f\t\n\r\\\"abc\xff\u{feff}\u{0085}\u{2028}\u{2029}\xed\xa0\x80\xf4\x90\x80\x80\xf4\x90a";
+    const escaped = "\\x7f\\t\\n\\r\\\\\\\"abc\\xff\\xef\\xbb\\xbf\\xc2\\x85\\xe2\\x80\\xa8\\xe2\\x80\\xa9\\xed\\xa0\\x80\\xf4\\x90\\x80\\x80\\xf4\\x90a";
+
+    var sew_buf: [StringEscapeWriter.min_buffer_len]u8 = undefined;
+    {
+        var out_buf: [escaped.len]u8 = undefined;
+        var out: Io.Writer = .fixed(&out_buf);
+        var w: StringEscapeWriter = .init(&out, &sew_buf);
+
+        const n = try w.writer.write(bytes);
+        try w.writer.flush();
+
+        try std.testing.expectEqual(bytes.len, n);
+        try std.testing.expectEqualStrings(escaped, out.buffered());
+    }
+    {
+        var out_buf: [escaped.len]u8 = undefined;
+        var out: Io.Writer = .fixed(&out_buf);
+        var w: StringEscapeWriter = .init(&out, &sew_buf);
+
+        for (bytes) |byte| {
+            try w.writer.writeByte(byte);
+        }
+        try w.writer.flush();
+
+        try std.testing.expectEqualStrings(escaped, out.buffered());
+    }
 }
 
 /// Print as escaped contents of a single-quoted string.
