@@ -1,25 +1,35 @@
-#update=initial version
-#file=main.zig
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig {
 const std = @import("std");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, a);
 }
 const a = "Hello, World!\n";
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="Hello, World!\n"
+#}
+#update
+#check stdout {
+Hello, World!
+#}
 
-#update=introduce compile error
-#file=main.zig
+#write main.zig {
 const std = @import("std");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, a);
 }
 const a = @compileError("bad a");
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_error=main.zig:5:11: error: bad a
+#}
+#update {
+introduce compile error#}
+#check errors {
+main.zig:5:11: error: bad a
+#}
 
-#update=remove error reference
-#file=main.zig
+#write main.zig {
 const std = @import("std");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, b);
@@ -27,10 +37,14 @@ pub fn main() !void {
 const a = @compileError("bad a");
 const b = "Hi there!\n";
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="Hi there!\n"
+#}
+#update {
+remove error reference#}
+#check stdout {
+Hi there!
+#}
 
-#update=introduce and remove reference to error
-#file=main.zig
+#write main.zig {
 const std = @import("std");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, a);
@@ -38,4 +52,9 @@ pub fn main() !void {
 const a = "Back to a\n";
 const b = @compileError("bad b");
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="Back to a\n"
+#}
+#update {
+introduce and remove reference to error#}
+#check stdout {
+Back to a
+#}

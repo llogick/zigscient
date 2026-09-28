@@ -33,13 +33,9 @@ pub const Executor = union(enum) {
 pub const GetExternalExecutorOptions = struct {
     host_cpu_arch: std.Target.Cpu.Arch,
     host_os_tag: std.Target.Os.Tag,
-    allow_darling: bool = true,
-    allow_qemu: bool = true,
-    allow_rosetta: bool = true,
-    allow_wasmtime: bool = true,
-    allow_wine: bool = true,
     qemu_fixes_dl: bool = false,
-    link_libc: bool = false,
+    link_mode: std.lang.LinkMode,
+    link_libc: bool,
 };
 
 /// Return whether or not the given host is capable of running executables of
@@ -71,7 +67,7 @@ pub fn getExternalExecutor(io: Io, candidate: *const std.Target, options: GetExt
     var bad_result: Executor = .bad_os_or_cpu;
 
     if (os_match and cpu_ok) native: {
-        if (options.link_libc) {
+        if (options.link_libc and options.link_mode == .dynamic) {
             if (candidate.dynamic_linker.get()) |candidate_dl| {
                 Io.Dir.cwd().access(io, candidate_dl, .{}) catch {
                     bad_result = .{ .bad_dl = candidate_dl };
@@ -84,9 +80,7 @@ pub fn getExternalExecutor(io: Io, candidate: *const std.Target, options: GetExt
 
     // If the OS match and OS is macOS and CPU is arm64, we can use Rosetta 2
     // to emulate the foreign architecture.
-    if (options.allow_rosetta and os_match and
-        (host_os_tag == .maccatalyst or host_os_tag == .macos) and host_cpu_arch == .aarch64)
-    {
+    if (os_match and (host_os_tag == .maccatalyst or host_os_tag == .macos) and host_cpu_arch == .aarch64) {
         switch (candidate.cpu.arch) {
             .x86_64 => return .rosetta,
             else => return bad_result,
@@ -94,7 +88,7 @@ pub fn getExternalExecutor(io: Io, candidate: *const std.Target, options: GetExt
     }
 
     // If the OS matches, we can use QEMU to emulate a foreign architecture.
-    if (options.allow_qemu and os_match and (!cpu_ok or options.qemu_fixes_dl)) {
+    if (os_match and (!cpu_ok or options.qemu_fixes_dl)) {
         return switch (candidate.cpu.arch) {
             inline .aarch64,
             .arm,
@@ -167,38 +161,32 @@ pub fn getExternalExecutor(io: Io, candidate: *const std.Target, options: GetExt
         };
     }
 
-    if (options.allow_wasmtime and candidate.cpu.arch.isWasm()) {
+    if (candidate.cpu.arch.isWasm()) {
         return .{ .wasmtime = "wasmtime" };
     }
 
     switch (candidate.os.tag) {
         .windows => {
-            if (options.allow_wine) {
-                const wine_supported = switch (candidate.cpu.arch) {
-                    .thumb => switch (host_cpu_arch) {
-                        .arm, .thumb, .aarch64 => true,
-                        else => false,
-                    },
-                    .aarch64 => host_cpu_arch == .aarch64,
-                    .x86 => host_cpu_arch.isX86(),
-                    .x86_64 => host_cpu_arch == .x86_64,
+            const wine_supported = switch (candidate.cpu.arch) {
+                .thumb => switch (host_cpu_arch) {
+                    .arm, .thumb, .aarch64 => true,
                     else => false,
-                };
-                return if (wine_supported) .{ .wine = "wine" } else bad_result;
-            }
-            return bad_result;
+                },
+                .aarch64 => host_cpu_arch == .aarch64,
+                .x86 => host_cpu_arch.isX86(),
+                .x86_64 => host_cpu_arch == .x86_64,
+                else => false,
+            };
+            return if (wine_supported) .{ .wine = "wine" } else bad_result;
         },
         .driverkit, .macos => {
-            if (options.allow_darling) {
-                // This check can be loosened once darling adds a QEMU-based emulation
-                // layer for non-host architectures:
-                // https://github.com/darlinghq/darling/issues/863
-                if (candidate.cpu.arch != host_cpu_arch) {
-                    return bad_result;
-                }
-                return .{ .darling = "darling" };
+            // This check can be loosened once darling adds a QEMU-based emulation
+            // layer for non-host architectures:
+            // https://github.com/darlinghq/darling/issues/863
+            if (candidate.cpu.arch != host_cpu_arch) {
+                return bad_result;
             }
-            return bad_result;
+            return .{ .darling = "darling" };
         },
         else => return bad_result,
     }

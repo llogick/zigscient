@@ -1,0 +1,54 @@
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig 0/main.zig
+#update
+#check stdout {
+123
+#}
+
+#write main.zig 1/main.zig
+#update {
+add conflict#}
+#check errors {
+main.zig:6:5: error: exported symbol collision: foo
+main.zig:1:1: note: other symbol here
+#}
+
+#write main.zig 2/main.zig
+#update {
+resolve conflict#}
+#check stdout {
+123 456
+#}
+
+#write main.zig 3/main.zig
+#update {
+put exports in decl#}
+#check stdout {
+123 456
+#}
+
+#write main.zig 4/main.zig
+#update {
+remove reference to exporting decl#}
+#check stdout {
+#}
+
+#write main.zig 5/main.zig
+#update {
+mark consts as export#}
+#check stdout {
+123 456
+#}
+
+#write main.zig 6/main.zig
+#update {
+reintroduce reference to exporting decl, introducing conflict#}
+#check errors {
+main.zig:5:5: error: exported symbol collision: bar
+main.zig:2:1: note: other symbol here
+main.zig:6:5: error: exported symbol collision: other
+main.zig:3:1: note: other symbol here
+#}

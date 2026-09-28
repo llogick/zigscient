@@ -3849,8 +3849,7 @@ pub fn getAllErrorsAlloc(comp: *Compilation) error{OutOfMemory}!ErrorBundle {
     const gpa = comp.gpa;
     const io = comp.io;
 
-    var bundle: ErrorBundle.Wip = undefined;
-    try bundle.init(gpa);
+    var bundle: ErrorBundle.Wip = try .init(gpa);
     defer bundle.deinit();
 
     for (comp.failed_c_objects.values()) |diag_bundle| {
@@ -5458,8 +5457,7 @@ fn reportRetryableWin32ResourceError(
 
     win32_resource.status = .failure_retryable;
 
-    var bundle: ErrorBundle.Wip = undefined;
-    try bundle.init(comp.gpa);
+    var bundle: ErrorBundle.Wip = try .init(comp.gpa);
     errdefer bundle.deinit();
     try bundle.addRootErrorMessage(.{
         .msg = try bundle.printString("{s}", .{@errorName(err)}),
@@ -6846,8 +6844,7 @@ fn failCObjWithOwnedDiagBundle(
 
 fn failWin32Resource(comp: *Compilation, win32_resource: *Win32Resource, comptime format: []const u8, args: anytype) error{ OutOfMemory, AlreadyReported } {
     @branchHint(.cold);
-    var bundle: ErrorBundle.Wip = undefined;
-    try bundle.init(comp.gpa);
+    var bundle: ErrorBundle.Wip = try .init(comp.gpa);
     errdefer bundle.deinit();
     try bundle.addRootErrorMessage(.{
         .msg = try bundle.printString(format, args),

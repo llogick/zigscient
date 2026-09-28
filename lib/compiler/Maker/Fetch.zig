@@ -527,7 +527,7 @@ pub fn run(f: *Fetch) RunError!void {
     const arena = f.arena.allocator();
     const gpa = f.arena.child_allocator;
 
-    try eb.init(gpa);
+    eb.* = try .init(gpa);
 
     // Check the global zig package cache to see if the hash already exists. If
     // so, load, parse, and validate the build.zig.zon file therein, and skip

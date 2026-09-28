@@ -4301,11 +4301,9 @@ pub fn buildOutputType(
             cs.test_exec_args.items,
             cs.self_exe_path_or_argv0,
             arg_mode,
-            target,
             &comp_destroyed,
             all_args,
             cs.runtime_args_start,
-            cs.create_module.resolved_options.link_libc,
             cs.test_execve,
             environ_map,
         );
@@ -4740,6 +4738,15 @@ fn serve(
     var server: Server = .{ .in = in, .out = out };
     try server.serveStringMessage(.zig_version, build_options.version);
 
+    try server.serveConfig(.{ .flags = .{
+        .output_mode = comp.config.output_mode,
+        .link_mode = comp.config.link_mode,
+        .link_libc = comp.config.link_libc,
+        .link_libcpp = comp.config.link_libcpp,
+        .link_libunwind = comp.config.link_libunwind,
+        .pie = comp.config.pie,
+    } });
+
     var child_pid: ?std.process.Child.Id = null;
 
     const main_progress_node = std.Progress.start(io, .{});
@@ -4812,8 +4819,6 @@ fn serve(
                 //    test_exec_args,
                 //    self_exe_path.?,
                 //    arg_mode,
-                //    target,
-                //    true,
                 //    &comp_destroyed,
                 //    all_args,
                 //    runtime_args_start,
@@ -4964,11 +4969,9 @@ fn runOrTest(
     test_exec_args: []const ?[]const u8,
     self_exe_path: []const u8,
     arg_mode: ArgMode,
-    target: *const std.Target,
     comp_destroyed: *bool,
     all_args: []const []const u8,
     runtime_args_start: ?usize,
-    link_libc: bool,
     test_execve: bool,
     environ_map: *process.Environ.Map,
 ) !void {
@@ -5016,7 +5019,12 @@ fn runOrTest(
         _ = try io.lockStderr(&.{}, .no_color);
         const err = process.replace(io, .{ .argv = argv.items, .environ_map = environ_map });
         io.unlockStderr();
-        try warnAboutForeignBinaries(io, arena, arg_mode, target, link_libc);
+        try warnAboutForeignBinaries(io, arena, .{
+            .arg_mode = arg_mode,
+            .target = comp.getTarget(),
+            .link_mode = comp.config.link_mode,
+            .link_libc = comp.config.link_libc,
+        });
         const cmd = try std.mem.join(arena, " ", argv.items);
         fatal("the following command failed to execve with '{t}':\n{s}", .{ err, cmd });
     } else if (!process.can_spawn) {
@@ -5046,7 +5054,12 @@ fn runOrTest(
     });
 
     const term = term_result catch |err| {
-        try warnAboutForeignBinaries(io, arena, arg_mode, target, link_libc);
+        try warnAboutForeignBinaries(io, arena, .{
+            .arg_mode = arg_mode,
+            .target = comp.getTarget(),
+            .link_mode = comp.config.link_mode,
+            .link_libc = comp.config.link_libc,
+        });
         const cmd = try std.mem.join(arena, " ", argv.items);
         fatal("the following command failed with {t}:\n{s}", .{ err, cmd });
     };
@@ -5999,8 +6012,7 @@ fn cmdAstCheck(arena: Allocator, io: Io, args: []const []const u8, environ_map: 
             const zir = try AstGen.generate(arena, tree);
 
             if (zir.hasCompileErrors()) {
-                var wip_errors: std.zig.ErrorBundle.Wip = undefined;
-                try wip_errors.init(arena);
+                var wip_errors: std.zig.ErrorBundle.Wip = try .init(arena);
                 try wip_errors.addZirErrorMessages(zir, tree, source, display_path);
                 var error_bundle = try wip_errors.toOwnedBundle("");
                 try error_bundle.renderToStderr(io, .{}, color);
@@ -6070,8 +6082,7 @@ fn cmdAstCheck(arena: Allocator, io: Io, args: []const []const u8, environ_map: 
         .zon => {
             const zoir = try ZonGen.generate(arena, tree, .{});
             if (zoir.hasCompileErrors()) {
-                var wip_errors: std.zig.ErrorBundle.Wip = undefined;
-                try wip_errors.init(arena);
+                var wip_errors: std.zig.ErrorBundle.Wip = try .init(arena);
                 try wip_errors.addZoirErrorMessages(zoir, tree, source, display_path);
                 var error_bundle = try wip_errors.toOwnedBundle("");
                 error_bundle.renderToStderr(io, .{}, color) catch {};
@@ -6164,8 +6175,7 @@ fn cmdChangelist(arena: Allocator, io: Io, args: []const []const u8, environ_map
     const old_zir = try AstGen.generate(arena, old_tree);
 
     if (old_zir.loweringFailed()) {
-        var wip_errors: std.zig.ErrorBundle.Wip = undefined;
-        try wip_errors.init(arena);
+        var wip_errors: std.zig.ErrorBundle.Wip = try .init(arena);
         try wip_errors.addZirErrorMessages(old_zir, old_tree, old_source, old_source_path);
         var error_bundle = try wip_errors.toOwnedBundle("");
         error_bundle.renderToStderr(io, .{}, color) catch {};
@@ -6176,8 +6186,7 @@ fn cmdChangelist(arena: Allocator, io: Io, args: []const []const u8, environ_map
     const new_zir = try AstGen.generate(arena, new_tree);
 
     if (new_zir.loweringFailed()) {
-        var wip_errors: std.zig.ErrorBundle.Wip = undefined;
-        try wip_errors.init(arena);
+        var wip_errors: std.zig.ErrorBundle.Wip = try .init(arena);
         try wip_errors.addZirErrorMessages(new_zir, new_tree, new_source, new_source_path);
         var error_bundle = try wip_errors.toOwnedBundle("");
         error_bundle.renderToStderr(io, .{}, color) catch {};
@@ -6219,33 +6228,32 @@ fn prefixedIntArg(arg: []const u8, prefix: []const u8) ?u64 {
     return std.fmt.parseUnsigned(u64, number, 0) catch |err| fatal("unable to parse {q}: {t}", .{ arg, err });
 }
 
-fn warnAboutForeignBinaries(
-    io: Io,
-    arena: Allocator,
+fn warnAboutForeignBinaries(io: Io, arena: Allocator, opts: struct {
     arg_mode: ArgMode,
     target: *const std.Target,
+    link_mode: std.lang.LinkMode,
     link_libc: bool,
-) !void {
-    const host_query: std.Target.Query = .{};
-    const host_target = std.zig.resolveTargetQueryOrFatal(io, host_query);
+}) !void {
+    const host_target = std.zig.resolveTargetQueryOrFatal(io, .{});
 
-    switch (std.zig.system.getExternalExecutor(io, target, .{
+    switch (std.zig.system.getExternalExecutor(io, opts.target, .{
         .host_cpu_arch = host_target.cpu.arch,
         .host_os_tag = host_target.os.tag,
-        .link_libc = link_libc,
+        .link_mode = opts.link_mode,
+        .link_libc = opts.link_libc,
     })) {
         .native => return,
         .rosetta => {
             const host_name = try host_target.zigTriple(arena);
-            const foreign_name = try target.zigTriple(arena);
+            const foreign_name = try opts.target.zigTriple(arena);
             warn("the host system ({s}) does not appear to be capable of executing binaries from the target ({s}). Consider installing Rosetta.", .{
                 host_name, foreign_name,
             });
         },
         .qemu => |qemu| {
             const host_name = try host_target.zigTriple(arena);
-            const foreign_name = try target.zigTriple(arena);
-            switch (arg_mode) {
+            const foreign_name = try opts.target.zigTriple(arena);
+            switch (opts.arg_mode) {
                 .zig_test => warn(
                     "the host system ({s}) does not appear to be capable of executing binaries " ++
                         "from the target ({s}). Consider using '--test-cmd {s} --test-cmd-bin' " ++
@@ -6261,8 +6269,8 @@ fn warnAboutForeignBinaries(
         },
         .wine => |wine| {
             const host_name = try host_target.zigTriple(arena);
-            const foreign_name = try target.zigTriple(arena);
-            switch (arg_mode) {
+            const foreign_name = try opts.target.zigTriple(arena);
+            switch (opts.arg_mode) {
                 .zig_test => warn(
                     "the host system ({s}) does not appear to be capable of executing binaries " ++
                         "from the target ({s}). Consider using '--test-cmd {s} --test-cmd-bin' " ++
@@ -6278,8 +6286,8 @@ fn warnAboutForeignBinaries(
         },
         .wasmtime => |wasmtime| {
             const host_name = try host_target.zigTriple(arena);
-            const foreign_name = try target.zigTriple(arena);
-            switch (arg_mode) {
+            const foreign_name = try opts.target.zigTriple(arena);
+            switch (opts.arg_mode) {
                 .zig_test => warn(
                     "the host system ({s}) does not appear to be capable of executing binaries " ++
                         "from the target ({s}). Consider using '--test-cmd {s} --test-cmd-bin' " ++
@@ -6295,8 +6303,8 @@ fn warnAboutForeignBinaries(
         },
         .darling => |darling| {
             const host_name = try host_target.zigTriple(arena);
-            const foreign_name = try target.zigTriple(arena);
-            switch (arg_mode) {
+            const foreign_name = try opts.target.zigTriple(arena);
+            switch (opts.arg_mode) {
                 .zig_test => warn(
                     "the host system ({s}) does not appear to be capable of executing binaries " ++
                         "from the target ({s}). Consider using '--test-cmd {s} --test-cmd-bin' " ++
@@ -6312,7 +6320,7 @@ fn warnAboutForeignBinaries(
         },
         .bad_dl => |foreign_dl| {
             const host_dl = host_target.dynamic_linker.get() orelse "(none)";
-            const tip_suffix = switch (arg_mode) {
+            const tip_suffix = switch (opts.arg_mode) {
                 .zig_test => ", '--test-no-exec', or '--test-cmd'",
                 else => "",
             };
@@ -6322,8 +6330,8 @@ fn warnAboutForeignBinaries(
         },
         .bad_os_or_cpu => {
             const host_name = try host_target.zigTriple(arena);
-            const foreign_name = try target.zigTriple(arena);
-            const tip_suffix = switch (arg_mode) {
+            const foreign_name = try opts.target.zigTriple(arena);
+            const tip_suffix = switch (opts.arg_mode) {
                 .zig_test => ". Consider using '--test-no-exec' or '--test-cmd'",
                 else => "",
             };

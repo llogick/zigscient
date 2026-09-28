@@ -1,15 +1,21 @@
-#update=initial version
-#file=main.zig
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig {
 const std = @import("std");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, foo);
 }
 const foo = "good morning\n";
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="good morning\n"
+#}
+#update
+#check stdout {
+good morning
+#}
 
-#update=add new declaration
-#file=main.zig
+#write main.zig {
 const std = @import("std");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, foo);
@@ -17,10 +23,14 @@ pub fn main() !void {
 const foo = "good morning\n";
 const bar = "good evening\n";
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="good morning\n"
+#}
+#update {
+add new declaration#}
+#check stdout {
+good morning
+#}
 
-#update=reference new declaration
-#file=main.zig
+#write main.zig {
 const std = @import("std");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, bar);
@@ -28,10 +38,14 @@ pub fn main() !void {
 const foo = "good morning\n";
 const bar = "good evening\n";
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="good evening\n"
+#}
+#update {
+reference new declaration#}
+#check stdout {
+good evening
+#}
 
-#update=reference missing declaration
-#file=main.zig
+#write main.zig {
 const std = @import("std");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, qux);
@@ -39,10 +53,14 @@ pub fn main() !void {
 const foo = "good morning\n";
 const bar = "good evening\n";
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_error=main.zig:3:52: error: use of undeclared identifier 'qux'
+#}
+#update {
+reference missing declaration#}
+#check errors {
+main.zig:3:52: error: use of undeclared identifier 'qux'
+#}
 
-#update=add missing declaration
-#file=main.zig
+#write main.zig {
 const std = @import("std");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, qux);
@@ -51,14 +69,23 @@ const foo = "good morning\n";
 const bar = "good evening\n";
 const qux = "good night\n";
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="good night\n"
+#}
+#update {
+add missing declaration#}
+#check stdout {
+good night
+#}
 
-#update=remove unused declarations
-#file=main.zig
+#write main.zig {
 const std = @import("std");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, qux);
 }
 const qux = "good night\n";
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="good night\n"
+#}
+#update {
+remove unused declarations#}
+#check stdout {
+good night
+#}

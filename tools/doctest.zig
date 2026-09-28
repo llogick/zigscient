@@ -314,6 +314,7 @@ fn printOutput(
                 switch (getExternalExecutor(io, &target, .{
                     .host_cpu_arch = host.cpu.arch,
                     .host_os_tag = host.os.tag,
+                    .link_mode = code.link_mode orelse .dynamic,
                     .link_libc = code.link_libc,
                 })) {
                     .native => {},

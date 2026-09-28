@@ -768,9 +768,8 @@ pub fn addRunArtifact(b: *Build, exe: *Step.Compile) *Step.Run {
 
     const run_step = Step.Run.create(b, step_name);
     run_step.producer = exe;
+    run_step.addArtifactArg(exe);
     if (exe.kind == .@"test") {
-        run_step.addArtifactArg(exe);
-
         const test_server_mode: bool = s: {
             if (exe.test_runner) |r| break :s r.mode == .server;
             if (exe.use_llvm == false) {
@@ -802,8 +801,6 @@ pub fn addRunArtifact(b: *Build, exe: *Step.Compile) *Step.Run {
             // communicate failure via its exit code.
             run_step.expectExitCode(0);
         }
-    } else {
-        run_step.addArtifactArg(exe);
     }
 
     return run_step;
@@ -2696,12 +2693,15 @@ fn validateConfigureDependency(lazy_path: LazyPath) void {
         .src_path, .cwd_relative, .dependency => {}, // OK
         .generated => @panic("configure phase cannot depend on files generated during make phase"),
         .relative => |relative| switch (relative.base) {
-            .cwd, .build_root, .local_cache, .global_cache, .zig_exe, .zig_lib => {}, // OK
+            .cwd, .build_root, .local_cache, .global_cache, .zig_lib => {}, // OK
+            .zig_exe => if (relative.sub_path.len > 0) @panic("file base cannot have a sub path"),
             .install_prefix,
             .install_lib,
             .install_bin,
             .install_include,
             => @panic("configure phase cannot depend on files installed during make phase"),
+            .libc_runtimes,
+            => @panic("configure phase cannot depend on directory known only during make phase"),
         },
     }
 }

@@ -141,8 +141,7 @@ pub fn pushErrorBundle(
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    var new_error_bundle: std.zig.ErrorBundle.Wip = undefined;
-    try new_error_bundle.init(collection.allocator);
+    var new_error_bundle: std.zig.ErrorBundle.Wip = try .init(collection.allocator);
     defer new_error_bundle.deinit();
 
     collection.mutex.lockUncancelable(collection.io);
@@ -245,8 +244,7 @@ pub fn collectNotVisibleErrMessages(
             if (!std.mem.eql(u8, eb_note_message, "file imported here")) break :unable_to_load;
             const eb_note_src_loc = eb.getSourceLocation(eb_note.src_loc);
             const eb_note_src_path = eb.nullTerminatedString(eb_note_src_loc.src_path);
-            var wip_eb: ErrorBundle.Wip = undefined;
-            try wip_eb.init(arena);
+            var wip_eb: ErrorBundle.Wip = try .init(arena);
             try wip_eb.addRootErrorMessage(.{
                 .msg = try wip_eb.addString(try std.fmt.allocPrint(arena, "[!] {s}", .{eb_message})),
                 .src_loc = try wip_eb.addSourceLocation(
@@ -283,8 +281,7 @@ pub fn collectNotVisibleErrMessages(
         const target_uri_is_open_in_editor = if (ds.getHandle(uri)) |doc| doc.isLspSynced() else false;
         if (target_uri_is_open_in_editor) continue;
 
-        var wip_eb: ErrorBundle.Wip = undefined;
-        try wip_eb.init(arena);
+        var wip_eb: ErrorBundle.Wip = try .init(arena);
 
         var notes: std.ArrayList(ErrorBundle.MessageIndex) = .empty;
         try notes.append(arena, try wip_eb.addErrorMessage(.{
@@ -798,8 +795,7 @@ fn createTestingErrorBundle(
     },
     compile_log_text: []const u8,
 ) error{OutOfMemory}!std.zig.ErrorBundle {
-    var eb: std.zig.ErrorBundle.Wip = undefined;
-    try eb.init(std.testing.allocator);
+    var eb: std.zig.ErrorBundle.Wip = try .init(std.testing.allocator);
     errdefer eb.deinit();
 
     for (messages) |msg| {

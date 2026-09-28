@@ -1438,7 +1438,7 @@ pub fn dirnamePosix(path: []const u8) ?[]const u8 {
 }
 
 fn dirnameInner(comptime path_type: PathType, path: []const u8) ?[]const u8 {
-    var it = ComponentIterator(path_type, u8).init(path);
+    var it: ComponentIterator(path_type, u8) = .init(path);
     _ = it.last() orelse return null;
     const up = it.previous() orelse return it.root();
     return up.path;
@@ -1539,7 +1539,7 @@ pub fn basenameWindows(path: []const u8) []const u8 {
 }
 
 fn basenameInner(comptime path_type: PathType, path: []const u8) []const u8 {
-    var it = ComponentIterator(path_type, u8).init(path);
+    var it: ComponentIterator(path_type, u8) = .init(path);
     const last = it.last() orelse return &[_]u8{};
     return last.name;
 }
@@ -2338,14 +2338,14 @@ pub const NativeComponentIterator = ComponentIterator(switch (native_os) {
 }, u8);
 
 pub fn componentIterator(path: []const u8) NativeComponentIterator {
-    return NativeComponentIterator.init(path);
+    return .init(path);
 }
 
 test "ComponentIterator posix" {
     const PosixComponentIterator = ComponentIterator(.posix, u8);
     {
         const path = "a/b/c/";
-        var it = PosixComponentIterator.init(path);
+        var it: PosixComponentIterator = .init(path);
         try std.testing.expectEqual(0, it.root_len);
         try std.testing.expectEqual(0, it.root_end_index);
         try std.testing.expect(null == it.root());
@@ -2393,7 +2393,7 @@ test "ComponentIterator posix" {
 
     {
         const path = "/a/b/c/";
-        var it = PosixComponentIterator.init(path);
+        var it: PosixComponentIterator = .init(path);
         try std.testing.expectEqual(1, it.root_len);
         try std.testing.expectEqual(1, it.root_end_index);
         try std.testing.expectEqualStrings("/", it.root().?);
@@ -2441,7 +2441,7 @@ test "ComponentIterator posix" {
 
     {
         const path = "////a///b///c////";
-        var it = PosixComponentIterator.init(path);
+        var it: PosixComponentIterator = .init(path);
         try std.testing.expectEqual(1, it.root_len);
         try std.testing.expectEqual(4, it.root_end_index);
         try std.testing.expectEqualStrings("/", it.root().?);
@@ -2489,7 +2489,7 @@ test "ComponentIterator posix" {
 
     {
         const path = "/";
-        var it = PosixComponentIterator.init(path);
+        var it: PosixComponentIterator = .init(path);
         try std.testing.expectEqual(1, it.root_len);
         try std.testing.expectEqual(1, it.root_end_index);
         try std.testing.expectEqualStrings("/", it.root().?);
@@ -2507,7 +2507,7 @@ test "ComponentIterator posix" {
 
     {
         const path = "";
-        var it = PosixComponentIterator.init(path);
+        var it: PosixComponentIterator = .init(path);
         try std.testing.expectEqual(0, it.root_len);
         try std.testing.expectEqual(0, it.root_end_index);
         try std.testing.expect(null == it.root());
@@ -2528,7 +2528,7 @@ test "ComponentIterator windows" {
     const WindowsComponentIterator = ComponentIterator(.windows, u8);
     {
         const path = "a/b\\c//";
-        var it = WindowsComponentIterator.init(path);
+        var it: WindowsComponentIterator = .init(path);
         try std.testing.expectEqual(0, it.root_len);
         try std.testing.expectEqual(0, it.root_end_index);
         try std.testing.expect(null == it.root());
@@ -2576,7 +2576,7 @@ test "ComponentIterator windows" {
 
     {
         const path = "C:\\a/b/c/";
-        var it = WindowsComponentIterator.init(path);
+        var it: WindowsComponentIterator = .init(path);
         try std.testing.expectEqual(3, it.root_len);
         try std.testing.expectEqual(3, it.root_end_index);
         try std.testing.expectEqualStrings("C:\\", it.root().?);
@@ -2614,7 +2614,7 @@ test "ComponentIterator windows" {
 
     {
         const path = "C:\\\\//a/\\/\\b///c////";
-        var it = WindowsComponentIterator.init(path);
+        var it: WindowsComponentIterator = .init(path);
         try std.testing.expectEqual(3, it.root_len);
         try std.testing.expectEqual(6, it.root_end_index);
         try std.testing.expectEqualStrings("C:\\", it.root().?);
@@ -2652,7 +2652,7 @@ test "ComponentIterator windows" {
 
     {
         const path = "/";
-        var it = WindowsComponentIterator.init(path);
+        var it: WindowsComponentIterator = .init(path);
         try std.testing.expectEqual(1, it.root_len);
         try std.testing.expectEqual(1, it.root_end_index);
         try std.testing.expectEqualStrings("/", it.root().?);
@@ -2670,7 +2670,7 @@ test "ComponentIterator windows" {
 
     {
         const path = "";
-        var it = WindowsComponentIterator.init(path);
+        var it: WindowsComponentIterator = .init(path);
         try std.testing.expectEqual(0, it.root_len);
         try std.testing.expectEqual(0, it.root_end_index);
         try std.testing.expect(null == it.root());
@@ -2692,7 +2692,7 @@ test "ComponentIterator windows WTF-16" {
     const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
     const path = L("C:\\a/b/c/");
-    var it = WindowsComponentIterator.init(path);
+    var it: WindowsComponentIterator = .init(path);
     try std.testing.expectEqual(3, it.root_len);
     try std.testing.expectEqual(3, it.root_end_index);
     try std.testing.expectEqualSlices(u16, L("C:\\"), it.root().?);
@@ -2731,59 +2731,59 @@ test "ComponentIterator windows WTF-16" {
 test "ComponentIterator roots" {
     // UEFI
     {
-        var it = ComponentIterator(.uefi, u8).init("\\\\a");
+        var it: ComponentIterator(.uefi, u8) = .init("\\\\a");
         try std.testing.expectEqualStrings("\\", it.root().?);
 
-        it = ComponentIterator(.uefi, u8).init("//a");
+        it = .init("//a");
         try std.testing.expect(null == it.root());
     }
     // POSIX
     {
-        var it = ComponentIterator(.posix, u8).init("//a");
+        var it: ComponentIterator(.posix, u8) = .init("//a");
         try std.testing.expectEqualStrings("/", it.root().?);
 
-        it = ComponentIterator(.posix, u8).init("\\\\a");
+        it = .init("\\\\a");
         try std.testing.expect(null == it.root());
     }
     // Windows
     {
         // Drive relative
-        var it = ComponentIterator(.windows, u8).init("C:a");
+        var it: ComponentIterator(.windows, u8) = .init("C:a");
         try std.testing.expectEqualStrings("C:", it.root().?);
 
         // Drive absolute
-        it = ComponentIterator(.windows, u8).init("C:/a");
+        it = .init("C:/a");
         try std.testing.expectEqualStrings("C:/", it.root().?);
-        it = ComponentIterator(.windows, u8).init("C:\\a");
+        it = .init("C:\\a");
         try std.testing.expectEqualStrings("C:\\", it.root().?);
-        it = ComponentIterator(.windows, u8).init("C:///a");
+        it = .init("C:///a");
         try std.testing.expectEqualStrings("C:/", it.root().?);
 
         // Rooted
-        it = ComponentIterator(.windows, u8).init("\\a");
+        it = .init("\\a");
         try std.testing.expectEqualStrings("\\", it.root().?);
-        it = ComponentIterator(.windows, u8).init("/a");
+        it = .init("/a");
         try std.testing.expectEqualStrings("/", it.root().?);
 
         // Root local device
-        it = ComponentIterator(.windows, u8).init("\\\\.");
+        it = .init("\\\\.");
         try std.testing.expectEqualStrings("\\\\.", it.root().?);
-        it = ComponentIterator(.windows, u8).init("//?");
+        it = .init("//?");
         try std.testing.expectEqualStrings("//?", it.root().?);
 
         // UNC absolute
-        it = ComponentIterator(.windows, u8).init("//");
+        it = .init("//");
         try std.testing.expectEqualStrings("//", it.root().?);
-        it = ComponentIterator(.windows, u8).init("\\\\a");
+        it = .init("\\\\a");
         try std.testing.expectEqualStrings("\\\\a", it.root().?);
-        it = ComponentIterator(.windows, u8).init("\\\\a\\b\\\\c");
+        it = .init("\\\\a\\b\\\\c");
         try std.testing.expectEqualStrings("\\\\a\\b\\", it.root().?);
-        it = ComponentIterator(.windows, u8).init("//a");
+        it = .init("//a");
         try std.testing.expectEqualStrings("//a", it.root().?);
-        it = ComponentIterator(.windows, u8).init("//a/b//c");
+        it = .init("//a/b//c");
         try std.testing.expectEqualStrings("//a/b/", it.root().?);
         // Malformed UNC path with empty server name
-        it = ComponentIterator(.windows, u8).init("\\\\\\a\\b\\c");
+        it = .init("\\\\\\a\\b\\c");
         try std.testing.expectEqualStrings("\\\\\\a\\", it.root().?);
     }
 }

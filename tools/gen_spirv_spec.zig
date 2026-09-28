@@ -86,8 +86,7 @@ pub fn main(init: std.process.Init) !void {
 
     var zir = try std.zig.AstGen.generate(arena, tree);
     if (zir.hasCompileErrors()) {
-        var wip_errors: std.zig.ErrorBundle.Wip = undefined;
-        try wip_errors.init(arena);
+        var wip_errors: std.zig.ErrorBundle.Wip = try .init(arena);
         defer wip_errors.deinit();
         try wip_errors.addZirErrorMessages(zir, tree, output, "");
         var error_bundle = try wip_errors.toOwnedBundle("");

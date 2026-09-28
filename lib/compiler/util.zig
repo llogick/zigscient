@@ -10,8 +10,7 @@ pub fn aroDiagnosticsToErrorBundle(
 ) !ErrorBundle {
     @branchHint(.cold);
 
-    var bundle: ErrorBundle.Wip = undefined;
-    try bundle.init(gpa);
+    var bundle: ErrorBundle.Wip = try .init(gpa);
     errdefer bundle.deinit();
 
     if (fail_msg) |msg| {

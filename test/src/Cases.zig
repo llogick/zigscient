@@ -626,6 +626,7 @@ pub fn lowerToBuildSteps(
                     if (getExternalExecutor(io, &case.target.result, .{
                         .host_cpu_arch = host.result.cpu.arch,
                         .host_os_tag = host.result.os.tag,
+                        .link_mode = .dynamic, // TODO: this emulates old behavior until this file is deleted
                         .link_libc = true,
                     }) != .native) {
                         // We wouldn't be able to run the compiled C code.

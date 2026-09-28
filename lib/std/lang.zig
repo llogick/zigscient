@@ -971,7 +971,7 @@ pub const Signedness = enum(u1) {
 
 /// This data structure is used by the Zig language code generation and
 /// therefore must be kept in sync with the compiler implementation.
-pub const OutputMode = enum {
+pub const OutputMode = enum(u2) {
     Exe,
     Lib,
     Obj,

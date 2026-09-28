@@ -1,45 +1,72 @@
-#update=initial version
-#file=main.zig
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig {
 const std = @import("std");
 const string = @embedFile("string.txt");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, string);
 }
 const io = std.Io.Threaded.global_single_threaded.io();
-#file=string.txt
+#}
+#write string.txt {
 Hello, World!
-#expect_stdout="Hello, World!\n"
+#}
+#update
+#check stdout {
+Hello, World!
+#}
 
-#update=change file contents
-#file=string.txt
+#write string.txt {
 Hello again, World!
-#expect_stdout="Hello again, World!\n"
+#}
+#update {
+change file contents#}
+#check stdout {
+Hello again, World!
+#}
 
-#update=delete file
-#rm_file=string.txt
-#expect_error=main.zig:2:27: error: failed opening "string.txt": FileNotFound
+#delete string.txt
+#update {
+delete file#}
+#check errors {
+main.zig:2:27: error: failed opening "string.txt": FileNotFound
+#}
 
-#update=remove reference to file
-#file=main.zig
+#write main.zig {
 const std = @import("std");
 const string = @embedFile("string.txt");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, "a hardcoded string\n");
 }
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="a hardcoded string\n"
+#}
+#update {
+remove reference to file#}
+#check stdout {
+a hardcoded string
+#}
 
-#update=re-introduce reference to file
-#file=main.zig
+#write main.zig {
 const std = @import("std");
 const string = @embedFile("string.txt");
 pub fn main() !void {
     try std.Io.File.stdout().writeStreamingAll(io, string);
 }
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_error=main.zig:2:27: error: failed opening "string.txt": FileNotFound
+#}
+#update {
+re-introduce reference to file#}
+#check errors {
+main.zig:2:27: error: failed opening "string.txt": FileNotFound
+#}
 
-#update=recreate file
-#file=string.txt
+#write string.txt {
 We're back, World!
-#expect_stdout="We're back, World!\n"
+#}
+#update {
+recreate file#}
+#check stdout {
+We're back, World!
+#}

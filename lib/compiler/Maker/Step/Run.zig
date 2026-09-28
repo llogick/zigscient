@@ -55,237 +55,598 @@ pub fn make(
     var man = graph.cache.obtain();
     defer man.deinit();
 
-    if (conf_run.environ_map.value) |environ_map_index| {
-        const environ_map = environ_map_index.get(conf);
-        for (environ_map.keys.slice(conf), environ_map.values.slice(conf)) |key, value| {
-            man.hash.addBytesZ(key.slice(conf));
-            man.hash.addBytesZ(value.slice(conf));
+    var tmp_dir_path: ["tmp".len + Dir.path.sep_str.len + std.fmt.hex(@as(u64, 0)).len]u8 = undefined;
+
+    const has_side_effects = has_side_effects: {
+        if (conf_run.environ_map.value) |environ_map_index| {
+            const environ_map = environ_map_index.get(conf);
+            for (environ_map.keys.slice(conf), environ_map.values.slice(conf)) |key, value| {
+                man.hash.addBytesZ(key.slice(conf));
+                man.hash.addBytesZ(value.slice(conf));
+            }
         }
-    }
 
-    for (conf_run.preopens.slice) |preopen| {
-        man.hash.addBytesZ(preopen.name.slice(conf));
-        const cwd_path = try maker.resolveLazyPathIndex(arena, preopen.path, run_index);
-        man.hash.addBytes(try cwd_path.toString(arena));
-    }
+        for (conf_run.preopens.slice) |preopen| {
+            man.hash.addBytesZ(preopen.name.slice(conf));
+            const cwd_path = try maker.resolveLazyPathIndex(arena, preopen.path, run_index);
+            man.hash.addBytes(try cwd_path.toString(arena));
+        }
 
-    man.hash.add(graph.fuzzing);
-    man.hash.add(conf_run.flags.color);
-    man.hash.add(conf_run.flags.disable_zig_progress);
+        man.hash.add(graph.fuzzing);
+        man.hash.add(conf_run.flags.color);
+        man.hash.add(conf_run.flags.disable_zig_progress);
 
-    var any_dep_files = false;
-    var any_output_args = false;
-    var any_cli_positionals = false;
+        var any_discovered_inputs = switch (conf_run.flags.stdio) {
+            .infer_from_args, .inherit, .check, .zig_test => false,
+            .protocol => true,
+        };
+        var any_output_args = false;
+        var any_cli_positionals = false;
 
-    for (conf_run.args.slice) |arg_index| {
-        const arg = arg_index.get(conf);
-        try argv_list.ensureUnusedCapacity(gpa, 1);
-        switch (arg.flags.tag) {
-            .string => {
-                const prefix = arg.prefix.value.?.slice(conf);
-                argv_list.appendAssumeCapacity(prefix);
-                man.hash.addBytesZ(prefix);
+        for (switch (conf_run.flags.stdio) {
+            .infer_from_args, .inherit, .check, .zig_test => conf_run.args.slice,
+            .protocol => conf_run.args.slice[0..1], // arguments communicated over protocol
+        }) |arg_index| {
+            const arg = arg_index.get(conf);
+            try argv_list.ensureUnusedCapacity(gpa, 1);
+            switch (arg.flags.tag) {
+                .string => {
+                    const string = arg.prefix.value.?.slice(conf);
+                    argv_list.appendAssumeCapacity(string);
+                    man.hash.addBytesZ(string);
+                },
+                .path_file => {
+                    const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
+                    const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
+                    const file_path = try maker.resolveLazyPathIndex(arena, arg.path.value.?, run_index);
+                    argv_list.appendAssumeCapacity(try mem.concat(arena, u8, &.{
+                        prefix, try convertPathArg(arena, run_index, maker, file_path, arg.flags.make_absolute), suffix,
+                    }));
+                    man.hash.add(arg.flags.make_absolute);
+                    man.hash.addBytesZ(prefix);
+                    man.hash.addBytesZ(suffix);
+                    _ = try man.addInputPath(file_path, .{});
+                },
+                .path_directory => {
+                    const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
+                    const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
+                    const file_path = try maker.resolveLazyPathIndex(arena, arg.path.value.?, run_index);
+                    const resolved_arg = try mem.concat(arena, u8, &.{
+                        prefix, try convertPathArg(arena, run_index, maker, file_path, arg.flags.make_absolute), suffix,
+                    });
+                    argv_list.appendAssumeCapacity(resolved_arg);
+                    man.hash.add(arg.flags.make_absolute);
+                    man.hash.addBytes(resolved_arg);
+                },
+                .file_content => {
+                    const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
+                    const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
+                    const file_path = try maker.resolveLazyPathIndex(arena, arg.path.value.?, run_index);
+
+                    var result: std.Io.Writer.Allocating = .init(arena);
+                    result.writer.writeAll(prefix) catch return error.OutOfMemory;
+
+                    const file = file_path.root_dir.handle.openFile(io, file_path.sub_path, .{}) catch |err|
+                        return step.fail(maker, "unable to open input file {qf}: {t}", .{ file_path, err });
+                    defer file.close(io);
+
+                    var file_reader = file.reader(io, &.{});
+                    _ = file_reader.interface.streamRemaining(&result.writer) catch |err| switch (err) {
+                        error.ReadFailed => switch (file_reader.err.?) {
+                            error.Canceled => |e| return e,
+                            else => |e| return step.fail(maker, "failed to read from {qf}: {t}", .{ file_path, e }),
+                        },
+                        error.WriteFailed => return error.OutOfMemory,
+                    };
+                    result.writer.writeAll(suffix) catch return error.OutOfMemory;
+
+                    argv_list.appendAssumeCapacity(result.written());
+                    man.hash.addBytesZ(prefix);
+                    _ = try man.addInputPath(file_path, .{});
+                    man.hash.addBytesZ(suffix);
+                },
+                .artifact => {
+                    const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
+                    const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
+                    const producer_index = arg.producer.value.?;
+                    const producer_step = producer_index.ptr(conf);
+                    const producer = producer_step.extended.get(conf.extra).compile;
+                    const producer_make_comp_step = maker.stepByIndex(producer_index);
+                    const producer_make_comp = &producer_make_comp_step.extended.compile;
+
+                    const file_path = producer_make_comp.installed_path orelse
+                        maker.generatedPath(producer.generated_bin.value.?);
+
+                    argv_list.appendAssumeCapacity(try mem.concat(arena, u8, &.{
+                        prefix, try convertPathArg(arena, run_index, maker, file_path, arg.flags.make_absolute), suffix,
+                    }));
+
+                    man.hash.add(arg.flags.make_absolute);
+                    man.hash.addBytesZ(prefix);
+                    man.hash.addBytesZ(suffix);
+                    _ = try man.addInputPath(file_path, .{});
+                },
+                .output_file, .output_directory => {
+                    const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
+                    const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
+                    const basename = arg.basename.value.?.slice(conf);
+
+                    man.hash.add(arg.flags.make_absolute);
+                    man.hash.addBytesZ(prefix);
+                    man.hash.addBytesZ(basename);
+                    man.hash.addBytesZ(suffix);
+                    man.hash.add(arg.flags.dep_file);
+
+                    if (arg.flags.dep_file) any_discovered_inputs = true;
+                    any_output_args = true;
+
+                    // Add a placeholder into the argument list because we need the
+                    // manifest hash to be updated with all arguments before the
+                    // object directory is computed.
+                    try output_placeholders.append(gpa, .{
+                        .index = @intCast(argv_list.items.len),
+                        .offset = 0,
+                        .arg_index = arg_index,
+                    });
+                    _ = argv_list.addOneAssumeCapacity();
+                },
+                .passthru => {
+                    any_cli_positionals = true;
+                    if (maker.run_args) |run_args| {
+                        try argv_list.appendSlice(gpa, run_args);
+                        man.hash.addListOfBytes(run_args);
+                    }
+                },
+                .enable_darling => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_darling, arg.prefix.value, arg.suffix.value),
+                .enable_qemu => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_qemu, arg.prefix.value, arg.suffix.value),
+                .enable_rosetta => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_rosetta, arg.prefix.value, arg.suffix.value),
+                .enable_wasmtime => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_wasmtime, arg.prefix.value, arg.suffix.value),
+                .enable_wine => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_wine, arg.prefix.value, arg.suffix.value),
+            }
+        }
+
+        var owned_dirs: std.bit_set.Dynamic = .{};
+        var inherit_dirs: std.ArrayList(Io.Dir) = .empty;
+        var owned_files: std.bit_set.Dynamic = .{};
+        var inherit_files: std.ArrayList(Io.File) = .empty;
+        var protocol_args: std.ArrayList(u8) = .empty;
+        var input_dirs: std.ArrayList(Cache.Path) = .empty;
+        defer {
+            for (inherit_dirs.items, 0..) |inherit_dir, inherit_dir_index|
+                if (owned_dirs.isSet(inherit_dir_index)) inherit_dir.close(io);
+            for (inherit_files.items, 0..) |inherit_file, inherit_file_index|
+                if (owned_files.isSet(inherit_file_index)) inherit_file.close(io);
+            owned_dirs.deinit(gpa);
+            inherit_dirs.deinit(gpa);
+            owned_files.deinit(gpa);
+            inherit_files.deinit(gpa);
+            protocol_args.deinit(gpa);
+            input_dirs.deinit(gpa);
+        }
+        switch (conf_run.flags.stdio) {
+            .infer_from_args, .inherit, .check => {},
+            .zig_test => {
+                const cache_dir_string = try convertPathArg(arena, run_index, maker, .{ .root_dir = cache_root }, false);
+
+                try argv_list.ensureUnusedCapacity(gpa, 3);
+                argv_list.appendAssumeCapacity(try arena.print("--cache-dir={s}", .{cache_dir_string}));
+                argv_list.appendAssumeCapacity(try arena.print("--seed=0x{x}", .{graph.random_seed}));
+                argv_list.appendAssumeCapacity("--listen=-");
             },
-            .path_file => {
-                const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
-                const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
-                const file_path = try maker.resolveLazyPathIndex(arena, arg.path.value.?, run_index);
-                argv_list.appendAssumeCapacity(try mem.concat(arena, u8, &.{
-                    prefix, try convertPathArg(arena, run_index, maker, file_path, arg.flags.make_absolute), suffix,
-                }));
-                man.hash.add(arg.flags.make_absolute);
-                man.hash.addBytesZ(prefix);
-                man.hash.addBytesZ(suffix);
-                _ = try man.addInputPath(file_path, .{});
-            },
-            .path_directory => {
-                const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
-                const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
-                const file_path = try maker.resolveLazyPathIndex(arena, arg.path.value.?, run_index);
-                const resolved_arg = try mem.concat(arena, u8, &.{
-                    prefix, try convertPathArg(arena, run_index, maker, file_path, arg.flags.make_absolute), suffix,
-                });
-                argv_list.appendAssumeCapacity(resolved_arg);
-                man.hash.add(arg.flags.make_absolute);
-                man.hash.addBytes(resolved_arg);
-            },
-            .file_content => {
-                const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
-                const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
-                const file_path = try maker.resolveLazyPathIndex(arena, arg.path.value.?, run_index);
+            .protocol => {
+                argv_list.appendAssumeCapacity("--listen=-");
+                try input_dirs.append(gpa, if (conf_run.cwd.value) |lazy_cwd|
+                    try maker.resolveLazyPathIndex(arena, lazy_cwd, run_index)
+                else
+                    .cwd());
+                for (conf_run.args.slice[1..]) |arg_index| {
+                    const arg = arg_index.get(conf);
+                    switch (arg.flags.tag) {
+                        .string => {
+                            const string = arg.prefix.value.?.slice(conf);
 
-                var result: std.Io.Writer.Allocating = .init(arena);
-                result.writer.writeAll(prefix) catch return error.OutOfMemory;
+                            man.hash.addBytesZ(string);
 
-                const file = file_path.root_dir.handle.openFile(io, file_path.sub_path, .{}) catch |err|
-                    return step.fail(maker, "unable to open input file {f}: {t}", .{ file_path, err });
-                defer file.close(io);
+                            try protocol_args.ensureUnusedCapacity(gpa, 1 + string.len + 1);
+                            protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.string));
+                            protocol_args.appendSliceAssumeCapacity(string);
+                            protocol_args.appendAssumeCapacity(0);
+                        },
+                        .path_file => {
+                            const lazy_path = arg.path.value.?.get(conf);
+                            switch (lazy_path) {
+                                else => {},
+                                .relative => |relative| switch (relative.flags.base) {
+                                    else => {},
+                                    .libc_runtimes => if (graph.libc_runtimes_dir == null) continue,
+                                },
+                            }
 
-                var file_reader = file.reader(io, &.{});
-                _ = file_reader.interface.streamRemaining(&result.writer) catch |err| switch (err) {
-                    error.ReadFailed => switch (file_reader.err.?) {
-                        error.Canceled => |e| return e,
-                        else => |e| return step.fail(maker, "failed to read from {f}: {t}", .{ file_path, e }),
-                    },
-                    error.WriteFailed => return error.OutOfMemory,
-                };
-                result.writer.writeAll(suffix) catch return error.OutOfMemory;
+                            const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
+                            const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
+                            const file_path = try maker.resolveLazyPath(arena, lazy_path, run_index);
 
-                argv_list.appendAssumeCapacity(result.written());
-                man.hash.addBytesZ(prefix);
-                man.hash.addBytesZ(suffix);
-                _ = try man.addInputPath(file_path, .{});
-            },
-            .artifact => {
-                const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
-                const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
-                const producer_index = arg.producer.value.?;
-                const producer_step = producer_index.ptr(conf);
-                const producer = producer_step.extended.get(conf.extra).compile;
-                const producer_make_comp_step = maker.stepByIndex(producer_index);
-                const producer_make_comp = &producer_make_comp_step.extended.compile;
+                            try owned_files.resize(gpa, owned_files.bit_length + 1, true);
+                            try inherit_files.ensureUnusedCapacity(gpa, 1);
+                            const file = file_path.root_dir.handle.openFile(io, file_path.sub_path, .{}) catch |err|
+                                return step.fail(maker, "unable to open input file {qf}: {t}", .{ file_path, err });
+                            inherit_files.appendAssumeCapacity(file);
 
-                const file_path = producer_make_comp.installed_path orelse
-                    maker.generatedPath(producer.generated_bin.value.?);
+                            man.hash.addBytesZ(prefix);
+                            _ = try man.addInputPath(file_path, .{});
+                            man.hash.addBytesZ(suffix);
 
-                argv_list.appendAssumeCapacity(try mem.concat(arena, u8, &.{
-                    prefix, try convertPathArg(arena, run_index, maker, file_path, arg.flags.make_absolute), suffix,
-                }));
+                            try protocol_args.ensureUnusedCapacity(gpa, 1 + prefix.len + 1 +
+                                1 + @sizeOf(Io.File.Handle) +
+                                1 + suffix.len + 1);
+                            if (prefix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.prefix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                            protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.input_file));
+                            const file_handle: *align(1) Io.File.Handle =
+                                @ptrCast(protocol_args.addManyAsArrayAssumeCapacity(@sizeOf(Io.File.Handle)));
+                            file_handle.* = file.handle;
+                            if (suffix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                        },
+                        .path_directory => {
+                            const lazy_path = arg.path.value.?.get(conf);
+                            switch (lazy_path) {
+                                else => {},
+                                .relative => |relative| switch (relative.flags.base) {
+                                    else => {},
+                                    .libc_runtimes => if (graph.libc_runtimes_dir == null) continue,
+                                },
+                            }
 
-                man.hash.add(arg.flags.make_absolute);
-                man.hash.addBytesZ(prefix);
-                man.hash.addBytesZ(suffix);
-                _ = try man.addInputPath(file_path, .{});
-            },
-            .output_file, .output_directory => {
-                const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
-                const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
-                const basename = arg.basename.value.?.slice(conf);
+                            const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
+                            const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
+                            const dir_path = try maker.resolveLazyPath(arena, lazy_path, run_index);
+                            try input_dirs.append(gpa, dir_path);
 
-                man.hash.add(arg.flags.make_absolute);
-                man.hash.addBytesZ(prefix);
-                man.hash.addBytesZ(basename);
-                man.hash.addBytesZ(suffix);
-                man.hash.add(arg.flags.dep_file);
+                            const has_sub_path = dir_path.sub_path.len > 0;
+                            try owned_dirs.resize(gpa, owned_dirs.bit_length + 1, has_sub_path);
+                            try inherit_dirs.ensureUnusedCapacity(gpa, 1);
+                            const dir = if (has_sub_path)
+                                dir_path.root_dir.handle.openDir(io, dir_path.sub_path, .{
+                                    .iterate = true,
+                                }) catch |err| return step.fail(maker, "unable to open input dir {qf}: {t}", .{ dir_path, err })
+                            else
+                                dir_path.root_dir.handle;
+                            inherit_dirs.appendAssumeCapacity(dir);
 
-                any_dep_files = any_dep_files or arg.flags.dep_file;
-                any_output_args = true;
+                            man.hash.addBytesZ(prefix);
+                            man.hash.addOptionalBytes(dir_path.root_dir.path);
+                            man.hash.addBytes(dir_path.sub_path);
+                            man.hash.addBytesZ(suffix);
 
-                // Add a placeholder into the argument list because we need the
-                // manifest hash to be updated with all arguments before the
-                // object directory is computed.
-                try output_placeholders.append(gpa, .{
-                    .index = @intCast(argv_list.items.len),
-                    .arg_index = arg_index,
-                });
-                argv_list.items.len += 1;
-            },
-            .passthru => {
-                any_cli_positionals = true;
-                if (maker.run_args) |run_args| {
-                    try argv_list.appendSlice(gpa, run_args);
-                    man.hash.addListOfBytes(run_args);
+                            try protocol_args.ensureUnusedCapacity(gpa, 1 + prefix.len + 1 +
+                                1 + @sizeOf(Io.Dir.Handle) +
+                                1 + suffix.len + 1);
+                            if (prefix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.prefix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                            protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.input_dir));
+                            const dir_handle: *align(1) Io.Dir.Handle =
+                                @ptrCast(protocol_args.addManyAsArrayAssumeCapacity(@sizeOf(Io.Dir.Handle)));
+                            dir_handle.* = dir.handle;
+                            if (suffix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                        },
+                        .file_content => {
+                            const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
+                            const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
+                            const file_path = try maker.resolveLazyPathIndex(arena, arg.path.value.?, run_index);
+
+                            try owned_files.resize(gpa, owned_files.bit_length + 1, true);
+                            try inherit_files.ensureUnusedCapacity(gpa, 1);
+                            const file = file_path.root_dir.handle.openFile(io, file_path.sub_path, .{}) catch |err|
+                                return step.fail(maker, "unable to open input file {qf}: {t}", .{ file_path, err });
+                            inherit_files.appendAssumeCapacity(file);
+
+                            man.hash.addBytesZ(prefix);
+                            _ = try man.addInputPath(file_path, .{});
+                            man.hash.addBytesZ(suffix);
+
+                            try protocol_args.ensureUnusedCapacity(gpa, 1 + prefix.len + 1 +
+                                1 + @sizeOf(Io.File.Handle) +
+                                1 + suffix.len + 1);
+                            if (prefix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.prefix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                            protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.input_file_content));
+                            const file_handle: *align(1) Io.File.Handle =
+                                @ptrCast(protocol_args.addManyAsArrayAssumeCapacity(@sizeOf(Io.File.Handle)));
+                            file_handle.* = file.handle;
+                            if (suffix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                        },
+                        .artifact => {
+                            const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
+                            const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
+                            const producer_index = arg.producer.value.?;
+                            const producer_step = producer_index.ptr(conf);
+                            const producer = producer_step.extended.get(conf.extra).compile;
+                            const producer_make_comp_step = maker.stepByIndex(producer_index);
+                            const producer_make_comp = &producer_make_comp_step.extended.compile;
+
+                            const file_path = producer_make_comp.installed_path orelse
+                                maker.generatedPath(producer.generated_bin.value.?);
+
+                            try owned_files.resize(gpa, owned_files.bit_length + 1, true);
+                            try inherit_files.ensureUnusedCapacity(gpa, 1);
+                            const file = file_path.root_dir.handle.openFile(io, file_path.sub_path, .{}) catch |err|
+                                return step.fail(maker, "unable to open input artifact {qf}: {t}", .{ file_path, err });
+                            inherit_files.appendAssumeCapacity(file);
+
+                            man.hash.addBytesZ(prefix);
+                            _ = try man.addInputPath(file_path, .{});
+                            man.hash.addBytesZ(suffix);
+
+                            try protocol_args.ensureUnusedCapacity(gpa, 1 + prefix.len + 1 +
+                                1 + @sizeOf(Io.File.Handle) +
+                                1 + suffix.len + 1);
+                            if (prefix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.prefix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                            protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.input_file));
+                            const file_handle: *align(1) Io.File.Handle =
+                                @ptrCast(protocol_args.addManyAsArrayAssumeCapacity(@sizeOf(Io.File.Handle)));
+                            file_handle.* = file.handle;
+                            if (suffix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                        },
+                        .output_file => {
+                            const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
+                            const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
+                            const basename = arg.basename.value.?.slice(conf);
+
+                            man.hash.addBytesZ(prefix);
+                            man.hash.addBytesZ(basename);
+                            man.hash.addBytesZ(suffix);
+                            assert(!arg.flags.dep_file);
+
+                            try protocol_args.ensureUnusedCapacity(gpa, 1 + prefix.len + 1 +
+                                1 + @sizeOf(Io.File.Handle) +
+                                1 + suffix.len + 1);
+                            if (prefix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.prefix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                            protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.output_file));
+
+                            // Add a placeholder into the argument list because we need the
+                            // manifest hash to be updated with all arguments before the
+                            // object directory is computed.
+                            try owned_files.resize(gpa, owned_files.bit_length + 1, false);
+                            try inherit_files.ensureUnusedCapacity(gpa, 1);
+                            try output_placeholders.append(gpa, .{
+                                .index = @intCast(inherit_files.items.len),
+                                .offset = @intCast(protocol_args.items.len),
+                                .arg_index = arg_index,
+                            });
+                            _ = inherit_files.addOneAssumeCapacity();
+
+                            _ = protocol_args.addManyAsArrayAssumeCapacity(@sizeOf(Io.File.Handle));
+                            if (suffix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                        },
+                        .output_directory => {
+                            const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
+                            const suffix = if (arg.suffix.value) |p| p.slice(conf) else "";
+                            const basename = arg.basename.value.?.slice(conf);
+
+                            man.hash.addBytesZ(prefix);
+                            man.hash.addBytesZ(basename);
+                            man.hash.addBytesZ(suffix);
+                            assert(!arg.flags.dep_file);
+
+                            try protocol_args.ensureUnusedCapacity(gpa, 1 + prefix.len + 1 +
+                                1 + @sizeOf(Io.Dir.Handle) +
+                                1 + suffix.len + 1);
+                            if (prefix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.prefix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                            protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.output_dir));
+
+                            // Add a placeholder into the argument list because we need the
+                            // manifest hash to be updated with all arguments before the
+                            // object directory is computed.
+                            try owned_dirs.resize(gpa, owned_dirs.bit_length + 1, false);
+                            try inherit_dirs.ensureUnusedCapacity(gpa, 1);
+                            try output_placeholders.append(gpa, .{
+                                .index = @intCast(inherit_dirs.items.len),
+                                .offset = @intCast(protocol_args.items.len),
+                                .arg_index = arg_index,
+                            });
+                            _ = inherit_dirs.addOneAssumeCapacity();
+
+                            _ = protocol_args.addManyAsArrayAssumeCapacity(@sizeOf(Io.Dir.Handle));
+                            if (suffix.len > 0) {
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
+                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                        },
+                        .passthru => if (maker.run_args) |run_args| {
+                            man.hash.addListOfBytes(run_args);
+
+                            for (run_args) |run_arg| {
+                                try protocol_args.ensureUnusedCapacity(gpa, 1 + run_arg.len + 1);
+                                protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.string));
+                                protocol_args.appendSliceAssumeCapacity(run_arg);
+                                protocol_args.appendAssumeCapacity(0);
+                            }
+                        },
+                        .enable_darling => try thirdPartyToggleProtocol(gpa, &man.hash, &protocol_args, conf, graph.enable_darling, arg.prefix.value, arg.suffix.value),
+                        .enable_qemu => try thirdPartyToggleProtocol(gpa, &man.hash, &protocol_args, conf, graph.enable_qemu, arg.prefix.value, arg.suffix.value),
+                        .enable_rosetta => try thirdPartyToggleProtocol(gpa, &man.hash, &protocol_args, conf, graph.enable_rosetta, arg.prefix.value, arg.suffix.value),
+                        .enable_wasmtime => try thirdPartyToggleProtocol(gpa, &man.hash, &protocol_args, conf, graph.enable_wasmtime, arg.prefix.value, arg.suffix.value),
+                        .enable_wine => try thirdPartyToggleProtocol(gpa, &man.hash, &protocol_args, conf, graph.enable_wine, arg.prefix.value, arg.suffix.value),
+                    }
                 }
             },
-            .enable_darling => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_darling, arg.prefix.value, arg.suffix.value),
-            .enable_qemu => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_qemu, arg.prefix.value, arg.suffix.value),
-            .enable_rosetta => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_rosetta, arg.prefix.value, arg.suffix.value),
-            .enable_wasmtime => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_wasmtime, arg.prefix.value, arg.suffix.value),
-            .enable_wine => thirdPartyToggle(&man.hash, &argv_list, conf, graph.enable_wine, arg.prefix.value, arg.suffix.value),
         }
-    }
 
-    man.hash.add(conf_run.flags.test_runner_mode);
-    if (conf_run.flags.test_runner_mode) {
-        const cache_dir_string = try convertPathArg(arena, run_index, maker, .{ .root_dir = cache_root }, false);
+        switch (conf_run.stdin.u) {
+            .bytes => |bytes| {
+                man.hash.addBytes(bytes.slice(conf));
+            },
+            .lazy_path => |lazy_path| {
+                const file_path = try maker.resolveLazyPathIndex(arena, lazy_path, run_index);
+                _ = try man.addInputPath(file_path, .{});
+            },
+            .none => {},
+        }
 
-        try argv_list.ensureUnusedCapacity(gpa, 3);
-        argv_list.appendAssumeCapacity(try arena.print("--cache-dir={s}", .{cache_dir_string}));
-        argv_list.appendAssumeCapacity(try arena.print("--seed=0x{x}", .{graph.random_seed}));
-        argv_list.appendAssumeCapacity("--listen=-");
-    }
+        if (conf_run.captured_stdout.value) |captured| {
+            man.hash.addBytes(captured.basename.slice(conf));
+            man.hash.add(conf_run.flags.stdout_trim_whitespace);
+        }
 
-    switch (conf_run.stdin.u) {
-        .bytes => |bytes| {
-            man.hash.addBytes(bytes.slice(conf));
-        },
-        .lazy_path => |lazy_path| {
+        if (conf_run.captured_stderr.value) |captured| {
+            man.hash.addBytes(captured.basename.slice(conf));
+            man.hash.add(conf_run.flags.stderr_trim_whitespace);
+        }
+
+        switch (conf_run.flags.stdio) {
+            .infer_from_args, .inherit, .zig_test, .protocol => {},
+            .check => {
+                man.hash.addBytes(if (conf_run.expect_stderr_exact.value) |bytes| bytes.slice(conf) else "");
+                man.hash.addBytes(if (conf_run.expect_stdout_exact.value) |bytes| bytes.slice(conf) else "");
+                for (conf_run.expect_stderr_match.slice) |bytes| man.hash.addBytes(bytes.slice(conf));
+                for (conf_run.expect_stdout_match.slice) |bytes| man.hash.addBytes(bytes.slice(conf));
+                man.hash.add(conf_run.flags2.expect_term_status);
+                man.hash.addOptional(conf_run.expect_term_value.value);
+            },
+        }
+
+        for (conf_run.file_inputs.slice) |lazy_path| {
             const file_path = try maker.resolveLazyPathIndex(arena, lazy_path, run_index);
             _ = try man.addInputPath(file_path, .{});
-        },
-        .none => {},
-    }
+        }
 
-    if (conf_run.captured_stdout.value) |captured| {
-        man.hash.addBytes(captured.basename.slice(conf));
-        man.hash.add(conf_run.flags.stdout_trim_whitespace);
-    }
+        if (conf_run.cwd.value) |lazy_path| {
+            const cwd_path = try maker.resolveLazyPathIndex(arena, lazy_path, run_index);
+            _ = man.hash.addBytes(try cwd_path.toString(arena));
+        }
 
-    if (conf_run.captured_stderr.value) |captured| {
-        man.hash.addBytes(captured.basename.slice(conf));
-        man.hash.add(conf_run.flags.stderr_trim_whitespace);
-    }
+        // Whether the Run step has side effects *other than* updating the output arguments.
+        // When fuzzing we need to always run the test runner to populate fuzz_tests.
+        const has_side_effects = graph.fuzzing or conf_run.flags.has_side_effects or any_cli_positionals or
+            switch (conf_run.flags.stdio) {
+                .infer_from_args => !any_output_args and
+                    conf_run.captured_stdout.value == null and
+                    conf_run.captured_stderr.value == null,
+                .inherit => true,
+                .check, .zig_test, .protocol => false,
+            };
 
-    switch (conf_run.flags.stdio) {
-        .infer_from_args, .inherit, .zig_test => {},
-        .check => {
-            man.hash.addBytes(if (conf_run.expect_stderr_exact.value) |bytes| bytes.slice(conf) else "");
-            man.hash.addBytes(if (conf_run.expect_stdout_exact.value) |bytes| bytes.slice(conf) else "");
-            for (conf_run.expect_stderr_match.slice) |bytes| man.hash.addBytes(bytes.slice(conf));
-            for (conf_run.expect_stdout_match.slice) |bytes| man.hash.addBytes(bytes.slice(conf));
-            man.hash.add(conf_run.flags2.expect_term_status);
-            man.hash.addOptional(conf_run.expect_term_value.value);
-        },
-    }
+        if (!has_side_effects and try step.cacheHitWatched(maker, &man, progress_node)) {
+            // Cache hit; skip running command.
+            const digest = man.hitDigestHex();
+            try populateGeneratedStdIo(maker, &conf_run, &digest);
+            try populateGeneratedPaths(maker, output_placeholders.items, &digest);
+            step.result_cached = true;
+            return;
+        }
 
-    for (conf_run.file_inputs.slice) |lazy_path| {
-        const file_path = try maker.resolveLazyPathIndex(arena, lazy_path, run_index);
-        _ = try man.addInputPath(file_path, .{});
-    }
+        if (!any_discovered_inputs) {
+            // We already know the final output paths; use them directly.
+            const digest = if (has_side_effects) man.hash.final() else man.missDigestHex();
+            const output_dir_path = "o" ++ Dir.path.sep_str ++ &digest;
+            try populateGeneratedStdIo(maker, &conf_run, &digest);
+            try populateGeneratedPathsCreateDirs(arena, run_index, maker, output_dir_path, output_placeholders.items, switch (conf_run.flags.stdio) {
+                .infer_from_args, .inherit, .check, .zig_test => .{ .argv = argv_list.items },
+                .protocol => .{ .protocol = .{
+                    .owned_dirs = &owned_dirs,
+                    .inherit_dirs = inherit_dirs.items,
+                    .owned_files = &owned_files,
+                    .inherit_files = inherit_files.items,
+                    .args = protocol_args.items,
+                } },
+            });
+            runCommand(arena, run, run_index, maker, progress_node, argv_list.items, &.{}, &.{}, &.{}, &.{}, null, has_side_effects, output_dir_path, null) catch |err| switch (err) {
+                else => |e| return e,
+                error.MakeFailed, error.MakeSkipped => |e| {
+                    try step.setWatchInputsFromManifest(maker, &man);
+                    return e;
+                },
+            };
+            if (has_side_effects) {
+                try step.setWatchInputsFromManifest(maker, &man);
+            } else {
+                try step.finalizeManifestAndWatch(maker, &man);
+            }
+            return;
+        }
 
-    if (conf_run.cwd.value) |lazy_path| {
-        const cwd_path = try maker.resolveLazyPathIndex(arena, lazy_path, run_index);
-        _ = man.hash.addBytes(try cwd_path.toString(arena));
-    }
+        // We do not know the final output paths yet; use temporary directory to run the command.
+        var rand_int: u64 = undefined;
+        io.random(@ptrCast(&rand_int));
+        tmp_dir_path = ("tmp" ++ Dir.path.sep_str ++ std.fmt.hex(rand_int)).*;
 
-    // Whether the Run step has side effects *other than* updating the output arguments.
-    // When fuzzing we need to always run the test runner to populate fuzz_tests.
-    const has_side_effects = graph.fuzzing or conf_run.flags.has_side_effects or any_cli_positionals or
-        switch (conf_run.flags.stdio) {
-            .infer_from_args => !any_output_args and
-                conf_run.captured_stdout.value == null and
-                conf_run.captured_stderr.value == null,
-            .inherit => true,
-            .check, .zig_test => false,
+        try populateGeneratedPathsCreateDirs(arena, run_index, maker, &tmp_dir_path, output_placeholders.items, switch (conf_run.flags.stdio) {
+            .infer_from_args, .inherit, .check, .zig_test => .{ .argv = argv_list.items },
+            .protocol => .{ .protocol = .{
+                .owned_dirs = &owned_dirs,
+                .inherit_dirs = inherit_dirs.items,
+                .owned_files = &owned_files,
+                .inherit_files = inherit_files.items,
+                .args = protocol_args.items,
+            } },
+        });
+        runCommand(
+            arena,
+            run,
+            run_index,
+            maker,
+            progress_node,
+            argv_list.items,
+            inherit_dirs.items,
+            inherit_files.items,
+            protocol_args.items,
+            input_dirs.items,
+            &man,
+            has_side_effects,
+            &tmp_dir_path,
+            null,
+        ) catch |err| switch (err) {
+            else => |e| return e,
+            error.MakeFailed, error.MakeSkipped => |e| {
+                try step.setWatchInputsFromManifest(maker, &man);
+                return e;
+            },
         };
 
-    if (!has_side_effects and try step.cacheHitWatched(maker, &man, progress_node)) {
-        // Cache hit; skip running command.
-        const digest = man.hitDigestHex();
-        try populateGeneratedStdIo(maker, &conf_run, &digest);
-        try populateGeneratedPaths(maker, output_placeholders.items, &digest);
-        step.result_cached = true;
-        return;
-    }
-
-    if (!any_dep_files) {
-        // We already know the final output paths; use them directly.
-        const digest = if (has_side_effects) man.hash.final() else man.missDigestHex();
-        const output_dir_path = "o" ++ Dir.path.sep_str ++ &digest;
-        try populateGeneratedStdIo(maker, &conf_run, &digest);
-        try populateGeneratedPathsCreateDirs(arena, run_index, maker, output_dir_path, output_placeholders.items, argv_list.items);
-        try runCommand(arena, run, run_index, maker, progress_node, argv_list.items, has_side_effects, output_dir_path, null);
-        if (!has_side_effects) try step.finalizeManifestAndWatch(maker, &man);
-        return;
-    }
-
-    // We do not know the final output paths yet; use temporary directory to run the command.
-    var rand_int: u64 = undefined;
-    io.random(@ptrCast(&rand_int));
-    const tmp_dir_path = "tmp" ++ Dir.path.sep_str ++ std.fmt.hex(rand_int);
-
-    try populateGeneratedPathsCreateDirs(arena, run_index, maker, tmp_dir_path, output_placeholders.items, argv_list.items);
-    try runCommand(arena, run, run_index, maker, progress_node, argv_list.items, has_side_effects, tmp_dir_path, null);
+        break :has_side_effects has_side_effects;
+    };
 
     for (output_placeholders.items) |placeholder| {
         const arg = placeholder.arg_index.get(conf);
@@ -296,10 +657,10 @@ pub fn make(
                     var diagnostic: Cache.DepTokenizer.Token = undefined;
                     man.addInputDepFile(generated_path, &diagnostic) catch |err| switch (err) {
                         error.OutOfMemory, error.Canceled => |e| return e,
-                        error.InvalidDepFile => return step.fail(maker, "failed adding dep file {f} to cache: {f}", .{
+                        error.InvalidDepFile => return step.fail(maker, "failed adding dep file {qf} to cache: {f}", .{
                             generated_path, diagnostic,
                         }),
-                        else => |e| return step.fail(maker, "failed adding dep file {f} to cache: {t}", .{
+                        else => |e| return step.fail(maker, "failed adding dep file {qf} to cache: {t}", .{
                             generated_path, e,
                         }),
                     };
@@ -307,13 +668,13 @@ pub fn make(
                     var diagnostic: Cache.Manifest.AddDiscoveredDepFileDiagnostic = undefined;
                     man.addDiscoveredDepFile(generated_path, &diagnostic) catch |err| switch (err) {
                         error.OutOfMemory, error.Canceled => |e| return e,
-                        error.InvalidDepFile => return step.fail(maker, "failed adding dep file {f} to cache: {f}", .{
+                        error.InvalidDepFile => return step.fail(maker, "failed adding dep file {qf} to cache: {f}", .{
                             generated_path, diagnostic.dep_tokenizer,
                         }),
-                        error.FileSystemFailure => return step.fail(maker, "failed adding a path from dep file {f} to cache: {f}", .{
+                        error.FileSystemFailure => return step.fail(maker, "failed adding a path from dep file {qf} to cache: {f}", .{
                             generated_path, diagnostic.add_discovered_path,
                         }),
-                        else => |e| return step.fail(maker, "failed adding dep file {f} to cache: {t}", .{
+                        else => |e| return step.fail(maker, "failed adding dep file {qf} to cache: {t}", .{
                             generated_path, e,
                         }),
                     };
@@ -331,7 +692,7 @@ pub fn make(
 
     if (any_output) {
         // Rename into place.
-        const tmp_path: Path = .{ .root_dir = cache_root, .sub_path = tmp_dir_path };
+        const tmp_path: Path = .{ .root_dir = cache_root, .sub_path = &tmp_dir_path };
         const dst_path: Path = .{ .root_dir = cache_root, .sub_path = "o" ++ Dir.path.sep_str ++ &digest };
         Dir.rename(
             tmp_path.root_dir.handle,
@@ -342,7 +703,7 @@ pub fn make(
         ) catch |err| switch (err) {
             error.DirNotEmpty => {
                 dst_path.root_dir.handle.deleteTree(io, dst_path.sub_path) catch |del_err|
-                    return step.fail(maker, "failed to remove tree {f}: {t}", .{ dst_path, del_err });
+                    return step.fail(maker, "failed to remove tree {qf}: {t}", .{ dst_path, del_err });
 
                 Dir.rename(
                     tmp_path.root_dir.handle,
@@ -350,17 +711,21 @@ pub fn make(
                     dst_path.root_dir.handle,
                     dst_path.sub_path,
                     io,
-                ) catch |retry_err| return step.fail(maker, "failed to rename directory {f} to {f}: {t}", .{
+                ) catch |retry_err| return step.fail(maker, "failed to rename directory {qf} to {qf}: {t}", .{
                     tmp_path, dst_path, retry_err,
                 });
             },
-            else => return step.fail(maker, "failed to rename directory {f} to {f}: {t}", .{
+            else => return step.fail(maker, "failed to rename directory {qf} to {qf}: {t}", .{
                 tmp_path, dst_path, err,
             }),
         };
     }
 
-    if (!has_side_effects) try step.finalizeManifestAndWatch(maker, &man);
+    if (has_side_effects) {
+        try step.setWatchInputsFromManifest(maker, &man);
+    } else {
+        try step.finalizeManifestAndWatch(maker, &man);
+    }
 
     try populateGeneratedStdIo(maker, &conf_run, &digest);
     try populateGeneratedPaths(maker, output_placeholders.items, &digest);
@@ -386,19 +751,30 @@ fn thirdPartyToggle(
     enable: ?Configuration.String,
     disable: ?Configuration.String,
 ) void {
-    if (setting) {
-        if (enable) |string| {
-            const slice = string.slice(conf);
-            if (man_hash) |h| h.addBytesZ(slice);
-            argv_list.appendAssumeCapacity(slice);
-        }
-    } else {
-        if (disable) |string| {
-            const slice = string.slice(conf);
-            if (man_hash) |h| h.addBytesZ(slice);
-            argv_list.appendAssumeCapacity(slice);
-        }
-    }
+    const string = (if (setting) enable else disable) orelse return;
+    const slice = string.slice(conf);
+    if (man_hash) |h| h.addBytesZ(slice);
+    argv_list.appendAssumeCapacity(slice);
+}
+
+fn thirdPartyToggleProtocol(
+    gpa: Allocator,
+    man_hash: *Cache.HashHelper,
+    protocol_args: *std.ArrayList(u8),
+    conf: *const Configuration,
+    setting: bool,
+    enable: ?Configuration.String,
+    disable: ?Configuration.String,
+) Allocator.Error!void {
+    const string = (if (setting) enable else disable) orelse return;
+    const slice = string.slice(conf);
+
+    man_hash.addBytesZ(slice);
+
+    try protocol_args.ensureUnusedCapacity(gpa, 1 + slice.len + 1);
+    protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.string));
+    protocol_args.appendSliceAssumeCapacity(slice);
+    protocol_args.appendAssumeCapacity(0);
 }
 
 /// Reads stdout of a Zig test process until a termination condition is reached:
@@ -411,7 +787,11 @@ fn waitZigTest(
     run_index: Configuration.Step.Index,
     maker: *Maker,
     child: *process.Child,
-    progress_node: std.Progress.Node,
+    tests_prog_node: std.Progress.Node,
+    test_prog_node: std.Progress.Node,
+    protocol_args: []const u8,
+    input_dirs: []const Cache.Path,
+    man: ?*Cache.Manifest,
     multi_reader: *Io.File.MultiReader,
     opt_metadata: *?TestMetadata,
     results: *Step.TestResults,
@@ -431,9 +811,6 @@ fn waitZigTest(
     const io = graph.io;
     const step = maker.stepByIndex(run_index);
 
-    var sub_prog_node: ?std.Progress.Node = null;
-    defer if (sub_prog_node) |n| n.end();
-
     const stdout = multi_reader.reader(0);
     const stderr = multi_reader.reader(1);
 
@@ -444,9 +821,17 @@ fn waitZigTest(
         .out = &stdin_writer.interface,
     };
 
+    if (protocol_args.len > 0) {
+        try client.serveMessageHeader(.{
+            .tag = .args,
+            .bytes_len = @intCast(protocol_args.len),
+        });
+        try client.out.writeAll(protocol_args);
+    }
+
     if (opt_metadata.*) |*md| {
         // Previous unit test process died or was killed; we're continuing where it left off
-        requestNextTest(&client, md, &sub_prog_node) catch |err| return .{ .write_failed = err };
+        requestNextTest(&client, md, test_prog_node) catch |err| return .{ .write_failed = err };
     } else {
         // Running unit tests normally
         run.fuzz_tests.clearRetainingCapacity();
@@ -492,6 +877,7 @@ fn waitZigTest(
         var body_r: std.Io.Reader = .fixed(body);
 
         switch (header.tag) {
+            else => {}, // ignore other messages
             .zig_version => {
                 if (!maker.dump_compile_step_info) if (!std.mem.eql(u8, builtin.zig_version_string, body)) return step.fail(
                     maker,
@@ -499,6 +885,7 @@ fn waitZigTest(
                     .{ builtin.zig_version_string, body },
                 );
             },
+            .error_bundle => step.result_error_bundle = try std.zig.Server.allocErrorBundle(gpa, body),
             .test_metadata => {
                 // `metadata` would only be populated if we'd already seen a `test_metadata`, but we
                 // only request it once (and importantly, we don't re-request it if we kill and
@@ -516,27 +903,27 @@ fn waitZigTest(
 
                 const string_bytes = body_r.take(tm_hdr.string_bytes_len) catch unreachable;
 
-                progress_node.setEstimatedTotalItems(names.len);
+                tests_prog_node.setEstimatedTotalItems(names.len);
                 opt_metadata.* = .{
                     .string_bytes = try arena.dupe(u8, string_bytes),
                     .ns_per_test = try arena.alloc(u64, results.test_count),
                     .names = names,
                     .expected_panic_msgs = expected_panic_msgs,
                     .next_index = 0,
-                    .prog_node = progress_node,
                 };
                 @memset(opt_metadata.*.?.ns_per_test, std.math.maxInt(u64));
 
                 active_test_index = null;
                 last_update = .now(io, .awake);
 
-                requestNextTest(&client, &opt_metadata.*.?, &sub_prog_node) catch |err| return .{ .write_failed = err };
+                requestNextTest(&client, &opt_metadata.*.?, test_prog_node) catch |err| return .{ .write_failed = err };
             },
             .test_started => {
                 active_test_index = opt_metadata.*.?.next_index - 1;
                 last_update = .now(io, .awake);
             },
             .test_results => {
+                tests_prog_node.completeOne();
                 const md = &opt_metadata.*.?;
 
                 const tr_hdr = body_r.takeStruct(std.zig.Server.Message.TestResults, .little) catch unreachable;
@@ -558,10 +945,12 @@ fn waitZigTest(
                     const name = md.testName(tr_hdr.index);
                     const stderr_bytes = std.mem.trim(u8, stderr.buffered(), "\n");
                     stderr.tossBuffered();
-                    if (stderr_bytes.len == 0) {
-                        try step.addError(maker, "'{s}' failed without output", .{name});
-                    } else {
+                    if (stderr_bytes.len > 0) {
                         try step.addError(maker, "'{s}' failed:\n{s}", .{ name, stderr_bytes });
+                    } else if (step.result_error_bundle.errorMessageCount() > 0) {
+                        try step.addError(maker, "'{s}' errored", .{name});
+                    } else {
+                        try step.addError(maker, "'{s}' failed without output", .{name});
                     }
                 } else if (leak_count > 0) {
                     const name = md.testName(tr_hdr.index);
@@ -581,9 +970,18 @@ fn waitZigTest(
                 md.ns_per_test[tr_hdr.index] = @intCast(last_update.durationTo(now).raw.nanoseconds);
                 last_update = now;
 
-                requestNextTest(&client, md, &sub_prog_node) catch |err| return .{ .write_failed = err };
+                requestNextTest(&client, md, test_prog_node) catch |err| return .{ .write_failed = err };
             },
-            else => {}, // ignore other messages
+            .discovered_inputs => while (body_r.takeEnum(
+                std.zig.Server.Message.InputDir,
+                .little,
+            )) |input_dir| try man.?.addDiscoveredPath(.{ .discovered_path = .{
+                .unresolved = try input_dirs[@backingInt(input_dir)]
+                    .join(arena, try body_r.takeSentinel(0)),
+            } }) else |err| switch (err) {
+                else => |e| return e,
+                error.EndOfStream => {},
+            },
         }
     }
 }
@@ -820,6 +1218,7 @@ const FuzzTestRunner = struct {
         }
 
         switch (header.tag) {
+            else => {}, // ignore other messages
             .zig_version => {
                 if (!maker.dump_compile_step_info) if (!std.mem.eql(u8, builtin.zig_version_string, body)) return step.fail(
                     maker,
@@ -882,7 +1281,6 @@ const FuzzTestRunner = struct {
                     f.pending_broadcasts.appendSliceAssumeCapacity(@ptrCast(&footer));
                 }
             },
-            else => {}, // ignore other messages
         }
 
         instance.message.clearRetainingCapacity();
@@ -1146,6 +1544,9 @@ fn evalZigTest(
     maker: *Maker,
     progress_node: std.Progress.Node,
     spawn_options: process.SpawnOptions,
+    protocol_args: []const u8,
+    input_dirs: []const Cache.Path,
+    man: ?*Cache.Manifest,
     fuzz_context: ?FuzzContext,
 ) !void {
     if (fuzz_context != null) {
@@ -1194,6 +1595,10 @@ fn evalZigTest(
             maker,
             &child,
             progress_node,
+            spawn_options.progress_node,
+            protocol_args,
+            input_dirs,
+            man,
             &multi_reader,
             &test_metadata,
             &test_results,
@@ -1323,7 +1728,6 @@ const TestMetadata = struct {
     expected_panic_msgs: []const u32,
     string_bytes: []const u8,
     next_index: u32,
-    prog_node: std.Progress.Node,
 
     fn toCachedTestMetadata(tm: TestMetadata) CachedTestMetadata {
         return .{
@@ -1346,16 +1750,14 @@ pub const CachedTestMetadata = struct {
     }
 };
 
-fn requestNextTest(client: *std.zig.Client, metadata: *TestMetadata, sub_prog_node: *?std.Progress.Node) !void {
+fn requestNextTest(client: *std.zig.Client, metadata: *TestMetadata, test_prog_node: std.Progress.Node) !void {
     while (metadata.next_index < metadata.names.len) {
         const i = metadata.next_index;
         metadata.next_index += 1;
 
         if (metadata.expected_panic_msgs[i] != 0) continue;
 
-        const name = metadata.testName(i);
-        if (sub_prog_node.*) |n| n.end();
-        sub_prog_node.* = metadata.prog_node.start(name, 0);
+        test_prog_node.setName(metadata.testName(i));
 
         try client.serveRunTest(i);
         return;
@@ -1402,7 +1804,7 @@ fn evalGeneric(
             var write_buffer: [1024]u8 = undefined;
             var stdin_writer = child.stdin.?.writerStreaming(io, &write_buffer);
             _ = stdin_writer.interface.sendFileAll(&file_reader, .unlimited) catch |err| switch (err) {
-                error.ReadFailed => return step.fail(maker, "failed to read from {f}: {t}", .{
+                error.ReadFailed => return step.fail(maker, "failed to read from {qf}: {t}", .{
                     path, file_reader.err.?,
                 }),
                 error.WriteFailed => return step.fail(maker, "failed to write to stdin: {t}", .{
@@ -1490,6 +1892,7 @@ fn evalGeneric(
 
 const IndexedOutput = struct {
     index: u32,
+    offset: u32,
     arg_index: Configuration.Step.Run.Arg.Index,
 };
 
@@ -1516,13 +1919,16 @@ pub fn rerunInFuzzMode(
     var argv_list: std.ArrayList([]const u8) = .empty;
     defer argv_list.deinit(gpa);
 
-    for (conf_run.args.slice) |arg_index| {
+    for (switch (conf_run.flags.stdio) {
+        .infer_from_args, .inherit, .check, .zig_test => conf_run.args.slice,
+        .protocol => @panic("protocol fuzz unimplemented"),
+    }) |arg_index| {
         const arg = arg_index.get(conf);
         try argv_list.ensureUnusedCapacity(gpa, 1);
         switch (arg.flags.tag) {
             .string => {
-                const prefix = arg.prefix.value.?.slice(conf);
-                argv_list.appendAssumeCapacity(prefix);
+                const string = arg.prefix.value.?.slice(conf);
+                argv_list.appendAssumeCapacity(string);
             },
             .path_file => {
                 const prefix = if (arg.prefix.value) |p| p.slice(conf) else "";
@@ -1550,14 +1956,14 @@ pub fn rerunInFuzzMode(
                 result.writer.writeAll(prefix) catch return error.OutOfMemory;
 
                 const file = file_path.root_dir.handle.openFile(io, file_path.sub_path, .{}) catch |err|
-                    return step.fail(maker, "unable to open input file {f}: {t}", .{ file_path, err });
+                    return step.fail(maker, "unable to open input file {qf}: {t}", .{ file_path, err });
                 defer file.close(io);
 
                 var file_reader = file.reader(io, &.{});
                 _ = file_reader.interface.streamRemaining(&result.writer) catch |err| switch (err) {
                     error.ReadFailed => switch (file_reader.err.?) {
                         error.Canceled => |e| return e,
-                        else => |e| return step.fail(maker, "failed to read from {f}: {t}", .{ file_path, e }),
+                        else => |e| return step.fail(maker, "failed to read from {qf}: {t}", .{ file_path, e }),
                     },
                     error.WriteFailed => return error.OutOfMemory,
                 };
@@ -1591,14 +1997,17 @@ pub fn rerunInFuzzMode(
             .enable_wine => thirdPartyToggle(null, &argv_list, conf, graph.enable_wine, arg.prefix.value, arg.suffix.value),
         }
     }
+    switch (conf_run.flags.stdio) {
+        .infer_from_args, .inherit, .check => {},
+        .zig_test => {
+            const cache_dir_string = try convertPathArg(arena, run_index, maker, .{ .root_dir = cache_root }, false);
 
-    if (conf_run.flags.test_runner_mode) {
-        const cache_dir_string = try convertPathArg(arena, run_index, maker, .{ .root_dir = cache_root }, false);
-
-        try argv_list.ensureUnusedCapacity(gpa, 3);
-        argv_list.appendAssumeCapacity(try arena.print("--cache-dir={s}", .{cache_dir_string}));
-        argv_list.appendAssumeCapacity(try arena.print("--seed=0x{x}", .{graph.random_seed}));
-        argv_list.appendAssumeCapacity("--listen=-");
+            try argv_list.ensureUnusedCapacity(gpa, 3);
+            argv_list.appendAssumeCapacity(try arena.print("--cache-dir={s}", .{cache_dir_string}));
+            argv_list.appendAssumeCapacity(try arena.print("--seed=0x{x}", .{graph.random_seed}));
+            argv_list.appendAssumeCapacity("--listen=-");
+        },
+        .protocol => unreachable,
     }
 
     step.clearFailedCommand(gpa);
@@ -1607,7 +2016,7 @@ pub fn rerunInFuzzMode(
     var rand_int: u64 = undefined;
     io.random(@ptrCast(&rand_int));
     const tmp_dir_path = "tmp" ++ Dir.path.sep_str ++ std.fmt.hex(rand_int);
-    try runCommand(arena, run, run_index, maker, prog_node, argv_list.items, has_side_effects, tmp_dir_path, .{
+    try runCommand(arena, run, run_index, maker, prog_node, argv_list.items, &.{}, &.{}, &.{}, &.{}, null, has_side_effects, tmp_dir_path, .{
         .fuzz = fuzz,
     });
 }
@@ -1633,7 +2042,16 @@ fn populateGeneratedPathsCreateDirs(
     maker: *Maker,
     output_dir_path: []const u8,
     output_placeholders: []const IndexedOutput,
-    argv: [][]const u8,
+    populate: union(enum) {
+        argv: [][]const u8,
+        protocol: struct {
+            owned_dirs: *std.bit_set.Dynamic,
+            inherit_dirs: []Io.Dir,
+            owned_files: *std.bit_set.Dynamic,
+            inherit_files: []Io.File,
+            args: []u8,
+        },
+    },
 ) !void {
     const step = maker.stepByIndex(run_index);
     const conf = &maker.scanned_config.configuration;
@@ -1653,16 +2071,52 @@ fn populateGeneratedPathsCreateDirs(
         const create_path: Path = .{
             .root_dir = cache_root,
             .sub_path = switch (arg.flags.tag) {
+                else => unreachable,
                 .output_file => Dir.path.dirname(generated_path.sub_path).?,
                 .output_directory => generated_path.sub_path,
-                else => unreachable,
             },
         };
         create_path.root_dir.handle.createDirPath(io, create_path.sub_path) catch |err|
-            return step.fail(maker, "unable to make path {f}: {t}", .{ create_path, err });
+            return step.fail(maker, "unable to make path {qf}: {t}", .{ create_path, err });
 
-        const arg_output_path = try convertPathArg(arena, run_index, maker, generated_path, arg.flags.make_absolute);
-        argv[placeholder.index] = try mem.concat(arena, u8, &.{ prefix, arg_output_path, suffix });
+        switch (populate) {
+            .argv => |argv| {
+                const arg_output_path = try convertPathArg(arena, run_index, maker, generated_path, arg.flags.make_absolute);
+                argv[placeholder.index] = try mem.concat(arena, u8, &.{ prefix, arg_output_path, suffix });
+            },
+            .protocol => |protocol| switch (arg.flags.tag) {
+                else => unreachable,
+                .output_file => {
+                    const file = generated_path.root_dir.handle.createFile(
+                        io,
+                        generated_path.sub_path,
+                        .{ .read = true },
+                    ) catch |err| return step.fail(maker, "unable to create output file {qf}: {t}", .{
+                        generated_path, err,
+                    });
+                    protocol.inherit_files[placeholder.index] = file;
+                    protocol.owned_files.set(placeholder.index);
+                    const file_handle: *align(1) Io.File.Handle =
+                        @ptrCast(protocol.args[placeholder.offset..][0..@sizeOf(Io.File.Handle)]);
+                    file_handle.* = file.handle;
+                },
+                .output_directory => {
+                    assert(generated_path.sub_path.len > 0);
+                    const dir = generated_path.root_dir.handle.openDir(
+                        io,
+                        generated_path.sub_path,
+                        .{ .iterate = true },
+                    ) catch |err| return step.fail(maker, "unable to open output dir {qf}: {t}", .{
+                        generated_path, err,
+                    });
+                    protocol.inherit_dirs[placeholder.index] = dir;
+                    protocol.owned_dirs.set(placeholder.index);
+                    const dir_handle: *align(1) Io.Dir.Handle =
+                        @ptrCast(protocol.args[placeholder.offset..][0..@sizeOf(Io.Dir.Handle)]);
+                    dir_handle.* = dir.handle;
+                },
+            },
+        }
     }
 }
 
@@ -1711,6 +2165,11 @@ fn runCommand(
     maker: *Maker,
     progress_node: std.Progress.Node,
     argv: []const []const u8,
+    inherit_dirs: []const Io.Dir,
+    inherit_files: []const Io.File,
+    protocol_args: []const u8,
+    input_dirs: []const Cache.Path,
+    man: ?*Cache.Manifest,
     has_side_effects: bool,
     output_dir_path: []const u8,
     fuzz_context: ?FuzzContext,
@@ -1777,10 +2236,16 @@ fn runCommand(
         progress_node,
         argv,
         &environ_map,
+        inherit_dirs,
+        inherit_files,
+        protocol_args,
+        input_dirs,
+        man,
         has_side_effects,
         fuzz_context,
     ) catch |err| term: {
         switch (err) {
+            else => {},
             error.InvalidExe, // cpu arch mismatch
             error.FileNotFound, // can happen with a wrong dynamic linker path
             => interpret: {
@@ -1794,24 +2259,21 @@ fn runCommand(
                 const root_module = producer.root_module.get(conf);
                 const root_module_target = root_module.resolved_target.get(conf).?.result.get(conf);
                 const root_target = root_module_target.unwrapTarget(conf);
-                const link_libc = maker.stepByIndex(producer_index).extended.compile.is_linking_libc;
+                const config = maker.stepByIndex(producer_index).extended.compile.config.?;
 
                 const host: std.Target = std.zig.system.resolveTargetQuery(io, .{}) catch |he| switch (he) {
                     error.Canceled => |e| return e,
                     else => builtin.target,
                 };
 
-                const need_cross_libc = link_libc and root_target.os.tag == .linux and
-                    switch (producer.flags2.linkage) {
-                        .static => false,
-                        .dynamic => true,
-                        .default => root_target.isGnuLibC(),
-                    };
+                const need_cross_libc = root_target.os.tag == .linux and
+                    config.flags.link_libc and config.flags.link_mode == .dynamic;
                 switch (std.zig.system.getExternalExecutor(io, &root_target, .{
                     .host_cpu_arch = host.cpu.arch,
                     .host_os_tag = host.os.tag,
                     .qemu_fixes_dl = need_cross_libc and graph.libc_runtimes_dir != null,
-                    .link_libc = link_libc,
+                    .link_mode = config.flags.link_mode,
+                    .link_libc = config.flags.link_libc,
                 })) {
                     .native, .rosetta => {
                         if (allow_skip) return error.MakeSkipped;
@@ -1874,7 +2336,7 @@ fn runCommand(
                             interp_argv.appendAssumeCapacity(bin_name);
                             interp_argv.appendAssumeCapacity("--dir=.");
                             for (conf_run.preopens.slice) |preopen| {
-                                const path = try maker.resolveLazyPath(arena, preopen.path.get(conf), run_index);
+                                const path = try maker.resolveLazyPathIndex(arena, preopen.path, run_index);
                                 path.root_dir.handle.createDirPath(io, path.subPathOrDot()) catch |e|
                                     return step.fail(maker, "failed creating directory {f}: {t}", .{ path, e });
                                 interp_argv.appendAssumeCapacity(try arena.print("--dir={f}::{s}", .{ path, preopen.name.slice(conf) }));
@@ -1928,6 +2390,11 @@ fn runCommand(
                     progress_node,
                     interp_argv.items,
                     &environ_map,
+                    inherit_dirs,
+                    inherit_files,
+                    protocol_args,
+                    input_dirs,
+                    man,
                     has_side_effects,
                     fuzz_context,
                 ) catch |e| {
@@ -1937,21 +2404,21 @@ fn runCommand(
                 };
             },
             error.MakeFailed, error.OutOfMemory, error.Canceled => |e| return e,
-            else => {},
         }
         return step.fail(maker, "failed to spawn and capture stdio from {s}: {t}", .{ argv[0], err });
     };
 
-    const generic_result = opt_generic_result orelse {
-        assert(conf_run.flags.stdio == .zig_test);
-        // Specific errors have already been reported, and test results are populated. All we need
-        // to do is report step failure if any test failed.
-        if (!step.test_results.isSuccess()) return error.MakeFailed;
-        return;
+    const generic_result = switch (conf_run.flags.stdio) {
+        .infer_from_args, .inherit, .check => opt_generic_result.?,
+        .zig_test, .protocol => {
+            assert(opt_generic_result == null);
+            // Specific errors have already been reported, and test results are populated. All we need
+            // to do is report step failure if any test failed.
+            if (!step.test_results.isSuccess()) return error.MakeFailed;
+            return;
+        },
     };
-
     assert(fuzz_context == null);
-    assert(conf_run.flags.stdio != .zig_test);
 
     // Capture stdout and stderr to GeneratedFile objects.
     const Stream = struct {
@@ -1978,7 +2445,7 @@ fn runCommand(
 
             const sub_path_parent = output_path.dirname().?;
             sub_path_parent.root_dir.handle.createDirPath(io, sub_path_parent.sub_path) catch |err|
-                return step.fail(maker, "unable to make path {f}: {t}", .{ sub_path_parent, err });
+                return step.fail(maker, "unable to make path {qf}: {t}", .{ sub_path_parent, err });
 
             const data = switch (stream.trim_whitespace) {
                 .none => stream.bytes.?,
@@ -1989,12 +2456,12 @@ fn runCommand(
             output_path.root_dir.handle.writeFile(io, .{
                 .sub_path = output_path.sub_path,
                 .data = data,
-            }) catch |err| return step.fail(maker, "unable to write file {f}: {t}", .{ output_path, err });
+            }) catch |err| return step.fail(maker, "unable to write file {qf}: {t}", .{ output_path, err });
         }
     }
 
     switch (conf_run.flags.stdio) {
-        .zig_test => unreachable,
+        .zig_test, .protocol => unreachable,
         .check => {
             if (conf_run.expect_stderr_exact.value) |bytes| {
                 const expected_bytes = bytes.slice(conf);
@@ -2186,6 +2653,11 @@ fn spawnChildAndCollect(
     progress_node: std.Progress.Node,
     argv: []const []const u8,
     environ_map: *EnvMap,
+    inherit_dirs: []const Io.Dir,
+    inherit_files: []const Io.File,
+    protocol_args: []const u8,
+    input_dirs: []const Cache.Path,
+    man: ?*Cache.Manifest,
     has_side_effects: bool,
     fuzz_context: ?FuzzContext,
 ) !?EvalGenericResult {
@@ -2199,7 +2671,10 @@ fn spawnChildAndCollect(
 
     if (fuzz_context != null) {
         assert(!has_side_effects);
-        assert(conf_run.flags.stdio == .zig_test);
+        switch (conf_run.flags.stdio) {
+            .infer_from_args, .inherit, .check => unreachable,
+            .zig_test, .protocol => {},
+        }
     }
 
     const child_cwd: process.Child.Cwd = if (conf_run.cwd.value) |lazy_cwd|
@@ -2230,68 +2705,88 @@ fn spawnChildAndCollect(
         .cwd = child_cwd,
         .environ_map = environ_map,
         .request_resource_usage_statistics = true,
-        .stdin = if (conf_run.stdin.u != .none) s: {
+        .stdin = if (conf_run.stdin.u != .none) stdin: {
             assert(conf_run.flags.stdio != .inherit);
-            break :s .pipe;
+            break :stdin .pipe;
         } else switch (conf_run.flags.stdio) {
             .infer_from_args => if (maker.protocol_server == null and has_side_effects) .inherit else .ignore,
             .inherit => .inherit,
             .check => .ignore,
-            .zig_test => .pipe,
+            .zig_test, .protocol => .pipe,
         },
         .stdout = if (conf_run.captured_stdout.value != null) .pipe else switch (conf_run.flags.stdio) {
             .infer_from_args => if (maker.protocol_server == null and has_side_effects) .inherit else .ignore,
             .inherit => .inherit,
             .check => if (checksContainStdout(&conf_run)) .pipe else .ignore,
-            .zig_test => .pipe,
+            .zig_test, .protocol => .pipe,
         },
         .stderr = if (conf_run.captured_stderr.value != null) .pipe else switch (conf_run.flags.stdio) {
             .infer_from_args => if (maker.protocol_server == null and has_side_effects) .inherit else .pipe,
             .inherit => if (maker.protocol_server == null) .inherit else .pipe,
             .check => .pipe,
-            .zig_test => .pipe,
+            .zig_test, .protocol => .pipe,
         },
+        .inherit_dirs = inherit_dirs,
+        .inherit_files = inherit_files,
     };
 
     if (maker.protocol_server != null) {
         if (spawn_options.stdin == .inherit) {
-            return step.fail(maker, "Cannot inherit stdin when running through over the build system protocol", .{});
+            return step.fail(maker, "Cannot inherit stdin when running over the build system protocol", .{});
         }
         if (spawn_options.stdout == .inherit) {
-            return step.fail(maker, "Cannot inherit stdout when running through over the build system protocol", .{});
+            return step.fail(maker, "Cannot inherit stdout when running over the build system protocol", .{});
         }
         assert(spawn_options.stderr != .inherit);
     }
 
-    if (conf_run.flags.stdio == .zig_test) {
-        try setColorEnvironmentVariables(&conf_run, environ_map, graph.stderr_mode.?);
-        const started: Io.Clock.Timestamp = .now(io, .awake);
-        const result = evalZigTest(run, run_index, maker, progress_node, spawn_options, fuzz_context) catch |err| switch (err) {
-            error.Canceled => |e| return e,
-            else => |e| e,
-        };
-        step.result_duration_ns = @intCast(started.untilNow(io).raw.nanoseconds);
-        try result;
-        return null;
-    } else {
-        const inherit = spawn_options.stdout == .inherit or spawn_options.stderr == .inherit;
-        if (!conf_run.flags.disable_zig_progress and !inherit) {
-            spawn_options.progress_node = progress_node;
-        }
-        const terminal_mode: Io.Terminal.Mode = if (inherit) m: {
-            const stderr = try io.lockStderr(&.{}, graph.stderr_mode);
-            break :m stderr.terminal_mode;
-        } else .no_color;
-        defer if (inherit) io.unlockStderr();
-        try setColorEnvironmentVariables(&conf_run, environ_map, terminal_mode);
+    switch (conf_run.flags.stdio) {
+        .infer_from_args, .inherit, .check => {
+            const inherit = spawn_options.stdout == .inherit or spawn_options.stderr == .inherit;
+            if (!conf_run.flags.disable_zig_progress and !inherit) {
+                spawn_options.progress_node = progress_node;
+            }
+            const terminal_mode: Io.Terminal.Mode = if (inherit) m: {
+                const stderr = try io.lockStderr(&.{}, graph.stderr_mode);
+                break :m stderr.terminal_mode;
+            } else .no_color;
+            defer if (inherit) io.unlockStderr();
+            try setColorEnvironmentVariables(&conf_run, environ_map, terminal_mode);
 
-        const started: Io.Clock.Timestamp = .now(io, .awake);
-        const result = evalGeneric(arena, run_index, maker, spawn_options) catch |err| switch (err) {
-            error.Canceled => |e| return e,
-            else => |e| e,
-        };
-        step.result_duration_ns = @intCast(started.untilNow(io).raw.nanoseconds);
-        return try result;
+            const started: Io.Clock.Timestamp = .now(io, .awake);
+            const result = evalGeneric(arena, run_index, maker, spawn_options) catch |err| switch (err) {
+                error.Canceled => |e| return e,
+                else => |e| e,
+            };
+            step.result_duration_ns = @intCast(started.untilNow(io).raw.nanoseconds);
+            return try result;
+        },
+        .zig_test, .protocol => |stdio| {
+            spawn_options.progress_node = if (conf_run.flags.disable_zig_progress or fuzz_context != null)
+                .none
+            else
+                progress_node.start(@tagName(stdio), 0);
+            defer spawn_options.progress_node.end();
+            try setColorEnvironmentVariables(&conf_run, environ_map, graph.stderr_mode.?);
+            const started: Io.Clock.Timestamp = .now(io, .awake);
+            const result = evalZigTest(
+                run,
+                run_index,
+                maker,
+                progress_node,
+                spawn_options,
+                protocol_args,
+                input_dirs,
+                man,
+                fuzz_context,
+            ) catch |err| switch (err) {
+                error.Canceled => |e| return e,
+                else => |e| e,
+            };
+            step.result_duration_ns = @intCast(started.untilNow(io).raw.nanoseconds);
+            try result;
+            return null;
+        },
     }
 }
 
@@ -2341,7 +2836,7 @@ fn setColorEnvironmentVariables(
         .auto => {
             const capture_stderr = conf_run.captured_stderr.value != null or switch (conf_run.flags.stdio) {
                 .check => checksContainStderr(conf_run),
-                .infer_from_args, .inherit, .zig_test => false,
+                .infer_from_args, .inherit, .zig_test, .protocol => false,
             };
             if (capture_stderr) {
                 continue :color .disable;

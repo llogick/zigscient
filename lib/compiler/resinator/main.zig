@@ -790,8 +790,7 @@ fn cliDiagnosticsToErrorBundle(
 ) !ErrorBundle {
     @branchHint(.cold);
 
-    var bundle: ErrorBundle.Wip = undefined;
-    try bundle.init(gpa);
+    var bundle: ErrorBundle.Wip = try .init(gpa);
     errdefer bundle.deinit();
 
     try bundle.addRootErrorMessage(.{
@@ -837,8 +836,7 @@ fn diagnosticsToErrorBundle(
 ) !ErrorBundle {
     @branchHint(.cold);
 
-    var bundle: ErrorBundle.Wip = undefined;
-    try bundle.init(gpa);
+    var bundle: ErrorBundle.Wip = try .init(gpa);
     errdefer bundle.deinit();
 
     var msg_buf: std.Io.Writer.Allocating = .init(gpa);
@@ -919,8 +917,7 @@ fn diagnosticsToErrorBundle(
 
 fn errorStringToErrorBundle(allocator: Allocator, comptime format: []const u8, args: anytype) !ErrorBundle {
     @branchHint(.cold);
-    var bundle: ErrorBundle.Wip = undefined;
-    try bundle.init(allocator);
+    var bundle: ErrorBundle.Wip = try .init(allocator);
     errdefer bundle.deinit();
     try bundle.addRootErrorMessage(.{
         .msg = try bundle.printString(format, args),

@@ -1,5 +1,8 @@
-#update=initial version
-#file=main.zig
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig {
 pub fn main() void {
     _ = @as(S, undefined);
 }
@@ -9,9 +12,12 @@ const SomeType = u8;
 const S = struct {
     foo: struct { inner: SomeType },
 };
-#expect_stdout=""
-#update=add field to outer struct, change decl used by inner struct
-#file=main.zig
+#}
+#update
+#check stdout {
+#}
+
+#write main.zig {
 pub fn main() void {
     _ = @as(S, undefined);
 }
@@ -22,4 +28,8 @@ const S = struct {
     foo: struct { inner: SomeType },
     bar: u32,
 };
-#expect_stdout=""
+#}
+#update {
+add field to outer struct, change decl used by inner struct#}
+#check stdout {
+#}

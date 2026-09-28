@@ -461,6 +461,13 @@ pub extern "ntdll" fn LdrUnregisterDllNotification(
     Cookie: LDR.DLL_NOTIFICATION.COOKIE,
 ) callconv(.winapi) NTSTATUS;
 
+pub extern "ntdll" fn NtSetInformationObject(
+    Handle: HANDLE,
+    ObjectInformationClass: OBJECT.INFORMATION_CLASS,
+    ObjectInformation: *const anyopaque,
+    ObjectInformationLength: ULONG,
+) callconv(.winapi) NTSTATUS;
+
 pub extern "ntdll" fn NtQueryAttributesFile(
     ObjectAttributes: *const OBJECT.ATTRIBUTES,
     FileAttributes: *FILE.BASIC_INFORMATION,

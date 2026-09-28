@@ -1,61 +1,114 @@
-#update=initial version, T is struct
-#file=main.zig
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig {
 const T = @import("foo.zig").T;
 pub fn main() void {
     @compileLog(T);
     @compileLog(@tagName(@typeInfo(T)));
 }
-#file=foo.zig
+#}
+#write foo.zig {
 pub const T = struct { x: u8 };
-#expect_error=main.zig:3:5: error: found compile log statement
-#expect_compile_log=@as(type, foo.T)
-#expect_compile_log=@as(*const [6:0]u8, "struct")
+#}
+#update {
+T is struct#}
+#check errors {
+main.zig:3:5: error: found compile log statement
 
-#update=T is union
-#file=foo.zig
+Compile Log Output:
+@as(type, foo.T)
+@as(*const [6:0]u8, "struct")
+#}
+
+#write foo.zig {
 pub const T = union {};
-#expect_error=main.zig:3:5: error: found compile log statement
-#expect_compile_log=@as(type, foo.T)
-#expect_compile_log=@as(*const [5:0]u8, "union")
+#}
+#update {
+T is union#}
+#check errors {
+main.zig:3:5: error: found compile log statement
 
-#update=T is enum
-#file=foo.zig
+Compile Log Output:
+@as(type, foo.T)
+@as(*const [5:0]u8, "union")
+#}
+
+#write foo.zig {
 pub const T = enum {};
-#expect_error=main.zig:3:5: error: found compile log statement
-#expect_compile_log=@as(type, foo.T)
-#expect_compile_log=@as(*const [4:0]u8, "enum")
+#}
+#update {
+T is enum#}
+#check errors {
+main.zig:3:5: error: found compile log statement
 
-#update=T is opaque
-#file=foo.zig
+Compile Log Output:
+@as(type, foo.T)
+@as(*const [4:0]u8, "enum")
+#}
+
+#write foo.zig {
 pub const T = opaque {};
-#expect_error=main.zig:3:5: error: found compile log statement
-#expect_compile_log=@as(type, foo.T)
-#expect_compile_log=@as(*const [6:0]u8, "opaque")
+#}
+#update {
+T is opaque#}
+#check errors {
+main.zig:3:5: error: found compile log statement
 
-#update=T is packed struct
-#file=foo.zig
+Compile Log Output:
+@as(type, foo.T)
+@as(*const [6:0]u8, "opaque")
+#}
+
+#write foo.zig {
 pub const T = packed struct {};
-#expect_error=main.zig:3:5: error: found compile log statement
-#expect_compile_log=@as(type, foo.T)
-#expect_compile_log=@as(*const [6:0]u8, "struct")
+#}
+#update {
+T is packed struct#}
+#check errors {
+main.zig:3:5: error: found compile log statement
 
-#update=T is packed union
-#file=foo.zig
+Compile Log Output:
+@as(type, foo.T)
+@as(*const [6:0]u8, "struct")
+#}
+
+#write foo.zig {
 pub const T = packed union { x: void }; // packed unions need at least 1 field
-#expect_error=main.zig:3:5: error: found compile log statement
-#expect_compile_log=@as(type, foo.T)
-#expect_compile_log=@as(*const [5:0]u8, "union")
+#}
+#update {
+T is packed union#}
+#check errors {
+main.zig:3:5: error: found compile log statement
 
-#update=T is extern struct
-#file=foo.zig
+Compile Log Output:
+@as(type, foo.T)
+@as(*const [5:0]u8, "union")
+#}
+
+#write foo.zig {
 pub const T = extern struct {};
-#expect_error=main.zig:3:5: error: found compile log statement
-#expect_compile_log=@as(type, foo.T)
-#expect_compile_log=@as(*const [6:0]u8, "struct")
+#}
+#update {
+T is extern struct#}
+#check errors {
+main.zig:3:5: error: found compile log statement
 
-#update=T is extern union
-#file=foo.zig
+Compile Log Output:
+@as(type, foo.T)
+@as(*const [6:0]u8, "struct")
+#}
+
+#write foo.zig {
 pub const T = extern union { x: void }; // extern unions need at least 1 field
-#expect_error=main.zig:3:5: error: found compile log statement
-#expect_compile_log=@as(type, foo.T)
-#expect_compile_log=@as(*const [5:0]u8, "union")
+#}
+#update {
+T is extern union#}
+#check errors {
+main.zig:3:5: error: found compile log statement
+
+Compile Log Output:
+@as(type, foo.T)
+@as(*const [5:0]u8, "union")
+#}

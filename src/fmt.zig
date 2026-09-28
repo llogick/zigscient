@@ -130,8 +130,7 @@ pub fn run(gpa: Allocator, arena: Allocator, io: Io, args: []const []const u8) !
                 defer zir.deinit(gpa);
 
                 if (zir.hasCompileErrors()) {
-                    var wip_errors: std.zig.ErrorBundle.Wip = undefined;
-                    try wip_errors.init(gpa);
+                    var wip_errors: std.zig.ErrorBundle.Wip = try .init(gpa);
                     defer wip_errors.deinit();
                     try wip_errors.addZirErrorMessages(zir, tree, source_code, "<stdin>");
                     var error_bundle = try wip_errors.toOwnedBundle("");
@@ -144,8 +143,7 @@ pub fn run(gpa: Allocator, arena: Allocator, io: Io, args: []const []const u8) !
                 defer zoir.deinit(gpa);
 
                 if (zoir.hasCompileErrors()) {
-                    var wip_errors: std.zig.ErrorBundle.Wip = undefined;
-                    try wip_errors.init(gpa);
+                    var wip_errors: std.zig.ErrorBundle.Wip = try .init(gpa);
                     defer wip_errors.deinit();
                     try wip_errors.addZoirErrorMessages(zoir, tree, source_code, "<stdin>");
                     var error_bundle = try wip_errors.toOwnedBundle("");
@@ -333,8 +331,7 @@ fn fmtPathFile(
                 defer zir.deinit(gpa);
 
                 if (zir.hasCompileErrors()) {
-                    var wip_errors: std.zig.ErrorBundle.Wip = undefined;
-                    try wip_errors.init(gpa);
+                    var wip_errors: std.zig.ErrorBundle.Wip = try .init(gpa);
                     defer wip_errors.deinit();
                     try wip_errors.addZirErrorMessages(zir, tree, source_code, file_path);
                     var error_bundle = try wip_errors.toOwnedBundle("");
@@ -348,8 +345,7 @@ fn fmtPathFile(
                 defer zoir.deinit(gpa);
 
                 if (zoir.hasCompileErrors()) {
-                    var wip_errors: std.zig.ErrorBundle.Wip = undefined;
-                    try wip_errors.init(gpa);
+                    var wip_errors: std.zig.ErrorBundle.Wip = try .init(gpa);
                     defer wip_errors.deinit();
                     try wip_errors.addZoirErrorMessages(zoir, tree, source_code, file_path);
                     var error_bundle = try wip_errors.toOwnedBundle("");

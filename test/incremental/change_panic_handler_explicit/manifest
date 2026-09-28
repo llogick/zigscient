@@ -1,0 +1,23 @@
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig 0/main.zig
+#update
+#check stdout {
+panic message: integer overflow
+#}
+
+#write main.zig 1/main.zig
+#update {
+change the panic handler body#}
+#check stdout {
+new panic message: integer overflow
+#}
+
+#write main.zig 2/main.zig
+#update {
+change the panic handler function value#}
+#check stdout {
+third panic message: integer overflow
+#}

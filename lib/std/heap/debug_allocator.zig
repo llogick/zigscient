@@ -718,7 +718,7 @@ pub fn DebugAllocator(comptime config: Config) type {
 
         fn alloc(context: *anyopaque, len: usize, alignment: mem.Alignment, ret_addr: usize) ?[*]u8 {
             const self: *Self = @ptrCast(@alignCast(context));
-            if (have_mutex) std.Io.Threaded.mutexLock(&self.mutex);
+            if (have_mutex) std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer if (have_mutex) std.Io.Threaded.mutexUnlock(&self.mutex);
 
             if (config.enable_memory_limit) {
@@ -831,7 +831,7 @@ pub fn DebugAllocator(comptime config: Config) type {
             return_address: usize,
         ) bool {
             const self: *Self = @ptrCast(@alignCast(context));
-            if (have_mutex) std.Io.Threaded.mutexLock(&self.mutex);
+            if (have_mutex) std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer if (have_mutex) std.Io.Threaded.mutexUnlock(&self.mutex);
 
             const size_class_index: usize = @max(@bitSizeOf(usize) - @clz(memory.len - 1), @backingInt(alignment));
@@ -850,7 +850,7 @@ pub fn DebugAllocator(comptime config: Config) type {
             return_address: usize,
         ) ?[*]u8 {
             const self: *Self = @ptrCast(@alignCast(context));
-            if (have_mutex) std.Io.Threaded.mutexLock(&self.mutex);
+            if (have_mutex) std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer if (have_mutex) std.Io.Threaded.mutexUnlock(&self.mutex);
 
             const size_class_index: usize = @max(@bitSizeOf(usize) - @clz(memory.len - 1), @backingInt(alignment));
@@ -868,7 +868,7 @@ pub fn DebugAllocator(comptime config: Config) type {
             return_address: usize,
         ) void {
             const self: *Self = @ptrCast(@alignCast(context));
-            if (have_mutex) std.Io.Threaded.mutexLock(&self.mutex);
+            if (have_mutex) std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer if (have_mutex) std.Io.Threaded.mutexUnlock(&self.mutex);
 
             const size_class_index: usize = @max(@bitSizeOf(usize) - @clz(old_memory.len - 1), @backingInt(alignment));

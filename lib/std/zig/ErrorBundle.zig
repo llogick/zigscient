@@ -360,22 +360,25 @@ pub const Wip = struct {
     extra: std.ArrayList(u32),
     root_list: std.ArrayList(MessageIndex),
 
-    pub fn init(wip: *Wip, gpa: Allocator) !void {
-        wip.* = .{
+    pub fn init(gpa: Allocator) !Wip {
+        var wip: Wip = .{
             .gpa = gpa,
             .string_bytes = .empty,
             .extra = .empty,
             .root_list = .empty,
         };
+        errdefer wip.deinit();
 
         // So that 0 can be used to indicate a null string.
         try wip.string_bytes.append(gpa, 0);
 
-        assert(0 == try addExtra(wip, ErrorMessageList{
+        assert(0 == try wip.addExtra(ErrorMessageList{
             .len = 0,
             .start = 0,
             .compile_log_text = 0,
         }));
+
+        return wip;
     }
 
     pub fn deinit(wip: *Wip) void {
@@ -773,7 +776,7 @@ pub const Wip = struct {
                 u32 => @field(extra, field_name),
                 MessageIndex => @backingInt(@field(extra, field_name)),
                 SourceLocationIndex => @backingInt(@field(extra, field_name)),
-                else => @compileError("bad field type"),
+                else => @compileError("bad field type: " ++ @typeName(field_type)),
             };
             i += 1;
         }

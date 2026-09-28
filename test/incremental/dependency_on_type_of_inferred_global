@@ -1,5 +1,8 @@
-#update=initial version
-#file=main.zig
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig {
 const foo = @as(u8, 123);
 comptime {
     // depends on value of `foo`
@@ -10,9 +13,12 @@ comptime {
     if (@TypeOf(&foo) != *const u8) unreachable;
 }
 pub fn main() void {}
-#expect_stdout=""
-#update=change the type
-#file=main.zig
+#}
+#update
+#check stdout {
+#}
+
+#write main.zig {
 const foo = @as(u16, 123);
 comptime {
     // depends on value of `foo`
@@ -23,4 +29,9 @@ comptime {
     if (@TypeOf(&foo) != *const u8) unreachable;
 }
 pub fn main() void {}
-#expect_error=main.zig:8:37: error: reached unreachable code
+#}
+#update {
+change the type#}
+#check errors {
+main.zig:8:37: error: reached unreachable code
+#}

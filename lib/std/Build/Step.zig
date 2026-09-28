@@ -95,7 +95,7 @@ pub fn init(options: StepOptions) Step {
 
     return .{
         .tag = options.tag,
-        .name = arena.dupe(u8, options.name) catch @panic("OOM"),
+        .name = options.owner.graph.dupeString(options.name),
         .owner = options.owner,
         .dependencies = .empty,
         .max_rss = options.max_rss,

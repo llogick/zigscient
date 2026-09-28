@@ -2214,9 +2214,9 @@ const IncrementalTarget = struct {
 
 /// These are passed to `incr-check` as `<target>-<backend>` strings.
 ///
-/// If only one specific test is failing on a target, instead of entirely disabling the target here,
-/// you can skip the target for that specific test only by adding a line like this to the manifest:
-///   #skip_target=x86_64-linux-selfhosted
+/// If only one specific test is failing on a target, instead of entirely disabling the target here, you
+/// can skip the target for that specific test only by adding a line like this to top of the manifest:
+///   #skip x86_64-linux-selfhosted
 const incremental_targets = &[_]IncrementalTarget{
     // Avoid adding more CBE or LLVM targets without good reason: they're a lot slower than others
     // to run due to the output (C source code or LLVM IR) being built non-incrementally (by Clang
@@ -2502,7 +2502,7 @@ pub fn addStandaloneTests(
         .simple_skip_release_small = mem.findScalar(OptimizeMode, optimize_modes, .small) == null,
     });
     const test_cases_dep_step = test_cases_dep.builder.default_step;
-    test_cases_dep_step.name = b.graph.dupeString(test_cases_dep_name);
+    test_cases_dep_step.name = test_cases_dep_name;
     step.dependOn(test_cases_dep.builder.default_step);
     return step;
 }
@@ -3344,41 +3344,41 @@ const IncrementalTestOptions = struct {
 
 pub fn addIncrementalTests(
     b: *std.Build,
-    test_step: *Step,
+    runner: *std.Build.Step.Compile,
     options: IncrementalTestOptions,
-) !void {
-    const io = b.graph.io;
+) !*Step {
+    const tests_step = b.step("test-incremental", "Run the new incremental compilation test cases");
 
-    const incr_check = b.addExecutable(.{
-        .name = "incr-check",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/incr-check.zig"),
-            .target = b.graph.host,
-            .optimize = .debug,
-        }),
-    });
+    const tests_path = b.path("test/incremental");
+    b.dependOnDirectoryContents(tests_path);
 
-    b.dependOnDirectoryContents(b.path("test/incremental"));
-
-    var dir = try b.root.openDir(io, "test/incremental", .{ .iterate = true });
-    defer dir.close(io);
-
-    var it = try dir.walk(b.graph.arena);
-    while (try it.next(io)) |entry| {
-        if (std.mem.endsWith(u8, entry.basename, ".swp")) continue;
-
-        for (options.test_filters) |test_filter| {
-            if (std.mem.find(u8, entry.path, test_filter)) |_| break;
+    var tests_dir = try b.root.openDir(b.graph.io, "test/incremental", .{ .iterate = true });
+    defer tests_dir.close(b.graph.io);
+    var test_it = tests_dir.iterate();
+    while (try test_it.next(b.graph.io)) |@"test"| {
+        for (options.test_filters) |filter| {
+            if (std.mem.find(u8, @"test".name, filter) != null) break;
         } else if (options.test_filters.len > 0) continue;
 
-        switch (entry.kind) {
-            .file => {},
-            .directory => {
-                b.dependOnDirectoryContents(b.path(b.pathJoin(&.{ "test", "incremental", entry.path })));
-            },
+        const test_path = tests_path.path(b, @"test".name);
+        switch (@"test".kind) {
             else => continue,
+            .file => if (isEditorFileName(@"test".name)) continue,
+            .directory => {},
         }
-        b.dependOnFileContents(b.path(b.pathJoin(&.{ "test", "incremental", entry.path })));
+
+        const run = b.addRunArtifact(runner);
+        run.setName(@"test".name);
+        run.enableProtocolMode();
+
+        switch (@"test".kind) {
+            else => continue,
+            .file => run.addFileArg(test_path),
+            .directory => run.addDirectoryArg(test_path),
+        }
+        run.addPrefixedFileArg("--zig=", .zig_exe);
+        run.addPrefixedDirectoryArg("--lib=", .zig_lib);
+        _ = run.addPrefixedOutputDirectoryArg("--src=", "src");
 
         for (incremental_targets) |test_target| {
             const resolved_target = b.resolveTargetQuery(test_target.target);
@@ -3399,40 +3399,36 @@ pub fn addIncrementalTests(
 
             if (options.skip_llvm and test_target.backend == .llvm) continue;
 
-            const target_str = b.fmt("{s}-{t}", .{
+            const target_str = b.fmt("{s}-incremental-{t}", .{
                 resolved_target.query.zigTriple(b.allocator) catch @panic("OOM"),
                 test_target.backend,
             });
 
-            if (options.test_target_filters.len > 0) {
-                for (options.test_target_filters) |filter| {
-                    if (std.mem.find(u8, target_str, filter) != null) break;
-                } else continue;
-            }
-
-            const run = b.addRunArtifact(incr_check);
-            run.setName(b.fmt("incr-check {s} '{s}'", .{ target_str, entry.basename }));
-
-            run.addArg(b.graph.zig_exe);
-            run.addFileArg(b.path("test/incremental/").path(b, entry.path));
-
-            run.addArg("--zig-lib-dir");
-            run.addDirectoryArg(.zig_lib);
+            for (options.test_target_filters) |filter| {
+                if (std.mem.find(u8, target_str, filter) != null) break;
+            } else if (options.test_target_filters.len > 0) continue;
 
             run.addArgs(&.{ "--target", target_str });
-
-            run.addArg("--quiet"); // don't fill stderr telling us about skipped tests etc
-
-            run.addThirdPartyEnabledArgDarling(.{ .enabled = "-fdarling" });
-            run.addThirdPartyEnabledArgQemu(.{ .enabled = "-fqemu" });
-            run.addThirdPartyEnabledArgRosetta(.{ .enabled = "-frosetta" });
-            run.addThirdPartyEnabledArgWasmtime(.{ .enabled = "-fwasmtime" });
-            run.addThirdPartyEnabledArgWine(.{ .enabled = "-fwine" });
-
-            run.addCheck(.{ .expect_term = .{ .exited = 0 } });
-            test_step.dependOn(&run.step);
         }
+
+        run.addPrefixedDirectoryArg("--libc-runtimes=", .{ .relative = .{ .base = .libc_runtimes } });
+        run.addThirdPartyEnabledArgDarling(.{ .enabled = "-fdarling" });
+        run.addThirdPartyEnabledArgQemu(.{ .enabled = "-fqemu" });
+        run.addThirdPartyEnabledArgRosetta(.{ .enabled = "-frosetta" });
+        run.addThirdPartyEnabledArgWasmtime(.{ .enabled = "-fwasmtime" });
+        run.addThirdPartyEnabledArgWine(.{ .enabled = "-fwine" });
+
+        run.addArg("--quiet"); // don't fill stderr telling us about skipped tests etc
+
+        tests_step.dependOn(&run.step);
     }
+
+    return tests_step;
+}
+
+fn isEditorFileName(name: []const u8) bool {
+    return (std.mem.startsWith(u8, name, "#") and std.mem.endsWith(u8, name, "#")) or
+        std.mem.endsWith(u8, name, "~") or std.mem.endsWith(u8, name, ".swp");
 }
 
 pub fn addLlvmIrTests(b: *std.Build, options: LlvmIrContext.Options) ?*Step {

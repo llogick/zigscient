@@ -2705,8 +2705,7 @@ pub fn failWithOwnedErrorMsg(sema: *Sema, block: ?*Block, err_msg: *Zcu.ErrorMsg
     assert(sema.err == null);
 
     if (build_options.enable_debug_extensions and comp.debug_compile_errors) {
-        var wip_errors: std.zig.ErrorBundle.Wip = undefined;
-        wip_errors.init(gpa) catch @panic("out of memory");
+        var wip_errors = std.zig.ErrorBundle.Wip.init(gpa) catch @panic("out of memory");
         Compilation.addModuleErrorMsg(zcu, &wip_errors, err_msg.*, false) catch @panic("out of memory");
         std.debug.print("compile error during Sema:\n", .{});
         var error_bundle = wip_errors.toOwnedBundle("") catch @panic("out of memory");

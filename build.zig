@@ -125,7 +125,6 @@ pub fn build(b: *std.Build) !void {
     const skip_darwin = b.option(bool, "skip-darwin", "Main test suite skips targets with darwin OSs") orelse false;
     const skip_linux = b.option(bool, "skip-linux", "Main test suite skips targets with linux OS") orelse false;
     const skip_llvm = b.option(bool, "skip-llvm", "Main test suite skips targets that use LLVM backend") orelse false;
-    const skip_test_incremental = b.option(bool, "skip-test-incremental", "Main test step omits dependency on test-incremental step") orelse false;
 
     const only_install_lib_files = b.option(bool, "lib-files-only", "Only install library files") orelse false;
 
@@ -722,8 +721,22 @@ pub fn build(b: *std.Build) !void {
         test_step.dependOn(check_oracle_step);
     }
 
-    const test_incremental_step = b.step("test-incremental", "Run the incremental compilation test cases");
-    try tests.addIncrementalTests(b, test_incremental_step, .{
+    if (tests.addLibcTestNszTests(b, .{
+        .optimize_modes = optimize_modes,
+        .test_filters = test_filters,
+        .test_target_filters = test_target_filters,
+        .skip_wasm = skip_wasm,
+        .max_rss = 4_300_000_000,
+    })) |test_libc_nsz_step| test_step.dependOn(test_libc_nsz_step);
+
+    const runner = b.addExecutable(.{
+        .name = "runner",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("test/src/Runner.zig"),
+            .target = b.graph.host,
+        }),
+    });
+    test_step.dependOn(try tests.addIncrementalTests(b, runner, .{
         .test_filters = test_filters,
         .test_target_filters = test_target_filters,
         .skip_non_native = skip_non_native,
@@ -735,16 +748,7 @@ pub fn build(b: *std.Build) !void {
         .skip_darwin = skip_darwin,
         .skip_linux = skip_linux,
         .skip_llvm = skip_llvm,
-    });
-    if (!skip_test_incremental) test_step.dependOn(test_incremental_step);
-
-    if (tests.addLibcTestNszTests(b, .{
-        .optimize_modes = optimize_modes,
-        .test_filters = test_filters,
-        .test_target_filters = test_target_filters,
-        .skip_wasm = skip_wasm,
-        .max_rss = 4_300_000_000,
-    })) |test_libc_nsz_step| test_step.dependOn(test_libc_nsz_step);
+    }));
 
     // Remove steps not relevant to the core of the project
     // Can always comment out to enable

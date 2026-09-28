@@ -8809,6 +8809,11 @@ pub const O = switch (native_os) {
     else => void,
 };
 
+pub const EXECVEAT = switch (native_os) {
+    .linux => linux.EXECVEAT,
+    else => void,
+};
+
 pub const MAP = switch (native_os) {
     .linux => linux.MAP,
     .emscripten => packed struct(u32) {
@@ -11045,6 +11050,7 @@ pub extern "c" fn renameat(olddirfd: fd_t, old: [*:0]const u8, newdirfd: fd_t, n
 pub extern "c" fn chdir(path: [*:0]const u8) c_int;
 pub extern "c" fn fchdir(fd: fd_t) c_int;
 pub extern "c" fn execve(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8, envp: [*:null]const ?[*:0]const u8) c_int;
+pub extern "c" fn execveat(dirfd: fd_t, path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8, envp: [*:null]const ?[*:0]const u8, flags: EXECVEAT) c_int;
 pub extern "c" fn dup(fd: fd_t) c_int;
 pub extern "c" fn dup2(old_fd: fd_t, new_fd: fd_t) c_int;
 pub extern "c" fn dup3(old: c_int, new: c_int, flags: c_uint) c_int;
@@ -11779,8 +11785,10 @@ pub const posix_spawn_file_actions_init = darwin.posix_spawn_file_actions_init;
 pub const posix_spawn_file_actions_t = darwin.posix_spawn_file_actions_t;
 pub const posix_spawnattr_destroy = darwin.posix_spawnattr_destroy;
 pub const posix_spawnattr_getflags = darwin.posix_spawnattr_getflags;
+pub const posix_spawnattr_getpgroup = darwin.posix_spawnattr_getpgroup;
 pub const posix_spawnattr_init = darwin.posix_spawnattr_init;
 pub const posix_spawnattr_setflags = darwin.posix_spawnattr_setflags;
+pub const posix_spawnattr_setpgroup = darwin.posix_spawnattr_setpgroup;
 pub const posix_spawnattr_t = darwin.posix_spawnattr_t;
 pub const posix_spawnp = darwin.posix_spawnp;
 pub const pthread_attr_get_qos_class_np = darwin.pthread_attr_get_qos_class_np;

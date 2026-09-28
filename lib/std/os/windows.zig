@@ -147,8 +147,22 @@ pub const OBJECT = struct {
         pub const Max: @typeInfo(@This()).@"enum".tag_type = @typeInfo(@This()).@"enum".field_names.len;
     };
 
+    pub const BASIC_INFORMATION = extern struct {
+        Attributes: ATTRIBUTES.Flags,
+        GrantedAccess: ACCESS_MASK,
+        HandleCount: ULONG,
+        PointerCount: ULONG,
+        Reserved: [10]ULONG,
+    };
+
     pub const NAME_INFORMATION = extern struct {
         Name: UNICODE_STRING,
+    };
+
+    pub const HANDLE_FLAG = packed struct(USHORT) {
+        INHERIT: bool = false,
+        PROTECT_FROM_CLOSE: bool = false,
+        Reserved1: u14 = 0,
     };
 };
 

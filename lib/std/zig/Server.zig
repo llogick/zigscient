@@ -74,6 +74,12 @@ pub const Message = struct {
         broadcast_fuzz_input,
         /// Body is a TimeReport.
         time_report,
+        /// Body is a sequence of:
+        /// - root_dir: InputDir,
+        /// - sub_path: [:0]u8,
+        discovered_inputs,
+        /// Body is a Config.
+        config,
 
         /// The first message sent by the server over the build system protocol.
         /// Body is a `Handshake`.
@@ -112,7 +118,7 @@ pub const Message = struct {
 
         pub const Flags = packed struct(u32) {
             file_system_watch_supported: bool,
-            _: u31 = 0,
+            unused: u31 = 0,
         };
     };
 
@@ -198,7 +204,7 @@ pub const Message = struct {
         flags: Flags,
         pub const Flags = packed struct(u32) {
             use_llvm: bool,
-            _: u31 = 0,
+            unused: u31 = 0,
         };
     };
 
@@ -210,6 +216,29 @@ pub const Message = struct {
         pub const Flags = packed struct(u8) {
             cache_hit: bool,
             reserved: u7 = 0,
+        };
+    };
+
+    /// A reference to one of the `.input_dir`s from the `.args` message.
+    pub const InputDir = enum(u32) {
+        /// Server cwd relative path, or absolute path.
+        cwd,
+        /// Numbered in the order that `.input_dir`s appear in the `.args` message.
+        _,
+    };
+
+    /// Properties of the output binary target that are decided by the compiler.
+    pub const Config = extern struct {
+        flags: Flags,
+
+        pub const Flags = packed struct(u8) {
+            output_mode: std.lang.OutputMode,
+            link_mode: std.lang.LinkMode,
+            link_libc: bool,
+            link_libcpp: bool,
+            link_libunwind: bool,
+            pie: bool,
+            unused: u1 = 0,
         };
     };
 };
@@ -363,5 +392,14 @@ pub fn serveTestMetadata(s: *Server, test_metadata: TestMetadata) !void {
     try s.out.writeSliceEndian(u32, test_metadata.names, .little);
     try s.out.writeSliceEndian(u32, test_metadata.expected_panic_msgs, .little);
     try s.out.writeAll(test_metadata.string_bytes);
+    try s.out.flush();
+}
+
+pub fn serveConfig(s: *Server, config: OutMessage.Config) !void {
+    try s.serveMessageHeader(.{
+        .tag = .config,
+        .bytes_len = @intCast(@sizeOf(OutMessage.Config)),
+    });
+    try s.out.writeStruct(config, .little);
     try s.out.flush();
 }

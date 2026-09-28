@@ -727,8 +727,7 @@ pub fn readSourceFileToEndAlloc(gpa: Allocator, file_reader: *Io.File.Reader) ![
 }
 
 pub fn printAstErrorsToStderr(gpa: Allocator, io: Io, tree: Ast, path: []const u8, color: Color) !void {
-    var wip_errors: ErrorBundle.Wip = undefined;
-    try wip_errors.init(gpa);
+    var wip_errors: ErrorBundle.Wip = try .init(gpa);
     defer wip_errors.deinit();
 
     try putAstErrorsIntoBundle(gpa, tree, path, &wip_errors);

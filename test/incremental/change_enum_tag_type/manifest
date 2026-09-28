@@ -1,0 +1,43 @@
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig 0/main.zig
+#update
+#check stdout {
+a
+#}
+
+#write main.zig 1/main.zig
+#update {
+too many enum fields#}
+#check errors {
+main.zig:7:5: error: enum tag value '4' too large for type 'u2'
+#}
+
+#write main.zig 2/main.zig
+#update {
+increase tag size#}
+#check stdout {
+a
+#}
+
+#write main.zig 3/main.zig
+#update {
+specify tag directly#}
+#check errors {
+main.zig:9:5: error: found compile log statement
+
+Compile Log Output:
+@as(type, u3)
+#}
+
+#write main.zig 4/main.zig
+#update {
+change directly-specified tag type#}
+#check errors {
+main.zig:9:5: error: found compile log statement
+
+Compile Log Output:
+@as(type, u8)
+#}

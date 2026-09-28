@@ -462,13 +462,13 @@ pub fn write(b: *std.Build, wc: *Configuration.Wip, writer: *std.Io.Writer) !voi
                             .skip_foreign_checks = run.skip_foreign_checks,
                             .failing_to_execute_foreign_is_an_error = run.failing_to_execute_foreign_is_an_error,
                             .has_side_effects = run.has_side_effects,
-                            .test_runner_mode = run.test_runner_mode,
                             .color = run.color,
                             .stdio = switch (run.stdio) {
                                 .infer_from_args => .infer_from_args,
                                 .inherit => .inherit,
                                 .check => .check,
                                 .zig_test => .zig_test,
+                                .protocol => .protocol,
                             },
                             .stdin = switch (run.stdin) {
                                 .none => .none,

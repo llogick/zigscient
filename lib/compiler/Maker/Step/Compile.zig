@@ -31,7 +31,7 @@ zig_process: ?*Step.ZigProcess = null,
 /// Populated by InstallArtifact.
 installed_path: ?Path = null,
 /// Populated by `make`, used by `Run`.
-is_linking_libc: bool = false,
+config: ?std.zig.Server.Message.Config = null,
 
 pub fn make(
     compile: *Compile,
@@ -39,6 +39,7 @@ pub fn make(
     maker: *Maker,
     progress_node: std.Progress.Node,
 ) Step.ExtendedMakeError!void {
+    _ = compile; // only accessed by `Step.evalZigProcess`.
     const graph = maker.graph;
     const gpa = maker.gpa;
     const conf = &maker.scanned_config.configuration;
@@ -58,7 +59,7 @@ pub fn make(
         gop.value_ptr.* = .{};
         var curated_argv: std.ArrayList([]const u8) = .empty;
         defer curated_argv.deinit(gpa);
-        try lowerZigArgs(arena, compile, compile_index, maker, progress_node, &curated_argv, false, true);
+        try lowerZigArgs(arena, compile_index, maker, progress_node, &curated_argv, false, true);
         for (curated_argv.items) |arg| {
             try gop.value_ptr.args.append(maker.graph.arena, try maker.graph.arena.dupe(u8, arg));
         }
@@ -67,7 +68,7 @@ pub fn make(
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(gpa);
 
-    try lowerZigArgs(arena, compile, compile_index, maker, progress_node, &argv, false, false);
+    try lowerZigArgs(arena, compile_index, maker, progress_node, &argv, false, false);
 
     const incremental = conf_comp.flags4.incremental.toBool() orelse graph.incremental == true;
 
@@ -183,7 +184,6 @@ const ModuleListContext = struct {
 
 fn lowerZigArgs(
     arena: Allocator,
-    compile: *Compile,
     compile_index: Configuration.Step.Index,
     maker: *Maker,
     progress_node: std.Progress.Node,
@@ -614,8 +614,6 @@ fn lowerZigArgs(
         try zig_args.ensureUnusedCapacity(gpa, 2);
         if (is_linking_libcpp) zig_args.appendAssumeCapacity("-lc++");
         if (is_linking_libc) zig_args.appendAssumeCapacity("-lc");
-
-        compile.is_linking_libc = is_linking_libc;
     }
 
     if (conf_comp.win32_manifest.value) |manifest_file| {
@@ -983,6 +981,7 @@ pub fn rebuildInFuzzMode(
     compile_index: Configuration.Step.Index,
     progress_node: std.Progress.Node,
 ) !Step.OptCacheDigest {
+    _ = compile;
     const gpa = maker.gpa;
     const step = maker.stepByIndex(compile_index);
 
@@ -1001,7 +1000,7 @@ pub fn rebuildInFuzzMode(
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(gpa);
 
-    try lowerZigArgs(arena, compile, compile_index, maker, progress_node, &argv, true, false);
+    try lowerZigArgs(arena, compile_index, maker, progress_node, &argv, true, false);
     return Step.evalZigProcess(compile_index, maker, argv.items, progress_node, false);
 }
 

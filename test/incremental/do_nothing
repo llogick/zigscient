@@ -1,6 +1,11 @@
-// TODO: it'd be great if we could actually check that no analysis happened!
-#update=initial version
-#file=main.zig
+#todo {
+it'd be great if we could actually check that no analysis happened!
+#}
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig {
 pub fn main() void {
     const ptr: *const O = @ptrFromInt(0x1000);
     _ = ptr;
@@ -18,9 +23,12 @@ const O = opaque {
         _ = wrapper;
     }
 };
-#expect_stdout=""
-#update=do literally nothing
-#file=main.zig
+#}
+#update
+#check stdout {
+#}
+
+#write main.zig {
 pub fn main() void {
     const ptr: *const O = @ptrFromInt(0x1000);
     _ = ptr;
@@ -38,4 +46,8 @@ const O = opaque {
         _ = wrapper;
     }
 };
-#expect_stdout=""
+#}
+#update {
+do literally nothing#}
+#check stdout {
+#}

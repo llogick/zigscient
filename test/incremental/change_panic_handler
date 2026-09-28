@@ -1,5 +1,8 @@
-#update=initial version
-#file=main.zig
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig {
 pub fn main() !u8 {
     var a: u8 = undefined;
     a = 255;
@@ -14,10 +17,13 @@ fn myPanic(msg: []const u8, _: ?usize) noreturn {
 }
 const std = @import("std");
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="panic message: integer overflow\n"
+#}
+#update
+#check stdout {
+panic message: integer overflow
+#}
 
-#update=change the panic handler body
-#file=main.zig
+#write main.zig {
 pub fn main() !u8 {
     var a: u8 = undefined;
     a = 255;
@@ -32,10 +38,14 @@ fn myPanic(msg: []const u8, _: ?usize) noreturn {
 }
 const std = @import("std");
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="new panic message: integer overflow\n"
+#}
+#update {
+change the panic handler body#}
+#check stdout {
+new panic message: integer overflow
+#}
 
-#update=change the panic handler function value
-#file=main.zig
+#write main.zig {
 pub fn main() !u8 {
     var a: u8 = undefined;
     a = 255;
@@ -50,4 +60,9 @@ fn myPanicNew(msg: []const u8, _: ?usize) noreturn {
 }
 const std = @import("std");
 const io = std.Io.Threaded.global_single_threaded.io();
-#expect_stdout="third panic message: integer overflow\n"
+#}
+#update {
+change the panic handler function value#}
+#check stdout {
+third panic message: integer overflow
+#}

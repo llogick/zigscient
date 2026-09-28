@@ -1,5 +1,8 @@
-#update=initial version
-#file=main.zig
+#exe {
+-Mroot=main.zig
+#}
+
+#write main.zig {
 //! The original repro here depends on re-analysis order, which depends on
 //! declaration order, so this exact declaration order must be used.
 const Foo = struct { x: u8 };
@@ -11,10 +14,13 @@ fn bar(comptime x: u8) @This().Foo {
     return .{ .x = x };
 }
 const std = @import("std");
-#expect_stdout="Z\n"
+#}
+#update
+#check stdout {
+Z
+#}
 
-#update=change generic signature to use non-existent member
-#file=main.zig
+#write main.zig {
 //! The original repro here depends on re-analysis order, which depends on
 //! declaration order, so this exact declaration order must be used.
 const Foo = struct { x: u8 };
@@ -26,11 +32,15 @@ fn bar(comptime x: u8) @This().FooAlias {
     return .{ .x = x };
 }
 const std = @import("std");
-#expect_error=main.zig:8:31: error: root source file struct 'main' has no member named 'FooAlias'
-#expect_error=main.zig:1:1: note: struct declared here
+#}
+#update {
+change generic signature to use non-existent member#}
+#check errors {
+main.zig:8:31: error: root source file struct 'main' has no member named 'FooAlias'
+main.zig:1:1: note: struct declared here
+#}
 
-#update=add that member, fixing the error
-#file=main.zig
+#write main.zig {
 //! The original repro here depends on re-analysis order, which depends on
 //! declaration order, so this exact declaration order must be used.
 const Foo = struct { x: u8 };
@@ -43,4 +53,9 @@ fn bar(comptime x: u8) @This().FooAlias {
     return .{ .x = x };
 }
 const std = @import("std");
-#expect_stdout="Z\n"
+#}
+#update {
+add that member, fixing the error#}
+#check stdout {
+Z
+#}

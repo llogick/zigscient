@@ -60,6 +60,8 @@ pub const Message = struct {
         start_fuzzing,
         /// The message body has the same format as in Server.
         new_fuzz_input,
+        /// Body is a sequence of Arg
+        args,
 
         /// Asks the server to run a list of steps.
         /// Body is a `BuildSteps`.
@@ -67,6 +69,33 @@ pub const Message = struct {
         bsp_build_steps = 0x80000000,
 
         _,
+    };
+
+    pub const Arg = enum(u8) {
+        /// Trailing:
+        /// * string: [:0]u8,
+        string,
+        /// Trailing:
+        /// * string: [:0]u8,
+        prefix,
+        /// Trailing:
+        /// * string: [:0]u8,
+        suffix,
+        /// Trailing:
+        /// * handle: Handle,
+        input_file,
+        /// Trailing:
+        /// * handle: Handle,
+        input_dir,
+        /// Trailing:
+        /// * handle: Handle,
+        input_file_content,
+        /// Trailing:
+        /// * handle: Handle,
+        output_file,
+        /// Trailing:
+        /// * handle: Handle,
+        output_dir,
     };
 
     /// Trailing:

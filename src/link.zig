@@ -2891,8 +2891,7 @@ fn resolvePathInputLib(
 
         const ld_script_result = LdScript.parse(gpa, &diags, test_path, ld_script_bytes.items);
         if (diags.hasErrors()) {
-            var wip_errors: std.zig.ErrorBundle.Wip = undefined;
-            try wip_errors.init(gpa);
+            var wip_errors: std.zig.ErrorBundle.Wip = try .init(gpa);
             defer wip_errors.deinit();
 
             try diags.addMessagesToBundle(&wip_errors, null);

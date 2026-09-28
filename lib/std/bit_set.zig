@@ -723,13 +723,8 @@ pub const Dynamic = struct {
     // That slot holds the size of the true allocation, which
     // is needed by Zig's allocator interface in case a shrink
     // fails.
-
-    // Don't modify this value.  Ideally it would go in const data so
-    // modifications would cause a bus error, but the only way
-    // to discard a const qualifier is through intFromPtr, which
-    // cannot currently round trip at comptime.
-    var empty_masks_data = [_]MaskInt{ 0, undefined };
-    const empty_masks_ptr = empty_masks_data[1..2];
+    const empty_masks_data = [_]MaskInt{ 0, undefined };
+    const empty_masks_ptr = @constCast(empty_masks_data[1..2]);
 
     /// Creates a bit set with no elements present.
     /// If bit_length is not zero, deinit must eventually be called.

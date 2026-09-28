@@ -41,5 +41,5 @@ pub fn create(owner: *std.Build, file: std.Build.LazyPath, options: Options) *Ch
 }
 
 pub fn setName(check_file: *CheckFile, name: []const u8) void {
-    check_file.step.name = name;
+    check_file.step.name = check_file.step.owner.graph.dupeString(name);
 }
