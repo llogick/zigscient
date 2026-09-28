@@ -3401,16 +3401,15 @@ pub const PAGE = packed struct(ULONG) {
     REVERT_TO_FILE_MAP: bool = false,
 
     pub fn fromProtection(protection: std.process.MemoryProtection) ?PAGE {
-        // TODO https://github.com/ziglang/zig/issues/22214
-        return switch (@as(u3, @bitCast(protection))) {
-            0b000 => .{ .NOACCESS = true },
-            0b001 => .{ .READONLY = true },
-            0b010 => null,
-            0b011 => .{ .READWRITE = true },
-            0b100 => .{ .EXECUTE = true },
-            0b101 => .{ .EXECUTE_READ = true },
-            0b110 => null,
-            0b111 => .{ .EXECUTE_READWRITE = true },
+        return switch (protection) {
+            .{} => .{ .NOACCESS = true },
+            .{ .read = true } => .{ .READONLY = true },
+            .{ .write = true } => null,
+            .{ .read = true, .write = true } => .{ .READWRITE = true },
+            .{ .execute = true } => .{ .EXECUTE = true },
+            .{ .read = true, .execute = true } => .{ .EXECUTE_READ = true },
+            .{ .write = true, .execute = true } => null,
+            .{ .read = true, .write = true, .execute = true } => .{ .EXECUTE_READWRITE = true },
         };
     }
 };
