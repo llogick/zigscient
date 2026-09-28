@@ -1100,7 +1100,7 @@ const Completion = struct {
     };
 
     fn errno(completion: Completion) linux.E {
-        return linux.errno(@bitCast(@as(isize, completion.result)));
+        return linux.errno(completion.result);
     }
 };
 
