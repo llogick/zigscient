@@ -1569,10 +1569,6 @@ const poll_buffer_len = 64;
 pub const default_PATH = "/usr/local/bin:/bin:/usr/bin";
 /// There are multiple kernel bugs being worked around with retries.
 const max_windows_kernel_bug_retries = 13;
-/// Similar in nature to `max_windows_kernel_bug_retries`, but much more likely to
-/// be a real error that won't go away after a retry, so the number of retries
-/// is lower.
-const max_windows_rename_retries = 3;
 
 comptime {
     if (@TypeOf(posix.IOV_MAX) != void) assert(max_iovecs_len <= posix.IOV_MAX);
@@ -7742,7 +7738,7 @@ fn dirRenameWindowsInner(
                 },
                 .ACCESS_DENIED => {
                     syscall.finish();
-                    if (max_windows_rename_retries - attempt == 0) break :need_fallback false;
+                    if (max_windows_kernel_bug_retries - attempt == 0) break :need_fallback false;
                     try parking_sleep.sleep(.{ .duration = .{
                         .raw = .fromMilliseconds((@as(u32, 1) << attempt) >> 1),
                         .clock = .awake,
@@ -7779,7 +7775,7 @@ fn dirRenameWindowsInner(
                 .CANCELLED => try syscall.checkCancel(),
                 .ACCESS_DENIED => {
                     syscall.finish();
-                    if (max_windows_rename_retries - attempt == 0) break;
+                    if (max_windows_kernel_bug_retries - attempt == 0) break;
                     try parking_sleep.sleep(.{ .duration = .{
                         .raw = .fromMilliseconds((@as(u32, 1) << attempt) >> 1),
                         .clock = .awake,
