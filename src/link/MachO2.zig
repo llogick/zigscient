@@ -1100,10 +1100,11 @@ pub fn flush(
 ) link.Error!void {
     const diags = &macho.base.comp.link_diags;
     _ = arena;
+    _ = tid;
     _ = prog_node;
 
     try macho.updateSegmentLoadAddresses();
-    while (try macho.idle(tid)) {}
+    while (try macho.idle()) {}
 
     if (macho.lc.entry_point) |entry_point_lc| {
         // TODO: actually find the entry point.
@@ -1120,7 +1121,7 @@ pub fn flush(
     };
 
     if (macho.options.enable_link_snapshots)
-        macho.dumpStderr(tid) catch |err|
+        macho.dumpStderr() catch |err|
             return diags.fail("dumping link snapshot failed: {t}", .{err});
 }
 pub fn updateErrorData(macho: *MachO, pt: Zcu.PerThread) link.Error!void {
@@ -1128,9 +1129,7 @@ pub fn updateErrorData(macho: *MachO, pt: Zcu.PerThread) link.Error!void {
     _ = pt;
     @panic("TODO");
 }
-pub fn idle(macho: *MachO, tid: Zcu.PerThread.Id) link.Error!bool {
-    _ = tid;
-
+pub fn idle(macho: *MachO) link.Error!bool {
     macho.mf.nodes_lock.lock();
     defer macho.mf.nodes_lock.unlock();
 
@@ -1253,28 +1252,27 @@ pub fn updateExports(
     @panic("TODO");
 }
 
-fn dumpStderr(macho: *MachO, tid: Zcu.PerThread.Id) Io.File.Writer.Error!void {
+fn dumpStderr(macho: *MachO) Io.File.Writer.Error!void {
     const comp = macho.base.comp;
     const io = comp.io;
     var buffer: [512]u8 = undefined;
     const stderr = try io.lockStderr(&buffer, null);
     defer io.unlockStderr();
     const w = &stderr.file_writer.interface;
-    _ = macho.dump(w, tid) catch |err| switch (err) {
+    _ = macho.dump(w) catch |err| switch (err) {
         error.WriteFailed => return stderr.file_writer.err.?,
     };
 }
 
-pub fn dump(macho: *MachO, w: *Io.Writer, tid: Zcu.PerThread.Id) !link.File.DumpResult {
+pub fn dump(macho: *MachO, w: *Io.Writer) !link.File.DumpResult {
     if (macho.options.enable_link_snapshots) {
-        try macho.printNode(tid, w, .root, 0);
+        try macho.printNode(w, .root, 0);
         return .enabled;
     }
     return .disabled;
 }
 fn printNode(
     macho: *const MachO,
-    tid: Zcu.PerThread.Id,
     w: *Io.Writer,
     ni: MappedFile.Node.Index,
     indent: usize,
@@ -1310,7 +1308,7 @@ fn printNode(
         // non-leaf, just print children
         var child_ni = first_ni;
         while (true) {
-            try macho.printNode(tid, w, child_ni, indent + 1);
+            try macho.printNode(w, child_ni, indent + 1);
             child_ni = child_ni.next(&macho.mf).unwrap() orelse break;
         }
         return;

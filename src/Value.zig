@@ -34,19 +34,19 @@ pub fn fmtDebug(val: Value) std.fmt.Alt(Value, dump) {
     return .{ .data = val };
 }
 
-pub fn fmtValue(val: Value, pt: Zcu.PerThread) std.fmt.Alt(print_value.FormatContext, print_value.format) {
+pub fn fmtValue(val: Value, zcu: *Zcu) std.fmt.Alt(print_value.FormatContext, print_value.format) {
     return .{ .data = .{
         .val = val,
-        .pt = pt,
+        .zcu = zcu,
         .opt_sema = null,
         .depth = 3,
     } };
 }
 
-pub fn fmtValueSema(val: Value, pt: Zcu.PerThread, sema: *Sema) std.fmt.Alt(print_value.FormatContext, print_value.formatSema) {
+pub fn fmtValueSema(val: Value, sema: *Sema) std.fmt.Alt(print_value.FormatContext, print_value.formatSema) {
     return .{ .data = .{
         .val = val,
-        .pt = pt,
+        .zcu = sema.pt.zcu,
         .opt_sema = sema,
         .depth = 3,
     } };
@@ -1890,167 +1890,233 @@ pub fn getOffsetPtr(ptr_val: Value, byte_off: u64, new_ty: Type, pt: Zcu.PerThre
     return Value.fromInterned(try pt.intern(.{ .ptr = ptr }));
 }
 
-pub const PointerDeriveStep = union(enum) {
-    int: struct {
-        addr: u64,
-        ptr_ty: Type,
-    },
-    nav_ptr: InternPool.Nav.Index,
-    uav_ptr: InternPool.Key.Ptr.BaseAddr.Uav,
-    comptime_alloc_ptr: struct {
-        idx: InternPool.ComptimeAllocIndex,
-        val: Value,
-        ptr_ty: Type,
-    },
-    comptime_field_ptr: Value,
-    eu_payload_ptr: struct {
-        parent: *PointerDeriveStep,
-        /// This type will never be cast: it is provided for convenience.
-        result_ptr_ty: Type,
-    },
-    opt_payload_ptr: struct {
-        parent: *PointerDeriveStep,
-        /// This type will never be cast: it is provided for convenience.
-        result_ptr_ty: Type,
-    },
-    field_ptr: struct {
-        parent: *PointerDeriveStep,
-        field_idx: u32,
-        /// This type will never be cast: it is provided for convenience.
-        result_ptr_ty: Type,
-    },
-    elem_ptr: struct {
-        parent: *PointerDeriveStep,
-        elem_idx: u64,
-        /// This type will never be cast: it is provided for convenience.
-        result_ptr_ty: Type,
-    },
-    offset_and_cast: struct {
-        parent: *PointerDeriveStep,
-        byte_offset: u64,
-        new_ptr_ty: Type,
+pub const PointerDerivation = struct {
+    elem_ty: Type,
+    /// TODO: investigate eliminating this field. We should *always* know the lengths of arrays
+    /// which are pointed to, so `.one` should be the only possible case!
+    size: Size,
+    @"align": InternPool.Alignment,
+    @"const": bool,
+    @"volatile": bool,
+    @"allowzero": bool,
+
+    addr: union(enum) {
+        int: u64,
+        nav: InternPool.Nav.Index,
+        uav: Value,
+        comptime_field: Value,
+        comptime_alloc: struct {
+            idx: InternPool.ComptimeAllocIndex,
+            val: Value,
+        },
+        eu_payload: struct { parent: *PointerDerivation },
+        opt_payload: struct { parent: *PointerDerivation },
+        field: struct {
+            parent: *PointerDerivation,
+            field_index: u32,
+        },
+        elem: struct {
+            parent: *PointerDerivation,
+            elem_index: u64,
+        },
+        offset_and_cast: struct {
+            parent: *PointerDerivation,
+            byte_offset: u64,
+        },
     },
 
-    pub fn ptrType(step: PointerDeriveStep, pt: Zcu.PerThread) !Type {
-        return switch (step) {
-            .int => |int| int.ptr_ty,
-            .nav_ptr => |nav| try pt.navPtrType(nav),
-            .uav_ptr => |uav| Type.fromInterned(uav.orig_ty),
-            .comptime_alloc_ptr => |info| info.ptr_ty,
-            .comptime_field_ptr => |val| try pt.singleConstPtrType(val.typeOf(pt.zcu)),
-            .offset_and_cast => |oac| oac.new_ptr_ty,
-            inline .eu_payload_ptr, .opt_payload_ptr, .field_ptr, .elem_ptr => |x| x.result_ptr_ty,
-        };
+    pub const Size = enum { one, many };
+
+    pub fn fmtType(pd: PointerDerivation, zcu: *Zcu) FormatType {
+        return .{ .pd = pd, .zcu = zcu };
     }
+    pub const FormatType = struct {
+        pd: PointerDerivation,
+        zcu: *Zcu,
+        pub fn format(ctx: FormatType, w: *Io.Writer) Io.Writer.Error!void {
+            const pd = ctx.pd;
+            switch (pd.size) {
+                .one => try w.writeByte('*'),
+                .many => try w.writeAll("[*]"),
+            }
+            if (pd.@"align".toByteUnits()) |align_bytes| {
+                try w.print("align({d}) ", .{align_bytes});
+            }
+            if (pd.@"const") try w.writeAll("const ");
+            if (pd.@"volatile") try w.writeAll("volatile ");
+            if (pd.@"allowzero") try w.writeAll("allowzero ");
+            try pd.elem_ty.print(w, ctx.zcu, null);
+        }
+    };
 };
 
 /// Given a pointer value, get the sequence of steps to derive it, ideally by taking
 /// only field and element pointers with no casts. This can be used by codegen backends
 /// which prefer field/elem accesses when lowering constant pointer values.
 /// It is also used by the Value printing logic for pointers.
-pub fn pointerDerivation(ptr_val: Value, arena: Allocator, pt: Zcu.PerThread, opt_sema: ?*Sema) Allocator.Error!PointerDeriveStep {
-    const zcu = pt.zcu;
+pub fn pointerDerivation(ptr_val: Value, arena: Allocator, zcu: *Zcu, opt_sema: ?*Sema) Allocator.Error!PointerDerivation {
     const ptr = zcu.intern_pool.indexToKey(ptr_val.toIntern()).ptr;
-    const base_derive: PointerDeriveStep = switch (ptr.base_addr) {
-        .int => return .{ .int = .{
-            .addr = ptr.byte_offset,
-            .ptr_ty = Type.fromInterned(ptr.ty),
-        } },
-        .nav => |nav| .{ .nav_ptr = nav },
+    const ptr_ty_info: InternPool.Key.PtrType = info: {
+        var info = Type.fromInterned(ptr.ty).ptrInfo(zcu);
+        if (info.packed_offset.host_size != 0) {
+            // TODO: this function *should* handle packed pointers by returning the derivation of
+            // the backing int pointer. However, until https://github.com/ziglang/zig/issues/24061
+            // is implemented, we don't have access to the backing type. For now, fudge things a
+            // little by pretending that this is a pointer to anyopaque. What could go wrong?
+            info.child = .anyopaque_type;
+        }
+        break :info info;
+    };
+    const ptr_size: PointerDerivation.Size = switch (ptr_ty_info.flags.size) {
+        .one => .one,
+        .many, .c => .many,
+        .slice => unreachable,
+    };
+    const base_derive: PointerDerivation = switch (ptr.base_addr) {
+        .int => return .{
+            .elem_ty = .fromInterned(ptr_ty_info.child),
+            .size = ptr_size,
+            .@"align" = ptr_ty_info.flags.alignment,
+            .@"const" = ptr_ty_info.flags.is_const,
+            .@"volatile" = ptr_ty_info.flags.is_volatile,
+            .@"allowzero" = ptr_ty_info.flags.is_allowzero,
+            .addr = .{ .int = ptr.byte_offset },
+        },
+        .nav => |nav| base: {
+            const resolved = zcu.intern_pool.getNav(nav).resolved.?;
+            break :base .{
+                .elem_ty = .fromInterned(resolved.type),
+                .size = .one,
+                .@"align" = resolved.@"align",
+                .@"const" = resolved.@"const",
+                .@"volatile" = false,
+                .@"allowzero" = false,
+                .addr = .{ .nav = nav },
+            };
+        },
         .uav => |uav| base: {
-            // A slight tweak: `orig_ty` here is sometimes not `const`, but it ought to be.
-            // TODO: fix this in the sites interning anon decls!
-            const const_ty = try pt.ptrType(info: {
-                var info = Type.fromInterned(uav.orig_ty).ptrInfo(zcu);
-                info.flags.is_const = true;
-                break :info info;
-            });
-            break :base .{ .uav_ptr = .{
-                .val = uav.val,
-                .orig_ty = const_ty.toIntern(),
-            } };
+            const orig_ty_info = Type.fromInterned(uav.orig_ty).ptrInfo(zcu);
+            break :base .{
+                .elem_ty = .fromInterned(orig_ty_info.child),
+                .size = .one,
+                .@"align" = orig_ty_info.flags.alignment,
+                // A slight tweak: `orig_ty` here is sometimes not `const`, but it ought to be.
+                // TODO: fix this in the sites interning anon decls!
+                .@"const" = true,
+                .@"volatile" = orig_ty_info.flags.is_volatile,
+                .@"allowzero" = orig_ty_info.flags.is_allowzero,
+
+                .addr = .{ .uav = .fromInterned(uav.val) },
+            };
         },
         .comptime_alloc => |idx| base: {
             const sema = opt_sema.?;
             const alloc = sema.getComptimeAlloc(idx);
-            const val = try alloc.val.intern(pt, arena);
-            const ty = val.typeOf(zcu);
-            break :base .{ .comptime_alloc_ptr = .{
-                .idx = idx,
-                .val = val,
-                .ptr_ty = try pt.ptrType(.{
-                    .child = ty.toIntern(),
-                    .flags = .{
-                        .alignment = alloc.alignment,
-                    },
-                }),
-            } };
+            const val = try alloc.val.intern(sema.pt, arena);
+            break :base .{
+                .elem_ty = val.typeOf(zcu),
+                .size = .one,
+                .@"align" = alloc.alignment,
+                .@"const" = alloc.is_const,
+                .@"volatile" = false,
+                .@"allowzero" = false,
+                .addr = .{ .comptime_alloc = .{
+                    .idx = idx,
+                    .val = val,
+                } },
+            };
         },
-        .comptime_field => |val| .{ .comptime_field_ptr = Value.fromInterned(val) },
+        .comptime_field => |val| .{
+            .elem_ty = Value.fromInterned(val).typeOf(zcu),
+            .size = .one,
+            .@"align" = .none,
+            .@"const" = true,
+            .@"volatile" = false,
+            .@"allowzero" = false,
+            .addr = .{ .comptime_field = .fromInterned(val) },
+        },
         .eu_payload => |eu_ptr| base: {
-            const base_ptr = Value.fromInterned(eu_ptr);
-            const base_ptr_ty = base_ptr.typeOf(zcu);
-            const parent_step = try arena.create(PointerDeriveStep);
-            parent_step.* = try pointerDerivation(.fromInterned(eu_ptr), arena, pt, opt_sema);
-            break :base .{ .eu_payload_ptr = .{
-                .parent = parent_step,
-                .result_ptr_ty = try pt.adjustPtrTypeChild(base_ptr_ty, base_ptr_ty.childType(zcu).errorUnionPayload(zcu)),
-            } };
+            const parent_step = try arena.create(PointerDerivation);
+            parent_step.* = try pointerDerivation(.fromInterned(eu_ptr), arena, zcu, opt_sema);
+            break :base .{
+                .elem_ty = parent_step.elem_ty.errorUnionPayload(zcu),
+                .size = .one,
+                .@"align" = parent_step.@"align",
+                .@"const" = parent_step.@"const",
+                .@"volatile" = parent_step.@"volatile",
+                .@"allowzero" = parent_step.@"allowzero",
+                .addr = .{ .eu_payload = .{
+                    .parent = parent_step,
+                } },
+            };
         },
         .opt_payload => |opt_ptr| base: {
-            const base_ptr = Value.fromInterned(opt_ptr);
-            const base_ptr_ty = base_ptr.typeOf(zcu);
-            const parent_step = try arena.create(PointerDeriveStep);
-            parent_step.* = try pointerDerivation(.fromInterned(opt_ptr), arena, pt, opt_sema);
-            break :base .{ .opt_payload_ptr = .{
-                .parent = parent_step,
-                .result_ptr_ty = try pt.adjustPtrTypeChild(base_ptr_ty, base_ptr_ty.childType(zcu).optionalChild(zcu)),
-            } };
+            const parent_step = try arena.create(PointerDerivation);
+            parent_step.* = try pointerDerivation(.fromInterned(opt_ptr), arena, zcu, opt_sema);
+            break :base .{
+                .elem_ty = parent_step.elem_ty.optionalChild(zcu),
+                .size = .one,
+                .@"align" = parent_step.@"align",
+                .@"const" = parent_step.@"const",
+                .@"volatile" = parent_step.@"volatile",
+                .@"allowzero" = parent_step.@"allowzero",
+                .addr = .{ .opt_payload = .{
+                    .parent = parent_step,
+                } },
+            };
         },
         .field => |field| base: {
-            const base_ptr = Value.fromInterned(field.base);
-            const base_ptr_ty = try pt.ptrType(info: {
-                var info = base_ptr.typeOf(zcu).ptrInfo(zcu);
-                info.flags.size = .one;
-                break :info info;
-            });
-            const parent_step = try arena.create(PointerDeriveStep);
-            parent_step.* = try pointerDerivation(base_ptr, arena, pt, opt_sema);
-            break :base .{ .field_ptr = .{
-                .parent = parent_step,
-                .field_idx = @intCast(field.index),
-                .result_ptr_ty = try base_ptr_ty.fieldPtrType(@intCast(field.index), pt),
-            } };
+            const parent_step = try arena.create(PointerDerivation);
+            parent_step.* = try pointerDerivation(.fromInterned(field.base), arena, zcu, opt_sema);
+            break :base .{
+                .elem_ty = if (parent_step.elem_ty.isSlice(zcu)) switch (field.index) {
+                    Value.slice_ptr_index => parent_step.elem_ty.slicePtrFieldType(zcu),
+                    Value.slice_len_index => .usize,
+                    else => unreachable,
+                } else parent_step.elem_ty.fieldType(@intCast(field.index), zcu),
+                .size = .one,
+                .@"align" = parent_step.elem_ty.fieldPtrAlign(parent_step.@"align", @intCast(field.index), zcu),
+                .@"const" = parent_step.@"const",
+                .@"volatile" = parent_step.@"volatile",
+                .@"allowzero" = parent_step.@"allowzero",
+                .addr = .{ .field = .{
+                    .parent = parent_step,
+                    .field_index = @intCast(field.index),
+                } },
+            };
         },
         .arr_elem => |arr_elem| base: {
-            const parent_step = try arena.create(PointerDeriveStep);
-            parent_step.* = try pointerDerivation(.fromInterned(arr_elem.base), arena, pt, opt_sema);
-            const parent_ptr_info = (try parent_step.ptrType(pt)).ptrInfo(zcu);
-            const result_ptr_ty = try pt.ptrType(.{
-                .child = parent_ptr_info.child,
-                .flags = flags: {
-                    var flags = parent_ptr_info.flags;
-                    flags.size = .one;
-                    if (flags.alignment != .none) flags.alignment = .minStrict(
-                        flags.alignment,
-                        Type.fromInterned(parent_ptr_info.child).abiAlignment(zcu),
-                    );
-                    break :flags flags;
+            const parent_step = try arena.create(PointerDerivation);
+            parent_step.* = try pointerDerivation(.fromInterned(arr_elem.base), arena, zcu, opt_sema);
+            break :base .{
+                .elem_ty = parent_step.elem_ty,
+                .size = .many,
+                .@"align" = switch (parent_step.@"align") {
+                    .none => .none,
+                    else => |a| a.minStrict(parent_step.elem_ty.abiAlignment(zcu)),
                 },
-            });
-            break :base .{ .elem_ptr = .{
-                .parent = parent_step,
-                .elem_idx = arr_elem.index,
-                .result_ptr_ty = result_ptr_ty,
-            } };
+                .@"const" = parent_step.@"const",
+                .@"volatile" = parent_step.@"volatile",
+                .@"allowzero" = parent_step.@"allowzero",
+                .addr = .{ .elem = .{
+                    .parent = parent_step,
+                    .elem_index = arr_elem.index,
+                } },
+            };
         },
     };
 
-    if (ptr.byte_offset == 0 and ptr.ty == (try base_derive.ptrType(pt)).toIntern()) {
+    if (ptr.byte_offset == 0 and
+        ptr_ty_info.child == base_derive.elem_ty.toIntern() and
+        ptr_size == base_derive.size and
+        ptr_ty_info.flags.alignment == base_derive.@"align" and
+        ptr_ty_info.flags.is_const == base_derive.@"const" and
+        ptr_ty_info.flags.is_volatile == base_derive.@"volatile" and
+        ptr_ty_info.flags.is_allowzero == base_derive.@"allowzero")
+    {
         return base_derive;
     }
 
-    const ptr_ty_info = Type.fromInterned(ptr.ty).ptrInfo(zcu);
     const need_child: Type = .fromInterned(ptr_ty_info.child);
     if (need_child.comptimeOnly(zcu) or
         need_child.zigTypeTag(zcu) == .@"opaque" or
@@ -2058,27 +2124,50 @@ pub fn pointerDerivation(ptr_val: Value, arena: Allocator, pt: Zcu.PerThread, op
     {
         // No refinement can happen - this pointer is presumably invalid.
         // Just offset it.
-        const parent = try arena.create(PointerDeriveStep);
+        const parent = try arena.create(PointerDerivation);
         parent.* = base_derive;
-        return .{ .offset_and_cast = .{
-            .parent = parent,
-            .byte_offset = ptr.byte_offset,
-            .new_ptr_ty = Type.fromInterned(ptr.ty),
-        } };
+        return .{
+            .elem_ty = .fromInterned(ptr_ty_info.child),
+            .size = ptr_size,
+            .@"align" = ptr_ty_info.flags.alignment,
+            .@"const" = ptr_ty_info.flags.is_const,
+            .@"volatile" = ptr_ty_info.flags.is_volatile,
+            .@"allowzero" = ptr_ty_info.flags.is_allowzero,
+            .addr = .{ .offset_and_cast = .{
+                .parent = parent,
+                .byte_offset = ptr.byte_offset,
+            } },
+        };
     }
     const need_bytes = need_child.abiSize(zcu);
 
     var cur_derive = base_derive;
     var cur_offset = ptr.byte_offset;
 
+    if (cur_derive.size == .many) {
+        const parent = try arena.create(PointerDerivation);
+        parent.* = cur_derive;
+        cur_derive = .{
+            .elem_ty = parent.elem_ty,
+            .size = .one,
+            .@"align" = parent.@"align",
+            .@"const" = parent.@"const",
+            .@"volatile" = parent.@"volatile",
+            .@"allowzero" = parent.@"allowzero",
+            .addr = .{ .elem = .{
+                .parent = parent,
+                .elem_index = 0,
+            } },
+        };
+    }
+
     // Refine through fields and array elements as much as possible.
 
     if (need_bytes > 0) while (true) {
-        const cur_ty = (try cur_derive.ptrType(pt)).childType(zcu);
-        if (cur_ty.toIntern() == need_child.toIntern() and cur_offset == 0) {
+        if (cur_derive.elem_ty.toIntern() == need_child.toIntern() and cur_offset == 0) {
             break;
         }
-        switch (cur_ty.zigTypeTag(zcu)) {
+        switch (cur_derive.elem_ty.zigTypeTag(zcu)) {
             .noreturn,
             .type,
             .comptime_int,
@@ -2105,71 +2194,105 @@ pub fn pointerDerivation(ptr_val: Value, arena: Allocator, pt: Zcu.PerThread, op
 
             .optional => {
                 ptr_opt: {
-                    if (!cur_ty.isPtrLikeOptional(zcu)) break :ptr_opt;
+                    if (!cur_derive.elem_ty.isPtrLikeOptional(zcu)) break :ptr_opt;
                     if (need_child.zigTypeTag(zcu) != .pointer) break :ptr_opt;
                     switch (need_child.ptrSize(zcu)) {
                         .one, .many => {},
                         .slice, .c => break :ptr_opt,
                     }
-                    const parent = try arena.create(PointerDeriveStep);
+                    const parent = try arena.create(PointerDerivation);
                     parent.* = cur_derive;
-                    cur_derive = .{ .opt_payload_ptr = .{
-                        .parent = parent,
-                        .result_ptr_ty = try pt.adjustPtrTypeChild(try parent.ptrType(pt), cur_ty.optionalChild(zcu)),
-                    } };
+                    cur_derive = .{
+                        .elem_ty = parent.elem_ty.optionalChild(zcu),
+                        .size = .one,
+                        .@"align" = parent.@"align",
+                        .@"const" = parent.@"const",
+                        .@"volatile" = parent.@"volatile",
+                        .@"allowzero" = parent.@"allowzero",
+                        .addr = .{ .opt_payload = .{
+                            .parent = parent,
+                        } },
+                    };
                     continue;
                 }
                 break;
             },
 
             .array => {
-                const elem_ty = cur_ty.childType(zcu);
+                const elem_ty = cur_derive.elem_ty.childType(zcu);
                 const elem_size = elem_ty.abiSize(zcu);
                 const start_idx = cur_offset / elem_size;
                 const end_idx = (cur_offset + need_bytes + elem_size - 1) / elem_size;
+                const start_off = start_idx * elem_size;
                 if (end_idx == start_idx + 1 and ptr_ty_info.flags.size == .one) {
-                    const parent = try arena.create(PointerDeriveStep);
+                    const parent = try arena.create(PointerDerivation);
                     parent.* = cur_derive;
-                    cur_derive = .{ .elem_ptr = .{
-                        .parent = parent,
-                        .elem_idx = start_idx,
-                        .result_ptr_ty = try pt.adjustPtrTypeChild(try parent.ptrType(pt), elem_ty),
-                    } };
-                    cur_offset -= start_idx * elem_size;
-                } else {
-                    // Go into the first element if needed, but don't go any deeper.
-                    if (start_idx > 0) {
-                        const parent = try arena.create(PointerDeriveStep);
-                        parent.* = cur_derive;
-                        cur_derive = .{ .elem_ptr = .{
+                    cur_derive = .{
+                        .elem_ty = elem_ty,
+                        .size = .one,
+                        .@"align" = switch (parent.@"align") {
+                            .none => .none,
+                            else => |a| a.offset(start_off),
+                        },
+                        .@"const" = parent.@"const",
+                        .@"volatile" = parent.@"volatile",
+                        .@"allowzero" = parent.@"allowzero",
+                        .addr = .{ .elem = .{
                             .parent = parent,
-                            .elem_idx = start_idx,
-                            .result_ptr_ty = try pt.adjustPtrTypeChild(try parent.ptrType(pt), elem_ty),
-                        } };
-                        cur_offset -= start_idx * elem_size;
+                            .elem_index = start_idx,
+                        } },
+                    };
+                    cur_offset -= start_off;
+                } else {
+                    // Go into the first element if the byte offsets line up neatly, but don't try
+                    // to go any deeper.
+                    if (start_idx > 0 and start_idx * elem_size == cur_offset) {
+                        const parent = try arena.create(PointerDerivation);
+                        parent.* = cur_derive;
+                        cur_derive = .{
+                            .elem_ty = elem_ty,
+                            .size = .one,
+                            .@"align" = switch (parent.@"align") {
+                                .none => .none,
+                                else => |a| a.offset(start_off),
+                            },
+                            .@"const" = parent.@"const",
+                            .@"volatile" = parent.@"volatile",
+                            .@"allowzero" = parent.@"allowzero",
+                            .addr = .{ .elem = .{
+                                .parent = parent,
+                                .elem_index = start_idx,
+                            } },
+                        };
+                        cur_offset -= start_off;
                     }
                     break;
                 }
             },
-            .@"struct" => switch (cur_ty.containerLayout(zcu)) {
+            .@"struct" => switch (cur_derive.elem_ty.containerLayout(zcu)) {
                 .auto, .@"packed" => break,
-                .@"extern" => for (0..cur_ty.structFieldCount(zcu)) |field_idx| {
-                    const field_ty = cur_ty.fieldType(field_idx, zcu);
-                    const start_off = cur_ty.structFieldOffset(field_idx, zcu);
+                .@"extern" => for (0..cur_derive.elem_ty.structFieldCount(zcu)) |field_idx| {
+                    const field_ty = cur_derive.elem_ty.fieldType(field_idx, zcu);
+                    const start_off = cur_derive.elem_ty.structFieldOffset(field_idx, zcu);
                     const end_off = start_off + field_ty.abiSize(zcu);
                     if (cur_offset >= start_off and cur_offset + need_bytes <= end_off) {
-                        const base_ptr_ty = try pt.ptrType(info: {
-                            var info = (try cur_derive.ptrType(pt)).ptrInfo(zcu);
-                            info.flags.size = .one;
-                            break :info info;
-                        });
-                        const parent = try arena.create(PointerDeriveStep);
+                        const parent = try arena.create(PointerDerivation);
                         parent.* = cur_derive;
-                        cur_derive = .{ .field_ptr = .{
-                            .parent = parent,
-                            .field_idx = @intCast(field_idx),
-                            .result_ptr_ty = try base_ptr_ty.fieldPtrType(@intCast(field_idx), pt),
-                        } };
+                        cur_derive = .{
+                            .elem_ty = field_ty,
+                            .size = .one,
+                            .@"align" = switch (parent.@"align") {
+                                .none => .none,
+                                else => |a| a.offset(start_off),
+                            },
+                            .@"const" = parent.@"const",
+                            .@"volatile" = parent.@"volatile",
+                            .@"allowzero" = parent.@"allowzero",
+                            .addr = .{ .field = .{
+                                .parent = parent,
+                                .field_index = @intCast(field_idx),
+                            } },
+                        };
                         cur_offset -= start_off;
                         break;
                     }
@@ -2179,31 +2302,33 @@ pub fn pointerDerivation(ptr_val: Value, arena: Allocator, pt: Zcu.PerThread, op
     };
 
     if (cur_offset == 0) compatible: {
-        const src_ptr_ty_info = (try cur_derive.ptrType(pt)).ptrInfo(zcu);
         // We allow silently doing some "coercible" pointer things.
         // In particular, we only give up if cv qualifiers are *removed*.
-        if (src_ptr_ty_info.flags.is_const and !ptr_ty_info.flags.is_const) break :compatible;
-        if (src_ptr_ty_info.flags.is_volatile and !ptr_ty_info.flags.is_volatile) break :compatible;
-        if (src_ptr_ty_info.flags.is_allowzero and !ptr_ty_info.flags.is_allowzero) break :compatible;
-        // Everything else has to match exactly.
-        if (src_ptr_ty_info.child != ptr_ty_info.child) break :compatible;
-        if (src_ptr_ty_info.sentinel != ptr_ty_info.sentinel) break :compatible;
-        if (src_ptr_ty_info.packed_offset != ptr_ty_info.packed_offset) break :compatible;
-        if (src_ptr_ty_info.flags.size != ptr_ty_info.flags.size) break :compatible;
-        if (src_ptr_ty_info.flags.alignment != ptr_ty_info.flags.alignment) break :compatible;
-        if (src_ptr_ty_info.flags.address_space != ptr_ty_info.flags.address_space) break :compatible;
-        if (src_ptr_ty_info.flags.vector_index != ptr_ty_info.flags.vector_index) break :compatible;
+        if (cur_derive.@"const" and !ptr_ty_info.flags.is_const) break :compatible;
+        if (cur_derive.@"volatile" and !ptr_ty_info.flags.is_volatile) break :compatible;
+        if (cur_derive.@"allowzero" and !ptr_ty_info.flags.is_allowzero) break :compatible;
+        // Element type and alignment, however, have to match exactly.
+        if (cur_derive.elem_ty.toIntern() != ptr_ty_info.child) break :compatible;
+        if (cur_derive.size != ptr_size) break :compatible;
+        if (cur_derive.@"align" != ptr_ty_info.flags.alignment) break :compatible;
 
         return cur_derive;
     }
 
-    const parent = try arena.create(PointerDeriveStep);
+    const parent = try arena.create(PointerDerivation);
     parent.* = cur_derive;
-    return .{ .offset_and_cast = .{
-        .parent = parent,
-        .byte_offset = cur_offset,
-        .new_ptr_ty = Type.fromInterned(ptr.ty),
-    } };
+    return .{
+        .elem_ty = .fromInterned(ptr_ty_info.child),
+        .size = ptr_size,
+        .@"align" = ptr_ty_info.flags.alignment,
+        .@"const" = ptr_ty_info.flags.is_const,
+        .@"volatile" = ptr_ty_info.flags.is_volatile,
+        .@"allowzero" = ptr_ty_info.flags.is_allowzero,
+        .addr = .{ .offset_and_cast = .{
+            .parent = parent,
+            .byte_offset = cur_offset,
+        } },
+    };
 }
 
 const InterpretMode = enum {

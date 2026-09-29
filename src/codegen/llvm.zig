@@ -1354,6 +1354,7 @@ pub const Object = struct {
     ///
     /// `val` is always a type because `o.type_pool` only contains types.
     pub fn updateConstIncomplete(o: *Object, pt: Zcu.PerThread, index: link.ConstPool.Index, val: InternPool.Index) Allocator.Error!void {
+        _ = pt;
         const zcu = o.zcu;
         assert(zcu.intern_pool.typeOf(val) == .type_type);
 
@@ -1367,7 +1368,7 @@ pub const Object = struct {
         if (!o.builder.strip) {
             assert(val != .anyerror_type);
             const fwd_ref = o.debug_types.items[@backingInt(index)];
-            const name_str = try o.builder.metadataStringFmt("{f}", .{ty.fmt(pt)});
+            const name_str = try o.builder.metadataStringFmt("{f}", .{ty.fmt(zcu)});
             // If `ty` is a function, use a dummy *function* type to prevent existing debug
             // subprograms from becoming ill-formed.
             const debug_incomplete_type = switch (ty.zigTypeTag(zcu)) {
@@ -1458,7 +1459,7 @@ pub const Object = struct {
         const target = zcu.getTarget();
         const ip = &zcu.intern_pool;
 
-        const name = try o.builder.metadataStringFmt("{f}", .{ty.fmt(pt)});
+        const name = try o.builder.metadataStringFmt("{f}", .{ty.fmt(zcu)});
 
         // lldb cannot handle non-byte-sized types, so in the logic below, bit sizes are padded up.
         // For instance, `bool` is considered to be 8 bits, and `u60` is considered to be 64 bits.
@@ -1967,7 +1968,7 @@ pub const Object = struct {
                 const debug_payload_type = try o.builder.debugUnionType(
                     payload_name: {
                         if (layout.tag_size == 0) break :payload_name name;
-                        break :payload_name try o.builder.metadataStringFmt("{f}:Payload", .{ty.fmt(pt)});
+                        break :payload_name try o.builder.metadataStringFmt("{f}:Payload", .{ty.fmt(zcu)});
                     },
                     file,
                     scope,

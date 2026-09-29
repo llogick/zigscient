@@ -950,12 +950,12 @@ pub const File = struct {
         }
     }
 
-    pub fn idle(base: *File, tid: Zcu.PerThread.Id) Error!bool {
+    fn idle(base: *File) Error!bool {
         switch (base.tag) {
             else => return false,
             inline .elf2, .coff, .macho2 => |tag| {
                 dev.check(tag.devFeature());
-                return @as(*tag.Type(), @fieldParentPtr("base", base)).idle(tid);
+                return @as(*tag.Type(), @fieldParentPtr("base", base)).idle();
             },
         }
     }
@@ -974,8 +974,8 @@ pub const File = struct {
     /// Commit pending changes and write headers. Takes into account final output mode.
     /// `arena` has the lifetime of the call to `Compilation.update`.
     pub fn flush(base: *File, arena: Allocator, tid: Zcu.PerThread.Id, prog_node: std.Progress.Node) Error!void {
-        crash_report.LinkerOp.start(base, tid);
-        defer crash_report.LinkerOp.stop(base, tid);
+        crash_report.LinkerOp.start(base);
+        defer crash_report.LinkerOp.stop(base);
 
         const comp = base.comp;
         const io = comp.io;
@@ -1026,8 +1026,8 @@ pub const File = struct {
     ) Error!void {
         assert(pt.zcu.llvm_object == null);
 
-        crash_report.LinkerOp.start(base, pt.tid);
-        defer crash_report.LinkerOp.stop(base, pt.tid);
+        crash_report.LinkerOp.start(base);
+        defer crash_report.LinkerOp.stop(base);
 
         switch (base.tag) {
             .lld => unreachable,
@@ -1115,7 +1115,7 @@ pub const File = struct {
         enabled,
     };
 
-    pub fn dump(base: *File, w: *Io.Writer, tid: Zcu.PerThread.Id) !DumpResult {
+    pub fn dump(base: *File, w: *Io.Writer) !DumpResult {
         if (!build_options.enable_debug_extensions) return .not_built;
         switch (base.tag) {
             .elf,
@@ -1129,7 +1129,7 @@ pub const File = struct {
             => return .unimplemented,
             inline else => |tag| {
                 dev.check(tag.devFeature());
-                return @as(*tag.Type(), @fieldParentPtr("base", base)).dump(w, tid);
+                return @as(*tag.Type(), @fieldParentPtr("base", base)).dump(w);
             },
         }
     }
@@ -1910,8 +1910,8 @@ pub fn doZcuTask(comp: *Compilation, tid: Zcu.PerThread.Id, task: ZcuTask) void 
         }
     }
 }
-pub fn doIdleTask(comp: *Compilation, tid: Zcu.PerThread.Id) Error!bool {
-    return if (comp.bin_file) |lf| lf.idle(tid) else false;
+pub fn doIdleTask(comp: *Compilation) Error!bool {
+    return if (comp.bin_file) |lf| lf.idle() else false;
 }
 /// After the main pipeline is done, but before flush, the compilation may need to link one final
 /// `Nav` into the binary: the `builtin.test_functions` value. Since the link thread isn't running

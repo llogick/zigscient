@@ -138,6 +138,15 @@ pub fn update(
     const gpa = comp.gpa;
     const io = comp.io;
 
+    if (!zcu.backendSupportsFeature(.separate_thread)) {
+        // We may still be running the linker on a separate thread at the moment, but once prelink
+        // completes, we need that thread to exit so that we can process all ZCU link tasks on the
+        // main thread. We signal this condition by immediately closing the ZCU task queue. It's
+        // important that we do this before enqueueing *any* ZCU link tasks: otherwise those tasks
+        // will run on the linker thread which is meant to be for prelink only!
+        comp.link_queue.finishZcuQueue(comp);
+    }
+
     {
         const tracy_trace = traceNamed(@src(), "astgen");
         defer tracy_trace.end();
@@ -268,14 +277,6 @@ pub fn update(
     }
 
     try zcu.flushRetryableFailures();
-
-    if (!zcu.backendSupportsFeature(.separate_thread)) {
-        // Close the ZCU task queue. Prelink may still be running, but the closed
-        // queue will cause the linker task to exit once prelink finishes. The
-        // closed queue also communicates to `enqueueZcu` that it should wait for
-        // the linker task to finish and then run ZCU tasks serially.
-        comp.link_queue.finishZcuQueue(comp);
-    }
 
     zcu.sema_prog_node = main_progress_node.start("Semantic Analysis", 0);
     if (comp.bin_file != null) {
@@ -3531,7 +3532,7 @@ fn analyzeFuncBodyInner(
             &inner_block,
             inner_block.nodeOffset(.zero),
             "cannot resolve inferred error set of {s} function type '{f}'",
-            .{ description, fn_ty.fmt(pt) },
+            .{ description, fn_ty.fmt(zcu) },
         );
     }
 
@@ -4647,6 +4648,6 @@ fn printVerboseAir(
     const zcu = pt.zcu;
     const ip = &zcu.intern_pool;
     try w.print("# Begin Function AIR: {f}:\n", .{fqn.fmt(ip)});
-    try air.write(w, pt, liveness);
+    try air.write(w, zcu, liveness);
     try w.print("# End Function AIR: {f}\n\n", .{fqn.fmt(ip)});
 }

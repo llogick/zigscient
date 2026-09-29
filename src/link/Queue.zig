@@ -17,7 +17,7 @@
 /// set to `null` by the main thread after it is canceled. It is not otherwise modified; as such, it
 /// may be checked non-atomically. If a task is being queued and this is `null`, tasks must be run
 /// eagerly.
-future: ?std.Io.Future(void),
+future: ?std.Io.Future(Io.Cancelable!void),
 
 /// This is only used if `future == null` during prelink. In that case, it is used to ensure that
 /// only one prelink task is run at a time.
@@ -42,15 +42,15 @@ pub const empty: Queue = .{
 
 pub fn cancel(q: *Queue, io: Io) void {
     if (q.future) |*f| {
-        f.cancel(io);
-        q.future = null;
+        defer q.future = null;
+        f.cancel(io) catch {};
     }
 }
 
-pub fn wait(q: *Queue, io: Io) void {
+pub fn wait(q: *Queue, io: Io) Io.Cancelable!void {
     if (q.future) |*f| {
-        f.await(io);
-        q.future = null;
+        defer q.future = null;
+        try f.await(io);
     }
 }
 
@@ -107,11 +107,13 @@ pub fn enqueueZcu(
         } else |err| switch (err) {
             error.Canceled => |e| return e,
             error.Closed => {
-                // The linker is still processing prelink tasks. Wait for those
-                // to finish, after which the linker task will exist, and ZCU
-                // tasks will be run non-concurrently. This logic exists for
-                // backends which do not support `Zcu.Feature.separate_thread`.
-                q.wait(io);
+                // This path is hit if the backend does not support `Zcu.Feature.separate_thread`.
+                // In that case, the linker processes *prelink* tasks on a thread, but once prelink
+                // completes we want to move processing to the main thread for all ZCU tasks. To
+                // achieve this, `Compilation.update` immmediately closes the ZCU task queue at the
+                // start of the update, causing `runLinkTasks` to exit as soon as prelink completes.
+                // So here we just need to wait for that, then fall back to the single-threaded path.
+                try q.wait(io);
             },
         }
     }
@@ -148,7 +150,7 @@ pub fn finishZcuQueue(q: *Queue, comp: *Compilation) void {
     }
 }
 
-fn runLinkTasks(q: *Queue, comp: *Compilation) void {
+fn runLinkTasks(q: *Queue, comp: *Compilation) Io.Cancelable!void {
     const io = comp.io;
     const tid: Zcu.PerThread.Id = .acquire(io);
     defer tid.release(io);
@@ -159,12 +161,19 @@ fn runLinkTasks(q: *Queue, comp: *Compilation) void {
         var task_buf: [128]PrelinkTask = undefined;
         const limit: usize = if (have_idle_tasks) 0 else 1;
         const n = q.prelink_queue.get(io, &task_buf, limit) catch |err| switch (err) {
-            error.Canceled => return,
+            error.Canceled => |e| return e,
             error.Closed => break :prelink_tasks,
         };
         if (n == 0) {
             assert(have_idle_tasks);
-            have_idle_tasks = runIdleTask(comp, tid);
+            have_idle_tasks = link.doIdleTask(comp) catch |err| switch (err) {
+                error.Canceled => |e| return e,
+                error.AlreadyReported => false,
+                error.OutOfMemory => more_idle_tasks: {
+                    comp.link_diags.setAllocFailure();
+                    break :more_idle_tasks false;
+                },
+            };
         } else for (task_buf[0..n]) |task| {
             link.doPrelinkTask(comp, task);
             have_idle_tasks = true;
@@ -181,8 +190,8 @@ fn runLinkTasks(q: *Queue, comp: *Compilation) void {
             break :prelink;
         }
         lf.prelink() catch |err| switch (err) {
+            error.Canceled => |e| return e,
             error.OutOfMemory => comp.link_diags.setAllocFailure(),
-            error.Canceled => @panic("TODO"),
             error.AlreadyReported => {},
         };
     }
@@ -191,30 +200,24 @@ fn runLinkTasks(q: *Queue, comp: *Compilation) void {
         var task_buf: [128]ZcuTask = undefined;
         const limit: usize = if (have_idle_tasks) 0 else 1;
         const n = q.zcu_queue.get(io, &task_buf, limit) catch |err| switch (err) {
-            error.Canceled => return,
+            error.Canceled => |e| return e,
             error.Closed => break :zcu_tasks,
         };
         if (n == 0) {
             assert(have_idle_tasks);
-            have_idle_tasks = runIdleTask(comp, tid);
+            have_idle_tasks = link.doIdleTask(comp) catch |err| switch (err) {
+                error.Canceled => |e| return e,
+                error.AlreadyReported => false,
+                error.OutOfMemory => more_idle_tasks: {
+                    comp.link_diags.setAllocFailure();
+                    break :more_idle_tasks false;
+                },
+            };
         } else for (task_buf[0..n]) |task| {
             link.doZcuTask(comp, tid, task);
             have_idle_tasks = true;
         }
     }
-}
-fn runIdleTask(comp: *Compilation, tid: Zcu.PerThread.Id) bool {
-    return link.doIdleTask(comp, tid) catch |err| switch (err) {
-        error.OutOfMemory => have_more: {
-            comp.link_diags.setAllocFailure();
-            break :have_more false;
-        },
-        error.AlreadyReported => false,
-        error.Canceled => {
-            comp.io.recancel();
-            return false;
-        },
-    };
 }
 
 const std = @import("std");

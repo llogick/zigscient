@@ -1330,7 +1330,7 @@ fn updateLazySymbol(
     const name_str = blk: {
         const name = try std.fmt.allocPrint(gpa, "__lazy_{s}_{f}", .{
             @tagName(lazy_sym.kind),
-            Type.fromInterned(lazy_sym.ty).fmt(pt),
+            Type.fromInterned(lazy_sym.ty).fmt(zcu),
         });
         defer gpa.free(name);
         break :blk try self.addString(gpa, name);

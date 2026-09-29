@@ -2516,7 +2516,7 @@ pub fn updateConst(
 ) link.Error!void {
     switch (val) {
         .generic_poison_type => log.debug("updateConst(anytype)", .{}),
-        else => log.debug("updateConst({f})", .{Value.fromInterned(val).fmtValue(pt)}),
+        else => log.debug("updateConst({f})", .{Value.fromInterned(val).fmtValue(pt.zcu)}),
     }
     dwarf.updateConstInner(pt, di_nw, val) catch |err| switch (err) {
         else => |e| return e,
@@ -2538,7 +2538,7 @@ fn updateConstInner(
             try dwarf.abbrevCode(di_nw, .numeric_type);
             var name_buf: [std.fmt.count("i{d}", .{std.math.maxInt(u16)})]u8 = undefined;
             try dwarf.strx(di_nw, std.mem.print(&name_buf, "{f}", .{
-                ty.fmt(pt),
+                ty.fmt(zcu),
             }) catch unreachable);
             try di_w.writeByte(switch (int_type.signedness) {
                 .signed => DW.ATE.signed,
@@ -2550,7 +2550,7 @@ fn updateConstInner(
         },
         .ptr_type => |ptr_type| switch (ptr_type.flags.size) {
             .one, .many, .c => {
-                const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(pt)});
+                const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(zcu)});
                 defer zcu.gpa.free(name);
                 try dwarf.abbrevCode(di_nw, switch (ptr_type.sentinel) {
                     .none => .ptr_type,
@@ -2585,7 +2585,7 @@ fn updateConstInner(
             },
             .slice => {
                 const ty: Type = .fromInterned(@"const");
-                const name = try zcu.gpa.print("{f}", .{ty.fmt(pt)});
+                const name = try zcu.gpa.print("{f}", .{ty.fmt(zcu)});
                 defer zcu.gpa.free(name);
                 try dwarf.abbrevCode(di_nw, .generated_struct_type);
                 try dwarf.strx(di_nw, name);
@@ -2605,7 +2605,7 @@ fn updateConstInner(
             },
         },
         .array_type => |array_type| {
-            const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(pt)});
+            const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(zcu)});
             defer zcu.gpa.free(name);
             try dwarf.abbrevCode(
                 di_nw,
@@ -2621,7 +2621,7 @@ fn updateConstInner(
             try di_w.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .vector_type => |vector_type| {
-            const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(pt)});
+            const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(zcu)});
             defer zcu.gpa.free(name);
             try dwarf.abbrevCode(di_nw, .vector_type);
             try dwarf.strx(di_nw, name);
@@ -2635,7 +2635,7 @@ fn updateConstInner(
             const opt_ty: Type = .fromInterned(@"const");
             const opt_child_ty: Type = .fromInterned(opt_child_type_index);
             const opt_repr = optRepr(opt_child_ty, zcu);
-            const name = try zcu.gpa.print("{f}", .{opt_ty.fmt(pt)});
+            const name = try zcu.gpa.print("{f}", .{opt_ty.fmt(zcu)});
             defer zcu.gpa.free(name);
             try dwarf.abbrevCode(di_nw, .generated_union_type);
             try dwarf.strx(di_nw, name);
@@ -2715,7 +2715,7 @@ fn updateConstInner(
                     codegen.errUnionPayloadOffset(eu_payload_ty, zcu),
                 },
             };
-            const name = try zcu.gpa.print("{f}", .{eu_ty.fmt(pt)});
+            const name = try zcu.gpa.print("{f}", .{eu_ty.fmt(zcu)});
             defer zcu.gpa.free(name);
 
             try dwarf.abbrevCode(di_nw, .generated_union_type);
@@ -2819,7 +2819,7 @@ fn updateConstInner(
                 try dwarf.abbrevCode(di_nw, .void_type);
                 var name_buf: ["@TypeOf(undefined)".len]u8 = undefined;
                 try dwarf.strx(di_nw, std.mem.print(&name_buf, "{f}", .{
-                    ty.fmt(pt),
+                    ty.fmt(zcu),
                 }) catch unreachable);
             },
             .anyerror => {
@@ -2842,7 +2842,7 @@ fn updateConstInner(
         },
         .tuple_type => |tuple_type| {
             const ty: Type = .fromInterned(@"const");
-            const name = try zcu.gpa.print("{f}", .{ty.fmt(pt)});
+            const name = try zcu.gpa.print("{f}", .{ty.fmt(zcu)});
             defer zcu.gpa.free(name);
             if (tuple_type.types.len == 0) {
                 try dwarf.abbrevCode(di_nw, .generated_empty_struct_type);
@@ -3255,7 +3255,7 @@ fn updateConstInner(
         .spirv_type => unreachable,
         .func_type => |func_type| {
             const is_empty = func_type.param_types.len == 0 and !func_type.is_var_args;
-            const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(pt)});
+            const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(zcu)});
             defer zcu.gpa.free(name);
             try dwarf.abbrevCode(di_nw, if (is_empty) .empty_func_type else .func_type);
             try dwarf.strx(di_nw, name);
@@ -3340,7 +3340,7 @@ fn updateConstInner(
             if (!is_empty) try di_w.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .error_set_type => |error_set_type| {
-            const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(pt)});
+            const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(zcu)});
             defer zcu.gpa.free(name);
             try dwarf.abbrevCode(
                 di_nw,
@@ -3358,7 +3358,7 @@ fn updateConstInner(
             if (error_set_type.names.len > 0) try di_w.writeUleb128(@backingInt(AbbrevCode.null));
         },
         .inferred_error_set_type => |func| {
-            const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(pt)});
+            const name = try zcu.gpa.print("{f}", .{Type.fromInterned(@"const").fmt(zcu)});
             defer zcu.gpa.free(name);
             try dwarf.abbrevCode(di_nw, .inferred_error_set_type);
             try dwarf.strx(di_nw, name);
@@ -3863,7 +3863,7 @@ pub fn updateConstIncomplete(
     di_nw: *link.MappedFile.Node.Writer,
     val: InternPool.Index,
 ) link.Error!void {
-    log.debug("updateConstIncomplete({f})", .{Value.fromInterned(val).fmtValue(pt)});
+    log.debug("updateConstIncomplete({f})", .{Value.fromInterned(val).fmtValue(pt.zcu)});
     dwarf.updateConstIncompleteInner(pt, di_nw, val) catch |err| switch (err) {
         else => |e| return e,
         error.WriteFailed => return dwarf.reportWriteError(di_nw),
@@ -4021,7 +4021,7 @@ fn updateConstIncompleteInner(
             },
             else => |val_key| break :done switch (val_key.typeOf()) {
                 .type_type => {
-                    const name = try zcu.gpa.print("{f}", .{Type.fromInterned(val).fmt(pt)});
+                    const name = try zcu.gpa.print("{f}", .{Type.fromInterned(val).fmt(zcu)});
                     defer zcu.gpa.free(name);
                     try dwarf.abbrevCode(di_nw, .generated_empty_struct_type);
                     try dwarf.strx(di_nw, name);
@@ -4140,11 +4140,12 @@ pub fn genDecl(
     di_nw: *link.MappedFile.Node.Writer,
     instance: Decl.Instance,
 ) link.Error!void {
+    const zcu = pt.zcu;
     switch (instance) {
         .none => unreachable,
-        .@"const" => |@"const"| log.debug("genDecl({f})", .{Value.fromInterned(@"const").fmtValue(pt)}),
+        .@"const" => |@"const"| log.debug("genDecl({f})", .{Value.fromInterned(@"const").fmtValue(zcu)}),
         .global => |global| log.debug("genDecl({f})", .{
-            pt.zcu.intern_pool.getNav(global).fqn.fmt(&pt.zcu.intern_pool),
+            zcu.intern_pool.getNav(global).fqn.fmt(&zcu.intern_pool),
         }),
     }
     dwarf.genDeclInner(pt, di_nw, instance) catch |err| switch (err) {

@@ -1720,7 +1720,7 @@ fn updateLazySymbol(
     const name_str_index = blk: {
         const name = try std.fmt.allocPrint(gpa, "__lazy_{s}_{f}", .{
             @tagName(sym.kind),
-            Type.fromInterned(sym.ty).fmt(pt),
+            Type.fromInterned(sym.ty).fmt(zcu),
         });
         defer gpa.free(name);
         break :blk try self.strtab.insert(gpa, name);
@@ -2349,7 +2349,7 @@ fn checkUavAllocated(pt: Zcu.PerThread, index: InternPool.Index, meta: AvMetadat
         const uav = Value.fromInterned(index);
         const ty = uav.typeOf(zcu);
         log.err("UAV {f}({d}) assigned symbol {d} but not allocated!", .{
-            ty.fmt(pt),
+            ty.fmt(zcu),
             index,
             meta.symbol_index,
         });

@@ -245,7 +245,7 @@ pub fn typeSlice(
 ) ErrSet![]const u8 {
     var aw: std.Io.Writer.Allocating = .init(arena);
     defer aw.deinit();
-    toType(ip_index, aira.active.pt).print(&aw.writer, aira.active.pt, null) catch return "";
+    toType(ip_index, aira.active.pt).print(&aw.writer, aira.active.pt.zcu, null) catch return "";
     return try aw.toOwnedSlice();
 }
 
@@ -388,7 +388,7 @@ pub fn getFields(
                 completions_list.append(arena, .{
                     .label = arena.print("{s}", .{field_name.toSlice(&pt.zcu.intern_pool)}) catch @panic("OOM"),
                     .kind = .Field,
-                    .detail = arena.print("{f}", .{ty.fmt(pt)}) catch @panic("OOM"),
+                    .detail = arena.print("{f}", .{ty.fmt(pt.zcu)}) catch @panic("OOM"),
                 }) catch @panic("OOM");
             }
         },
@@ -423,7 +423,7 @@ pub fn dumpFields(
             const let = pt.zcu.intern_pool.loadStructType(idx);
             for (let.field_names.get(&pt.zcu.intern_pool), let.field_types.get(&pt.zcu.intern_pool)) |field_name, field_type_index| {
                 const ty = compiler.Compilation.Type.fromInterned(field_type_index);
-                fields_info_out.append(arena, arena.print("{s} : {f}", .{ field_name.toSlice(&pt.zcu.intern_pool), ty.fmt(pt) }) catch @panic("OOM")) catch @panic("OOM");
+                fields_info_out.append(arena, arena.print("{s} : {f}", .{ field_name.toSlice(&pt.zcu.intern_pool), ty.fmt(pt.zcu) }) catch @panic("OOM")) catch @panic("OOM");
                 // std.log.err("{s} : {f}", .{ field_name.toSlice(&pt.zcu.intern_pool), ty.fmt(pt) });
             }
             fields_info_out.append(arena, "\n```\npub fn decls:\n```zig") catch @panic("OOM");
@@ -458,7 +458,7 @@ pub fn dumpFields(
                 const field_values = let.field_values.get(&pt.zcu.intern_pool);
                 if (i < field_values.len) {
                     const val = compiler.Compilation.Value.fromInterned(field_values[i]);
-                    fields_info_out.append(arena, arena.print("{s} = {f}", .{ field_name.toSlice(&pt.zcu.intern_pool), val.fmtValue(pt) }) catch @panic("OOM")) catch @panic("OOM");
+                    fields_info_out.append(arena, arena.print("{s} = {f}", .{ field_name.toSlice(&pt.zcu.intern_pool), val.fmtValue(pt.zcu) }) catch @panic("OOM")) catch @panic("OOM");
                     // std.log.err("{s} = {f}", .{ field_name.toSlice(&pt.zcu.intern_pool), val.fmtValue(pt) });
                 } else {
                     fields_info_out.append(arena, arena.print("{s}", .{field_name.toSlice(&pt.zcu.intern_pool)}) catch @panic("OOM")) catch @panic("OOM");

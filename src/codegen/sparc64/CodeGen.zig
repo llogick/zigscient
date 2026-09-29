@@ -985,7 +985,7 @@ fn airArg(self: *Self, inst: Air.Inst.Index) InnerError!void {
         switch (self.args[arg_index]) {
             .stack_offset => |off| {
                 const abi_size = math.cast(u32, ty.abiSize(zcu)) orelse {
-                    return self.fail("type '{f}' too big to fit into stack frame", .{ty.fmt(pt)});
+                    return self.fail("type '{f}' too big to fit into stack frame", .{ty.fmt(zcu)});
                 };
                 const offset = off + abi_size;
                 break :blk .{ .stack_offset = offset };
@@ -2722,7 +2722,7 @@ fn allocMemPtr(self: *Self, inst: Air.Inst.Index) !u32 {
     }
 
     const abi_size = math.cast(u32, elem_ty.abiSize(zcu)) orelse {
-        return self.fail("type '{f}' too big to fit into stack frame", .{elem_ty.fmt(pt)});
+        return self.fail("type '{f}' too big to fit into stack frame", .{elem_ty.fmt(zcu)});
     };
     // TODO swap this for inst.ty.ptrAlign
     const abi_align = elem_ty.abiAlignment(zcu);
@@ -2734,7 +2734,7 @@ fn allocRegOrMem(self: *Self, inst: Air.Inst.Index, reg_ok: bool) !MCValue {
     const zcu = pt.zcu;
     const elem_ty = self.typeOfIndex(inst);
     const abi_size = math.cast(u32, elem_ty.abiSize(zcu)) orelse {
-        return self.fail("type '{f}' too big to fit into stack frame", .{elem_ty.fmt(pt)});
+        return self.fail("type '{f}' too big to fit into stack frame", .{elem_ty.fmt(zcu)});
     };
     const abi_align = elem_ty.abiAlignment(zcu);
     self.stack_align = self.stack_align.max(abi_align);

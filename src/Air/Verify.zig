@@ -41,7 +41,7 @@ pub fn run(pt: Zcu.PerThread, func_index: InternPool.Index, air: *const Air) voi
                 error.Canceled => return io.recancel(),
             };
             defer io.unlockStderr();
-            air.write(&stderr.file_writer.interface, pt, null) catch |err| switch (err) {
+            air.write(&stderr.file_writer.interface, zcu, null) catch |err| switch (err) {
                 error.WriteFailed => switch (stderr.file_writer.err.?) {
                     error.Canceled => return io.recancel(),
                     else => {},

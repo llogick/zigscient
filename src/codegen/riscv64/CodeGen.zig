@@ -1291,7 +1291,7 @@ fn genLazy(func: *Func, lazy_sym: link.File.LazySymbol) InnerError!void {
     switch (Type.fromInterned(lazy_sym.ty).zigTypeTag(zcu)) {
         .@"enum" => {
             const enum_ty = Type.fromInterned(lazy_sym.ty);
-            wip_mir_log.debug("{f}.@tagName:", .{enum_ty.fmt(pt)});
+            wip_mir_log.debug("{f}.@tagName:", .{enum_ty.fmt(zcu)});
 
             const param_regs = abi.Registers.Integer.function_arg_regs;
             const ret_reg = param_regs[0];
@@ -1374,7 +1374,7 @@ fn genLazy(func: *Func, lazy_sym: link.File.LazySymbol) InnerError!void {
         },
         else => return func.fail(
             "TODO implement {s} for {f}",
-            .{ @tagName(lazy_sym.kind), Type.fromInterned(lazy_sym.ty).fmt(pt) },
+            .{ @tagName(lazy_sym.kind), Type.fromInterned(lazy_sym.ty).fmt(zcu) },
         ),
     }
 }
@@ -1911,7 +1911,7 @@ fn splitType(func: *Func, ty: Type) ![2]Type {
             else => return func.fail("TODO: splitType class {}", .{class}),
         };
     } else if (parts[0].abiSize(zcu) + parts[1].abiSize(zcu) == ty.abiSize(zcu)) return parts;
-    return func.fail("TODO implement splitType for {f}", .{ty.fmt(func.pt)});
+    return func.fail("TODO implement splitType for {f}", .{ty.fmt(zcu)});
 }
 
 /// Truncates the value in the register in place.
@@ -2024,7 +2024,7 @@ fn allocMemPtr(func: *Func, inst: Air.Inst.Index) !FrameIndex {
     const val_ty = ptr_ty.childType(zcu);
     return func.allocFrameIndex(FrameAlloc.init(.{
         .size = math.cast(u32, val_ty.abiSize(zcu)) orelse {
-            return func.fail("type '{f}' too big to fit into stack frame", .{val_ty.fmt(pt)});
+            return func.fail("type '{f}' too big to fit into stack frame", .{val_ty.fmt(zcu)});
         },
         .alignment = ptr_ty.ptrAlignment(zcu).max(.@"1"),
     }));
@@ -2164,7 +2164,7 @@ pub fn spillRegisters(func: *Func, comptime registers: []const Register) !void {
 /// allocated. A second call to `copyToTmpRegister` may return the same register.
 /// This can have a side effect of spilling instructions to the stack to free up a register.
 fn copyToTmpRegister(func: *Func, ty: Type, mcv: MCValue) !Register {
-    log.debug("copyToTmpRegister ty: {f}", .{ty.fmt(func.pt)});
+    log.debug("copyToTmpRegister ty: {f}", .{ty.fmt(func.pt.zcu)});
     const reg = try func.register_manager.allocReg(null, func.regTempClassForType(ty));
     try func.genSetReg(ty, reg, mcv);
     return reg;
@@ -2249,7 +2249,7 @@ fn airIntCast(func: *Func, inst: Air.Inst.Index) !void {
 
         break :result dst_mcv;
     } orelse return func.fail("TODO: implement airIntCast from {f} to {f}", .{
-        src_ty.fmt(pt), dst_ty.fmt(pt),
+        src_ty.fmt(zcu), dst_ty.fmt(zcu),
     });
 
     return func.finishAir(inst, result, .{ ty_op.operand, .none, .none });
@@ -2636,7 +2636,7 @@ fn genBinOp(
         .add_sat,
         => {
             if (bit_size != 64 or !is_unsigned)
-                return func.fail("TODO: genBinOp ty: {f}", .{lhs_ty.fmt(pt)});
+                return func.fail("TODO: genBinOp ty: {f}", .{lhs_ty.fmt(zcu)});
 
             const tmp_reg = try func.copyToTmpRegister(rhs_ty, .{ .register = rhs_reg });
             const tmp_lock = func.register_manager.lockRegAssumeUnused(tmp_reg);
@@ -4057,7 +4057,7 @@ fn airGetUnionTag(func: *Func, inst: Air.Inst.Index) !void {
             } else {
                 return func.fail(
                     "TODO implement get_union_tag for ABI larger than 8 bytes and operand {}, tag {f}",
-                    .{ frame_mcv, tag_ty.fmt(pt) },
+                    .{ frame_mcv, tag_ty.fmt(zcu) },
                 );
             }
         },
@@ -4177,7 +4177,7 @@ fn airAbs(func: *Func, inst: Air.Inst.Index) !void {
 
         switch (scalar_ty.zigTypeTag(zcu)) {
             .int => if (ty.zigTypeTag(zcu) == .vector) {
-                return func.fail("TODO implement airAbs for {f}", .{ty.fmt(pt)});
+                return func.fail("TODO implement airAbs for {f}", .{ty.fmt(zcu)});
             } else {
                 const int_info = scalar_ty.intInfo(zcu);
                 const int_bits = int_info.bits;
@@ -4258,7 +4258,7 @@ fn airAbs(func: *Func, inst: Air.Inst.Index) !void {
 
                 break :result return_mcv;
             },
-            else => return func.fail("TODO: implement airAbs {f}", .{scalar_ty.fmt(pt)}),
+            else => return func.fail("TODO: implement airAbs {f}", .{scalar_ty.fmt(zcu)}),
         }
 
         break :result .unreach;
@@ -4322,7 +4322,7 @@ fn airByteSwap(func: *Func, inst: Air.Inst.Index) !void {
 
                 break :result dest_mcv;
             },
-            else => return func.fail("TODO: airByteSwap {f}", .{ty.fmt(pt)}),
+            else => return func.fail("TODO: airByteSwap {f}", .{ty.fmt(zcu)}),
         }
     };
     return func.finishAir(inst, result, .{ ty_op.operand, .none, .none });
@@ -4388,7 +4388,7 @@ fn airUnaryMath(func: *Func, inst: Air.Inst.Index, tag: Air.Inst.Tag) !void {
                     else => return func.fail("TODO: airUnaryMath Float {s}", .{@tagName(tag)}),
                 }
             },
-            else => return func.fail("TODO: airUnaryMath ty: {f}", .{ty.fmt(pt)}),
+            else => return func.fail("TODO: airUnaryMath ty: {f}", .{ty.fmt(zcu)}),
         }
 
         break :result MCValue{ .register = dst_reg };
@@ -4488,7 +4488,7 @@ fn load(func: *Func, dst_mcv: MCValue, ptr_mcv: MCValue, ptr_ty: Type) InnerErro
     const zcu = pt.zcu;
     const dst_ty = ptr_ty.childType(zcu);
 
-    log.debug("loading {}:{f} into {}", .{ ptr_mcv, ptr_ty.fmt(pt), dst_mcv });
+    log.debug("loading {}:{f} into {}", .{ ptr_mcv, ptr_ty.fmt(zcu), dst_mcv });
 
     switch (ptr_mcv) {
         .none,
@@ -4541,7 +4541,7 @@ fn airStore(func: *Func, inst: Air.Inst.Index, safety: bool) !void {
 fn store(func: *Func, ptr_mcv: MCValue, src_mcv: MCValue, ptr_ty: Type) !void {
     const zcu = func.pt.zcu;
     const src_ty = ptr_ty.childType(zcu);
-    log.debug("storing {}:{f} in {}:{f}", .{ src_mcv, src_ty.fmt(func.pt), ptr_mcv, ptr_ty.fmt(func.pt) });
+    log.debug("storing {}:{f} in {}:{f}", .{ src_mcv, src_ty.fmt(zcu), ptr_mcv, ptr_ty.fmt(zcu) });
 
     switch (ptr_mcv) {
         .none => unreachable,
@@ -7269,7 +7269,7 @@ fn airBitCast(func: *Func, inst: Air.Inst.Index) !void {
         const bit_size = dst_ty.bitSize(zcu);
         if (abi_size * 8 <= bit_size) break :result dst_mcv;
 
-        return func.fail("TODO: airBitCast {f} to {f}", .{ src_ty.fmt(pt), dst_ty.fmt(pt) });
+        return func.fail("TODO: airBitCast {f} to {f}", .{ src_ty.fmt(zcu), dst_ty.fmt(zcu) });
     };
     return func.finishAir(inst, result, .{ ty_op.operand, .none, .none });
 }
@@ -8085,7 +8085,7 @@ fn airAggregateInit(func: *Func, inst: Air.Inst.Index) !void {
                 );
                 break :result .{ .load_frame = .{ .index = frame_index } };
             },
-            else => return func.fail("TODO: airAggregate {f}", .{result_ty.fmt(pt)}),
+            else => return func.fail("TODO: airAggregate {f}", .{result_ty.fmt(zcu)}),
         }
     };
 
@@ -8279,7 +8279,7 @@ fn resolveCallingConventionValues(
                 };
 
                 result.return_value = switch (ret_tracking_i) {
-                    else => return func.fail("ty {f} took {} tracking return indices", .{ ret_ty.fmt(pt), ret_tracking_i }),
+                    else => return func.fail("ty {f} took {} tracking return indices", .{ ret_ty.fmt(zcu), ret_tracking_i }),
                     1 => ret_tracking[0],
                     2 => InstTracking.init(.{ .register_pair = .{
                         ret_tracking[0].short.register, ret_tracking[1].short.register,
@@ -8334,7 +8334,7 @@ fn resolveCallingConventionValues(
                     else => return func.fail("TODO: C calling convention arg class {}", .{class}),
                 } else {
                     arg.* = switch (arg_mcv_i) {
-                        else => return func.fail("ty {f} took {} tracking arg indices", .{ ty.fmt(pt), arg_mcv_i }),
+                        else => return func.fail("ty {f} took {} tracking arg indices", .{ ty.fmt(zcu), arg_mcv_i }),
                         1 => arg_mcv[0],
                         2 => .{ .register_pair = .{ arg_mcv[0].register, arg_mcv[1].register } },
                     };

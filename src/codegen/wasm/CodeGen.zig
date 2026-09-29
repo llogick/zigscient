@@ -1154,7 +1154,7 @@ fn allocStack(cg: *CodeGen, ty: Type) !WValue {
 
     const abi_size = std.math.cast(u32, ty.abiSize(zcu)) orelse {
         return cg.fail("Type {f} with ABI size of {d} exceeds stack frame size", .{
-            ty.fmt(pt), ty.abiSize(zcu),
+            ty.fmt(zcu), ty.abiSize(zcu),
         });
     };
     const abi_align = ty.abiAlignment(zcu);
@@ -1195,7 +1195,7 @@ fn allocStackPtr(cg: *CodeGen, inst: Air.Inst.Index) !WValue {
     const abi_alignment = ptr_ty.ptrAlignment(zcu);
     const abi_size = std.math.cast(u32, pointee_ty.abiSize(zcu)) orelse {
         return cg.fail("Type {f} with ABI size of {d} exceeds stack frame size", .{
-            pointee_ty.fmt(pt), pointee_ty.abiSize(zcu),
+            pointee_ty.fmt(zcu), pointee_ty.abiSize(zcu),
         });
     };
     cg.stack_alignment = cg.stack_alignment.max(abi_alignment);
@@ -2108,7 +2108,7 @@ fn airCall(cg: *CodeGen, inst: Air.Inst.Index, modifier: std.lang.CallModifier) 
             if (!arg_ty.hasRuntimeBits(zcu)) continue;
 
             const arg_size = std.math.cast(u32, arg_ty.abiSize(zcu)) orelse {
-                return cg.fail("argument type {f} too large for wasm varargs buffer", .{arg_ty.fmt(pt)});
+                return cg.fail("argument type {f} too large for wasm varargs buffer", .{arg_ty.fmt(zcu)});
             };
             const arg_align = arg_ty.abiAlignment(zcu);
 
@@ -2128,7 +2128,7 @@ fn airCall(cg: *CodeGen, inst: Air.Inst.Index, modifier: std.lang.CallModifier) 
 
             const arg_val = try cg.resolveInst(arg);
             const arg_size = std.math.cast(u32, arg_ty.abiSize(zcu)) orelse {
-                return cg.fail("argument type {f} too large for wasm varargs buffer", .{arg_ty.fmt(pt)});
+                return cg.fail("argument type {f} too large for wasm varargs buffer", .{arg_ty.fmt(zcu)});
             };
             const arg_align = arg_ty.abiAlignment(zcu);
 
@@ -5189,7 +5189,7 @@ fn lowerConstant(cg: *CodeGen, val: Value) InnerError!WValue {
             return .{ .imm32 = @intFromBool(!val.isNull(zcu)) };
         },
         .aggregate => switch (ip.indexToKey(ty.ip_index)) {
-            .array_type => return cg.fail("Wasm TODO: LowerConstant for {f}", .{ty.fmt(pt)}),
+            .array_type => return cg.fail("Wasm TODO: LowerConstant for {f}", .{ty.fmt(zcu)}),
             .vector_type => {
                 assert(determineSimdStoreStrategy(ty, zcu, cg.target) == .direct);
                 var buf: [16]u8 = undefined;
@@ -5883,7 +5883,7 @@ fn airAggFieldVal(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
         .@"packed" => unreachable, // legalize .expand_packed_agg_field_val
         else => result: {
             const offset = std.math.cast(u32, struct_ty.structFieldOffset(field_index, zcu)) orelse {
-                return cg.fail("Field type '{f}' too big to fit into stack frame", .{field_ty.fmt(pt)});
+                return cg.fail("Field type '{f}' too big to fit into stack frame", .{field_ty.fmt(zcu)});
             };
             if (isByRef(field_ty, zcu, cg.target)) {
                 break :result try cg.offsetPointer(operand, offset);
@@ -6296,7 +6296,7 @@ fn isNull(cg: *CodeGen, operand: WValue, op_ty: Type, opcode: std.wasm.Opcode, o
         // a pointer to the stack value
         if (payload_ty.hasRuntimeBits(zcu)) {
             const offset = std.math.cast(u32, payload_ty.abiSize(zcu)) orelse {
-                return cg.fail("Optional type {f} too big to fit into stack frame", .{optional_ty.fmt(pt)});
+                return cg.fail("Optional type {f} too big to fit into stack frame", .{optional_ty.fmt(zcu)});
             };
             try cg.emitMemBase(operand);
             try cg.addMemArg(.i32_load8_u, .{ .offset = operand.memOffset() + offset, .alignment = .@"1" });
@@ -6381,7 +6381,7 @@ fn airOptionalPayloadPtrSet(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void 
     }
 
     const offset = std.math.cast(u32, payload_ty.abiSize(zcu)) orelse {
-        return cg.fail("Optional type {f} too big to fit into stack frame", .{opt_ty.fmt(pt)});
+        return cg.fail("Optional type {f} too big to fit into stack frame", .{opt_ty.fmt(zcu)});
     };
 
     try cg.emitMemBase(operand);
@@ -6412,7 +6412,7 @@ fn airWrapOptional(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
             break :result operand;
         }
         const offset = std.math.cast(u32, payload_ty.abiSize(zcu)) orelse {
-            return cg.fail("Optional type {f} too big to fit into stack frame", .{op_ty.fmt(pt)});
+            return cg.fail("Optional type {f} too big to fit into stack frame", .{op_ty.fmt(zcu)});
         };
 
         // Create optional type, set the non-null bit, and store the operand inside the optional type

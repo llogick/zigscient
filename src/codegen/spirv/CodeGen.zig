@@ -1297,8 +1297,8 @@ fn constant(cg: *CodeGen, ty: Type, val: Value, repr: Repr) Error!Id {
     const ip = &zcu.intern_pool;
 
     log.debug("lowering constant: ty = {f}, val = {f}, key = {s}", .{
-        ty.fmt(pt),
-        val.fmtValue(pt),
+        ty.fmt(zcu),
+        val.fmtValue(zcu),
         @tagName(ip.indexToKey(val.toIntern())),
     });
     assert(!ty.isPtrAtRuntime(zcu));
@@ -1640,7 +1640,6 @@ fn constant(cg: *CodeGen, ty: Type, val: Value, repr: Repr) Error!Id {
 }
 
 fn constantPtr(cg: *CodeGen, ptr_val: Value) !Id {
-    const pt = cg.pt;
     const zcu = cg.zcu;
     const gpa = cg.gpa;
 
@@ -1653,32 +1652,64 @@ fn constantPtr(cg: *CodeGen, ptr_val: Value) !Id {
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
-    const derivation = try ptr_val.pointerDerivation(arena.allocator(), pt, null);
-    return cg.derivePtr(derivation);
+    // TODO: `Value.pointerDerivation` ought to do this for us, but it doesn't receive
+    // `pt`, so it actually *can't* until https://github.com/ziglang/zig/issues/24061 is
+    // implemented.
+    const non_packed_ptr_val: Value = non_packed_ptr: {
+        const ptr_info = ptr_val.typeOf(zcu).ptrInfo(zcu);
+        if (ptr_info.packed_offset.host_size == 0) {
+            break :non_packed_ptr ptr_val;
+        }
+        const backing_ty: Type = switch (ptr_info.flags.vector_index) {
+            _ => try cg.pt.vectorType(.{
+                .child = ptr_info.child,
+                .len = ptr_info.packed_offset.host_size,
+            }),
+            .none => try cg.pt.intType(
+                .unsigned,
+                @intCast(ptr_info.packed_offset.host_size * 8),
+            ),
+        };
+        const new_ptr_ty = try cg.pt.ptrType(info: {
+            var info = ptr_info;
+            info.child = backing_ty.toIntern();
+            info.packed_offset = .{ .host_size = 0, .bit_offset = 0 };
+            info.flags.vector_index = .none;
+            break :info info;
+        });
+        break :non_packed_ptr try cg.pt.getCoerced(ptr_val, new_ptr_ty);
+    };
+
+    const derivation = try non_packed_ptr_val.pointerDerivation(arena.allocator(), zcu, null);
+    return cg.derivePtr(ptr_val.typeOf(zcu).ptrAddressSpace(zcu), derivation);
 }
 
-fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
+fn derivePtr(cg: *CodeGen, @"addrspace": std.lang.AddressSpace, derivation: Value.PointerDerivation) !Id {
     const gpa = cg.gpa;
-    const pt = cg.pt;
     const zcu = cg.zcu;
     const target = zcu.getTarget();
-    switch (derivation) {
-        .comptime_alloc_ptr, .comptime_field_ptr => unreachable,
+
+    const result_ty_id = try cg.ptrType(
+        try cg.pointeeType(@"addrspace", derivation.elem_ty, false),
+        cg.storageClass(@"addrspace"),
+    );
+
+    switch (derivation.addr) {
+        .comptime_alloc, .comptime_field => unreachable,
         .int => |int| {
             if (target.os.tag != .opencl) {
-                if (int.ptr_ty.ptrAddressSpace(zcu) != .physical_storage_buffer) {
+                if (@"addrspace" != .physical_storage_buffer) {
                     return cg.fail(
                         "cannot cast integer to pointer with address space '{s}'",
-                        .{@tagName(int.ptr_ty.ptrAddressSpace(zcu))},
+                        .{@tagName(@"addrspace")},
                     );
                 }
             }
-            const result_ty_id = try cg.resolveType(int.ptr_ty, .direct);
             // TODO: This can probably be an OpSpecConstantOp Bitcast, but
             // that is not implemented by Mesa yet. Therefore, just generate it
             // as a runtime operation.
             const result_ptr_id = cg.allocId();
-            const value_id = try cg.constInt(.usize, int.addr);
+            const value_id = try cg.constInt(.usize, int);
             try cg.body.emit(gpa, .OpConvertUToPtr, .{
                 .id_result_type = result_ty_id,
                 .id_result = result_ptr_id,
@@ -1686,10 +1717,8 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
             });
             return result_ptr_id;
         },
-        .nav_ptr => |nav_index| {
+        .nav => |nav_index| {
             const ip = &zcu.intern_pool;
-            const result_ptr_ty = try pt.navPtrType(nav_index);
-            const ty_id = try cg.resolveType(result_ptr_ty, .direct);
             const nav = ip.getNav(nav_index);
             const nav_ty: Type = .fromInterned(nav.resolved.?.type);
 
@@ -1698,10 +1727,10 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
 
             if (ip.isFunctionType(nav_ty.toIntern())) {
                 if (is_extern) return try cg.resolveExternFn(nav_index);
-                return try cg.constUndef(ty_id);
+                return try cg.constUndef(result_ty_id);
             }
             if (!nav_ty.hasRuntimeBits(zcu) and nav_ty.zigTypeTag(zcu) != .spirv) {
-                return cg.constUndef(ty_id);
+                return cg.constUndef(result_ty_id);
             }
             if (!is_extern) {
                 return cg.todo("pointer to constant '{f}'", .{nav.fqn.fmt(ip)});
@@ -1718,7 +1747,7 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
                 try cg.block_var_ids.put(gpa, var_id, {});
             }
 
-            if (decl_ptr_ty_id == ty_id) return var_id;
+            if (decl_ptr_ty_id == result_ty_id) return var_id;
             switch (target.os.tag) {
                 .vulkan, .opengl => return var_id,
                 else => {},
@@ -1726,63 +1755,63 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
 
             const casted_ptr_id = cg.allocId();
             try cg.body.emit(gpa, .OpBitcast, .{
-                .id_result_type = ty_id,
+                .id_result_type = result_ty_id,
                 .id_result = casted_ptr_id,
                 .operand = var_id,
             });
             return casted_ptr_id;
         },
-        .uav_ptr => |uav| {
+        .uav => |uav_val| {
             const ip = &zcu.intern_pool;
-            const result_ptr_ty: Type = .fromInterned(uav.orig_ty);
-            const ty_id = try cg.resolveType(result_ptr_ty, .direct);
-            const uav_ty: Type = .fromInterned(ip.typeOf(uav.val));
+            const uav_ty = uav_val.typeOf(zcu);
 
-            switch (ip.indexToKey(uav.val)) {
+            switch (ip.indexToKey(uav_val.toIntern())) {
                 .func => unreachable, // TODO
                 .@"extern" => assert(!ip.isFunctionType(uav_ty.toIntern())),
                 else => {},
             }
 
             if (!uav_ty.hasRuntimeBits(zcu) and uav_ty.zigTypeTag(zcu) != .spirv) {
-                return cg.constUndef(ty_id);
+                return cg.constUndef(result_ty_id);
             }
 
-            if (cg.storageClass(result_ptr_ty.ptrAddressSpace(zcu)) != .function) {
-                return cg.todo("pointer to an anonymous constant of type '{f}'", .{uav_ty.fmt(pt)});
+            if (cg.storageClass(@"addrspace") != .function) {
+                return cg.todo("pointer to an anonymous constant of type '{f}'", .{uav_ty.fmt(zcu)});
             }
 
             const uav_ty_id = try cg.resolveType(uav_ty, .indirect);
             const ptr_id = try cg.alloc(uav_ty_id, null);
-            const val_id = try cg.constant(uav_ty, .fromInterned(uav.val), .indirect);
+            const val_id = try cg.constant(uav_ty, uav_val, .indirect);
             try cg.body.emit(gpa, .OpStore, .{ .pointer = ptr_id, .object = val_id });
             return ptr_id;
         },
-        .eu_payload_ptr => @panic("TODO"),
-        .opt_payload_ptr => @panic("TODO"),
-        .field_ptr => |field| {
-            const parent_ptr_id = try cg.derivePtr(field.parent.*);
-            const parent_ptr_ty = try field.parent.ptrType(pt);
-            return cg.structFieldPtr(field.result_ptr_ty, parent_ptr_ty, parent_ptr_id, field.field_idx);
-        },
-        .elem_ptr => |elem| {
-            const parent_ptr_id = try cg.derivePtr(elem.parent.*);
-            const parent_ptr_ty = try elem.parent.ptrType(pt);
-            const index_id = try cg.constInt(.usize, elem.elem_idx);
-            return cg.ptrElemPtr(parent_ptr_ty, parent_ptr_id, index_id);
-        },
-        .offset_and_cast => |oac| {
-            const parent_ptr_id = try cg.derivePtr(oac.parent.*);
-            const parent_ptr_ty = try oac.parent.ptrType(pt);
+        .eu_payload => @panic("TODO"),
+        .opt_payload => @panic("TODO"),
+        .field => |derived| return cg.structFieldPtr(
+            @"addrspace",
+            result_ty_id,
+            derivation.elem_ty,
+            derived.parent.elem_ty,
+            try cg.derivePtr(@"addrspace", derived.parent.*),
+            derived.field_index,
+        ),
+        .elem => |derived| return cg.ptrElemPtr(
+            switch (derived.parent.size) {
+                .one => .single_array_ptr,
+                .many => .many_ptr,
+            },
+            @"addrspace",
+            derived.parent.elem_ty,
+            try cg.derivePtr(@"addrspace", derived.parent.*),
+            try cg.constInt(.usize, derived.elem_index),
+        ),
+        .offset_and_cast => |derived| {
+            const parent_ptr_id = try cg.derivePtr(@"addrspace", derived.parent.*);
 
-            if (oac.new_ptr_ty.ptrInfo(zcu).flags.vector_index != .none) {
-                return parent_ptr_id;
-            }
-
-            if (oac.byte_offset == 0) {
+            if (derived.byte_offset == 0) {
                 var depth: u32 = 0;
-                var cur = parent_ptr_ty.childType(zcu);
-                const dst_child = oac.new_ptr_ty.childType(zcu);
+                var cur = derived.parent.elem_ty;
+                const dst_child = derivation.elem_ty;
                 while (cur.toIntern() != dst_child.toIntern()) {
                     switch (cur.zigTypeTag(zcu)) {
                         .array => {
@@ -1807,9 +1836,6 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
                 }
                 if (cur.toIntern() == dst_child.toIntern()) {
                     if (depth != 0) {
-                        const as = oac.new_ptr_ty.ptrAddressSpace(zcu);
-                        const child_ty_id = try cg.pointeeType(as, dst_child, false);
-                        const result_ty_id = try cg.ptrType(child_ty_id, cg.storageClass(as));
                         const scratch_top = cg.id_scratch.items.len;
                         defer cg.id_scratch.shrinkRetainingCapacity(scratch_top);
                         const zero = try cg.constInt(.u32, 0);
@@ -1820,7 +1846,6 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
                         return parent_ptr_id;
                     }
                 }
-                const result_ty_id = try cg.resolveType(oac.new_ptr_ty, .direct);
                 if (target.os.tag == .opencl) {
                     const result_ptr_id = cg.allocId();
                     try cg.body.emit(gpa, .OpBitcast, .{
@@ -1832,9 +1857,9 @@ fn derivePtr(cg: *CodeGen, derivation: Value.PointerDeriveStep) !Id {
                 }
             }
 
-            return cg.fail("cannot cast pointer '{f}' to '{f}'", .{
-                parent_ptr_ty.fmt(pt),
-                oac.new_ptr_ty.fmt(pt),
+            return cg.fail("cannot cast pointer '*{f}' to '*{f}'", .{
+                derived.parent.elem_ty.fmt(zcu),
+                derivation.elem_ty.fmt(zcu),
             });
         },
     }
@@ -1881,7 +1906,7 @@ fn resolveType(cg: *CodeGen, ty: Type, repr: Repr) Error!Id {
     const ip = &zcu.intern_pool;
     const target = cg.zcu.getTarget();
 
-    log.debug("resolveType: ty = {f}", .{ty.fmt(pt)});
+    log.debug("resolveType: ty = {f}", .{ty.fmt(zcu)});
 
     switch (ty.zigTypeTag(zcu)) {
         .noreturn => {
@@ -1919,7 +1944,7 @@ fn resolveType(cg: *CodeGen, ty: Type, repr: Repr) Error!Id {
             };
             if (!supported) return cg.fail(
                 "'{f}' is not supported on the current SPIR-V feature set",
-                .{ty.fmt(cg.pt)},
+                .{ty.fmt(zcu)},
             );
             return try cg.floatType(bits);
         },
@@ -2047,7 +2072,7 @@ fn resolveType(cg: *CodeGen, ty: Type, repr: Repr) Error!Id {
                         null,
                         .none,
                     );
-                    try cg.debugNameFmt(result_id, "{f}", .{ty.fmt(cg.pt)});
+                    try cg.debugNameFmt(result_id, "{f}", .{ty.fmt(zcu)});
                     return result_id;
                 },
                 .struct_type => ip.loadStructType(ty.toIntern()),
@@ -2080,7 +2105,7 @@ fn resolveType(cg: *CodeGen, ty: Type, repr: Repr) Error!Id {
                 ty.toIntern(),
             );
 
-            try cg.debugNameFmt(result_id, "{f}", .{ty.fmt(cg.pt)});
+            try cg.debugNameFmt(result_id, "{f}", .{ty.fmt(zcu)});
 
             return result_id;
         },
@@ -2134,7 +2159,7 @@ fn resolveType(cg: *CodeGen, ty: Type, repr: Repr) Error!Id {
                     }
 
                     const result_id = try cg.structType(member_types[0..len], null, .none);
-                    try cg.debugNameFmt(result_id, "{f}", .{ty.fmt(cg.pt)});
+                    try cg.debugNameFmt(result_id, "{f}", .{ty.fmt(zcu)});
                     return result_id;
                 },
             }
@@ -2169,7 +2194,7 @@ fn resolveType(cg: *CodeGen, ty: Type, repr: Repr) Error!Id {
                 member_names[0..layout.total_fields],
                 .none,
             );
-            try cg.debugNameFmt(result_id, "{f}", .{ty.fmt(cg.pt)});
+            try cg.debugNameFmt(result_id, "{f}", .{ty.fmt(zcu)});
             return result_id;
         },
         .error_set => {
@@ -2206,7 +2231,7 @@ fn resolveType(cg: *CodeGen, ty: Type, repr: Repr) Error!Id {
         },
         .@"opaque" => {
             if (target.os.tag != .opencl) return cg.fail("cannot generate opaque type", .{});
-            return try cg.opaqueType("{f}", .{ty.fmt(cg.pt)});
+            return try cg.opaqueType("{f}", .{ty.fmt(zcu)});
         },
         .spirv => {
             const spirv_type = ip.loadSpirvType(ty.toIntern());
@@ -6455,21 +6480,28 @@ fn airSliceElemVal(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     return try cg.load(slice_ty.childType(zcu), elem_ptr, .{ .is_volatile = slice_ty.isVolatilePtr(zcu) });
 }
 
-fn ptrElemPtr(cg: *CodeGen, ptr_ty: Type, ptr_id: Id, index_id: Id) !Id {
-    const zcu = cg.zcu;
+fn ptrElemPtr(
+    cg: *CodeGen,
+    mode: enum { single_array_ptr, many_ptr },
+    @"addrspace": std.lang.AddressSpace,
+    elem_ty: Type,
+    ptr_id: Id,
+    index_id: Id,
+) !Id {
     // Construct new pointer type for the resulting pointer
-    const as = ptr_ty.ptrAddressSpace(zcu);
-    const is_single_ptr = ptr_ty.isSinglePointer(zcu);
     const elem_is_block = cg.block_var_ids.contains(ptr_id);
-    const elem_ty_id = try cg.pointeeType(as, ptr_ty.indexableElem(zcu), elem_is_block);
-    const elem_ptr_ty_id = try cg.ptrType(elem_ty_id, cg.storageClass(as));
-    if (is_single_ptr) {
-        // Pointer-to-array. In this case, the resulting pointer is not of the same type
-        // as the ptr_ty (we want a *T, not a *[N]T), and hence we need to use accessChain.
-        return cg.accessChainId(elem_ptr_ty_id, ptr_id, &.{index_id});
-    } else {
-        // Resulting pointer type is the same as the ptr_ty, so use ptrAccessChain
-        return cg.ptrAccessChain(elem_ptr_ty_id, ptr_id, index_id, &.{});
+    const elem_ty_id = try cg.pointeeType(@"addrspace", elem_ty, elem_is_block);
+    const elem_ptr_ty_id = try cg.ptrType(elem_ty_id, cg.storageClass(@"addrspace"));
+    switch (mode) {
+        .single_array_ptr => {
+            // Pointer-to-array. In this case, the resulting pointer is not of the same type
+            // as the ptr_ty (we want a *T, not a *[N]T), and hence we need to use accessChain.
+            return cg.accessChainId(elem_ptr_ty_id, ptr_id, &.{index_id});
+        },
+        .many_ptr => {
+            // Resulting pointer type is the same as the ptr_ty, so use ptrAccessChain
+            return cg.ptrAccessChain(elem_ptr_ty_id, ptr_id, index_id, &.{});
+        },
     }
 }
 
@@ -6483,13 +6515,19 @@ fn airPtrElemPtr(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     const ty_pl = cg.air.instructions.items(.data)[@backingInt(inst)].ty_pl;
     const bin_op = cg.air.extraData(Air.Bin, ty_pl.payload).data;
     const src_ptr_ty = cg.typeOf(bin_op.lhs);
-    const elem_ty = src_ptr_ty.childType(zcu);
+    const elem_ty = src_ptr_ty.indexableElem(zcu);
     const ptr_id = try cg.resolve(bin_op.lhs);
 
     assert(elem_ty.hasRuntimeBits(zcu));
 
     const index_id = try cg.resolve(bin_op.rhs);
-    return try cg.ptrElemPtr(src_ptr_ty, ptr_id, index_id);
+    return try cg.ptrElemPtr(
+        if (src_ptr_ty.isSinglePointer(zcu)) .single_array_ptr else .many_ptr,
+        src_ptr_ty.ptrAddressSpace(zcu),
+        elem_ty,
+        ptr_id,
+        index_id,
+    );
 }
 
 fn airArrayElemVal(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
@@ -6551,7 +6589,13 @@ fn airPtrElemVal(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     const elem_ty = cg.typeOfIndex(inst);
     const ptr_id = try cg.resolve(bin_op.lhs);
     const index_id = try cg.resolve(bin_op.rhs);
-    const elem_ptr_id = try cg.ptrElemPtr(ptr_ty, ptr_id, index_id);
+    const elem_ptr_id = try cg.ptrElemPtr(
+        if (ptr_ty.isSinglePointer(zcu)) .single_array_ptr else .many_ptr,
+        ptr_ty.ptrAddressSpace(zcu),
+        elem_ty,
+        ptr_id,
+        index_id,
+    );
     return try cg.load(elem_ty, elem_ptr_id, .{ .is_volatile = ptr_ty.isVolatilePtr(zcu) });
 }
 
@@ -6845,66 +6889,44 @@ fn airFieldParentPtr(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
 
 fn structFieldPtr(
     cg: *CodeGen,
-    result_ptr_ty: Type,
-    object_ptr_ty: Type,
+    @"addrspace": std.lang.AddressSpace,
+    result_ptr_ty_id: Id,
+    field_ty: Type,
+    object_ty: Type,
     object_ptr: Id,
     field_index: u32,
 ) !Id {
-    const result_ty_id = try cg.resolveType(result_ptr_ty, .direct);
-
     const zcu = cg.zcu;
-    const object_ty = object_ptr_ty.childType(zcu);
     switch (object_ty.zigTypeTag(zcu)) {
         .pointer => {
             assert(object_ty.isSlice(zcu));
-            return cg.accessChain(result_ty_id, object_ptr, &.{field_index});
+            return cg.accessChain(result_ptr_ty_id, object_ptr, &.{field_index});
         },
         .@"struct" => switch (object_ty.containerLayout(zcu)) {
-            .@"packed" => {
-                const byte_offset = codegen.fieldOffset(object_ptr_ty, result_ptr_ty, field_index, zcu);
-                if (byte_offset == 0) return object_ptr;
-                const usize_ty_id = try cg.resolveType(.usize, .direct);
-                const base_int = cg.allocId();
-                try cg.body.emit(cg.gpa, .OpConvertPtrToU, .{
-                    .id_result_type = usize_ty_id,
-                    .id_result = base_int,
-                    .pointer = object_ptr,
-                });
-                const offset_id = try cg.constInt(.usize, byte_offset);
-                const adjusted = try cg.buildBinary(.OpIAdd, .{ .ty = .usize, .value = .{ .singleton = base_int } }, .{ .ty = .usize, .value = .{ .singleton = offset_id } });
-                const adjusted_id = try adjusted.materialize(cg);
-                const result_id = cg.allocId();
-                try cg.body.emit(cg.gpa, .OpConvertUToPtr, .{
-                    .id_result_type = result_ty_id,
-                    .id_result = result_id,
-                    .integer_value = adjusted_id,
-                });
-                return result_id;
-            },
+            .@"packed" => unreachable,
             .auto, .@"extern" => {
                 const member_index = cg.memberIndex(object_ty, field_index);
-                return try cg.accessChain(result_ty_id, object_ptr, &.{member_index});
+                return try cg.accessChain(result_ptr_ty_id, object_ptr, &.{member_index});
             },
         },
         .@"union" => switch (object_ty.containerLayout(zcu)) {
-            .@"packed" => return cg.todo("implement field access for packed unions", .{}),
+            .@"packed" => unreachable,
             .auto => {
-                if (!result_ptr_ty.childType(zcu).hasRuntimeBits(zcu)) return try cg.constUndef(result_ty_id);
-                return try cg.accessChain(result_ty_id, object_ptr, &.{field_index});
+                if (!field_ty.hasRuntimeBits(zcu)) return try cg.constUndef(result_ptr_ty_id);
+                return try cg.accessChain(result_ptr_ty_id, object_ptr, &.{field_index});
             },
             .@"extern" => {
                 const layout = cg.unionLayout(object_ty);
                 if (!layout.has_payload) {
                     // Asked to get a pointer to a zero-sized field. Just lower this
                     // to undefined, there is no reason to make it be a valid pointer.
-                    return try cg.constUndef(result_ty_id);
+                    return try cg.constUndef(result_ptr_ty_id);
                 }
 
-                const storage_class = cg.storageClass(object_ptr_ty.ptrAddressSpace(zcu));
-                const field_ty = result_ptr_ty.childType(zcu);
+                const storage_class = cg.storageClass(@"addrspace");
                 if (field_ty.toIntern() == layout.payload_ty.toIntern()) {
                     if (object_ty.containerLayout(zcu) == .@"packed") return object_ptr;
-                    return try cg.accessChain(result_ty_id, object_ptr, &.{layout.payload_index});
+                    return try cg.accessChain(result_ptr_ty_id, object_ptr, &.{layout.payload_index});
                 }
 
                 switch (zcu.getTarget().os.tag) {
@@ -6913,7 +6935,7 @@ fn structFieldPtr(
                         // type is structurally identical to the payload type (dedup will
                         // unify them) the access chain typed as the field type is valid.
                         if (object_ty.containerLayout(zcu) == .@"packed") return object_ptr;
-                        return try cg.accessChain(result_ty_id, object_ptr, &.{layout.payload_index});
+                        return try cg.accessChain(result_ptr_ty_id, object_ptr, &.{layout.payload_index});
                     },
                     else => {},
                 }
@@ -6927,7 +6949,7 @@ fn structFieldPtr(
 
                 const active_pl_ptr_id = cg.allocId();
                 try cg.body.emit(cg.gpa, .OpBitcast, .{
-                    .id_result_type = result_ty_id,
+                    .id_result_type = result_ptr_ty_id,
                     .id_result = active_pl_ptr_id,
                     .operand = pl_ptr_id,
                 });
@@ -6971,7 +6993,14 @@ fn airStructFieldPtr(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
     const struct_ptr = try cg.resolve(struct_field.struct_operand);
     const struct_ptr_ty = cg.typeOf(struct_field.struct_operand);
     const result_ptr_ty = cg.typeOfIndex(inst);
-    return try cg.structFieldPtr(result_ptr_ty, struct_ptr_ty, struct_ptr, struct_field.field_index);
+    return try cg.structFieldPtr(
+        struct_ptr_ty.ptrAddressSpace(cg.zcu),
+        try cg.resolveType(result_ptr_ty, .direct),
+        result_ptr_ty.childType(cg.zcu),
+        struct_ptr_ty.childType(cg.zcu),
+        struct_ptr,
+        struct_field.field_index,
+    );
 }
 
 fn airStructFieldPtrIndex(cg: *CodeGen, inst: Air.Inst.Index, field_index: u32) !?Id {
@@ -6979,7 +7008,14 @@ fn airStructFieldPtrIndex(cg: *CodeGen, inst: Air.Inst.Index, field_index: u32) 
     const struct_ptr = try cg.resolve(ty_op.operand);
     const struct_ptr_ty = cg.typeOf(ty_op.operand);
     const result_ptr_ty = cg.typeOfIndex(inst);
-    return try cg.structFieldPtr(result_ptr_ty, struct_ptr_ty, struct_ptr, field_index);
+    return try cg.structFieldPtr(
+        struct_ptr_ty.ptrAddressSpace(cg.zcu),
+        try cg.resolveType(result_ptr_ty, .direct),
+        result_ptr_ty.childType(cg.zcu),
+        struct_ptr_ty.childType(cg.zcu),
+        struct_ptr,
+        field_index,
+    );
 }
 
 fn alloc(cg: *CodeGen, ty_id: Id, initializer: ?Id) !Id {

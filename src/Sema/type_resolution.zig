@@ -317,7 +317,7 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
         try sema.ensureLayoutResolved(field_ty, field_ty_src, .field);
         if (field_ty.zigTypeTag(zcu) == .@"opaque") {
             return sema.failWithOwnedErrorMsg(&block, msg: {
-                const msg = try sema.errMsg(field_ty_src, "cannot directly embed opaque type '{f}' in struct", .{field_ty.fmt(pt)});
+                const msg = try sema.errMsg(field_ty_src, "cannot directly embed opaque type '{f}' in struct", .{field_ty.fmt(zcu)});
                 errdefer msg.destroy(gpa);
                 try sema.errNote(field_ty_src, msg, "opaque types have unknown size", .{});
                 try sema.addDeclaredHereNote(msg, field_ty);
@@ -328,7 +328,7 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
             if (field_ty.isSpirvRuntimeArray(zcu)) {
                 if (struct_obj.layout != .@"extern") {
                     return sema.failWithOwnedErrorMsg(&block, msg: {
-                        const msg = try sema.errMsg(struct_ty.srcLoc(zcu), "non-extern struct cannot contain fields of type '{f}'", .{field_ty.fmt(pt)});
+                        const msg = try sema.errMsg(struct_ty.srcLoc(zcu), "non-extern struct cannot contain fields of type '{f}'", .{field_ty.fmt(zcu)});
                         errdefer msg.destroy(gpa);
                         try sema.errNote(field_name_src, msg, "while checking this field", .{});
                         break :msg msg;
@@ -336,7 +336,7 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
                 }
                 if (field_index != fields_len - 1) {
                     return sema.failWithOwnedErrorMsg(&block, msg: {
-                        const msg = try sema.errMsg(struct_ty.srcLoc(zcu), "struct field of type '{f}' must be the last field", .{field_ty.fmt(pt)});
+                        const msg = try sema.errMsg(struct_ty.srcLoc(zcu), "struct field of type '{f}' must be the last field", .{field_ty.fmt(zcu)});
                         errdefer msg.destroy(gpa);
                         try sema.errNote(field_name_src, msg, "while checking this field", .{});
                         break :msg msg;
@@ -346,7 +346,7 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
                 const elem_ty: Type = field_ty.childType(zcu);
                 if (elem_ty.zigTypeTag(zcu) == .spirv) {
                     return sema.failWithOwnedErrorMsg(&block, msg: {
-                        const msg = try sema.errMsg(field_ty_src, "cannot embed SPIR-V type '{f}' in struct", .{elem_ty.fmt(pt)});
+                        const msg = try sema.errMsg(field_ty_src, "cannot embed SPIR-V type '{f}' in struct", .{elem_ty.fmt(zcu)});
                         errdefer msg.destroy(gpa);
                         try sema.errNote(field_ty_src, msg, "opaque types have unknown size", .{});
                         try sema.addDeclaredHereNote(msg, field_ty);
@@ -355,7 +355,7 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
                 }
             } else {
                 return sema.failWithOwnedErrorMsg(&block, msg: {
-                    const msg = try sema.errMsg(field_ty_src, "cannot directly embed SPIR-V type '{f}' in struct", .{field_ty.fmt(pt)});
+                    const msg = try sema.errMsg(field_ty_src, "cannot directly embed SPIR-V type '{f}' in struct", .{field_ty.fmt(zcu)});
                     errdefer msg.destroy(gpa);
                     try sema.errNote(field_ty_src, msg, "opaque types have unknown size", .{});
                     try sema.addDeclaredHereNote(msg, field_ty);
@@ -366,7 +366,7 @@ pub fn resolveStructLayout(sema: *Sema, struct_ty: Type) CompileError!void {
 
         if (struct_obj.layout == .@"extern" and !field_ty.validateExtern(.struct_field, zcu)) {
             return sema.failWithOwnedErrorMsg(&block, msg: {
-                const msg = try sema.errMsg(field_ty_src, "extern structs cannot contain fields of type '{f}'", .{field_ty.fmt(pt)});
+                const msg = try sema.errMsg(field_ty_src, "extern structs cannot contain fields of type '{f}'", .{field_ty.fmt(zcu)});
                 errdefer msg.destroy(gpa);
                 try sema.explainWhyTypeIsNotExtern(msg, field_ty_src, field_ty, .struct_field);
                 try sema.addDeclaredHereNote(msg, field_ty);
@@ -523,7 +523,7 @@ fn resolvePackedStructLayout(
         try sema.ensureLayoutResolved(field_ty, field_ty_src, .field);
         if (field_ty.zigTypeTag(zcu) == .@"opaque") {
             return sema.failWithOwnedErrorMsg(block, msg: {
-                const msg = try sema.errMsg(field_ty_src, "cannot directly embed opaque type '{f}' in struct", .{field_ty.fmt(pt)});
+                const msg = try sema.errMsg(field_ty_src, "cannot directly embed opaque type '{f}' in struct", .{field_ty.fmt(zcu)});
                 errdefer msg.destroy(gpa);
                 try sema.errNote(field_ty_src, msg, "opaque types have unknown size", .{});
                 try sema.addDeclaredHereNote(msg, field_ty);
@@ -531,7 +531,7 @@ fn resolvePackedStructLayout(
             });
         }
         if (field_ty.unpackable(zcu)) |reason| return sema.failWithOwnedErrorMsg(block, msg: {
-            const msg = try sema.errMsg(field_ty_src, "packed structs cannot contain fields of type '{f}'", .{field_ty.fmt(pt)});
+            const msg = try sema.errMsg(field_ty_src, "packed structs cannot contain fields of type '{f}'", .{field_ty.fmt(zcu)});
             errdefer msg.destroy(gpa);
             try sema.explainWhyTypeIsUnpackable(msg, field_ty_src, reason);
             break :msg msg;
@@ -575,7 +575,7 @@ fn resolvePackedStructLayout(
             block,
             backing_int_ty_src,
             "expected backing integer type, found '{f}'",
-            .{backing_ty.fmt(pt)},
+            .{backing_ty.fmt(zcu)},
         );
         if (field_bits != backing_ty.intInfo(zcu).bits) return sema.failWithOwnedErrorMsg(block, msg: {
             const src = struct_ty.srcLoc(zcu);
@@ -585,7 +585,7 @@ fn resolvePackedStructLayout(
                 backing_int_ty_src,
                 msg,
                 "backing integer '{f}' has bit width '{d}'",
-                .{ backing_ty.fmt(pt), backing_ty.bitSize(zcu) },
+                .{ backing_ty.fmt(zcu), backing_ty.bitSize(zcu) },
             );
             try sema.errNote(src, msg, "struct fields have total bit width '{d}'", .{field_bits});
             break :msg msg;
@@ -798,7 +798,7 @@ pub fn resolveUnionLayout(sema: *Sema, union_ty: Type) CompileError!void {
                 &block,
                 block.src(.container_arg),
                 "expected enum tag type, found '{f}'",
-                .{tag_ty.fmt(pt)},
+                .{tag_ty.fmt(zcu)},
             );
             break :validated_tag_ty tag_ty;
         },
@@ -947,7 +947,7 @@ pub fn resolveUnionLayout(sema: *Sema, union_ty: Type) CompileError!void {
         try sema.ensureLayoutResolved(field_ty, field_ty_src, .field);
         if (field_ty.zigTypeTag(zcu) == .@"opaque") {
             return sema.failWithOwnedErrorMsg(&block, msg: {
-                const msg = try sema.errMsg(field_ty_src, "cannot directly embed opaque type '{f}' in union", .{field_ty.fmt(pt)});
+                const msg = try sema.errMsg(field_ty_src, "cannot directly embed opaque type '{f}' in union", .{field_ty.fmt(zcu)});
                 errdefer msg.destroy(gpa);
                 try sema.errNote(field_ty_src, msg, "opaque types have unknown size", .{});
                 try sema.addDeclaredHereNote(msg, field_ty);
@@ -956,7 +956,7 @@ pub fn resolveUnionLayout(sema: *Sema, union_ty: Type) CompileError!void {
         }
         if (field_ty.zigTypeTag(zcu) == .spirv) {
             return sema.failWithOwnedErrorMsg(&block, msg: {
-                const msg = try sema.errMsg(field_ty_src, "SPIR-V type '{f}' have unknown size and therefore cannot be directly embedded in unions", .{field_ty.fmt(pt)});
+                const msg = try sema.errMsg(field_ty_src, "SPIR-V type '{f}' have unknown size and therefore cannot be directly embedded in unions", .{field_ty.fmt(zcu)});
                 errdefer msg.destroy(gpa);
                 try sema.addDeclaredHereNote(msg, field_ty);
                 break :msg msg;
@@ -964,7 +964,7 @@ pub fn resolveUnionLayout(sema: *Sema, union_ty: Type) CompileError!void {
         }
         if (union_obj.layout == .@"extern" and !field_ty.validateExtern(.union_field, zcu)) {
             return sema.failWithOwnedErrorMsg(&block, msg: {
-                const msg = try sema.errMsg(field_ty_src, "extern unions cannot contain fields of type '{f}'", .{field_ty.fmt(pt)});
+                const msg = try sema.errMsg(field_ty_src, "extern unions cannot contain fields of type '{f}'", .{field_ty.fmt(zcu)});
                 errdefer msg.destroy(gpa);
                 try sema.explainWhyTypeIsNotExtern(msg, field_ty_src, field_ty, .union_field);
                 try sema.addDeclaredHereNote(msg, field_ty);
@@ -1081,7 +1081,7 @@ fn failUnionFieldMismatch(sema: *Sema, block: *Block, union_field_names: []const
         }
         const union_field_src = block.src(.{ .container_field_name = @intCast(union_field_index) });
         return sema.failWithOwnedErrorMsg(block, msg: {
-            const msg = try sema.errMsg(union_field_src, "no field named '{f}' in enum '{f}'", .{ field_name.fmt(ip), enum_tag_ty.fmt(pt) });
+            const msg = try sema.errMsg(union_field_src, "no field named '{f}' in enum '{f}'", .{ field_name.fmt(ip), enum_tag_ty.fmt(zcu) });
             errdefer msg.destroy(gpa);
             try sema.addDeclaredHereNote(msg, enum_tag_ty);
             break :msg msg;
@@ -1153,7 +1153,7 @@ fn resolvePackedUnionLayout(
         try sema.ensureLayoutResolved(field_ty, field_ty_src, .field);
         if (field_ty.zigTypeTag(zcu) == .@"opaque") {
             return sema.failWithOwnedErrorMsg(block, msg: {
-                const msg = try sema.errMsg(field_ty_src, "cannot directly embed opaque type '{f}' in union", .{field_ty.fmt(pt)});
+                const msg = try sema.errMsg(field_ty_src, "cannot directly embed opaque type '{f}' in union", .{field_ty.fmt(zcu)});
                 errdefer msg.destroy(gpa);
                 try sema.errNote(field_ty_src, msg, "opaque types have unknown size", .{});
                 try sema.addDeclaredHereNote(msg, field_ty);
@@ -1161,7 +1161,7 @@ fn resolvePackedUnionLayout(
             });
         }
         if (field_ty.unpackable(zcu)) |reason| return sema.failWithOwnedErrorMsg(block, msg: {
-            const msg = try sema.errMsg(field_ty_src, "packed unions cannot contain fields of type '{f}'", .{field_ty.fmt(pt)});
+            const msg = try sema.errMsg(field_ty_src, "packed unions cannot contain fields of type '{f}'", .{field_ty.fmt(zcu)});
             errdefer msg.destroy(gpa);
             try sema.explainWhyTypeIsUnpackable(msg, field_ty_src, reason);
             break :msg msg;
@@ -1199,7 +1199,7 @@ fn resolvePackedUnionLayout(
             block,
             backing_int_ty_src,
             "expected backing integer type, found '{f}'",
-            .{backing_ty.fmt(pt)},
+            .{backing_ty.fmt(zcu)},
         );
         const backing_int_bits = backing_ty.intInfo(zcu).bits;
         for (union_obj.field_types.get(ip), 0..) |field_type_ip, field_idx| {
@@ -1209,12 +1209,12 @@ fn resolvePackedUnionLayout(
                 const field_ty_src = block.src(.{ .container_field_type = @intCast(field_idx) });
                 const msg = try sema.errMsg(field_ty_src, "field bit width does not match backing integer", .{});
                 errdefer msg.destroy(gpa);
-                try sema.errNote(field_ty_src, msg, "field type '{f}' has bit width '{d}'", .{ field_type.fmt(pt), field_bits });
+                try sema.errNote(field_ty_src, msg, "field type '{f}' has bit width '{d}'", .{ field_type.fmt(zcu), field_bits });
                 try sema.errNote(
                     backing_int_ty_src,
                     msg,
                     "backing integer '{f}' has bit width '{d}'",
-                    .{ backing_ty.fmt(pt), backing_int_bits },
+                    .{ backing_ty.fmt(zcu), backing_int_bits },
                 );
                 try sema.errNote(field_ty_src, msg, "all fields in a packed union must have the same bit width", .{});
                 break :msg msg;
@@ -1233,8 +1233,8 @@ fn resolvePackedUnionLayout(
                 const field_ty_src = block.src(.{ .container_field_type = @intCast(field_idx) });
                 const msg = try sema.errMsg(field_ty_src, "field bit width does not match earlier field", .{});
                 errdefer msg.destroy(gpa);
-                try sema.errNote(field_ty_src, msg, "field type '{f}' has bit width '{d}'", .{ field_type.fmt(pt), field_bits });
-                try sema.errNote(first_field_ty_src, msg, "other field type '{f}' has bit width '{d}'", .{ first_field_type.fmt(pt), first_field_bits });
+                try sema.errNote(field_ty_src, msg, "field type '{f}' has bit width '{d}'", .{ field_type.fmt(zcu), field_bits });
+                try sema.errNote(first_field_ty_src, msg, "other field type '{f}' has bit width '{d}'", .{ first_field_type.fmt(zcu), first_field_bits });
                 try sema.errNote(field_ty_src, msg, "all fields in a packed union must have the same bit width", .{});
                 break :msg msg;
             });
@@ -1421,7 +1421,7 @@ pub fn resolveEnumLayout(sema: *Sema, enum_ty: Type) CompileError!void {
                 &block,
                 block.src(.container_arg),
                 "expected integer tag type, found '{f}'",
-                .{int_tag_ty.fmt(pt)},
+                .{int_tag_ty.fmt(zcu)},
             ),
         }
         break :ty int_tag_ty;
@@ -1532,7 +1532,7 @@ pub fn resolveEnumLayout(sema: *Sema, enum_ty: Type) CompileError!void {
                 &block,
                 field_val_src,
                 "enum tag value '{f}' too large for type '{f}'",
-                .{ result.val.fmtValueSema(pt, sema), int_tag_ty.fmt(pt) },
+                .{ result.val.fmtValueSema(sema), int_tag_ty.fmt(zcu) },
             );
             const val = result.val.toIntern();
             enum_obj.field_values.get(ip)[field_idx] = val;
@@ -1542,7 +1542,7 @@ pub fn resolveEnumLayout(sema: *Sema, enum_ty: Type) CompileError!void {
             return sema.failWithOwnedErrorMsg(&block, msg: {
                 const prev_field_val_src = block.src(.{ .container_field_value = prev_field_index });
                 const msg = try sema.errMsg(field_val_src, "enum tag value '{f}' for field '{f}' already taken", .{
-                    Value.fromInterned(field_val).fmtValueSema(pt, sema),
+                    Value.fromInterned(field_val).fmtValueSema(sema),
                     enum_obj.field_names.get(ip)[field_idx].fmt(ip),
                 });
                 errdefer msg.destroy(gpa);

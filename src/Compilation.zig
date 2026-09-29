@@ -4436,7 +4436,7 @@ fn performAllTheWork(
     comp.windows_libs_num_done = @intCast(comp.windows_libs.count());
     try misc_group.await(io);
 
-    comp.link_queue.wait(io);
+    try comp.link_queue.wait(io);
 }
 
 fn dispatchPrelinkWork(comp: *Compilation, main_progress_node: std.Progress.Node) void {

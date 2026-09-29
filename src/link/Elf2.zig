@@ -9726,8 +9726,9 @@ pub fn updateNav(elf: *Elf, pt: Zcu.PerThread, nav_index: InternPool.Nav.Index) 
     };
 }
 fn updateNavInner(elf: *Elf, pt: Zcu.PerThread, nav_index: InternPool.Nav.Index) Error!void {
-    const zcu = pt.zcu;
-    const gpa = zcu.gpa;
+    const comp = elf.base.comp;
+    const gpa = comp.gpa;
+    const zcu = comp.zcu.?;
     const ip = &zcu.intern_pool;
 
     const nav = ip.getNav(nav_index);
@@ -9823,7 +9824,7 @@ pub fn updateContainerType(
         ),
     };
 }
-pub fn updateContainerTypeInner(
+fn updateContainerTypeInner(
     elf: *Elf,
     pt: Zcu.PerThread,
     ty: InternPool.Index,
@@ -10227,7 +10228,8 @@ pub fn flush(
     tid: Zcu.PerThread.Id,
     prog_node: std.Progress.Node,
 ) link.Error!void {
-    elf.flushInner(arena, tid, prog_node) catch |err| switch (err) {
+    _ = tid;
+    elf.flushInner(arena, prog_node) catch |err| switch (err) {
         else => |e| return e,
         error.MappedFileIo => return elf.base.comp.link_diags.fail(
             "failed to write output file: {t}",
@@ -10238,7 +10240,6 @@ pub fn flush(
 fn flushInner(
     elf: *Elf,
     arena: std.mem.Allocator,
-    tid: Zcu.PerThread.Id,
     prog_node: std.Progress.Node,
 ) Error!void {
     const comp = elf.base.comp;
@@ -10266,7 +10267,7 @@ fn flushInner(
 
     try elf.prepareDynamic();
 
-    while (try elf.idle(tid)) {}
+    while (try elf.idle()) {}
 
     assert(elf.input_pending_index == elf.inputs.items.len);
     assert(elf.input_section_pending_index == elf.input_sections.items.len);
@@ -10323,11 +10324,11 @@ fn flushInner(
     try elf.mf.flush();
 
     if (elf.options.enable_link_snapshots)
-        elf.dumpStderr(tid) catch |err|
+        elf.dumpStderr() catch |err|
             return diags.fail("dumping link snapshot failed: {t}", .{err});
 }
 
-pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
+pub fn idle(elf: *Elf) link.Error!bool {
     // This function is called non-deterministically, and so must not affect the layout of any nodes.
     elf.mf.nodes_lock.lock();
     defer elf.mf.nodes_lock.unlock();
@@ -10343,7 +10344,7 @@ pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
             const ii: Node.InputIndex = @fromBackingInt(elf.input_pending_index);
             elf.input_pending_index += 1;
             const idle_prog_node =
-                elf.startIdleProgress(tid, elf.input_prog_node, elf.getNode(ii.node(elf)));
+                elf.startIdleProgress(elf.input_prog_node, elf.getNode(ii.node(elf)));
             defer idle_prog_node.end();
             elf.flushInput(ii) catch |err| switch (err) {
                 else => |e| return e,
@@ -10355,7 +10356,7 @@ pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
             const isi: InputSection.Index = @fromBackingInt(elf.input_section_pending_index);
             elf.input_section_pending_index += 1;
             const idle_prog_node =
-                elf.startIdleProgress(tid, elf.input_prog_node, elf.getNode(isi.node(elf)));
+                elf.startIdleProgress(elf.input_prog_node, elf.getNode(isi.node(elf)));
             defer idle_prog_node.end();
             elf.flushInputSection(isi) catch |err| switch (err) {
                 else => |e| return e,
@@ -10465,7 +10466,7 @@ pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
             const clean_resized = ni.cleanResized(&elf.mf);
             const clean_next_moved = ni.cleanNextMoved(&elf.mf);
             if (!clean_moved and !clean_resized and !clean_next_moved) continue;
-            const idle_prog_node = elf.startIdleProgress(tid, elf.mf.update_prog_node, elf.getNode(ni));
+            const idle_prog_node = elf.startIdleProgress(elf.mf.update_prog_node, elf.getNode(ni));
             defer idle_prog_node.end();
             if (clean_moved) try elf.flushMoved(ni);
             if (clean_resized) try elf.flushResized(ni);
@@ -10483,7 +10484,6 @@ pub fn idle(elf: *Elf, tid: Zcu.PerThread.Id) link.Error!bool {
 
 fn startIdleProgress(
     elf: *Elf,
-    tid: Zcu.PerThread.Id,
     prog_node: std.Progress.Node,
     node: Node,
 ) std.Progress.Node {
@@ -10508,7 +10508,7 @@ fn startIdleProgress(
             break :name ip.getNav(nmi.nav(elf)).fqn.toSlice(ip);
         },
         .uav => |umi| std.mem.print(&name, "{f}", .{
-            Value.fromInterned(umi.uavValue(elf)).fmtValue(.{ .zcu = elf.base.comp.zcu.?, .tid = tid }),
+            Value.fromInterned(umi.uavValue(elf)).fmtValue(elf.base.comp.zcu.?),
         }) catch &name,
         .debug_shared => |ss| switch (ss) {
             .debug_abbrev => "debug info abbrevs",
@@ -10539,7 +10539,7 @@ fn startIdleProgress(
         .const_debug_info => |cpi| switch (cpi.val(&elf.dwarf.const_pool)) {
             .generic_poison_type => "anytype",
             else => |val| std.mem.print(&name, "debug info for {f}", .{
-                Value.fromInterned(val).fmtValue(.{ .zcu = elf.base.comp.zcu.?, .tid = tid }),
+                Value.fromInterned(val).fmtValue(elf.base.comp.zcu.?),
             }) catch &name,
         },
         .global_debug_info => |gi| {
@@ -10571,10 +10571,11 @@ fn startIdleProgress(
 }
 
 fn genPending(elf: *Elf, pt: Zcu.PerThread) link.Error!void {
+    const zcu = elf.base.comp.zcu.?;
     while (elf.pending_uavs.pop()) |umi| {
         var prog_name_buf: [std.Progress.Node.max_name_len]u8 = undefined;
         const prog_name = std.mem.print(&prog_name_buf, "{f}", .{
-            Value.fromInterned(umi.uavValue(elf)).fmtValue(pt),
+            Value.fromInterned(umi.uavValue(elf)).fmtValue(zcu),
         }) catch &prog_name_buf;
         const prog_node = elf.const_prog_node.start(prog_name, 0);
         defer prog_node.end();
@@ -10671,14 +10672,15 @@ fn genUav(
 }
 
 fn genLazy(elf: *Elf, pt: Zcu.PerThread, lmr: Node.LazyMapRef) link.Error!void {
+    const zcu = elf.base.comp.zcu.?;
     const lazy = lmr.lazySymbol(elf);
     if (lazy.ty == .anyerror_type) return;
     const lazy_ty: Type = .fromInterned(lazy.ty);
     var prog_name_buf: [std.Progress.Node.max_name_len]u8 = undefined;
-    const prog_name: []const u8 = switch (lazy_ty.zigTypeTag(pt.zcu)) {
-        .@"enum" => std.mem.print(&prog_name_buf, "@tagName({f})", .{lazy_ty.fmt(pt)}) catch &prog_name_buf,
+    const prog_name: []const u8 = switch (lazy_ty.zigTypeTag(zcu)) {
+        .@"enum" => std.mem.print(&prog_name_buf, "@tagName({f})", .{lazy_ty.fmt(zcu)}) catch &prog_name_buf,
         .error_set => switch (lmr.kind) {
-            .code => std.mem.print(&prog_name_buf, "@errorCast({f})", .{lazy_ty.fmt(pt)}) catch &prog_name_buf,
+            .code => std.mem.print(&prog_name_buf, "@errorCast({f})", .{lazy_ty.fmt(zcu)}) catch &prog_name_buf,
             .const_data => "@errorName(anyerror)",
         },
         else => unreachable,
@@ -12123,19 +12125,15 @@ pub fn updateExports(
     export_indices: []const Zcu.Export.Index,
 ) link.Error!void {
     for (export_indices) |export_index| {
-        elf.updateExportInner(pt, export_index) catch |err| switch (err) {
+        elf.updateExportInner(export_index) catch |err| switch (err) {
             else => |e| return e,
             error.MappedFileIo => return elf.base.comp.link_diags.fail("failed to write output file: {t}", .{elf.mf.io_err.?}),
         };
     }
     try elf.genPending(pt);
 }
-fn updateExportInner(
-    elf: *Elf,
-    pt: Zcu.PerThread,
-    export_index: Zcu.Export.Index,
-) Error!void {
-    const zcu = pt.zcu;
+fn updateExportInner(elf: *Elf, export_index: Zcu.Export.Index) Error!void {
+    const zcu = elf.base.comp.zcu.?;
     const ip = &zcu.intern_pool;
 
     const @"export" = export_index.ptr(zcu);
@@ -12143,8 +12141,8 @@ fn updateExportInner(
     switch (@"export".exported) {
         .nav => |nav| log.debug("updateExports({f})", .{ip.getNav(nav).fqn.fmt(ip)}),
         .uav => |uav| log.debug("updateExports(@as({f}, {f}))", .{
-            Type.fromInterned(ip.typeOf(uav)).fmt(pt),
-            Value.fromInterned(uav).fmtValue(pt),
+            Type.fromInterned(ip.typeOf(uav)).fmt(zcu),
+            Value.fromInterned(uav).fmtValue(zcu),
         }),
     }
     const exported_lsi: Symbol.LocalIndex = switch (@"export".exported) {
@@ -12210,21 +12208,21 @@ fn updateExportInner(
     };
 }
 
-fn dumpStderr(elf: *Elf, tid: Zcu.PerThread.Id) Io.File.Writer.Error!void {
+fn dumpStderr(elf: *Elf) Io.File.Writer.Error!void {
     const comp = elf.base.comp;
     const io = comp.io;
     var buffer: [512]u8 = undefined;
     const stderr = try io.lockStderr(&buffer, null);
     defer io.unlockStderr();
     const w = &stderr.file_writer.interface;
-    _ = elf.dump(w, tid) catch |err| switch (err) {
+    _ = elf.dump(w) catch |err| switch (err) {
         error.WriteFailed => return stderr.file_writer.err.?,
     };
 }
 
-pub fn dump(elf: *Elf, w: *Io.Writer, tid: Zcu.PerThread.Id) Io.Writer.Error!link.File.DumpResult {
+pub fn dump(elf: *Elf, w: *Io.Writer) Io.Writer.Error!link.File.DumpResult {
     if (elf.options.enable_link_snapshots) {
-        try elf.printNode(tid, w, .root, 0);
+        try elf.printNode(w, .root, 0);
         return .enabled;
     }
     return .disabled;
@@ -12232,7 +12230,6 @@ pub fn dump(elf: *Elf, w: *Io.Writer, tid: Zcu.PerThread.Id) Io.Writer.Error!lin
 
 pub fn printNode(
     elf: *Elf,
-    tid: Zcu.PerThread.Id,
     w: *Io.Writer,
     ni: MappedFile.Node.Index,
     indent: usize,
@@ -12277,7 +12274,7 @@ pub fn printNode(
             const ip = &zcu.intern_pool;
             const nav = ip.getNav(nmi.nav(elf));
             try w.print("({f}, {f})", .{
-                Type.fromInterned(nav.resolved.?.type).fmt(.{ .zcu = zcu, .tid = tid }),
+                Type.fromInterned(nav.resolved.?.type).fmt(zcu),
                 nav.fqn.fmt(ip),
             });
         },
@@ -12285,15 +12282,12 @@ pub fn printNode(
             const zcu = elf.base.comp.zcu.?;
             const val: Value = .fromInterned(umi.uavValue(elf));
             try w.print("({f}, {f})", .{
-                val.typeOf(zcu).fmt(.{ .zcu = zcu, .tid = tid }),
-                val.fmtValue(.{ .zcu = zcu, .tid = tid }),
+                val.typeOf(zcu).fmt(zcu),
+                val.fmtValue(zcu),
             });
         },
         inline .lazy_code, .lazy_const_data => |lmi| try w.print("({f})", .{
-            Type.fromInterned(lmi.lazySymbol(elf).ty).fmt(.{
-                .zcu = elf.base.comp.zcu.?,
-                .tid = tid,
-            }),
+            Type.fromInterned(lmi.lazySymbol(elf).ty).fmt(elf.base.comp.zcu.?),
         }),
         .debug_shared => |ss| try w.print("({})", .{ss}),
         .unit_frame,
@@ -12308,7 +12302,7 @@ pub fn printNode(
         .const_debug_info => |cpi| switch (cpi.val(&elf.dwarf.const_pool)) {
             .generic_poison_type => try w.writeAll("(anytype)"),
             else => |val| try w.print("({f})", .{
-                Value.fromInterned(val).fmtValue(.{ .zcu = elf.base.comp.zcu.?, .tid = tid }),
+                Value.fromInterned(val).fmtValue(elf.base.comp.zcu.?),
             }),
         },
         .global_debug_info => |gi| {
@@ -12317,11 +12311,11 @@ pub fn printNode(
             const nav = ip.getNav(gi.nav(&elf.dwarf));
             try w.writeByte('(');
             if (nav.resolved) |resolved| try w.print("{f}, ", .{
-                Type.fromInterned(resolved.type).fmt(.{ .zcu = zcu, .tid = tid }),
+                Type.fromInterned(resolved.type).fmt(zcu),
             });
             try w.print("{f}", .{nav.fqn.fmt(ip)});
             if (nav.resolved) |resolved| try w.print(", {f}", .{
-                Value.fromInterned(resolved.value).fmtValue(.{ .zcu = zcu, .tid = tid }),
+                Value.fromInterned(resolved.value).fmtValue(zcu),
             });
             try w.writeByte(')');
         },
@@ -12331,7 +12325,7 @@ pub fn printNode(
             const nav = ip.getNav(fi.nav(&elf.dwarf));
             try w.writeByte('(');
             if (nav.resolved) |resolved| try w.print("{f}, ", .{
-                Type.fromInterned(resolved.type).fmt(.{ .zcu = zcu, .tid = tid }),
+                Type.fromInterned(resolved.type).fmt(zcu),
             });
             try w.print("{f})", .{nav.fqn.fmt(ip)});
         },
@@ -12366,7 +12360,7 @@ pub fn printNode(
         // non-leaf, just print children
         var child_ni = first_ni;
         while (true) {
-            try elf.printNode(tid, w, child_ni, indent + 1);
+            try elf.printNode(w, child_ni, indent + 1);
             child_ni = child_ni.next(&elf.mf).unwrap() orelse break;
         }
         return;

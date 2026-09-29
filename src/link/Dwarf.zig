@@ -1036,7 +1036,7 @@ const Entry = struct {
                 const val_unit, const val_entry = unit_and_entry;
                 if (sec.getUnit(val_unit) == unit and unit.getEntry(val_entry) == entry)
                     log.err("missing Value({f}({d}))", .{
-                        Value.fromInterned(val).fmtValue(.{ .tid = .main, .zcu = zcu }),
+                        Value.fromInterned(val).fmtValue(zcu),
                         @backingInt(val),
                     });
             }
@@ -2120,9 +2120,10 @@ pub const WipNav = struct {
         wip_nav: *WipNav,
         val: Value,
     ) (UpdateError || Writer.Error)!void {
-        const ty = val.typeOf(wip_nav.pt.zcu);
+        const zcu = wip_nav.pt.zcu;
+        const ty = val.typeOf(zcu);
         const diw = &wip_nav.debug_info.writer;
-        const size = ty.abiSize(wip_nav.pt.zcu);
+        const size = ty.abiSize(zcu);
         try diw.writeUleb128(size);
         if (size == 0) return;
         const old_end = diw.end;
@@ -2135,7 +2136,7 @@ pub const WipNav = struct {
         );
         if (old_end + size != diw.end) {
             std.debug.print("{f} [{}]: {} != {}\n", .{
-                ty.fmt(wip_nav.pt),
+                ty.fmt(zcu),
                 ty.toIntern(),
                 size,
                 diw.end - old_end,
@@ -3340,8 +3341,8 @@ fn updateConstIncompleteInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_inde
     switch (value_index) {
         .generic_poison_type => log.debug("updateValueIncomplete(anytype)", .{}),
         else => log.debug("updateValueIncomplete(@as({f}, {f}))", .{
-            val.typeOf(zcu).fmt(pt),
-            val.fmtValue(pt),
+            val.typeOf(zcu).fmt(zcu),
+            val.fmtValue(zcu),
         }),
     }
 
@@ -3435,7 +3436,7 @@ fn updateConstIncompleteInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_inde
         else => |val_key| switch (val_key.typeOf()) {
             .type_type => {
                 try wip_nav.abbrevCode(.generated_empty_struct_type);
-                try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+                try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
                 try wip_nav.debug_info.writer.writeByte(@intFromBool(true));
             },
             else => |ty| {
@@ -3509,8 +3510,8 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
     switch (value_index) {
         .generic_poison_type => log.debug("updateValue(anytype)", .{}),
         else => log.debug("updateValue(@as({f}, {f}))", .{
-            val.typeOf(zcu).fmt(pt),
-            val.fmtValue(pt),
+            val.typeOf(zcu).fmt(zcu),
+            val.fmtValue(zcu),
         }),
     }
 
@@ -3551,7 +3552,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
 
         .int_type => |int_type| {
             try wip_nav.abbrevCode(.numeric_type);
-            try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+            try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
             try diw.writeByte(switch (int_type.signedness) {
                 inline .signed, .unsigned => |signedness| @field(DW.ATE, @tagName(signedness)),
             });
@@ -3566,7 +3567,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                     .none => if (ptr_type.sentinel == .none) .ptr_type else .ptr_sentinel_type,
                     else => if (ptr_type.sentinel == .none) .ptr_aligned_type else .ptr_aligned_sentinel_type,
                 });
-                try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+                try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
                 if (ptr_type.sentinel != .none) try wip_nav.blockValue(.fromInterned(ptr_type.sentinel));
                 if (ptr_type.flags.alignment.toByteUnits()) |a| try diw.writeUleb128(a);
                 try diw.writeByte(@backingInt(ptr_type.flags.address_space));
@@ -3592,7 +3593,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
             },
             .slice => {
                 try wip_nav.abbrevCode(.generated_struct_type);
-                try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+                try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
                 try diw.writeUleb128(val.toType().abiSize(zcu));
                 try diw.writeUleb128(val.toType().abiAlignment(zcu).toByteUnits().?);
                 try wip_nav.abbrevCode(.generated_field);
@@ -3611,7 +3612,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
         .array_type => |array_type| {
             const array_child_type: Type = .fromInterned(array_type.child);
             try wip_nav.abbrevCode(if (array_type.sentinel == .none) .array_type else .array_sentinel_type);
-            try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+            try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
             if (array_type.sentinel != .none) try wip_nav.blockValue(.fromInterned(array_type.sentinel));
             try wip_nav.refType(array_child_type);
             try wip_nav.abbrevCode(.array_len);
@@ -3621,7 +3622,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
         },
         .vector_type => |vector_type| {
             try wip_nav.abbrevCode(.vector_type);
-            try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+            try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
             try wip_nav.refType(.fromInterned(vector_type.child));
             try wip_nav.abbrevCode(.array_len);
             try wip_nav.refType(.usize);
@@ -3632,7 +3633,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
             const opt_child_type: Type = .fromInterned(opt_child_type_index);
             const opt_repr = optRepr(opt_child_type, zcu);
             try wip_nav.abbrevCode(.generated_union_type);
-            try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+            try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
             try diw.writeUleb128(val.toType().abiSize(zcu));
             try diw.writeUleb128(val.toType().abiAlignment(zcu).toByteUnits().?);
             switch (opt_repr) {
@@ -3713,7 +3714,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
             };
 
             try wip_nav.abbrevCode(.generated_union_type);
-            try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+            try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
             if (error_union_type.error_set_type != .generic_poison_type and
                 error_union_type.payload_type != .generic_poison_type)
             {
@@ -3785,7 +3786,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
             .bool,
             => {
                 try wip_nav.abbrevCode(.numeric_type);
-                try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+                try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
                 try diw.writeByte(if (value_index == .bool_type)
                     DW.ATE.boolean
                 else if (val.toType().isRuntimeFloat())
@@ -3815,18 +3816,18 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
             .enum_literal,
             => {
                 try wip_nav.abbrevCode(.void_type);
-                try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+                try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
             },
             .anyerror => unreachable, // already did early return above
             .adhoc_inferred_error_set => unreachable,
         },
         .tuple_type => |tuple_type| if (tuple_type.types.len == 0) {
             try wip_nav.abbrevCode(.generated_empty_struct_type);
-            try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+            try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
             try diw.writeByte(@intFromBool(false));
         } else {
             try wip_nav.abbrevCode(.generated_struct_type);
-            try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+            try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
             try diw.writeUleb128(val.toType().abiSize(zcu));
             try diw.writeUleb128(val.toType().abiAlignment(zcu).toByteUnits().?);
             var field_byte_offset: u64 = 0;
@@ -4148,7 +4149,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
         .func_type => |func_type| {
             const is_nullary = func_type.param_types.len == 0 and !func_type.is_var_args;
             try wip_nav.abbrevCode(if (is_nullary) .nullary_func_type else .func_type);
-            try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+            try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
             const cc: DW.CC = cc: {
                 if (zcu.getTarget().cCallingConvention()) |cc| {
                     if (@as(std.lang.CallingConvention.Tag, cc) == func_type.cc) {
@@ -4231,7 +4232,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
         },
         .error_set_type => |error_set_type| {
             try wip_nav.abbrevCode(if (error_set_type.names.len == 0) .generated_empty_enum_type else .generated_enum_type);
-            try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+            try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
             try wip_nav.refType(.fromInterned(try pt.intern(.{ .int_type = .{
                 .signedness = .unsigned,
                 .bits = zcu.errorSetBits(),
@@ -4247,7 +4248,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
         },
         .inferred_error_set_type => |func| {
             try wip_nav.abbrevCode(.inferred_error_set_type);
-            try wip_nav.strpFmt("{f}", .{val.toType().fmt(pt)});
+            try wip_nav.strpFmt("{f}", .{val.toType().fmt(zcu)});
             try wip_nav.refType(.fromInterned(switch (ip.funcIesResolvedUnordered(func)) {
                 .none => .anyerror_type,
                 else => |ies| ies,

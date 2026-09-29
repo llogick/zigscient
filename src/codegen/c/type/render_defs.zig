@@ -28,7 +28,7 @@ pub fn defineAligned(
     });
     if (!zcu.comp.config.root_strip) try w.print(" /* align({d}) {f} */", .{
         alignment.toByteUnits().?,
-        ty.fmt(pt),
+        ty.fmt(zcu),
     });
     try w.writeByte('\n');
 }
@@ -113,7 +113,7 @@ pub fn errunionDefineComplete(
         });
     }
     if (!zcu.comp.config.root_strip) try w.print(" /* anyerror!{f} */", .{
-        payload_ty.fmt(pt),
+        payload_ty.fmt(zcu),
     });
     try w.writeByte('\n');
 }
@@ -159,7 +159,7 @@ pub fn defineIncomplete(ty: Type, w: *Writer, pt: Zcu.PerThread) Writer.Error!vo
         name_cty.fmtTypeName(zcu),
     });
     if (!zcu.comp.config.root_strip) try w.print(" /* {f} */", .{
-        ty.fmt(pt),
+        ty.fmt(zcu),
     });
     try w.writeByte('\n');
 }
@@ -337,7 +337,7 @@ pub fn defineComplete(
         else => return,
     };
     if (!zcu.comp.config.root_strip) try w.print(" /* {f} */", .{
-        ty.fmt(pt),
+        ty.fmt(zcu),
     });
     try w.writeByte('\n');
     if (check_cty) |cty| try writeStaticAssertTypeLayout(ty, cty, w, zcu);

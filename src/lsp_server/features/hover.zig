@@ -603,10 +603,7 @@ fn hoverKeyword(
 
     const zcu = build.compilation.?.zcu orelse return null;
 
-    const active = zcu.activate(args.tid);
-    defer active.deactivate();
-
-    std.debug.assert(switch (active.pt.zcu.intern_pool.indexToKey(args.ty.toIntern())) {
+    std.debug.assert(switch (zcu.intern_pool.indexToKey(args.ty.toIntern())) {
         .enum_type,
         .union_type,
         .struct_type,
@@ -625,9 +622,9 @@ fn hoverKeyword(
         \\align({t})
         \\fqn: {f}
     , .{
-        args.ty.abiSize(active.pt.zcu),
-        args.ty.abiAlignment(active.pt.zcu),
-        args.ty.fmt(active.pt),
+        args.ty.abiSize(zcu),
+        args.ty.abiAlignment(zcu),
+        args.ty.fmt(zcu),
     });
 
     if (b.markup_kind == .markdown) {
@@ -741,14 +738,11 @@ fn lookupNav(
                 try output.print(arena, "```zig\n\n", .{});
             }
 
-            const active = zcu.activate(@fromBackingInt(@intCast(tid)));
-            defer active.deactivate();
-
             const val = Zcu.Value.fromInterned(resolved_nav.value);
 
             try output.print(arena, "fqn: {f}\n", .{nav.fqn.fmt(&ip)});
-            try output.print(arena, "val: {f}\n", .{val.fmtValue(active.pt)});
-            try output.print(arena, "typ: {f}\n", .{val.typeOf(zcu).fmt(active.pt)});
+            try output.print(arena, "val: {f}\n", .{val.fmtValue(zcu)});
+            try output.print(arena, "typ: {f}\n", .{val.typeOf(zcu).fmt(zcu)});
 
             if (markup_kind == .markdown) {
                 try output.print(arena, "```\n", .{});
@@ -793,12 +787,9 @@ fn getAirSlice(
     const args = decl.handle.computed_data.air.get(node) orelse return null;
     const zcu = build.compilation.?.zcu orelse return null;
 
-    const active = zcu.activate(args.tid);
-    defer active.deactivate();
-
     var aw: std.Io.Writer.Allocating = .init(arena);
     errdefer aw.deinit();
 
-    args.air.write(&aw.writer, active.pt, null) catch return null;
+    args.air.write(&aw.writer, zcu, null) catch return null;
     return try aw.toOwnedSlice();
 }

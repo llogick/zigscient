@@ -946,7 +946,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) codegen.Error!void 
             isel: *Select,
             inst: Air.Inst.Index,
             pub fn format(fmt_air: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-                fmt_air.isel.air.writeInst(writer, fmt_air.inst, fmt_air.isel.pt, null);
+                fmt_air.isel.air.writeInst(writer, fmt_air.inst, fmt_air.isel.pt.zcu, null);
             }
         } {
             return .{ .isel = it.isel, .inst = inst };
@@ -7974,11 +7974,11 @@ fn fmtLoopLive(isel: *Select, loop_inst: Air.Inst.Index) struct {
 }
 
 fn fmtType(isel: *Select, ty: ZigType) ZigType.Formatter {
-    return ty.fmt(isel.pt);
+    return ty.fmt(isel.pt.zcu);
 }
 
 fn fmtConstant(isel: *Select, constant: Constant) @typeInfo(@TypeOf(Constant.fmtValue)).@"fn".return_type.? {
-    return constant.fmtValue(isel.pt);
+    return constant.fmtValue(isel.pt.zcu);
 }
 
 fn block(

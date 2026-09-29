@@ -9,7 +9,7 @@ const Type = @import("../Type.zig");
 const Air = @import("../Air.zig");
 const InternPool = @import("../InternPool.zig");
 
-pub fn write(air: Air, stream: *std.Io.Writer, pt: Zcu.PerThread, liveness: ?Air.Liveness) !void {
+pub fn write(air: Air, stream: *std.Io.Writer, zcu: *Zcu, liveness: ?Air.Liveness) !void {
     // comptime assert(build_options.enable_debug_extensions);
     const instruction_bytes = air.instructions.len *
         // Here we don't use @sizeOf(Air.Inst.Data) because it would include
@@ -52,8 +52,8 @@ pub fn write(air: Air, stream: *std.Io.Writer, pt: Zcu.PerThread, liveness: ?Air
     // zig fmt: on
 
     var writer: Writer = .{
-        .pt = pt,
-        .gpa = pt.zcu.gpa,
+        .zcu = zcu,
+        .gpa = zcu.comp.gpa,
         .air = air,
         .liveness = liveness,
         .indent = 2,
@@ -66,13 +66,13 @@ pub fn writeInst(
     air: Air,
     stream: *std.Io.Writer,
     inst: Air.Inst.Index,
-    pt: Zcu.PerThread,
+    zcu: *Zcu,
     liveness: ?Air.Liveness,
 ) void {
     // comptime assert(build_options.enable_debug_extensions);
     var writer: Writer = .{
-        .pt = pt,
-        .gpa = pt.zcu.gpa,
+        .zcu = zcu,
+        .gpa = zcu.comp.gpa,
         .air = air,
         .liveness = liveness,
         .indent = 2,
@@ -98,7 +98,7 @@ pub fn dumpInst(air: Air, inst: Air.Inst.Index, pt: Zcu.PerThread, liveness: ?Ai
 }
 
 const Writer = struct {
-    pt: Zcu.PerThread,
+    zcu: *Zcu,
     gpa: Allocator,
     air: Air,
     liveness: ?Air.Liveness,
@@ -386,7 +386,7 @@ const Writer = struct {
     }
 
     fn writeType(w: *Writer, s: *std.Io.Writer, ty: Type) !void {
-        return ty.print(s, w.pt, null);
+        return ty.print(s, w.zcu, null);
     }
 
     fn writeTy(w: *Writer, s: *std.Io.Writer, inst: Air.Inst.Index) Error!void {
@@ -455,7 +455,7 @@ const Writer = struct {
     }
 
     fn writeAggregateInit(w: *Writer, s: *std.Io.Writer, inst: Air.Inst.Index) Error!void {
-        const zcu = w.pt.zcu;
+        const zcu = w.zcu;
         const ty_pl = w.air.instructions.items(.data)[@backingInt(inst)].ty_pl;
         const vector_ty = ty_pl.ty;
         const len = @as(usize, @intCast(vector_ty.arrayLen(zcu)));
@@ -548,7 +548,7 @@ const Writer = struct {
     }
 
     fn writeShuffleOne(w: *Writer, s: *std.Io.Writer, inst: Air.Inst.Index) Error!void {
-        const unwrapped = w.air.unwrapShuffleOne(w.pt.zcu, inst);
+        const unwrapped = w.air.unwrapShuffleOne(w.zcu, inst);
         try w.writeType(s, unwrapped.result_ty);
         try s.writeAll(", ");
         try w.writeOperand(s, inst, 0, unwrapped.operand);
@@ -557,14 +557,14 @@ const Writer = struct {
             if (mask_idx > 0) try s.writeAll(", ");
             switch (mask_elem.unwrap()) {
                 .elem => |idx| try s.print("elem {d}", .{idx}),
-                .value => |val| try s.print("val {f}", .{Value.fromInterned(val).fmtValue(w.pt)}),
+                .value => |val| try s.print("val {f}", .{Value.fromInterned(val).fmtValue(w.zcu)}),
             }
         }
         try s.writeByte(']');
     }
 
     fn writeShuffleTwo(w: *Writer, s: *std.Io.Writer, inst: Air.Inst.Index) Error!void {
-        const unwrapped = w.air.unwrapShuffleTwo(w.pt.zcu, inst);
+        const unwrapped = w.air.unwrapShuffleTwo(w.zcu, inst);
         try w.writeType(s, unwrapped.result_ty);
         try s.writeAll(", ");
         try w.writeOperand(s, inst, 0, unwrapped.operand_a);
@@ -583,7 +583,7 @@ const Writer = struct {
     }
 
     fn writeSelect(w: *Writer, s: *std.Io.Writer, inst: Air.Inst.Index) Error!void {
-        const zcu = w.pt.zcu;
+        const zcu = w.zcu;
         const pl_op = w.air.instructions.items(.data)[@backingInt(inst)].pl_op;
         const extra = w.air.extraData(Air.Bin, pl_op.payload).data;
 
@@ -615,7 +615,7 @@ const Writer = struct {
     }
 
     fn writeRuntimeNavPtr(w: *Writer, s: *std.Io.Writer, inst: Air.Inst.Index) Error!void {
-        const ip = &w.pt.zcu.intern_pool;
+        const ip = &w.zcu.intern_pool;
         const ty_nav = w.air.instructions.items(.data)[@backingInt(inst)].ty_nav;
         try w.writeType(s, ty_nav.ty);
         try s.print(", '{f}'", .{ip.getNav(ty_nav.nav).fqn.fmt(ip)});
@@ -704,7 +704,7 @@ const Writer = struct {
             try s.writeByte(')');
         }
 
-        const zcu = w.pt.zcu;
+        const zcu = w.zcu;
         const ip = &zcu.intern_pool;
         const clobbers_val: Value = .fromInterned(unwrapped_asm.clobbers);
         const clobbers_ty = clobbers_val.typeOf(zcu);
@@ -1029,11 +1029,11 @@ const Writer = struct {
         if (@backingInt(operand) < InternPool.static_len) {
             return s.print("@{}", .{operand});
         } else if (operand.toInterned()) |ip_index| {
-            const pt = w.pt;
-            const ty = Type.fromInterned(pt.zcu.intern_pool.indexToKey(ip_index).typeOf());
+            const zcu = w.zcu;
+            const ty = Type.fromInterned(zcu.intern_pool.indexToKey(ip_index).typeOf());
             try s.print("<{f}, {f}>", .{
-                ty.fmt(pt),
-                Value.fromInterned(ip_index).fmtValue(pt),
+                ty.fmt(zcu),
+                Value.fromInterned(ip_index).fmtValue(w.zcu),
             });
         } else {
             return w.writeInstIndex(s, operand.toIndex().?, dies);
@@ -1052,7 +1052,7 @@ const Writer = struct {
     }
 
     fn typeOfIndex(w: *Writer, inst: Air.Inst.Index) Type {
-        const zcu = w.pt.zcu;
+        const zcu = w.zcu;
         return w.air.typeOfIndex(inst, &zcu.intern_pool);
     }
 };
