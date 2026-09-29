@@ -290,7 +290,7 @@ pub fn make(
                             file_handle.* = file.handle;
                             if (suffix.len > 0) {
                                 protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
-                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendSliceAssumeCapacity(suffix);
                                 protocol_args.appendAssumeCapacity(0);
                             }
                         },
@@ -339,7 +339,7 @@ pub fn make(
                             dir_handle.* = dir.handle;
                             if (suffix.len > 0) {
                                 protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
-                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendSliceAssumeCapacity(suffix);
                                 protocol_args.appendAssumeCapacity(0);
                             }
                         },
@@ -372,7 +372,7 @@ pub fn make(
                             file_handle.* = file.handle;
                             if (suffix.len > 0) {
                                 protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
-                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendSliceAssumeCapacity(suffix);
                                 protocol_args.appendAssumeCapacity(0);
                             }
                         },
@@ -412,7 +412,7 @@ pub fn make(
                             file_handle.* = file.handle;
                             if (suffix.len > 0) {
                                 protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
-                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendSliceAssumeCapacity(suffix);
                                 protocol_args.appendAssumeCapacity(0);
                             }
                         },
@@ -451,7 +451,7 @@ pub fn make(
                             _ = protocol_args.addManyAsArrayAssumeCapacity(@sizeOf(Io.File.Handle));
                             if (suffix.len > 0) {
                                 protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
-                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendSliceAssumeCapacity(suffix);
                                 protocol_args.appendAssumeCapacity(0);
                             }
                         },
@@ -490,7 +490,7 @@ pub fn make(
                             _ = protocol_args.addManyAsArrayAssumeCapacity(@sizeOf(Io.Dir.Handle));
                             if (suffix.len > 0) {
                                 protocol_args.appendAssumeCapacity(@backingInt(std.zig.Client.Message.Arg.suffix));
-                                protocol_args.appendSliceAssumeCapacity(prefix);
+                                protocol_args.appendSliceAssumeCapacity(suffix);
                                 protocol_args.appendAssumeCapacity(0);
                             }
                         },
