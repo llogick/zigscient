@@ -19089,7 +19089,7 @@ fn createFileMap(
             page,
             .{
                 // Required when calling NtCreateSection with a file handle, otherwise
-                // this call will fail with INVALID_PARAMETER. The higher level
+                // this call will fail with INVALID_PARAMETER_6. The higher level
                 // `CreateFileMapping` function will set this bit for you when it
                 // calls NtCreateSection.
                 .COMMIT = true,
@@ -19140,11 +19140,13 @@ fn createFileMap(
                     .TO_WORKING_SET = false,
                 },
             };
-            // It appears that this is effectively a no-op, as it doesn't decrease page/hard faults.
+            // There has been some doubt about the efficacy of this function:
             // https://github.com/microsoft/Windows-Dev-Performance/issues/108
             //
-            // We still call it, though, to signal the intention of doing something useful.
-            // It doesn't appear to make anything *worse*, so there's no harm in doing so.
+            // However, through testing it has been shown that, if the mapped file is not
+            // in the cache, calling this function can turn what might otherwise be hard
+            // faults into soft faults. Either way, it's still good to call it in order to
+            // accurately reflect our intent.
             switch (windows.ntdll.NtSetInformationVirtualMemory(
                 windows.current_process,
                 .Prefetch,
