@@ -476,23 +476,33 @@ test "fuzz string escaping" {
 }
 
 fn fuzzString(options: StringOptions, smith: *std.testing.Smith) !void {
-    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    const gpa = std.testing.allocator;
 
-    var allocating: Writer.Allocating = .init(allocator);
+    var arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var allocating: Writer.Allocating = .init(gpa);
     defer allocating.deinit();
     var s: Serializer = .{ .writer = &allocating.writer };
 
     var buf: [0x100]u8 = undefined;
-    const input_len = smith.slice(&buf);
-    const input = buf[0..input_len];
+    const input = buf[0..smith.slice(&buf)];
     try s.string(input, options);
 
-    const encoded = try allocator.dupeSentinel(u8, allocating.written(), 0);
-    defer allocator.free(encoded);
-    const actual = try std.zon.parse.fromSliceAlloc([]const u8, allocator, encoded, null, .{});
-    defer std.zon.parse.free(allocator, actual);
+    var parse_diags: std.zon.parse.Diagnostics = undefined;
+    const actual = std.zon.parse.fromSlice([]const u8, .{
+        .gpa = gpa,
+        .arena = arena,
+        .source = try arena.dupeSentinel(u8, allocating.written(), 0),
+        .diagnostics = &parse_diags,
+    }) catch |err| switch (err) {
+        error.OutOfMemory => |e| return e,
+        error.ParseZon => |e| {
+            std.log.err("failed to parse serialized ZON: {f}", .{parse_diags.fmt("fuzz_input")});
+            return e;
+        },
+    };
     try std.testing.expectEqualSlices(u8, input, actual);
 }
 
