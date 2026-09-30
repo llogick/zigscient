@@ -410,49 +410,90 @@ pub const StringOptions = struct {
 
 /// Like `value`, but always serializes `val` as a string.
 pub fn string(self: *Serializer, val: []const u8, options: StringOptions) Writer.Error!void {
+    if (!options.escape_non_ascii) {
+        return try self.writer.print("{q}", .{val});
+    }
+
     try self.writer.writeByte('"');
-    // Batch write sequences of "raw" bytes (printable ASCII or non-escaped non-ASCII) for performance.
-    // `val[start..i]` contains pending raw bytes to write.
-    var start: usize = 0;
     var i: usize = 0;
     while (i < val.len) {
         const byte = val[i];
-        // Check if this byte can be written as-is
-        const is_raw = switch (byte) {
-            ' ', '!', '#'...'[', ']'...'~' => true,
-            0x80...0xFF => !options.escape_non_ascii,
-            else => false,
-        };
-        if (is_raw) {
-            i += 1;
-            continue;
-        }
-        // Flush pending raw bytes
-        try self.writer.writeAll(val[start..i]);
-        // Handle the special character
+
         if (byte >= 0x80) {
-            // Decode UTF-8 sequence and write the codepoint
-            const ulen = std.unicode.utf8ByteSequenceLength(byte) catch unreachable;
-            const codepoint = std.unicode.utf8Decode(val[i..][0..ulen]) catch unreachable;
-            // InvalidCodepoint cannot occur from valid UTF-8
-            self.writeCodepoint(codepoint, .{
-                .escape_non_ascii = options.escape_non_ascii,
-                .quote_style = .double,
-            }) catch unreachable;
-            i += ulen;
-        } else {
-            // ASCII character that needs escaping
-            self.writeCodepoint(byte, .{
-                .escape_non_ascii = options.escape_non_ascii,
-                .quote_style = .double,
-            }) catch unreachable; // InvalidCodepoint cannot occur for valid ASCII values
-            i += 1;
+            if (std.unicode.utf8ByteSequenceLength(byte)) |ulen| utf8: {
+                if (val[i..].len < ulen) {
+                    // Truncated UTF-8 sequence
+                    break :utf8;
+                }
+                const codepoint = std.unicode.utf8Decode(val[i..][0..ulen]) catch break :utf8;
+                self.writeCodepoint(codepoint, .{
+                    .escape_non_ascii = true,
+                    .quote_style = .double,
+                }) catch unreachable;
+                i += ulen;
+                continue;
+            } else |err| switch (err) {
+                error.Utf8InvalidStartByte => {},
+            }
         }
-        start = i;
+
+        try std.zig.stringEscape(&.{byte}, self.writer);
+        i += 1;
     }
 
-    try self.writer.writeAll(val[start..]);
     try self.writer.writeByte('"');
+}
+
+test string {
+    try testString("\"foobar\"", "foobar", .{});
+    try testString("\"€\"", "€", .{});
+    try testString("\"\\u{20ac}\"", "€", .{ .escape_non_ascii = true });
+    try testString("\"ÿ\"", "ÿ", .{});
+    try testString("\"\\u{ff}\"", "ÿ", .{ .escape_non_ascii = true });
+    try testString("\"\\xff\"", &.{0xff}, .{});
+    try testString("\"\\xff\"", &.{0xff}, .{ .escape_non_ascii = true });
+
+    // Truncated UTF-8 sequence (0xe2 starts a 3-byte sequence, 0x80 is a valid continuation byte)
+    try testString("\"\\xe2\\x80\"", &.{ 0xe2, 0x80 }, .{});
+    try testString("\"\\xe2\\x80\"", &.{ 0xe2, 0x80 }, .{ .escape_non_ascii = true });
+}
+
+fn testString(expected: []const u8, input: []const u8, options: StringOptions) !void {
+    var allocating: Writer.Allocating = .init(std.testing.allocator);
+    defer allocating.deinit();
+    var s: Serializer = .{ .writer = &allocating.writer };
+
+    try s.string(input, options);
+    try std.testing.expectEqualSlices(u8, expected, allocating.written());
+}
+
+test "fuzz string non-escaping" {
+    try std.testing.fuzz(StringOptions{ .escape_non_ascii = false }, fuzzString, .{});
+}
+
+test "fuzz string escaping" {
+    try std.testing.fuzz(StringOptions{ .escape_non_ascii = true }, fuzzString, .{});
+}
+
+fn fuzzString(options: StringOptions, smith: *std.testing.Smith) !void {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var allocating: Writer.Allocating = .init(allocator);
+    defer allocating.deinit();
+    var s: Serializer = .{ .writer = &allocating.writer };
+
+    var buf: [0x100]u8 = undefined;
+    const input_len = smith.slice(&buf);
+    const input = buf[0..input_len];
+    try s.string(input, options);
+
+    const encoded = try allocator.dupeSentinel(u8, allocating.written(), 0);
+    defer allocator.free(encoded);
+    const actual = try std.zon.parse.fromSliceAlloc([]const u8, allocator, encoded, null, .{});
+    defer std.zon.parse.free(allocator, actual);
+    try std.testing.expectEqualSlices(u8, input, actual);
 }
 
 /// Options for formatting multiline strings.
