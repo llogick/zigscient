@@ -3081,8 +3081,8 @@ pub fn unreachableDirClose(userdata: ?*anyopaque, dirs: []const Dir) void {
 
 pub fn noDirRead(userdata: ?*anyopaque, dir_reader: *Dir.Reader, buffer: []Dir.Entry) Dir.Reader.Error!usize {
     _ = userdata;
-    _ = dir_reader;
     _ = buffer;
+    dir_reader.state = .finished;
     return 0;
 }
 
