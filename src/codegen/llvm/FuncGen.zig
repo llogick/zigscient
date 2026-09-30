@@ -6639,7 +6639,8 @@ fn airWorkGroupSize(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builde
             // Load the work_group_* member from the struct as u16.
             // Just treat the dispatch pointer as an array of u16 to keep things simple.
             const workgroup_size_ptr = try self.ptraddConst(dispatch_ptr, (2 + dimension) * 2);
-            return self.load(workgroup_size_ptr, .@"2", .u16, .normal);
+            const workgroup_size = try self.load(workgroup_size_ptr, .@"2", .u16, .normal);
+            return try self.wip.cast(.zext, workgroup_size, .i32, "");
         },
         .nvptx, .nvptx64 => {
             return self.workIntrinsic(dimension, 1, "nvvm.read.ptx.sreg.ntid");
