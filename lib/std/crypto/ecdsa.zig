@@ -256,6 +256,7 @@ pub fn Ecdsa(comptime C: type, comptime H: type) type {
                 const r = try Curve.scalar.Scalar.fromBytes(sig.r, .big);
                 const s = try Curve.scalar.Scalar.fromBytes(sig.s, .big);
                 if (r.isZero() or s.isZero()) return error.IdentityElement;
+                try public_key.p.rejectIdentity();
 
                 return Verifier{
                     .h = Hash.init(.{}),
@@ -287,13 +288,19 @@ pub fn Ecdsa(comptime C: type, comptime H: type) type {
                 const s_inv = self.s.invert();
                 const v1 = z.mul(s_inv).toBytes(.little);
                 const v2 = self.r.mul(s_inv).toBytes(.little);
-                const v1g = try Curve.basePoint.mulPublic(v1, .little);
-                const v2pk = try self.public_key.p.mulPublic(v2, .little);
-                const vxs = v1g.add(v2pk).affineCoordinates().x.toBytes(.big);
-                const vr = reduceToScalar(Curve.Fe.encoded_length, vxs);
-                if (!self.r.equivalent(vr)) {
+                const v = Curve.mulDoubleBasePublic(Curve.basePoint, v1, self.public_key.p, v2, .little) catch
                     return error.SignatureVerificationFailed;
+
+                const Fe = Curve.Fe;
+                const n = Curve.scalar.field_order;
+                comptime std.debug.assert(n < Fe.field_order and Fe.field_order < 2 * n);
+                const r = Fe.fromBytes(self.r.toBytes(.little), .little) catch unreachable;
+                if (v.x.equivalent(r.mul(v.z))) return;
+                if (r.toInt() < Fe.field_order - n) {
+                    const n_fe = comptime Fe.fromInt(n) catch unreachable;
+                    if (v.x.equivalent(r.add(n_fe).mul(v.z))) return;
                 }
+                return error.SignatureVerificationFailed;
             }
 
             /// Verify that the signature is valid for the entire message.
