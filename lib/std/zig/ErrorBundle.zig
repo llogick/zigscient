@@ -634,7 +634,7 @@ pub const Wip = struct {
             const err_loc = std.zig.findLineColumn(source, err_span.main);
 
             try eb.addRootErrorMessage(.{
-                .msg = try eb.addString(err.msg.get(zoir)),
+                .msg = try eb.addString(err.msg.get(&zoir)),
                 .src_loc = try eb.addSourceLocation(.{
                     .src_path = try eb.addString(src_path),
                     .span_start = err_span.start,
@@ -664,7 +664,7 @@ pub const Wip = struct {
 
                 // This line can cause `wip.extra.items` to be resized.
                 const note_index = @backingInt(try eb.addErrorMessage(.{
-                    .msg = try eb.addString(note.msg.get(zoir)),
+                    .msg = try eb.addString(note.msg.get(&zoir)),
                     .src_loc = try eb.addSourceLocation(.{
                         .src_path = try eb.addString(src_path),
                         .span_start = note_span.start,

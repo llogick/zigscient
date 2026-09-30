@@ -490,7 +490,7 @@ fn appendIdentStr(zg: *ZonGen, ident_token: Ast.TokenIndex) error{ OutOfMemory, 
 }
 
 /// Estimates the size of a string node without parsing it.
-pub fn strLitSizeHint(tree: Ast, node: Ast.Node.Index) usize {
+pub fn strLitSizeHint(tree: *const Ast, node: Ast.Node.Index) usize {
     switch (tree.nodeTag(node)) {
         // Parsed string literals are typically around the size of the raw strings.
         .string_literal => {
@@ -515,7 +515,7 @@ pub fn strLitSizeHint(tree: Ast, node: Ast.Node.Index) usize {
 
 /// Parses the given node as a string literal.
 pub fn parseStrLit(
-    tree: Ast,
+    tree: *const Ast,
     node: Ast.Node.Index,
     writer: *Writer,
 ) Writer.Error!std.zig.string_literal.Result {
@@ -559,12 +559,12 @@ fn strLitAsString(zg: *ZonGen, str_node: Ast.Node.Index) error{ OutOfMemory, Bad
     const gpa = zg.gpa;
     const string_bytes = &zg.string_bytes;
     const str_index: u32 = @intCast(zg.string_bytes.items.len);
-    const size_hint = strLitSizeHint(zg.tree, str_node);
+    const size_hint = strLitSizeHint(&zg.tree, str_node);
     try string_bytes.ensureUnusedCapacity(gpa, size_hint);
     const result = r: {
         var aw: Writer.Allocating = .fromArrayList(gpa, &zg.string_bytes);
         defer zg.string_bytes = aw.toArrayList();
-        break :r parseStrLit(zg.tree, str_node, &aw.writer) catch |err| switch (err) {
+        break :r parseStrLit(&zg.tree, str_node, &aw.writer) catch |err| switch (err) {
             error.WriteFailed => return error.OutOfMemory,
         };
     };

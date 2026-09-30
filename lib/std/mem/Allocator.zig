@@ -168,11 +168,31 @@ pub inline fn rawFree(a: Allocator, memory: []u8, alignment: Alignment, ret_addr
 /// Returns a pointer to undefined memory.
 /// Call `destroy` with the result to free the memory.
 pub fn create(a: Allocator, comptime T: type) Error!*T {
+    return a.createAdvancedWithRetAddr(T, null, @returnAddress());
+}
+
+pub fn alignedCreate(
+    self: Allocator,
+    comptime T: type,
+    /// null means naturally aligned
+    comptime alignment: ?Alignment,
+) Error!*align(if (alignment) |a| a.toByteUnits() else @alignOf(T)) T {
+    return self.createAdvancedWithRetAddr(T, alignment, @returnAddress());
+}
+
+pub inline fn createAdvancedWithRetAddr(
+    self: Allocator,
+    comptime T: type,
+    /// null means naturally aligned
+    comptime alignment: ?Alignment,
+    return_address: usize,
+) Error!*align(if (alignment) |a| a.toByteUnits() else @alignOf(T)) T {
     if (@sizeOf(T) == 0) {
         const ptr = comptime std.mem.alignBackward(usize, math.maxInt(usize), @alignOf(T));
         return @ptrFromInt(ptr);
     }
-    const ptr: *T = @ptrCast(try a.allocBytesAligned(.of(T), @sizeOf(T), @returnAddress()));
+    const a: Alignment = alignment orelse comptime .of(T);
+    const ptr: *align(a.toByteUnits()) T = @ptrCast(try self.allocBytesAligned(a, @sizeOf(T), return_address));
     return ptr;
 }
 

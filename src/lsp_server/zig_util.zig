@@ -71,16 +71,18 @@ pub fn getZigEnv(
         const source = try allocator.dupeSentinel(u8, zig_env_result.stdout, 0);
         defer allocator.free(source);
 
-        return std.zon.parse.fromSliceAlloc(
-            ZigEnv,
-            result_arena,
-            source,
-            null,
-            .{ .ignore_unknown_fields = true },
-        ) catch |err| switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            else => {
+        var diagnostics: std.zon.parse.Diagnostics = undefined;
+        return std.zon.parse.fromSlice(ZigEnv, .{
+            .gpa = allocator,
+            .arena = result_arena,
+            .source = source,
+            .diagnostics = &diagnostics,
+            .ignore_unknown_fields = true,
+        }) catch |err| switch (err) {
+            error.OutOfMemory => |e| return e,
+            error.ParseZon => {
                 log.err("Failed to parse 'zig env' output as Zon: {}", .{err});
+                diagnostics.log("zig env");
                 return null;
             },
         };

@@ -42,7 +42,7 @@ pub const Header = extern struct {
     }
 };
 
-pub fn hasCompileErrors(zoir: Zoir) bool {
+pub fn hasCompileErrors(zoir: *const Zoir) bool {
     if (zoir.compile_errors.len > 0) {
         assert(zoir.nodes.len == 0);
         assert(zoir.extra.len == 0);
@@ -54,7 +54,7 @@ pub fn hasCompileErrors(zoir: Zoir) bool {
     }
 }
 
-pub fn deinit(zoir: Zoir, gpa: Allocator) void {
+pub fn deinit(zoir: *const Zoir, gpa: Allocator) void {
     var nodes = zoir.nodes;
     nodes.deinit(gpa);
 
@@ -105,7 +105,7 @@ pub const Node = union(enum) {
         root = 0,
         _,
 
-        pub fn get(idx: Index, zoir: Zoir) Node {
+        pub fn get(idx: Index, zoir: *const Zoir) Node {
             const repr = zoir.nodes.get(@backingInt(idx));
             return switch (repr.tag) {
                 .true => .true,
@@ -151,7 +151,7 @@ pub const Node = union(enum) {
             };
         }
 
-        pub fn getAstNode(idx: Index, zoir: Zoir) std.zig.Ast.Node.Index {
+        pub fn getAstNode(idx: Index, zoir: *const Zoir) std.zig.Ast.Node.Index {
             return zoir.nodes.items(.ast_node)[@backingInt(idx)];
         }
 
@@ -227,7 +227,7 @@ pub const Node = union(enum) {
 
 pub const NullTerminatedString = enum(u32) {
     _,
-    pub fn get(nts: NullTerminatedString, zoir: Zoir) [:0]const u8 {
+    pub fn get(nts: NullTerminatedString, zoir: *const Zoir) [:0]const u8 {
         const idx = std.mem.findScalar(u8, zoir.string_bytes[@backingInt(nts)..], 0).?;
         return zoir.string_bytes[@backingInt(nts)..][0..idx :0];
     }
@@ -244,7 +244,7 @@ pub const CompileError = extern struct {
     first_note: u32,
     note_count: u32,
 
-    pub fn getNotes(err: CompileError, zoir: Zoir) []const Note {
+    pub fn getNotes(err: CompileError, zoir: *const Zoir) []const Note {
         return zoir.error_notes[err.first_note..][0..err.note_count];
     }
 
