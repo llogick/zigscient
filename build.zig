@@ -7,7 +7,7 @@ const Io = std.Io;
 const tests = @import("test/tests.zig");
 const DevEnv = @import("src/dev.zig").Env;
 
-const zig_version: std.SemanticVersion = .{ .major = 0, .minor = 17, .patch = 0 };
+const zig_version: std.SemanticVersion = .{ .major = 0, .minor = 18, .patch = 0 };
 const stack_size = 46 * 1024 * 1024;
 
 const IoMode = enum { threaded, evented };
