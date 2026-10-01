@@ -1322,7 +1322,7 @@ pub const cache_helpers = struct {
         }
     }
 
-    pub fn hashCSource(man: *Cache.Manifest, c_source: CSourceFile) !void {
+    pub fn hashCSource(man: *Cache.Manifest, c_source: CSourceFile) Allocator.Error!void {
         _ = try man.addInputPath(.initCwd(c_source.src_path), .{});
         // Hash the extra flags, with special care to call addFile for file parameters.
         // TODO this logic can likely be improved by utilizing clang_options_data.zig.
@@ -5166,16 +5166,16 @@ fn workerUpdateCObject(
     comp: *Compilation,
     c_object: *CObject,
     progress_node: std.Progress.Node,
-) void {
+) Io.Cancelable!void {
     comp.updateCObject(c_object, progress_node) catch |err| switch (err) {
-        error.AlreadyReported => return,
-        else => {
-            comp.reportRetryableCObjectError(c_object, err) catch |oom| switch (oom) {
-                // Swallowing this error is OK because it's implied to be OOM when
-                // there is a missing failed_c_objects error message.
-                error.OutOfMemory => {},
-            };
+        error.OutOfMemory => switch (comp.failCObjRetryable(c_object, "failed to update C object: out of memory", .{})) {
+            // Swallowing this error is OK because it's implied to be OOM when
+            // there is a missing failed_c_objects error message.
+            error.OutOfMemory => return,
+            error.AlreadyReported => return,
         },
+        error.Canceled => |e| return e,
+        error.AlreadyReported => return,
     };
 }
 
@@ -5439,15 +5439,6 @@ fn buildLibZigC(comp: *Compilation, prog_node: std.Progress.Node) void {
     };
 }
 
-fn reportRetryableCObjectError(comp: *Compilation, c_object: *CObject, err: anyerror) error{OutOfMemory}!void {
-    c_object.status = .failure_retryable;
-
-    switch (comp.failCObj(c_object, "{t}", .{err})) {
-        error.AlreadyReported => return,
-        else => |e| return e,
-    }
-}
-
 fn reportRetryableWin32ResourceError(
     comp: *Compilation,
     win32_resource: *Win32Resource,
@@ -5481,7 +5472,11 @@ fn reportRetryableWin32ResourceError(
     }
 }
 
-fn updateCObject(comp: *Compilation, c_object: *CObject, c_obj_prog_node: std.Progress.Node) !void {
+fn updateCObject(
+    comp: *Compilation,
+    c_object: *CObject,
+    c_obj_prog_node: std.Progress.Node,
+) (Allocator.Error || Io.Cancelable || error{AlreadyReported})!void {
     if (comp.config.c_frontend == .aro) {
         return comp.failCObj(c_object, "aro does not support compiling C objects yet", .{});
     }
@@ -5635,7 +5630,14 @@ fn updateCObject(comp: *Compilation, c_object: *CObject, c_obj_prog_node: std.Pr
         // We can't know the digest until we do the C compiler invocation,
         // so we need a temporary filename.
         const out_obj_path = try comp.tmpFilePath(arena, o_basename);
-        var zig_cache_tmp_dir = try comp.dirs.local_cache.handle.createDirPathOpen(io, "tmp", .{});
+        var zig_cache_tmp_dir = comp.dirs.local_cache.handle.createDirPathOpen(io, "tmp", .{}) catch |err| switch (err) {
+            error.Canceled => |e| return e,
+            else => |e| return comp.failCObjRetryable(
+                c_object,
+                "failed to open '{f}{c}tmp': {t}",
+                .{ comp.dirs.local_cache, fs.path.sep, e },
+            ),
+        };
         defer zig_cache_tmp_dir.close(io);
 
         const out_diag_path = if (comp.clang_passthrough_mode or !ext.clangSupportsDiagnostics())
@@ -5714,18 +5716,45 @@ fn updateCObject(comp: *Compilation, c_object: *CObject, c_obj_prog_node: std.Pr
                     else => std.process.abort(),
                 }
             } else {
-                var child = try std.process.spawn(io, .{
+                var child = std.process.spawn(io, .{
                     .argv = argv.items,
                     .stdin = .ignore,
                     .stdout = .ignore,
                     .stderr = .pipe,
-                });
+                }) catch |err| switch (err) {
+                    error.Canceled,
+                    error.OutOfMemory,
+                    => |e| return e,
+                    else => |e| return comp.failCObjRetryable(
+                        c_object,
+                        "failed to spawn zig clang '{s}': {t}",
+                        .{ argv.items[0], e },
+                    ),
+                };
 
                 var stderr_reader = child.stderr.?.readerStreaming(io, &.{});
-                const stderr = try stderr_reader.interface.allocRemaining(arena, .limited(std.math.maxInt(u32)));
+                const stderr = stderr_reader.interface.allocRemaining(arena, .limited(std.math.maxInt(u32))) catch |err| switch (err) {
+                    error.OutOfMemory => |e| return e,
+                    error.StreamTooLong => return comp.failCObjRetryable(
+                        c_object,
+                        "failed to read stderr of zig clang '{s}': exceeded maximum size",
+                        .{argv.items[0]},
+                    ),
+                    error.ReadFailed => return comp.failCObjRetryable(
+                        c_object,
+                        "failed to read stderr of zig clang '{s}': {t}",
+                        .{ argv.items[0], stderr_reader.err.? },
+                    ),
+                };
 
-                const term = child.wait(io) catch |err|
-                    return comp.failCObj(c_object, "failed to spawn zig clang {s}: {t}", .{ argv.items[0], err });
+                const term = child.wait(io) catch |err| switch (err) {
+                    error.Canceled => |e| return e,
+                    else => |e| return comp.failCObj(
+                        c_object,
+                        "failed to spawn zig clang '{s}': {t}",
+                        .{ argv.items[0], e },
+                    ),
+                };
 
                 switch (term) {
                     .exited => |code| if (code != 0) if (out_diag_path) |diag_file_path| {
@@ -5767,14 +5796,27 @@ fn updateCObject(comp: *Compilation, c_object: *CObject, c_obj_prog_node: std.Pr
             };
         }
 
-        if (out_dep_path) |dep_file_path| {
-            const dep_basename = fs.path.basename(dep_file_path);
+        if (out_dep_path) |raw_dep_file_path| {
+            const dep_file_path: std.Build.Cache.Path = .{
+                .root_dir = .{
+                    .handle = zig_cache_tmp_dir,
+                    .path = "tmp",
+                },
+                .sub_path = fs.path.basename(raw_dep_file_path),
+            };
 
             if (comp.file_system_inputs != null) {
                 // TODO instead of this rely on passing the manifest contents directly
 
                 // Use the same file size limit as the cache code does for dependency files.
-                const dep_file_contents = try zig_cache_tmp_dir.readFileAlloc(io, dep_basename, gpa, .unlimited);
+                const dep_file_contents = dep_file_path.root_dir.handle.readFileAlloc(io, dep_file_path.sub_path, gpa, .unlimited) catch |err| switch (err) {
+                    error.OutOfMemory, error.Canceled => |e| return e,
+                    else => |e| return comp.failCObjRetryable(
+                        c_object,
+                        "failed to read '{f}': {t}",
+                        .{ dep_file_path, e },
+                    ),
+                };
                 defer gpa.free(dep_file_contents);
 
                 var str_buf: std.ArrayList(u8) = .empty;
@@ -5789,36 +5831,65 @@ fn updateCObject(comp: *Compilation, c_object: *CObject, c_obj_prog_node: std.Pr
                             try token.resolve(gpa, &str_buf);
                             break :p try .fromUnresolved(arena, comp.dirs, &.{str_buf.items});
                         },
-                        else => |err_token| {
-                            log.err("failed parsing {s}: {f}", .{ dep_basename, err_token });
-                            return error.InvalidDepFile;
-                        },
+                        else => |err_token| return comp.failCObjRetryable(
+                            c_object,
+                            "failed parsing '{f}': {f}",
+                            .{ dep_file_path, err_token },
+                        ),
                     };
                     try comp.appendFileSystemInput(input_path);
                 }
             }
 
             // Add the files depended on to the cache system.
-            var diagnostic: Cache.Manifest.AddDiscoveredDepFileDiagnostic = undefined;
-            try man.addDiscoveredDepFile(.{
-                .root_dir = .{
-                    .handle = zig_cache_tmp_dir,
-                    .path = "tmp",
-                },
-                .sub_path = dep_basename,
-            }, &diagnostic);
+            var diags: Cache.Manifest.AddDiscoveredDepFileDiagnostic = undefined;
+            man.addDiscoveredDepFile(dep_file_path, &diags) catch |err| switch (err) {
+                error.OutOfMemory,
+                error.Canceled,
+                => |e| return e,
+
+                error.InvalidDepFile => return comp.failCObjRetryable(
+                    c_object,
+                    "failed to parse '{f}': {f}",
+                    .{ dep_file_path, diags.dep_tokenizer },
+                ),
+                error.FileSystemFailure => return comp.failCObjRetryable(
+                    c_object,
+                    "failed to parse '{f}': {f}",
+                    .{ dep_file_path, diags.add_discovered_path },
+                ),
+                else => |e| return comp.failCObjRetryable(
+                    c_object,
+                    "failed to read '{f}': {t}",
+                    .{ dep_file_path, e },
+                ),
+            };
             switch (comp.cache_use) {
                 .whole => |whole| {
                     if (whole.cache_manifest) |whole_cache_manifest| {
                         try whole.cache_manifest_mutex.lock(io);
                         defer whole.cache_manifest_mutex.unlock(io);
-                        try whole_cache_manifest.addDiscoveredDepFile(.{
-                            .root_dir = .{
-                                .handle = zig_cache_tmp_dir,
-                                .path = "tmp",
-                            },
-                            .sub_path = dep_basename,
-                        }, &diagnostic);
+                        whole_cache_manifest.addDiscoveredDepFile(dep_file_path, &diags) catch |err| switch (err) {
+                            error.OutOfMemory,
+                            error.Canceled,
+                            => |e| return e,
+
+                            error.InvalidDepFile => return comp.failCObjRetryable(
+                                c_object,
+                                "failed to parse '{f}': {f}",
+                                .{ dep_file_path, diags.dep_tokenizer },
+                            ),
+                            error.FileSystemFailure => return comp.failCObjRetryable(
+                                c_object,
+                                "failed to parse '{f}': {f}",
+                                .{ dep_file_path, diags.add_discovered_path },
+                            ),
+                            else => |e| return comp.failCObjRetryable(
+                                c_object,
+                                "failed to read '{f}': {t}",
+                                .{ dep_file_path, e },
+                            ),
+                        };
                     }
                 },
                 .incremental, .none => {},
@@ -5843,10 +5914,33 @@ fn updateCObject(comp: *Compilation, c_object: *CObject, c_obj_prog_node: std.Pr
 
         // Rename into place.
         const o_sub_path = try fs.path.join(arena, &.{ "o", &digest });
-        var o_dir = try comp.dirs.local_cache.handle.createDirPathOpen(io, o_sub_path, .{});
+        var o_dir = comp.dirs.local_cache.handle.createDirPathOpen(io, o_sub_path, .{}) catch |err| switch (err) {
+            error.Canceled => |e| return e,
+            else => |e| return comp.failCObjRetryable(
+                c_object,
+                "failed to create '{f}{c}{s}': {t}",
+                .{ comp.dirs.local_cache, fs.path.sep, o_sub_path, e },
+            ),
+        };
         defer o_dir.close(io);
         const tmp_basename = fs.path.basename(out_obj_path);
-        try Io.Dir.rename(zig_cache_tmp_dir, tmp_basename, o_dir, o_basename, io);
+        Io.Dir.rename(zig_cache_tmp_dir, tmp_basename, o_dir, o_basename, io) catch |err| switch (err) {
+            error.Canceled => |e| return e,
+            else => |e| return comp.failCObjRetryable(
+                c_object,
+                "failed to rename 'tmp{c}{s}' into '{f}{c}{s}{c}{s}': {t}",
+                .{
+                    fs.path.sep,
+                    tmp_basename,
+                    comp.dirs.local_cache,
+                    fs.path.sep,
+                    o_sub_path,
+                    fs.path.sep,
+                    o_basename,
+                    e,
+                },
+            ),
+        };
         break :d digest;
     };
 
@@ -6794,6 +6888,16 @@ pub fn addCCArgs(
 
     try argv.appendSlice(comp.global_cc_argv);
     try argv.appendSlice(mod.cc_argv);
+}
+
+fn failCObjRetryable(
+    comp: *Compilation,
+    c_object: *CObject,
+    comptime format: []const u8,
+    args: anytype,
+) error{ OutOfMemory, AlreadyReported } {
+    defer c_object.status = .failure_retryable;
+    return comp.failCObj(c_object, format, args);
 }
 
 fn failCObj(
