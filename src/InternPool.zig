@@ -5388,7 +5388,7 @@ pub const Tag = enum(u8) {
             },
             .config = .{
                 .@"trailing.inferred_error_set.?" = .@"payload.analysis.inferred_error_set",
-                .@"trailing.param_values.len" = .@"@syntheticField(payload.ty, \"unwrapped\").payload.params_len",
+                .@"trailing.param_values.len" = .@"@syntheticField(@syntheticField(payload.ty, \"unwrapped\"), \"payload\").params_len",
             },
         },
         .func_coerced = .{
@@ -5402,7 +5402,7 @@ pub const Tag = enum(u8) {
             .summary = .@"@as({.payload.ty%summary}, .{...})",
             .payload = Aggregate,
             .trailing = struct { elements: []Index },
-            .config = .{ .@"trailing.elements.len" = .@"@syntheticField(payload.ty, \"unwrapped\").payload.fields_len" },
+            .config = .{ .@"trailing.elements.len" = .@"@syntheticField(@syntheticField(payload.ty, \"unwrapped\"), \"payload\").fields_len" },
         },
         .repeated = .{ .summary = .@"@as({.payload.ty%summary}, @splat({.payload.elem_val%summary}))", .payload = Repeated },
         .bitpack = .{ .summary = .@"@as({.payload.ty%summary}, {})", .payload = Key.Bitpack },
