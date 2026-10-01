@@ -73,6 +73,12 @@ pub fn Cmac(comptime BlockCipher: type) type {
             self.cipher_ctx.encrypt(out, &mac);
         }
 
+        pub fn finalResult(d: *Self) [mac_length]u8 {
+            var result: [mac_length]u8 = undefined;
+            d.final(&result);
+            return result;
+        }
+
         fn double(l: Block) Block {
             const Int = @Int(.unsigned, block_length * 8);
             const l_ = mem.readInt(Int, &l, .big);

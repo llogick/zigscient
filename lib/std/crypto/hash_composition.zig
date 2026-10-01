@@ -54,6 +54,12 @@ pub fn Composition(comptime H1: type, comptime H2: type) type {
             d.H1.update(&H2_digest);
             d.H1.final(out);
         }
+
+        pub fn finalResult(d: *Self) [digest_length]u8 {
+            var result: [digest_length]u8 = undefined;
+            d.final(&result);
+            return result;
+        }
     };
 }
 

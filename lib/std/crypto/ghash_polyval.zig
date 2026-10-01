@@ -405,6 +405,12 @@ fn Hash(comptime endian: std.builtin.Endian, comptime shift_key: bool) type {
             std.crypto.secureZero(Self, st[0..1]);
         }
 
+        pub fn finalResult(d: *Self) [mac_length]u8 {
+            var result: [mac_length]u8 = undefined;
+            d.final(&result);
+            return result;
+        }
+
         /// Compute the GHASH of a message.
         pub fn create(out: *[mac_length]u8, msg: []const u8, key: *const [key_length]u8) void {
             var st = Self.init(key);

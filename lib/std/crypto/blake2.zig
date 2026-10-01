@@ -138,6 +138,12 @@ pub fn Blake2s(comptime out_bits: usize) type {
             out.* = @as(*[digest_length]u8, @ptrCast(&d.h)).*;
         }
 
+        pub fn finalResult(d: *Self) [digest_length]u8 {
+            var result: [digest_length]u8 = undefined;
+            d.final(&result);
+            return result;
+        }
+
         fn round(d: *Self, b: *const [64]u8, last: bool) void {
             var m: [16]u32 = undefined;
             var v: [16]u32 = undefined;
@@ -578,6 +584,12 @@ pub fn Blake2b(comptime out_bits: usize) type {
             d.round(d.buf[0..], true);
             for (&d.h) |*x| x.* = mem.nativeToLittle(u64, x.*);
             out.* = @as(*[digest_length]u8, @ptrCast(&d.h)).*;
+        }
+
+        pub fn finalResult(d: *Self) [digest_length]u8 {
+            var result: [digest_length]u8 = undefined;
+            d.final(&result);
+            return result;
         }
 
         fn round(d: *Self, b: *const [128]u8, last: bool) void {

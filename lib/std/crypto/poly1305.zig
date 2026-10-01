@@ -187,6 +187,12 @@ pub const Poly1305 = struct {
         std.crypto.secureZero(Poly1305, st[0..1]);
     }
 
+    pub fn finalResult(d: *Poly1305) [mac_length]u8 {
+        var result: [mac_length]u8 = undefined;
+        d.final(&result);
+        return result;
+    }
+
     pub fn create(out: *[mac_length]u8, msg: []const u8, key: *const [key_length]u8) void {
         var st = Poly1305.init(key);
         st.update(msg);

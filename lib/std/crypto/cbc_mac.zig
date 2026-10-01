@@ -68,6 +68,12 @@ pub fn CbcMac(comptime BlockCipher: type) type {
             // Partial blocks are implicitly zero-padded: buf[pos..] contains zeros from initialization.
             self.cipher_ctx.encrypt(out, &self.buf);
         }
+
+        pub fn finalResult(d: *Self) [mac_length]u8 {
+            var result: [mac_length]u8 = undefined;
+            d.final(&result);
+            return result;
+        }
     };
 }
 

@@ -673,6 +673,12 @@ pub const AsconHash256 = struct {
             mem.writeInt(u64, out[i * 8 ..][0..8], h[i], .little);
         }
     }
+
+    pub fn finalResult(d: *AsconHash256) [digest_length]u8 {
+        var result: [digest_length]u8 = undefined;
+        d.final(&result);
+        return result;
+    }
 };
 
 /// Ascon-XOF128 as specified in NIST SP 800-232 Section 5

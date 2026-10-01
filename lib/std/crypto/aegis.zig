@@ -794,6 +794,12 @@ fn AegisMac(comptime T: type) type {
             out.* = self.state.finalizeMac(T.tag_length * 8, self.msg_len);
         }
 
+        pub fn finalResult(d: *Mac) [mac_length]u8 {
+            var result: [mac_length]u8 = undefined;
+            d.final(&result);
+            return result;
+        }
+
         /// Return an authentication tag for a message, a key and a nonce
         pub fn createWithNonce(out: *[mac_length]u8, msg: []const u8, key: *const [key_length]u8, nonce: *const [nonce_length]u8) void {
             var ctx = Mac.initWithNonce(key, nonce);

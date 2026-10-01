@@ -71,6 +71,12 @@ pub fn Hmac(comptime Hash: type) type {
             ohash.update(&scratch);
             ohash.final(out);
         }
+
+        pub fn finalResult(d: *Self) [mac_length]u8 {
+            var result: [mac_length]u8 = undefined;
+            d.final(&result);
+            return result;
+        }
     };
 }
 

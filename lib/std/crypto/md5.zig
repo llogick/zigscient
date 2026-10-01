@@ -124,6 +124,12 @@ pub const Md5 = struct {
         }
     }
 
+    pub fn finalResult(d: *Self) [digest_length]u8 {
+        var result: [digest_length]u8 = undefined;
+        d.final(&result);
+        return result;
+    }
+
     fn round(d: *Self, b: *const [64]u8) void {
         var s: [16]u32 = undefined;
 

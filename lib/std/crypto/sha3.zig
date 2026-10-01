@@ -86,6 +86,12 @@ pub fn Keccak(comptime f: u11, comptime output_bits: u11, comptime default_delim
             self.st.pad();
             self.st.squeeze(out[0..]);
         }
+
+        pub fn finalResult(d: *Self) [digest_length]u8 {
+            var result: [digest_length]u8 = undefined;
+            d.final(&result);
+            return result;
+        }
     };
 }
 
