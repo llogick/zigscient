@@ -3,6 +3,8 @@
 //! Unlike `std.math.big`, these integers have a fixed maximum length and are only designed to be used for modular arithmetic.
 //! Arithmetic operations are meant to run in constant-time for a given modulus, making them suitable for cryptography.
 //!
+//! Functions with `Public` in their name are the exception.
+//!
 //! Parts of that code was ported from the BSD-licensed crypto/internal/bigmod/nat.go file in the Go language, itself inspired from BearSSL.
 
 const std = @import("std");
@@ -51,8 +53,10 @@ pub const FieldElementError = error{NonCanonical};
 /// Invalid representation (Montgomery vs non-Montgomery domain.)
 pub const RepresentationError = error{UnexpectedRepresentation};
 
+pub const DivisionByZeroError = error{DivisionByZero};
+
 /// The set of all possible errors `std.crypto.ff` functions can return.
-pub const Error = OverflowError || InvalidModulusError || NullExponentError || FieldElementError || RepresentationError;
+pub const Error = OverflowError || InvalidModulusError || NullExponentError || FieldElementError || RepresentationError || DivisionByZeroError;
 
 /// An unsigned big integer with a fixed maximum size (`max_bits`), suitable for cryptographic operations.
 /// Storage rounds up to whole limbs and can hold up to `capacity_bits` bits.
@@ -240,6 +244,110 @@ pub fn Uint(comptime max_bits: comptime_int) type {
             return x.conditionalSubWithOverflow(true, y);
         }
 
+        /// Adds the product of `x` and `y` to `acc`, wrapping at the active width.
+        /// Returns 1 if any part of the result was discarded.
+        pub fn mulAddWithOverflow(acc: *Self, x: Self, y: Self) u1 {
+            assert(x.limbs_len == acc.limbs_len);
+            assert(y.limbs_len == acc.limbs_len);
+            const n = acc.limbs_len;
+            var wide: [2 * max_limbs_count]Limb = undefined;
+            @memcpy(wide[0..n], acc.limbsConst());
+            mulAddWide(wide[0 .. 2 * n], x.limbsConst(), y.limbsConst());
+            @memcpy(acc.limbs(), wide[0..n]);
+            return @intFromBool(!ct.eql(orLimbs(wide[n..][0..n]), 0));
+        }
+
+        /// Returns the bit length, or 0 for zero.
+        pub fn bitLenPublic(x: Self) usize {
+            var i = x.limbs_len;
+            while (i != 0) {
+                i -= 1;
+                const limb = x.limbsConst()[i];
+                if (limb != 0) {
+                    return i * t_bits + t_bits - @clz(@as(TLimb, @intCast(limb)));
+                }
+            }
+            return 0;
+        }
+
+        /// Returns the number of trailing zero bits, or the active width for zero.
+        pub fn trailingZeroBitsPublic(x: Self) usize {
+            for (x.limbsConst(), 0..) |limb, i| {
+                if (limb != 0) {
+                    return i * t_bits + @ctz(@as(TLimb, @intCast(limb)));
+                }
+            }
+            return x.limbs_len * t_bits;
+        }
+
+        pub fn shiftRightPublic(x: *Self, shift: usize) void {
+            const limb_shift = shift / t_bits;
+            const bit_shift = shift % t_bits;
+            const x_limbs = x.limbs();
+            if (limb_shift >= x_limbs.len) {
+                @memset(x_limbs, 0);
+                return;
+            }
+            const active = x_limbs.len - limb_shift;
+            for (0..active) |i| {
+                const lo = math.shr(Limb, x_limbs[i + limb_shift], bit_shift);
+                const hi = if (i + limb_shift + 1 < x_limbs.len)
+                    math.shl(Limb, x_limbs[i + limb_shift + 1], t_bits - bit_shift)
+                else
+                    0;
+                x_limbs[i] = @as(TLimb, @truncate(lo | hi));
+            }
+            @memset(x_limbs[active..], 0);
+        }
+
+        /// Divides by `divisor` in place and returns the remainder.
+        /// Returns `error.DivisionByZero` without changing the integer if `divisor` is zero.
+        pub fn divRemPublic(x: *Self, divisor: usize) DivisionByZeroError!usize {
+            if (divisor == 0) return error.DivisionByZero;
+            const Wide = @Int(.unsigned, 2 * @bitSizeOf(Limb));
+            const x_limbs = x.limbs();
+            var rem: Limb = 0;
+            var i = x.limbs_len;
+            while (i != 0) {
+                i -= 1;
+                const num = (@as(Wide, rem) << t_bits) | x_limbs[i];
+                x_limbs[i] = @intCast(num / divisor);
+                rem = @intCast(num % divisor);
+            }
+            return rem;
+        }
+
+        /// Returns the greatest common divisor, with gcd(x, 0) = x.
+        /// Returns `error.DivisionByZero` if both operands are zero.
+        pub fn gcdPublic(x: Self, y: Self) DivisionByZeroError!Self {
+            if (x.isZero() and y.isZero()) return error.DivisionByZero;
+            if (x.isZero()) return y;
+            if (y.isZero()) return x;
+
+            var a = x;
+            var b = y;
+            const len = @max(a.limbs_len, b.limbs_len);
+            a.expandTo(len);
+            b.expandTo(len);
+
+            const a_shift = a.trailingZeroBitsPublic();
+            const b_shift = b.trailingZeroBitsPublic();
+            a.shiftRightPublic(a_shift);
+            b.shiftRightPublic(b_shift);
+            while (true) {
+                switch (a.compare(b)) {
+                    .eq => break,
+                    .lt => mem.swap(Self, &a, &b),
+                    .gt => {},
+                }
+                _ = a.subWithOverflow(b);
+                a.shiftRightPublic(a.trailingZeroBitsPublic());
+            }
+
+            a.shiftLeft(@min(a_shift, b_shift)); // GCD always fits in either input, overflow is never an issue
+            return a;
+        }
+
         fn expandTo(x: *Self, new_len: usize) void {
             assert(new_len >= x.limbs_len and new_len <= x.limbs_buffer.len);
             @memset(x.limbs_buffer[x.limbs_len..new_len], 0);
@@ -275,6 +383,40 @@ pub fn Uint(comptime max_bits: comptime_int) type {
                 borrow = @truncate(res >> t_bits);
             }
             return borrow;
+        }
+
+        fn shiftLeft(x: *Self, shift: usize) void {
+            assert(x.bitLenPublic() + shift <= x.limbs_len * t_bits);
+            const limb_shift = shift / t_bits;
+            const bit_shift = shift % t_bits;
+            const x_limbs = x.limbs();
+            var i = x_limbs.len;
+            while (i != 0) {
+                i -= 1;
+                const hi = if (i >= limb_shift)
+                    math.shl(Limb, x_limbs[i - limb_shift], bit_shift)
+                else
+                    0;
+                const lo = if (i >= limb_shift + 1)
+                    math.shr(Limb, x_limbs[i - limb_shift - 1], t_bits - bit_shift)
+                else
+                    0;
+                x_limbs[i] = @as(TLimb, @truncate(hi | lo));
+            }
+        }
+
+        // Shifts in `carry` at the top and returns the low bit shifted out.
+        fn shiftRightByOneWithCarry(x: *Self, carry: u1) u1 {
+            var c: Limb = carry;
+            var i = x.limbs_len;
+            const x_limbs = x.limbs();
+            while (i != 0) {
+                i -= 1;
+                const limb = x_limbs[i];
+                x_limbs[i] = (limb >> 1) | (c << (t_bits - 1));
+                c = @as(u1, @truncate(limb));
+            }
+            return @truncate(c);
         }
     };
 }
@@ -400,6 +542,30 @@ fn orLimbs(limbs: []const Limb) Limb {
         t |= limb;
     }
     return t;
+}
+
+// Adds `x * y` to `z` and returns the carry.
+fn mulAddLimb(z: []Limb, x: []const Limb, y: Limb) Limb {
+    assert(z.len == x.len);
+    var carry: Limb = 0;
+    for (z, x) |*z_limb, x_limb| {
+        const wide = ct.mulWide(x_limb, y);
+        var z_lo = @addWithOverflow(z_limb.*, wide.lo);
+        var z_hi = wide.hi +% z_lo[1];
+        z_lo = @addWithOverflow(z_lo[0], carry);
+        z_hi +%= z_lo[1];
+        z_limb.* = @as(TLimb, @truncate(z_lo[0]));
+        carry = (z_hi << 1) | (z_lo[0] >> t_bits);
+    }
+    return carry;
+}
+
+// Adds `x * y` to the low `x.len` limbs of `z`. The upper limbs need no initialization.
+fn mulAddWide(z: []Limb, x: []const Limb, y: []const Limb) void {
+    assert(z.len == x.len + y.len);
+    for (y, 0..) |y_limb, i| {
+        z[i + x.len] = mulAddLimb(z[i..][0..x.len], x, y_limb);
+    }
 }
 
 /// A modulus, defining a finite field.
@@ -1219,6 +1385,70 @@ test "field element decoding" {
     }
 }
 
+test "Uint bit measurement and shifts" {
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
+
+    const U = Uint(256);
+    try testing.expectEqual(0, U.zero.bitLenPublic());
+    try testing.expectEqual(U.max_limbs_count * t_bits, U.zero.trailingZeroBitsPublic());
+    try testing.expectEqual(t_bits, U.zero.normalize().trailingZeroBitsPublic());
+    for ([_]usize{ 0, t_bits - 1, t_bits, t_bits + 1, 255 }) |offset| {
+        const x = try U.fromPrimitive(u256, math.shl(u256, 1, offset));
+        try testing.expectEqual(offset + 1, x.bitLenPublic());
+        try testing.expectEqual(offset, x.trailingZeroBitsPublic());
+    }
+
+    const v: u256 = (1 << 255) | (1 << t_bits) | 3;
+    for ([_]usize{ 0, 1, t_bits - 1, t_bits, t_bits + 1, U.max_limbs_count * t_bits, 10_000 }) |shift| {
+        var x = try U.fromPrimitive(u256, v);
+        x.shiftRightPublic(shift);
+        try testing.expectEqual(math.shr(u256, v, shift), try x.toPrimitive(u256));
+        try testing.expectEqual(U.max_limbs_count, x.limbs_len);
+        try expectWellFormedLimbs(x);
+    }
+    for ([_]usize{ 0, 1, t_bits - 1, t_bits, t_bits + 1 }) |shift| {
+        var x = try U.fromPrimitive(u256, (1 << t_bits) + 3);
+        x.shiftLeft(shift);
+        try testing.expectEqual(math.shl(u256, (1 << t_bits) + 3, shift), try x.toPrimitive(u256));
+    }
+
+    var x = (try U.fromPrimitive(u8, 5)).normalize();
+    try testing.expectEqual(1, x.shiftRightByOneWithCarry(1));
+    try testing.expectEqual((1 << (t_bits - 1)) + 2, try x.toPrimitive(u64));
+    try testing.expectEqual(0, x.shiftRightByOneWithCarry(0));
+    x.shiftRightPublic(t_bits);
+    try testing.expect(x.isZero());
+    try testing.expectEqual(1, x.limbs_len);
+}
+
+test "Uint division and gcd" {
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
+
+    const U = Uint(256);
+    const v: u256 = (1 << 255) + (1 << t_bits) + 13;
+    for ([_]usize{ 1, 7, math.maxInt(TLimb), (1 << t_bits) + 5, math.maxInt(usize) }) |divisor| {
+        var x = try U.fromPrimitive(u256, v);
+        try testing.expectEqual(v % divisor, try x.divRemPublic(divisor));
+        try testing.expectEqual(v / divisor, try x.toPrimitive(u256));
+        try expectWellFormedLimbs(x);
+    }
+    var x = (try U.fromPrimitive(u16, 1000)).normalize();
+    try testing.expectError(error.DivisionByZero, x.divRemPublic(0));
+    try testing.expectEqual(6, try x.divRemPublic(7));
+    try testing.expectEqual(142, try x.toPrimitive(u16));
+    try testing.expectEqual(1, x.limbs_len);
+    try testing.expectEqual(142, try x.divRemPublic(1000));
+    try testing.expectEqual(0, try x.divRemPublic(7));
+
+    for ([_][3]u256{ .{ 0, 5, 5 }, .{ 6, 6, 6 }, .{ 17, 4, 1 }, .{ 15 << 200, 21 << 100, 3 << 100 } }) |c| {
+        const a = (try U.fromPrimitive(u256, c[0])).normalize();
+        const b = try U.fromPrimitive(u256, c[1]);
+        try testing.expectEqual(c[2], try (try a.gcdPublic(b)).toPrimitive(u256));
+        try testing.expectEqual(c[2], try (try b.gcdPublic(a)).toPrimitive(u256));
+    }
+    try testing.expectError(error.DivisionByZero, U.zero.gcdPublic(U.zero));
+}
+
 test "Uint addition and multiply-add" {
     if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
 
@@ -1236,4 +1466,29 @@ test "Uint addition and multiply-add" {
     try testing.expect(wrapped.eql(full));
     try testing.expectEqual(1, wrapped.addWithOverflow(one));
     try testing.expect(wrapped.isZero());
+
+    for ([_]struct { acc: U, x: U, y: U, overflow: u1, expected: U }{
+        .{ .acc = U.zero, .x = full, .y = one, .overflow = 0, .expected = full },
+        .{ .acc = full, .x = U.zero, .y = full, .overflow = 0, .expected = full },
+        .{ .acc = full, .x = full, .y = U.zero, .overflow = 0, .expected = full },
+        .{ .acc = U.zero, .x = full, .y = full, .overflow = 1, .expected = one },
+        .{ .acc = full, .x = one, .y = one, .overflow = 1, .expected = U.zero },
+    }) |c| {
+        var acc = c.acc;
+        try testing.expectEqual(c.overflow, acc.mulAddWithOverflow(c.x, c.y));
+        try testing.expect(acc.eql(c.expected));
+        try expectWellFormedLimbs(acc);
+    }
+    const a: u256 = (1 << 100) + 3;
+    const b: u256 = (1 << 80) + 7;
+    var acc = try U.fromPrimitive(u256, a);
+    try testing.expectEqual(0, acc.mulAddWithOverflow(try U.fromPrimitive(u256, a), try U.fromPrimitive(u256, b)));
+    try testing.expectEqual(a + a * b, try acc.toPrimitive(u256));
+
+    var short = one.normalize();
+    const high = (try U.fromPrimitive(u64, 1 << (t_bits - 1))).normalize();
+    const two = (try U.fromPrimitive(u8, 2)).normalize();
+    try testing.expectEqual(1, short.mulAddWithOverflow(high, two));
+    try testing.expectEqual(1, short.limbs_len);
+    try testing.expect(short.isOne());
 }
