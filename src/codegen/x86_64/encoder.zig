@@ -237,9 +237,11 @@ pub const Instruction = struct {
                         .sib => |sib| {
                             try w.print("{f} ", .{sib.ptr_size});
 
-                            if (mem.isSegmentRegister()) {
-                                return w.print("{s}:0x{x}", .{ @tagName(sib.base.reg), sib.disp });
-                            }
+                            if (mem.isSegmentRegister()) return w.print("{s}:{s}0x{x}", .{
+                                @tagName(sib.base.reg),
+                                if (sib.disp < 0) "-" else "",
+                                @abs(sib.disp),
+                            });
 
                             try w.writeByte('[');
 

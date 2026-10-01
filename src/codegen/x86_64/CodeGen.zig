@@ -545,15 +545,18 @@ pub const MCValue = union(enum) {
             .lea_lazy_sym,
             .lea_extern_func,
             => unreachable,
-            .memory => |addr| if (std.math.cast(i32, @as(i64, @bitCast(addr)))) |small_addr| .{
-                .base = .{ .reg = .ds },
-                .mod = .{ .rm = .{
-                    .size = mod_rm.size,
-                    .index = mod_rm.index,
-                    .scale = mod_rm.scale,
-                    .disp = small_addr + mod_rm.disp,
-                } },
-            } else .{ .base = .{ .reg = .ds }, .mod = .{ .off = addr } },
+            .memory => |base_addr| {
+                const addr = @as(i64, @bitCast(base_addr)) +% mod_rm.disp;
+                return .{
+                    .base = .{ .reg = .ds },
+                    .mod = if (std.math.cast(i32, addr)) |small_addr| .{ .rm = .{
+                        .size = mod_rm.size,
+                        .index = mod_rm.index,
+                        .scale = mod_rm.scale,
+                        .disp = small_addr,
+                    } } else .{ .off = @bitCast(addr) },
+                };
+            },
             .indirect => |reg_off| .{
                 .base = .{ .reg = reg_off.reg.toSize(.ptr, function.target) },
                 .mod = .{ .rm = .{
@@ -89205,19 +89208,25 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 try cg.spillEflagsIfOccupied();
                 var ops = try cg.tempsFromOperands(inst, .{un_op});
                 while (try ops[0].toBase(false, cg)) {}
-                try cg.asmMemoryImmediate(
-                    .{ ._, .cmp },
-                    try ops[0].tracking(cg).short.mem(cg, .{
-                        .size = if (!opt_repr_is_pl)
-                            .byte
-                        else if (opt_child_ty.isSlice(zcu))
-                            .ptr
-                        else
-                            .fromSize(opt_child_abi_size),
-                        .disp = if (opt_repr_is_pl) 0 else opt_child_abi_size,
-                    }),
-                    .u(0),
-                );
+                const mem_size: Memory.Size = if (!opt_repr_is_pl)
+                    .byte
+                else if (opt_child_ty.isSlice(zcu))
+                    .ptr
+                else
+                    .fromSize(opt_child_abi_size);
+                const dst_mem = try ops[0].tracking(cg).short.mem(cg, .{
+                    .size = mem_size,
+                    .disp = if (opt_repr_is_pl) 0 else opt_child_abi_size,
+                });
+                switch (dst_mem.mod) {
+                    .rm => try cg.asmMemoryImmediate(.{ ._, .cmp }, dst_mem, .u(0)),
+                    .off => {
+                        try cg.register_manager.getKnownReg(.rax, inst);
+                        const tmp_reg = Register.rax.toSize(mem_size, cg.target);
+                        try cg.asmRegisterMemory(.{ ._, .mov }, tmp_reg, dst_mem);
+                        try cg.asmRegisterRegister(.{ ._, .@"test" }, tmp_reg, tmp_reg);
+                    },
+                }
                 const is_null = try cg.tempInit(.bool, .{ .eflags = .e });
                 try is_null.finish(inst, &.{un_op}, &ops, cg);
             },
@@ -89230,19 +89239,25 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 try cg.spillEflagsIfOccupied();
                 var ops = try cg.tempsFromOperands(inst, .{un_op});
                 while (try ops[0].toBase(false, cg)) {}
-                try cg.asmMemoryImmediate(
-                    .{ ._, .cmp },
-                    try ops[0].tracking(cg).short.mem(cg, .{
-                        .size = if (!opt_repr_is_pl)
-                            .byte
-                        else if (opt_child_ty.isSlice(zcu))
-                            .ptr
-                        else
-                            .fromSize(opt_child_abi_size),
-                        .disp = if (opt_repr_is_pl) 0 else opt_child_abi_size,
-                    }),
-                    .u(0),
-                );
+                const mem_size: Memory.Size = if (!opt_repr_is_pl)
+                    .byte
+                else if (opt_child_ty.isSlice(zcu))
+                    .ptr
+                else
+                    .fromSize(opt_child_abi_size);
+                const dst_mem = try ops[0].tracking(cg).short.mem(cg, .{
+                    .size = mem_size,
+                    .disp = if (opt_repr_is_pl) 0 else opt_child_abi_size,
+                });
+                switch (dst_mem.mod) {
+                    .rm => try cg.asmMemoryImmediate(.{ ._, .cmp }, dst_mem, .u(0)),
+                    .off => {
+                        try cg.register_manager.getKnownReg(.rax, inst);
+                        const tmp_reg = Register.rax.toSize(mem_size, cg.target);
+                        try cg.asmRegisterMemory(.{ ._, .mov }, tmp_reg, dst_mem);
+                        try cg.asmRegisterRegister(.{ ._, .@"test" }, tmp_reg, tmp_reg);
+                    },
+                }
                 const is_non_null = try cg.tempInit(.bool, .{ .eflags = .ne });
                 try is_non_null.finish(inst, &.{un_op}, &ops, cg);
             },
@@ -89256,16 +89271,22 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 var ops = try cg.tempsFromOperands(inst, .{un_op});
                 if (!opt_repr_is_pl) try ops[0].toOffset(opt_child_abi_size, cg);
                 while (try ops[0].toLea(cg)) {}
-                try cg.asmMemoryImmediate(
-                    .{ ._, .cmp },
-                    try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = if (!opt_repr_is_pl)
-                        .byte
-                    else if (opt_child_ty.isSlice(zcu))
-                        .ptr
-                    else
-                        .fromSize(opt_child_abi_size) }),
-                    .u(0),
-                );
+                const mem_size: Memory.Size = if (!opt_repr_is_pl)
+                    .byte
+                else if (opt_child_ty.isSlice(zcu))
+                    .ptr
+                else
+                    .fromSize(opt_child_abi_size);
+                const dst_mem = try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = mem_size });
+                switch (dst_mem.mod) {
+                    .rm => try cg.asmMemoryImmediate(.{ ._, .cmp }, dst_mem, .u(0)),
+                    .off => {
+                        try cg.register_manager.getKnownReg(.rax, inst);
+                        const tmp_reg = Register.rax.toSize(mem_size, cg.target);
+                        try cg.asmRegisterMemory(.{ ._, .mov }, tmp_reg, dst_mem);
+                        try cg.asmRegisterRegister(.{ ._, .@"test" }, tmp_reg, tmp_reg);
+                    },
+                }
                 const is_null = try cg.tempInit(.bool, .{ .eflags = .e });
                 try is_null.finish(inst, &.{un_op}, &ops, cg);
             },
@@ -89279,16 +89300,22 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 var ops = try cg.tempsFromOperands(inst, .{un_op});
                 if (!opt_repr_is_pl) try ops[0].toOffset(opt_child_abi_size, cg);
                 while (try ops[0].toLea(cg)) {}
-                try cg.asmMemoryImmediate(
-                    .{ ._, .cmp },
-                    try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = if (!opt_repr_is_pl)
-                        .byte
-                    else if (opt_child_ty.isSlice(zcu))
-                        .ptr
-                    else
-                        .fromSize(opt_child_abi_size) }),
-                    .u(0),
-                );
+                const mem_size: Memory.Size = if (!opt_repr_is_pl)
+                    .byte
+                else if (opt_child_ty.isSlice(zcu))
+                    .ptr
+                else
+                    .fromSize(opt_child_abi_size);
+                const dst_mem = try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = mem_size });
+                switch (dst_mem.mod) {
+                    .rm => try cg.asmMemoryImmediate(.{ ._, .cmp }, dst_mem, .u(0)),
+                    .off => {
+                        try cg.register_manager.getKnownReg(.rax, inst);
+                        const tmp_reg = Register.rax.toSize(mem_size, cg.target);
+                        try cg.asmRegisterMemory(.{ ._, .mov }, tmp_reg, dst_mem);
+                        try cg.asmRegisterRegister(.{ ._, .@"test" }, tmp_reg, tmp_reg);
+                    },
+                }
                 const is_non_null = try cg.tempInit(.bool, .{ .eflags = .ne });
                 try is_non_null.finish(inst, &.{un_op}, &ops, cg);
             },
@@ -89301,10 +89328,20 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 try cg.spillEflagsIfOccupied();
                 var ops = try cg.tempsFromOperands(inst, .{un_op});
                 while (try ops[0].toBase(false, cg)) {}
-                try cg.asmMemoryImmediate(.{ ._, .cmp }, try ops[0].tracking(cg).short.mem(cg, .{
-                    .size = cg.memSize(eu_err_ty, .general_purpose),
+                const mem_size: Memory.Size = cg.memSize(eu_err_ty, .general_purpose);
+                const dst_mem = try ops[0].tracking(cg).short.mem(cg, .{
+                    .size = mem_size,
                     .disp = eu_err_off,
-                }), .u(0));
+                });
+                switch (dst_mem.mod) {
+                    .rm => try cg.asmMemoryImmediate(.{ ._, .cmp }, dst_mem, .u(0)),
+                    .off => {
+                        try cg.register_manager.getKnownReg(.rax, inst);
+                        const tmp_reg = Register.rax.toSize(mem_size, cg.target);
+                        try cg.asmRegisterMemory(.{ ._, .mov }, tmp_reg, dst_mem);
+                        try cg.asmRegisterRegister(.{ ._, .@"test" }, tmp_reg, tmp_reg);
+                    },
+                }
                 const is_err = try cg.tempInit(.bool, .{ .eflags = .ne });
                 try is_err.finish(inst, &.{un_op}, &ops, cg);
             },
@@ -89317,10 +89354,20 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 try cg.spillEflagsIfOccupied();
                 var ops = try cg.tempsFromOperands(inst, .{un_op});
                 while (try ops[0].toBase(false, cg)) {}
-                try cg.asmMemoryImmediate(.{ ._, .cmp }, try ops[0].tracking(cg).short.mem(cg, .{
-                    .size = cg.memSize(eu_err_ty, .general_purpose),
+                const mem_size = cg.memSize(eu_err_ty, .general_purpose);
+                const dst_mem = try ops[0].tracking(cg).short.mem(cg, .{
+                    .size = mem_size,
                     .disp = eu_err_off,
-                }), .u(0));
+                });
+                switch (dst_mem.mod) {
+                    .rm => try cg.asmMemoryImmediate(.{ ._, .cmp }, dst_mem, .u(0)),
+                    .off => {
+                        try cg.register_manager.getKnownReg(.rax, inst);
+                        const tmp_reg = Register.rax.toSize(mem_size, cg.target);
+                        try cg.asmRegisterMemory(.{ ._, .mov }, tmp_reg, dst_mem);
+                        try cg.asmRegisterRegister(.{ ._, .@"test" }, tmp_reg, tmp_reg);
+                    },
+                }
                 const is_non_err = try cg.tempInit(.bool, .{ .eflags = .e });
                 try is_non_err.finish(inst, &.{un_op}, &ops, cg);
             },
@@ -89334,9 +89381,17 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 var ops = try cg.tempsFromOperands(inst, .{un_op});
                 try ops[0].toOffset(eu_err_off, cg);
                 while (try ops[0].toLea(cg)) {}
-                try cg.asmMemoryImmediate(.{ ._, .cmp }, try ops[0].tracking(cg).short.deref().mem(cg, .{
-                    .size = cg.memSize(eu_err_ty, .general_purpose),
-                }), .u(0));
+                const mem_size = cg.memSize(eu_err_ty, .general_purpose);
+                const dst_mem = try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = mem_size });
+                switch (dst_mem.mod) {
+                    .rm => try cg.asmMemoryImmediate(.{ ._, .cmp }, dst_mem, .u(0)),
+                    .off => {
+                        try cg.register_manager.getKnownReg(.rax, inst);
+                        const tmp_reg = Register.rax.toSize(mem_size, cg.target);
+                        try cg.asmRegisterMemory(.{ ._, .mov }, tmp_reg, dst_mem);
+                        try cg.asmRegisterRegister(.{ ._, .@"test" }, tmp_reg, tmp_reg);
+                    },
+                }
                 const is_err = try cg.tempInit(.bool, .{ .eflags = .ne });
                 try is_err.finish(inst, &.{un_op}, &ops, cg);
             },
@@ -89350,9 +89405,17 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                 var ops = try cg.tempsFromOperands(inst, .{un_op});
                 try ops[0].toOffset(eu_err_off, cg);
                 while (try ops[0].toLea(cg)) {}
-                try cg.asmMemoryImmediate(.{ ._, .cmp }, try ops[0].tracking(cg).short.deref().mem(cg, .{
-                    .size = cg.memSize(eu_err_ty, .general_purpose),
-                }), .u(0));
+                const mem_size = cg.memSize(eu_err_ty, .general_purpose);
+                const dst_mem = try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = mem_size });
+                switch (dst_mem.mod) {
+                    .rm => try cg.asmMemoryImmediate(.{ ._, .cmp }, dst_mem, .u(0)),
+                    .off => {
+                        try cg.register_manager.getKnownReg(.rax, inst);
+                        const tmp_reg = Register.rax.toSize(mem_size, cg.target);
+                        try cg.asmRegisterMemory(.{ ._, .mov }, tmp_reg, dst_mem);
+                        try cg.asmRegisterRegister(.{ ._, .@"test" }, tmp_reg, tmp_reg);
+                    },
+                }
                 const is_non_err = try cg.tempInit(.bool, .{ .eflags = .e });
                 try is_non_err.finish(inst, &.{un_op}, &ops, cg);
             },
@@ -104194,11 +104257,14 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                                 rhs_reg,
                                 .u(elem_size),
                             );
-                            try cg.asmRegisterMemory(
-                                .{ ._, .lea },
-                                base_reg,
-                                try ops[0].tracking(cg).short.mem(cg, .{ .index = rhs_reg }),
-                            );
+                            const src_mem = try ops[0].tracking(cg).short.mem(cg, .{ .index = rhs_reg });
+                            switch (src_mem.mod) {
+                                .rm => try cg.asmRegisterMemory(.{ ._, .lea }, base_reg, src_mem),
+                                .off => |src_addr| {
+                                    try cg.asmRegisterImmediate(.{ ._, .mov }, base_reg, .u(src_addr));
+                                    try cg.asmRegisterRegister(.{ ._, .add }, base_reg, rhs_reg);
+                                },
+                            }
                         } else if (elem_size > 8) {
                             try cg.spillEflagsIfOccupied();
                             try cg.asmRegisterImmediate(
@@ -104206,19 +104272,33 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                                 rhs_reg,
                                 .u(std.math.log2_int(u64, elem_size)),
                             );
-                            try cg.asmRegisterMemory(
-                                .{ ._, .lea },
-                                base_reg,
-                                try ops[0].tracking(cg).short.mem(cg, .{ .index = rhs_reg }),
-                            );
-                        } else try cg.asmRegisterMemory(
-                            .{ ._, .lea },
-                            base_reg,
-                            try ops[0].tracking(cg).short.mem(cg, .{
+                            const src_mem = try ops[0].tracking(cg).short.mem(cg, .{ .index = rhs_reg });
+                            switch (src_mem.mod) {
+                                .rm => try cg.asmRegisterMemory(.{ ._, .lea }, base_reg, src_mem),
+                                .off => |src_addr| {
+                                    try cg.asmRegisterImmediate(.{ ._, .mov }, base_reg, .u(src_addr));
+                                    try cg.asmRegisterRegister(.{ ._, .add }, base_reg, rhs_reg);
+                                },
+                            }
+                        } else {
+                            const src_mem = try ops[0].tracking(cg).short.mem(cg, .{
                                 .index = rhs_reg,
                                 .scale = .fromFactor(@intCast(elem_size)),
-                            }),
-                        );
+                            });
+                            switch (src_mem.mod) {
+                                .rm => try cg.asmRegisterMemory(.{ ._, .lea }, base_reg, src_mem),
+                                .off => |src_addr| {
+                                    try cg.spillEflagsIfOccupied();
+                                    try cg.asmRegisterImmediate(
+                                        .{ ._l, .sh },
+                                        rhs_reg,
+                                        .u(std.math.log2_int(u64, elem_size)),
+                                    );
+                                    try cg.asmRegisterImmediate(.{ ._, .mov }, base_reg, .u(src_addr));
+                                    try cg.asmRegisterRegister(.{ ._, .add }, base_reg, rhs_reg);
+                                },
+                            }
+                        }
                         // Hack around Sema insanity: lhs could be an arbitrarily large comptime-known array
                         // which could easily get spilled by the upcoming `load`, which would infinite recurse
                         // since spilling an array requires the same operation that triggered the spill.
@@ -171517,19 +171597,37 @@ fn genBody(cg: *CodeGen, body: []const Air.Inst.Index) InnerError!void {
                     .data => if (prefetch.rw == .write and prefetch.locality <= 2 and cg.hasFeature(.prefetchwt1)) {
                         try ops[0].toSlicePtr(cg);
                         while (try ops[0].toLea(cg)) {}
-                        try cg.asmMemory(.{ ._wt1, .prefetch }, try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = .byte }));
+                        while (true) {
+                            const dst_mem = try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = .byte });
+                            switch (dst_mem.mod) {
+                                .rm => break try cg.asmMemory(.{ ._wt1, .prefetch }, dst_mem),
+                                .off => while (try ops[0].toRegClass(true, .general_purpose, cg)) {},
+                            }
+                        }
                     } else if (prefetch.rw == .write and cg.hasFeature(.prfchw)) {
                         try ops[0].toSlicePtr(cg);
                         while (try ops[0].toLea(cg)) {}
-                        try cg.asmMemory(.{ ._w, .prefetch }, try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = .byte }));
+                        while (true) {
+                            const dst_mem = try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = .byte });
+                            switch (dst_mem.mod) {
+                                .rm => break try cg.asmMemory(.{ ._w, .prefetch }, dst_mem),
+                                .off => while (try ops[0].toRegClass(true, .general_purpose, cg)) {},
+                            }
+                        }
                     } else if (cg.hasFeature(.sse) or cg.hasFeature(.prfchw) or cg.hasFeature(.prefetchi) or cg.hasFeature(.prefetchwt1)) {
                         try ops[0].toSlicePtr(cg);
                         while (try ops[0].toLea(cg)) {}
-                        switch (prefetch.locality) {
-                            0 => try cg.asmMemory(.{ ._nta, .prefetch }, try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = .byte })),
-                            1 => try cg.asmMemory(.{ ._t2, .prefetch }, try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = .byte })),
-                            2 => try cg.asmMemory(.{ ._t1, .prefetch }, try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = .byte })),
-                            3 => try cg.asmMemory(.{ ._t0, .prefetch }, try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = .byte })),
+                        while (true) {
+                            const dst_mem = try ops[0].tracking(cg).short.deref().mem(cg, .{ .size = .byte });
+                            switch (dst_mem.mod) {
+                                .rm => break try cg.asmMemory(.{ switch (prefetch.locality) {
+                                    0 => ._nta,
+                                    1 => ._t2,
+                                    2 => ._t1,
+                                    3 => ._t0,
+                                }, .prefetch }, dst_mem),
+                                .off => while (try ops[0].toRegClass(true, .general_purpose, cg)) {},
+                            }
                         }
                     },
                 }
@@ -179871,18 +179969,35 @@ fn genConstMemcpy(
     orig_src_ptr: MCValue,
     len: u64,
 ) !bool {
+    assert(len > 0 and std.math.cast(u32, len) != null); // ensured by `useConstMemcpyForSize`, needed by immediate bounds checks below
+
+    switch (dst_ptr) {
+        else => return false,
+        .immediate => |dst_addr| if (std.math.cast(i32, @as(i64, @bitCast(dst_addr))) == null or
+            std.math.cast(i32, @as(i64, @bitCast(dst_addr + (len - 1)))) == null) return false,
+        .register, .register_offset, .lea_frame => {},
+    }
     if (!dst_ptr.isAddress()) return false;
 
-    const src_reg: ?Register = r: {
-        if (orig_src_ptr.isAddress()) break :r null;
-        if (orig_src_ptr == .lea_uav or orig_src_ptr == .lea_nav) {
-            // To "hack around linker relocation bugs", a `lea_uav` isn't considered an address, but
-            // we want to avoid pessimising that case because it's common (e.g. returning constant
-            // values over 8 bytes). So if there's a register free, load the source address into it.
-            if (cg.register_manager.tryAllocReg(null, abi.RegisterClass.gp)) |src_reg| {
-                // We'll actually do the load a little later, in case another register alloc fails.
-                break :r src_reg;
-            }
+    const sse_reg = if (len >= 16 and cg.hasFeature(.sse))
+        cg.register_manager.tryAllocReg(null, abi.RegisterClass.sse)
+    else
+        null;
+
+    const src_reg = src_reg: {
+        switch (orig_src_ptr) {
+            else => return false,
+            .immediate => |src_addr| if (std.math.cast(i32, @as(i64, @bitCast(src_addr))) != null and
+                std.math.cast(i32, @as(i64, @bitCast(src_addr + (len - 1)))) != null) break :src_reg null,
+            .register, .register_offset, .lea_frame => break :src_reg null,
+            .lea_uav, .lea_nav => if (sse_reg == null) break :src_reg null,
+        }
+        // To "hack around linker relocation bugs", a `lea_uav` isn't considered an address, but
+        // we want to avoid pessimising that case because it's common (e.g. returning constant
+        // values over 8 bytes). So if there's a register free, load the source address into it.
+        if (cg.register_manager.tryAllocReg(null, abi.RegisterClass.gp)) |src_reg| {
+            // We'll actually do the load a little later, in case another register alloc fails.
+            break :src_reg src_reg;
         }
         return false;
     };
@@ -179891,44 +180006,40 @@ fn genConstMemcpy(
     const src_lock: ?RegisterLock = if (src_reg) |r| cg.register_manager.lockReg(r) else null;
     defer if (src_lock) |l| cg.register_manager.unlockReg(l);
 
-    const want_sse_reg = len >= 16 and cg.hasFeature(.sse);
-    const sse_reg: ?Register = if (want_sse_reg) r: {
-        break :r cg.register_manager.tryAllocReg(null, abi.RegisterClass.sse);
-    } else null;
-
-    const need_gp_reg = len % 16 != 0 or sse_reg == null;
-    const gp_reg: Register = if (need_gp_reg) r: {
-        break :r cg.register_manager.tryAllocReg(null, abi.RegisterClass.gp) orelse return false;
-    } else undefined;
+    const gp_reg = if (len % 16 != 0 or sse_reg == null)
+        cg.register_manager.tryAllocReg(null, abi.RegisterClass.gp) orelse return false
+    else
+        null;
 
     const src_ptr: MCValue = src_ptr: {
         const reg = src_reg orelse break :src_ptr orig_src_ptr;
-        try cg.asmRegisterMemory(.{ ._, .lea }, reg.to64(), switch (orig_src_ptr) {
-            .lea_uav => |uav| .{ .base = .{ .uav = uav } },
-            .lea_nav => |nav| .{ .base = .{ .nav = nav } },
+        switch (orig_src_ptr) {
+            .immediate => |imm| try cg.asmRegisterImmediate(.{ ._, .mov }, reg.to64(), .u(imm)),
+            .lea_uav => |uav| try cg.asmRegisterMemory(.{ ._, .lea }, reg.to64(), .{ .base = .{ .uav = uav } }),
+            .lea_nav => |nav| try cg.asmRegisterMemory(.{ ._, .lea }, reg.to64(), .{ .base = .{ .nav = nav } }),
             else => unreachable,
-        });
+        }
         break :src_ptr .{ .register = reg.to64() };
     };
 
     var offset: u64 = 0;
 
-    if (sse_reg) |r| {
+    if (sse_reg) |temp_reg| {
         if (cg.hasFeature(.avx)) {
-            try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ .v_dqu, .mov }, r, .yword);
-            try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ .v_dqu, .mov }, r, .xword);
+            try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ .v_dqu, .mov }, temp_reg, .yword);
+            try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ .v_dqu, .mov }, temp_reg, .xword);
         } else if (cg.hasFeature(.sse2)) {
-            try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._dqu, .mov }, r, .xword);
+            try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._dqu, .mov }, temp_reg, .xword);
         } else if (cg.hasFeature(.sse)) {
-            try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._ps, .movu }, r, .xword);
+            try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._ps, .movu }, temp_reg, .xword);
         }
     }
 
-    if (need_gp_reg) {
-        try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._, .mov }, gp_reg, .qword);
-        try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._, .mov }, gp_reg, .dword);
-        try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._, .mov }, gp_reg, .word);
-        try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._, .mov }, gp_reg, .byte);
+    if (gp_reg) |temp_reg| {
+        try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._, .mov }, temp_reg, .qword);
+        try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._, .mov }, temp_reg, .dword);
+        try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._, .mov }, temp_reg, .word);
+        try cg.memcpyPart(dst_ptr, src_ptr, len, &offset, .{ ._, .mov }, temp_reg, .byte);
     }
 
     assert(offset == len);
@@ -183219,13 +183330,20 @@ const Temp = struct {
                         .lea_extern_func,
                         => while (try ptr.toRegClass(false, .general_purpose, cg)) {},
                     }
-                    try cg.asmMemoryImmediate(
-                        .{ ._, .mov },
-                        try ptr.tracking(cg).short.deref().mem(cg, .{
-                            .size = cg.memSize(val_ty, .general_purpose),
-                        }),
-                        val_op,
-                    );
+                    const dst_mem = try ptr.tracking(cg).short.deref().mem(cg, .{
+                        .size = cg.memSize(val_ty, .general_purpose),
+                    });
+                    switch (dst_mem.mod) {
+                        .rm => try cg.asmMemoryImmediate(.{ ._, .mov }, dst_mem, val_op),
+                        .off => {
+                            while (try val.toReg(.rax, cg)) {}
+                            try cg.asmMemoryRegister(
+                                .{ ._, .mov },
+                                dst_mem,
+                                registerAlias(.rax, @intCast(val_ty.abiSize(zcu))),
+                            );
+                        },
+                    }
                 },
                 .eflags => |cc| {
                     // hack around linker relocation bugs
@@ -183429,9 +183547,15 @@ const Temp = struct {
             .lea_nav, .lea_uav, .lea_lazy_sym => if (dst_rc != .general_purpose)
                 while (try ptr.toRegClass(false, .general_purpose, cg)) {},
         }
-        try strat.read(cg, dst_reg, try ptr.tracking(cg).short.deref().mem(cg, .{
+        const src_mem = try ptr.tracking(cg).short.deref().mem(cg, .{
             .size = cg.memSize(dst_ty, dst_rc),
-        }));
+        });
+        if (src_mem.mod == .off and dst_reg.id() != comptime Register.rax.id()) {
+            const tmp_reg = Register.rax.toSize(dst_reg.size(), cg.target);
+            try cg.register_manager.getKnownReg(.rax, null);
+            try strat.read(cg, tmp_reg, src_mem);
+            try cg.asmRegisterRegister(.{ ._, .mov }, dst_reg, tmp_reg);
+        } else try strat.read(cg, dst_reg, src_mem);
     }
 
     fn storeRegs(ptr: *Temp, src_ty: Type, src_regs: []const Register, cg: *CodeGen) InnerError!void {
@@ -183500,7 +183624,7 @@ const Temp = struct {
                     .lea_nav, .lea_uav, .lea_lazy_sym => while (try ptr.toRegClass(false, .general_purpose, cg)) {},
                 }
                 const strat = try cg.moveStrategy(part_ty, src_rc, false);
-                try strat.write(cg, try ptr.tracking(cg).short.deref().mem(cg, .{
+                const dst_mem = try ptr.tracking(cg).short.deref().mem(cg, .{
                     .size = switch (src_rc) {
                         else => .fromBitSize(8 * part_size),
                         .x87 => switch (abi.classifySystemV(src_ty, zcu, cg.target, .other)[part_index]) {
@@ -183512,7 +183636,13 @@ const Temp = struct {
                         },
                     },
                     .disp = part_disp,
-                }), registerAlias(src_reg, part_size));
+                });
+                if (dst_mem.mod == .off and src_reg.id() != comptime Register.rax.id()) {
+                    const tmp_reg = registerAlias(.rax, part_size);
+                    try cg.register_manager.getKnownReg(.rax, null);
+                    try cg.asmRegisterRegister(.{ ._, .mov }, tmp_reg, registerAlias(src_reg, part_size));
+                    try strat.write(cg, dst_mem, tmp_reg);
+                } else try strat.write(cg, dst_mem, registerAlias(src_reg, part_size));
             } else {
                 const frame_size = std.math.ceilPowerOfTwoAssert(u32, part_size);
                 const frame_index = try cg.allocFrameIndex(.init(.{
