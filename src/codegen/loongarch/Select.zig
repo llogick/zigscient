@@ -983,7 +983,14 @@ pub const Value = struct {
             while (part_it.next()) |part_vi| {
                 const part_offset, const part_size = part_vi.positionInParent(isel);
                 const part_mat = try part_vi.mat(isel, .{});
-                try isel.moveLoc(def_loc, part_offset, part_mat.loc(), 0, part_size, .preserved);
+                try isel.moveLoc(
+                    def_loc,
+                    part_offset,
+                    part_mat.loc(),
+                    0,
+                    part_size,
+                    .{ .dst_prot = .preserved },
+                );
                 try part_mat.finish(isel);
                 if (reextend_parts)
                     try part_vi.reextend(isel, def_ext);
@@ -1003,7 +1010,7 @@ pub const Value = struct {
             const def_loc = def_vi.takeLocationMarkWritten(isel) orelse return;
             const def_offset, const def_size = def_vi.positionInParent(isel);
             const parent_mat = try parent_vi.mat(isel, .{});
-            try isel.moveLoc(def_loc, 0, parent_mat.loc(), def_offset, def_size, .none);
+            try isel.moveLoc(def_loc, 0, parent_mat.loc(), def_offset, def_size, .{});
             try parent_mat.finish(isel);
         }
 
@@ -1104,9 +1111,10 @@ pub const Value = struct {
         ) !bool {
             try vi.reextendToPcs(isel);
             try vi.collectDefs(isel);
+            if (opts.@"volatile")
+                try (try vi.mat(isel, .{})).finish(isel);
             const loc = vi.takeLocationMarkWritten(isel) orelse return false;
             wip_mir_log.debug("  | # load {f} <- [${t}, #{d}] ({d}B)", .{ vi, base_reg, offset, vi.size(isel) });
-            _ = opts;
 
             try isel.moveLoc(
                 loc,
@@ -1114,7 +1122,7 @@ pub const Value = struct {
                 .{ .stack_slot = .{ .base = base_reg, .offset = 0 } },
                 offset,
                 vi.size(isel),
-                .none,
+                .{ .atomic = opts.atomic },
             );
             return true;
         }
@@ -1166,7 +1174,7 @@ pub const Value = struct {
                 const src_loc = src_mat.loc();
                 if (!std.meta.eql(loc, src_loc)) {
                     loc.markRegWritten(isel);
-                    try isel.moveLoc(loc, 0, src_mat.loc(), 0, copy_size, .none);
+                    try isel.moveLoc(loc, 0, src_mat.loc(), 0, copy_size, .{});
                 }
                 try src_mat.finish(isel);
             }
@@ -1270,15 +1278,23 @@ pub const Value = struct {
                             _ = try isel.fillReg(src_reg);
                     }
                     // TODO: replace reextending def_part_vi to .zero_ext with moveLoc .wipe when applicable
-                    try isel.moveLoc(def_part_loc, dst_offset, src_loc, src_offset, mat_size, .preserved);
+                    try isel.moveLoc(
+                        def_part_loc,
+                        dst_offset,
+                        src_loc,
+                        src_offset,
+                        mat_size,
+                        .{ .dst_prot = .preserved },
+                    );
                 }
             }
             if (maybe_def_addr_mat) |def_addr_mat| try def_addr_mat.finish(isel);
         }
 
         const MemoryAccessOptions = struct {
-            // TODO unimplemented, remove?
             @"volatile": bool = false,
+            // Atomicity. This is unrelated to ordering and visibility.
+            atomic: bool = false,
         };
 
         const MatOptions = struct {
@@ -1308,7 +1324,7 @@ pub const Value = struct {
         };
 
         /// Materializes a value
-        fn mat(vi: Value.Index, isel: *Select, opts: MatOptions) Mat.Error!Mat {
+        fn mat(vi: Value.Index, isel: *Select, opts: MatOptions) codegen.Error!Mat {
             // try vi.split(isel, true);
             const mat_size = @min(opts.size, @as(u32, @intCast(vi.size(isel) - opts.offset)));
             const loc_pref = if (opts.extension == .garbage)
@@ -1478,7 +1494,6 @@ pub const Value = struct {
             opts: MemoryAccessOptions,
         ) !void {
             wip_mir_log.debug("  | # store {f} -> [${t}, #{d}]", .{ vi, base_reg, offset });
-            _ = opts;
 
             const hint_stack: Indirect = if (std.math.cast(@FieldType(Indirect, "offset"), offset)) |stack_off|
                 .{ .base = base_reg, .offset = stack_off }
@@ -1491,7 +1506,7 @@ pub const Value = struct {
                 value_mat.loc(),
                 0,
                 vi.size(isel),
-                .none,
+                .{ .atomic = opts.atomic },
             );
             try value_mat.finish(isel);
         }
@@ -1543,7 +1558,7 @@ pub const Value = struct {
                         .size = @intCast(part_size),
                         .extension = part_vi.extension(isel),
                     });
-                    try isel.moveLoc(.{ .register = part_ra }, 0, value_mat.loc(), 0, part_size, .none);
+                    try isel.moveLoc(.{ .register = part_ra }, 0, value_mat.loc(), 0, part_size, .{});
                     try value_mat.finish(isel);
                 }
 
@@ -1558,7 +1573,7 @@ pub const Value = struct {
                         .size = @intCast(part_size),
                         .extension = part_vi.extension(isel),
                     });
-                    try isel.moveLoc(.{ .stack_slot = layout_part_stack }, 0, value_mat.loc(), 0, part_size, .none);
+                    try isel.moveLoc(.{ .stack_slot = layout_part_stack }, 0, value_mat.loc(), 0, part_size, .{});
                     try value_mat.finish(isel);
                 }
             }
@@ -1569,7 +1584,7 @@ pub const Value = struct {
             if (src_loc.asRegister()) |src_reg| _ = try isel.fillReg(src_reg);
             tracking_log.debug("{f} -> {f} (move to)", .{ vi, src_loc });
             if (vi.takeLocationMarkWritten(isel)) |dst_loc|
-                try isel.moveLoc(dst_loc, 0, src_loc, 0, vi.size(isel), .none);
+                try isel.moveLoc(dst_loc, 0, src_loc, 0, vi.size(isel), .{});
             if (vi.isSmall(isel)) {
                 vi.setSmallLocation(isel, src_loc);
                 if (src_loc.asRegister()) |src_reg| {
@@ -2046,8 +2061,6 @@ pub const Value = struct {
             if (!std.debug.runtime_safety) assert(@sizeOf(Mat) <= 32);
         }
 
-        const Error = codegen.Error;
-
         pub fn ra(mat: Value.Mat) Register.Alias {
             return mat.location.register;
         }
@@ -2066,7 +2079,7 @@ pub const Value = struct {
             };
         }
 
-        fn finish(mat: Value.Mat, isel: *Select) Mat.Error!void {
+        fn finish(mat: Value.Mat, isel: *Select) codegen.Error!void {
             const vi = mat.vi;
             const value = vi.get(isel);
             tracking_log.debug("{f}[{d}..{d}] <- {f} (mat finish)", .{ vi, mat.offset, mat.offset + mat.size - 1, mat.loc() });
@@ -2132,7 +2145,7 @@ pub const Value = struct {
                         vi_loc,
                         mat.offset,
                         mat.size,
-                        .preserved,
+                        .{ .dst_prot = .preserved },
                     );
                     if (maybe_loc_reg) |loc_reg| {
                         const loc_live = isel.live_registers.getPtr(loc_reg);
@@ -2192,7 +2205,7 @@ pub const Value = struct {
                         .{ .stack_slot = .{ .base = addr_mat.reg(), .offset = 0 } },
                         offset_from_root + mat.offset,
                         mat.size,
-                        .none,
+                        .{},
                     );
                     try addr_mat.finish(isel);
                 },
@@ -2315,7 +2328,7 @@ fn failUnimplemented(isel: *Select, comptime format: []const u8, args: anytype) 
     } else return isel.fail(format, args);
 }
 
-fn moveDebugString(isel: *Select, reg: Register, msg: [:0]const u8) error{ OutOfMemory, AlreadyReported }!void {
+fn moveDebugString(isel: *Select, reg: Register, msg: [:0]const u8) codegen.Error!void {
     @branchHint(.cold);
     assert(debug_trap_unimplemented_code);
 
@@ -3417,7 +3430,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) codegen.Error!void 
                                                 output_loc,
                                                 0,
                                                 output_vi.value.size(isel),
-                                                .none,
+                                                .{},
                                             );
                                     }
                                     break :output_reg output_reg;
@@ -3546,7 +3559,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) codegen.Error!void 
                             const dst_loc: Value.Location = .{ .register = input_ra };
                             if (!std.meta.eql(input_val_loc, dst_loc)) {
                                 dst_loc.markRegWritten(isel);
-                                try isel.moveLoc(dst_loc, 0, input_val_loc, 0, input_ra.mod.byteSize(isel.target), .none);
+                                try isel.moveLoc(dst_loc, 0, input_val_loc, 0, input_ra.mod.byteSize(isel.target), .{});
                             }
                             try input_val_mat.finish(isel);
                         },
@@ -3964,6 +3977,7 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) codegen.Error!void 
                 const ptr_mat = try ptr_vi.matReg(isel);
                 try src_vi.matStore(isel, ptr_mat.reg(), 0, .{
                     .@"volatile" = ptr_info.flags.is_volatile,
+                    .atomic = (air_tag == .atomic_store_unordered),
                 });
                 try ptr_mat.finish(isel);
             },
@@ -3973,7 +3987,8 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) codegen.Error!void 
                 const ptr_info = ptr_ty.ptrInfo(zcu);
                 if (ptr_info.packed_offset.host_size > 0) return isel.fail("packed load", .{});
 
-                if (ptr_info.flags.is_volatile) _ = try isel.use(air.inst_index.toRef());
+                if (ptr_info.flags.is_volatile)
+                    _ = try isel.use(air.inst_index.toRef());
                 if (isel.live_values.fetchRemove(air.inst_index)) |dst_vi| {
                     defer dst_vi.value.deref(isel);
 
@@ -3985,6 +4000,29 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) codegen.Error!void 
                         .@"volatile" = ptr_info.flags.is_volatile,
                     });
                     try ptr_mat.finish(isel);
+                }
+            },
+            .atomic_load => {
+                const atomic_load = air.data(air.inst_index).atomic_load;
+                const ptr_ty = isel.air.typeOf(atomic_load.ptr, ip);
+                const ptr_info = ptr_ty.ptrInfo(zcu);
+                if (ptr_info.packed_offset.host_size > 0) return isel.fail("packed atomic load", .{});
+
+                if (ptr_info.flags.is_volatile)
+                    _ = try isel.use(air.inst_index.toRef());
+                if (isel.live_values.fetchRemove(air.inst_index)) |dst_vi| {
+                    defer dst_vi.value.deref(isel);
+
+                    const ptr_vi = try isel.use(atomic_load.ptr);
+                    const ptr_mat = try ptr_vi.matIntRegZeroExt(isel);
+                    _ = try dst_vi.value.defLoad(isel, ptr_mat.reg(), 0, .{
+                        .@"volatile" = ptr_info.flags.is_volatile,
+                        .atomic = true,
+                    });
+                    try ptr_mat.finish(isel);
+
+                    if (atomic_load.order != .unordered)
+                        try isel.failUnimplemented("ordered atomic load", .{});
                 }
             },
             .int_cast => if (isel.live_values.fetchRemove(air.inst_index)) |dst_vi| {
@@ -4708,6 +4746,40 @@ pub fn body(isel: *Select, air_body: []const Air.Inst.Index) codegen.Error!void 
                     try isel.addImm(payload_ptr_reg, error_union_ptr_mat.reg(), payload_offset);
                     try error_union_ptr_mat.finish(isel);
                 }
+            },
+            .runtime_nav_ptr => if (isel.live_values.fetchRemove(air.inst_index)) |ptr_vi| unused: {
+                defer ptr_vi.value.deref(isel);
+                const ptr_reg = try ptr_vi.value.defRegMod(isel, .integer) orelse break :unused;
+                const ty_nav = air.data(air.inst_index).ty_nav;
+                const target_nav = ip.getNav(ty_nav.nav);
+                const target_nav_resolved = target_nav.resolved.?;
+
+                if (target_nav_resolved.@"threadlocal") {
+                    // TODO: implement TLS models other than LE
+                    try isel.emit(switch (isel.gprBits()) {
+                        32 => .@"add.w"(ptr_reg, ptr_reg, .tp),
+                        64 => .@"add.d"(ptr_reg, ptr_reg, .tp),
+                        else => unreachable,
+                    });
+                    try isel.nav_relocs.append(zcu.gpa, .{
+                        .nav = ty_nav.nav,
+                        .reloc = .{
+                            .label = @intCast(isel.instructions.items.len),
+                            .addend = 0,
+                            .type = .TLS_LE_LO12,
+                        },
+                    });
+                    try isel.emit(.ori(ptr_reg, ptr_reg, 0));
+                    try isel.nav_relocs.append(zcu.gpa, .{
+                        .nav = ty_nav.nav,
+                        .reloc = .{
+                            .label = @intCast(isel.instructions.items.len),
+                            .addend = 0,
+                            .type = .TLS_LE_HI20,
+                        },
+                    });
+                    try isel.emit(.@"lu12i.w"(ptr_reg, 0));
+                } else try isel.failUnimplemented("unimplemented runtime_nav_ptr", .{});
             },
         }
         if (air_tag != .arg) {
@@ -6207,6 +6279,11 @@ fn elemPtr(
     try index_mat.finish(isel);
 }
 
+const MoveLocOptions = struct {
+    dst_prot: DestProtection = .none,
+    atomic: bool = false,
+};
+
 fn moveLoc(
     isel: *Select,
     dst_loc: Value.Location,
@@ -6214,22 +6291,23 @@ fn moveLoc(
     src_loc: Value.Location,
     src_off: u64,
     size: u64,
-    dst_prot: DestProtection,
+    opts: MoveLocOptions,
 ) !void {
     if (dst_loc.isUnallocated()) return;
     if (std.meta.eql(dst_loc, src_loc) and dst_off == src_off) return;
     if (size == 0) return;
     assert(!src_loc.isUnallocated());
-    wip_mir_log.debug("  | # move {f}[{d}] <- {f}[{d}], {d}B, dst prot={t}", .{
+    wip_mir_log.debug("  | # move {f}[{d}] <- {f}[{d}], {d}B, dst prot={t}, atomic={}", .{
         dst_loc,
         dst_off,
         src_loc,
         src_off,
         size,
-        dst_prot,
+        opts.dst_prot,
+        opts.atomic,
     });
 
-    const dst_lock: RegLock = if (dst_prot != .preserved) .empty else dst_loc.tryLock(isel);
+    const dst_lock: RegLock = if (opts.dst_prot != .preserved) .empty else dst_loc.tryLock(isel);
     defer dst_lock.unlock(isel);
     const src_lock = src_loc.tryLock(isel);
     defer src_lock.unlock(isel);
@@ -6242,7 +6320,7 @@ fn moveLoc(
                 src_ra,
                 @intCast(src_off * 8),
                 @intCast(size * 8),
-                dst_prot,
+                opts.dst_prot,
             ),
             .stack_slot => |src_stack| {
                 const tmp_reg = if (dst_ra.mod == .integer and dst_off == 0)
@@ -6256,7 +6334,7 @@ fn moveLoc(
                     .{ .reg = tmp_reg, .mod = .integer },
                     0,
                     @intCast(size * 8),
-                    dst_prot,
+                    opts.dst_prot,
                 );
                 try isel.loadReg(
                     tmp_reg,
@@ -6268,6 +6346,8 @@ fn moveLoc(
             },
         },
         .stack_slot => |dst_stack| {
+            if (size > isel.gprSize() and opts.atomic)
+                return isel.fail("Memory store of {d} bytes cannot be atomic", .{size});
             if (size > isel.gprSize()) {
                 // large memory copies, src must be stack_slot
                 const src_stack = src_loc.stack_slot;
@@ -6295,7 +6375,7 @@ fn moveLoc(
                 if (gen_low_to_high) {
                     var off: u64 = 0;
                     for (0..@intCast(steps)) |_| {
-                        try isel.moveLoc(dst_loc, dst_off + off, src_loc, src_off + off, gpr_size, dst_prot);
+                        try isel.moveLoc(dst_loc, dst_off + off, src_loc, src_off + off, gpr_size, opts);
                         off += gpr_size;
                     }
                 }
@@ -6303,7 +6383,7 @@ fn moveLoc(
                     var off: u64 = steps * gpr_size;
                     for (0..@intCast(steps)) |_| {
                         off -= gpr_size;
-                        try isel.moveLoc(dst_loc, dst_off + off, src_loc, src_off + off, gpr_size, dst_prot);
+                        try isel.moveLoc(dst_loc, dst_off + off, src_loc, src_off + off, gpr_size, opts);
                     }
                 }
 
@@ -6314,7 +6394,9 @@ fn moveLoc(
             // If size is not direct mem op size and !kill_dst, old values have to
             // be loaded first.
             const memop_size = memOpSizeFitting(size);
-            const need_load = memop_size != size;
+            const need_load = memop_size != size and opts.dst_prot != .none;
+            if (opts.atomic and need_load)
+                return isel.fail("Memory store of {d} bytes cannot be atomic without killing other bytes", .{size});
             const tmp_reg, const tmp_allocated = tmp_reg: {
                 if (src_off == 0 and !need_load) {
                     switch (src_loc) {
@@ -6336,7 +6418,7 @@ fn moveLoc(
                     src_loc,
                     src_off,
                     size,
-                    if (need_load) .preserved else .none,
+                    opts,
                 );
             if (need_load)
                 try isel.loadReg(tmp_reg, memop_size, .unsigned, dst_stack.base, dst_stack_off);
@@ -6464,7 +6546,7 @@ fn moveConstant(isel: *Select, dst: Value.Location, init_constant: Constant, ini
                 const rd = dst_ra.reg;
                 defer if (use_tmp_reg) isel.freeReg(rd);
 
-                if (use_tmp_reg) try isel.moveLoc(dst, 0, .{ .register = dst_ra }, 0, isel.gprSize(), .none);
+                if (use_tmp_reg) try isel.moveLoc(dst, 0, .{ .register = dst_ra }, 0, isel.gprSize(), .{});
                 return switch (ptr.base_addr) {
                     .nav => |nav| if (ZigType.fromInterned(ip.getNav(nav).resolved.?.type).isRuntimeFnOrHasRuntimeBits(zcu)) {
                         // TODO code model
@@ -6725,7 +6807,14 @@ fn moveConstant(isel: *Select, dst: Value.Location, init_constant: Constant, ini
                     ),
                 };
 
-                try isel.moveLoc(dst, part_offset, .{ .register = tmp_ra }, 0, part_size, .preserved);
+                try isel.moveLoc(
+                    dst,
+                    part_offset,
+                    .{ .register = tmp_ra },
+                    0,
+                    part_size,
+                    .{ .dst_prot = .preserved },
+                );
                 try isel.moveIntImm(tmp_reg, @bitCast(part_value));
 
                 if (part_offset == 0) break else part_offset -= gpr_size;
@@ -6756,7 +6845,7 @@ fn moveConstant(isel: *Select, dst: Value.Location, init_constant: Constant, ini
                 .{ .stack_slot = .{ .base = tmp_reg, .offset = 0 } },
                 offset,
                 size,
-                .none,
+                .{},
             );
 
             // load constant pointer
@@ -7238,7 +7327,7 @@ const call = struct {
                 .{ .register = .{ .mod = .integer, .reg = tmp_reg } },
                 0,
                 isel.gprSize(),
-                .preserved,
+                .{ .dst_prot = .preserved },
             );
         } else unreachable;
     }
