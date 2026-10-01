@@ -35,15 +35,17 @@ pub const Secp256k1 = struct {
 
     pub const B = Fe.fromInt(7) catch unreachable;
 
-    pub const Endormorphism = struct {
-        const lambda: u256 = 37718080363155996902926221483475020450927657555482586988616620542887997980018;
-        const beta: u256 = 55594575648329892869085402983802832744385952214688224221778511981742606582254;
+    pub const Endomorphism = struct {
+        const lambda = scalarFromInt(37718080363155996902926221483475020450927657555482586988616620542887997980018);
+        const beta = Fe.fromInt(55594575648329892869085402983802832744385952214688224221778511981742606582254) catch unreachable;
+        const b1_neg = scalarFromInt(303414439467246543595250775667605759171);
+        const b2_neg = scalarFromInt(scalar.field_order - 64502973549206556628585045361533709077);
 
-        const lambda_s = s: {
+        fn scalarFromInt(x: u256) scalar.Scalar {
             var buf: [32]u8 = undefined;
-            mem.writeInt(u256, &buf, Endormorphism.lambda, .little);
-            break :s buf;
-        };
+            mem.writeInt(u256, &buf, x, .little);
+            return scalar.Scalar.fromBytes(buf, .little) catch unreachable;
+        }
 
         pub const SplitScalar = struct {
             r1: [32]u8,
@@ -51,39 +53,21 @@ pub const Secp256k1 = struct {
         };
 
         /// Compute r1 and r2 so that k = r1 + r2*lambda (mod L).
+        /// Both outputs use the requested byte order.
         pub fn splitScalar(s: [32]u8, endian: std.lang.Endian) NonCanonicalError!SplitScalar {
-            const b1_neg_s = comptime s: {
-                var buf: [32]u8 = undefined;
-                mem.writeInt(u256, &buf, 303414439467246543595250775667605759171, .little);
-                break :s buf;
-            };
-            const b2_neg_s = comptime s: {
-                var buf: [32]u8 = undefined;
-                mem.writeInt(u256, &buf, scalar.field_order - 64502973549206556628585045361533709077, .little);
-                break :s buf;
-            };
-            const k = mem.readInt(u256, &s, endian);
+            const k = try scalar.Scalar.fromBytes(s, endian);
+            const k_int = mem.readInt(u256, &s, endian);
 
-            const t1 = math.mulWide(u256, k, 21949224512762693861512883645436906316123769664773102907882521278123970637873);
-            const t2 = math.mulWide(u256, k, 103246583619904461035481197785446227098457807945486720222659797044629401272177);
+            const t1 = math.mulWide(u256, k_int, 21949224512762693861512883645436906316123769664773102907882521278123970637873);
+            const t2 = math.mulWide(u256, k_int, 103246583619904461035481197785446227098457807945486720222659797044629401272177);
 
             const c1 = @as(u128, @truncate(t1 >> 384)) + @as(u1, @truncate(t1 >> 383));
             const c2 = @as(u128, @truncate(t2 >> 384)) + @as(u1, @truncate(t2 >> 383));
 
-            var buf: [32]u8 = undefined;
+            const r2 = scalarFromInt(c1).mul(b1_neg).add(scalarFromInt(c2).mul(b2_neg));
+            const r1 = k.sub(r2.mul(lambda));
 
-            mem.writeInt(u256, &buf, c1, .little);
-            const c1x = try scalar.mul(buf, b1_neg_s, .little);
-
-            mem.writeInt(u256, &buf, c2, .little);
-            const c2x = try scalar.mul(buf, b2_neg_s, .little);
-
-            const r2 = try scalar.add(c1x, c2x, .little);
-
-            var r1 = try scalar.mul(r2, lambda_s, .little);
-            r1 = try scalar.sub(s, r1, .little);
-
-            return SplitScalar{ .r1 = r1, .r2 = r2 };
+            return .{ .r1 = r1.toBytes(endian), .r2 = r2.toBytes(endian) };
         }
     };
 
@@ -367,17 +351,43 @@ pub const Secp256k1 = struct {
         return e;
     }
 
-    fn pcMul(pc: *const [9]Secp256k1, s: [32]u8, comptime vartime: bool) IdentityElementError!Secp256k1 {
-        std.debug.assert(vartime);
-        const e = slide(s);
+    // Compute the sum of s[i]*p[i] *IN VARIABLE TIME*. Scalars can be larger than the group order.
+    fn mulMultiPublic(comptime n: usize, p: [n]Secp256k1, s: [n][32]u8, endian: std.lang.Endian) IdentityElementError!Secp256k1 {
+        var pcs: [2 * n][9]Secp256k1 = undefined;
+        var es: [2 * n][2 * 32 + 1]i8 = undefined;
+        for (p, s, 0..) |point, k, i| {
+            pcs[2 * i] = if (point.is_base) basePointPc[0..9].* else precompute(point, 8);
+            // lambda*P
+            for (&pcs[2 * i + 1], pcs[2 * i]) |*pc_lambda, pc| {
+                pc_lambda.* = .{ .x = pc.x.mul(Endomorphism.beta), .y = pc.y, .z = pc.z };
+            }
+            var s48: [48]u8 = undefined;
+            mem.writeInt(u384, &s48, mem.readInt(u256, &k, endian), .little);
+            const split = Endomorphism.splitScalar(scalar.reduce48(s48, .little), .little) catch unreachable;
+
+            for ([_][32]u8{ split.r1, split.r2 }, es[2 * i ..][0..2]) |r, *e| {
+                const x = mem.readInt(u256, &r, .little);
+                const negate = x > scalar.field_order / 2;
+                var r_abs: [32]u8 = undefined;
+                mem.writeInt(u256, &r_abs, if (negate) scalar.field_order - x else x, .little);
+                e.* = slide(r_abs);
+                if (negate) {
+                    for (e) |*d| d.* = -d.*;
+                }
+            }
+        }
+
+        var pos: usize = 0;
+        for (&es) |*e| pos = @max(pos, mem.findLastNone(i8, e, &.{0}) orelse 0);
         var q = Secp256k1.identityElement;
-        var pos = e.len - 1;
         while (true) : (pos -= 1) {
-            const slot = e[pos];
-            if (slot > 0) {
-                q = q.add(pc[@as(usize, @intCast(slot))]);
-            } else if (slot < 0) {
-                q = q.sub(pc[@as(usize, @intCast(-slot))]);
+            for (&pcs, &es) |*pc, *e| {
+                const slot = e[pos];
+                if (slot > 0) {
+                    q = q.add(pc[@as(usize, @intCast(slot))]);
+                } else if (slot < 0) {
+                    q = q.sub(pc[@as(usize, @intCast(-slot))]);
+                }
             }
             if (pos == 0) break;
             q = q.dbl().dbl().dbl().dbl();
@@ -435,105 +445,17 @@ pub const Secp256k1 = struct {
 
     /// Multiply an elliptic curve point by a *PUBLIC* scalar *IN VARIABLE TIME*
     /// This can be used for signature verification.
-    pub fn mulPublic(p: Secp256k1, s_: [32]u8, endian: std.lang.Endian) (IdentityElementError || NonCanonicalError)!Secp256k1 {
-        const s = if (endian == .little) s_ else Fe.orderSwap(s_);
-        const zero = comptime scalar.Scalar.zero.toBytes(.little);
-        if (mem.eql(u8, &zero, &s)) {
-            return error.IdentityElement;
-        }
-        const pc = precompute(p, 8);
-        var lambda_p = try pcMul(&pc, Endormorphism.lambda_s, true);
-        var split_scalar = try Endormorphism.splitScalar(s, .little);
-        var px = p;
-
-        // If a key is negative, flip the sign to keep it half-sized,
-        // and flip the sign of the Y point coordinate to compensate.
-        if (split_scalar.r1[split_scalar.r1.len / 2] != 0) {
-            split_scalar.r1 = scalar.neg(split_scalar.r1, .little) catch zero;
-            px = px.neg();
-        }
-        if (split_scalar.r2[split_scalar.r2.len / 2] != 0) {
-            split_scalar.r2 = scalar.neg(split_scalar.r2, .little) catch zero;
-            lambda_p = lambda_p.neg();
-        }
-        return mulDoubleBasePublicEndo(px, split_scalar.r1, lambda_p, split_scalar.r2);
-    }
-
-    // Half-size double-base public multiplication when using the curve endomorphism.
-    // Scalars must be in little-endian.
-    // The second point is unlikely to be the generator, so don't even try to use the comptime table for it.
-    fn mulDoubleBasePublicEndo(p1: Secp256k1, s1: [32]u8, p2: Secp256k1, s2: [32]u8) IdentityElementError!Secp256k1 {
-        var pc1_array: [9]Secp256k1 = undefined;
-        const pc1 = if (p1.is_base) basePointPc[0..9] else pc: {
-            pc1_array = precompute(p1, 8);
-            break :pc &pc1_array;
-        };
-        const pc2 = precompute(p2, 8);
-        std.debug.assert(s1[s1.len / 2] == 0);
-        std.debug.assert(s2[s2.len / 2] == 0);
-        const e1 = slide(s1);
-        const e2 = slide(s2);
-        var q = Secp256k1.identityElement;
-        var pos: usize = 2 * 32 / 2; // second half is all zero
-        while (true) : (pos -= 1) {
-            const slot1 = e1[pos];
-            if (slot1 > 0) {
-                q = q.add(pc1[@as(usize, @intCast(slot1))]);
-            } else if (slot1 < 0) {
-                q = q.sub(pc1[@as(usize, @intCast(-slot1))]);
-            }
-            const slot2 = e2[pos];
-            if (slot2 > 0) {
-                q = q.add(pc2[@as(usize, @intCast(slot2))]);
-            } else if (slot2 < 0) {
-                q = q.sub(pc2[@as(usize, @intCast(-slot2))]);
-            }
-            if (pos == 0) break;
-            q = q.dbl().dbl().dbl().dbl();
-        }
-        try q.rejectIdentity();
-        return q;
+    pub fn mulPublic(p: Secp256k1, s: [32]u8, endian: std.lang.Endian) (IdentityElementError || NonCanonicalError)!Secp256k1 {
+        try scalar.rejectNonCanonical(s, endian);
+        return mulMultiPublic(1, .{p}, .{s}, endian);
     }
 
     /// Double-base multiplication of public parameters - Compute (p1*s1)+(p2*s2) *IN VARIABLE TIME*
     /// This can be used for signature verification.
-    pub fn mulDoubleBasePublic(p1: Secp256k1, s1_: [32]u8, p2: Secp256k1, s2_: [32]u8, endian: std.lang.Endian) IdentityElementError!Secp256k1 {
-        const s1 = if (endian == .little) s1_ else Fe.orderSwap(s1_);
-        const s2 = if (endian == .little) s2_ else Fe.orderSwap(s2_);
+    pub fn mulDoubleBasePublic(p1: Secp256k1, s1: [32]u8, p2: Secp256k1, s2: [32]u8, endian: std.lang.Endian) IdentityElementError!Secp256k1 {
         try p1.rejectIdentity();
-        var pc1_array: [9]Secp256k1 = undefined;
-        const pc1 = if (p1.is_base) basePointPc[0..9] else pc: {
-            pc1_array = precompute(p1, 8);
-            break :pc &pc1_array;
-        };
         try p2.rejectIdentity();
-        var pc2_array: [9]Secp256k1 = undefined;
-        const pc2 = if (p2.is_base) basePointPc[0..9] else pc: {
-            pc2_array = precompute(p2, 8);
-            break :pc &pc2_array;
-        };
-        const e1 = slide(s1);
-        const e2 = slide(s2);
-        var q = Secp256k1.identityElement;
-        var pos: usize = 2 * 32;
-        while (true) : (pos -= 1) {
-            const slot1 = e1[pos];
-            if (slot1 > 0) {
-                q = q.add(pc1[@as(usize, @intCast(slot1))]);
-            } else if (slot1 < 0) {
-                q = q.sub(pc1[@as(usize, @intCast(-slot1))]);
-            }
-            const slot2 = e2[pos];
-            if (slot2 > 0) {
-                q = q.add(pc2[@as(usize, @intCast(slot2))]);
-            } else if (slot2 < 0) {
-                q = q.sub(pc2[@as(usize, @intCast(-slot2))]);
-            }
-            if (pos == 0) break;
-            q = q.dbl().dbl().dbl().dbl();
-        }
-        try q.rejectIdentity();
-        return q;
+        return mulMultiPublic(2, .{ p1, p2 }, .{ s1, s2 }, endian);
     }
 };
 

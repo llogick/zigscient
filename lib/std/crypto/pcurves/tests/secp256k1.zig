@@ -4,6 +4,8 @@ const testing = std.testing;
 
 const Secp256k1 = @import("../secp256k1.zig").Secp256k1;
 
+const lambda: u256 = 0x5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72;
+
 test "secp256k1 ECDH key exchange" {
     const io = testing.io;
     const dha = Secp256k1.scalar.random(io, .little);
@@ -136,6 +138,39 @@ test "secp256k1 double base multiplication" {
     const pr1 = try Secp256k1.mulDoubleBasePublic(p1, s1, p2, s2, .little);
     const pr2 = (try p1.mul(s1, .little)).add(try p2.mul(s2, .little));
     try testing.expect(pr1.equivalent(pr2));
+}
+
+test "secp256k1 public multiplication" {
+    const io = testing.io;
+    const n = Secp256k1.scalar.field_order;
+    const p = Secp256k1.random(io);
+    for ([_]u256{ 1, 2, n - 1, lambda, n - lambda, (1 << 128) - 1 }) |x| {
+        var s: [32]u8 = undefined;
+        std.mem.writeInt(u256, &s, x, .big);
+        for ([_]Secp256k1{ p, Secp256k1.basePoint }) |q| {
+            try testing.expect((try q.mulPublic(s, .big)).equivalent(try q.mul(s, .big)));
+        }
+    }
+
+    var s_n: [32]u8 = undefined;
+    std.mem.writeInt(u256, &s_n, n, .little);
+    try testing.expectError(error.NonCanonical, p.mulPublic(s_n, .little));
+}
+
+test "secp256k1 scalar split" {
+    const io = testing.io;
+    const n = Secp256k1.scalar.field_order;
+    inline for (.{ .little, .big }) |endian| {
+        var lambda_s: [32]u8 = undefined;
+        std.mem.writeInt(u256, &lambda_s, lambda, endian);
+        const k = Secp256k1.scalar.random(io, endian);
+        const split = try Secp256k1.Endomorphism.splitScalar(k, endian);
+        try testing.expectEqual(k, try Secp256k1.scalar.mulAdd(split.r2, lambda_s, split.r1, endian));
+        for ([_][32]u8{ split.r1, split.r2 }) |r_s| {
+            const r = std.mem.readInt(u256, &r_s, endian);
+            try testing.expect(@min(r, n - r) < 1 << 128);
+        }
+    }
 }
 
 test "secp256k1 scalar inverse" {
