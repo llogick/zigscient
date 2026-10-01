@@ -2587,6 +2587,9 @@ fn resolveFrameworkInput(
     framework_directory: Directory,
     framework_query: UnresolvedInput.FrameworkQuery,
 ) Allocator.Error!ResolveLibInputResult {
+    try resolved_inputs.ensureUnusedCapacity(gpa, 1);
+    try archive_dedup.ensureUnusedCapacity(gpa, 1);
+
     const sep = std.fs.path.sep_str;
 
     tbd: {
