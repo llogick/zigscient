@@ -360,6 +360,7 @@ pub fn printUsage(sc: *const ScannedConfig, graph: *Graph, w: *Writer) !void {
         \\                               limit to the max number of iterations. The argument supports
         \\                               an optional 'K', 'M', or 'G' suffix (e.g. '10K'). Implies
         \\                               '--webui' when no limit is specified.
+        \\  --listen=-                   Enable the build server protocol on stdio
         \\  --time-report                Force full rebuild and provide detailed information on
         \\                               compilation time of Zig source code (implies '--webui')
         \\  -fincremental                Enable incremental compilation
