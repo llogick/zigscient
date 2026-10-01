@@ -5082,7 +5082,7 @@ pub const Tag = enum(u8) {
     const TypeSpirv = Key.SpirvType;
 
     const struct_packed_encoding = .{
-        .summary = .@"{.payload.name%summary#\"}",
+        .summary = .@"{.payload.fqn%summary#\"}",
         .payload = TypeStructPacked,
         .trailing = struct {
             type_hash: ?u64,
@@ -5099,7 +5099,7 @@ pub const Tag = enum(u8) {
         },
     };
     const struct_packed_defaults_encoding = .{
-        .summary = .@"{.payload.name%summary#\"}",
+        .summary = .@"{.payload.fqn%summary#\"}",
         .payload = TypeStructPacked,
         .trailing = struct {
             type_hash: ?u64,
@@ -5118,7 +5118,7 @@ pub const Tag = enum(u8) {
         },
     };
     const union_packed_encoding = .{
-        .summary = .@"{.payload.name%summary#\"}",
+        .summary = .@"{.payload.fqn%summary#\"}",
         .payload = TypeUnionPacked,
         .trailing = struct {
             type_hash: ?u64,
@@ -5133,7 +5133,7 @@ pub const Tag = enum(u8) {
         },
     };
     const enum_explicit_encoding = .{
-        .summary = .@"{.payload.name%summary#\"}",
+        .summary = .@"{.payload.fqn%summary#\"}",
         .payload = TypeEnum,
         .trailing = struct {
             owner_union: ?Index,
@@ -5214,7 +5214,7 @@ pub const Tag = enum(u8) {
         },
 
         .type_struct = .{
-            .summary = .@"{.payload.name%summary#\"}",
+            .summary = .@"{.payload.fqn%summary#\"}",
             .payload = TypeStruct,
             .trailing = struct {
                 type_hash: ?u64,
@@ -5238,7 +5238,7 @@ pub const Tag = enum(u8) {
                 .@"trailing.field_defaults.?" = .@"payload.flags.any_field_defaults",
                 .@"trailing.field_defaults.?.len" = .@"payload.fields_len",
                 .@"trailing.field_aligns.?" = .@"payload.flags.any_field_aligns",
-                .@"trailing.field_aligns.?.len" = .@"(payload.fields_len + 3) / 4",
+                .@"trailing.field_aligns.?.len" = .@"(payload.fields_len + 3) & ~@as(u32, 3)",
                 .@"trailing.field_is_comptime_bits.?" = .@"payload.flags.any_comptime_fields",
                 .@"trailing.field_is_comptime_bits.?.len" = .@"(payload.fields_len + 31) / 32",
                 .@"trailing.field_runtime_order.?" = .@"payload.flags.layout == .auto",
@@ -5251,7 +5251,7 @@ pub const Tag = enum(u8) {
         .type_struct_packed_auto_defaults = struct_packed_defaults_encoding,
         .type_struct_packed_explicit_defaults = struct_packed_defaults_encoding,
         .type_union = .{
-            .summary = .@"{.payload.name%summary#\"}",
+            .summary = .@"{.payload.fqn%summary#\"}",
             .payload = TypeUnion,
             .trailing = struct {
                 type_hash: ?u64,
@@ -5266,14 +5266,14 @@ pub const Tag = enum(u8) {
                 .@"trailing.captures.?" = .@"payload.flags.any_captures == .true",
                 .@"trailing.captures.?.len" = .@"trailing.captures_len.?",
                 .@"trailing.field_types.len" = .@"payload.fields_len",
-                .@"trailing.field_aligns.?" = .@"payloads.flags.any_field_aligns",
-                .@"trailing.field_aligns.?.len" = .@"(payload.fields_len + 3) / 4",
+                .@"trailing.field_aligns.?" = .@"payload.flags.any_field_aligns",
+                .@"trailing.field_aligns.?.len" = .@"(payload.fields_len + 3) & ~@as(u32, 3)",
             },
         },
         .type_union_packed_auto = union_packed_encoding,
         .type_union_packed_explicit = union_packed_encoding,
         .type_enum_auto = .{
-            .summary = .@"{.payload.name%summary#\"}",
+            .summary = .@"{.payload.fqn%summary#\"}",
             .payload = TypeEnum,
             .trailing = struct {
                 owner_union: ?Index,
@@ -5295,7 +5295,7 @@ pub const Tag = enum(u8) {
         .type_enum_nonexhaustive = enum_explicit_encoding,
         .type_spirv = .{ .payload = Tag.TypeSpirv },
         .type_opaque = .{
-            .summary = .@"{.payload.name%summary#\"}",
+            .summary = .@"{.payload.fqn%summary#\"}",
             .payload = TypeOpaque,
             .trailing = struct { captures: []CaptureValue },
             .config = .{ .@"trailing.captures.len" = .@"payload.captures_len" },
@@ -5388,7 +5388,7 @@ pub const Tag = enum(u8) {
             },
             .config = .{
                 .@"trailing.inferred_error_set.?" = .@"payload.analysis.inferred_error_set",
-                .@"trailing.param_values.len" = .@"payload.ty.payload.params_len",
+                .@"trailing.param_values.len" = .@"@syntheticField(payload.ty, \"unwrapped\").payload.params_len",
             },
         },
         .func_coerced = .{
@@ -5402,7 +5402,7 @@ pub const Tag = enum(u8) {
             .summary = .@"@as({.payload.ty%summary}, .{...})",
             .payload = Aggregate,
             .trailing = struct { elements: []Index },
-            .config = .{ .@"trailing.elements.len" = .@"payload.ty.payload.fields_len" },
+            .config = .{ .@"trailing.elements.len" = .@"@syntheticField(payload.ty, \"unwrapped\").payload.fields_len" },
         },
         .repeated = .{ .summary = .@"@as({.payload.ty%summary}, @splat({.payload.elem_val%summary}))", .payload = Repeated },
         .bitpack = .{ .summary = .@"@as({.payload.ty%summary}, {})", .payload = Key.Bitpack },
