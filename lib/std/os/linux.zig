@@ -11244,6 +11244,9 @@ pub const cmsghdr = extern struct {
     type: i32,
 };
 
+// https://github.com/torvalds/linux/blob/72d3fcf802c45d00b300f25b848a93c3a2bd7c7e/include/linux/socket.h#L133
+pub const cmsg_align = @sizeOf(c_long);
+
 pub const riscv_hwprobe = extern struct {
     key: i64,
     value: u64,

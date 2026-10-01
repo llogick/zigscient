@@ -4,6 +4,7 @@ const std = @import("std");
 const Io = std.Io;
 const net = std.Io.net;
 const mem = std.mem;
+const posix = std.posix;
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
 
@@ -291,6 +292,99 @@ test "listen on a unix socket, send bytes, receive bytes" {
 
     try testing.expectEqual(@as(usize, 12), n);
     try testing.expectEqualStrings("Hello world!", buf[0..n]);
+
+    try client_task.await(io);
+}
+
+test "listen on a unix socket, pass file descriptor" {
+    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+        // Windows and WASI don't have the concept of control/ancillary data.
+        return error.SkipZigTest;
+    }
+
+    const io = testing.io;
+    const gpa = testing.allocator;
+
+    const socket_path = try generateFileName(gpa, io, "socket.unix");
+    defer gpa.free(socket_path);
+    const temp_file_path = try generateFileName(gpa, io, "temp_file");
+    defer gpa.free(temp_file_path);
+
+    defer Io.Dir.cwd().deleteFile(io, socket_path) catch {};
+    defer Io.Dir.cwd().deleteFile(io, temp_file_path) catch {};
+
+    const socket_addr = try net.UnixAddress.init(socket_path);
+
+    var server = socket_addr.listen(io, .{}) catch |err| switch (err) {
+        error.AddressFamilyUnsupported => return error.SkipZigTest,
+        error.NetworkDown => return error.SkipZigTest,
+        else => |e| return e,
+    };
+    defer server.socket.close(io);
+
+    const S = struct {
+        fn clientFn(path: []const u8, file_path: []const u8) !void {
+            const temp_file = try Io.Dir.cwd().createFile(io, file_path, .{});
+            defer temp_file.close(io);
+
+            const server_path: net.UnixAddress = try .init(path);
+            var stream = try server_path.connect(io);
+            defer stream.close(io);
+
+            var cmsg_buf: [net.cmsg.space(@sizeOf(posix.fd_t))]u8 align(Io.net.cmsg_align) = @splat(0);
+
+            const header: *align(Io.net.cmsg_align) posix.cmsghdr = @ptrCast(&cmsg_buf);
+            header.* = .{
+                .len = net.cmsg.len(@sizeOf(posix.fd_t)),
+                .level = posix.SOL.SOCKET,
+                .type = posix.SCM.RIGHTS,
+            };
+
+            const fds: []posix.fd_t = @ptrCast(net.cmsg.data(header));
+            fds[0] = temp_file.handle;
+
+            var stream_writer = stream.writer(io, &.{});
+            stream_writer.control = &cmsg_buf;
+            try stream_writer.interface.writeAll("Hello world!");
+        }
+    };
+
+    var client_task = io.concurrent(S.clientFn, .{ socket_path, temp_file_path }) catch |err| switch (err) {
+        error.ConcurrencyUnavailable => return error.SkipZigTest,
+    };
+    defer client_task.cancel(io) catch {};
+
+    var stream = try server.accept(io);
+    defer stream.close(io);
+
+    var control_buf: [32]u8 align(Io.net.cmsg_align) = undefined;
+    var buf: [16]u8 = undefined;
+    var stream_reader = stream.readerWithControl(io, &.{}, &control_buf);
+
+    const n = try stream_reader.interface.readSliceShort(&buf);
+
+    try testing.expect(!stream_reader.control_truncated); // The control buffer should be big enough to receive the entire control message
+
+    try testing.expectEqual(12, n);
+    try testing.expectEqualStrings("Hello world!", buf[0..n]);
+
+    var it = stream_reader.controlIterator();
+    const control = it.next() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(null, it.next());
+
+    try testing.expectEqual(net.cmsg.len(@sizeOf(posix.fd_t)), control.header.len);
+    try testing.expectEqual(posix.SOL.SOCKET, control.header.level);
+    try testing.expectEqual(posix.SCM.RIGHTS, control.header.type);
+
+    const fds: []posix.fd_t = @ptrCast(control.data);
+
+    const temp_file: Io.File = .{
+        .handle = fds[0],
+        .flags = .{ .nonblocking = false },
+    };
+    defer temp_file.close(io);
+    var temp_file_writer = temp_file.writer(io, &.{});
+    try temp_file_writer.interface.writeAll("if this is a real file descriptor, this shouldn't fail");
 
     try client_task.await(io);
 }

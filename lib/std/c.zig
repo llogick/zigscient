@@ -3373,6 +3373,19 @@ pub const Sigaction = switch (native_os) {
             restorer: ?*const fn () callconv(.c) void = null,
             mask: sigset_t,
         } else common_linux_Sigaction,
+        .sparc64 => if (builtin.abi == .gnu) extern struct {
+            pub const handler_fn = *align(1) const fn (SIG) callconv(.c) void;
+            pub const sigaction_fn = *const fn (SIG, *const siginfo_t, ?*anyopaque) callconv(.c) void;
+
+            handler: extern union {
+                handler: ?handler_fn,
+                sigaction: ?sigaction_fn,
+            },
+            mask: sigset_t,
+            __glibc_reserved0: c_int = 0,
+            flags: c_uint,
+            restorer: ?*const fn () callconv(.c) void = null,
+        } else common_linux_Sigaction,
         else => common_linux_Sigaction,
     },
     .emscripten => emscripten.Sigaction,
@@ -4431,6 +4444,68 @@ const posix_cmsghdr = extern struct {
     level: c_int,
     type: c_int,
 };
+
+// Alignment used by POSIX specified CMSG_* Macros
+// https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_socket.h.html
+pub const cmsg_align = switch (native_os) {
+    .linux => linux.cmsg_align,
+    // https://github.com/emscripten-core/emscripten/blob/96371ed7888fc78c040179f4d4faa82a6a07a116/system/lib/libc/musl/include/sys/socket.h#L362
+    .emscripten => @sizeOf(usize),
+    // https://github.com/freebsd/freebsd-src/blob/b197d2abcb6895d78bc9df8404e374397aa44748/sys/sys/socket.h#L584
+    // https://github.com/freebsd/freebsd-src/blob/d2018cedb414ef17e77b7fc2fa19fd81328da46b/sys/sys/_align.h#L30
+    .freebsd => @sizeOf(*anyopaque),
+    // https://github.com/DragonFlyBSD/DragonFlyBSD/blob/d1f4fb943c73e2b61ddabff6aa48ce7551db72f4/sys/sys/socket.h#L441
+    // https://github.com/DragonFlyBSD/DragonFlyBSD/blob/d1f4fb943c73e2b61ddabff6aa48ce7551db72f4/sys/cpu/x86_64/include/alignbytes.h#L35
+    .dragonfly => switch (builtin.cpu.arch) {
+        .x86_64 => @sizeOf(c_long),
+        else => {},
+    },
+    // https://github.com/NetBSD/src/blob/ba8e1774fd9c0c26ecca461c07bc95d9ebb69579/sys/sys/socket.h#L544
+    .netbsd => switch (builtin.cpu.arch) {
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/arm/include/cdefs.h#L63
+        .aarch64, .aarch64_be => @sizeOf(i128),
+        .arm, .armeb => @sizeOf(c_longlong),
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/i386/include/cdefs.h#L9
+        .x86 => @sizeOf(c_int),
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/amd64/include/cdefs.h#L6
+        .x86_64 => @sizeOf(c_long),
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/mips/include/cdefs.h#L74
+        .mips, .mips64, .mipsel, .mips64el => 8,
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/sparc/include/cdefs.h#L8
+        .sparc64 => 16,
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/sparc/include/cdefs.h#L10
+        .sparc => 8,
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/alpha/include/cdefs.h#L6
+        .alpha => 8,
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/m68k/include/cdefs.h#L6
+        .m68k => @sizeOf(c_int),
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/hppa/include/cdefs.h#L12
+        .hppa => 8,
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/riscv/include/cdefs.h#L5
+        .riscv32, .riscv32be, .riscv64, .riscv64be => @as(comptime_int, builtin.target.cMaxIntAlignment()),
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/powerpc/include/cdefs.h#L6
+        .powerpc, .powerpcle, .powerpc64, .powerpc64le => @sizeOf(f64),
+        // https://github.com/NetBSD/src/blob/ac016822f750dc9166c84b6d2657479992622192/sys/arch/or1k/include/cdefs.h#L6
+        .or1k => @as(comptime_int, builtin.target.cMaxIntAlignment()),
+        else => {},
+    },
+    // https://github.com/openbsd/src/blob/4a7ecdb29021f26ee0ef397afdd2931e20e63071/sys/sys/socket.h#L564
+    // https://github.com/openbsd/src/blob/4a7ecdb29021f26ee0ef397afdd2931e20e63071/sys/arch/amd64/include/_types.h#L50
+    .openbsd => @sizeOf(c_long),
+    // https://github.com/illumos/illumos-gate/blob/c1e950d976948602134f0e0e5dadf3d48a7ee996/usr/src/uts/common/sys/socket.h#L469
+    .illumos => 4,
+    // https://github.com/haiku/haiku/blob/b54f586058fd6623645512e4631468cede9933b9/headers/posix/sys/socket.h#L152
+    // https://github.com/haiku/haiku/blob/6059d64cb7cd145f0f1eb5b89c383f71e4b6bebf/headers/posix/sys/param.h#L28
+    .haiku => @sizeOf(c_long),
+    // https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/bsd/sys/socket.h#L1077
+    .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => 4,
+    else => {},
+};
+comptime {
+    if (@TypeOf(cmsg_align) != void and @TypeOf(cmsghdr) != void) {
+        assert(cmsg_align >= @alignOf(cmsghdr));
+    }
+}
 
 pub const nfds_t = switch (native_os) {
     .linux => linux.nfds_t,
