@@ -5687,23 +5687,18 @@ fn updateCObject(
             else => log.warn("failed to delete {q}: {t}", .{ dep_file_path, err }),
         };
         if (std.process.can_spawn) {
+            var diags: EvalZigLlvmProcessDiagnostics = undefined;
+            const result = comp.evalZigLlvmProcess(arena, &diags, argv.items) catch |err| switch (err) {
+                else => |e| return e,
+                error.EvalZigLlvmFail => return comp.failCObj(
+                    c_object,
+                    "failed to evaluate zig clang '{s}': {f}",
+                    .{ argv.items[0], diags },
+                ),
+            };
+
             if (comp.clang_passthrough_mode) {
-                var child = std.process.spawn(io, .{
-                    .argv = argv.items,
-                    .stdin = .inherit,
-                    .stdout = .inherit,
-                    .stderr = .inherit,
-                }) catch |err| {
-                    return comp.failCObj(c_object, "failed to spawn zig clang (passthrough mode) {s}: {t}", .{
-                        argv.items[0], err,
-                    });
-                };
-                const term = child.wait(io) catch |err| {
-                    return comp.failCObj(c_object, "failed to wait zig clang (passthrough mode) {s}: {t}", .{
-                        argv.items[0], err,
-                    });
-                };
-                switch (term) {
+                switch (result.term) {
                     .exited => |code| {
                         if (code != 0) {
                             std.process.exit(code);
@@ -5716,67 +5711,27 @@ fn updateCObject(
                     else => std.process.abort(),
                 }
             } else {
-                var child = std.process.spawn(io, .{
-                    .argv = argv.items,
-                    .stdin = .ignore,
-                    .stdout = .ignore,
-                    .stderr = .pipe,
-                }) catch |err| switch (err) {
-                    error.Canceled,
-                    error.OutOfMemory,
-                    => |e| return e,
-                    else => |e| return comp.failCObjRetryable(
-                        c_object,
-                        "failed to spawn zig clang '{s}': {t}",
-                        .{ argv.items[0], e },
-                    ),
-                };
-
-                var stderr_reader = child.stderr.?.readerStreaming(io, &.{});
-                const stderr = stderr_reader.interface.allocRemaining(arena, .limited(std.math.maxInt(u32))) catch |err| switch (err) {
-                    error.OutOfMemory => |e| return e,
-                    error.StreamTooLong => return comp.failCObjRetryable(
-                        c_object,
-                        "failed to read stderr of zig clang '{s}': exceeded maximum size",
-                        .{argv.items[0]},
-                    ),
-                    error.ReadFailed => return comp.failCObjRetryable(
-                        c_object,
-                        "failed to read stderr of zig clang '{s}': {t}",
-                        .{ argv.items[0], stderr_reader.err.? },
-                    ),
-                };
-
-                const term = child.wait(io) catch |err| switch (err) {
-                    error.Canceled => |e| return e,
-                    else => |e| return comp.failCObj(
-                        c_object,
-                        "failed to spawn zig clang '{s}': {t}",
-                        .{ argv.items[0], e },
-                    ),
-                };
-
-                switch (term) {
+                switch (result.term) {
                     .exited => |code| if (code != 0) if (out_diag_path) |diag_file_path| {
                         const bundle = CObject.Diag.Bundle.parse(gpa, io, diag_file_path) catch |err| {
-                            log.err("{}: failed to parse clang diagnostics: {s}", .{ err, stderr });
+                            log.err("{}: failed to parse clang diagnostics: {s}", .{ err, result.stderr });
                             return comp.failCObj(c_object, "clang exited with code {d}", .{code});
                         };
                         return comp.failCObjWithOwnedDiagBundle(c_object, bundle);
                     } else {
-                        log.err("clang failed with stderr: {s}", .{stderr});
+                        log.err("clang failed with stderr: {s}", .{result.stderr});
                         return comp.failCObj(c_object, "clang exited with code {d}", .{code});
                     },
                     .signal => |sig| {
-                        log.err("clang failed with stderr: {s}", .{stderr});
+                        log.err("clang failed with stderr: {s}", .{result.stderr});
                         return comp.failCObj(c_object, "clang terminated with signal {t}", .{sig});
                     },
                     .stopped => |sig| {
-                        log.err("clang failed with stderr: {s}", .{stderr});
+                        log.err("clang failed with stderr: {s}", .{result.stderr});
                         return comp.failCObj(c_object, "clang stopped with signal {t}", .{sig});
                     },
                     .unknown => {
-                        log.err("clang terminated with stderr: {s}", .{stderr});
+                        log.err("clang terminated with stderr: {s}", .{result.stderr});
                         return comp.failCObj(c_object, "clang terminated unexpectedly", .{});
                     },
                 }
@@ -7773,4 +7728,166 @@ pub fn compilerRtOptMode(comp: Compilation) std.lang.Optimize {
 /// compiler-rt, libcxx, libc, libunwind, etc.
 pub fn compilerRtStrip(comp: Compilation) bool {
     return comp.root_mod.strip;
+}
+
+pub const EvalZigLlvmProcessDiagnostics = union(enum) {
+    spawn_err: std.process.SpawnError,
+    read_stderr_err: Io.File.Reader.Error,
+    write_rsp_file_err: struct {
+        path: []const u8,
+        err: (Io.File.OpenError || Io.File.Writer.Error),
+    },
+    pub fn format(diags: EvalZigLlvmProcessDiagnostics, w: *Writer) Writer.Error!void {
+        switch (diags) {
+            .spawn_err => |err| try w.print(
+                "failed to spawn: {t}",
+                .{err},
+            ),
+            .read_stderr_err => |err| try w.print(
+                "failed to read stderr: {t}",
+                .{err},
+            ),
+            .write_rsp_file_err => |write_rsp_file| try w.print(
+                "failed to write '{s}': {t}",
+                .{ write_rsp_file.path, write_rsp_file.err },
+            ),
+        }
+    }
+};
+pub const EvalZigLlvmProcessResult = struct {
+    term: std.process.Child.Term,
+    stderr: []const u8,
+};
+
+/// Assumes that `opts.argv` is a Zig LLVM wrapper subcommand (e.g. `zig clang ...`), and attempts
+/// to spawn it; first trying to spawn it directly, but upon `error.NameTooLong`, falling back to
+/// writing a response file and passing it to the command (e.g. `zig clang @path/to/args.rsp`).
+pub fn evalZigLlvmProcess(
+    comp: *const Compilation,
+    arena: Allocator,
+    diags: *EvalZigLlvmProcessDiagnostics,
+    argv: []const []const u8,
+) error{ EvalZigLlvmFail, OutOfMemory, Canceled }!EvalZigLlvmProcessResult {
+    const io = comp.io;
+
+    if (std.process.spawn(io, .{
+        .argv = argv,
+        .stdin = if (comp.clang_passthrough_mode) .inherit else .ignore,
+        .stdout = if (comp.clang_passthrough_mode) .inherit else .ignore,
+        .stderr = if (comp.clang_passthrough_mode) .inherit else .pipe,
+    })) |child| {
+        return comp.finishEvalZigLlvmProcess(arena, child, diags);
+    } else |err| switch (err) {
+        error.Canceled => |e| return e,
+        error.NameTooLong => {}, // fallback logic below
+        else => |e| {
+            diags.* = .{ .spawn_err = e };
+            return error.EvalZigLlvmFail;
+        },
+    }
+
+    // Main command line was too long; try a response file.
+    const rand_int: u64 = r: {
+        var x: u64 = undefined;
+        io.random(@ptrCast(&x));
+        break :r x;
+    };
+    const rsp_cache_sub_path = "tmp" ++ fs.path.sep_str ++ std.fmt.hex(rand_int) ++ ".rsp";
+
+    const rsp_file = comp.dirs.local_cache.handle.createFile(io, rsp_cache_sub_path, .{}) catch |err| switch (err) {
+        error.Canceled => |e| return e,
+        else => |e| {
+            diags.* = .{ .write_rsp_file_err = .{
+                .path = try arena.dupe(u8, rsp_cache_sub_path),
+                .err = e,
+            } };
+            return error.EvalZigLlvmFail;
+        },
+    };
+    defer comp.dirs.local_cache.handle.deleteFile(io, rsp_cache_sub_path) catch |err|
+        log.warn("failed to delete response file {s}: {t}", .{ rsp_cache_sub_path, err });
+
+    {
+        defer rsp_file.close(io);
+        var buf: [1024]u8 = undefined;
+        var rsp_fw = rsp_file.writer(io, &buf);
+        writeResponseFile(argv[2..], &rsp_fw.interface) catch |err| switch (err) {
+            error.WriteFailed => switch (rsp_fw.err.?) {
+                error.Canceled => |e| return e,
+                else => |e| {
+                    diags.* = .{ .write_rsp_file_err = .{
+                        .path = try arena.dupe(u8, rsp_cache_sub_path),
+                        .err = e,
+                    } };
+                    return error.EvalZigLlvmFail;
+                },
+            },
+        };
+    }
+
+    const rsp_arg = try arena.print("@{s}{c}{s}", .{
+        comp.dirs.local_cache.path orelse ".",
+        fs.path.sep,
+        rsp_cache_sub_path,
+    });
+
+    if (std.process.spawn(io, .{
+        .argv = &.{ argv[0], argv[1], rsp_arg },
+        .stdin = if (comp.clang_passthrough_mode) .inherit else .ignore,
+        .stdout = if (comp.clang_passthrough_mode) .inherit else .ignore,
+        .stderr = if (comp.clang_passthrough_mode) .inherit else .pipe,
+    })) |child| {
+        return comp.finishEvalZigLlvmProcess(arena, child, diags);
+    } else |err| switch (err) {
+        error.Canceled => |e| return e,
+        else => |e| {
+            diags.* = .{ .spawn_err = e };
+            return error.EvalZigLlvmFail;
+        },
+    }
+}
+fn writeResponseFile(args: []const []const u8, w: *Writer) Writer.Error!void {
+    for (args) |arg| {
+        try w.writeByte('"');
+        for (arg) |c| {
+            switch (c) {
+                '\"', '\\' => try w.writeByte('\\'),
+                else => {},
+            }
+            try w.writeByte(c);
+        }
+        try w.writeAll("\"\n");
+    }
+    try w.flush();
+}
+fn finishEvalZigLlvmProcess(
+    comp: *const Compilation,
+    arena: Allocator,
+    child_arg: std.process.Child,
+    diags: *EvalZigLlvmProcessDiagnostics,
+) error{ EvalZigLlvmFail, OutOfMemory, Canceled }!EvalZigLlvmProcessResult {
+    const io = comp.io;
+    var child = child_arg;
+    defer child.kill(io);
+    if (comp.clang_passthrough_mode) {
+        const term = child.wait(io) catch |err| {
+            diags.* = .{ .spawn_err = err };
+            return error.EvalZigLlvmFail;
+        };
+        return .{ .stderr = &.{}, .term = term };
+    }
+    var stderr_reader = child.stderr.?.readerStreaming(io, &.{});
+    const stderr = stderr_reader.interface.allocRemaining(arena, .unlimited) catch |err| switch (err) {
+        error.StreamTooLong => unreachable, // unlimited
+        error.OutOfMemory => |e| return e,
+        error.ReadFailed => {
+            diags.* = .{ .read_stderr_err = stderr_reader.err.? };
+            return error.EvalZigLlvmFail;
+        },
+    };
+    const term = child.wait(io) catch |err| {
+        diags.* = .{ .spawn_err = err };
+        return error.EvalZigLlvmFail;
+    };
+    return .{ .stderr = stderr, .term = term };
 }
