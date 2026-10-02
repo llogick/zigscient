@@ -1,0 +1,39 @@
+#exe {
+--name link_object
+-Mroot=main.zig
+#}
+
+#write main.zig {
+extern fn fabsf(f32) f32;
+pub fn main() void {
+    var x: f32 = -1234.5;
+    x = fabsf(x);
+    _ = &x;
+}
+#}
+#update
+#check lldb {
+(lldb) breakpoint set --file main.zig --source-pattern-regexp 'x = fabsf\(x\);'
+Breakpoint 1: where = link_object`main.main + #... at main.zig:4:14, address = 0x#...
+(lldb) process launch
+Process #... launched: '#.../link_object' (#...)
+Process #... stopped
+* thread #1, name = 'link_object', stop reason = breakpoint 1.1
+       frame #0: link_object`main.main at main.zig:4:14
+(lldb) frame variable --show-all-children -- x
+(f32) x = -1234.5
+(lldb) breakpoint delete --force 1
+1 breakpoints deleted; 0 breakpoint locations disabled.
+(lldb) #---
+(lldb) breakpoint set --file main.zig --source-pattern-regexp '_ = &x;'
+Breakpoint 2: where = link_object`main.main + #... at main.zig:5:5, address = 0x#...
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'link_object', stop reason = breakpoint 2.1
+       frame #0: link_object`main.main at main.zig:5:5
+(lldb) frame variable --show-all-children -- x
+(f32) x = 1234.5
+(lldb) breakpoint delete --force 2
+1 breakpoints deleted; 0 breakpoint locations disabled.
+#}

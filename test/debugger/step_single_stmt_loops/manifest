@@ -1,0 +1,8 @@
+#exe {
+--name sssl
+-Mroot=step_single_stmt_loops.zig
+#}
+
+#write step_single_stmt_loops.zig step_single_stmt_loops.zig
+#update
+#check lldb lldb

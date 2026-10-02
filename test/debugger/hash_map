@@ -1,0 +1,67 @@
+#exe {
+--name hash_map
+-Mroot=main.zig
+#}
+
+#write main.zig {
+const std = @import("std");
+const Context = struct {
+    pub fn hash(_: Context, key: u32) Map.Hash {
+        return key;
+    }
+    pub fn eql(_: Context, lhs: u32, rhs: u32) bool {
+        return lhs == rhs;
+    }
+};
+const Map = std.HashMapUnmanaged(u32, u32, Context, 63);
+fn testHashMap(map: Map) void {
+    _ = map;
+}
+pub fn main() !void {
+    var map: Map = .empty;
+    defer map.deinit(std.heap.page_allocator);
+    try map.ensureTotalCapacity(std.heap.page_allocator, 10);
+    map.putAssumeCapacity(0, 1);
+    map.putAssumeCapacity(2, 3);
+    map.putAssumeCapacity(4, 5);
+    map.putAssumeCapacity(6, 7);
+    map.putAssumeCapacity(8, 9);
+
+    testHashMap(map);
+}
+#}
+#update
+#check lldb {
+(lldb) breakpoint set --file main.zig --source-pattern-regexp '_ = map;'
+Breakpoint 1: where = hash_map`main.testHashMap + #... at main.zig:13:1, address = 0x#...
+(lldb) process launch
+Process #... launched: '#.../hash_map' (#...)
+Process #... stopped
+* thread #1, name = 'hash_map', stop reason = breakpoint 1.1
+       frame #0: hash_map`main.testHashMap(map=len=5 capacity=16) at main.zig:13:1
+(lldb) frame variable --show-all-children --show-types -- map
+(std.hash_map.Custom(u32,u32,main.Context,63)) map = len=5 capacity=16 {
+  (std.hash_map.Custom(u32,u32,main.Context,63).KV) [0] = {
+    (u32) .key = 0
+    (u32) .value = 1
+  }
+  (std.hash_map.Custom(u32,u32,main.Context,63).KV) [1] = {
+    (u32) .key = 2
+    (u32) .value = 3
+  }
+  (std.hash_map.Custom(u32,u32,main.Context,63).KV) [2] = {
+    (u32) .key = 4
+    (u32) .value = 5
+  }
+  (std.hash_map.Custom(u32,u32,main.Context,63).KV) [3] = {
+    (u32) .key = 6
+    (u32) .value = 7
+  }
+  (std.hash_map.Custom(u32,u32,main.Context,63).KV) [4] = {
+    (u32) .key = 8
+    (u32) .value = 9
+  }
+}
+(lldb) breakpoint delete --force 1
+1 breakpoints deleted; 0 breakpoint locations disabled.
+#}

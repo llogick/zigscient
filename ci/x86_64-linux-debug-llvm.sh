@@ -67,7 +67,7 @@ stage3-debug/bin/zig build install test docs \
   -Dskip-windows \
   -Dskip-darwin \
   -Denable-superhtml \
-  -Dlldb="$HOME/deps/lldb-zig/Debug-aad646607a/bin/lldb" \
+  -Dlldb="$HOME/deps/lldb-zig/Debug-86a744cac9/bin/lldb" \
   -Dlibc-test-path="$HOME/deps/libc-test-b95fe84"
 
 stage4-debug/bin/zig test ../test/behavior.zig

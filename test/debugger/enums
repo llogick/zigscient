@@ -1,0 +1,67 @@
+#todo {
+passes, but prints errors
+#}
+#skip x86_64-linux-none-whole-selfhosted-new-nopic
+#skip x86_64-linux-none-whole-selfhosted-new-pic
+#skip x86_64-linux-none-incremental-selfhosted-new-nopic
+#skip x86_64-linux-none-incremental-selfhosted-new-pic
+
+#exe {
+--name enums
+-Mroot=enums.zig
+#}
+
+#write enums.zig {
+const Enums = struct {
+    const Zero = enum(u4) { _ };
+    const One = enum { first };
+    const Two = enum(i32) { first, second, _ };
+    const Three = enum { first, second, third };
+
+    zero: Zero = @fromBackingInt(13),
+    one: One = .first,
+    two: Two = @fromBackingInt(-1234),
+    three: Three = .second,
+};
+fn testEnums(enums: Enums) void {
+    _ = enums;
+}
+pub fn main() void {
+    testEnums(.{});
+}
+#}
+#update
+#check lldb {
+(lldb) breakpoint set --file enums.zig --source-pattern-regexp '_ = enums;'
+Breakpoint 1: where = enums`enums.testEnums + #... at enums.zig:14:1, address = 0x#...
+(lldb) process launch
+Process #... launched: '#.../enums' (#...)
+Process #... stopped
+* thread #1, name = 'enums', stop reason = breakpoint 1.1
+       frame #0: enums`enums.testEnums(enums=(.zero = @fromBackingInt(13), .one = .first, .two = @fromBackingInt(-1234), .three = .second)) at enums.zig:14:1
+(lldb) expression --show-types -- Enums
+(type) $0 = struct {
+  (type) Zero = enum {}
+  (type) One = enum {
+    (root.enums.Enums.One) first = .first
+  }
+  (type) Two = enum {
+    (root.enums.Enums.Two) first = .first
+    (root.enums.Enums.Two) second = .second
+  }
+  (type) Three = enum {
+    (root.enums.Enums.Three) first = .first
+    (root.enums.Enums.Three) second = .second
+    (root.enums.Enums.Three) third = .third
+  }
+}
+(lldb) frame variable --show-all-children --show-types -- enums
+(root.enums.Enums) enums = {
+  (root.enums.Enums.Zero) .zero = @fromBackingInt(13)
+  (root.enums.Enums.One) .one = .first
+  (root.enums.Enums.Two) .two = @fromBackingInt(-1234)
+  (root.enums.Enums.Three) .three = .second
+}
+(lldb) breakpoint delete --force 1
+1 breakpoints deleted; 0 breakpoint locations disabled.
+#}

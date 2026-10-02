@@ -1,0 +1,67 @@
+#exe {
+--name types
+-Mroot=types.zig
+#}
+
+#write types.zig {
+fn testTypes(
+    Anyopaque: type,
+    Bool: type,
+    Void: type,
+    Type: type,
+    ComptimeInt: type,
+    ComptimeFloat: type,
+    Noreturn: type,
+    Null: type,
+    Undefined: type,
+    EnumLiteral: type,
+) void {
+    _ = Anyopaque;
+    _ = Bool;
+    _ = Void;
+    _ = Type;
+    _ = ComptimeInt;
+    _ = ComptimeFloat;
+    _ = Noreturn;
+    _ = Null;
+    _ = Undefined;
+    _ = EnumLiteral;
+}
+pub fn main() void {
+    testTypes(
+        anyopaque,
+        bool,
+        void,
+        type,
+        comptime_int,
+        comptime_float,
+        noreturn,
+        @TypeOf(null),
+        @TypeOf(undefined),
+        @EnumLiteral(),
+    );
+}
+#}
+#update
+#check lldb {
+(lldb) breakpoint set --file types.zig --source-pattern-regexp '_ = Undefined;'
+Breakpoint 1: where = types`types.testTypes#... + #... at types.zig:23:1, address = 0x#...
+(lldb) process launch
+Process #... launched: '#.../types' (#...)
+Process #... stopped
+* thread #1, name = 'types', stop reason = breakpoint 1.1
+       frame #0: types`types.testTypes#...(anyopaque=anyopaque, bool=bool, void=void, type=type, comptime_int=comptime_int, comptime_float=comptime_float, noreturn=noreturn, @TypeOf(null)=@TypeOf(null), @TypeOf(undefined)=@TypeOf(undefined), @EnumLiteral()=@EnumLiteral()) at types.zig:23:1
+(lldb) frame variable --show-all-children --show-types -- Anyopaque Bool Void Type ComptimeInt ComptimeFloat Noreturn Null Undefined EnumLiteral
+(type) Anyopaque = anyopaque
+(type) Bool = bool
+(type) Void = void
+(type) Type = type
+(type) ComptimeInt = comptime_int
+(type) ComptimeFloat = comptime_float
+(type) Noreturn = noreturn
+(type) Null = @TypeOf(null)
+(type) Undefined = @TypeOf(undefined)
+(type) EnumLiteral = @EnumLiteral()
+(lldb) breakpoint delete --force 1
+1 breakpoints deleted; 0 breakpoint locations disabled.
+#}

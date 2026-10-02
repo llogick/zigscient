@@ -1,0 +1,41 @@
+#exe {
+--name if_blocks
+-Mroot=if_blocks.zig
+#}
+
+#write if_blocks.zig {
+pub fn main() void {
+    for (0..2) |i| {
+        if (i == 0) {
+            var x: u32 = 123;
+            _ = &x;
+        } else {
+            var x: f32 = 4.5;
+            _ = &x;
+        }
+    }
+}
+#}
+#update
+#check lldb {
+(lldb) breakpoint set --file if_blocks.zig --source-pattern-regexp '_ = &x;'
+Breakpoint 1: 2 locations.
+(lldb) process launch
+Process #... launched: '#.../if_blocks' (#...)
+Process #... stopped
+* thread #1, name = 'if_blocks', stop reason = breakpoint 1.1
+       frame #0: if_blocks`if_blocks.main at if_blocks.zig:5:13
+(lldb) frame variable --show-all-children
+(usize) i = 0
+(u32) x = 123
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'if_blocks', stop reason = breakpoint 1.2
+       frame #0: if_blocks`if_blocks.main at if_blocks.zig:8:13
+(lldb) frame variable --show-all-children
+(usize) i = 1
+(f32) x = 4.5
+(lldb) breakpoint delete --force 1
+1 breakpoints deleted; 0 breakpoint locations disabled.
+#}

@@ -899,16 +899,16 @@ def add(debugger, *, category, regex=False, type, identifier=None, synth=False, 
     if synth: debugger.HandleCommand('type synthetic add --category %s%s --python-class %s_SynthProvider "%s"' % (category, ' --regex' if regex else '', prefix, type))
 
 def __lldb_init_module(debugger, _=None):
-    # Initialize Zig Categories
-    debugger.HandleCommand('type category define --language c99 zig.lang zig.std')
+    # Initialize Zig Categories (for programs compiled with the llvm backend)
+    debugger.HandleCommand('type category define --language c99 zig.lang zig.std zig.compiler')
 
-    # Initialize Zig Language
+    # Initialize Zig Language (for programs compiled with the llvm backend)
     add(debugger, category='zig.lang', regex=True, type='^\\[\\]', identifier='zig_Slice', synth=True, expand=True, summary='len=${svar%#}')
     add(debugger, category='zig.lang', type='[]u8', identifier='zig_String', summary=True)
     add(debugger, category='zig.lang', regex=True, type='^\\?', identifier='zig_Optional', synth=True, summary=True)
     add(debugger, category='zig.lang', regex=True, type='^(error{.*}|anyerror)!', identifier='zig_ErrorUnion', synth=True, inline_children=True, summary=True)
 
-    # Initialize Zig Standard Library
+    # Initialize Zig Standard Library (for programs compiled with the llvm backend)
     add(debugger, category='zig.std', type='mem.Allocator', summary='${var.ptr}')
     add(debugger, category='zig.std', regex=True, type='^multi_array_list\\.MultiArrayList\\(.*\\)$', identifier='std_MultiArrayList', synth=True, expand=True, summary='len=${var.len} capacity=${var.capacity}')
     add(debugger, category='zig.std', regex=True, type='^multi_array_list\\.MultiArrayList\\(.*\\)\\.Slice$', identifier='std_MultiArrayList_Slice', synth=True, expand=True, summary='len=${var.len} capacity=${var.capacity}')
@@ -916,7 +916,7 @@ def __lldb_init_module(debugger, _=None):
     add(debugger, category='zig.std', regex=True, type='^hash_map\\.HashMapUnmanaged\\(.*\\)$', identifier='std_HashMapUnmanaged', synth=True, expand=True, summary=True)
     add(debugger, category='zig.std', regex=True, type='^hash_map\\.HashMapUnmanaged\\(.*\\)\\.Entry$', identifier = 'std_Entry', synth=True, inline_children=True, summary=True)
 
-    # Initialize Zig Compiler
+    # Initialize Zig Compiler (compiled with the llvm backend)
     add(debugger, category='zig.compiler', type='Zir.Inst', identifier='TagAndPayload', synth=True, inline_children=True, summary=True)
     add(debugger, category='zig.compiler', regex=True, type=MultiArrayList_Entry('Zir\\.Inst'), identifier='TagAndPayload', synth=True, inline_children=True, summary=True)
     add(debugger, category='zig.compiler', regex=True, type='^Zir\\.Inst\\.Data\\.Data__struct_[1-9][0-9]*$', inline_children=True, summary=True)

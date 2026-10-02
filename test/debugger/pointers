@@ -1,0 +1,135 @@
+#exe {
+--name pointers
+-Mroot=pointers.zig
+#}
+
+#write pointers.zig {
+var array: [7]u32 = .{
+    3010,
+    3014,
+    3018,
+    3022,
+    3026,
+    3030,
+    3034,
+};
+const Pointers = struct {
+    single: *u32 = @ptrFromInt(0x1010),
+    single_const: *const u32 = @ptrFromInt(0x1014),
+    single_volatile: *volatile u32 = @ptrFromInt(0x1018),
+    single_const_volatile: *const volatile u32 = @ptrFromInt(0x101c),
+    single_allowzero: *allowzero u32 = @ptrFromInt(0x1020),
+    single_allowzero_const: *allowzero const u32 = @ptrFromInt(0x1024),
+    single_allowzero_volatile: *allowzero volatile u32 = @ptrFromInt(0x1028),
+    single_allowzero_const_volatile: *allowzero const volatile u32 = @ptrFromInt(0x102c),
+
+    many: [*]u32 = @ptrFromInt(0x2010),
+    many_const: [*]const u32 = @ptrFromInt(0x2014),
+    many_volatile: [*]volatile u32 = @ptrFromInt(0x2018),
+    many_const_volatile: [*]const volatile u32 = @ptrFromInt(0x201c),
+    many_allowzero: [*]allowzero u32 = @ptrFromInt(0x2020),
+    many_allowzero_const: [*]allowzero const u32 = @ptrFromInt(0x2024),
+    many_allowzero_volatile: [*]allowzero volatile u32 = @ptrFromInt(0x2028),
+    many_allowzero_const_volatile: [*]allowzero const volatile u32 = @ptrFromInt(0x202c),
+    slice: []u32 = array[0..1],
+    slice_const: []const u32 = array[0..2],
+    slice_volatile: []volatile u32 = array[0..3],
+    slice_const_volatile: []const volatile u32 = array[0..4],
+    slice_allowzero: []allowzero u32 = array[4..4],
+    slice_allowzero_const: []allowzero const u32 = array[4..5],
+    slice_allowzero_volatile: []allowzero volatile u32 = array[4..6],
+    slice_allowzero_const_volatile: []allowzero const volatile u32 = array[4..7],
+
+    c: [*c]u32 = @ptrFromInt(0x4010),
+    c_const: [*c]const u32 = @ptrFromInt(0x4014),
+    c_volatile: [*c]volatile u32 = @ptrFromInt(0x4018),
+    c_const_volatile: [*c]const volatile u32 = @ptrFromInt(0x401c),
+};
+const Access = struct {
+    single: *u32 = &array[0],
+    many: [*]u32 = array[1..3],
+    slice: []u32 = array[3..5],
+    c: [*c]u32 = array[5..7],
+};
+fn testPointers(pointers: Pointers, access: Access) void {
+    _ = pointers;
+    _ = access;
+}
+pub fn main() void {
+    testPointers(.{}, .{});
+}
+#}
+#update
+#check lldb {
+(lldb) breakpoint set --file pointers.zig --source-pattern-regexp '_ = access;'
+Breakpoint 1: where = pointers`pointers.testPointers + #... at pointers.zig:51:1, address = 0x#...
+(lldb) process launch
+Process #... launched: '#.../pointers' (#...)
+Process #... stopped
+* thread #1, name = 'pointers', stop reason = breakpoint 1.1
+       frame #0: pointers`pointers.testPointers(pointers=Pointers @ 0x#..., access=Access @ 0x#...) at pointers.zig:51:1
+(lldb) frame variable --show-all-children --show-types -- pointers access.single.* access.many[0] access.many[1] access.slice[0] access.slice[1] access.c.* access.c[0] access.c[1]
+(root.pointers.Pointers) pointers = {
+  (*u32) .single = 0x0000000000001010
+  (*const u32) .single_const = 0x0000000000001014
+  (*volatile u32) .single_volatile = 0x0000000000001018
+  (*const volatile u32) .single_const_volatile = 0x000000000000101c
+  (*allowzero u32) .single_allowzero = 0x0000000000001020
+  (*allowzero const u32) .single_allowzero_const = 0x0000000000001024
+  (*allowzero volatile u32) .single_allowzero_volatile = 0x0000000000001028
+  (*allowzero const volatile u32) .single_allowzero_const_volatile = 0x000000000000102c
+  ([*]u32) .many = 0x0000000000002010
+  ([*]const u32) .many_const = 0x0000000000002014
+  ([*]volatile u32) .many_volatile = 0x0000000000002018
+  ([*]const volatile u32) .many_const_volatile = 0x000000000000201c
+  ([*]allowzero u32) .many_allowzero = 0x0000000000002020
+  ([*]allowzero const u32) .many_allowzero_const = 0x0000000000002024
+  ([*]allowzero volatile u32) .many_allowzero_volatile = 0x0000000000002028
+  ([*]allowzero const volatile u32) .many_allowzero_const_volatile = 0x000000000000202c
+  ([]u32) .slice = len=1 {
+    (u32) [0] = 3010
+  }
+  ([]const u32) .slice_const = len=2 {
+    (u32) [0] = 3010
+    (u32) [1] = 3014
+  }
+  ([]volatile u32) .slice_volatile = len=3 {
+    (u32) [0] = 3010
+    (u32) [1] = 3014
+    (u32) [2] = 3018
+  }
+  ([]const volatile u32) .slice_const_volatile = len=4 {
+    (u32) [0] = 3010
+    (u32) [1] = 3014
+    (u32) [2] = 3018
+    (u32) [3] = 3022
+  }
+  ([]allowzero u32) .slice_allowzero = len=0 {}
+  ([]allowzero const u32) .slice_allowzero_const = len=1 {
+    (u32) [0] = 3026
+  }
+  ([]allowzero volatile u32) .slice_allowzero_volatile = len=2 {
+    (u32) [0] = 3026
+    (u32) [1] = 3030
+  }
+  ([]allowzero const volatile u32) .slice_allowzero_const_volatile = len=3 {
+    (u32) [0] = 3026
+    (u32) [1] = 3030
+    (u32) [2] = 3034
+  }
+  ([*c]u32) .c = 0x0000000000004010
+  ([*c]const u32) .c_const = 0x0000000000004014
+  ([*c]volatile u32) .c_volatile = 0x0000000000004018
+  ([*c]const volatile u32) .c_const_volatile = 0x000000000000401c
+}
+(u32) access.single.* = 3010
+(u32) access.many[0] = 3014
+(u32) access.many[1] = 3018
+(u32) access.slice[0] = 3022
+(u32) access.slice[1] = 3026
+(u32) access.c.* = 3030
+(u32) access.c[0] = 3030
+(u32) access.c[1] = 3034
+(lldb) breakpoint delete --force 1
+1 breakpoints deleted; 0 breakpoint locations disabled.
+#}

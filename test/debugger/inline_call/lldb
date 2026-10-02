@@ -1,0 +1,664 @@
+(lldb) breakpoint set --file root0.zig --line 26
+Breakpoint 1: where = inline_call`root0.r0cf + #... at root0.zig:26:5, address = 0x#...
+(lldb) breakpoint set --file root0.zig --line 30
+Breakpoint 2: 8 locations.
+(lldb) breakpoint set --file root1.zig --line 26
+Breakpoint 3: where = inline_call`root1.r1cf + #... at root1.zig:26:5, address = 0x#...
+(lldb) breakpoint set --file root1.zig --line 30
+Breakpoint 4: 8 locations.
+(lldb) breakpoint set --file mod0.zig --line 26
+Breakpoint 5: where = inline_call`mod0.m0cf + #... at mod0.zig:26:5, address = 0x#...
+(lldb) breakpoint set --file mod0.zig --line 30
+Breakpoint 6: 8 locations.
+(lldb) breakpoint set --file mod1.zig --line 26
+Breakpoint 7: where = inline_call`mod1.m1cf + #... at mod1.zig:26:5, address = 0x#...
+(lldb) breakpoint set --file mod1.zig --line 30
+Breakpoint 8: 8 locations.
+(lldb) #---
+(lldb) process launch
+Process #... launched: '#.../inline_call' (#...)
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+       frame #0: inline_call`root0.r0cf(r0ca=13) at root0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+   * frame #0: inline_call`root0.r0cf(r0ca=13) at root0.zig:26:5
+     frame #1: inline_call`root0.r0pf(r0pa=12) at root0.zig:6:15
+     frame #2: inline_call`root0.main at root0.zig:34:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.8
+       frame #0: inline_call`r0cfi(r0cai=14) at root0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.8
+   * frame #0: inline_call`r0cfi(r0cai=14) at root0.zig:30:5
+     frame #1: inline_call`root0.r0pf(r0pa=12) at root0.zig:7:16
+     frame #2: inline_call`root0.main at root0.zig:34:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+       frame #0: inline_call`root1.r1cf(r1ca=15) at root1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+   * frame #0: inline_call`root1.r1cf(r1ca=15) at root1.zig:26:5
+     frame #1: inline_call`root0.r0pf(r0pa=12) at root0.zig:8:15
+     frame #2: inline_call`root0.main at root0.zig:34:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.8
+       frame #0: inline_call`r1cfi(r1cai=8) at root1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.8
+   * frame #0: inline_call`r1cfi(r1cai=8) at root1.zig:30:5
+     frame #1: inline_call`root0.r0pf(r0pa=12) at root0.zig:9:16
+     frame #2: inline_call`root0.main at root0.zig:34:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+       frame #0: inline_call`mod0.m0cf(m0ca=9) at mod0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+   * frame #0: inline_call`mod0.m0cf(m0ca=9) at mod0.zig:26:5
+     frame #1: inline_call`root0.r0pf(r0pa=12) at root0.zig:10:14
+     frame #2: inline_call`root0.main at root0.zig:34:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.8
+       frame #0: inline_call`m0cfi(m0cai=10) at mod0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.8
+   * frame #0: inline_call`m0cfi(m0cai=10) at mod0.zig:30:5
+     frame #1: inline_call`root0.r0pf(r0pa=12) at root0.zig:11:15
+     frame #2: inline_call`root0.main at root0.zig:34:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+       frame #0: inline_call`mod1.m1cf(m1ca=11) at mod1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+   * frame #0: inline_call`mod1.m1cf(m1ca=11) at mod1.zig:26:5
+     frame #1: inline_call`root0.r0pf(r0pa=12) at root0.zig:12:14
+     frame #2: inline_call`root0.main at root0.zig:34:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.8
+       frame #0: inline_call`m1cfi(m1cai=4) at mod1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.8
+   * frame #0: inline_call`m1cfi(m1cai=4) at mod1.zig:30:5
+     frame #1: inline_call`root0.r0pf(r0pa=12) at root0.zig:13:15
+     frame #2: inline_call`root0.main at root0.zig:34:15
+(lldb) #---
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+       frame #0: inline_call`root0.r0cf(r0ca=22) at root0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+   * frame #0: inline_call`root0.r0cf(r0ca=22) at root0.zig:26:5
+     frame #1: inline_call`r0pfi(r0pai=23) at root0.zig:16:15
+     frame #2: inline_call`root0.main at root0.zig:35:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.1
+       frame #0: inline_call`r0cfi(r0cai=21) at root0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.1
+   * frame #0: inline_call`r0cfi(r0cai=21) at root0.zig:30:5
+     frame #1: inline_call`r0pfi(r0pai=23) at root0.zig:17:16
+     frame #2: inline_call`root0.main at root0.zig:35:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+       frame #0: inline_call`root1.r1cf(r1ca=20) at root1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+   * frame #0: inline_call`root1.r1cf(r1ca=20) at root1.zig:26:5
+     frame #1: inline_call`r0pfi(r0pai=23) at root0.zig:18:15
+     frame #2: inline_call`root0.main at root0.zig:35:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.1
+       frame #0: inline_call`r1cfi(r1cai=19) at root1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.1
+   * frame #0: inline_call`r1cfi(r1cai=19) at root1.zig:30:5
+     frame #1: inline_call`r0pfi(r0pai=23) at root0.zig:19:16
+     frame #2: inline_call`root0.main at root0.zig:35:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+       frame #0: inline_call`mod0.m0cf(m0ca=18) at mod0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+   * frame #0: inline_call`mod0.m0cf(m0ca=18) at mod0.zig:26:5
+     frame #1: inline_call`r0pfi(r0pai=23) at root0.zig:20:14
+     frame #2: inline_call`root0.main at root0.zig:35:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.1
+       frame #0: inline_call`m0cfi(m0cai=17) at mod0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.1
+   * frame #0: inline_call`m0cfi(m0cai=17) at mod0.zig:30:5
+     frame #1: inline_call`r0pfi(r0pai=23) at root0.zig:21:15
+     frame #2: inline_call`root0.main at root0.zig:35:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+       frame #0: inline_call`mod1.m1cf(m1ca=16) at mod1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+   * frame #0: inline_call`mod1.m1cf(m1ca=16) at mod1.zig:26:5
+     frame #1: inline_call`r0pfi(r0pai=23) at root0.zig:22:14
+     frame #2: inline_call`root0.main at root0.zig:35:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.1
+       frame #0: inline_call`m1cfi(m1cai=31) at mod1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.1
+   * frame #0: inline_call`m1cfi(m1cai=31) at mod1.zig:30:5
+     frame #1: inline_call`r0pfi(r0pai=23) at root0.zig:23:15
+     frame #2: inline_call`root0.main at root0.zig:35:16
+(lldb) #---
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+       frame #0: inline_call`root0.r0cf(r0ca=35) at root0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+   * frame #0: inline_call`root0.r0cf(r0ca=35) at root0.zig:26:5
+     frame #1: inline_call`root1.r1pf(r1pa=34) at root1.zig:6:15
+     frame #2: inline_call`root0.main at root0.zig:36:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.7
+       frame #0: inline_call`r0cfi(r0cai=32) at root0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.7
+   * frame #0: inline_call`r0cfi(r0cai=32) at root0.zig:30:5
+     frame #1: inline_call`root1.r1pf(r1pa=34) at root1.zig:7:16
+     frame #2: inline_call`root0.main at root0.zig:36:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+       frame #0: inline_call`root1.r1cf(r1ca=33) at root1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+   * frame #0: inline_call`root1.r1cf(r1ca=33) at root1.zig:26:5
+     frame #1: inline_call`root1.r1pf(r1pa=34) at root1.zig:8:15
+     frame #2: inline_call`root0.main at root0.zig:36:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.7
+       frame #0: inline_call`r1cfi(r1cai=38) at root1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.7
+   * frame #0: inline_call`r1cfi(r1cai=38) at root1.zig:30:5
+     frame #1: inline_call`root1.r1pf(r1pa=34) at root1.zig:9:16
+     frame #2: inline_call`root0.main at root0.zig:36:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+       frame #0: inline_call`mod0.m0cf(m0ca=39) at mod0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+   * frame #0: inline_call`mod0.m0cf(m0ca=39) at mod0.zig:26:5
+     frame #1: inline_call`root1.r1pf(r1pa=34) at root1.zig:10:14
+     frame #2: inline_call`root0.main at root0.zig:36:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.7
+       frame #0: inline_call`m0cfi(m0cai=36) at mod0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.7
+   * frame #0: inline_call`m0cfi(m0cai=36) at mod0.zig:30:5
+     frame #1: inline_call`root1.r1pf(r1pa=34) at root1.zig:11:15
+     frame #2: inline_call`root0.main at root0.zig:36:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+       frame #0: inline_call`mod1.m1cf(m1ca=37) at mod1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+   * frame #0: inline_call`mod1.m1cf(m1ca=37) at mod1.zig:26:5
+     frame #1: inline_call`root1.r1pf(r1pa=34) at root1.zig:12:14
+     frame #2: inline_call`root0.main at root0.zig:36:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.7
+       frame #0: inline_call`m1cfi(m1cai=42) at mod1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.7
+   * frame #0: inline_call`m1cfi(m1cai=42) at mod1.zig:30:5
+     frame #1: inline_call`root1.r1pf(r1pa=34) at root1.zig:13:15
+     frame #2: inline_call`root0.main at root0.zig:36:15
+(lldb) #---
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+       frame #0: inline_call`root0.r0cf(r0ca=44) at root0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+   * frame #0: inline_call`root0.r0cf(r0ca=44) at root0.zig:26:5
+     frame #1: inline_call`r1pfi(r1pai=45) at root1.zig:16:15
+     frame #2: inline_call`root0.main at root0.zig:37:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.2
+       frame #0: inline_call`r0cfi(r0cai=47) at root0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.2
+   * frame #0: inline_call`r0cfi(r0cai=47) at root0.zig:30:5
+     frame #1: inline_call`r1pfi(r1pai=45) at root1.zig:17:16
+     frame #2: inline_call`root0.main at root0.zig:37:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+       frame #0: inline_call`root1.r1cf(r1ca=46) at root1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+   * frame #0: inline_call`root1.r1cf(r1ca=46) at root1.zig:26:5
+     frame #1: inline_call`r1pfi(r1pai=45) at root1.zig:18:15
+     frame #2: inline_call`root0.main at root0.zig:37:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.2
+       frame #0: inline_call`r1cfi(r1cai=41) at root1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.2
+   * frame #0: inline_call`r1cfi(r1cai=41) at root1.zig:30:5
+     frame #1: inline_call`r1pfi(r1pai=45) at root1.zig:19:16
+     frame #2: inline_call`root0.main at root0.zig:37:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+       frame #0: inline_call`mod0.m0cf(m0ca=40) at mod0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+   * frame #0: inline_call`mod0.m0cf(m0ca=40) at mod0.zig:26:5
+     frame #1: inline_call`r1pfi(r1pai=45) at root1.zig:20:14
+     frame #2: inline_call`root0.main at root0.zig:37:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.2
+       frame #0: inline_call`m0cfi(m0cai=43) at mod0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.2
+   * frame #0: inline_call`m0cfi(m0cai=43) at mod0.zig:30:5
+     frame #1: inline_call`r1pfi(r1pai=45) at root1.zig:21:15
+     frame #2: inline_call`root0.main at root0.zig:37:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+       frame #0: inline_call`mod1.m1cf(m1ca=42) at mod1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+   * frame #0: inline_call`mod1.m1cf(m1ca=42) at mod1.zig:26:5
+     frame #1: inline_call`r1pfi(r1pai=45) at root1.zig:22:14
+     frame #2: inline_call`root0.main at root0.zig:37:16
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.2
+       frame #0: inline_call`m1cfi(m1cai=37) at mod1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.2
+   * frame #0: inline_call`m1cfi(m1cai=37) at mod1.zig:30:5
+     frame #1: inline_call`r1pfi(r1pai=45) at root1.zig:23:15
+     frame #2: inline_call`root0.main at root0.zig:37:16
+(lldb) #---
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+       frame #0: inline_call`root0.r0cf(r0ca=57) at root0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+   * frame #0: inline_call`root0.r0cf(r0ca=57) at root0.zig:26:5
+     frame #1: inline_call`mod0.m0pf(m0pa=56) at mod0.zig:6:15
+     frame #2: inline_call`root0.main at root0.zig:38:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.6
+       frame #0: inline_call`r0cfi(r0cai=58) at root0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.6
+   * frame #0: inline_call`r0cfi(r0cai=58) at root0.zig:30:5
+     frame #1: inline_call`mod0.m0pf(m0pa=56) at mod0.zig:7:16
+     frame #2: inline_call`root0.main at root0.zig:38:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+       frame #0: inline_call`root1.r1cf(r1ca=59) at root1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+   * frame #0: inline_call`root1.r1cf(r1ca=59) at root1.zig:26:5
+     frame #1: inline_call`mod0.m0pf(m0pa=56) at mod0.zig:8:15
+     frame #2: inline_call`root0.main at root0.zig:38:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.6
+       frame #0: inline_call`r1cfi(r1cai=60) at root1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.6
+   * frame #0: inline_call`r1cfi(r1cai=60) at root1.zig:30:5
+     frame #1: inline_call`mod0.m0pf(m0pa=56) at mod0.zig:9:16
+     frame #2: inline_call`root0.main at root0.zig:38:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+       frame #0: inline_call`mod0.m0cf(m0ca=61) at mod0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+   * frame #0: inline_call`mod0.m0cf(m0ca=61) at mod0.zig:26:5
+     frame #1: inline_call`mod0.m0pf(m0pa=56) at mod0.zig:10:14
+     frame #2: inline_call`root0.main at root0.zig:38:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.6
+       frame #0: inline_call`m0cfi(m0cai=62) at mod0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.6
+   * frame #0: inline_call`m0cfi(m0cai=62) at mod0.zig:30:5
+     frame #1: inline_call`mod0.m0pf(m0pa=56) at mod0.zig:11:15
+     frame #2: inline_call`root0.main at root0.zig:38:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+       frame #0: inline_call`mod1.m1cf(m1ca=63) at mod1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+   * frame #0: inline_call`mod1.m1cf(m1ca=63) at mod1.zig:26:5
+     frame #1: inline_call`mod0.m0pf(m0pa=56) at mod0.zig:12:14
+     frame #2: inline_call`root0.main at root0.zig:38:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.6
+       frame #0: inline_call`m1cfi(m1cai=48) at mod1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.6
+   * frame #0: inline_call`m1cfi(m1cai=48) at mod1.zig:30:5
+     frame #1: inline_call`mod0.m0pf(m0pa=56) at mod0.zig:13:15
+     frame #2: inline_call`root0.main at root0.zig:38:14
+(lldb) #---
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+       frame #0: inline_call`root0.r0cf(r0ca=66) at root0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+   * frame #0: inline_call`root0.r0cf(r0ca=66) at root0.zig:26:5
+     frame #1: inline_call`m0pfi(m0pai=67) at mod0.zig:16:15
+     frame #2: inline_call`root0.main at root0.zig:39:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.3
+       frame #0: inline_call`r0cfi(r0cai=65) at root0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.3
+   * frame #0: inline_call`r0cfi(r0cai=65) at root0.zig:30:5
+     frame #1: inline_call`m0pfi(m0pai=67) at mod0.zig:17:16
+     frame #2: inline_call`root0.main at root0.zig:39:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+       frame #0: inline_call`root1.r1cf(r1ca=64) at root1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+   * frame #0: inline_call`root1.r1cf(r1ca=64) at root1.zig:26:5
+     frame #1: inline_call`m0pfi(m0pai=67) at mod0.zig:18:15
+     frame #2: inline_call`root0.main at root0.zig:39:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.3
+       frame #0: inline_call`r1cfi(r1cai=71) at root1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.3
+   * frame #0: inline_call`r1cfi(r1cai=71) at root1.zig:30:5
+     frame #1: inline_call`m0pfi(m0pai=67) at mod0.zig:19:16
+     frame #2: inline_call`root0.main at root0.zig:39:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+       frame #0: inline_call`mod0.m0cf(m0ca=70) at mod0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+   * frame #0: inline_call`mod0.m0cf(m0ca=70) at mod0.zig:26:5
+     frame #1: inline_call`m0pfi(m0pai=67) at mod0.zig:20:14
+     frame #2: inline_call`root0.main at root0.zig:39:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.3
+       frame #0: inline_call`m0cfi(m0cai=69) at mod0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.3
+   * frame #0: inline_call`m0cfi(m0cai=69) at mod0.zig:30:5
+     frame #1: inline_call`m0pfi(m0pai=67) at mod0.zig:21:15
+     frame #2: inline_call`root0.main at root0.zig:39:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+       frame #0: inline_call`mod1.m1cf(m1ca=68) at mod1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+   * frame #0: inline_call`mod1.m1cf(m1ca=68) at mod1.zig:26:5
+     frame #1: inline_call`m0pfi(m0pai=67) at mod0.zig:22:14
+     frame #2: inline_call`root0.main at root0.zig:39:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.3
+       frame #0: inline_call`m1cfi(m1cai=75) at mod1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.3
+   * frame #0: inline_call`m1cfi(m1cai=75) at mod1.zig:30:5
+     frame #1: inline_call`m0pfi(m0pai=67) at mod0.zig:23:15
+     frame #2: inline_call`root0.main at root0.zig:39:15
+(lldb) #---
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+       frame #0: inline_call`root0.r0cf(r0ca=79) at root0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+   * frame #0: inline_call`root0.r0cf(r0ca=79) at root0.zig:26:5
+     frame #1: inline_call`mod1.m1pf(m1pa=78) at mod1.zig:6:15
+     frame #2: inline_call`root0.main at root0.zig:40:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.5
+       frame #0: inline_call`r0cfi(r0cai=76) at root0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.5
+   * frame #0: inline_call`r0cfi(r0cai=76) at root0.zig:30:5
+     frame #1: inline_call`mod1.m1pf(m1pa=78) at mod1.zig:7:16
+     frame #2: inline_call`root0.main at root0.zig:40:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+       frame #0: inline_call`root1.r1cf(r1ca=77) at root1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+   * frame #0: inline_call`root1.r1cf(r1ca=77) at root1.zig:26:5
+     frame #1: inline_call`mod1.m1pf(m1pa=78) at mod1.zig:8:15
+     frame #2: inline_call`root0.main at root0.zig:40:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.5
+       frame #0: inline_call`r1cfi(r1cai=74) at root1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.5
+   * frame #0: inline_call`r1cfi(r1cai=74) at root1.zig:30:5
+     frame #1: inline_call`mod1.m1pf(m1pa=78) at mod1.zig:9:16
+     frame #2: inline_call`root0.main at root0.zig:40:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+       frame #0: inline_call`mod0.m0cf(m0ca=75) at mod0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+   * frame #0: inline_call`mod0.m0cf(m0ca=75) at mod0.zig:26:5
+     frame #1: inline_call`mod1.m1pf(m1pa=78) at mod1.zig:10:14
+     frame #2: inline_call`root0.main at root0.zig:40:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.5
+       frame #0: inline_call`m0cfi(m0cai=72) at mod0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.5
+   * frame #0: inline_call`m0cfi(m0cai=72) at mod0.zig:30:5
+     frame #1: inline_call`mod1.m1pf(m1pa=78) at mod1.zig:11:15
+     frame #2: inline_call`root0.main at root0.zig:40:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+       frame #0: inline_call`mod1.m1cf(m1ca=73) at mod1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+   * frame #0: inline_call`mod1.m1cf(m1ca=73) at mod1.zig:26:5
+     frame #1: inline_call`mod1.m1pf(m1pa=78) at mod1.zig:12:14
+     frame #2: inline_call`root0.main at root0.zig:40:14
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.5
+       frame #0: inline_call`m1cfi(m1cai=70) at mod1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.5
+   * frame #0: inline_call`m1cfi(m1cai=70) at mod1.zig:30:5
+     frame #1: inline_call`mod1.m1pf(m1pa=78) at mod1.zig:13:15
+     frame #2: inline_call`root0.main at root0.zig:40:14
+(lldb) #---
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+       frame #0: inline_call`root0.r0cf(r0ca=88) at root0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 1.1
+   * frame #0: inline_call`root0.r0cf(r0ca=88) at root0.zig:26:5
+     frame #1: inline_call`m1pfi(m1pai=89) at mod1.zig:16:15
+     frame #2: inline_call`root0.main at root0.zig:41:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.4
+       frame #0: inline_call`r0cfi(r0cai=91) at root0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 2.4
+   * frame #0: inline_call`r0cfi(r0cai=91) at root0.zig:30:5
+     frame #1: inline_call`m1pfi(m1pai=89) at mod1.zig:17:16
+     frame #2: inline_call`root0.main at root0.zig:41:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+       frame #0: inline_call`root1.r1cf(r1ca=90) at root1.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 3.1
+   * frame #0: inline_call`root1.r1cf(r1ca=90) at root1.zig:26:5
+     frame #1: inline_call`m1pfi(m1pai=89) at mod1.zig:18:15
+     frame #2: inline_call`root0.main at root0.zig:41:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.4
+       frame #0: inline_call`r1cfi(r1cai=93) at root1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 4.4
+   * frame #0: inline_call`r1cfi(r1cai=93) at root1.zig:30:5
+     frame #1: inline_call`m1pfi(m1pai=89) at mod1.zig:19:16
+     frame #2: inline_call`root0.main at root0.zig:41:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+       frame #0: inline_call`mod0.m0cf(m0ca=92) at mod0.zig:26:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 5.1
+   * frame #0: inline_call`mod0.m0cf(m0ca=92) at mod0.zig:26:5
+     frame #1: inline_call`m1pfi(m1pai=89) at mod1.zig:20:14
+     frame #2: inline_call`root0.main at root0.zig:41:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.4
+       frame #0: inline_call`m0cfi(m0cai=95) at mod0.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 6.4
+   * frame #0: inline_call`m0cfi(m0cai=95) at mod0.zig:30:5
+     frame #1: inline_call`m1pfi(m1pai=89) at mod1.zig:21:15
+     frame #2: inline_call`root0.main at root0.zig:41:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+       frame #0: inline_call`mod1.m1cf(m1ca=94) at mod1.zig:26:5
+(lldb) thread backtrace --count 3'
+* thread #1, name = 'inline_call', stop reason = breakpoint 7.1
+   * frame #0: inline_call`mod1.m1cf(m1ca=94) at mod1.zig:26:5
+     frame #1: inline_call`m1pfi(m1pai=89) at mod1.zig:22:14
+     frame #2: inline_call`root0.main at root0.zig:41:15
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.4
+       frame #0: inline_call`m1cfi(m1cai=81) at mod1.zig:30:5
+(lldb) thread backtrace --count 3
+* thread #1, name = 'inline_call', stop reason = breakpoint 8.4
+   * frame #0: inline_call`m1cfi(m1cai=81) at mod1.zig:30:5
+     frame #1: inline_call`m1pfi(m1pai=89) at mod1.zig:23:15
+     frame #2: inline_call`root0.main at root0.zig:41:15
