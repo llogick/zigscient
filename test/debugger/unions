@@ -1,0 +1,90 @@
+#todo {
+passes, but prints errors
+#}
+#skip x86_64-linux-none-whole-selfhosted-new-nopic
+#skip x86_64-linux-none-whole-selfhosted-new-pic
+#skip x86_64-linux-none-incremental-selfhosted-new-nopic
+#skip x86_64-linux-none-incremental-selfhosted-new-pic
+
+#exe {
+--name unions
+-Mroot=unions.zig
+#}
+
+#write unions.zig {
+const Unions = struct {
+    const Enum = enum { first, second, third };
+    const Untagged = extern union {
+        u32: u32,
+        i32: i32,
+        f32: f32,
+    };
+    const SafetyTagged = union {
+        void: void,
+        en: Enum,
+        eu: error{Error}!Enum,
+    };
+    const Tagged = union(enum) {
+        void: void,
+        en: Enum,
+        eu: error{Error}!Enum,
+    };
+
+    untagged: Untagged = .{ .f32 = -1.5 },
+    safety_tagged: SafetyTagged = .{ .en = .second },
+    tagged: Tagged = .{ .eu = error.Error },
+};
+fn testUnions(unions: Unions) void {
+    _ = unions;
+}
+pub fn main() void {
+    testUnions(.{});
+}
+#}
+#update
+#check lldb {
+(lldb) breakpoint set --file unions.zig --source-pattern-regexp '_ = unions;'
+Breakpoint 1: where = unions`unions.testUnions + #... at unions.zig:25:1, address = 0x#...
+(lldb) process launch
+Process #... launched: '#.../unions' (#...)
+Process #... stopped
+* thread #1, name = 'unions', stop reason = breakpoint 1.1
+       frame #0: unions`unions.testUnions(unions=Unions @ 0x#...) at unions.zig:25:1
+(lldb) expression --show-types -- Unions
+(type) $0 = struct {
+  (type) Untagged = union {}
+  (type) SafetyTagged = union(enum) {
+    (@typeInfo(unions.Unions.SafetyTagged).@"union".tag_type.?) void = .void
+    (@typeInfo(unions.Unions.SafetyTagged).@"union".tag_type.?) en = .en
+    (@typeInfo(unions.Unions.SafetyTagged).@"union".tag_type.?) eu = .eu
+  }
+  (type) Enum = enum {
+    (root.unions.Unions.Enum) first = .first
+    (root.unions.Unions.Enum) second = .second
+    (root.unions.Unions.Enum) third = .third
+  }
+  (type) Tagged = union(enum) {
+    (@typeInfo(unions.Unions.Tagged).@"union".tag_type.?) void = .void
+    (@typeInfo(unions.Unions.Tagged).@"union".tag_type.?) en = .en
+    (@typeInfo(unions.Unions.Tagged).@"union".tag_type.?) eu = .eu
+  }
+}
+(lldb) frame variable --show-all-children --show-types -- unions
+(root.unions.Unions) unions = {
+  (root.unions.Unions.Untagged) .untagged = {
+    (u32) .u32 = 3217031168
+    (i32) .i32 = -1077936128
+    (f32) .f32 = -1.5
+  }
+  (root.unions.Unions.SafetyTagged) .safety_tagged = {
+    (root.unions.Unions.Enum) .en = .second
+  }
+  (root.unions.Unions.Tagged) .tagged = {
+    (error{Error}!root.unions.Unions.Enum) .eu = {
+      (error{Error}) .error = error.Error
+    }
+  }
+}
+(lldb) breakpoint delete --force 1
+1 breakpoints deleted; 0 breakpoint locations disabled.
+#}

@@ -1,0 +1,54 @@
+#exe {
+--name optionals
+-Mroot=optionals.zig
+#}
+
+#write optionals.zig {
+pub fn main() void {
+    {
+        var null_u32: ?u32 = null;
+        var maybe_u32: ?u32 = null;
+        var nonnull_u32: ?u32 = 456;
+        null_u32 = null_u32;
+        maybe_u32 = 123;
+        nonnull_u32 = nonnull_u32;
+    }
+}
+#}
+#update
+#check lldb {
+(lldb) breakpoint set --file optionals.zig --source-pattern-regexp 'maybe_u32 = 123;'
+Breakpoint 1: where = optionals`optionals.main + #... at optionals.zig:7:9, address = 0x#...
+(lldb) process launch
+Process #... launched: '#.../optionals' (#...)
+Process #... stopped
+* thread #1, name = 'optionals', stop reason = breakpoint 1.1
+       frame #0: optionals`optionals.main at optionals.zig:7:9
+(lldb) frame variable --show-all-children -- null_u32 maybe_u32 nonnull_u32 nonnull_u32.?
+(?u32) null_u32 = null
+(?u32) maybe_u32 = null
+(?u32) nonnull_u32 = (nonnull_u32.? = 456)
+(u32) nonnull_u32.? = 456
+(lldb) breakpoint delete --force 1
+1 breakpoints deleted; 0 breakpoint locations disabled.
+(lldb) #---
+(lldb) breakpoint set --file optionals.zig --source-pattern-regexp 'nonnull_u32 = nonnull_u32;'
+Breakpoint 2: where = optionals`optionals.main + #... at optionals.zig:8:9, address = 0x#...
+(lldb) process continue
+Process #... resuming
+Process #... stopped
+* thread #1, name = 'optionals', stop reason = breakpoint 2.1
+       frame #0: optionals`optionals.main at optionals.zig:8:9
+(lldb) frame variable --show-all-children --show-types -- null_u32 maybe_u32 maybe_u32.? nonnull_u32 nonnull_u32.?
+(?u32) null_u32 = null
+(?u32) maybe_u32 = {
+  (u32) maybe_u32.? = 123
+}
+(u32) maybe_u32.? = 123
+(?u32) nonnull_u32 = {
+  (u32) nonnull_u32.? = 456
+}
+(u32) nonnull_u32.? = 456
+(lldb) breakpoint delete --force 2
+1 breakpoints deleted; 0 breakpoint locations disabled.
+#}

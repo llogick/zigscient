@@ -1,0 +1,329 @@
+(lldb) breakpoint set --name step_single_stmt_loops.main
+Breakpoint 1: where = sssl`step_single_stmt_loops.main + #... at step_single_stmt_loops.zig:2:5, address = 0x#...
+(lldb) process launch
+Process #... launched: '#.../sssl' (#...)
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = breakpoint 1.1
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:2:5
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:3:10
+(lldb) #00
+(lldb) frame variable --show-all-children x
+(u32) x = 0
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:4:9
+(lldb) #01
+(lldb) frame variable --show-all-children x
+(u32) x = 0
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:5:5
+(lldb) #02
+(lldb) frame variable --show-all-children x
+(u32) x = 1
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:3:10
+(lldb) #03
+(lldb) frame variable --show-all-children x
+(u32) x = 1
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:4:9
+(lldb) #04
+(lldb) frame variable --show-all-children x
+(u32) x = 1
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:5:5
+(lldb) #05
+(lldb) frame variable --show-all-children x
+(u32) x = 2
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:3:10
+(lldb) #06
+(lldb) frame variable --show-all-children x
+(u32) x = 2
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:4:9
+(lldb) #07
+(lldb) frame variable --show-all-children x
+(u32) x = 2
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:5:5
+(lldb) #08
+(lldb) frame variable --show-all-children x
+(u32) x = 3
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:3:10
+(lldb) #09
+(lldb) frame variable --show-all-children x
+(u32) x = 3
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:7:9
+(lldb) #10
+(lldb) frame variable --show-all-children x
+(u32) x = 3
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:8:16
+(lldb) #11
+(lldb) frame variable --show-all-children x
+(u32) x = 3
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:9:13
+(lldb) #12
+(lldb) frame variable --show-all-children x
+(u32) x = 3
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:10:9
+(lldb) #13
+(lldb) frame variable --show-all-children x
+(u32) x = 4
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:8:26
+(lldb) #14
+(lldb) frame variable --show-all-children x
+(u32) x = 4
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:9:13
+(lldb) #15
+(lldb) frame variable --show-all-children x
+(u32) x = 4
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:10:9
+(lldb) #16
+(lldb) frame variable --show-all-children x
+(u32) x = 5
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:8:26
+(lldb) #17
+(lldb) frame variable --show-all-children x
+(u32) x = 5
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:9:13
+(lldb) #18
+(lldb) frame variable --show-all-children x
+(u32) x = 5
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:10:9
+(lldb) #19
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:8:26
+(lldb) #20
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:13:9
+(lldb) #21
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:14:16
+(lldb) #22
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:15:13
+(lldb) #23
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:16:9
+(lldb) #24
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:14:16
+(lldb) #25
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:15:13
+(lldb) #26
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:16:9
+(lldb) #27
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:14:16
+(lldb) #28
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:15:13
+(lldb) #29
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:16:9
+(lldb) #30
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:14:16
+(lldb) #31
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:19:9
+(lldb) #32
+(lldb) frame variable --show-all-children x
+(u32) x = 6
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:20:5
+(lldb) #33
+(lldb) frame variable --show-all-children x
+(u32) x = 7
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:19:9
+(lldb) #34
+(lldb) frame variable --show-all-children x
+(u32) x = 7
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:20:5
+(lldb) #35
+(lldb) frame variable --show-all-children x
+(u32) x = 8
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:19:9
+(lldb) #36
+(lldb) frame variable --show-all-children x
+(u32) x = 8
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:20:5
+(lldb) #37
+(lldb) frame variable --show-all-children x
+(u32) x = 9
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:24:13
+(lldb) #38
+(lldb) frame variable --show-all-children x
+(u32) x = 9
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:25:9
+(lldb) #39
+(lldb) frame variable --show-all-children x
+(u32) x = 10
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:24:13
+(lldb) #40
+(lldb) frame variable --show-all-children x
+(u32) x = 10
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:25:9
+(lldb) #41
+(lldb) frame variable --show-all-children x
+(u32) x = 11
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:24:13
+(lldb) #42
+(lldb) frame variable --show-all-children x
+(u32) x = 11
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:25:9
+(lldb) #43
+(lldb) frame variable --show-all-children x
+(u32) x = 12
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:31:9
+(lldb) #44
+(lldb) frame variable --show-all-children x
+(u32) x = 12
+(lldb) thread step-in
+Process #... stopped
+* thread #1, name = 'sssl', stop reason = step in
+       frame #0: sssl`step_single_stmt_loops.main at step_single_stmt_loops.zig:33:5
+(lldb) #45
+(lldb) frame variable --show-all-children x
+(u32) x = 12

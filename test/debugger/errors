@@ -1,0 +1,75 @@
+#todo {
+passes, but prints errors
+#}
+#skip x86_64-linux-none-whole-selfhosted-new-nopic
+#skip x86_64-linux-none-whole-selfhosted-new-pic
+#skip x86_64-linux-none-incremental-selfhosted-new-nopic
+#skip x86_64-linux-none-incremental-selfhosted-new-pic
+
+#exe {
+--name errors
+-Mroot=errors.zig
+#}
+
+#write errors.zig {
+const Errors = struct {
+    const Zero = error{};
+    const One = Zero || error{One};
+    const Two = One || error{Two};
+    const Three = Two || error{Three};
+
+    one: One = error.One,
+    two: Two = error.Two,
+    three: Three = error.Three,
+    any: anyerror = error.Any,
+    any_void: anyerror!void = error.NotVoid,
+    any_u32: One!u32 = 42,
+};
+fn testErrors(errors: Errors) void {
+    _ = errors;
+}
+pub fn main() void {
+    testErrors(.{});
+}
+#}
+#update
+#check lldb {
+(lldb) breakpoint set --file errors.zig --source-pattern-regexp '_ = errors;'
+Breakpoint 1: where = errors`errors.testErrors + #... at errors.zig:16:1, address = 0x#...
+(lldb) process launch
+Process #... launched: '#.../errors' (#...)
+Process #... stopped
+* thread #1, name = 'errors', stop reason = breakpoint 1.1
+       frame #0: errors`errors.testErrors(errors=Errors @ 0x#...) at errors.zig:16:1
+(lldb) expression --show-types -- Errors
+(type) $0 = struct {
+  (type) Zero = error {}
+  (type) One = error {
+    (error{One}) One = error.One
+  }
+  (type) Two = error {
+    (error{One,Two}) One = error.One
+    (error{One,Two}) Two = error.Two
+  }
+  (type) Three = error {
+    (error{One,Three,Two}) One = error.One
+    (error{One,Three,Two}) Two = error.Two
+    (error{One,Three,Two}) Three = error.Three
+  }
+}
+(lldb) frame variable --show-all-children --show-types -- errors
+(root.errors.Errors) errors = {
+  (error{One}) .one = error.One
+  (error{One,Two}) .two = error.Two
+  (error{One,Three,Two}) .three = error.Three
+  (anyerror) .any = error.Any
+  (anyerror!void) .any_void = {
+    (anyerror) .error = error.NotVoid
+  }
+  (error{One}!u32) .any_u32 = {
+    (u32) .value = 42
+  }
+}
+(lldb) breakpoint delete --force 1
+1 breakpoints deleted; 0 breakpoint locations disabled.
+#}
