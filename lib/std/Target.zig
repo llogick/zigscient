@@ -2071,6 +2071,7 @@ pub const Cpu = struct {
                 .propeller => &propeller.cpu.p1,
                 .riscv32, .riscv32be => &riscv.cpu.generic_rv32,
                 .riscv64, .riscv64be => &riscv.cpu.generic_rv64,
+                .sparc => &sparc.cpu.v8,
                 .sparc64 => &sparc.cpu.v9, // SPARC can only be 64-bit from v9 and up.
                 .wasm32, .wasm64 => &wasm.cpu.mvp,
                 .x86_16 => &x86.cpu.i86,
