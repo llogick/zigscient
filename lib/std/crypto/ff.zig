@@ -482,12 +482,15 @@ fn Fe_(comptime bits: comptime_int) type {
         }
 
         /// Returns `true` if the field elements are equal, in constant time.
+        /// Elements in different representations compare unequal; convert them to the same form to compare values.
         pub fn eql(x: Self, y: Self) bool {
-            return x.v.eql(y.v);
+            const values_equal = x.v.eql(y.v);
+            return x.montgomery == y.montgomery and values_equal;
         }
 
         /// Compares two field elements in constant time.
         pub fn compare(x: Self, y: Self) math.Order {
+            assert(!x.montgomery and !y.montgomery);
             return x.v.compare(y.v);
         }
 
@@ -497,7 +500,9 @@ fn Fe_(comptime bits: comptime_int) type {
         }
 
         /// Returns `true` is the element is odd.
+        /// Requires plain form because Montgomery encoding doesn't preserve parity.
         pub fn isOdd(self: Self) bool {
+            assert(!self.montgomery);
             return self.v.isOdd();
         }
     };
@@ -576,6 +581,7 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
         const Self = @This();
 
         /// A field element, representing a value within the field defined by this modulus.
+        /// Use elements only with the modulus that created them, even if another modulus has the same size.
         pub const Fe = Fe_(max_bits);
 
         const FeUint = Fe.FeUint;
@@ -1172,7 +1178,7 @@ test "finite field arithmetic" {
     const M = Modulus(256);
     const m = try M.fromPrimitive(u256, 3429938563481314093726330772853735541133072814650493833233);
     var x = try M.Fe.fromPrimitive(u256, m, 80169837251094269539116136208111827396136208141182357733);
-    var y = try M.Fe.fromPrimitive(u256, m, 24620149608466364616251608466389896540098571);
+    const y = try M.Fe.fromPrimitive(u256, m, 24620149608466364616251608466389896540098571);
 
     const x_ = try x.toPrimitive(u256);
     try testing.expect((try M.Fe.fromPrimitive(@TypeOf(x_), m, x_)).eql(x));
@@ -1243,10 +1249,10 @@ test "finite field arithmetic" {
     try testing.expect(add_nm_m.eql(add_m_nm));
 
     // Non-montgomery - montgomery
-    const sub_nm_m = m.sub(x, y);
-    try testing.expect(!sub_nm_m.montgomery);
     var y_mont = y;
     try m.toMontgomery(&y_mont);
+    const sub_nm_m = m.sub(x, y_mont);
+    try testing.expect(!sub_nm_m.montgomery);
     var sub_m_nm = m.sub(x_mont, y);
     try testing.expect(sub_m_nm.montgomery);
     try m.fromMontgomery(&sub_m_nm);
