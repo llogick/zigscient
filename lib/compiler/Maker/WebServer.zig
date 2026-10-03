@@ -133,7 +133,6 @@ fn releaseConfigured(ws: *WebServer) void {
         for (configured.time_report_msgs) |msg| gpa.free(msg);
         gpa.free(configured.time_report_msgs);
         gpa.free(configured.time_report_update_times);
-        gpa.free(configured.step_names_trailing);
         ws.configured = null;
     }
 }
