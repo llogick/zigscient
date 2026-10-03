@@ -1102,6 +1102,33 @@ const Thread = struct {
                     else => unreachable,
                 };
             },
+            .serenity => {
+                var tm: std.c.timespec = undefined;
+                var tm_ptr: ?*const std.c.timespec = null;
+                if (timeout_ns) |ns| {
+                    tm_ptr = &tm;
+                    tm = timestampToPosix(ns);
+                }
+                const syscall: Syscall = if (uncancelable) .{ .thread = null } else try .start();
+                const rc = std.c.futex(
+                    @constCast(ptr),
+                    std.c.FUTEX.WAIT | std.c.FUTEX.PRIVATE_FLAG,
+                    expect,
+                    tm_ptr,
+                    null,
+                    0,
+                );
+                syscall.finish();
+                if (is_debug) switch (posix.errno(rc)) {
+                    .SUCCESS => {},
+                    .AGAIN => {}, // ptr != expect
+                    .TIMEDOUT => {}, // timeout
+                    .FAULT => unreachable, // ptr was invalid
+                    .INVAL => unreachable, // ptr was misaligned
+                    .NOMEM => {}, // OOM, treat as spurious wake
+                    else => unreachable,
+                };
+            },
             else => @compileError("unimplemented: futexWait"),
         }
     }
@@ -1167,12 +1194,12 @@ const Thread = struct {
                     0, // there is no timeout struct
                     0, // there is no timeout struct pointer
                 );
-                switch (posix.errno(rc)) {
+                if (is_debug) switch (posix.errno(rc)) {
                     .SUCCESS => {},
                     .FAULT => {}, // it's ok if the ptr doesn't point to valid memory
                     .INVAL => unreachable, // arguments should be correct
                     else => unreachable, // deadlock due to operating system bug
-                }
+                };
             },
             .openbsd => {
                 const rc = std.c.futex(
@@ -1190,6 +1217,22 @@ const Thread = struct {
                     @ptrCast(ptr),
                     @min(max_waiters, std.math.maxInt(c_int)),
                 );
+            },
+            .serenity => {
+                const rc = std.c.futex(
+                    @constCast(ptr),
+                    std.c.FUTEX.WAKE | std.c.FUTEX.PRIVATE_FLAG,
+                    max_waiters,
+                    null,
+                    null,
+                    0,
+                );
+                if (is_debug) switch (posix.errno(rc)) {
+                    .SUCCESS => {},
+                    .FAULT => {}, // it's ok if the ptr doesn't point to valid memory
+                    .INVAL => unreachable, // arguments should be correct
+                    else => unreachable,
+                };
             },
             else => @compileError("unimplemented: futexWake"),
         }
