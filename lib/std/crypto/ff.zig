@@ -1031,14 +1031,18 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
             }
         }
 
+        const max_encoded_bytes = @divCeil(FeUint.capacity_bits, 8);
+
         /// Returns x^e (mod m) in constant time.
         pub fn pow(self: Self, x: Fe, e: Fe) (NullExponentError || RepresentationError)!Fe {
             if (e.montgomery) {
                 return error.UnexpectedRepresentation;
             }
-            var buf: [Fe.encoded_bytes]u8 = undefined;
-            e.toBytes(&buf, native_endian) catch unreachable;
-            return self.powWithEncodedExponent(x, &buf, native_endian);
+
+            var buf: [max_encoded_bytes]u8 = undefined;
+            const len = self.encodedLen();
+            e.toBytes(buf[0..len], native_endian) catch unreachable;
+            return self.powWithEncodedExponent(x, buf[0..len], native_endian);
         }
 
         /// Returns x^e (mod m), assuming that the exponent is public.
@@ -1047,12 +1051,9 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
             if (e.montgomery) {
                 return error.UnexpectedRepresentation;
             }
-            var e_normalized = Fe{ .v = e.v.normalize() };
-            var buf_: [Fe.encoded_bytes]u8 = undefined;
-            var buf = buf_[0..@divCeil(e_normalized.v.limbs_len * t_bits, 8)];
-            e_normalized.toBytes(buf, .little) catch unreachable;
-            const leading = @clz(e_normalized.v.limbsConst()[e_normalized.v.limbs_len - carry_bits]);
-            buf = buf[0 .. buf.len - leading / 8];
+            var buf_: [max_encoded_bytes]u8 = undefined;
+            const buf = buf_[0..@divCeil(e.v.bitLenPublic(), 8)];
+            e.toBytes(buf, .little) catch unreachable;
             return self.powWithEncodedPublicExponent(x, buf, .little);
         }
 
