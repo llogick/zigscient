@@ -6399,9 +6399,9 @@ fn addCommonCCArgs(
             switch (target.os.tag) {
                 // LLVM doesn't distinguish between Solaris and illumos, but the illumos GCC fork
                 // defines this macro.
-                .illumos => try argv.append("__illumos__"),
+                .illumos => try argv.append("-D__illumos__"),
                 // This macro has not yet been upstreamed by SerenityOS to Clang.
-                .serenity => try argv.append("__serenity__"),
+                .serenity => try argv.append("-D__serenity__"),
                 // Homebrew targets without LLVM support; use communities's preferred macros.
                 .@"3ds" => try argv.append("-D__3DS__"),
                 .wiiu => try argv.append("-D__WIIU__"),
