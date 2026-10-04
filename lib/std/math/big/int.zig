@@ -35,7 +35,7 @@ const constants: Constants = blk: {
         digits_per_limb[base] = @intCast(math.log(Limb, base, math.maxInt(Limb)));
         bases[base] = std.math.pow(Limb, base, digits_per_limb[base]);
     }
-    break :blk Constants{ .big_bases = bases, .digits_per_limb = digits_per_limb };
+    break :blk .{ .big_bases = bases, .digits_per_limb = digits_per_limb };
 };
 
 /// Returns the number of limbs needed to store `scalar`, which must be a

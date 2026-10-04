@@ -58,9 +58,9 @@ pub fn log10_int(x: anytype) std.math.Log2Int(@TypeOf(x)) {
     var log: u32 = 0;
 
     inline for (0..11) |i| {
+        const num_digits = (1 << (11 - i)) * 5;
         // Unnecessary branches should be removed by the compiler
-        if (bit_size > (1 << (11 - i)) * 5 * @log2(10.0) and val >= pow10((1 << (11 - i)) * 5)) {
-            const num_digits = (1 << (11 - i)) * 5;
+        if (bit_size > num_digits * @log2(10.0) and val >= pow10(num_digits)) {
             val /= pow10(num_digits);
             log += num_digits;
         }
