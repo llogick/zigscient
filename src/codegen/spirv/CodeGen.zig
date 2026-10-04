@@ -3423,8 +3423,8 @@ fn vectorization(cg: *CodeGen, args: anytype) Vectorization {
     return v;
 }
 
-/// This function builds an OpSConvert of OpUConvert depending on the
-/// signedness of the types.
+/// This function builds the conversion between two numeric types: OpFConvert, OpSConvert or
+/// OpUConvert within floats or integers, and OpConvert{S,U}ToF or OpConvertFTo{S,U} across them.
 fn buildConvert(cg: *CodeGen, dst_ty: Type, src: Temporary) !Temporary {
     const zcu = cg.zcu;
 
@@ -3453,8 +3453,16 @@ fn buildConvert(cg: *CodeGen, dst_ty: Type, src: Temporary) !Temporary {
     const op_result_ty_id = try cg.resolveType(op_result_ty, .direct);
 
     const opcode: Opcode = blk: {
-        if (dst_ty.scalarType(zcu).isAnyFloat()) break :blk .OpFConvert;
-        if (dst_ty.scalarType(zcu).isSignedInt(zcu)) break :blk .OpSConvert;
+        if (dst_scalar.isAnyFloat()) {
+            if (src_scalar.isAnyFloat()) break :blk .OpFConvert;
+            if (src_scalar.isSignedInt(zcu)) break :blk .OpConvertSToF;
+            break :blk .OpConvertUToF;
+        }
+        if (src_scalar.isAnyFloat()) {
+            if (dst_scalar.isSignedInt(zcu)) break :blk .OpConvertFToS;
+            break :blk .OpConvertFToU;
+        }
+        if (dst_scalar.isSignedInt(zcu)) break :blk .OpSConvert;
         break :blk .OpUConvert;
     };
 
@@ -5801,6 +5809,23 @@ fn bitCast(
         // TODO: Some more cases are missing here
         //   See fn bitCast in llvm.zig
 
+        // An elementwise vector bitcast is a scalar bitcast per lane, which also normalizes lanes
+        // of strange integers.
+        if (src_ty.isVector(zcu) and dst_ty.isVector(zcu) and
+            src_ty.vectorLen(zcu) == dst_ty.vectorLen(zcu) and
+            src_ty.childType(zcu).isNumeric(zcu) and dst_ty.childType(zcu).isNumeric(zcu))
+        {
+            const src_elem_ty = src_ty.childType(zcu);
+            const dst_elem_ty = dst_ty.childType(zcu);
+            const scratch_top = cg.id_scratch.items.len;
+            defer cg.id_scratch.shrinkRetainingCapacity(scratch_top);
+            for (0..src_ty.vectorLen(zcu)) |i| {
+                const src_lane_id = try cg.extractVectorComponent(src_elem_ty, src_id, @intCast(i));
+                try cg.id_scratch.append(gpa, try cg.bitCast(dst_elem_ty, src_elem_ty, src_lane_id));
+            }
+            break :blk try cg.constructComposite(dst_ty_id, cg.id_scratch.items[scratch_top..]);
+        }
+
         if (src_ty.zigTypeTag(zcu) == .int and dst_ty.isPtrAtRuntime(zcu)) {
             if (target.os.tag != .opencl) {
                 if (dst_ty.ptrAddressSpace(zcu) != .physical_storage_buffer) {
@@ -6139,50 +6164,19 @@ fn intFromPtr(cg: *CodeGen, operand_id: Id) !Id {
 }
 
 fn airFloatFromInt(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
-    const gpa = cg.gpa;
     const ty_op = cg.air.instructions.items(.data)[@backingInt(inst)].ty_op;
-    const operand_ty = cg.typeOf(ty_op.operand);
-    const operand_id = try cg.resolve(ty_op.operand);
+    const operand = try cg.temporary(ty_op.operand);
     const result_ty = cg.typeOfIndex(inst);
-    const operand_info = cg.arithmeticTypeInfo(operand_ty);
-    const result_id = cg.allocId();
-    const result_ty_id = try cg.resolveType(result_ty, .direct);
-    switch (operand_info.signedness) {
-        .signed => try cg.body.emit(gpa, .OpConvertSToF, .{
-            .id_result_type = result_ty_id,
-            .id_result = result_id,
-            .signed_value = operand_id,
-        }),
-        .unsigned => try cg.body.emit(gpa, .OpConvertUToF, .{
-            .id_result_type = result_ty_id,
-            .id_result = result_id,
-            .unsigned_value = operand_id,
-        }),
-    }
-    return result_id;
+    const result = try cg.buildConvert(result_ty, operand);
+    return try result.materialize(cg);
 }
 
 fn airIntFromFloat(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
-    const gpa = cg.gpa;
     const ty_op = cg.air.instructions.items(.data)[@backingInt(inst)].ty_op;
-    const operand_id = try cg.resolve(ty_op.operand);
+    const operand = try cg.temporary(ty_op.operand);
     const result_ty = cg.typeOfIndex(inst);
-    const result_info = cg.arithmeticTypeInfo(result_ty);
-    const result_ty_id = try cg.resolveType(result_ty, .direct);
-    const result_id = cg.allocId();
-    switch (result_info.signedness) {
-        .signed => try cg.body.emit(gpa, .OpConvertFToS, .{
-            .id_result_type = result_ty_id,
-            .id_result = result_id,
-            .float_value = operand_id,
-        }),
-        .unsigned => try cg.body.emit(gpa, .OpConvertFToU, .{
-            .id_result_type = result_ty_id,
-            .id_result = result_id,
-            .float_value = operand_id,
-        }),
-    }
-    return result_id;
+    const result = try cg.buildConvert(result_ty, operand);
+    return try result.materialize(cg);
 }
 
 fn airFloatCast(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
@@ -6903,14 +6897,14 @@ fn structFieldPtr(
             return cg.accessChain(result_ptr_ty_id, object_ptr, &.{field_index});
         },
         .@"struct" => switch (object_ty.containerLayout(zcu)) {
-            .@"packed" => unreachable,
+            .@"packed" => return cg.todo("implement field access for packed structs", .{}),
             .auto, .@"extern" => {
                 const member_index = cg.memberIndex(object_ty, field_index);
                 return try cg.accessChain(result_ptr_ty_id, object_ptr, &.{member_index});
             },
         },
         .@"union" => switch (object_ty.containerLayout(zcu)) {
-            .@"packed" => unreachable,
+            .@"packed" => return cg.todo("implement field access for packed unions", .{}),
             .auto => {
                 if (!field_ty.hasRuntimeBits(zcu)) return try cg.constUndef(result_ptr_ty_id);
                 return try cg.accessChain(result_ptr_ty_id, object_ptr, &.{field_index});
@@ -8483,6 +8477,9 @@ fn airDbgInlineBlock(cg: *CodeGen, inst: Air.Inst.Index) !?Id {
 
 fn airDbgVar(cg: *CodeGen, inst: Air.Inst.Index) !void {
     const pl_op = cg.air.instructions.items(.data)[@backingInt(inst)].pl_op;
+    // A comptime-known value has no runtime variable of its own to name, and lowering it only to
+    // name it can fail, as for a slice of a global constant.
+    if (pl_op.operand.toInterned() != null) return;
     const target_id = switch (try cg.resolvePtr(pl_op.operand)) {
         .tracked => return,
         .id => |id| id,

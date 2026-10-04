@@ -555,7 +555,6 @@ test "return result loc as peer result loc in inferred error set function" {
 }
 
 test "error payload type is correctly resolved" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 
@@ -1108,7 +1107,6 @@ test "'if' ignores error via local while 'else' ignores error directly" {
 }
 
 test "@errorCast into own inferred error set" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const static = struct {
         fn foo(b: bool) !void {
             if (b) {

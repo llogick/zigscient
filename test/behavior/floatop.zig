@@ -349,7 +349,6 @@ fn testDifferentSizedFloatComparisons() !void {
 test "negative f128 intFromFloat at compile-time" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const a: f128 = -2;
     var b: i64 = @intFromFloat(a);
@@ -1550,7 +1549,6 @@ test "comptime fixed-width float zero divided by zero produces NaN" {
 test "comptime fixed-width float non-zero divided by zero produces signed Inf" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     inline for (.{ f16, f32, f64, f80, f128 }) |F| {
         const pos = @as(F, 1) / @as(F, 0);

@@ -407,8 +407,6 @@ test "mutate entire slice at comptime" {
 }
 
 test "dereference undefined pointer to zero-bit type" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const p0: *void = undefined;
     try testing.expectEqual({}, p0.*);
 
@@ -424,16 +422,12 @@ test "type pun extern struct" {
 }
 
 test "type pun @ptrFromInt" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const p: *u8 = @ptrFromInt(42);
     // note that expectEqual hides the bug
     try testing.expect(@as(*const [*]u8, @ptrCast(&p)).* == @as([*]u8, @ptrFromInt(42)));
 }
 
 test "type pun null pointer-like optional" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const p: ?*u8 = null;
     // note that expectEqual hides the bug
     try testing.expect(@as(*const ?*i8, @ptrCast(&p)).* == null);
@@ -557,8 +551,6 @@ test "comptime store of packed struct with void field into array" {
 }
 
 test "comptime store of reinterpreted zero-bit type" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         fn doTheTest(comptime T: type) void {
             comptime var buf: T = undefined;
@@ -590,8 +582,6 @@ test "comptime store to extern struct reinterpreted as byte array" {
 }
 
 test "reinterpret sentinel-terminated array as packed struct" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = packed struct(u16) { lo: u8, hi: u8 };
     const data: [2:0]u8 = .{ 0x12, 0x34 };
     const ptr: *align(1) const S = @ptrCast(&data);

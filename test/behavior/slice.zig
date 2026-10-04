@@ -385,8 +385,6 @@ test "obtaining a null terminated slice" {
 }
 
 test "empty array to slice" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         fn doTheTest() !void {
             const empty: []align(16) u8 = &[_]u8{};
@@ -401,6 +399,25 @@ test "empty array to slice" {
 
     try S.doTheTest();
     try comptime S.doTheTest();
+}
+
+test "comptime-known slice of a global constant" {
+    const S = struct {
+        const weights = [_]f32{ 1, 2, 3 };
+
+        inline fn first(comptime w: []const f32) f32 {
+            return w[0];
+        }
+    };
+
+    var from_param: f32 = S.first(&S.weights);
+    _ = &from_param;
+    try expect(from_param == 1);
+
+    const w: []const f32 = &S.weights;
+    var from_local: f32 = w[1];
+    _ = &from_local;
+    try expect(from_local == 2);
 }
 
 test "@ptrCast slice to pointer" {

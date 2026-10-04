@@ -310,8 +310,6 @@ const TestStruct = struct {
 };
 
 test "type info: packed struct info" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     try testPackedStruct();
     try comptime testPackedStruct();
 }
@@ -596,8 +594,6 @@ test "value from struct @typeInfo default_value_ptr can be loaded at comptime" {
 }
 
 test "type info of tuple of string literal default value" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const struct_info = @typeInfo(@TypeOf(.{"hi"})).@"struct";
     const struct_field_attrs = struct_info.field_attrs[0];
     const struct_field_type = struct_info.field_types[0];
