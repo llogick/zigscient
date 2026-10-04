@@ -254,13 +254,13 @@ pub fn getBaseAddress() usize {
 /// process image. If this is `false` then calling `replace` or `replaceFile`
 /// functions will return `error.OperationUnsupported`.
 pub const can_replace = switch (native_os) {
-    .windows, .haiku, .wasi => false,
+    .windows, .haiku, .wasi, .tvos, .watchos => false,
     else => true,
 };
 
 /// Tells whether spawning child processes is supported.
 pub const can_spawn = switch (native_os) {
-    .wasi, .ios, .tvos, .visionos, .watchos => false,
+    .wasi, .tvos, .watchos => false,
     else => true,
 };
 
