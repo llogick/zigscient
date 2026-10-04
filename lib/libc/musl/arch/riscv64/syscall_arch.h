@@ -1,9 +1,16 @@
 #define __SYSCALL_LL_E(x) (x)
 #define __SYSCALL_LL_O(x) (x)
 
+#define SYSCALL_CLOBBERLIST \
+	"v0" , "v1",  "v2",  "v3",  "v4",  "v5",  "v6",  "v7", \
+	"v8",  "v9",  "v10", "v11", "v12", "v13", "v14", "v15", \
+	"v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", \
+	"v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", \
+	"vl", "vtype", "vxsat", "vxrm", "memory"
+
 #define __asm_syscall(...) \
 	__asm__ __volatile__ ("ecall\n\t" \
-	: "=r"(a0) : __VA_ARGS__ : "memory"); \
+	: "=r"(a0) : __VA_ARGS__ : SYSCALL_CLOBBERLIST); \
 	return a0; \
 
 static inline long __syscall0(long n)
