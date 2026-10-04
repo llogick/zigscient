@@ -453,7 +453,6 @@ test "inline for with counter as the comptime-known" {
 test "inline for on tuple pointer" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct { u32, u32, u32 };
     var s: S = .{ 100, 200, 300 };
@@ -522,8 +521,6 @@ test "return from inline for" {
 }
 
 test "for loop 0 length range" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const map: []const u8 = &.{};
     for (map, 0..map.len) |i, j| {
         _ = i;

@@ -297,7 +297,6 @@ const global_a: i32 = 1234;
 const global_b: *const i32 = &global_a;
 const global_c: *const f32 = @as(*const f32, @ptrCast(global_b));
 test "compile time global reinterpret" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const d = @as(*const i32, @ptrCast(global_c));
     try expect(d.* == 1234);
 }
@@ -637,7 +636,6 @@ fn emptyFn() void {}
 
 const addr1 = @as(*const u8, @ptrCast(&emptyFn));
 test "comptime cast fn to ptr" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     const addr2 = @as(*const u8, @ptrCast(&emptyFn));
     comptime assert(addr1 == addr2);
 }
@@ -915,7 +913,6 @@ test "labeled block with runtime branch forwards its result location type to bre
 
 test "try in labeled block doesn't cast to wrong type" {
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 
     const S = struct {
         a: u32,
@@ -1001,8 +998,6 @@ test "generic function uses return type of other generic function" {
 }
 
 test "const alloc with comptime-known initializer is made comptime-known" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         a: bool,
         b: [2]u8,
@@ -1276,7 +1271,6 @@ test "@Int returned from block" {
 }
 
 test "comptime variable initialized with addresses of literals" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     comptime var st = .{
         .foo = &1,
         .bar = &2,
@@ -1326,8 +1320,6 @@ test "proper value is returned from labeled block" {
 }
 
 test "const inferred array of slices" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const T = struct { v: bool };
 
     const decls = [_][]const T{

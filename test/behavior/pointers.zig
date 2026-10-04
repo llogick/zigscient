@@ -266,8 +266,6 @@ test "implicit cast error unions with non-optional to optional pointer" {
 }
 
 test "compare equality of optional and non-optional pointer" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const a = @as(*const usize, @ptrFromInt(0x12345678));
     const b = @as(?*usize, @ptrFromInt(0x12345678));
     try expect(a == b);
@@ -453,8 +451,6 @@ test "pointer sentinel with +inf" {
 }
 
 test "pointer to array at fixed address" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const array = @as(*volatile [2]u32, @ptrFromInt(0x10));
     // Silly check just to reference `array`
     try expect(@intFromPtr(&array[0]) == 0x10);
@@ -496,8 +492,6 @@ test "pointer-integer arithmetic affects the alignment" {
 }
 
 test "@intFromPtr on null optional at comptime" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     {
         const pointer = @as(?*u8, @ptrFromInt(0x000));
         const x = @intFromPtr(pointer);
@@ -642,8 +636,6 @@ test "result type preserved through multiple references" {
 }
 
 test "result type found through optional pointer" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const ptr1: ?*const u32 = &@intCast(123);
     const ptr2: ?[]const u8 = &.{ @intCast(123), @truncate(0xABCD) };
     try expect(ptr1.?.* == 123);
@@ -710,8 +702,6 @@ test "pointer-to-array constness for zero-size elements, const" {
 }
 
 test "cast pointers with zero sized elements" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const a: *void = undefined;
     const b: *[1]void = a;
     _ = b;
@@ -721,8 +711,6 @@ test "cast pointers with zero sized elements" {
 }
 
 test "comptime pointer equality through distinct fields with well-defined layout" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const A = extern struct {
         x: u32,
         z: u16,
@@ -785,8 +773,6 @@ test "pointers to elements of many-ptr to zero-bit type" {
 }
 
 test "comptime C pointer to optional pointer" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const opt: ?*u8 = @ptrFromInt(0x1000);
     const outer_ptr: [*c]const ?*u8 = &opt;
     const inner_ptr = &outer_ptr.*.?;

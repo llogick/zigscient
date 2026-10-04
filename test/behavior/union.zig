@@ -1109,8 +1109,6 @@ test "union with a large struct field" {
 }
 
 test "comptime equality of extern unions with same tag" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const S = struct {
         const U = extern union {
             a: i32,
@@ -1845,8 +1843,6 @@ test "inner struct initializer uses packed union layout" {
 }
 
 test "extern union initialized via reintepreted struct field initializer" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const bytes = [_]u8{ 0xaa, 0xbb, 0xcc, 0xdd };
 
     const U = extern union {

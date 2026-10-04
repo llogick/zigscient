@@ -876,16 +876,12 @@ test "comptime pointer load through elem_ptr" {
 }
 
 test "debug variable type resolved through indirect zero-bit types" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const T = struct { key: []void };
     const slice: []const T = &[_]T{};
     _ = slice;
 }
 
 test "const local with comptime init through array init" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const E1 = enum {
         A,
         pub fn a() void {}
@@ -1163,8 +1159,6 @@ test "repeated value is correctly expanded" {
 }
 
 test "value in if block is comptime-known" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const first = blk: {
         const s = if (false) "a" else "b";
         break :blk "foo" ++ s;

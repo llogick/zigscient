@@ -836,8 +836,6 @@ test "pointer to sentinel-terminated array initialized through reference to anon
 }
 
 test "tuple initialized through reference to anonymous array init provides result types" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const Tuple = struct { u64, *const u32 };
     const foo: *const Tuple = &.{
         @intCast(12345),
@@ -978,15 +976,11 @@ test "runtime index of array of zero-bit values" {
 }
 
 test "initialize slice with reference to empty array initializer" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const a: []const u8 = &.{};
     comptime assert(a.len == 0);
 }
 
 test "initialize many-pointer with reference to empty array initializer" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const a: [*]const u8 = &.{};
     _ = a; // nothing meaningful to test; points to zero bits
 }
@@ -1012,8 +1006,6 @@ test "pass pointer to empty array initializer to anytype parameter" {
 }
 
 test "initialize pointer to anyopaque with reference to empty array initializer" {
-    if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
-
     const ptr: *const anyopaque = &.{};
     // The above acts like an untyped initializer, since the `.{}` has no result type.
     // So, `ptr` points in memory to an empty tuple (`@TypeOf(.{})`).
