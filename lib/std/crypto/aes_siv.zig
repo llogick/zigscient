@@ -63,13 +63,6 @@ fn AesSiv(comptime Aes: anytype) type {
 
             var d: [16]u8 = undefined;
 
-            // Special case: single empty string
-            if (strings.len == 1 and strings[0].len == 0) {
-                CmacImpl.create(&d, &[_]u8{}, &key);
-                iv.* = d;
-                return;
-            }
-
             // Initialize with CMAC of zero block
             const zero_block: [16]u8 = @splat(0);
             CmacImpl.create(&d, &zero_block, &key);
@@ -414,6 +407,19 @@ test "Aes128Siv - empty plaintext" {
 
     var decrypted: [plaintext.len]u8 = undefined;
     try Aes128Siv.decrypt(&decrypted, &ciphertext, tag, ad, null, key);
+}
+
+test "Aes128Siv - empty plaintext without associated data" {
+    const key: [Aes128Siv.key_length]u8 = @splat(0x42);
+    var ciphertext: [0]u8 = undefined;
+    var tag: [Aes128Siv.tag_length]u8 = undefined;
+
+    Aes128Siv.encrypt(&ciphertext, &tag, "", null, null, key);
+
+    try testing.expectEqual([_]u8{
+        0x23, 0xef, 0x43, 0xc1, 0x08, 0x55, 0x68, 0x98,
+        0x27, 0x56, 0xaf, 0x5c, 0x9f, 0xda, 0x7e, 0xab,
+    }, tag);
 }
 
 test "Aes128Siv - with nonce" {
