@@ -177120,8 +177120,6 @@ fn lowerSwitchBr(
     var bfa: std.heap.BufferFirstAllocator = .init(@ptrCast(&bfa_buf), cg.gpa);
     const allocator = bfa.allocator();
 
-    const state = try cg.saveState();
-
     const liveness = try cg.liveness.getSwitchBr(allocator, inst, switch_br.cases_len + 1);
     defer allocator.free(liveness.deaths);
 
@@ -177232,6 +177230,7 @@ fn lowerSwitchBr(
             }
         };
         var cases_it = switch_br.iterateCases();
+        const state = try cg.saveState();
         while (cases_it.next()) |case| {
             {
                 const table = cg.mir_table.items[table_start..][0..table_len];
@@ -177388,6 +177387,7 @@ fn lowerSwitchBr(
 
         // The jump to skip this case if the conditions all failed.
         const skip_case_reloc = try cg.asmJmpReloc(undefined);
+        const state = try cg.saveState();
 
         for (liveness.deaths[case.idx]) |operand| try cg.processDeath(operand, .{});
 
@@ -177406,6 +177406,7 @@ fn lowerSwitchBr(
     }
     if (switch_br.else_body_len > 0) {
         const else_body = cases_it.elseBody();
+        const state = try cg.saveState();
 
         const else_deaths = liveness.deaths.len - 1;
         for (liveness.deaths[else_deaths]) |operand| try cg.processDeath(operand, .{});

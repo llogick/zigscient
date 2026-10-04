@@ -1568,3 +1568,16 @@ test "union field pointer capture preserves alignment in inline prong" {
     try comptime U.doTheTest(&.{ .a = 123 });
     try comptime U.doTheTest(&.{ .b = 123 });
 }
+
+test "switch on expression" {
+    var a: []const []const u8 = &.{ "b", "b", "A", "A", "b" };
+    _ = &a;
+    var c: isize = 0;
+    for (a[1..]) |b| {
+        switch (b[0] % 2) {
+            0 => c += 1,
+            else => c -= 1,
+        }
+    }
+    try expect(c == 0);
+}
