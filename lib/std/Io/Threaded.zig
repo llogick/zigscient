@@ -12910,7 +12910,7 @@ fn netReadPosix(fd: net.Socket.Handle, data: [][]u8, control: []u8) net.Stream.R
             switch (std.os.wasi.fd_read(fd, dest.ptr, dest.len, &n)) {
                 .SUCCESS => {
                     syscall.finish();
-                    return n;
+                    return .{ .data_len = n };
                 },
                 .INTR => {
                     try syscall.checkCancel();
