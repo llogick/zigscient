@@ -354,7 +354,7 @@ pub const NullFile = switch (native_os) {
             }
         }
     },
-    .wasi, .ios, .tvos, .visionos, .watchos => struct {
+    .wasi, .tvos, .watchos => struct {
         fn deinit(this: @This()) void {
             _ = this;
         }
@@ -15259,9 +15259,9 @@ fn processReplace(userdata: ?*anyopaque, options: process.ReplaceOptions) proces
 }
 
 const processSpawn = switch (native_os) {
-    .wasi, .emscripten, .ios, .tvos, .visionos, .watchos => processSpawnUnsupported,
+    .wasi, .emscripten, .tvos, .watchos => processSpawnUnsupported,
     .windows => processSpawnWindows,
-    .driverkit, .maccatalyst, .macos => processSpawnDarwin,
+    .driverkit, .ios, .maccatalyst, .macos, .visionos => processSpawnDarwin,
     else => processSpawnPosix,
 };
 
