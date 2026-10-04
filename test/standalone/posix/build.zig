@@ -39,13 +39,14 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_def.step);
 
         if (default_target.result.os.tag == .linux) {
-            const gnu_target = b.resolveTargetQuery(.{ .abi = .gnu });
+            // glibc tests must be run on glibc hosts because it can't be statically linked
+            if (default_target.result.abi.isGnu()) {
+                const gnu_target = b.resolveTargetQuery(.{ .abi = .gnu });
+                const run_gnu = run_exe(b, optimize, &case, gnu_target, true);
+                test_step.dependOn(&run_gnu.step);
+            }
             const musl_target = b.resolveTargetQuery(.{ .abi = .musl });
-
-            const run_gnu = run_exe(b, optimize, &case, gnu_target, true);
             const run_musl = run_exe(b, optimize, &case, musl_target, true);
-
-            test_step.dependOn(&run_gnu.step);
             test_step.dependOn(&run_musl.step);
         } else {
             const run_libc = run_exe(b, optimize, &case, default_target, true);
