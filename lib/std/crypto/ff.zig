@@ -1083,12 +1083,24 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
     };
 }
 
+fn valueBarrier(x: Limb) Limb {
+    if (@inComptime()) return x;
+    switch (builtin.zig_backend) {
+        .stage2_c, .stage2_wasm => return x,
+        else => {},
+    }
+    return asm (""
+        : [ret] "=r" (-> Limb),
+        : [x] "0" (x),
+    );
+}
+
 const ct = if (std.options.side_channels_mitigations == .none) ct_unprotected else ct_protected;
 
 const ct_protected = struct {
     // Returns x if on is true, otherwise y.
     fn select(on: bool, x: Limb, y: Limb) Limb {
-        const mask = @as(Limb, 0) -% @intFromBool(on);
+        const mask = valueBarrier(@as(Limb, 0) -% @intFromBool(on));
         return y ^ (mask & (y ^ x));
     }
 
