@@ -1528,7 +1528,7 @@ pub const cmsg = struct {
         control: []align(cmsg_align) u8,
 
         pub const Message = struct {
-            header: *cmsghdr,
+            header: *align(cmsg_align) cmsghdr,
             data: []align(cmsg_align) u8,
         };
 
