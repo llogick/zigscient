@@ -1,7 +1,7 @@
-//! Use `fromSlice`/`fromSlice` to parse a ZON string into a Zig value. Human readable errors
-//! are written to an out parameter.
+//! Use `fromSlice`/`fromSliceNoAlloc` to parse a ZON string into a Zig value. Human readable
+//! errors are written to an out parameter.
 //!
-//! If your data is already available in tree form, consider `fromZoir`/`fromZoir`.
+//! If your data is already available in tree form, consider `fromZoir`/`fromZoirNoAlloc`.
 //!
 //! To parse into an existing value, see the `updateFrom*` variants. For lower level control over
 //! parsing, see `std.zig.ZonGen`. For importing ZON at compile time, use `@import`.
