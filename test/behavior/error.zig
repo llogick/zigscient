@@ -1138,3 +1138,9 @@ test "@errorCast into other inferred error set" {
     const non_err: Ies!u32 = @errorCast(@as(error{}!u32, 123));
     try expect(try non_err == 123);
 }
+
+test "error union with vector type" {
+    var x: anyerror!@Vector(5, f64) = undefined;
+    x = error.Expected;
+    try expect(x == error.Expected);
+}
