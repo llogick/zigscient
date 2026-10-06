@@ -2484,7 +2484,7 @@ pub const Object = struct {
             .memory_access => {},
             .in_memory => {
                 const zig_align = std.zig.target.intAlignment(target, bits);
-                const llvm_align = o.builder.data_layout.getIntegerSpec(llvm_bit_width).abi_align;
+                const llvm_align = o.builder.data_layout.getIntegerSpec(.{ .fixed = llvm_bit_width }).abi_align;
                 if (zig_align < llvm_align.toByteUnits().?) return o.builder.arrayType(abi_size, .i8);
             },
         }
