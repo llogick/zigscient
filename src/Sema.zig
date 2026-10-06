@@ -1231,8 +1231,8 @@ fn analyzeBodyInner(
             .ref                          => try sema.zirRef(block, inst),
             .deref                        => try sema.zirDeref(block, inst),
             .ref_deref                    => try sema.zirRefDeref(block, inst),
-            .shr                          => try sema.zirShr(block, inst, .shr),
-            .shr_exact                    => try sema.zirShr(block, inst, .shr_exact),
+            .shr                          => try sema.zirShr(block, inst, false),
+            .shr_exact                    => try sema.zirShr(block, inst, true),
             .slice_end                    => try sema.zirSliceEnd(block, inst),
             .slice_sentinel               => try sema.zirSliceSentinel(block, inst),
             .slice_start                  => try sema.zirSliceStart(block, inst),
@@ -13180,7 +13180,7 @@ fn zirShr(
     sema: *Sema,
     block: *Block,
     inst: Zir.Inst.Index,
-    air_tag: Air.Inst.Tag,
+    exact: bool,
 ) CompileError!Air.Inst.Ref {
     const pt = sema.pt;
     const zcu = pt.zcu;
@@ -13192,16 +13192,15 @@ fn zirShr(
     const rhs_ty = sema.typeOf(rhs);
 
     const src = block.nodeOffset(inst_data.src_node);
-    const lhs_src = switch (air_tag) {
-        .shr => block.src(.{ .node_offset_bin_lhs = inst_data.src_node }),
-        .shr_exact => block.builtinCallArgSrc(inst_data.src_node, 0),
-        else => unreachable,
-    };
-    const rhs_src = switch (air_tag) {
-        .shr => block.src(.{ .node_offset_bin_rhs = inst_data.src_node }),
-        .shr_exact => block.builtinCallArgSrc(inst_data.src_node, 1),
-        else => unreachable,
-    };
+    const lhs_src = if (exact)
+        block.builtinCallArgSrc(inst_data.src_node, 0)
+    else
+        block.src(.{ .node_offset_bin_lhs = inst_data.src_node });
+
+    const rhs_src = if (exact)
+        block.builtinCallArgSrc(inst_data.src_node, 1)
+    else
+        block.src(.{ .node_offset_bin_rhs = inst_data.src_node });
 
     try sema.checkVectorizableBinaryOperands(block, src, lhs_ty, rhs_ty, lhs_src, rhs_src);
     const scalar_ty = lhs_ty.scalarType(zcu);
@@ -13212,11 +13211,7 @@ fn zirShr(
     const runtime_src = rs: {
         if (maybe_rhs_val) |rhs_val| {
             if (maybe_lhs_val) |lhs_val| {
-                return .fromValue(try arith.shr(sema, block, lhs_ty, rhs_ty, lhs_val, rhs_val, src, lhs_src, rhs_src, switch (air_tag) {
-                    .shr => .shr,
-                    .shr_exact => .shr_exact,
-                    else => unreachable,
-                }));
+                return .fromValue(try arith.shr(sema, block, lhs_ty, rhs_ty, lhs_val, rhs_val, src, lhs_src, rhs_src, if (exact) .shr_exact else .shr));
             }
             if (rhs_val.isUndef(zcu)) {
                 return sema.failWithUseOfUndef(block, rhs_src, null);
@@ -13273,8 +13268,10 @@ fn zirShr(
         break :rs rhs_src;
     };
     try sema.requireRuntimeBlock(block, src, runtime_src);
-    const result = try block.addBinOp(air_tag, lhs, rhs);
-    if (block.wantSafety()) {
+
+    const safety = block.wantSafety();
+    const result = try block.addBinOp(if (!exact or safety) .shr else .shr_exact, lhs, rhs);
+    if (safety) {
         const bit_count = scalar_ty.intInfo(zcu).bits;
         if (!std.math.isPowerOfTwo(bit_count)) {
             const bit_count_val = try pt.intValue(rhs_ty.scalarType(zcu), bit_count);
@@ -13290,7 +13287,7 @@ fn zirShr(
             try sema.addSafetyCheck(block, src, ok, .shift_rhs_too_big);
         }
 
-        if (air_tag == .shr_exact) {
+        if (exact) {
             const back = try block.addBinOp(.shl, result, rhs);
 
             const ok = if (rhs_ty.zigTypeTag(zcu) == .vector) ok: {
