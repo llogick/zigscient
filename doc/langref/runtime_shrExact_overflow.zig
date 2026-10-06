@@ -1,4 +1,3 @@
-const builtin = @import("builtin");
 const std = @import("std");
 
 pub fn main() void {
@@ -6,8 +5,6 @@ pub fn main() void {
     _ = &x;
     const y = @shrExact(x, 2);
     std.debug.print("value: {}\n", .{y});
-
-    if ((builtin.cpu.arch.isPowerPC() or builtin.cpu.arch.isRISCV() or builtin.cpu.arch.isLoongArch() or builtin.cpu.arch == .s390x) and builtin.zig_backend == .stage2_llvm) @panic("https://github.com/ziglang/zig/issues/24304");
 }
 
 // exe=fail
