@@ -441,7 +441,7 @@ fn TupleHashLike(comptime security_level: u11, comptime default_delim: u8, compt
         pub fn squeeze(self: *Self, out: []u8) void {
             if (!self.xof_mode) {
                 const encoded_out_len = comptime NistLengthEncoding.encode(.right, 0);
-                self.update(encoded_out_len.slice());
+                self.cshaker.update(encoded_out_len.slice());
                 self.xof_mode = true;
             }
             self.cshaker.squeeze(out);
@@ -770,6 +770,15 @@ test "TupleHash-128" {
     var out: [32]u8 = undefined;
     st.final(&out);
     try htest.assertEqual("3938d49ade8ec0f0c305ac63497b2d2e8b2f650714f9667cc41816b1c11ffd20", &out);
+}
+
+test "TupleHashXOF-128 as a XOF" {
+    var st = TupleHash128.init();
+    st.update(&.{ 0x00, 0x01, 0x02 });
+    st.update(&.{ 0x10, 0x11, 0x12, 0x13, 0x14, 0x15 });
+    var out: [32]u8 = undefined;
+    st.squeeze(&out);
+    try htest.assertEqual("2f103cd7c32320353495c68de1a8129245c6325f6f2a3d608d92179c96e68488", &out);
 }
 
 test "TupleHash-256" {
