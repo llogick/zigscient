@@ -316,72 +316,6 @@ fn addLanesAll(
     }
 }
 
-/// Apply Keccak-p[1600,12] to a single state (byte representation)
-fn keccakP(state: *[200]u8) void {
-    @setEvalBranchQuota(10000);
-    var lanes: [5][5]u64 = undefined;
-
-    // Load state into lanes
-    inline for (0..5) |x| {
-        inline for (0..5) |y| {
-            lanes[x][y] = load64(state[8 * (x + 5 * y) ..]);
-        }
-    }
-
-    // Apply 12 rounds
-    var round: usize = 0;
-    while (round < 12) : (round += 2) {
-        inline for (0..2) |i| {
-            // θ
-            var C: [5]u64 = undefined;
-            inline for (0..5) |x| {
-                C[x] = lanes[x][0] ^ lanes[x][1] ^ lanes[x][2] ^ lanes[x][3] ^ lanes[x][4];
-            }
-            var D: [5]u64 = undefined;
-            inline for (0..5) |x| {
-                D[x] = C[(x + 4) % 5] ^ std.math.rotl(u64, C[(x + 1) % 5], 1);
-            }
-            inline for (0..5) |x| {
-                inline for (0..5) |y| {
-                    lanes[x][y] ^= D[x];
-                }
-            }
-
-            // ρ and π
-            var current = lanes[1][0];
-            var px: usize = 1;
-            var py: usize = 0;
-            inline for (0..24) |t| {
-                const temp = lanes[py][(2 * px + 3 * py) % 5];
-                const rot_amount = ((t + 1) * (t + 2) / 2) % 64;
-                lanes[py][(2 * px + 3 * py) % 5] = std.math.rotl(u64, current, @as(u6, @intCast(rot_amount)));
-                current = temp;
-                const temp_x = py;
-                py = (2 * px + 3 * py) % 5;
-                px = temp_x;
-            }
-
-            // χ
-            inline for (0..5) |y| {
-                const T = [5]u64{ lanes[0][y], lanes[1][y], lanes[2][y], lanes[3][y], lanes[4][y] };
-                inline for (0..5) |x| {
-                    lanes[x][y] = T[x] ^ (~T[(x + 1) % 5] & T[(x + 2) % 5]);
-                }
-            }
-
-            // ι
-            lanes[0][0] ^= RC[round + i];
-        }
-    }
-
-    // Store lanes back to state
-    inline for (0..5) |x| {
-        inline for (0..5) |y| {
-            store64(lanes[x][y], state[8 * (x + 5 * y) ..]);
-        }
-    }
-}
-
 /// Apply Keccak-p[1600,12] to a single state (u64 lane representation)
 fn keccakPLanes(lanes: *[25]u64) void {
     @setEvalBranchQuota(10000);
@@ -439,38 +373,12 @@ fn turboShakeMultiSliceToBuffer(
     separation_byte: u8,
     output: []u8,
 ) void {
-    var state: [200]u8 = @splat(0);
-    var state_pos: usize = 0;
+    const StateType = if (rate == TurboSHAKE128State.block_length) TurboSHAKE128State else TurboSHAKE256State;
+    comptime assert(StateType.block_length == rate);
 
-    // Absorb all bytes from the multi-slice view
-    const total = view.totalLen();
-    var pos: usize = 0;
-    while (pos < total) {
-        state[state_pos] ^= view.getByte(pos);
-        state_pos += 1;
-        pos += 1;
-
-        if (state_pos == rate) {
-            keccakP(&state);
-            state_pos = 0;
-        }
-    }
-
-    // Add separation byte and padding
-    state[state_pos] ^= separation_byte;
-    state[rate - 1] ^= 0x80;
-    keccakP(&state);
-
-    // Squeeze
-    var out_offset: usize = 0;
-    while (out_offset < output.len) {
-        const chunk = @min(rate, output.len - out_offset);
-        @memcpy(output[out_offset..][0..chunk], state[0..chunk]);
-        out_offset += chunk;
-        if (out_offset < output.len) {
-            keccakP(&state);
-        }
-    }
+    var state = StateType.init(.{ .delim = separation_byte });
+    for (view.slices) |slice| state.update(slice);
+    state.final(output);
 }
 
 /// Generic allocating TurboSHAKE
@@ -752,56 +660,29 @@ fn SelectLeafContext(comptime Variant: type) type {
     const Result = BatchResult(Variant);
 
     return struct {
-        view: *const MultiSliceView,
+        leaves: []const u8,
         batch_idx: usize,
-        start_offset: usize,
-        num_leaves: usize,
 
         fn process(ctx: @This()) Result {
+            const num_leaves = ctx.leaves.len / chunk_size;
             var result: Result = .{
                 .batch_idx = ctx.batch_idx,
-                .cv_len = ctx.num_leaves * cv_size,
+                .cv_len = num_leaves * cv_size,
                 .cvs = undefined,
             };
 
-            var leaf_buffer: [bytes_per_batch]u8 align(cache_line_size) = undefined;
-            var leaves_processed: usize = 0;
-            var byte_offset = ctx.start_offset;
-            var cv_offset: usize = 0;
-            const simd_batch_bytes = optimal_vector_len * chunk_size;
-            while (leaves_processed + optimal_vector_len <= ctx.num_leaves) {
-                if (ctx.view.tryGetSlice(byte_offset, byte_offset + simd_batch_bytes)) |leaf_data| {
-                    var leaf_cvs: [optimal_vector_len * Variant.cv_size]u8 = undefined;
-                    processLeaves(Variant, optimal_vector_len, leaf_data, &leaf_cvs);
-                    @memcpy(result.cvs[cv_offset..][0..leaf_cvs.len], &leaf_cvs);
-                } else {
-                    ctx.view.copyRange(byte_offset, byte_offset + simd_batch_bytes, leaf_buffer[0..simd_batch_bytes]);
-                    var leaf_cvs: [optimal_vector_len * Variant.cv_size]u8 = undefined;
-                    processLeaves(Variant, optimal_vector_len, leaf_buffer[0..simd_batch_bytes], &leaf_cvs);
-                    @memcpy(result.cvs[cv_offset..][0..leaf_cvs.len], &leaf_cvs);
-                }
-                leaves_processed += optimal_vector_len;
-                byte_offset += optimal_vector_len * chunk_size;
-                cv_offset += optimal_vector_len * cv_size;
+            var i: usize = 0;
+            while (i + optimal_vector_len <= num_leaves) : (i += optimal_vector_len) {
+                processLeaves(
+                    Variant,
+                    optimal_vector_len,
+                    ctx.leaves[i * chunk_size ..][0 .. optimal_vector_len * chunk_size],
+                    result.cvs[i * cv_size ..][0 .. optimal_vector_len * cv_size],
+                );
             }
-
-            while (leaves_processed < ctx.num_leaves) {
-                const leaf_end = byte_offset + chunk_size;
-                var cv_buffer: [64]u8 = undefined;
-
-                if (ctx.view.tryGetSlice(byte_offset, leaf_end)) |leaf_data| {
-                    const cv_slice = MultiSliceView.init(leaf_data, &[_]u8{}, &[_]u8{});
-                    Variant.turboShakeToBuffer(&cv_slice, 0x0B, cv_buffer[0..cv_size]);
-                } else {
-                    ctx.view.copyRange(byte_offset, leaf_end, leaf_buffer[0..chunk_size]);
-                    const cv_slice = MultiSliceView.init(leaf_buffer[0..chunk_size], &[_]u8{}, &[_]u8{});
-                    Variant.turboShakeToBuffer(&cv_slice, 0x0B, cv_buffer[0..cv_size]);
-                }
-                @memcpy(result.cvs[cv_offset..][0..cv_size], cv_buffer[0..cv_size]);
-
-                leaves_processed += 1;
-                byte_offset += chunk_size;
-                cv_offset += cv_size;
+            while (i < num_leaves) : (i += 1) {
+                const leaf = MultiSliceView.init(ctx.leaves[i * chunk_size ..][0..chunk_size], &.{}, &.{});
+                Variant.turboShakeToBuffer(&leaf, 0x0B, result.cvs[i * cv_size ..][0..cv_size]);
             }
 
             return result;
@@ -834,38 +715,20 @@ fn FinalLeafContext(comptime Variant: type) type {
     };
 }
 
-fn ktMultiThreaded(
+/// Hashes complete leaves on multiple threads and absorbs chaining values in order.
+fn absorbLeavesParallel(
     comptime Variant: type,
     allocator: Allocator,
     io: Io,
-    view: *const MultiSliceView,
-    total_len: usize,
-    output: []u8,
-) !void {
+    final_state: *Variant.StateType,
+    leaves: []const u8,
+) error{ OutOfMemory, Canceled }!void {
     comptime assert(bytes_per_batch % (optimal_vector_len * chunk_size) == 0);
+    assert(leaves.len % chunk_size == 0);
 
     const cv_size = Variant.cv_size;
-    const StateType = Variant.StateType;
     const leaves_per_batch = bytes_per_batch / chunk_size;
-    const remaining_bytes = total_len - chunk_size;
-    const total_leaves = std.math.divCeil(usize, remaining_bytes, chunk_size) catch unreachable;
-
-    var final_state = StateType.init(.{});
-
-    var first_chunk_buffer: [chunk_size]u8 = undefined;
-    if (view.tryGetSlice(0, chunk_size)) |first_chunk| {
-        final_state.update(first_chunk);
-    } else {
-        view.copyRange(0, chunk_size, &first_chunk_buffer);
-        final_state.update(&first_chunk_buffer);
-    }
-
-    const padding = [_]u8{ 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-    final_state.update(&padding);
-
-    const full_leaves = remaining_bytes / chunk_size;
-    const has_partial_leaf = (remaining_bytes % chunk_size) != 0;
-    const partial_leaf_size = if (has_partial_leaf) remaining_bytes % chunk_size else 0;
+    const full_leaves = leaves.len / chunk_size;
 
     if (full_leaves > 0) {
         const total_batches = std.math.divCeil(usize, full_leaves, leaves_per_batch) catch unreachable;
@@ -893,14 +756,11 @@ fn ktMultiThreaded(
             while (batches_spawned < total_batches and batches_spawned - next_to_process < max_concurrent) {
                 const batch_start_leaf = batches_spawned * leaves_per_batch;
                 const batch_leaves = @min(leaves_per_batch, full_leaves - batch_start_leaf);
-                const start_offset = chunk_size + batch_start_leaf * chunk_size;
 
                 select_outstanding += 1;
                 select.async(.batch, SelectLeafContext(Variant).process, .{SelectLeafContext(Variant){
-                    .view = view,
+                    .leaves = leaves[batch_start_leaf * chunk_size ..][0 .. batch_leaves * chunk_size],
                     .batch_idx = batches_spawned,
-                    .start_offset = start_offset,
-                    .num_leaves = batch_leaves,
                 }});
                 batches_spawned += 1;
             }
@@ -932,29 +792,6 @@ fn ktMultiThreaded(
 
         assert(select_outstanding == 0);
     }
-
-    if (has_partial_leaf) {
-        var cv_buffer: [64]u8 = undefined;
-        var leaf_buffer: [chunk_size]u8 = undefined;
-
-        const start_offset = chunk_size + full_leaves * chunk_size;
-        if (view.tryGetSlice(start_offset, start_offset + partial_leaf_size)) |leaf_data| {
-            const cv_slice = MultiSliceView.init(leaf_data, &[_]u8{}, &[_]u8{});
-            Variant.turboShakeToBuffer(&cv_slice, 0x0B, cv_buffer[0..cv_size]);
-        } else {
-            view.copyRange(start_offset, start_offset + partial_leaf_size, leaf_buffer[0..partial_leaf_size]);
-            const cv_slice = MultiSliceView.init(leaf_buffer[0..partial_leaf_size], &[_]u8{}, &[_]u8{});
-            Variant.turboShakeToBuffer(&cv_slice, 0x0B, cv_buffer[0..cv_size]);
-        }
-        final_state.update(cv_buffer[0..cv_size]);
-    }
-
-    const n_enc = rightEncode(total_leaves);
-    final_state.update(n_enc.slice());
-    const terminator = [_]u8{ 0xFF, 0xFF };
-    final_state.update(&terminator);
-
-    final_state.final(output);
 }
 
 /// Generic KangarooTwelve hash function builder.
@@ -1129,6 +966,30 @@ fn KTHash(
             }
         }
 
+        /// Like `update`, but uses multiple threads for large inputs.
+        ///
+        /// Inputs smaller than 2 MiB are hashed on the current thread.
+        /// The allocator is only used for temporary buffers.
+        ///
+        /// After an error, the state is partially updated and must not be used anymore.
+        pub fn updateParallel(self: *Self, data: []const u8, allocator: Allocator, io: Io) error{ OutOfMemory, Canceled }!void {
+            if (data.len < large_file_threshold) {
+                return self.update(data);
+            }
+
+            // Finish the first chunk or the current leaf, so that the rest starts on a leaf boundary.
+            const head_len = if (self.final_state == null or self.buffer_len > 0) chunk_size - self.buffer_len else 0;
+            self.update(data[0..head_len]);
+            self.flushPendingChunks();
+
+            const rest = data[head_len..];
+            const full_leaves = rest.len / chunk_size;
+            try absorbLeavesParallel(Variant, allocator, io, &self.final_state.?, rest[0 .. full_leaves * chunk_size]);
+            self.num_leaves += full_leaves;
+            self.message_len += full_leaves * chunk_size;
+            self.update(rest[full_leaves * chunk_size ..]);
+        }
+
         /// Finalize the hash and produce output.
         ///
         /// Unlike traditional hash functions, the output can be of any length.
@@ -1256,27 +1117,15 @@ fn KTHash(
         /// Hash with automatic parallelization for large inputs (>2MB).
         /// Automatically uses sequential processing for smaller inputs to avoid thread overhead.
         /// Allocator required for temporary buffers. IO object required for thread management.
-        pub fn hashParallel(message: []const u8, out: []u8, options: Options, allocator: Allocator, io: Io) !void {
-            const custom = options.customization orelse &[_]u8{};
-
-            const custom_len_enc = rightEncode(custom.len);
-            const view = MultiSliceView.init(message, custom, custom_len_enc.slice());
-            const total_len = view.totalLen();
-
-            // Single chunk case
-            if (total_len <= chunk_size) {
-                singleChunkFn(&view, 0x07, out);
-                return;
-            }
-
+        pub fn hashParallel(message: []const u8, out: []u8, options: Options, allocator: Allocator, io: Io) error{ OutOfMemory, Canceled }!void {
             // Use single-threaded processing if below threshold
-            if (total_len < large_file_threshold) {
-                ktSingleThreaded(Variant, &view, total_len, out);
-                return;
+            if (message.len < large_file_threshold) {
+                return hash(message, out, options);
             }
 
-            // Tree mode - multi-threaded processing
-            try ktMultiThreaded(Variant, allocator, io, &view, total_len, out);
+            var hasher = Self.init(options);
+            try hasher.updateParallel(message, allocator, io);
+            hasher.final(out);
         }
     };
 }
@@ -1559,6 +1408,37 @@ test "KT256 sequential and parallel produce same output with customization" {
 
     // Verify outputs match
     try std.testing.expectEqualSlices(u8, &output_seq, &output_par);
+}
+
+test "parallel hashing matches sequential hashing" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+
+    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    const message = try allocator.alloc(u8, 3 * large_file_threshold + 5 * chunk_size + 123);
+    defer allocator.free(message);
+    prng.random().bytes(message);
+
+    const update_lens = [_]usize{ 100, large_file_threshold + chunk_size - 100, 3 * chunk_size, large_file_threshold + 77 };
+
+    inline for (.{ KT128, KT256 }) |KT| {
+        var expected: [64]u8 = undefined;
+        var actual: [64]u8 = undefined;
+        try KT.hash(message, &expected, .{ .customization = "test" });
+
+        try KT.hashParallel(message, &actual, .{ .customization = "test" }, allocator, io);
+        try std.testing.expectEqualSlices(u8, &expected, &actual);
+
+        var hasher = KT.init(.{ .customization = "test" });
+        var rest: []const u8 = message;
+        for (update_lens) |len| {
+            try hasher.updateParallel(rest[0..len], allocator, io);
+            rest = rest[len..];
+        }
+        try hasher.updateParallel(rest, allocator, io);
+        hasher.final(&actual);
+        try std.testing.expectEqualSlices(u8, &expected, &actual);
+    }
 }
 
 /// Helper: Generate pattern data where data[i] = (i % 251)
