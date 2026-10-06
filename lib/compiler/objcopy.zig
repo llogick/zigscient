@@ -669,6 +669,7 @@ fn padFile(out: *File.Writer, opt_size: ?u64) !void {
     const io = out.io;
     const size = opt_size orelse return;
     try out.file.setLength(io, size);
+    try out.seekTo(size);
 }
 
 test "HexWriter.Record.Address has correct payload and checksum" {
