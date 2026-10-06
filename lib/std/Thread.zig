@@ -1434,6 +1434,16 @@ const LinuxThreadImpl = struct {
         }
     };
 
+    /// Provided by compiler-rt and populated by `std.start`.
+    extern var __zig_elf_static_tls: extern struct {
+        size: usize,
+        alignment: usize,
+        gdt_entry_number: usize,
+    };
+
+    /// Provided by compiler-rt.
+    extern fn __zig_elf_static_tls_fill(area: [*]u8) usize;
+
     fn spawn(config: SpawnConfig, comptime f: anytype, args: anytype) !Impl {
         const page_size = std.heap.pageSize();
         const Args = @TypeOf(args);
@@ -1465,9 +1475,9 @@ const LinuxThreadImpl = struct {
             bytes = std.mem.alignForward(usize, bytes, page_size);
             stack_offset = bytes;
 
-            bytes = std.mem.alignForward(usize, bytes, linux.tls.area_desc.alignment);
+            bytes = std.mem.alignForward(usize, bytes, __zig_elf_static_tls.alignment);
             tls_offset = bytes;
-            bytes += linux.tls.area_desc.size;
+            bytes += __zig_elf_static_tls.size;
 
             bytes = std.mem.alignForward(usize, bytes, @alignOf(Instance));
             instance_offset = bytes;
@@ -1509,12 +1519,12 @@ const LinuxThreadImpl = struct {
         }
 
         // Prepare the TLS segment and prepare a user_desc struct when needed on x86
-        var tls_ptr = linux.tls.prepareArea(mapped[tls_offset..][0..linux.tls.area_desc.size]);
+        var tls_ptr = __zig_elf_static_tls_fill(mapped.ptr + tls_offset);
         var user_desc: if (target.cpu.arch == .x86) linux.user_desc else void = undefined;
         if (target.cpu.arch == .x86) {
             defer tls_ptr = @intFromPtr(&user_desc);
             user_desc = .{
-                .entry_number = linux.tls.area_desc.gdt_entry_number,
+                .entry_number = __zig_elf_static_tls.gdt_entry_number,
                 .base_addr = tls_ptr,
                 .limit = 0xfffff,
                 .flags = .{

@@ -9,15 +9,31 @@
 //!
 //! [1] https://www.akkadia.org/drepper/tls.pdf
 
-const std = @import("std");
-const mem = std.mem;
-const elf = std.elf;
-const math = std.math;
-const assert = std.debug.assert;
 const builtin = @import("builtin");
+const std = @import("std");
+const elf = std.elf;
+const assert = std.debug.assert;
 const native_arch = builtin.cpu.arch;
 const linux = std.os.linux;
 const page_size_min = std.heap.page_size_min;
+
+const compiler_rt = @import("../../compiler_rt.zig");
+const symbol = compiler_rt.symbol;
+
+comptime {
+    symbol(&__zig_elf_static_tls, "__zig_elf_static_tls");
+    symbol(&__zig_elf_static_tls_init, "__zig_elf_static_tls_init");
+    symbol(&__zig_elf_static_tls_fill, "__zig_elf_static_tls_fill");
+
+    // To make static executables without libc work, it is our job to provide the TLS accessor
+    // function for the GD and LD models. This function is unlikely to actually be used, since the
+    // linker should be able to relax every TLS access to the LE model and therefore eliminate all
+    // calls to this function, but that isn't guaranteed.
+    if (native_arch == .s390x)
+        symbol(&__tls_get_offset, "__tls_get_offset")
+    else
+        symbol(&__tls_get_addr, "__tls_get_addr");
+}
 
 /// Represents an ELF TLS variant.
 ///
@@ -186,11 +202,17 @@ const Dtv = extern struct {
 };
 
 /// Describes a process's TLS area. The area encompasses the DTV, both TCBs, and the TLS block, with
-/// the exact layout of these being dependent primarily on `current_variant`.
-const AreaDesc = struct {
+/// the exact layout of these being dependent primarily on `current_variant`. See also `area_info`.
+///
+/// The layout of this variable is ABI between compiler-rt and std.
+var __zig_elf_static_tls: extern struct {
     size: usize,
     alignment: usize,
+    /// Only used on the 32-bit x86 architecture (not x86_64, nor x32).
+    gdt_entry_number: usize,
+} = undefined;
 
+var area_info: struct {
     dtv: struct {
         /// Offset into the TLS area.
         offset: usize,
@@ -210,21 +232,16 @@ const AreaDesc = struct {
         /// This is the effective size of the TLS block, which may be greater than `init.len`.
         size: usize,
     },
+} = undefined;
 
-    /// Only used on the 32-bit x86 architecture (not x86_64, nor x32).
-    gdt_entry_number: usize,
-};
-
-pub var area_desc: AreaDesc = undefined;
-
-pub fn setThreadPointer(addr: usize) void {
+fn setThreadPointer(addr: usize) void {
     @setRuntimeSafety(false);
     @disableInstrumentation();
 
     switch (native_arch) {
         .x86 => {
             var user_desc: linux.user_desc = .{
-                .entry_number = area_desc.gdt_entry_number,
+                .entry_number = __zig_elf_static_tls.gdt_entry_number,
                 .base_addr = addr,
                 .limit = 0xfffff,
                 .flags = .{
@@ -241,7 +258,7 @@ pub fn setThreadPointer(addr: usize) void {
 
             const gdt_entry_number = user_desc.entry_number;
             // We have to keep track of our slot as it's also needed for clone()
-            area_desc.gdt_entry_number = gdt_entry_number;
+            __zig_elf_static_tls.gdt_entry_number = gdt_entry_number;
             // Update the %gs selector
             asm volatile ("movl %[gs_val], %%gs"
                 :
@@ -380,7 +397,7 @@ pub fn setThreadPointer(addr: usize) void {
     }
 }
 
-pub fn getThreadPointer() usize {
+fn getThreadPointer() usize {
     @setRuntimeSafety(false);
     @disableInstrumentation();
 
@@ -574,10 +591,13 @@ fn computeAreaDesc(phdrs: []elf.ElfN.Phdr) void {
         },
     };
 
-    area_desc = .{
+    __zig_elf_static_tls = .{
         .size = area_size,
         .alignment = align_factor,
+        .gdt_entry_number = @as(usize, @bitCast(@as(isize, -1))),
+    };
 
+    area_info = .{
         .dtv = .{
             .offset = dtv_offset,
         },
@@ -591,8 +611,6 @@ fn computeAreaDesc(phdrs: []elf.ElfN.Phdr) void {
             .offset = block_offset,
             .size = block_size,
         },
-
-        .gdt_entry_number = @as(usize, @bitCast(@as(isize, -1))),
     };
 }
 
@@ -613,33 +631,35 @@ inline fn alignPtrCast(comptime T: type, ptr: [*]u8) *T {
 
 /// Initializes all the fields of the static TLS area and returns the computed architecture-specific
 /// value of the TP register.
-pub fn prepareArea(area: []u8) usize {
+fn __zig_elf_static_tls_fill(area: [*]u8) callconv(.c) usize {
     @setRuntimeSafety(false);
     @disableInstrumentation();
 
+    const area_slice = area[0..__zig_elf_static_tls.size];
+
     // Clear the area we're going to use, just to be safe.
-    @memset(area, 0);
+    @memset(area_slice, 0);
 
     // Prepare the ABI TCB.
-    const abi_tcb = alignPtrCast(AbiTcb, area.ptr + area_desc.abi_tcb.offset);
+    const abi_tcb = alignPtrCast(AbiTcb, area + area_info.abi_tcb.offset);
     switch (current_variant) {
-        .I_original, .I_modified => abi_tcb.dtv = @intFromPtr(area.ptr + area_desc.dtv.offset),
+        .I_original, .I_modified => abi_tcb.dtv = @intFromPtr(area + area_info.dtv.offset),
         .II => abi_tcb.self = abi_tcb,
     }
 
     // Prepare the DTV.
-    const dtv = alignPtrCast(Dtv, area.ptr + area_desc.dtv.offset);
+    const dtv = alignPtrCast(Dtv, area + area_info.dtv.offset);
     dtv.len = 1;
-    dtv.tls_block = area.ptr + current_dtv_offset + area_desc.block.offset;
+    dtv.tls_block = area + current_dtv_offset + area_info.block.offset;
 
     // Copy the initial data.
-    @memcpy(area[area_desc.block.offset..][0..area_desc.block.init.len], area_desc.block.init);
+    @memcpy(area_slice[area_info.block.offset..][0..area_info.block.init.len], area_info.block.init);
 
     // Return the corrected value (if needed) for the TP register. Overflow here is not a problem;
     // the pointer arithmetic involving the TP is done with wrapping semantics.
-    return @intFromPtr(area.ptr) +% switch (current_variant) {
-        .I_original, .II => area_desc.abi_tcb.offset,
-        .I_modified => area_desc.block.offset +% current_tp_offset,
+    return @intFromPtr(area) +% switch (current_variant) {
+        .I_original, .II => area_info.abi_tcb.offset,
+        .I_modified => area_info.block.offset +% current_tp_offset,
     };
 }
 
@@ -651,35 +671,35 @@ var main_thread_area_buffer: [0x1000]u8 align(page_size_min) = undefined;
 
 /// Computes the layout of the static TLS area, allocates the area, initializes all of its fields,
 /// and assigns the architecture-specific value to the TP register.
-pub fn initStatic(phdrs: []elf.ElfN.Phdr) void {
+fn __zig_elf_static_tls_init(phdrs: [*]elf.ElfN.Phdr, phnum: usize) callconv(.c) void {
     @setRuntimeSafety(false);
     @disableInstrumentation();
 
-    computeAreaDesc(phdrs);
+    computeAreaDesc(phdrs[0..phnum]);
 
-    const area = blk: {
+    const area: [*]u8 = blk: {
         // Fast path for the common case where the TLS data is really small, avoid an allocation and
         // use our local buffer.
-        if (area_desc.alignment <= page_size_min and area_desc.size <= main_thread_area_buffer.len) {
-            break :blk main_thread_area_buffer[0..area_desc.size];
+        if (__zig_elf_static_tls.alignment <= page_size_min and __zig_elf_static_tls.size <= main_thread_area_buffer.len) {
+            break :blk &main_thread_area_buffer;
         }
 
-        const begin_addr = mmap_tls(area_desc.size + area_desc.alignment - 1);
+        const begin_addr = mmap(__zig_elf_static_tls.size + __zig_elf_static_tls.alignment - 1);
         if (@call(.always_inline, linux.errno, .{begin_addr}) != .SUCCESS) @trap();
 
         const area_ptr: [*]align(page_size_min) u8 = @ptrFromInt(begin_addr);
 
         // Make sure the slice is correctly aligned.
-        const begin_aligned_addr = alignForward(begin_addr, area_desc.alignment);
+        const begin_aligned_addr = alignForward(begin_addr, __zig_elf_static_tls.alignment);
         const start = begin_aligned_addr - begin_addr;
-        break :blk area_ptr[start..][0..area_desc.size];
+        break :blk area_ptr + start;
     };
 
-    const tp_value = prepareArea(area);
+    const tp_value = __zig_elf_static_tls_fill(area);
     setThreadPointer(tp_value);
 }
 
-inline fn mmap_tls(length: usize) usize {
+inline fn mmap(length: usize) usize {
     const prot: linux.PROT = .{ .READ = true, .WRITE = true };
     const flags: linux.MAP = .{ .TYPE = .PRIVATE, .ANONYMOUS = true };
 
@@ -718,52 +738,37 @@ inline fn mmap_tls(length: usize) usize {
     }
 }
 
-comptime {
-    assert(!builtin.link_libc); // otherwise libc should control TLS
+const TlsIndex = switch (native_arch) {
+    .x86_64 => extern struct { module: u64, offset: u64 }, // Even for x32...
+    else => extern struct { module: usize, offset: usize }, // ...but not MIPS N32!
+};
 
-    if (builtin.output_mode == .Exe and builtin.link_mode == .static) {
-        // This is a static executable without libc, so it is our job to provide the TLS accessor
-        // function for the GD and LD models. This function is unlikely to actually be used, since
-        // the linker should be able to relax every TLS access to the LE model and therefore
-        // eliminate all calls to this function, but that isn't guaranteed.
-        const Fns = struct {
-            const TlsIndex = switch (native_arch) {
-                .x86_64 => extern struct { module: u64, offset: u64 }, // Even for x32...
-                else => extern struct { module: usize, offset: usize }, // ...but not MIPS N32!
-            };
-            fn __tls_get_addr(ti: *const TlsIndex) callconv(.c) *anyopaque {
-                comptime assert(native_arch != .s390x);
+fn __tls_get_addr(ti: *const TlsIndex) callconv(.c) *anyopaque {
+    comptime assert(native_arch != .s390x);
 
-                assert(ti.module == 1); // The executable's module ID is always 1
-                const tp = getThreadPointer();
-                const block: [*]u8 = switch (current_variant) {
-                    .I_original => @ptrFromInt(tp -% area_desc.abi_tcb.offset +% area_desc.block.offset),
-                    .I_modified => @ptrFromInt(tp -% current_tp_offset),
-                    // The `.I_original` approach would also work for `.II`, but there is an
-                    // alternative strategy which is one less operation:
-                    .II => @ptrFromInt(tp -% area_desc.block.size),
-                };
-                return block[@intCast(ti.offset)..];
-            }
-            fn __tls_get_offset() callconv(.naked) noreturn {
-                comptime assert(native_arch == .s390x);
+    assert(ti.module == 1); // The executable's module ID is always 1
+    const tp = getThreadPointer();
+    const block: [*]u8 = switch (current_variant) {
+        .I_original => @ptrFromInt(tp -% area_info.abi_tcb.offset +% area_info.block.offset),
+        .I_modified => @ptrFromInt(tp -% current_tp_offset),
+        // The `.I_original` approach would also work for `.II`, but there is an
+        // alternative strategy which is one less operation:
+        .II => @ptrFromInt(tp -% area_info.block.size),
+    };
+    return block[@intCast(ti.offset)..];
+}
 
-                // We receive the module's GOT pointer in r12 and the GOT offset in r2.
-                asm volatile (
-                    \\ la %%r1, 0(%%r12, %%r2)
-                    \\ lg %%r2, 8(%%r1)
-                    \\ lgrl %%r0, %[block_size]
-                    \\ sgr %%r2, %%r0
-                    \\ br %%r14
-                    :
-                    : [block_size] "s" (&area_desc.block.size),
-                );
-            }
-        };
+fn __tls_get_offset() callconv(.naked) noreturn {
+    comptime assert(native_arch == .s390x);
 
-        if (native_arch == .s390x)
-            @export(&Fns.__tls_get_offset, .{ .name = "__tls_get_offset" })
-        else
-            @export(&Fns.__tls_get_addr, .{ .name = "__tls_get_addr" });
-    }
+    // We receive the module's GOT pointer in r12 and the GOT offset in r2.
+    asm volatile (
+        \\ la %%r1, 0(%%r12, %%r2)
+        \\ lg %%r2, 8(%%r1)
+        \\ lgrl %%r0, %[block_size]
+        \\ sgr %%r2, %%r0
+        \\ br %%r14
+        :
+        : [block_size] "s" (&area_info.block.size),
+    );
 }

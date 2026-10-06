@@ -212,7 +212,7 @@ int main(int argc, char **argv) {
     {
         const char *child_argv[] = {
             "./zig1", "lib", "build-obj",
-            "-ofmt=c", "-OReleaseSmall",
+            "-ofmt=c", "-lc", "-OReleaseSmall",
             "--name", "compiler_rt", "-femit-bin=compiler_rt.c",
             "-target", host_triple,
             "-Mroot=lib/compiler_rt.zig",

@@ -2552,6 +2552,13 @@ pub fn genDeclFwd(dg: *DeclGen, w: *Writer) Error!void {
                     .{ .@"const" = nav.resolved.?.@"const" },
                     nav.resolved.?.@"align",
                 );
+                const extern_name = nav.name.toSlice(ip);
+                const is_mangled = isMangledIdent(extern_name, true);
+                if (is_mangled) {
+                    try w.print(" zig_mangled({f}, {f})", .{
+                        fmtIdentSolo(extern_name), fmtStringLiteral(extern_name, null),
+                    });
+                }
                 try w.writeAll(";\n");
                 return;
             },

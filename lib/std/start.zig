@@ -596,6 +596,12 @@ fn wWinMain(hInstance: *anyopaque, hPrevInstance: ?*anyopaque, pCmdLine: [*:0]u1
     return root.wWinMain(@ptrCast(hInstance), @ptrCast(hPrevInstance), pCmdLine, @intCast(nCmdShow));
 }
 
+/// Provided by compiler-rt.
+extern var __zig_elf_auxv: [*]std.elf.Auxv;
+
+/// Provided by compiler-rt.
+extern fn __zig_elf_static_tls_init(phdrs: [*]elf.ElfN.Phdr, phnum: usize) void;
+
 fn posixCallMainAndExit(argc_argv_ptr: [*]usize) callconv(.c) noreturn {
     // We're not ready to panic until thread local storage is initialized.
     @setRuntimeSafety(false);
@@ -613,7 +619,7 @@ fn posixCallMainAndExit(argc_argv_ptr: [*]usize) callconv(.c) noreturn {
     const auxv: [*]elf.Auxv = @ptrCast(@alignCast(envp.ptr + envp_count + 1));
 
     var at_hwcap: usize = 0;
-    const phdrs = init: {
+    const phdrs: [*]elf.ElfN.Phdr, const phnum: usize = init: {
         var i: usize = 0;
         var at_phdr: usize = 0;
         var at_phnum: usize = 0;
@@ -625,20 +631,20 @@ fn posixCallMainAndExit(argc_argv_ptr: [*]usize) callconv(.c) noreturn {
                 else => continue,
             }
         }
-        break :init @as([*]elf.ElfN.Phdr, @ptrFromInt(at_phdr))[0..at_phnum];
+        break :init .{ @ptrFromInt(at_phdr), at_phnum };
     };
 
     // Apply the initial relocations as early as possible in the startup process. We cannot
     // make calls yet on some architectures (e.g. MIPS) *because* they haven't been applied yet,
     // so this must be fully inlined.
     if (builtin.link_mode == .static and builtin.position_independent_executable) {
-        @call(.always_inline, std.pie.relocate, .{phdrs});
+        @call(.always_inline, std.pie.relocate, .{phdrs[0..phnum]});
     }
 
     if (native_os == .linux) {
         // This must be done after PIE relocations have been applied or we may crash
         // while trying to access the global variable (happens on MIPS at least).
-        std.os.linux.elf_aux_maybe = auxv;
+        __zig_elf_auxv = auxv;
 
         if (!builtin.single_threaded) {
             // ARMv6 targets (and earlier) have no support for TLS in hardware.
@@ -654,14 +660,14 @@ fn posixCallMainAndExit(argc_argv_ptr: [*]usize) callconv(.c) noreturn {
             }
 
             // Initialize the TLS area.
-            std.os.linux.tls.initStatic(phdrs);
+            __zig_elf_static_tls_init(phdrs, phnum);
         }
 
         // The way Linux executables represent stack size is via the PT.GNU_STACK
         // program header. However the kernel does not recognize it; it always gives 8 MiB.
         // Here we look for the stack size in our program headers and use setrlimit
         // to ask for more stack space.
-        expandStackSize(phdrs);
+        expandStackSize(phdrs[0..phnum]);
     }
 
     const opt_init_array_start = @extern([*]const *const fn () callconv(.c) void, .{
