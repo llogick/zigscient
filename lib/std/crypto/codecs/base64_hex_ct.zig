@@ -261,7 +261,7 @@ pub const base64 = struct {
 
         /// Returns the maximum possible decoded size for a given input length after skipping ignored characters.
         pub fn decodedLenUpperBound(b64_len: usize) usize {
-            return b64_len / 3 * 4;
+            return b64_len / 4 * 3 + (b64_len % 4) * 3 / 4;
         }
     };
 
