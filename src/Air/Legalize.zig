@@ -904,7 +904,7 @@ fn legalizeBody(l: *Legalize, body_start: usize, body_len: usize) Error!void {
             .splat => {
                 const ty_op = l.air_instructions.items(.data)[@backingInt(inst)].ty_op;
                 switch (ty_op.ty.zigTypeTag(zcu)) {
-                    .vector => switch (ty_op.ty.vectorLen(zcu)) {
+                    .vector => if (l.features.has(.splat_one_elem_to_bit_cast)) switch (ty_op.ty.vectorLen(zcu)) {
                         0 => unreachable,
                         1 => continue :inst l.replaceInst(inst, .bit_cast, .{ .ty_op = .{
                             .ty = ty_op.ty,
