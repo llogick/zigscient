@@ -23,6 +23,12 @@ const max_simd_degree_or_2 = if (max_simd_degree > 2) max_simd_degree else 2;
 /// Benchmarks generally show significant speedup starting at 3 MiB.
 const parallel_threshold = 3 * 1024 * 1024;
 
+/// Largest subtree fold that runs as a single task.
+const max_fold_task_length = 2048;
+
+/// Smallest fold worth its own thread.
+const min_fold_task_length = 256;
+
 const iv: [8]u32 = .{
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
     0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
@@ -677,6 +683,7 @@ const ChunkBatch = struct {
     input: []const u8,
     start_chunk: usize,
     end_chunk: usize,
+    chunk_counter: u64,
     cvs: [][8]u32,
     key: [8]u32,
     flags: Flags,
@@ -694,7 +701,7 @@ const ChunkBatch = struct {
             const num_cvs = compressChunksParallel(
                 ctx.input[offset..][0..batch_len],
                 ctx.key,
-                chunk_idx,
+                ctx.chunk_counter + chunk_idx,
                 ctx.flags,
                 &cv_buffer,
             );
@@ -806,6 +813,39 @@ fn buildMerkleTreeLayerParallel(
     }
     try group.await(io);
 }
+
+// Largest power-of-two chunk count that fits and is aligned at chunk_counter.
+fn nextSubtreeChunks(remaining_chunks: usize, chunk_counter: u64) usize {
+    var subtree_chunks: usize = @intCast(roundDownToPowerOf2(remaining_chunks));
+    while ((subtree_chunks - 1) & chunk_counter != 0) {
+        subtree_chunks /= 2;
+    }
+    return subtree_chunks;
+}
+
+// Fold a subtree's chaining values (not the final pair!) in place.
+const SubtreeFold = struct {
+    cvs: [][8]u32,
+    key: [8]u32,
+    flags: Flags,
+
+    fn process(ctx: SubtreeFold) void {
+        var level = ctx.cvs;
+
+        while (level.len > 2) {
+            const num_parents = level.len / 2;
+            processParentBatchSIMD(ParentBatchContext{
+                .input_cvs = level,
+                .output_cvs = level[0..num_parents],
+                .start_idx = 0,
+                .end_idx = num_parents,
+                .key = ctx.key,
+                .flags = ctx.flags,
+            });
+            level = level[0..num_parents];
+        }
+    }
+};
 
 fn parentOutput(parent_block: []const u8, key: [8]u32, flags: Flags) Output {
     var block: [Blake3.block_length]u8 = undefined;
@@ -991,91 +1031,9 @@ pub const Blake3 = struct {
     }
 
     pub fn hashParallel(b: []const u8, out: []u8, options: Options, allocator: Allocator, io: Io) error{ OutOfMemory, Canceled }!void {
-        if (b.len < parallel_threshold) {
-            return hash(b, out, options);
-        }
-
-        const key_words = if (options.key) |key| loadKeyWords(key) else iv;
-        const flags: Flags = if (options.key != null) .{ .keyed_hash = true } else .{};
-
-        const num_full_chunks = b.len / chunk_length;
-        const thread_count = Thread.getCpuCount() catch 1;
-        if (thread_count <= 1 or num_full_chunks == 0) {
-            return hash(b, out, options);
-        }
-
-        const remaining_bytes = b.len % chunk_length;
-        const num_leaves = @divCeil(b.len, chunk_length);
-
-        const cvs = try allocator.alloc([8]u32, num_leaves);
-        defer allocator.free(cvs);
-
-        // Process chunks in parallel
-        const num_workers = thread_count;
-        const chunks_per_worker = (num_full_chunks + num_workers - 1) / num_workers;
-        var group: Io.Group = .init;
-        defer group.cancel(io);
-
-        for (0..num_workers) |worker_id| {
-            const start_chunk = worker_id * chunks_per_worker;
-            if (start_chunk >= num_full_chunks) break;
-
-            group.async(io, ChunkBatch.process, .{ChunkBatch{
-                .input = b,
-                .start_chunk = start_chunk,
-                .end_chunk = @min(start_chunk + chunks_per_worker, num_full_chunks),
-                .cvs = cvs,
-                .key = key_words,
-                .flags = flags,
-            }});
-        }
-        try group.await(io);
-
-        if (remaining_bytes > 0) {
-            var chunk_state = ChunkState.init(key_words, flags);
-            chunk_state.chunk_counter = num_full_chunks;
-            chunk_state.update(b[num_full_chunks * chunk_length ..]);
-            const output = chunk_state.output();
-            cvs[num_full_chunks] = output.chainingValue();
-        }
-
-        // Build Merkle tree in parallel layers using ping-pong buffers
-        const max_intermediate_size = @divCeil(num_leaves, 2);
-        const buffer0 = try allocator.alloc([8]u32, max_intermediate_size);
-        defer allocator.free(buffer0);
-        const buffer1 = try allocator.alloc([8]u32, max_intermediate_size);
-        defer allocator.free(buffer1);
-
-        var current_level = cvs;
-        var next_level_buf = buffer0;
-        var toggle = false;
-
-        while (current_level.len > 8) {
-            const num_parents = current_level.len / 2;
-            const has_odd = current_level.len % 2 == 1;
-            const next_level_size = num_parents + @intFromBool(has_odd);
-
-            try buildMerkleTreeLayerParallel(
-                current_level[0 .. num_parents * 2],
-                next_level_buf[0..num_parents],
-                key_words,
-                flags,
-                io,
-            );
-
-            if (has_odd) {
-                next_level_buf[num_parents] = current_level[current_level.len - 1];
-            }
-
-            current_level = next_level_buf[0..next_level_size];
-            next_level_buf = if (toggle) buffer0 else buffer1;
-            toggle = !toggle;
-        }
-
-        // Finalize remaining small tree sequentially
-        var hasher = init_internal(key_words, flags);
-        for (current_level, 0..) |cv, i| hasher.pushCv(cv, i);
-        hasher.final(out);
+        var d = Blake3.init(options);
+        try d.updateParallel(b, allocator, io);
+        d.final(out);
     }
 
     fn init_internal(key: [8]u32, flags: Flags) Blake3 {
@@ -1155,6 +1113,150 @@ pub const Blake3 = struct {
 
         if (inp.len > 0) {
             self.chunk.update(inp);
+            self.mergeCvStack(self.chunk.chunk_counter);
+        }
+    }
+
+    /// Add input to the hash state, hashing using multiple threads. This can be called any number of times.
+    pub fn updateParallel(self: *Blake3, input: []const u8, allocator: Allocator, io: Io) error{ OutOfMemory, Canceled }!void {
+        if (input.len < parallel_threshold) {
+            return self.update(input);
+        }
+
+        const thread_count = Thread.getCpuCount() catch 1;
+        if (thread_count <= 1) {
+            return self.update(input);
+        }
+
+        var inp = input;
+
+        if (self.chunk.len() > 0) {
+            const take = chunk_length - self.chunk.len();
+            self.chunk.update(inp[0..take]);
+            inp = inp[take..];
+            const output = self.chunk.output();
+            const chunk_cv = output.chainingValue();
+            self.pushCv(chunk_cv, self.chunk.chunk_counter);
+            self.chunk.reset(self.key, self.chunk.chunk_counter + 1);
+        }
+
+        const base_counter = self.chunk.chunk_counter;
+        const full_chunks = inp.len / chunk_length;
+        const keeps_trailing_chunk = inp.len % chunk_length == 0 and (base_counter + full_chunks) % 2 != 0;
+        const num_chunks = full_chunks - @intFromBool(keeps_trailing_chunk);
+
+        const cvs = try allocator.alloc([8]u32, num_chunks);
+        defer allocator.free(cvs);
+
+        const tree_buffer_len = if (num_chunks >= 2 * max_fold_task_length) num_chunks else 0;
+        const buffer0 = try allocator.alloc([8]u32, tree_buffer_len / 2);
+        defer allocator.free(buffer0);
+        const buffer1 = try allocator.alloc([8]u32, tree_buffer_len / 4);
+        defer allocator.free(buffer1);
+
+        const chunks_per_worker = @divCeil(num_chunks, thread_count);
+        var group: Io.Group = .init;
+        defer group.cancel(io);
+
+        for (0..thread_count) |worker_id| {
+            const start_chunk = worker_id * chunks_per_worker;
+            if (start_chunk >= num_chunks) break;
+
+            group.async(io, ChunkBatch.process, .{ChunkBatch{
+                .input = inp,
+                .start_chunk = start_chunk,
+                .end_chunk = @min(start_chunk + chunks_per_worker, num_chunks),
+                .chunk_counter = base_counter,
+                .cvs = cvs,
+                .key = self.key,
+                .flags = self.chunk.flags,
+            }});
+        }
+        try group.await(io);
+
+        var level: [][8]u32 = cvs;
+        var level_start: usize = 0;
+        var chunks_per_cv: usize = 1;
+        var next_level_buf = buffer0;
+        var spare_level_buf = buffer1;
+
+        while (true) {
+            const level_end = level_start + level.len * chunks_per_cv;
+            var run_start: ?usize = null;
+            var run_end: usize = undefined;
+            var subtree_start = level_start;
+
+            while (subtree_start < level_end) {
+                const subtree_chunks = nextSubtreeChunks(num_chunks - subtree_start, base_counter + subtree_start);
+                const subtree_cvs = level[(subtree_start - level_start) / chunks_per_cv ..][0 .. subtree_chunks / chunks_per_cv];
+
+                if (subtree_cvs.len > max_fold_task_length) {
+                    if (run_start == null) {
+                        run_start = subtree_start;
+                    } else {
+                        std.debug.assert(run_end == subtree_start);
+                    }
+                    run_end = subtree_start + subtree_chunks;
+                } else if (chunks_per_cv > 1) {
+                    @memcpy(cvs[subtree_start..][0..subtree_cvs.len], subtree_cvs);
+                }
+                subtree_start += subtree_chunks;
+            }
+            const start = run_start orelse break;
+
+            level = level[(start - level_start) / chunks_per_cv ..][0 .. (run_end - start) / chunks_per_cv];
+            level_start = start;
+
+            const num_parents = level.len / 2;
+            try buildMerkleTreeLayerParallel(
+                level,
+                next_level_buf[0..num_parents],
+                self.key,
+                self.chunk.flags,
+                io,
+            );
+            level = next_level_buf[0..num_parents];
+            chunks_per_cv *= 2;
+            mem.swap([][8]u32, &next_level_buf, &spare_level_buf);
+        }
+
+        var fold_group: Io.Group = .init;
+        defer fold_group.cancel(io);
+
+        var chunk_idx: usize = 0;
+        while (chunk_idx < num_chunks) {
+            const subtree_chunks = nextSubtreeChunks(num_chunks - chunk_idx, base_counter + chunk_idx);
+            const fold: SubtreeFold = .{
+                .cvs = cvs[chunk_idx..][0..@min(subtree_chunks, max_fold_task_length)],
+                .key = self.key,
+                .flags = self.chunk.flags,
+            };
+
+            if (fold.cvs.len >= min_fold_task_length) {
+                fold_group.async(io, SubtreeFold.process, .{fold});
+            } else {
+                SubtreeFold.process(fold);
+            }
+            chunk_idx += subtree_chunks;
+        }
+        try fold_group.await(io);
+
+        chunk_idx = 0;
+        while (chunk_idx < num_chunks) {
+            const counter = base_counter + chunk_idx;
+            const subtree_chunks = nextSubtreeChunks(num_chunks - chunk_idx, counter);
+
+            self.pushCv(cvs[chunk_idx], counter);
+            if (subtree_chunks > 1) {
+                self.pushCv(cvs[chunk_idx + 1], counter + subtree_chunks / 2);
+            }
+            chunk_idx += subtree_chunks;
+        }
+
+        self.chunk.reset(self.key, base_counter + num_chunks);
+        const tail = inp[num_chunks * chunk_length ..];
+        if (tail.len > 0) {
+            self.chunk.update(tail);
             self.mergeCvStack(self.chunk.chunk_counter);
         }
     }
@@ -1486,4 +1588,25 @@ test "BLAKE3 parallel with partial trailing chunk" {
 
         try std.testing.expectEqualSlices(u8, &expected, &actual);
     }
+}
+
+test "BLAKE3 incremental parallel update" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+
+    const input = try allocator.alloc(u8, 16385 * 1024 + 1);
+    defer allocator.free(input);
+    for (input, 0..) |*byte, i| byte.* = @truncate(i);
+
+    var expected: [32]u8 = undefined;
+    Blake3.hash(input, &expected, .{});
+
+    const prefix_len = 2 * 1024 * 1024 + 1;
+    var hasher = Blake3.init(.{});
+    hasher.update(input[0..prefix_len]);
+    try hasher.updateParallel(input[prefix_len..], allocator, io);
+    var actual: [32]u8 = undefined;
+    hasher.final(&actual);
+
+    try std.testing.expectEqualSlices(u8, &expected, &actual);
 }
