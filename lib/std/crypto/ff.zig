@@ -621,6 +621,23 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
             return fe;
         }
 
+        /// Returns `true` if the element is 1
+        pub fn isOne(self: Self, x: Fe) bool {
+            if (x.montgomery) {
+                var o = self.one();
+                self.toMontgomery(&o) catch unreachable;
+                return x.eql(o);
+            }
+            return x.v.isOne();
+        }
+
+        /// Returns `true` if the element is equivalent to -1
+        pub fn isMinusOne(self: Self, x: Fe) bool {
+            var mo = self.subOne(self.zero);
+            if (x.montgomery) self.toMontgomery(&mo) catch unreachable;
+            return x.eql(mo);
+        }
+
         /// Creates a new modulus from a `Uint` value.
         /// The modulus must be odd and larger than 2.
         pub fn fromUint(v_: FeUint) InvalidModulusError!Self {
@@ -785,6 +802,11 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
                 _ = out.v.conditionalAddWithOverflow(underflow, self.v);
                 return out;
             }
+        }
+
+        /// Subtracts 1 from a field element
+        pub fn subOne(self: Self, x: Fe) Fe {
+            return self.sub(x, self.one());
         }
 
         /// Converts a field element to the Montgomery form.
@@ -1510,4 +1532,33 @@ test "Uint addition and multiply-add" {
     try testing.expectEqual(1, short.mulAddWithOverflow(high, two));
     try testing.expectEqual(1, short.limbs_len);
     try testing.expect(short.isOne());
+}
+
+test "field element constants and subOne" {
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
+
+    const M = Modulus(256);
+    const m = try M.fromPrimitive(u128, (1 << t_bits) + 1);
+    var one = m.one();
+    var minus_one = try M.Fe.fromPrimitive(u128, m, 1 << t_bits);
+    var other = try M.Fe.fromPrimitive(u8, m, 5);
+    for ([_]bool{ false, true }) |montgomery| {
+        if (montgomery) {
+            try m.toMontgomery(&one);
+            try m.toMontgomery(&minus_one);
+            try m.toMontgomery(&other);
+        }
+        try testing.expect(m.isOne(one));
+        try testing.expect(!m.isOne(minus_one));
+        try testing.expect(m.isMinusOne(minus_one));
+        try testing.expect(!m.isMinusOne(one));
+        const zero = m.subOne(one);
+        try testing.expect(zero.isZero());
+        try testing.expect(!m.isOne(zero));
+        try testing.expect(!m.isMinusOne(zero));
+        try testing.expect(m.isMinusOne(m.subOne(zero)));
+        var four = m.subOne(other);
+        if (montgomery) try m.fromMontgomery(&four);
+        try testing.expectEqual(4, try four.toPrimitive(u8));
+    }
 }
