@@ -1684,15 +1684,24 @@ fn constantPtr(cg: *CodeGen, ptr_val: Value) !Id {
     return cg.derivePtr(ptr_val.typeOf(zcu).ptrAddressSpace(zcu), derivation);
 }
 
+/// Emits the pointer type that one step of a pointer derivation results in, along with its
+/// pointee type. A derivation is the sequence of steps that builds a comptime-known pointer: a
+/// base address, such as a declaration, an anonymous value or an integer, followed by field,
+/// element and cast steps, each of which is lowered on its own.
+/// This function emits instructions on every call, and they stay in the module whether or not they
+/// are read, so it should only be called where the resulting type is used: a buffer struct emitted
+/// without `Block` fails validation even when nothing refers to it.
+fn derivedPtrType(cg: *CodeGen, @"addrspace": std.lang.AddressSpace, derivation: Value.PointerDerivation) !Id {
+    return cg.ptrType(
+        try cg.pointeeType(@"addrspace", derivation.elem_ty, false),
+        cg.storageClass(@"addrspace"),
+    );
+}
+
 fn derivePtr(cg: *CodeGen, @"addrspace": std.lang.AddressSpace, derivation: Value.PointerDerivation) !Id {
     const gpa = cg.gpa;
     const zcu = cg.zcu;
     const target = zcu.getTarget();
-
-    const result_ty_id = try cg.ptrType(
-        try cg.pointeeType(@"addrspace", derivation.elem_ty, false),
-        cg.storageClass(@"addrspace"),
-    );
 
     switch (derivation.addr) {
         .comptime_alloc, .comptime_field => unreachable,
@@ -1708,6 +1717,7 @@ fn derivePtr(cg: *CodeGen, @"addrspace": std.lang.AddressSpace, derivation: Valu
             // TODO: This can probably be an OpSpecConstantOp Bitcast, but
             // that is not implemented by Mesa yet. Therefore, just generate it
             // as a runtime operation.
+            const result_ty_id = try cg.derivedPtrType(@"addrspace", derivation);
             const result_ptr_id = cg.allocId();
             const value_id = try cg.constInt(.usize, int);
             try cg.body.emit(gpa, .OpConvertUToPtr, .{
@@ -1727,10 +1737,10 @@ fn derivePtr(cg: *CodeGen, @"addrspace": std.lang.AddressSpace, derivation: Valu
 
             if (ip.isFunctionType(nav_ty.toIntern())) {
                 if (is_extern) return try cg.resolveExternFn(nav_index);
-                return try cg.constUndef(result_ty_id);
+                return try cg.constUndef(try cg.derivedPtrType(@"addrspace", derivation));
             }
             if (!nav_ty.hasRuntimeBits(zcu) and nav_ty.zigTypeTag(zcu) != .spirv) {
-                return cg.constUndef(result_ty_id);
+                return cg.constUndef(try cg.derivedPtrType(@"addrspace", derivation));
             }
             if (!is_extern) {
                 return cg.todo("pointer to constant '{f}'", .{nav.fqn.fmt(ip)});
@@ -1739,19 +1749,19 @@ fn derivePtr(cg: *CodeGen, @"addrspace": std.lang.AddressSpace, derivation: Valu
             const as = nav.resolved.?.@"addrspace";
             assert(as != .generic);
 
-            const storage_class = cg.storageClass(as);
             const var_id = try cg.resolveNav(nav_index);
-            const nav_ty_id = try cg.resolveType(nav_ty, .indirect);
-            const decl_ptr_ty_id = try cg.ptrType(nav_ty_id, storage_class);
             if (cg.needsLayout(as, nav_ty)) {
                 try cg.block_var_ids.put(gpa, var_id, {});
             }
-
-            if (decl_ptr_ty_id == result_ty_id) return var_id;
             switch (target.os.tag) {
                 .vulkan, .opengl => return var_id,
                 else => {},
             }
+
+            const nav_ty_id = try cg.resolveType(nav_ty, .indirect);
+            const decl_ptr_ty_id = try cg.ptrType(nav_ty_id, cg.storageClass(as));
+            const result_ty_id = try cg.derivedPtrType(@"addrspace", derivation);
+            if (decl_ptr_ty_id == result_ty_id) return var_id;
 
             const casted_ptr_id = cg.allocId();
             try cg.body.emit(gpa, .OpBitcast, .{
@@ -1772,7 +1782,7 @@ fn derivePtr(cg: *CodeGen, @"addrspace": std.lang.AddressSpace, derivation: Valu
             }
 
             if (!uav_ty.hasRuntimeBits(zcu) and uav_ty.zigTypeTag(zcu) != .spirv) {
-                return cg.constUndef(result_ty_id);
+                return cg.constUndef(try cg.derivedPtrType(@"addrspace", derivation));
             }
 
             if (cg.storageClass(@"addrspace") != .function) {
@@ -1789,7 +1799,7 @@ fn derivePtr(cg: *CodeGen, @"addrspace": std.lang.AddressSpace, derivation: Valu
         .opt_payload => @panic("TODO"),
         .field => |derived| return cg.structFieldPtr(
             @"addrspace",
-            result_ty_id,
+            try cg.derivedPtrType(@"addrspace", derivation),
             derivation.elem_ty,
             derived.parent.elem_ty,
             try cg.derivePtr(@"addrspace", derived.parent.*),
@@ -1801,7 +1811,7 @@ fn derivePtr(cg: *CodeGen, @"addrspace": std.lang.AddressSpace, derivation: Valu
                 .many => .many_ptr,
             },
             @"addrspace",
-            derived.parent.elem_ty,
+            derivation.elem_ty,
             try cg.derivePtr(@"addrspace", derived.parent.*),
             try cg.constInt(.usize, derived.elem_index),
         ),
@@ -1841,12 +1851,13 @@ fn derivePtr(cg: *CodeGen, @"addrspace": std.lang.AddressSpace, derivation: Valu
                         const zero = try cg.constInt(.u32, 0);
                         const ids = try cg.id_scratch.addManyAsSlice(gpa, depth);
                         @memset(ids, zero);
-                        return cg.accessChainId(result_ty_id, parent_ptr_id, ids);
+                        return cg.accessChainId(try cg.derivedPtrType(@"addrspace", derivation), parent_ptr_id, ids);
                     } else {
                         return parent_ptr_id;
                     }
                 }
                 if (target.os.tag == .opencl) {
+                    const result_ty_id = try cg.derivedPtrType(@"addrspace", derivation);
                     const result_ptr_id = cg.allocId();
                     try cg.body.emit(gpa, .OpBitcast, .{
                         .id_result_type = result_ty_id,
