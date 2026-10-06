@@ -1164,7 +1164,10 @@ pub fn abiSize(ty: Type, zcu: *const Zcu) u64 {
                     std.zig.target.compilerRtFloatAbi(target, elem_ty.floatBits(target))
                 else
                     .hard) {
-                    .hard => @divCeil(vec.len * elem_ty.bitSize(zcu), 8),
+                    .hard => switch (vec.len * elem_ty.bitSize(zcu)) {
+                        0 => return 0,
+                        else => |bits| std.math.ceilPowerOfTwoAssert(u32, @intCast(@divCeil(bits, 8))),
+                    },
                     .soft => vec.len * elem_ty.abiSize(zcu),
                 },
                 .stage2_c, .stage2_wasm => vec.len * elem_ty.abiSize(zcu),
