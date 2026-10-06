@@ -1130,7 +1130,7 @@ const ct_protected = struct {
     fn eql(x: anytype, y: @TypeOf(x)) bool {
         const c1 = @subWithOverflow(x, y)[1];
         const c2 = @subWithOverflow(y, x)[1];
-        return @as(bool, @bitCast(1 - (c1 | c2)));
+        return @bitCast(1 - (c1 | c2));
     }
 
     // Compares two big integers in constant time, returning true if x < y.
@@ -1151,14 +1151,14 @@ const ct_protected = struct {
     fn mulWide(x: Limb, y: Limb) WideLimb {
         const half_bits = @typeInfo(Limb).int.bits / 2;
         const Half = @Int(.unsigned, half_bits);
-        const x0 = @as(Half, @truncate(x));
-        const x1 = @as(Half, @truncate(x >> half_bits));
-        const y0 = @as(Half, @truncate(y));
-        const y1 = @as(Half, @truncate(y >> half_bits));
+        const x0: Half = @truncate(x);
+        const x1: Half = @truncate(x >> half_bits);
+        const y0: Half = @truncate(y);
+        const y1: Half = @truncate(y >> half_bits);
         const w0 = math.mulWide(Half, x0, y0);
         const t = math.mulWide(Half, x1, y0) + (w0 >> half_bits);
         var w1: Limb = @as(Half, @truncate(t));
-        const w2 = @as(Half, @truncate(t >> half_bits));
+        const w2: Half = @truncate(t >> half_bits);
         w1 += math.mulWide(Half, x0, y1);
         const hi = math.mulWide(Half, x1, y1) + w2 + (w1 >> half_bits);
         const lo = x *% y;
@@ -1202,8 +1202,8 @@ const ct_unprotected = struct {
     fn mulWide(x: Limb, y: Limb) WideLimb {
         const wide = math.mulWide(Limb, x, y);
         return .{
-            .hi = @as(Limb, @truncate(wide >> @typeInfo(Limb).int.bits)),
-            .lo = @as(Limb, @truncate(wide)),
+            .hi = @truncate(wide >> @typeInfo(Limb).int.bits),
+            .lo = @truncate(wide),
         };
     }
 };
