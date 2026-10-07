@@ -1,6 +1,6 @@
 $TARGET = "x86_64-windows-gnu"
 $MCPU = "baseline"
-$PREFIX_PATH = "$($Env:USERPROFILE)\deps\zig+llvm+lld+clang-$TARGET-0.17.0-dev.203+073889523"
+$PREFIX_PATH = "$($Env:USERPROFILE)\deps\zig+llvm+lld+clang-$TARGET-0.18.0-dev.92+1e1964473"
 $ZIG = "$PREFIX_PATH\bin\zig.exe"
 $ZSF_MAX_RSS = if ($Env:ZSF_MAX_RSS) { $Env:ZSF_MAX_RSS } else { 0 }
 

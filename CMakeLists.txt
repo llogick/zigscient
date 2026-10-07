@@ -133,9 +133,9 @@ else()
     set(ZIG_SYSTEM_LIBCXX "stdc++" CACHE STRING "system libcxx name for build.zig")
 endif()
 
-find_package(llvm 22)
-find_package(clang 22)
-find_package(lld 22)
+find_package(llvm 23)
+find_package(clang 23)
+find_package(lld 23)
 
 if(ZIG_STATIC_ZLIB)
     if (MSVC)
@@ -614,9 +614,6 @@ else()
   set(ZIG_WASM2C_COMPILE_FLAGS "-std=c99")
   set(ZIG1_COMPILE_FLAGS "-std=c99 -Oz -fno-strict-aliasing")
   set(ZIG2_COMPILE_FLAGS "-std=c99 -Oz -fno-sanitize=undefined -fno-stack-protector -fno-strict-aliasing")
-  if(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND ZIG_HOST_TARGET_ARCH STREQUAL "s390x")
-    string(REPLACE -Oz -O0 ZIG2_COMPILE_FLAGS "${ZIG2_COMPILE_FLAGS}") # llvm 22 assertion failure
-  endif()
   # Must match the condition in build.zig.
   if(ZIG_HOST_TARGET_ARCH MATCHES "^(arm|thumb)(eb)?$" OR ZIG_HOST_TARGET_ARCH EQUAL "hexagon" OR ZIG_HOST_TARGET_ARCH MATCHES "^powerpc(64)?(le)?$")
     set(ZIG1_COMPILE_FLAGS "${ZIG1_COMPILE_FLAGS} -ffunction-sections -fdata-sections")

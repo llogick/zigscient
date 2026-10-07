@@ -234,7 +234,6 @@ test "vector cmp f32" {
     if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch.isArm()) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_c and builtin.cpu.arch.isAarch64() and builtin.os.tag == .netbsd) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/36765
     if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch.isAarch64() and builtin.os.tag == .netbsd) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/36765
-    if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch.isPowerPC64()) return error.SkipZigTest; // https://github.com/llvm/llvm-project/issues/214198
     if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch == .hexagon) return error.SkipZigTest;
 
     try testCmpVector(f32);
@@ -258,7 +257,6 @@ test "vector cmp f128" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch.isPowerPC64()) return error.SkipZigTest; // https://github.com/llvm/llvm-project/issues/214198
     if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch == .hexagon) return error.SkipZigTest;
 
     try testCmpVector(f128);
@@ -268,7 +266,6 @@ test "vector cmp f128" {
 test "vector cmp f80/c_longdouble" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch == .hexagon) return error.SkipZigTest;
-    if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch.isPowerPC64()) return error.SkipZigTest; // https://github.com/llvm/llvm-project/issues/214198
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_spirv) return error.SkipZigTest;
 

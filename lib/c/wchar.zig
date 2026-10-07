@@ -14,7 +14,6 @@ comptime {
         symbol(&wmemcpy, "wmemcpy");
         symbol(&wmemmove, "wmemmove");
         symbol(&wmemset, "wmemset");
-        symbol(&wcslen, "wcslen");
         symbol(&wcsnlen, "wcsnlen");
         symbol(&wcscmp, "wcscmp");
         symbol(&wcsncmp, "wcsncmp");
@@ -79,10 +78,6 @@ fn wmemmove(dest: [*]wchar_t, src: [*]const wchar_t, len: usize) callconv(.c) [*
 fn wmemset(dest: [*]wchar_t, elem: wchar_t, len: usize) callconv(.c) [*]wchar_t {
     @memset(dest[0..len], elem);
     return dest;
-}
-
-fn wcslen(str: [*:0]const wchar_t) callconv(.c) usize {
-    return std.mem.len(str);
 }
 
 fn wcsnlen(str: [*:0]const wchar_t, max: usize) callconv(.c) usize {
@@ -199,7 +194,7 @@ fn wcswcs(noalias haystack: [*:0]const wchar_t, noalias needle: [*:0]const wchar
 }
 
 fn wcsdup(str: [*:0]const wchar_t) callconv(.c) ?[*:0]wchar_t {
-    const len = wcslen(str);
+    const len = c.wcslen(str);
     const size = (len + 1) * @sizeOf(wchar_t);
     const d_opaque = c.malloc(size) orelse return null;
     const d: [*]wchar_t = @ptrCast(@alignCast(d_opaque));

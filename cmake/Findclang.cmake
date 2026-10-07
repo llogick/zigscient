@@ -17,10 +17,10 @@ find_path(CLANG_INCLUDE_DIRS NAMES clang/Frontend/ASTUnit.h
 if(${LLVM_LINK_MODE} STREQUAL "shared")
   find_library(CLANG_LIBRARIES
     NAMES
-      libclang-cpp.so.22
-      libclang-cpp.so.22.1
-      clang-cpp-22.0
-      clang-cpp220
+      libclang-cpp.so.23
+      libclang-cpp.so.23.1
+      clang-cpp-23.0
+      clang-cpp230
       clang-cpp
     NAMES_PER_DIR
     HINTS "${LLVM_LIBDIRS}"
@@ -48,8 +48,13 @@ else()
   FIND_AND_ADD_CLANG_LIB(clangStaticAnalyzerCheckers)
   FIND_AND_ADD_CLANG_LIB(clangStaticAnalyzerCore)
   FIND_AND_ADD_CLANG_LIB(clangCrossTU)
-  FIND_AND_ADD_CLANG_LIB(clangFrontend)
   FIND_AND_ADD_CLANG_LIB(clangDriver)
+  FIND_AND_ADD_CLANG_LIB(clangScalableStaticAnalysisAnalyses)
+  FIND_AND_ADD_CLANG_LIB(clangScalableStaticAnalysisCore)
+  FIND_AND_ADD_CLANG_LIB(clangScalableStaticAnalysisFrontend)
+  FIND_AND_ADD_CLANG_LIB(clangScalableStaticAnalysisSourceTransformation)
+  FIND_AND_ADD_CLANG_LIB(clangDependencyScanning)
+  FIND_AND_ADD_CLANG_LIB(clangFrontend)
   FIND_AND_ADD_CLANG_LIB(clangOptions)
   FIND_AND_ADD_CLANG_LIB(clangSerialization)
   FIND_AND_ADD_CLANG_LIB(clangSema)
@@ -59,6 +64,7 @@ else()
   FIND_AND_ADD_CLANG_LIB(clangParse)
   FIND_AND_ADD_CLANG_LIB(clangAPINotes)
   FIND_AND_ADD_CLANG_LIB(clangEdit)
+  FIND_AND_ADD_CLANG_LIB(clangUnifiedSymbolResolution)
   FIND_AND_ADD_CLANG_LIB(clangLex)
   FIND_AND_ADD_CLANG_LIB(clangRewriteFrontend)
   FIND_AND_ADD_CLANG_LIB(clangRewrite)

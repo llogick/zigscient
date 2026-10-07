@@ -74,6 +74,7 @@ pub fn detectNativeCpuAndFeatures(arch: Target.Cpu.Arch) Target.Cpu {
         if (switch (vendor) {
             0x756e6547 => detectIntelProcessor(&cpu, family, model, brand_id),
             0x68747541 => detectAmdProcessor(&cpu, family, model),
+            0x6f677948 => detectHygonProcessor(family, model),
             else => null,
         }) |m| b: {
             // Some hypervisors are evil liars and will operate in long mode while identifying as a
@@ -209,7 +210,23 @@ fn detectAmdProcessor(cpu: *const Target.Cpu, family: u32, model: u32) ?*const T
             0x10...0x1f, 0x60...0x6f, 0x70...0x7f, 0xa0...0xaf => &Target.x86.cpu.znver4,
             else => &Target.x86.cpu.znver3,
         },
-        26 => &Target.x86.cpu.znver5,
+        26 => switch (model) {
+            0x50...0x5f, 0x80...0xcf, 0xd8...0xe7 => &Target.x86.cpu.znver6,
+            else => &Target.x86.cpu.znver5,
+        },
+        else => null,
+    };
+}
+
+fn detectHygonProcessor(family: u32, model: u32) ?*const Target.Cpu.Model {
+    return switch (family) {
+        24 => switch (model) {
+            4 => &Target.x86.cpu.c86_4g_m4,
+            6 => &Target.x86.cpu.c86_4g_m6,
+            7 => &Target.x86.cpu.c86_4g_m7,
+            8 => &Target.x86.cpu.c86_4g_m8,
+            else => null,
+        },
         else => null,
     };
 }
@@ -340,9 +357,11 @@ fn detectNativeFeatures(cpu: *Target.Cpu) void {
 
         // AMD uses a different bit for prefetchi.
         setFeature(cpu, .prefetchi, bit(leaf.eax, 20));
+        setFeature(cpu, .avx512bmm, bit(leaf.eax, 23) and has_avx512_save);
     } else {
         for ([_]Target.x86.Feature{
             .prefetchi,
+            .avx512bmm,
         }) |feat| {
             setFeature(cpu, feat, false);
         }
@@ -445,6 +464,7 @@ fn detectNativeFeatures(cpu: *Target.Cpu) void {
             setFeature(cpu, .nf, bit(leaf.edx, 21) and has_apx_save);
             setFeature(cpu, .cf, bit(leaf.edx, 21) and has_apx_save);
             setFeature(cpu, .zu, bit(leaf.edx, 21) and has_apx_save);
+            setFeature(cpu, .jmpabs, bit(leaf.edx, 21) and has_apx_save);
 
             break :has_avx10 bit(leaf.edx, 19);
         } else {
@@ -474,6 +494,7 @@ fn detectNativeFeatures(cpu: *Target.Cpu) void {
                 .nf,
                 .cf,
                 .zu,
+                .jmpabs,
             }) |feat| {
                 setFeature(cpu, feat, false);
             }
@@ -559,6 +580,7 @@ fn detectNativeFeatures(cpu: *Target.Cpu) void {
             .nf,
             .cf,
             .zu,
+            .jmpabs,
         }) |feat| {
             setFeature(cpu, feat, false);
         }

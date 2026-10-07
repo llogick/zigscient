@@ -82,6 +82,7 @@ const libcxx_base_files = [_][]const u8{
     "src/support/win32/locale_win32.cpp",
     "src/support/win32/support.cpp",
     "src/system_error.cpp",
+    "src/text_encoding.cpp",
     "src/typeinfo.cpp",
     "src/valarray.cpp",
     "src/variant.cpp",
@@ -214,7 +215,7 @@ pub fn buildLibCxx(comp: *Compilation, prog_node: std.Progress.Node) BuildError!
         try cflags.append("-faligned-allocation");
 
         try cflags.append("-nostdinc++");
-        try cflags.append("-std=c++23");
+        try cflags.append("-std=c++26");
 
         // These depend on only the zig lib directory file path, which is
         // purposefully either in the cache or not in the cache. The decision
@@ -402,7 +403,7 @@ pub fn buildLibCxxAbi(comp: *Compilation, prog_node: std.Progress.Node) BuildErr
 
         try cflags.append("-nostdinc++");
         try cflags.append("-fstrict-aliasing");
-        try cflags.append("-std=c++23");
+        try cflags.append("-std=c++26");
 
         // These depend on only the zig lib directory file path, which is
         // purposefully either in the cache or not in the cache. The decision

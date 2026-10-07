@@ -36,6 +36,9 @@ pub const Feature = enum {
     ptx87,
     ptx88,
     ptx90,
+    ptx91,
+    ptx92,
+    ptx93,
     sm_100,
     sm_100a,
     sm_100f,
@@ -240,6 +243,21 @@ pub const all_features = blk: {
     result[@backingInt(Feature.ptx90)] = .{
         .llvm_name = "ptx90",
         .description = "Use PTX version 90",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.ptx91)] = .{
+        .llvm_name = "ptx91",
+        .description = "Use PTX version 91",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.ptx92)] = .{
+        .llvm_name = "ptx92",
+        .description = "Use PTX version 92",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.ptx93)] = .{
+        .llvm_name = "ptx93",
+        .description = "Use PTX version 93",
         .dependencies = featureSet(&[_]Feature{}),
     };
     result[@backingInt(Feature.sm_100)] = .{

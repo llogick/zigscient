@@ -19,6 +19,7 @@ pub const Feature = enum {
     nontrapping_bulk_memory_len0,
     nontrapping_fptoint,
     reference_types,
+    relaxed_atomics,
     relaxed_simd,
     sign_ext,
     simd128,
@@ -60,7 +61,10 @@ pub const all_features = blk: {
     result[@backingInt(Feature.exception_handling)] = .{
         .llvm_name = "exception-handling",
         .description = "Enable Wasm exception handling",
-        .dependencies = featureSet(&[_]Feature{}),
+        .dependencies = featureSet(&[_]Feature{
+            .multivalue,
+            .reference_types,
+        }),
     };
     result[@backingInt(Feature.extended_const)] = .{
         .llvm_name = "extended-const",
@@ -75,7 +79,9 @@ pub const all_features = blk: {
     result[@backingInt(Feature.gc)] = .{
         .llvm_name = "gc",
         .description = "Enable wasm gc",
-        .dependencies = featureSet(&[_]Feature{}),
+        .dependencies = featureSet(&[_]Feature{
+            .reference_types,
+        }),
     };
     result[@backingInt(Feature.multimemory)] = .{
         .llvm_name = "multimemory",
@@ -110,6 +116,11 @@ pub const all_features = blk: {
         .dependencies = featureSet(&[_]Feature{
             .call_indirect_overlong,
         }),
+    };
+    result[@backingInt(Feature.relaxed_atomics)] = .{
+        .llvm_name = "relaxed-atomics",
+        .description = "Enable relaxed-atomics proposal",
+        .dependencies = featureSet(&[_]Feature{}),
     };
     result[@backingInt(Feature.relaxed_simd)] = .{
         .llvm_name = "relaxed-simd",
@@ -156,10 +167,8 @@ pub const cpu = struct {
             .fp16,
             .gc,
             .multimemory,
-            .multivalue,
             .mutable_globals,
             .nontrapping_fptoint,
-            .reference_types,
             .relaxed_simd,
             .sign_ext,
             .simd128,

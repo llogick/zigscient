@@ -473,7 +473,6 @@ bool CFI_Parser<A>::parseFDEInstructions(
     pint_t pcoffset;
   };
 
-  // zig patch: https://github.com/llvm/llvm-project/issues/194228
   ParseInfo parseInfoArray[] = {
       {cieInfo.cieInstructions, cieInfo.cieStart + cieInfo.cieLength,
        (pint_t)(-1)},

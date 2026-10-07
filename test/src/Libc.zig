@@ -45,8 +45,9 @@ pub fn addTarget(libc: *const Libc, target: std.Build.ResolvedTarget) void {
     } else false;
     if (!want_debug) return;
 
+    const triple_txt = target.query.zigTriple(libc.b.allocator) catch @panic("OOM");
+
     if (libc.options.test_target_filters.len > 0) {
-        const triple_txt = target.query.zigTriple(libc.b.allocator) catch @panic("OOM");
         for (libc.options.test_target_filters) |filter| {
             if (std.mem.find(u8, triple_txt, filter)) |_| break;
         } else return;
@@ -75,7 +76,7 @@ pub fn addTarget(libc: *const Libc, target: std.Build.ResolvedTarget) void {
     });
 
     for (libc.test_cases.items) |*test_case| {
-        const annotated_case_name = libc.b.fmt("run libc-test {s}", .{test_case.name});
+        const annotated_case_name = libc.b.fmt("run libc-test {s} ({s})", .{ test_case.name, triple_txt });
         for (libc.options.test_filters) |test_filter| {
             if (std.mem.find(u8, annotated_case_name, test_filter)) |_| break;
         } else if (libc.options.test_filters.len > 0) continue;

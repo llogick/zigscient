@@ -13,6 +13,7 @@ pub const Feature = enum {
     dspr2,
     dspr3,
     eva,
+    fix_r5900,
     fp64,
     fpxx,
     ginv,
@@ -52,6 +53,7 @@ pub const Feature = enum {
     notraps,
     p5600,
     ptr64,
+    r5900,
     single_float,
     soft_float,
     strict_align,
@@ -119,6 +121,11 @@ pub const all_features = blk: {
     result[@backingInt(Feature.eva)] = .{
         .llvm_name = "eva",
         .description = "Mips EVA ASE",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.fix_r5900)] = .{
+        .llvm_name = "fix-r5900",
+        .description = "Enable R5900 short loop erratum fix",
         .dependencies = featureSet(&[_]Feature{}),
     };
     result[@backingInt(Feature.fp64)] = .{
@@ -372,6 +379,15 @@ pub const all_features = blk: {
         .description = "Pointers are 64-bit wide",
         .dependencies = featureSet(&[_]Feature{}),
     };
+    result[@backingInt(Feature.r5900)] = .{
+        .llvm_name = "r5900",
+        .description = "R5900 (PS2 Emotion Engine) Support",
+        .dependencies = featureSet(&[_]Feature{
+            .fix_r5900,
+            .mips3,
+            .single_float,
+        }),
+    };
     result[@backingInt(Feature.single_float)] = .{
         .llvm_name = "single-float",
         .description = "Only supports single precision float",
@@ -594,6 +610,13 @@ pub const cpu = struct {
             .mips1,
             .notraps,
             .soft_float,
+        }),
+    };
+    pub const r5900: CpuModel = .{
+        .name = "r5900",
+        .llvm_name = "r5900",
+        .features = featureSet(&[_]Feature{
+            .r5900,
         }),
     };
 };

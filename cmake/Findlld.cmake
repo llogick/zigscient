@@ -9,23 +9,23 @@
 find_path(LLD_INCLUDE_DIRS NAMES lld/Common/Driver.h
     HINTS ${LLVM_INCLUDE_DIRS}
     PATHS
-        /usr/lib/llvm-22/include
-        /usr/local/llvm220/include
-        /usr/local/llvm22/include
-        /usr/local/opt/lld@22/include
-        /opt/homebrew/opt/lld@22/include
-        /home/linuxbrew/.linuxbrew/opt/lld@22/include
+        /usr/lib/llvm-23/include
+        /usr/local/llvm230/include
+        /usr/local/llvm23/include
+        /usr/local/opt/lld@23/include
+        /opt/homebrew/opt/lld@23/include
+        /home/linuxbrew/.linuxbrew/opt/lld@23/include
         /mingw64/include)
 
-find_library(LLD_LIBRARY NAMES lld-22.0 lld220 lld NAMES_PER_DIR
+find_library(LLD_LIBRARY NAMES lld-23.0 lld230 lld NAMES_PER_DIR
     HINTS ${LLVM_LIBDIRS}
     PATHS
-        /usr/lib/llvm-22/lib
-        /usr/local/llvm220/lib
-        /usr/local/llvm22/lib
-        /usr/local/opt/lld@22/lib
-        /opt/homebrew/opt/lld@22/lib
-        /home/linuxbrew/.linuxbrew/opt/lld@22/lib
+        /usr/lib/llvm-23/lib
+        /usr/local/llvm230/lib
+        /usr/local/llvm23/lib
+        /usr/local/opt/lld@23/lib
+        /opt/homebrew/opt/lld@23/lib
+        /home/linuxbrew/.linuxbrew/opt/lld@23/lib
 )
 if(EXISTS ${LLD_LIBRARY})
     set(LLD_LIBRARIES ${LLD_LIBRARY})
@@ -36,12 +36,12 @@ else()
             HINTS ${LLVM_LIBDIRS}
             PATHS
                 ${LLD_LIBDIRS}
-                /usr/lib/llvm-22/lib
-                /usr/local/llvm220/lib
-                /usr/local/llvm22/lib
-                /usr/local/opt/lld@22/lib
-                /opt/homebrew/opt/lld@22/lib
-                /home/linuxbrew/.linuxbrew/opt/lld@22/lib
+                /usr/lib/llvm-23/lib
+                /usr/local/llvm230/lib
+                /usr/local/llvm23/lib
+                /usr/local/opt/lld@23/lib
+                /opt/homebrew/opt/lld@23/lib
+                /home/linuxbrew/.linuxbrew/opt/lld@23/lib
                 /mingw64/lib
                 /c/msys64/mingw64/lib
                 c:/msys64/mingw64/lib)

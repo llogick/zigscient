@@ -4753,6 +4753,8 @@ pub fn callconvSupported(zcu: *Zcu, cc: std.lang.CallingConvention) union(enum) 
                 .avr_interrupt,
                 .avr_signal,
                 .ez80_tiflags,
+                .loongarch32_preserve_none,
+                .loongarch64_preserve_none,
                 .naked,
                 => true, // incoming stack alignment supported
 

@@ -131,8 +131,7 @@ pub fn classifyWindows(init_ty: Type, zcu: *Zcu, target: *const std.Target, ctx:
         .float => switch (ty.floatBits(target)) {
             else => unreachable,
             16, 32, 64 => if (target.cpu.has(.x86, .soft_float)) .integer else .sse,
-            80 => .memory,
-            128 => if (target.cpu.has(.x86, .soft_float)) .memory else .win_i128,
+            80, 128 => .memory,
         },
         .vector => {
             const len = ty.vectorLen(zcu);

@@ -4189,6 +4189,9 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                     .riscv32_ilp32_v,
                     => .LLVM_RISCVVectorCall,
 
+                    .loongarch32_preserve_none => .LLVM_PreserveNone,
+                    .loongarch64_preserve_none => .LLVM_PreserveNone,
+
                     .m68k_rtd => .LLVM_M68kRTD,
 
                     .sh_renesas => .GNU_renesas_sh,

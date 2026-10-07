@@ -231,6 +231,7 @@ const targets = [_]std.Target.Query{
     .{ .cpu_arch = .riscv64, .os_tag = .fuchsia, .abi = .none },
     .{ .cpu_arch = .riscv64, .os_tag = .haiku, .abi = .none },
     .{ .cpu_arch = .riscv64, .os_tag = .hermit, .abi = .none },
+    .{ .cpu_arch = .riscv64, .os_tag = .hurd, .abi = .gnu },
     .{ .cpu_arch = .riscv64, .os_tag = .linux, .abi = .android },
     .{ .cpu_arch = .riscv64, .os_tag = .linux, .abi = .gnu },
     .{ .cpu_arch = .riscv64, .os_tag = .linux, .abi = .musl },

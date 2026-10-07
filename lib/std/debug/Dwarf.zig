@@ -1597,7 +1597,6 @@ pub fn spRegNum(arch: std.Target.Cpu.Arch) u16 {
 /// library has a working implementation of unwinding for the current target.
 pub fn supportsUnwinding(target: *const std.Target) bool {
     return switch (target.cpu.arch) {
-        .amdgcn,
         .nvptx,
         .nvptx64,
         .spirv32,

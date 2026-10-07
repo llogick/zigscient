@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const fmt = std.fmt;
 const testing = std.testing;
@@ -7,6 +8,8 @@ const Secp256k1 = @import("../secp256k1.zig").Secp256k1;
 const lambda: u256 = 0x5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72;
 
 test "secp256k1 ECDH key exchange" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const io = testing.io;
     const dha = Secp256k1.scalar.random(io, .little);
     const dhb = Secp256k1.scalar.random(io, .little);
@@ -18,6 +21,8 @@ test "secp256k1 ECDH key exchange" {
 }
 
 test "secp256k1 ECDH key exchange including public multiplication" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const io = testing.io;
     const dha = Secp256k1.scalar.random(io, .little);
     const dhb = Secp256k1.scalar.random(io, .little);
@@ -29,6 +34,8 @@ test "secp256k1 ECDH key exchange including public multiplication" {
 }
 
 test "secp256k1 point from affine coordinates" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const xh = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
     const yh = "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
     var xs: [32]u8 = undefined;
@@ -40,6 +47,8 @@ test "secp256k1 point from affine coordinates" {
 }
 
 test "secp256k1 test vectors" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const expected = [_][]const u8{
         "0000000000000000000000000000000000000000000000000000000000000000",
         "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
@@ -81,6 +90,8 @@ test "secp256k1 test vectors - doubling" {
 }
 
 test "secp256k1 compressed sec1 encoding/decoding" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const io = testing.io;
     const p = Secp256k1.random(io);
     const s = p.toCompressedSec1();
@@ -89,6 +100,8 @@ test "secp256k1 compressed sec1 encoding/decoding" {
 }
 
 test "secp256k1 uncompressed sec1 encoding/decoding" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const io = testing.io;
     const p = Secp256k1.random(io);
     const s = p.toUncompressedSec1();
@@ -104,6 +117,8 @@ test "secp256k1 public key is the neutral element" {
 }
 
 test "secp256k1 public key is the neutral element (public verification)" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const io = testing.io;
     const n = Secp256k1.scalar.Scalar.zero.toBytes(.little);
     const p = Secp256k1.random(io);
@@ -131,6 +146,8 @@ test "secp256k1 uncompressed SEC1 must not accept infinity" {
 }
 
 test "secp256k1 double base multiplication" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const p1 = Secp256k1.basePoint;
     const p2 = Secp256k1.basePoint.dbl();
     const s1: [32]u8 = @splat(0x01);
@@ -141,6 +158,8 @@ test "secp256k1 double base multiplication" {
 }
 
 test "secp256k1 public multiplication" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const io = testing.io;
     const n = Secp256k1.scalar.field_order;
     const p = Secp256k1.random(io);

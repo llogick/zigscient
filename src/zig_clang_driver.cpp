@@ -55,6 +55,10 @@
 #include <optional>
 #include <set>
 #include <system_error>
+// zig patch: don't rely on LLVM_ON_UNIX that comes from the build system
+#if !defined(_WIN32)
+#include <signal.h>
+#endif
 
 using namespace clang;
 using namespace clang::driver;
@@ -223,6 +227,7 @@ static int ExecuteCC1Tool(SmallVectorImpl<const char *> &ArgV,
     return cc1_main(ArrayRef(ArgV).slice(1), ArgV[0], GetExecutablePathVP);
   if (Tool == "-cc1as")
     return cc1as_main(ArrayRef(ArgV).slice(2), ArgV[0], GetExecutablePathVP);
+  // zig patch: no -cc1gen-reproducer
   // Reject unknown tools.
   llvm::errs()
       << "error: unknown integrated tool '" << Tool << "'. "
@@ -230,11 +235,13 @@ static int ExecuteCC1Tool(SmallVectorImpl<const char *> &ArgV,
   return 1;
 }
 
+// zig patch: use custom entry point
 static int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContext) {
   noteBottomOfStack();
   llvm::setBugReportMsg("PLEASE submit a bug report to " BUG_REPORT_URL
-                        " and include the crash backtrace, preprocessed "
-                        "source, and associated run script.\n");
+                        " and include the crash backtrace and"
+                        " dumped files.\n");
+  // zig patch: fix argv offset
   size_t argv_offset = (strcmp(Argv[1], "-cc1") == 0 || strcmp(Argv[1], "-cc1as") == 0) ? 0 : 1;
   SmallVector<const char *, 256> Args(Argv + argv_offset, Argv + Argc);
 
@@ -373,7 +380,8 @@ static int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContex
   if (!UseNewCC1Process) {
     TheDriver.CC1Main = ExecuteCC1WithContext;
     // Ensure the CC1Command actually catches cc1 crashes
-    llvm::CrashRecoveryContext::Enable();
+    llvm::CrashRecoveryContext::Enable(
+        /*NeedsPOSIXUtilitySignalHandling=*/true);
   }
 
   std::unique_ptr<Compilation> C(TheDriver.BuildCompilation(Args));
@@ -402,6 +410,7 @@ static int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContex
   Driver::CommandStatus CommandStatus = Driver::CommandStatus::Ok;
   // Pretend the first command failed if ReproStatus is Always.
   const Command *FailingCommand = nullptr;
+  int CommandRes = 0;
   if (!C->getJobs().empty())
     FailingCommand = &*C->getJobs().begin();
   if (C && !C->containsError()) {
@@ -409,7 +418,7 @@ static int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContex
     Res = TheDriver.ExecuteCompilation(*C, FailingCommands);
 
     for (const auto &P : FailingCommands) {
-      int CommandRes = P.first;
+      CommandRes = P.first;
       FailingCommand = P.second;
       if (!Res)
         Res = CommandRes;
@@ -421,8 +430,8 @@ static int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContex
       IsCrash = CommandRes < 0 || CommandRes == 70;
 #ifdef _WIN32
       IsCrash |= CommandRes == 3;
-#endif
-#if LLVM_ON_UNIX
+// zig patch: don't rely on LLVM_ON_UNIX that comes from the build system
+#else
       // When running in integrated-cc1 mode, the CrashRecoveryContext returns
       // the same codes as if the program crashed. See section "Exit Status for
       // Commands":
@@ -445,8 +454,6 @@ static int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContex
                                                   *C, *FailingCommand))
     Res = 1;
 
-  Diags.getClient()->finish();
-
   if (!UseNewCC1Process && IsCrash) {
     // When crashing in -fintegrated-cc1 mode, bury the timer pointers, because
     // the internal linked list might point to already released stack frames.
@@ -464,6 +471,28 @@ static int clang_main(int Argc, char **Argv, const llvm::ToolContext &ToolContex
   // propagated.
   if (Res < 0)
     Res = 1;
+// zig patch: don't rely on LLVM_ON_UNIX that comes from the build system
+#else
+  // On Unix, signals are represented by return codes of 128 plus the signal
+  // number. If the return code indicates it was from a signal handler, raise
+  // the signal so that the exit code includes the signal number, as required
+  // by POSIX. Return code 255 is excluded because some tools, such as
+  // llvm-ifs, exit with code 255 (-1) on failure.
+  if (CommandRes > 128 && CommandRes != 255) {
+    llvm::sys::unregisterHandlers();
+    // DiagnosticConsumer must be always destroyed.
+    Diags.getClient()->~DiagnosticConsumer();
+    raise(CommandRes - 128);
+  }
+  // When cc1 runs out-of-process (CLANG_SPAWN_CC1), ExecuteAndWait returns -2
+  // if the child was killed by a signal. The signal number is not preserved,
+  // so resignal with SIGABRT to ensure the driver exits via signal.
+  if (CommandRes == -2) {
+    llvm::sys::unregisterHandlers();
+    // DiagnosticConsumer must be always destroyed.
+    Diags.getClient()->~DiagnosticConsumer();
+    raise(SIGABRT);
+  }
 #endif
 
   // If we have multiple failing commands, we return the result of the first

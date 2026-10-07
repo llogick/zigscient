@@ -142,6 +142,8 @@ pub const CType = union(enum) {
 
                 .x86_64_preserve_none,
                 .aarch64_preserve_none,
+                .loongarch32_preserve_none,
+                .loongarch64_preserve_none,
                 => .preserve_none,
 
                 .aarch64_vfabi => .aarch64_vector_pcs,

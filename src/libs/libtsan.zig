@@ -350,6 +350,7 @@ fn addCcArgs(target: *const std.Target, args: *std.array_list.Managed([]const u8
 }
 
 const tsan_sources = [_][]const u8{
+    "tsan_adaptive_delay.cpp",
     "tsan_debugging.cpp",
     "tsan_external.cpp",
     "tsan_fd.cpp",

@@ -106,7 +106,9 @@ namespace {
 
 #endif // HAVE___CXA_THREAD_ATEXIT_IMPL
 
-#if defined(__linux__) || defined(__Fuchsia__)
+// zig patch: haiku support
+// zig patch: serenity support
+#if defined(__linux__) || defined(__Fuchsia__) || defined(__HAIKU__) || defined(__serenity__)
 extern "C" {
 
   _LIBCXXABI_FUNC_VIS int __cxa_thread_atexit(Dtor dtor, void* obj, void* dso_symbol) throw() {

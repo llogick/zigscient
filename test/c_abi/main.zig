@@ -18045,6 +18045,9 @@ const preserve_none_cc: ?std.lang.CallingConvention = if (builtin.zig_backend !=
 else switch (builtin.cpu.arch) {
     .x86_64 => .{ .x86_64_preserve_none = .{} },
     .aarch64, .aarch64_be => .{ .aarch64_preserve_none = .{} },
+    // Supported in LLVM but not yet wired up in Clang.
+    // .loongarch32 => .{ .loongarch32_preserve_none = .{} },
+    // .loongarch64 => .{ .loongarch64_preserve_none = .{} },
     else => null,
 };
 

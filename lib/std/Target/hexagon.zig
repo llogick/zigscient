@@ -34,7 +34,41 @@ pub const Feature = enum {
     nvs,
     packets,
     prev65,
+    reserved_r10,
+    reserved_r11,
+    reserved_r12,
+    reserved_r13,
+    reserved_r14,
+    reserved_r15,
+    reserved_r16,
+    reserved_r17,
+    reserved_r18,
     reserved_r19,
+    reserved_r20,
+    reserved_r21,
+    reserved_r22,
+    reserved_r23,
+    reserved_r24,
+    reserved_r25,
+    reserved_r26,
+    reserved_r27,
+    reserved_r28,
+    reserved_r6,
+    reserved_r7,
+    reserved_r8,
+    reserved_r9,
+    scs_reg_r16,
+    scs_reg_r17,
+    scs_reg_r18,
+    scs_reg_r19,
+    scs_reg_r20,
+    scs_reg_r21,
+    scs_reg_r22,
+    scs_reg_r23,
+    scs_reg_r24,
+    scs_reg_r25,
+    scs_reg_r26,
+    scs_reg_r27,
     small_data,
     tinycore,
     v5,
@@ -241,9 +275,179 @@ pub const all_features = blk: {
         .description = "Support features deprecated in v65",
         .dependencies = featureSet(&[_]Feature{}),
     };
+    result[@backingInt(Feature.reserved_r10)] = .{
+        .llvm_name = "reserved-r10",
+        .description = "Reserve register R10",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r11)] = .{
+        .llvm_name = "reserved-r11",
+        .description = "Reserve register R11",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r12)] = .{
+        .llvm_name = "reserved-r12",
+        .description = "Reserve register R12",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r13)] = .{
+        .llvm_name = "reserved-r13",
+        .description = "Reserve register R13",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r14)] = .{
+        .llvm_name = "reserved-r14",
+        .description = "Reserve register R14",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r15)] = .{
+        .llvm_name = "reserved-r15",
+        .description = "Reserve register R15",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r16)] = .{
+        .llvm_name = "reserved-r16",
+        .description = "Reserve register R16",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r17)] = .{
+        .llvm_name = "reserved-r17",
+        .description = "Reserve register R17",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r18)] = .{
+        .llvm_name = "reserved-r18",
+        .description = "Reserve register R18",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
     result[@backingInt(Feature.reserved_r19)] = .{
         .llvm_name = "reserved-r19",
         .description = "Reserve register R19",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r20)] = .{
+        .llvm_name = "reserved-r20",
+        .description = "Reserve register R20",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r21)] = .{
+        .llvm_name = "reserved-r21",
+        .description = "Reserve register R21",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r22)] = .{
+        .llvm_name = "reserved-r22",
+        .description = "Reserve register R22",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r23)] = .{
+        .llvm_name = "reserved-r23",
+        .description = "Reserve register R23",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r24)] = .{
+        .llvm_name = "reserved-r24",
+        .description = "Reserve register R24",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r25)] = .{
+        .llvm_name = "reserved-r25",
+        .description = "Reserve register R25",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r26)] = .{
+        .llvm_name = "reserved-r26",
+        .description = "Reserve register R26",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r27)] = .{
+        .llvm_name = "reserved-r27",
+        .description = "Reserve register R27",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r28)] = .{
+        .llvm_name = "reserved-r28",
+        .description = "Reserve register R28",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r6)] = .{
+        .llvm_name = "reserved-r6",
+        .description = "Reserve register R6",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r7)] = .{
+        .llvm_name = "reserved-r7",
+        .description = "Reserve register R7",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r8)] = .{
+        .llvm_name = "reserved-r8",
+        .description = "Reserve register R8",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.reserved_r9)] = .{
+        .llvm_name = "reserved-r9",
+        .description = "Reserve register R9",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r16)] = .{
+        .llvm_name = "scs-reg-r16",
+        .description = "Use register R16 as the shadow call stack pointer",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r17)] = .{
+        .llvm_name = "scs-reg-r17",
+        .description = "Use register R17 as the shadow call stack pointer",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r18)] = .{
+        .llvm_name = "scs-reg-r18",
+        .description = "Use register R18 as the shadow call stack pointer",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r19)] = .{
+        .llvm_name = "scs-reg-r19",
+        .description = "Use register R19 as the shadow call stack pointer",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r20)] = .{
+        .llvm_name = "scs-reg-r20",
+        .description = "Use register R20 as the shadow call stack pointer",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r21)] = .{
+        .llvm_name = "scs-reg-r21",
+        .description = "Use register R21 as the shadow call stack pointer",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r22)] = .{
+        .llvm_name = "scs-reg-r22",
+        .description = "Use register R22 as the shadow call stack pointer",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r23)] = .{
+        .llvm_name = "scs-reg-r23",
+        .description = "Use register R23 as the shadow call stack pointer",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r24)] = .{
+        .llvm_name = "scs-reg-r24",
+        .description = "Use register R24 as the shadow call stack pointer",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r25)] = .{
+        .llvm_name = "scs-reg-r25",
+        .description = "Use register R25 as the shadow call stack pointer",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r26)] = .{
+        .llvm_name = "scs-reg-r26",
+        .description = "Use register R26 as the shadow call stack pointer",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.scs_reg_r27)] = .{
+        .llvm_name = "scs-reg-r27",
+        .description = "Use register R27 as the shadow call stack pointer",
         .dependencies = featureSet(&[_]Feature{}),
     };
     result[@backingInt(Feature.small_data)] = .{

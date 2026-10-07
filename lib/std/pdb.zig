@@ -310,6 +310,7 @@ pub const SymbolKind = enum(u16) {
     gmandata = 4381,
     lthread32 = 4370,
     gthread32 = 4371,
+    _,
 };
 
 pub const TypeIndex = u32;

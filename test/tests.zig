@@ -2377,13 +2377,17 @@ pub fn isNative(actual_target: *const std.Build.ResolvedTarget, host: *const std
             .@"16bit_mode",
             .@"32bit_mode",
             .@"64bit",
+            .false_deps_bls,
+            .false_deps_compress,
+            .false_deps_expand,
             .false_deps_getmant,
-            .false_deps_lzcnt_tzcnt,
+            .false_deps_lzcnt,
             .false_deps_mulc,
             .false_deps_mullq,
             .false_deps_perm,
             .false_deps_popcnt,
             .false_deps_range,
+            .false_deps_tzcnt,
             .fast_11bytenop,
             .fast_15bytenop,
             .fast_7bytenop,
@@ -2411,10 +2415,12 @@ pub fn isNative(actual_target: *const std.Build.ResolvedTarget, host: *const std
             .prefer_legacy_setcc,
             .prefer_mask_registers,
             .prefer_movmsk_over_vtest,
+            .prefer_ndd_mem,
             .prefer_no_gather,
             .prefer_no_scatter,
             .slow_3ops_lea,
             .slow_incdec,
+            .slow_indirect_call,
             .slow_lea,
             .slow_pmaddwd,
             .slow_pmulld,
@@ -2426,10 +2432,13 @@ pub fn isNative(actual_target: *const std.Build.ResolvedTarget, host: *const std
         }),
         .aarch64, .aarch64_be => std.Target.aarch64.featureSet(&.{
             .addr_lsl_slow_14,
+            .align_cmp_csel_pairs,
             .alu_lsl_fast,
             .avoid_ldapur,
             .disable_fast_inc_vl,
             .exynos_cheap_as_move,
+            .fast_ld1_single,
+            .fixed_load_latency_4,
             .fuse_address,
             .fuse_addsub_2reg_const1,
             .fuse_adrp_add,
@@ -2438,7 +2447,9 @@ pub fn isNative(actual_target: *const std.Build.ResolvedTarget, host: *const std
             .fuse_crypto_eor,
             .fuse_csel,
             .fuse_cset,
+            .fuse_fcsel,
             .fuse_literals,
+            .has_limited_64bit_vector_mul_bandwidth,
             .predictable_select_expensive,
             .slow_misaligned_128store,
             .slow_paired_128,
@@ -2908,14 +2919,6 @@ fn addOneModuleTest(
     });
     these_tests.linkage = test_target.linkage;
     these_tests.use_new_linker = test_target.new_linker;
-    // https://codeberg.org/ziglang/zig/issues/31701
-    if (!(mem.eql(u8, options.name, "compiler-rt") or mem.eql(u8, options.name, "libc"))) {
-        if (options.no_builtin) these_tests.root_module.no_builtin = true;
-    }
-    // https://codeberg.org/ziglang/zig/issues/31702
-    if (mem.eql(u8, options.name, "compiler-rt") or mem.eql(u8, options.name, "libc")) {
-        these_tests.root_module.stack_protector = false;
-    }
     // https://github.com/llvm/llvm-project/issues/195561
     if (target.cpu.arch.isPowerPC()) {
         these_tests.root_module.stack_protector = false;

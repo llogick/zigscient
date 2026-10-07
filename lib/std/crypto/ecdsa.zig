@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const crypto = std.crypto;
 const fmt = std.fmt;
@@ -439,6 +440,8 @@ test "Basic operations over EcdsaP384Sha384" {
 }
 
 test "Basic operations over Secp256k1" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const io = testing.io;
     const Scheme = EcdsaSecp256k1Sha256oSha256;
     const kp = Scheme.KeyPair.generate(io);

@@ -2497,6 +2497,8 @@ test "polyPackT1 / polyUnpackT1 roundtrip" {
 }
 
 test "polyPackT0 / polyUnpackT0 roundtrip" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://github.com/llvm/llvm-project/issues/229620
+
     // Create a test polynomial with coefficients in (Q-2^12, Q+2^12]
     // This is the range (-2^12, 2^12] represented as unsigned around Q
     const bound = 1 << 12; // 2^(D-1) where D=13
@@ -2846,6 +2848,8 @@ fn testKeyGenerationBasic(comptime MlDsa: type, seed: [32]u8) !void {
 }
 
 test "Key generation basic - all variants" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://github.com/llvm/llvm-project/issues/229620
+
     inline for (.{
         .{ .variant = MLDSA44, .seed_byte = 0x44 },
         .{ .variant = MLDSA65, .seed_byte = 0x65 },
@@ -2857,6 +2861,8 @@ test "Key generation basic - all variants" {
 }
 
 test "Key generation determinism" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://github.com/llvm/llvm-project/issues/229620
+
     const seed = [_]u8{ 0x12, 0x34, 0x56, 0x78 } ++ @as([28]u8, @splat(0xAB));
 
     // Generate two key pairs from the same seed

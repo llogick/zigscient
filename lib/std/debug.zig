@@ -271,9 +271,6 @@ pub const sys_can_stack_trace = switch (builtin.cpu.arch) {
     .bpfeb,
     => false,
 
-    // https://codeberg.org/ziglang/zig/issues/31127
-    .avr => false,
-
     else => true,
 };
 

@@ -121,11 +121,13 @@ pub const cpu_models = struct {
     // implementer = 0x48
     const HiSilicon = [_]E{
         E{ .part = 0xd01, .m64 = &A64.tsv110 },
+        E{ .part = 0xd06, .m64 = &A64.hip12 },
     };
     // implementer = 0x4e
     const Nvidia = [_]E{
         E{ .part = 0x004, .m64 = &A64.carmel },
         E{ .part = 0x010, .m64 = &A64.olympus },
+        E{ .part = 0x011, .m64 = &A64.rigel },
     };
     // implementer = 0x50
     const Ampere = [_]E{

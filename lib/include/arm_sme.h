@@ -3732,6 +3732,18 @@ __ai __attribute__((__clang_arm_builtin_alias(__builtin_sme_svzero_za64_vg4x2)))
 void svzero_za64_vg4x2(uint32_t);
 __ai __attribute__((__clang_arm_builtin_alias(__builtin_sme_svzero_za64_vg4x4)))
 void svzero_za64_vg4x4(uint32_t);
+__ai __attribute__((__clang_arm_builtin_alias(__builtin_sme_svluti6_zt_u8)))
+svuint8_t svluti6_zt_u8(uint64_t, svuint8_t);
+__ai __attribute__((__clang_arm_builtin_alias(__builtin_sme_svluti6_zt_s8)))
+svint8_t svluti6_zt_s8(uint64_t, svuint8_t);
+__ai __attribute__((__clang_arm_builtin_alias(__builtin_sme_svluti6_zt_mf8)))
+svmfloat8_t svluti6_zt_mf8(uint64_t, svuint8_t);
+__ai __attribute__((__clang_arm_builtin_alias(__builtin_sme_svluti6_zt_u8_x4)))
+svuint8x4_t svluti6_zt_u8_x4(uint64_t, svuint8x3_t);
+__ai __attribute__((__clang_arm_builtin_alias(__builtin_sme_svluti6_zt_s8_x4)))
+svint8x4_t svluti6_zt_s8_x4(uint64_t, svuint8x3_t);
+__ai __attribute__((__clang_arm_builtin_alias(__builtin_sme_svluti6_zt_mf8_x4)))
+svmfloat8x4_t svluti6_zt_mf8_x4(uint64_t, svuint8x3_t);
 #ifdef __cplusplus
 } // extern "C"
 #endif

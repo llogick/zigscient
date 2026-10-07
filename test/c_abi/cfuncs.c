@@ -16624,7 +16624,7 @@ struct ByRef __attribute__((sysv_abi)) c_explict_sys_v(struct ByRef in) {
 }
 #endif
 
-#if defined __x86_64__ || defined __aarch64__
+#if defined __x86_64__ || defined __aarch64__ || defined __loongarch__
 int __attribute__((preserve_none)) c_preserve_none(int x) {
     return x + 1;
 }

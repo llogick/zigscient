@@ -462,6 +462,7 @@ pub const cpu = struct {
         .name = "leon3",
         .llvm_name = "leon3",
         .features = featureSet(&[_]Feature{
+            .hasleoncasa,
             .hasumacsmac,
             .leon,
         }),

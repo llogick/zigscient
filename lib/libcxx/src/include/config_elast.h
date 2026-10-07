@@ -21,7 +21,7 @@
 // where strerror/strerror_r can't handle out-of-range errno values.
 #if defined(ELAST)
 #  define _LIBCPP_ELAST ELAST
-#elif defined(__LLVM_LIBC__)
+#elif _LIBCPP_LIBC_LLVM_LIBC
 // No _LIBCPP_ELAST needed for LLVM libc
 #elif _LIBCPP_LIBC_NEWLIB
 #  define _LIBCPP_ELAST __ELASTERROR
@@ -33,6 +33,9 @@
 // No _LIBCPP_ELAST needed on WASI
 #elif defined(__EMSCRIPTEN__)
 // No _LIBCPP_ELAST needed on Emscripten
+// zig patch: haiku support
+#elif defined(__HAIKU__)
+// No _LIBCPP_ELAST needed on Haiku
 #elif defined(__linux__) || _LIBCPP_HAS_MUSL_LIBC
 #  define _LIBCPP_ELAST 4095
 #elif defined(__APPLE__)

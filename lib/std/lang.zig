@@ -322,9 +322,11 @@ pub const CallingConvention = union(enum(u8)) {
 
     /// The standard `loongarch64` calling convention.
     loongarch64_lp64: CommonOptions,
+    loongarch64_preserve_none: CommonOptions,
 
     /// The standard `loongarch32` calling convention.
     loongarch32_ilp32: CommonOptions,
+    loongarch32_preserve_none: CommonOptions,
 
     // Calling conventions for the `m68k` architecture.
     m68k_sysv: CommonOptions,
@@ -615,10 +617,6 @@ pub const AddressSpace = enum(u5) {
 
     /// This address space only addresses the "lookup" ram
     lut,
-
-    // Web Assembly
-    externref,
-    funcref,
 };
 
 /// This data structure is used by the Zig language code generation and

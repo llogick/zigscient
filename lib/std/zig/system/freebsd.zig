@@ -80,11 +80,11 @@ const arm = struct {
 const powerpc = struct {
     const models = .{
         .{ "Freescale e500v1 core", &std.Target.powerpc.cpu.e500 },
-        .{ "Freescale e500v2 core", &std.Target.powerpc.cpu.e500 }, // TODO: This should have efpu2.
+        .{ "Freescale e500v2 core", &std.Target.powerpc.cpu.e500v2 },
         .{ "Freescale e500mc core", &std.Target.powerpc.cpu.e500mc },
         .{ "Freescale e5500 core", &std.Target.powerpc.cpu.e5500 },
-        .{ "Freescale e6500 core", &std.Target.powerpc.cpu.e5500 }, // TODO: This should have altivec.
-        .{ "IBM Cell Broadband Engine", &std.Target.powerpc.cpu.ppc64 },
+        .{ "Freescale e6500 core", &std.Target.powerpc.cpu.e6500 },
+        .{ "IBM Cell Broadband Engine", &std.Target.powerpc.cpu.cell },
         .{ "IBM PowerPC 750FX", &std.Target.powerpc.cpu.@"750" },
         .{ "IBM PowerPC 970", &std.Target.powerpc.cpu.@"970" },
         .{ "IBM PowerPC 970FX", &std.Target.powerpc.cpu.@"970" },

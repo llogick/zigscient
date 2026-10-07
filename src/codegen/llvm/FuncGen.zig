@@ -1071,7 +1071,7 @@ fn airRet(self: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error!vo
     const val_is_undef = if (un_op.toInterned()) |i| Value.fromInterned(i).isUndef(zcu) else false;
     const ret_ty_align = ret_ty.abiAlignment(zcu);
 
-    if (val_is_undef and safety and !self.needMemsetWorkaround(ret_ty.abiSize(zcu))) {
+    if (val_is_undef and safety) {
         const rp = switch (self.ret_ptr) {
             .none => try self.buildZigAlloca(ret_ty, .none),
             else => |rp| rp,
@@ -5069,7 +5069,7 @@ fn airStore(fg: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error!Bu
     };
 
     const val_is_undef = if (bin_op.rhs.toInterned()) |i| Value.fromInterned(i).isUndef(zcu) else false;
-    if (val_is_undef and !fg.needMemsetWorkaround(elem_ty.abiSize(zcu))) {
+    if (val_is_undef) {
         const owner_mod = fg.ownerModule();
 
         // Even if safety is disabled, we still emit a memset to undefined since it conveys
@@ -5585,11 +5585,6 @@ fn airMemset(self: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error
 
     self.maybeMarkAllowZeroAccess(ptr_ty.ptrInfo(zcu));
 
-    const allow_byte_memset = !self.needMemsetWorkaround(switch (ptr_ty.ptrSize(zcu)) {
-        .one => ptr_ty.childType(zcu).abiSize(zcu),
-        .slice => null,
-        .many, .c => unreachable,
-    });
     const len_bytes = try self.sliceOrArrayLenInBytes(dest_slice, ptr_ty);
 
     try self.lowerMemset(
@@ -5600,7 +5595,6 @@ fn airMemset(self: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error
         len_bytes,
         access_kind,
         safety,
-        allow_byte_memset,
     );
     return .none;
 }
@@ -5614,12 +5608,11 @@ fn lowerMemset(
     len_bytes: Builder.Value,
     access_kind: Builder.MemoryAccessKind,
     safety: bool,
-    allow_byte_memset: bool,
 ) Allocator.Error!void {
     const o = self.object;
     const zcu = o.zcu;
 
-    if (allow_byte_memset) if (elem_ref.toInterned()) |elem_ip_index| {
+    if (elem_ref.toInterned()) |elem_ip_index| {
         const elem_val: Value = .fromInterned(elem_ip_index);
         if (elem_val.isUndef(zcu)) {
             // Even if safety is disabled, we still emit a memset to undefined since it conveys
@@ -5660,13 +5653,12 @@ fn lowerMemset(
             );
             return;
         }
-    };
+    }
 
     const value = try self.resolveInst(elem_ref);
     const elem_abi_size = elem_ty.abiSize(zcu);
 
     intrinsic: {
-        if (!allow_byte_memset) break :intrinsic;
         if (elem_abi_size != 1) break :intrinsic;
         // To use LLVM's intrinsic, we need to convert the operand to a raw 8-bit integer value.
         const fill_byte: Builder.Value = byte: {
@@ -6023,7 +6015,6 @@ fn airSplat(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Value 
                 len_bytes_llvm,
                 .normal,
                 false,
-                !self.needMemsetWorkaround(len_bytes),
             );
 
             if (array_info.sentinel) |sent_val| {
@@ -6551,28 +6542,19 @@ fn airPrefetch(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!Builder.Val
     comptime assert(@backingInt(std.lang.PrefetchOptions.Cache.instruction) == 0);
     comptime assert(@backingInt(std.lang.PrefetchOptions.Cache.data) == 1);
 
-    // LLVM fails during codegen of instruction cache prefetchs for these architectures.
-    // This is an LLVM bug as the prefetch intrinsic should be a noop if not supported
-    // by the target.
-    // To work around this, don't emit llvm.prefetch in this case.
-    // See https://bugs.llvm.org/show_bug.cgi?id=21037
     const zcu = self.object.zcu;
     const target = zcu.getTarget();
     switch (prefetch.cache) {
         .instruction => switch (target.cpu.arch) {
+            // https://github.com/llvm/llvm-project/issues/218236
             .x86_64,
             .x86,
+            // https://github.com/llvm/llvm-project/issues/218239
             .powerpc,
             .powerpcle,
             .powerpc64,
             .powerpc64le,
             => return .none,
-            .arm, .armeb, .thumb, .thumbeb => {
-                switch (prefetch.rw) {
-                    .write => return .none,
-                    else => {},
-                }
-            },
             else => {},
         },
         .data => {},
@@ -8142,32 +8124,6 @@ fn llvmAllocaAddressSpace(target: *const std.Target) Builder.AddrSpace {
         .amdgcn => Builder.AddrSpace.amdgpu.private,
         else => .default,
     };
-}
-
-/// Due to an LLVM bug, calls to `@llvm.memset.inline.*` with large constant length arguments cause
-/// LLVM to crash. As a mitigation, this function returns `true` if we should avoid emitting a
-/// memset call of the given length.
-///
-/// Most of our call sites are just setting memory to `undefined`, so can simply skip the memset
-/// call if we return `true`.
-///
-/// Upstream issue: https://github.com/llvm/llvm-project/issues/189161
-/// Zig issue: https://codeberg.org/ziglang/zig/issues/31701
-fn needMemsetWorkaround(fg: *const FuncGen, maybe_len: ?u64) bool {
-    if (!fg.disable_intrinsics) {
-        // The bug is limited to `@llvm.memset.inline.*`: normal memset calls are fine.
-        return false;
-    }
-    const len = maybe_len orelse {
-        // We don't think the length is constant, but a trivial optimization on LLVM's side could
-        // turn it into one and potentially trigger the bug. Therefore, always apply the workaround
-        // if the length is not a known constant.
-        return true;
-    };
-    // Empirically, the crash first happens at 1048561 bytes, which is 1 MiB less 15 bytes. To be
-    // safe (just in case the limit is target-specific or something like that), let's just set the
-    // cap at half of that, i.e. 512 KiB.
-    return len > 1024 * 512;
 }
 
 const mips_clobber_overrides = std.StaticStringMap(enum {

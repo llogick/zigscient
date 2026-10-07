@@ -13,6 +13,7 @@ pub const Feature = enum {
     density,
     dfpaccel,
     div32,
+    esp32s2ops,
     exception,
     extendedl32r,
     forced_atomics,
@@ -91,6 +92,11 @@ pub const all_features = blk: {
     result[@backingInt(Feature.div32)] = .{
         .llvm_name = "div32",
         .description = "Enable Xtensa Div32 option",
+        .dependencies = featureSet(&[_]Feature{}),
+    };
+    result[@backingInt(Feature.esp32s2ops)] = .{
+        .llvm_name = "esp32s2ops",
+        .description = "Support Xtensa esp32-s2 ISA extension",
         .dependencies = featureSet(&[_]Feature{}),
     };
     result[@backingInt(Feature.exception)] = .{
@@ -285,6 +291,35 @@ pub const cpu = struct {
             .regprotect,
             .rvector,
             .s32c1i,
+            .sext,
+            .threadptr,
+            .timers3,
+            .windowed,
+        }),
+    };
+    pub const esp32s2: CpuModel = .{
+        .name = "esp32s2",
+        .llvm_name = "esp32s2",
+        .features = featureSet(&[_]Feature{
+            .clamps,
+            .coprocessor,
+            .dcache,
+            .debug,
+            .density,
+            .div32,
+            .esp32s2ops,
+            .exception,
+            .highpriinterrupts_level7,
+            .interrupt,
+            .minmax,
+            .miscsr,
+            .mul16,
+            .mul32,
+            .mul32high,
+            .nsa,
+            .prid,
+            .regprotect,
+            .rvector,
             .sext,
             .threadptr,
             .timers3,

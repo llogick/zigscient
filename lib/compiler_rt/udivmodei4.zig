@@ -164,6 +164,7 @@ test "__udivei4/__umodei4" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest;
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch == .sparc64) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37056
 
     const RndGen = std.Random.DefaultPrng;
     var rnd = RndGen.init(42);

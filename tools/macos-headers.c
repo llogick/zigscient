@@ -190,6 +190,7 @@
 #include <libkern/OSTypes.h>
 #include <MacTypes.h>
 #include <os/lock.h>
+#include <os/os_sync_wait_on_address.h>
 #include <simd/simd.h>
 #include <xpc/xpc.h>
 #include <CommonCrypto/CommonCrypto.h>

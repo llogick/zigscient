@@ -20,6 +20,35 @@ extern "C" {
 
 #pragma clang riscv intrinsic vector
 
+#define __riscv_intrinsic_v 1
+#define __riscv_intrinsic_zvabd 1
+#define __riscv_intrinsic_zvbb 1
+#define __riscv_intrinsic_zvbc 1
+#define __riscv_intrinsic_zvdot4a8i 1
+#define __riscv_intrinsic_zve32f 1
+#define __riscv_intrinsic_zve32x 1
+#define __riscv_intrinsic_zve64d 1
+#define __riscv_intrinsic_zve64f 1
+#define __riscv_intrinsic_zve64x 1
+#define __riscv_intrinsic_zvfbfa 1
+#define __riscv_intrinsic_zvfbfmin 1
+#define __riscv_intrinsic_zvfbfwma 1
+#define __riscv_intrinsic_zvfh 1
+#define __riscv_intrinsic_zvfhmin 1
+#define __riscv_intrinsic_zvfofp8min 1
+#define __riscv_intrinsic_zvkb 1
+#define __riscv_intrinsic_zvkg 1
+#define __riscv_intrinsic_zvkn 1
+#define __riscv_intrinsic_zvknc 1
+#define __riscv_intrinsic_zvkned 1
+#define __riscv_intrinsic_zvkng 1
+#define __riscv_intrinsic_zvknha 1
+#define __riscv_intrinsic_zvknhb 1
+#define __riscv_intrinsic_zvks 1
+#define __riscv_intrinsic_zvksc 1
+#define __riscv_intrinsic_zvksed 1
+#define __riscv_intrinsic_zvksg 1
+#define __riscv_intrinsic_zvksh 1
 
 enum __RISCV_FRM {
   __RISCV_FRM_RNE = 0,
@@ -415,6 +444,20 @@ typedef __rvv_bfloat16m2x4_t vbfloat16m2x4_t;
 typedef __rvv_bfloat16m4_t vbfloat16m4_t;
 typedef __rvv_bfloat16m4x2_t vbfloat16m4x2_t;
 typedef __rvv_bfloat16m8_t vbfloat16m8_t;
+typedef __rvv_float8e4m3mf8_t vfloat8e4m3mf8_t;
+typedef __rvv_float8e4m3mf4_t vfloat8e4m3mf4_t;
+typedef __rvv_float8e4m3mf2_t vfloat8e4m3mf2_t;
+typedef __rvv_float8e4m3m1_t vfloat8e4m3m1_t;
+typedef __rvv_float8e4m3m2_t vfloat8e4m3m2_t;
+typedef __rvv_float8e4m3m4_t vfloat8e4m3m4_t;
+typedef __rvv_float8e4m3m8_t vfloat8e4m3m8_t;
+typedef __rvv_float8e5m2mf8_t vfloat8e5m2mf8_t;
+typedef __rvv_float8e5m2mf4_t vfloat8e5m2mf4_t;
+typedef __rvv_float8e5m2mf2_t vfloat8e5m2mf2_t;
+typedef __rvv_float8e5m2m1_t vfloat8e5m2m1_t;
+typedef __rvv_float8e5m2m2_t vfloat8e5m2m2_t;
+typedef __rvv_float8e5m2m4_t vfloat8e5m2m4_t;
+typedef __rvv_float8e5m2m8_t vfloat8e5m2m8_t;
 
 #ifdef __cplusplus
 }
