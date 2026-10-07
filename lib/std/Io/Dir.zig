@@ -1917,7 +1917,8 @@ pub const CreateFileAtomicError = error{
 } || Io.Dir.PathNameError || Io.Cancelable || Io.UnexpectedError;
 
 /// Create an unnamed ephemeral file that can eventually be atomically
-/// materialized into `sub_path`.
+/// materialized into `sub_path`. `sub_path` must be valid until the atomic
+/// file is materialized.
 ///
 /// The returned `File.Atomic` provides API to emulate the behavior in case it
 /// is not directly supported by the underlying operating system.
