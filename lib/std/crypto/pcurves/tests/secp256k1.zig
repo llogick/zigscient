@@ -72,6 +72,8 @@ test "secp256k1 test vectors" {
 }
 
 test "secp256k1 test vectors - doubling" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const expected = [_][]const u8{
         "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
         "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
@@ -110,6 +112,8 @@ test "secp256k1 uncompressed sec1 encoding/decoding" {
 }
 
 test "secp256k1 public key is the neutral element" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const io = testing.io;
     const n = Secp256k1.scalar.Scalar.zero.toBytes(.little);
     const p = Secp256k1.random(io);
@@ -126,17 +130,23 @@ test "secp256k1 public key is the neutral element (public verification)" {
 }
 
 test "secp256k1 field element non-canonical encoding" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const s: [32]u8 = @splat(0xff);
     try testing.expectError(error.NonCanonical, Secp256k1.Fe.fromBytes(s, .little));
 }
 
 test "secp256k1 neutral element decoding" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     try testing.expectError(error.InvalidEncoding, Secp256k1.fromAffineCoordinates(.{ .x = Secp256k1.Fe.zero, .y = Secp256k1.Fe.zero }));
     try testing.expectError(error.InvalidEncoding, Secp256k1.fromAffineCoordinates(.{ .x = Secp256k1.Fe.zero, .y = Secp256k1.Fe.one }));
     try testing.expectError(error.IdentityElement, Secp256k1.identityElement.rejectIdentity());
 }
 
 test "secp256k1 uncompressed SEC1 must not accept infinity" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     var buf: [65]u8 = @splat(0);
     buf[0] = 0x04;
     buf[64] = 0x01;
@@ -177,6 +187,8 @@ test "secp256k1 public multiplication" {
 }
 
 test "secp256k1 scalar split" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const io = testing.io;
     const n = Secp256k1.scalar.field_order;
     inline for (.{ .little, .big }) |endian| {
@@ -193,6 +205,8 @@ test "secp256k1 scalar split" {
 }
 
 test "secp256k1 scalar inverse" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     const expected = "08d0684a0fe8ea978b68a29e4b4ffdbd19eeb59db25301cf23ecbe568e1f9822";
     var out: [32]u8 = undefined;
     _ = try std.fmt.hexToBytes(&out, expected);
@@ -206,6 +220,8 @@ test "secp256k1 scalar inverse" {
 }
 
 test "secp256k1 scalar parity" {
+    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isPowerpc64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37121
+
     try std.testing.expect(Secp256k1.scalar.Scalar.zero.isOdd() == false);
     try std.testing.expect(Secp256k1.scalar.Scalar.one.isOdd());
     try std.testing.expect(Secp256k1.scalar.Scalar.one.dbl().isOdd() == false);
