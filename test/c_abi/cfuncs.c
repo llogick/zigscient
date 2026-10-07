@@ -16700,6 +16700,16 @@ void c_preserve_none_check(void) {
 }
 #endif
 
+#if defined __x86_64__ || defined __aarch64__ || defined __riscv || defined __loongarch__
+int __attribute__((preserve_most)) c_preserve_most(int x) {
+    return x + 1;
+}
+int __attribute__((preserve_most)) zig_preserve_most(int);
+void c_preserve_most_check(void) {
+    assert_or_panic(zig_preserve_most(41) == 42);
+}
+#endif
+
 struct byval_tail_callsite_attr_Point {
     double x;
     double y;

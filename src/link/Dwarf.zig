@@ -4167,6 +4167,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                     .x86_64_vectorcall => .LLVM_vectorcall,
                     .x86_sysv, .x86_win, .x86_mingw => .normal,
                     .x86_64_preserve_none => .LLVM_PreserveNone,
+                    .x86_64_preserve_most => .LLVM_PreserveMost,
                     .x86_stdcall => .BORLAND_stdcall,
                     .x86_fastcall => .BORLAND_msfastcall,
                     .x86_thiscall => .BORLAND_thiscall,
@@ -4181,6 +4182,7 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
                     .aarch64_vfabi => .LLVM_AAPCS,
                     .aarch64_vfabi_sve => .LLVM_AAPCS,
                     .aarch64_preserve_none => .LLVM_PreserveNone,
+                    .aarch64_preserve_most => .LLVM_PreserveMost,
 
                     .arm_aapcs => .LLVM_AAPCS,
                     .arm_aapcs_vfp => .LLVM_AAPCS_VFP,
@@ -4191,6 +4193,11 @@ fn updateConstInner(dwarf: *Dwarf, pt: Zcu.PerThread, debug_const_index: link.Co
 
                     .loongarch32_preserve_none => .LLVM_PreserveNone,
                     .loongarch64_preserve_none => .LLVM_PreserveNone,
+
+                    .riscv32_preserve_most => .LLVM_PreserveMost,
+                    .riscv64_preserve_most => .LLVM_PreserveMost,
+                    .loongarch32_preserve_most => .LLVM_PreserveMost,
+                    .loongarch64_preserve_most => .LLVM_PreserveMost,
 
                     .m68k_rtd => .LLVM_M68kRTD,
 

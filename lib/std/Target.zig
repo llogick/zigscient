@@ -1850,6 +1850,7 @@ pub const Cpu = struct {
                 .x86_64_vectorcall,
                 .x86_64_interrupt,
                 .x86_64_preserve_none,
+                .x86_64_preserve_most,
                 => &.{.x86_64},
 
                 .x86_sysv,
@@ -1877,6 +1878,7 @@ pub const Cpu = struct {
                 .aarch64_vfabi,
                 .aarch64_vfabi_sve,
                 .aarch64_preserve_none,
+                .aarch64_preserve_most,
                 => &.{ .aarch64, .aarch64_be },
 
                 .alpha_osf,
@@ -1899,11 +1901,13 @@ pub const Cpu = struct {
                 .riscv64_lp64,
                 .riscv64_lp64_v,
                 .riscv64_interrupt,
+                .riscv64_preserve_most,
                 => &.{ .riscv64, .riscv64be },
 
                 .riscv32_ilp32,
                 .riscv32_ilp32_v,
                 .riscv32_interrupt,
+                .riscv32_preserve_most,
                 => &.{ .riscv32, .riscv32be },
 
                 .sparc64_sysv,
@@ -1962,10 +1966,12 @@ pub const Cpu = struct {
 
                 .loongarch64_lp64,
                 .loongarch64_preserve_none,
+                .loongarch64_preserve_most,
                 => &.{.loongarch64},
 
                 .loongarch32_ilp32,
                 .loongarch32_preserve_none,
+                .loongarch32_preserve_most,
                 => &.{.loongarch32},
 
                 .m68k_sysv,

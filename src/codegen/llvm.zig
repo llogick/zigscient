@@ -4304,6 +4304,7 @@ pub fn toLlvmCallConvTag(cc_tag: std.lang.CallingConvention.Tag, target: *const 
         .x86_64_vectorcall => .x86_vectorcallcc,
         .x86_64_interrupt => .x86_intrcc,
         .x86_64_preserve_none => .preserve_nonecc,
+        .x86_64_preserve_most => .preserve_mostcc,
         .x86_stdcall => .x86_stdcallcc,
         .x86_fastcall => .x86_fastcallcc,
         .x86_thiscall => .x86_thiscallcc,
@@ -4320,6 +4321,7 @@ pub fn toLlvmCallConvTag(cc_tag: std.lang.CallingConvention.Tag, target: *const 
         .aarch64_vfabi => .aarch64_vector_pcs,
         .aarch64_vfabi_sve => .aarch64_sve_vector_pcs,
         .aarch64_preserve_none => .preserve_nonecc,
+        .aarch64_preserve_most => .preserve_mostcc,
         .arm_aapcs => .arm_aapcscc,
         .arm_aapcs_vfp => .arm_aapcs_vfpcc,
         .riscv64_lp64_v => .riscv_vectorcallcc,
@@ -4336,6 +4338,10 @@ pub fn toLlvmCallConvTag(cc_tag: std.lang.CallingConvention.Tag, target: *const 
         .nvptx_kernel => .ptx_kernel,
         .loongarch32_preserve_none => .preserve_nonecc,
         .loongarch64_preserve_none => .preserve_nonecc,
+        .riscv32_preserve_most => .preserve_mostcc,
+        .riscv64_preserve_most => .preserve_mostcc,
+        .loongarch32_preserve_most => .preserve_mostcc,
+        .loongarch64_preserve_most => .preserve_mostcc,
 
         // Calling conventions which LLVM uses function attributes for.
         .riscv64_interrupt,

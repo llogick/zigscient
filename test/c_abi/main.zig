@@ -18162,3 +18162,30 @@ test "preserve_none calling convention" {
     try expect(static.c_preserve_none(41) == 42);
     static.c_preserve_none_check();
 }
+
+const preserve_most_cc: ?std.lang.CallingConvention = if (builtin.zig_backend != .stage2_llvm)
+    null
+else switch (builtin.cpu.arch) {
+    .x86_64 => .{ .x86_64_preserve_most = .{} },
+    .aarch64, .aarch64_be => .{ .aarch64_preserve_most = .{} },
+    // Supported in LLVM but not yet wired up in Clang.
+    // .riscv32, .riscv32be => .{ .riscv32_preserve_most = .{} },
+    // .riscv64, .riscv64be => .{ .riscv64_preserve_most = .{} },
+    // .loongarch32 => .{ .loongarch32_preserve_most = .{} },
+    // .loongarch64 => .{ .loongarch64_preserve_most = .{} },
+    else => null,
+};
+
+export fn zig_preserve_most(x: i32) callconv(preserve_most_cc orelse .c) i32 {
+    return x + 1;
+}
+
+test "preserve_most calling convention" {
+    if (preserve_most_cc == null) return error.SkipZigTest;
+    const static = struct {
+        extern fn c_preserve_most(x: i32) callconv(preserve_most_cc.?) i32;
+        extern fn c_preserve_most_check() void;
+    };
+    try expect(static.c_preserve_most(41) == 42);
+    static.c_preserve_most_check();
+}

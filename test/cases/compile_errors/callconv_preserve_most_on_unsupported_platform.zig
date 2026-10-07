@@ -1,0 +1,16 @@
+const F1 = fn () callconv(.{ .x86_64_preserve_most = .{} }) void;
+const F2 = fn () callconv(.{ .aarch64_preserve_most = .{} }) void;
+export fn entry1() void {
+    const a: F1 = undefined;
+    _ = a;
+}
+export fn entry2() void {
+    const a: F2 = undefined;
+    _ = a;
+}
+
+// error
+// target=wasm32-freestanding
+//
+// :1:28: error: calling convention 'x86_64_preserve_most' only available on architectures 'x86_64'
+// :2:28: error: calling convention 'aarch64_preserve_most' only available on architectures 'aarch64', 'aarch64_be'

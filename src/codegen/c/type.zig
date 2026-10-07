@@ -63,6 +63,7 @@ pub const CType = union(enum) {
         regcall,
 
         preserve_none,
+        preserve_most,
 
         aarch64_vector_pcs,
         aarch64_sve_pcs,
@@ -145,6 +146,14 @@ pub const CType = union(enum) {
                 .loongarch32_preserve_none,
                 .loongarch64_preserve_none,
                 => .preserve_none,
+
+                .x86_64_preserve_most,
+                .aarch64_preserve_most,
+                .riscv32_preserve_most,
+                .riscv64_preserve_most,
+                .loongarch32_preserve_most,
+                .loongarch64_preserve_most,
+                => .preserve_most,
 
                 .aarch64_vfabi => .aarch64_vector_pcs,
                 .aarch64_vfabi_sve => .aarch64_sve_pcs,
