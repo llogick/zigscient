@@ -242,7 +242,7 @@ pub extern "ntdll" fn NtUnlockFile(
 ) callconv(.winapi) NTSTATUS;
 
 pub extern "ntdll" fn NtQueryObject(
-    Handle: HANDLE,
+    Handle: ?HANDLE,
     ObjectInformationClass: OBJECT.INFORMATION_CLASS,
     ObjectInformation: ?PVOID,
     ObjectInformationLength: ULONG,
