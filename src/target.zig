@@ -72,10 +72,8 @@ pub fn requiresPie(target: *const std.Target, link_mode: std.lang.LinkMode) bool
 }
 
 /// This function returns whether non-pic code is completely invalid on the given target.
-pub fn requiresPic(target: *const std.Target, linking_libc: bool) bool {
-    return ((target.os.tag == .windows or target.os.tag == .uefi) and (target.cpu.arch == .aarch64 or target.cpu.arch == .x86_64)) or
-        target.requiresLibC() or
-        (linking_libc and target.isGnuLibC());
+pub fn requiresPic(target: *const std.Target) bool {
+    return (target.os.tag == .windows or target.os.tag == .uefi) and (target.cpu.arch == .aarch64 or target.cpu.arch == .x86_64);
 }
 
 pub fn requiresPicForDynamicLink(target: *const std.Target) bool {

@@ -9070,11 +9070,10 @@ fn addRelocAssumeCapacity(
                 .PLT32   => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltabs, .{ .dest = .@"32", .cast = .unsigned, .shift = .@"0" })),
                 .PLT64   => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltabs, .{ .dest = .@"64", .cast = .unsigned, .shift = .@"0" })),
 
-                .WDISP30 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel,    .{ .dest = .@"32[29:0]", .cast = .signed,   .shift = .@"2_exact" })),
-                .WPLT30  => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltrel, .{ .dest = .@"32[29:0]", .cast = .signed,   .shift = .@"2_exact" })),
-                .PC22    => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel,    .{ .dest = .@"32[21:0]", .cast = .unsigned, .shift = .@"10" })),
-                .H44     => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs,    .{ .dest = .@"32[21:0]", .cast = .unsigned, .shift = .@"22" })),
-                .M44     => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs,    .{ .dest = .@"32[9:0]",  .cast = .trunc,    .shift = .@"12" })),
+                .WDISP30, .WPLT30 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltrel, .{ .dest = .@"32[29:0]", .cast = .signed,   .shift = .@"2_exact" })),
+                .PC22             => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel,    .{ .dest = .@"32[21:0]", .cast = .unsigned, .shift = .@"10" })),
+                .H44              => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs,    .{ .dest = .@"32[21:0]", .cast = .unsigned, .shift = .@"22" })),
+                .M44              => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs,    .{ .dest = .@"32[9:0]",  .cast = .trunc,    .shift = .@"12" })),
 
                 .TLS_LDO_HIX22 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.dtpoff, .{ .dest = .@"32[21:0]", .cast = .trunc, .shift = .@"10" })),
                 .TLS_LE_HIX22  => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .special(.sparc_le_hix22)),
@@ -11944,7 +11943,7 @@ fn ensurePltEntry(elf: *Elf, gsi: Symbol.Global.Index) Error!bool {
                         // sethi (. - .plt[0]), %g1
                         .{ .imm22 = .{ .imm = @truncate(got_plt_offset), .op = 0b0000001100 } },
                         // ba,a %xcc, .plt[1]
-                        .{ .disp19 = .{ .disp = @truncate((got_plt_offset + 4 - 32) >> 2), .op = 0b0011000001101 } },
+                        .{ .disp19 = .{ .disp = @truncate((32 -% (got_plt_offset + 4)) >> 2), .op = 0b0011000001101 } },
                         // nop
                         .{ .raw = 0x0100_0000 },
                         // nop
