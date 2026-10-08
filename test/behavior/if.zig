@@ -71,6 +71,19 @@ test "labeled break inside comptime if inside runtime if" {
     try expect(answer == 42);
 }
 
+test "labeled break from comptime block inside runtime if" {
+    var c = true;
+    _ = &c;
+    var reached = false;
+    blk: {
+        if (c) {
+            comptime break :blk;
+        }
+        reached = true;
+    }
+    try expect(!reached);
+}
+
 test "const result loc, runtime if cond, else unreachable" {
     const Num = enum { One, Two };
 
