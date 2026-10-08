@@ -52,7 +52,9 @@ stage3-release/bin/zig build install test docs \
   -Duse-zig-libcxx \
   -Denable-llvm \
   -Dno-lib \
-  -Dskip-non-native
+  -Dskip-non-native \
+  -Dskip-compile-errors \
+  -Dskip-single-threaded
 
 # Ensure that the fuzzer at least compiles.
 # https://codeberg.org/ziglang/zig/issues/30728

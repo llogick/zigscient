@@ -2323,38 +2323,38 @@ pub const debugger_matrix: []const RunnerTarget = &.{
     },
 };
 
-fn compatible32bitArch(host: *const std.Target) ?std.Target.Cpu.Arch {
+fn supportedCompatArch(host: *const std.Target, arch: std.Target.Cpu.Arch) bool {
     return switch (host.os.tag) {
         .freebsd => switch (host.cpu.arch) {
-            .aarch64 => .arm,
-            .powerpc64 => .powerpc,
-            else => null,
+            .aarch64 => arch == .arm,
+            else => false,
         },
         .illumos => switch (host.cpu.arch) {
-            .x86_64 => .x86,
-            else => null,
+            .x86_64 => arch == .x86,
+            else => false,
         },
         .linux => switch (host.cpu.arch) {
-            .aarch64 => .arm,
-            .aarch64_be => .armeb,
-            .mips64 => .mips,
-            .mips64el => .mipsel,
-            .powerpc64 => .powerpc,
-            .sparc64 => .sparc,
-            .x86_64 => .x86,
-            else => null,
+            .aarch64 => arch == .arm or arch == .thumb,
+            .aarch64_be => arch == .armeb or arch == .thumbeb,
+            .mips64 => arch == .mips,
+            .mips64el => arch == .mipsel,
+            .powerpc64 => arch == .powerpc,
+            .riscv64 => arch == .riscv32,
+            .sparc64 => arch == .sparc,
+            .x86_64 => arch == .x86,
+            else => false,
         },
         .netbsd => switch (host.cpu.arch) {
-            .riscv64 => .riscv32,
-            .sparc64 => .sparc,
-            .x86_64 => .x86,
-            else => null,
+            .riscv64 => arch == .riscv32,
+            .sparc64 => arch == .sparc,
+            .x86_64 => arch == .x86,
+            else => false,
         },
         .windows => switch (host.cpu.arch) {
-            .x86_64 => .x86,
-            else => null,
+            .x86_64 => arch == .x86,
+            else => false,
         },
-        else => null,
+        else => false,
     };
 }
 
@@ -2362,14 +2362,21 @@ pub fn isNative(actual_target: *const std.Build.ResolvedTarget, host: *const std
     if (actual_target.query.isNative()) return true;
     const actual = &actual_target.result;
 
-    if (actual.cpu.arch != host.cpu.arch and
-        actual.cpu.arch != compatible32bitArch(host))
-    {
+    if (actual.cpu.arch != host.cpu.arch and !supportedCompatArch(host, actual.cpu.arch))
         return false;
-    }
 
     if (actual.os.tag != host.os.tag)
         return false;
+
+    // This check is really only necessary for the case where `host.cpu.arch.isAarch64()` and
+    // `actual.cpu.arch.isArm()`. As they are wholly separate `std.Target` families with their own
+    // feature bits, the logic below would produce complete nonsense.
+    //
+    // This does mean that we aren't actually checking feature compatibility between these two
+    // families even though we should. That's not a problem currently, but in the future, we may
+    // need to add a special code path just for this specific case...
+    if (actual.cpu.arch.family() != host.cpu.arch.family())
+        return true;
 
     // Remove features that don't actually affect compatibility.
     const irrelevant: std.Target.Cpu.Feature.Set = switch (host.cpu.arch) {
@@ -2891,15 +2898,6 @@ fn addOneModuleTest(
     const libc_suffix = if (test_target.link_libc == true) "-libc" else "";
     const model_txt = target.cpu.model.name;
 
-    // These emulated targets need a lot more RAM for unknown reasons.
-    const max_rss = if (mem.eql(u8, options.name, "std") and
-        (target.cpu.arch == .hexagon or
-            (target.cpu.arch.isRISCV() and !resolved_target.query.isNative()) or
-            target.cpu.arch.isWasm()))
-        options.max_rss * 2
-    else
-        options.max_rss;
-
     const these_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path(options.root_src),
@@ -2911,7 +2909,7 @@ fn addOneModuleTest(
             .sanitize_thread = options.sanitize_thread,
             .single_threaded = test_target.single_threaded,
         }),
-        .max_rss = max_rss,
+        .max_rss = options.max_rss,
         .filters = options.test_filters,
         .use_llvm = test_target.use_llvm,
         .use_lld = test_target.use_lld,
