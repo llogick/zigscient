@@ -1411,6 +1411,10 @@ test "KT256 sequential and parallel produce same output with customization" {
 }
 
 test "parallel hashing matches sequential hashing" {
+    // Hashing several 2 MiB+ messages is too slow with the C backend, especially under emulation.
+    // https://codeberg.org/ziglang/zig/issues/37137
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest;
+
     const allocator = std.testing.allocator;
     const io = std.testing.io;
 
