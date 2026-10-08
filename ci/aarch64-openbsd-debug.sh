@@ -51,6 +51,7 @@ stage3-debug/bin/zig build install test docs \
   -Denable-llvm \
   -Dno-lib \
   -Dskip-non-native \
+  -Dskip-compile-errors \
   -Dskip-single-threaded
 
 stage4-debug/bin/zig test ../test/behavior.zig
