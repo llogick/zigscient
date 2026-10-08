@@ -2914,15 +2914,6 @@ fn addOneModuleTest(
     const libc_suffix = if (test_target.link_libc == true) "-libc" else "";
     const model_txt = target.cpu.model.name;
 
-    // These emulated targets need a lot more RAM for unknown reasons.
-    const max_rss = if (mem.eql(u8, options.name, "std") and
-        (target.cpu.arch == .hexagon or
-            (target.cpu.arch.isRISCV() and !resolved_target.query.isNative()) or
-            target.cpu.arch.isWasm()))
-        options.max_rss * 2
-    else
-        options.max_rss;
-
     const these_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path(options.root_src),
@@ -2934,7 +2925,7 @@ fn addOneModuleTest(
             .sanitize_thread = options.sanitize_thread,
             .single_threaded = test_target.single_threaded,
         }),
-        .max_rss = max_rss,
+        .max_rss = options.max_rss,
         .filters = options.test_filters,
         .use_llvm = test_target.use_llvm,
         .use_lld = test_target.use_lld,
