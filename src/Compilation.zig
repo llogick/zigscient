@@ -6557,6 +6557,9 @@ fn addCommonCCArgs(
                         .off => {},
                         .trap => {
                             try argv.append("-fsanitize-trap=undefined");
+
+                            // Same reasoning as below.
+                            try argv.append("-fno-sanitize=function");
                         },
                         .full => {
                             // This check requires implementing the Itanium C++ ABI.
