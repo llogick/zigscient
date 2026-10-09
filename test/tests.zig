@@ -2356,6 +2356,10 @@ fn supportedCompatArch(host: *const std.Target, arch: std.Target.Cpu.Arch) bool 
     // avoid reporting compatibility for 32-bit here since we'd just build a bunch of test binaries
     // that never get run anyway. This added almost an hour's worth of useless work to aarch64-linux
     // CI, for example.
+    //
+    // riscv64-linux and riscv64-netbsd similarly support 32-bit binaries. However, this requires a
+    // very recent kernel and for the kernel feature to be enabled. Additionally, contemporary
+    // RISC-V hardware is just too slow to justify building the 32-bit binaries.
     return switch (host.os.tag) {
         .illumos => switch (host.cpu.arch) {
             .x86_64 => arch == .x86,
@@ -2365,13 +2369,11 @@ fn supportedCompatArch(host: *const std.Target, arch: std.Target.Cpu.Arch) bool 
             .mips64 => arch == .mips,
             .mips64el => arch == .mipsel,
             .powerpc64 => arch == .powerpc,
-            .riscv64 => arch == .riscv32,
             .sparc64 => arch == .sparc,
             .x86_64 => arch == .x86,
             else => false,
         },
         .netbsd => switch (host.cpu.arch) {
-            .riscv64 => arch == .riscv32,
             .sparc64 => arch == .sparc,
             .x86_64 => arch == .x86,
             else => false,
