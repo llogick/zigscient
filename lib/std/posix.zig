@@ -50,6 +50,8 @@ else switch (native_os) {
         pub const ino_t = u64;
         pub const IFNAMESIZE = {};
         pub const SIG = void;
+        pub const cmsghdr = void;
+        pub const cmsg_align = {};
 
         // https://github.com/pspdev/newlib/blob/9e0a073634ad73e8e088f2e071c55a9fe5d39709/newlib/libc/sys/psp/sys/dirent.h#L19
         pub const NAME_MAX = 255;
