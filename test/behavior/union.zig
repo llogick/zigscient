@@ -2174,6 +2174,23 @@ test "matching captures causes union equivalence" {
     try expect(a.u == b.u);
 }
 
+test "capture used as explicit field value" {
+    const S = struct {
+        fn Union(n: u8) type {
+            return union(enum(u8)) {
+                a: u32 = n,
+                b,
+            };
+        }
+    };
+
+    comptime assert(@typeInfo(S.Union(0)).@"union".tag_type.? != @typeInfo(S.Union(1)).@"union".tag_type.?);
+
+    const s: S.Union(1) = .{ .a = 0 };
+    try expect(@backingInt(s) == 1);
+    try expect(@backingInt(@as(@typeInfo(S.Union(1)).@"union".tag_type.?, s)) == 1);
+}
+
 test "signed enum tag with negative value" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_riscv64) return error.SkipZigTest;

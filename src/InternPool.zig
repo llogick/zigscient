@@ -3853,7 +3853,7 @@ pub fn loadEnumType(ip: *const InternPool, index: Index) LoadedEnumType {
         .generated_union_tag => info: {
             const owner_union: Index = @fromBackingInt(@intCast(extra_items[extra_index]));
             extra_index += 1;
-            break :info .{ .none, .empty, owner_union };
+            break :info .{ .none, ip.loadUnionType(owner_union).captures, owner_union };
         },
         _ => |n| info: {
             const zir_index: TrackedInst.Index = @fromBackingInt(@intCast(extra_items[extra_index]));

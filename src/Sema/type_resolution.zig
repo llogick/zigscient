@@ -1478,7 +1478,7 @@ pub fn resolveEnumLayout(sema: *Sema, enum_ty: Type) CompileError!void {
                 };
                 const uncoerced = try sema.resolveInlineBody(&block, value_body, zir_index);
                 const coerced = try sema.coerce(&block, int_tag_ty, uncoerced, field_val_src);
-                const val = try sema.resolveConstValue(&block, field_val_src, coerced, null);
+                const val = try sema.resolveConstDefinedValue(&block, field_val_src, coerced, null);
                 enum_obj.field_values.get(ip)[zir_field.idx] = val.toIntern();
             }
         }
