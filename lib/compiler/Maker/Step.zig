@@ -849,10 +849,16 @@ pub fn setWatchInputsFromManifestFiles(
     for (scf.files.keys()) |file_offset| {
         // The file path data is freed when the cache manifest is cleaned up at the end of `make`.
         const sub_path = try arena.dupe(u8, scf.path(file_offset));
-        try addWatchInputFromPath(s, maker, .{
-            .root_dir = prefixes[file_offset.get(scf.contents.items).flags.prefix],
-            .sub_path = Dir.path.dirname(sub_path) orelse "",
-        }, Dir.path.basename(sub_path));
+        const file = file_offset.get(scf.contents.items);
+        const path: Path = .{
+            .root_dir = prefixes[file.flags.prefix],
+            .sub_path = sub_path,
+        };
+        if (file.flags.is_directory) {
+            try addDirectoryWatchInputFromPath(s, maker, path);
+        } else {
+            try addWatchInputPath(s, maker, path);
+        }
     }
 }
 
