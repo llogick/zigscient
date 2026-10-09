@@ -69,6 +69,8 @@ else switch (native_os) {
         pub const ino_t = void;
         pub const IFNAMESIZE = {};
         pub const SIG = void;
+        pub const cmsghdr = void;
+        pub const cmsg_align = {};
     },
 };
 
