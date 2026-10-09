@@ -97,10 +97,6 @@ const cases = [_]Case{
     .{
         .src_path = "cat/main.zig",
     },
-    // https://github.com/ziglang/zig/issues/6025
-    //.{
-    //    .src_path = "issue_9693/main.zig",
-    //},
     .{
         .src_path = "issue_7030.zig",
         .target = .{
