@@ -957,8 +957,8 @@ pub fn peekDelimiterExclusive(r: *Reader, delimiter: u8) DelimiterError![]u8 {
     return result[0 .. result.len - 1];
 }
 
-/// Appends to `w` contents by reading from the stream until `delimiter` is
-/// found. Does not write the delimiter itself.
+/// Appends to `w` contents by reading from the stream until `delimiter` is found.
+/// Does not write the delimiter itself.
 ///
 /// Does not discard the delimiter from the `Reader`.
 ///
@@ -982,6 +982,8 @@ pub fn streamDelimiter(r: *Reader, w: *Writer, delimiter: u8) StreamError!usize 
 
 /// Appends to `w` contents by reading from the stream until `delimiter` is found.
 /// Does not write the delimiter itself.
+///
+/// Does not discard the delimiter from the `Reader`.
 ///
 /// Returns number of bytes streamed, which may be zero. If the stream reaches
 /// the end, the reader buffer will be empty when this function returns.
