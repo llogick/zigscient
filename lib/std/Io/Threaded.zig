@@ -10030,6 +10030,7 @@ fn fileReadStreamingPosix(file: File, data: []const []u8) File.ReadStreamingErro
                 if (native_os == .wasi) return error.IsDir; // File operation on directory.
                 return error.NotOpenForReading;
             },
+            .ACCES => return syscall.fail(error.AccessDenied),
             .AGAIN => return syscall.fail(error.WouldBlock),
             .IO => return syscall.fail(error.InputOutput),
             .ISDIR => return syscall.fail(error.IsDir),
@@ -10208,6 +10209,7 @@ fn fileReadPositionalPosix(file: File, data: []const []u8, offset: u64) File.Rea
                     try syscall.checkCancel();
                     continue;
                 },
+                .ACCES => return syscall.fail(error.AccessDenied),
                 .NXIO => return syscall.fail(error.Unseekable),
                 .SPIPE => return syscall.fail(error.Unseekable),
                 .OVERFLOW => return syscall.fail(error.Unseekable),
@@ -10242,6 +10244,7 @@ fn fileReadPositionalPosix(file: File, data: []const []u8, offset: u64) File.Rea
                 try syscall.checkCancel();
                 continue;
             },
+            .ACCES => return syscall.fail(error.AccessDenied),
             .NXIO => return syscall.fail(error.Unseekable),
             .SPIPE => return syscall.fail(error.Unseekable),
             .OVERFLOW => return syscall.fail(error.Unseekable),
