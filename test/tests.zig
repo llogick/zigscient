@@ -2324,18 +2324,17 @@ pub const debugger_matrix: []const RunnerTarget = &.{
 };
 
 fn supportedCompatArch(host: *const std.Target, arch: std.Target.Cpu.Arch) bool {
+    // aarch64-freebsd and aarch64-linux can technically run 32-bit ARM binaries, but that depends
+    // on AArch32 support in the CPU. Since modern AArch64 CPUs have largely dropped this support,
+    // avoid reporting compatibility for 32-bit here since we'd just build a bunch of test binaries
+    // that never get run anyway. This added almost an hour's worth of useless work to aarch64-linux
+    // CI, for example.
     return switch (host.os.tag) {
-        .freebsd => switch (host.cpu.arch) {
-            .aarch64 => arch == .arm,
-            else => false,
-        },
         .illumos => switch (host.cpu.arch) {
             .x86_64 => arch == .x86,
             else => false,
         },
         .linux => switch (host.cpu.arch) {
-            .aarch64 => arch == .arm or arch == .thumb,
-            .aarch64_be => arch == .armeb or arch == .thumbeb,
             .mips64 => arch == .mips,
             .mips64el => arch == .mipsel,
             .powerpc64 => arch == .powerpc,
