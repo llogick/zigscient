@@ -1460,6 +1460,7 @@ fn arrayInitExpr(
                 mem.eql(u8, tree.tokenSlice(tree.nodeMainToken(array_type.ast.elem_count)), "_"))
             {
                 const len_inst = try gz.addInt(array_init.ast.elements.len);
+                const saved_cursor = astgen.saveSourceCursor();
                 const elem_type = try typeExpr(gz, scope, array_type.ast.elem_type);
                 if (array_type.ast.sentinel == .none) {
                     const array_type_inst = try gz.addPlNode(.array_type, type_expr, Zir.Inst.Bin{
@@ -1468,6 +1469,7 @@ fn arrayInitExpr(
                     });
                     break :inst .{ array_type_inst, elem_type };
                 } else {
+                    astgen.restoreSourceCursor(saved_cursor);
                     const sentinel_node = array_type.ast.sentinel.unwrap().?;
                     const sentinel = try comptimeExpr(gz, scope, .{ .rl = .{ .ty = elem_type } }, sentinel_node, .array_sentinel);
                     const array_type_inst = try gz.addPlNode(
@@ -1729,6 +1731,7 @@ fn structInitExpr(
             mem.eql(u8, tree.tokenSlice(tree.nodeMainToken(array_type.ast.elem_count)), "_");
         if (struct_init.ast.fields.len == 0) {
             if (is_inferred_array_len) {
+                const saved_cursor = astgen.saveSourceCursor();
                 const elem_type = try typeExpr(gz, scope, array_type.ast.elem_type);
                 const array_type_inst = if (array_type.ast.sentinel == .none) blk: {
                     break :blk try gz.addPlNode(.array_type, type_expr, Zir.Inst.Bin{
@@ -1736,6 +1739,7 @@ fn structInitExpr(
                         .rhs = elem_type,
                     });
                 } else blk: {
+                    astgen.restoreSourceCursor(saved_cursor);
                     const sentinel_node = array_type.ast.sentinel.unwrap().?;
                     const sentinel = try comptimeExpr(gz, scope, .{ .rl = .{ .ty = elem_type } }, sentinel_node, .array_sentinel);
                     break :blk try gz.addPlNode(
@@ -3135,6 +3139,11 @@ fn varDecl(
         return astgen.failTok(tree.nodeMainToken(section_node), "cannot set section of local variable '{s}'", .{ident_name_raw});
     }
 
+    const type_inst: Zir.Inst.Ref = if (var_decl.ast.type_node.unwrap()) |type_node|
+        try typeExpr(gz, scope, type_node)
+    else
+        .none;
+
     const align_inst: Zir.Inst.Ref = if (var_decl.ast.align_node.unwrap()) |align_node|
         try comptimeExpr(gz, scope, coerced_align_ri, align_node, .@"align")
     else
@@ -3155,8 +3164,8 @@ fn varDecl(
             if (align_inst == .none and
                 !astgen.nodes_need_rl.contains(node))
             {
-                const result_info: ResultInfo = if (var_decl.ast.type_node.unwrap()) |type_node| .{
-                    .rl = .{ .ty = try typeExpr(gz, scope, type_node) },
+                const result_info: ResultInfo = if (type_inst != .none) .{
+                    .rl = .{ .ty = type_inst },
                     .ctx = .const_init,
                 } else .{ .rl = .none, .ctx = .const_init };
                 const init_inst: Zir.Inst.Ref = try nameStratExpr(gz, scope, result_info, init_node, .dbg_var) orelse
@@ -3185,8 +3194,7 @@ fn varDecl(
             const is_comptime = gz.is_comptime or
                 tree.nodeTag(init_node) == .@"comptime";
 
-            const init_rl: ResultInfo.Loc = if (var_decl.ast.type_node.unwrap()) |type_node| init_rl: {
-                const type_inst = try typeExpr(gz, scope, type_node);
+            const init_rl: ResultInfo.Loc = if (type_inst != .none) init_rl: {
                 if (align_inst == .none) {
                     break :init_rl .{ .ptr = .{ .inst = try gz.addUnNode(.alloc, type_inst, node) } };
                 } else {
@@ -3254,8 +3262,7 @@ fn varDecl(
             if (var_decl.comptime_token != null and gz.is_comptime)
                 return astgen.failTok(var_decl.comptime_token.?, "'comptime var' is redundant in comptime scope", .{});
             const is_comptime = var_decl.comptime_token != null or gz.is_comptime;
-            const alloc: Zir.Inst.Ref, const resolve_inferred: bool, const result_info: ResultInfo = if (var_decl.ast.type_node.unwrap()) |type_node| a: {
-                const type_inst = try typeExpr(gz, scope, type_node);
+            const alloc: Zir.Inst.Ref, const resolve_inferred: bool, const result_info: ResultInfo = if (type_inst != .none) a: {
                 const alloc = alloc: {
                     if (align_inst == .none) {
                         const tag: Zir.Inst.Tag = if (is_comptime)
@@ -3433,6 +3440,7 @@ fn assignDestructureMaybeDecls(
     const is_comptime = full.comptime_token != null or gz.is_comptime;
     const value_is_comptime = tree.nodeTag(full.ast.value_expr) == .@"comptime";
 
+    const saved_cursor = astgen.saveSourceCursor();
     // When declaring consts via a destructure, we always use a result pointer.
     // This avoids the need to create tuple types, and is also likely easier to
     // optimize, since it's a bit tricky for the optimizer to "split up" the
@@ -3482,14 +3490,18 @@ fn assignDestructureMaybeDecls(
                 // We also mark `const`s as comptime if the RHS is definitely comptime-known.
                 const this_variable_comptime = is_comptime or (is_const and value_is_comptime);
 
+                const type_inst = if (full_var_decl.ast.type_node.unwrap()) |type_node|
+                    try typeExpr(gz, scope, type_node)
+                else
+                    .none;
+
                 const align_inst: Zir.Inst.Ref = if (full_var_decl.ast.align_node.unwrap()) |align_node|
                     try comptimeExpr(gz, scope, coerced_align_ri, align_node, .@"align")
                 else
                     .none;
 
-                if (full_var_decl.ast.type_node.unwrap()) |type_node| {
+                if (type_inst != .none) {
                     // Typed alloc
-                    const type_inst = try typeExpr(gz, scope, type_node);
                     const ptr = if (align_inst == .none) ptr: {
                         const tag: Zir.Inst.Tag = if (this_variable_comptime)
                             .alloc_comptime_mut
@@ -3556,6 +3568,7 @@ fn assignDestructureMaybeDecls(
     if (any_lvalue_expr) {
         // At least one variable was an lvalue expr. Iterate again in order to
         // evaluate the lvalues from within the possible block_comptime.
+        astgen.restoreSourceCursor(saved_cursor);
         for (rl_components, full.ast.variables) |*variable_rl, variable_node| {
             if (variable_rl.* != .typed_ptr) continue;
             switch (tree.nodeTag(variable_node)) {
@@ -3889,7 +3902,9 @@ fn arrayTypeSentinel(gz: *GenZir, scope: *Scope, ri: ResultInfo, node: Ast.Node.
         return astgen.failNode(len_node, "unable to infer array size", .{});
     }
     const len = try reachableExprComptime(gz, scope, .{ .rl = .{ .coerced_ty = .usize_type } }, len_node, node, .array_length);
+    const saved_cursor = astgen.saveSourceCursor();
     const elem_type = try typeExpr(gz, scope, extra.elem_type);
+    astgen.restoreSourceCursor(saved_cursor);
     const sentinel = try reachableExprComptime(gz, scope, .{ .rl = .{ .coerced_ty = elem_type } }, extra.sentinel, node, .array_sentinel);
 
     const result = try gz.addPlNode(.array_type_sentinel, node, Zir.Inst.ArrayTypeSentinel{
@@ -4061,43 +4076,41 @@ fn fnDecl(
         // We include a function *type*, not a value.
         const type_inst = try fnProtoExprInner(&type_gz, &type_gz.base, .{ .rl = .none }, decl_node, fn_proto, true);
         _ = try type_gz.addBreakWithSrcNode(.break_inline, decl_inst, type_inst, decl_node);
+        astgen.restoreSourceCursor(saved_cursor);
     }
 
     var align_gz = type_gz.makeSubBlock(scope);
     defer align_gz.unstack();
 
     if (fn_proto.ast.align_expr.unwrap()) |align_expr| {
-        astgen.restoreSourceCursor(saved_cursor);
         const inst = try expr(&align_gz, &align_gz.base, coerced_align_ri, align_expr);
         _ = try align_gz.addBreakWithSrcNode(.break_inline, decl_inst, inst, decl_node);
     }
 
-    var linksection_gz = align_gz.makeSubBlock(scope);
-    defer linksection_gz.unstack();
-
-    if (fn_proto.ast.section_expr.unwrap()) |section_expr| {
-        astgen.restoreSourceCursor(saved_cursor);
-        const inst = try expr(&linksection_gz, &linksection_gz.base, coerced_linksection_ri, section_expr);
-        _ = try linksection_gz.addBreakWithSrcNode(.break_inline, decl_inst, inst, decl_node);
-    }
-
-    var addrspace_gz = linksection_gz.makeSubBlock(scope);
+    var addrspace_gz = align_gz.makeSubBlock(scope);
     defer addrspace_gz.unstack();
 
     if (fn_proto.ast.addrspace_expr.unwrap()) |addrspace_expr| {
-        astgen.restoreSourceCursor(saved_cursor);
         const addrspace_ty = try addrspace_gz.addStdLangValue(addrspace_expr, .address_space);
         const inst = try expr(&addrspace_gz, &addrspace_gz.base, .{ .rl = .{ .coerced_ty = addrspace_ty } }, addrspace_expr);
         _ = try addrspace_gz.addBreakWithSrcNode(.break_inline, decl_inst, inst, decl_node);
     }
 
-    var value_gz = addrspace_gz.makeSubBlock(scope);
+    var linksection_gz = addrspace_gz.makeSubBlock(scope);
+    defer linksection_gz.unstack();
+
+    if (fn_proto.ast.section_expr.unwrap()) |section_expr| {
+        const inst = try expr(&linksection_gz, &linksection_gz.base, coerced_linksection_ri, section_expr);
+        _ = try linksection_gz.addBreakWithSrcNode(.break_inline, decl_inst, inst, decl_node);
+    }
+
+    var value_gz = linksection_gz.makeSubBlock(scope);
     defer value_gz.unstack();
 
     if (!is_extern) {
         // We include a function *value*, not a type.
         astgen.restoreSourceCursor(saved_cursor);
-        try astgen.fnDeclInner(&value_gz, &value_gz.base, saved_cursor, decl_inst, decl_node, body_node.unwrap().?, fn_proto);
+        try astgen.fnDeclInner(&value_gz, &value_gz.base, decl_inst, decl_node, body_node.unwrap().?, fn_proto);
     }
 
     // *Now* we can incorporate the full source code into the hasher.
@@ -4119,8 +4132,8 @@ fn fnDecl(
 
         .type_gz = &type_gz,
         .align_gz = &align_gz,
-        .linksection_gz = &linksection_gz,
         .addrspace_gz = &addrspace_gz,
+        .linksection_gz = &linksection_gz,
         .value_gz = &value_gz,
     });
 }
@@ -4129,7 +4142,6 @@ fn fnDeclInner(
     astgen: *AstGen,
     decl_gz: *GenZir,
     scope: *Scope,
-    saved_cursor: SourceCursor,
     decl_inst: Zir.Inst.Index,
     decl_node: Ast.Node.Index,
     body_node: Ast.Node.Index,
@@ -4266,27 +4278,6 @@ fn fnDeclInner(
     // instructions inside the expression blocks for cc and ret_ty to use the function
     // instruction as the body to break from.
 
-    var ret_gz = decl_gz.makeSubBlock(params_scope);
-    defer ret_gz.unstack();
-    any_param_used = false; // we will check this later
-    const ret_ref: Zir.Inst.Ref = inst: {
-        // Parameters are in scope for the return type, so we use `params_scope` here.
-        // The calling convention will not have parameters in scope, so we'll just use `scope`.
-        // See #22263 for a proposal to solve the inconsistency here.
-        const inst = try fullBodyExpr(&ret_gz, params_scope, coerced_type_ri, fn_proto.ast.return_type.unwrap().?, .normal);
-        if (ret_gz.instructionsSlice().len == 0) {
-            // In this case we will send a len=0 body which can be encoded more efficiently.
-            break :inst inst;
-        }
-        _ = try ret_gz.addBreak(.break_inline, @fromBackingInt(@intCast(0)), inst);
-        break :inst inst;
-    };
-    const ret_body_param_refs = try astgen.fetchRemoveRefEntries(param_insts.items);
-    const ret_ty_is_generic = any_param_used;
-
-    // We're jumping back in source, so restore the cursor.
-    astgen.restoreSourceCursor(saved_cursor);
-
     var cc_gz = decl_gz.makeSubBlock(scope);
     defer cc_gz.unstack();
     const cc_ref: Zir.Inst.Ref = blk: {
@@ -4311,6 +4302,24 @@ fn fnDeclInner(
             break :blk .none;
         }
     };
+
+    var ret_gz = decl_gz.makeSubBlock(params_scope);
+    defer ret_gz.unstack();
+    any_param_used = false; // we will check this later
+    const ret_ref: Zir.Inst.Ref = inst: {
+        // Parameters are in scope for the return type, so we use `params_scope` here.
+        // The calling convention will not have parameters in scope, so we'll just use `scope`.
+        // See #22263 for a proposal to solve the inconsistency here.
+        const inst = try fullBodyExpr(&ret_gz, params_scope, coerced_type_ri, fn_proto.ast.return_type.unwrap().?, .normal);
+        if (ret_gz.instructionsSlice().len == 0) {
+            // In this case we will send a len=0 body which can be encoded more efficiently.
+            break :inst inst;
+        }
+        _ = try ret_gz.addBreak(.break_inline, @fromBackingInt(@intCast(0)), inst);
+        break :inst inst;
+    };
+    const ret_body_param_refs = try astgen.fetchRemoveRefEntries(param_insts.items);
+    const ret_ty_is_generic = any_param_used;
 
     var body_gz: GenZir = .{
         .is_comptime = false,
@@ -4490,14 +4499,6 @@ fn globalVarDecl(
         _ = try align_gz.addBreakWithSrcNode(.break_inline, decl_inst, align_inst, node);
     }
 
-    var linksection_gz = type_gz.makeSubBlock(scope);
-    defer linksection_gz.unstack();
-
-    if (var_decl.ast.section_node.unwrap()) |section_node| {
-        const linksection_inst = try expr(&linksection_gz, &linksection_gz.base, coerced_linksection_ri, section_node);
-        _ = try linksection_gz.addBreakWithSrcNode(.break_inline, decl_inst, linksection_inst, node);
-    }
-
     var addrspace_gz = type_gz.makeSubBlock(scope);
     defer addrspace_gz.unstack();
 
@@ -4505,6 +4506,14 @@ fn globalVarDecl(
         const addrspace_ty = try addrspace_gz.addStdLangValue(addrspace_node, .address_space);
         const addrspace_inst = try expr(&addrspace_gz, &addrspace_gz.base, .{ .rl = .{ .coerced_ty = addrspace_ty } }, addrspace_node);
         _ = try addrspace_gz.addBreakWithSrcNode(.break_inline, decl_inst, addrspace_inst, node);
+    }
+
+    var linksection_gz = type_gz.makeSubBlock(scope);
+    defer linksection_gz.unstack();
+
+    if (var_decl.ast.section_node.unwrap()) |section_node| {
+        const linksection_inst = try expr(&linksection_gz, &linksection_gz.base, coerced_linksection_ri, section_node);
+        _ = try linksection_gz.addBreakWithSrcNode(.break_inline, decl_inst, linksection_inst, node);
     }
 
     var init_gz = type_gz.makeSubBlock(scope);
@@ -4536,8 +4545,8 @@ fn globalVarDecl(
 
         .type_gz = &type_gz,
         .align_gz = &align_gz,
-        .linksection_gz = &linksection_gz,
         .addrspace_gz = &addrspace_gz,
+        .linksection_gz = &linksection_gz,
         .value_gz = &init_gz,
     });
 }
@@ -4599,8 +4608,8 @@ fn comptimeDecl(
         .linkage = .normal,
         .type_gz = &dummy_gz,
         .align_gz = &dummy_gz,
-        .linksection_gz = &dummy_gz,
         .addrspace_gz = &dummy_gz,
+        .linksection_gz = &dummy_gz,
         .value_gz = &comptime_gz,
     });
 }
@@ -7734,10 +7743,6 @@ fn switchExpr(
         };
 
         if (capture != .none) assert(any_has_payload_capture);
-        if (is_err_switch) {
-            assert(!any_payload_is_ref); // should have failed by now
-            assert(!any_has_tag_capture); // should have failed by now
-        }
 
         prong_body: {
             scratch_scope.instructions_top = parent_gz.instructions.items.len;
@@ -7843,6 +7848,10 @@ fn switchExpr(
                 scalar_case_index += 1;
             }
         }
+    }
+    if (is_err_switch) {
+        assert(!any_payload_is_ref); // should have failed by now
+        assert(!any_has_tag_capture); // should have failed by now
     }
     assert(scalar_case_index + multi_case_index + @intFromBool(has_else) == case_nodes.len);
     assert(multi_items_infos_start + multi_item_offset == bodies_start);
@@ -11527,8 +11536,8 @@ const GenZir = struct {
 
     /// Must be called with the following stack set up:
     ///  * gz (bottom)
-    ///  * ret_gz
     ///  * cc_gz
+    ///  * ret_gz
     ///  * body_gz (top)
     /// Unstacks all of those except for `gz`.
     fn addFunc(
@@ -11575,15 +11584,15 @@ const GenZir = struct {
                 stacked_gz = body_gz;
                 break :body body;
             } else &.{};
-            const cc_body: []const Zir.Inst.Index = if (args.cc_gz) |cc_gz| body: {
-                const cc_body = cc_gz.instructionsSliceUptoOpt(stacked_gz);
-                stacked_gz = cc_gz;
-                break :body cc_body;
-            } else &.{};
             const ret_body: []const Zir.Inst.Index = if (args.ret_gz) |ret_gz| body: {
                 const ret_body = ret_gz.instructionsSliceUptoOpt(stacked_gz);
                 stacked_gz = ret_gz;
                 break :body ret_body;
+            } else &.{};
+            const cc_body: []const Zir.Inst.Index = if (args.cc_gz) |cc_gz| body: {
+                const cc_body = cc_gz.instructionsSliceUptoOpt(stacked_gz);
+                stacked_gz = cc_gz;
+                break :body cc_body;
             } else &.{};
             break :bodies .{ body, cc_body, ret_body };
         };
@@ -11725,8 +11734,8 @@ const GenZir = struct {
 
         // Order is important when unstacking.
         if (args.body_gz) |body_gz| body_gz.unstack();
-        if (args.cc_gz) |cc_gz| cc_gz.unstack();
         if (args.ret_gz) |ret_gz| ret_gz.unstack();
+        if (args.cc_gz) |cc_gz| cc_gz.unstack();
 
         astgen.instructions.appendAssumeCapacity(.{
             .tag = tag,
@@ -13503,10 +13512,10 @@ fn setDeclaration(
         /// Must be stacked on `type_gz`.
         align_gz: *GenZir,
         /// Must be stacked on `align_gz`.
-        linksection_gz: *GenZir,
-        /// Must be stacked on `linksection_gz`.
         addrspace_gz: *GenZir,
-        /// Must be stacked on `addrspace_gz` and have nothing stacked on top of it.
+        /// Must be stacked on `addrspace_gz`.
+        linksection_gz: *GenZir,
+        /// Must be stacked on `linksection_gz` and have nothing stacked on top of it.
         value_gz: *GenZir,
     },
 ) !void {
@@ -13514,9 +13523,9 @@ fn setDeclaration(
     const gpa = astgen.gpa;
 
     const type_body = args.type_gz.instructionsSliceUpto(args.align_gz);
-    const align_body = args.align_gz.instructionsSliceUpto(args.linksection_gz);
-    const linksection_body = args.linksection_gz.instructionsSliceUpto(args.addrspace_gz);
-    const addrspace_body = args.addrspace_gz.instructionsSliceUpto(args.value_gz);
+    const align_body = args.align_gz.instructionsSliceUpto(args.addrspace_gz);
+    const addrspace_body = args.addrspace_gz.instructionsSliceUpto(args.linksection_gz);
+    const linksection_body = args.linksection_gz.instructionsSliceUpto(args.value_gz);
     const value_body = args.value_gz.instructionsSlice();
 
     const has_name = args.name != .empty;
