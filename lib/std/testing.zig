@@ -1149,7 +1149,9 @@ pub fn checkAllAllocationFailures(
 ) !void {
     // Try it once with unlimited memory, make sure it works
     const needed_alloc_count = x: {
-        var failing_allocator_inst = std.testing.FailingAllocator.init(backing_allocator, .{});
+        var failing_allocator_inst = std.testing.FailingAllocator.init(backing_allocator, .{
+            .resize_fail_index = 0,
+        });
 
         try @call(.auto, test_fn, .{failing_allocator_inst.allocator()} ++ extra_args);
         break :x failing_allocator_inst.alloc_index;
@@ -1158,6 +1160,7 @@ pub fn checkAllAllocationFailures(
     for (0..needed_alloc_count) |fail_index| {
         var failing_allocator_inst = std.testing.FailingAllocator.init(backing_allocator, .{
             .fail_index = fail_index,
+            .resize_fail_index = 0,
         });
 
         if (@call(.auto, test_fn, .{failing_allocator_inst.allocator()} ++ extra_args)) |_| {
@@ -1237,6 +1240,24 @@ test "checkAllAllocationFailures provide result type to 'extra_args' argument" {
             },
         },
     );
+}
+
+test "checkAllAllocationFailures does not depend on in-place resizes" {
+    // `std.testing.allocator` never reuses memory, so whether a list can grow in place depends
+    // on where in its bucket it landed, which differs from one run to the next.
+    const S = struct {
+        fn f(gpa: std.mem.Allocator) !void {
+            var a: std.ArrayList(u8) = .empty;
+            defer a.deinit(gpa);
+            var b: std.ArrayList(u8) = .empty;
+            defer b.deinit(gpa);
+            for (0..2000) |i| {
+                try a.append(gpa, @truncate(i));
+                try b.append(gpa, @truncate(i));
+            }
+        }
+    };
+    try checkAllAllocationFailures(std.testing.allocator, S.f, .{});
 }
 
 /// Given a type, references all the declarations inside, so that the semantic analyzer sees them.
