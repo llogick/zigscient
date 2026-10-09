@@ -2155,7 +2155,7 @@ pub const Cpu = struct {
                 .s390x => &s390x.cpu.arch11,
                 .sparc => switch (os.tag) {
                     .linux => &sparc.cpu.v9, // glibc does not work with 'plain' v8.
-                    else => generic(arch),
+                    else => &sparc.cpu.v8,
                 },
                 .sparc64 => &sparc.cpu.ultrasparc,
                 .x86 => &x86.cpu.pentium4,
