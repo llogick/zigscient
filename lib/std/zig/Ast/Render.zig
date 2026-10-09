@@ -14,6 +14,8 @@ gpa: Allocator,
 ais: *AutoIndentingStream,
 tree: Ast,
 fixups: Fixups,
+checking_newlines: bool,
+scratch_array_init: std.ArrayList(usize),
 
 const indent_delta = 4;
 const asm_indent_delta = 2;
@@ -92,7 +94,10 @@ pub fn renderTree(gpa: Allocator, w: *Writer, tree: Ast, fixups: Fixups) Error!v
         .ais = &auto_indenting_stream,
         .tree = tree,
         .fixups = fixups,
+        .checking_newlines = false,
+        .scratch_array_init = .empty,
     };
+    defer r.scratch_array_init.deinit(gpa);
 
     // Render all the line comments at the beginning of the file.
     const comment_end_loc = tree.tokenStart(0);
@@ -983,6 +988,8 @@ fn rendersMultiline(r: *const Render, node: Ast.Node.Index) error{OutOfMemory}!b
         .ais = &sub_ais,
         .tree = r.tree,
         .fixups = r.fixups,
+        .checking_newlines = true,
+        .scratch_array_init = undefined, // unused since `checking_newlines` is `true`
     };
 
     renderExpression(&sub_r, node, .none) catch |err| return switch (err) {
@@ -2101,6 +2108,21 @@ fn renderStructInit(
     return renderToken(r, rbrace, space);
 }
 
+fn renderCommentsBetweenTokens(r: *Render, start: Ast.TokenIndex, end: Ast.TokenIndex) Error!void {
+    const tree = r.tree;
+
+    var next_start = tree.tokenStart(start);
+    for (start + 1..end) |token_i| {
+        const token_start = next_start;
+        next_start = tree.tokenStart(@intCast(token_i + 1));
+        _ = try renderComments(
+            r,
+            token_start + tokenSliceForRender(tree, @intCast(token_i)).len,
+            next_start,
+        );
+    }
+}
+
 fn renderArrayInit(
     r: *Render,
     array_init: Ast.full.ArrayInit,
@@ -2157,137 +2179,276 @@ fn renderArrayInit(
             }
         }
         return renderToken(r, last_elem_token + 1, space); // rbrace
+    } else if (r.checking_newlines) {
+        // To avoid taking quadratic time while rendering nested arrays, just write a newline
+        // since it is already gauraunteed. However, comments still need to be written since they
+        // may enable/disable zig fmt.
+        try r.renderCommentsBetweenTokens(array_init.ast.lbrace, rbrace);
+        return r.ais.insertNewline();
     }
 
     try ais.pushIndent(.normal);
     try renderToken(r, array_init.ast.lbrace, .newline);
     try ais.pushSpace(.comma);
 
-    const expr_widths = try gpa.alloc(enum(usize) {
-        /// The expression contains non-printable characters (e.g. unicode / newlines)
-        /// or has formatting disabled at the start or end.
-        nonprint = std.math.maxInt(usize),
-        _,
-    }, array_init.ast.elements.len);
-    defer gpa.free(expr_widths);
-    {
-        var buf: Writer.Allocating = .init(gpa);
-        defer buf.deinit();
-        var sub_ais: AutoIndentingStream = .init(gpa, &buf.writer, indent_delta);
-        sub_ais.disabled_offset = ais.disabled_offset;
-        defer sub_ais.deinit();
-        var sub_r: Render = .{
-            .gpa = r.gpa,
-            .ais = &sub_ais,
-            .tree = r.tree,
-            .fixups = r.fixups,
-        };
-        for (array_init.ast.elements, expr_widths) |e, *width| {
-            const begin_disabled = sub_ais.disabled_offset != null;
-            // `.skip` space so trailing commments aren't included
-            try renderExpressionComma(&sub_r, e, .skip);
-            if (!begin_disabled and sub_ais.disabled_offset == null) {
-                const w = buf.written();
-                width.* = for (w) |c| {
-                    if (!std.ascii.isPrint(c))
-                        break .nonprint;
-                } else @fromBackingInt(@intCast(w.len - @intFromBool(w[w.len - 1] == ',')));
-            } else {
-                width.* = .nonprint;
-            }
+    const scratch = &r.scratch_array_init;
+    const scratch_start = scratch.items.len;
+    defer assert(scratch.items.len == scratch_start);
 
-            // Write trailing comments since they may enable/disable zig fmt
-            buf.clearRetainingCapacity();
-            var after_expr = tree.lastToken(e);
-            after_expr += @intFromBool(tree.tokenTag(after_expr + 1) == .comma);
-            try renderSpace(&sub_r, after_expr, tokenSliceForRender(tree, after_expr).len, .none);
-
-            buf.clearRetainingCapacity();
-            // The following are needed to make sure isLineOverIndented is not influenced by
-            // the previous element.
-            sub_ais.indent_count = 0;
-            sub_ais.applied_indent = 0;
-        }
-    }
+    var sub_buf: Writer.Allocating = .init(gpa);
+    defer sub_buf.deinit();
+    var sub_ais: AutoIndentingStream = .init(gpa, &sub_buf.writer, indent_delta);
+    defer sub_ais.deinit();
+    var sub_r: Render = .{
+        .gpa = r.gpa,
+        .ais = &sub_ais,
+        .tree = r.tree,
+        .fixups = r.fixups,
+        .checking_newlines = true,
+        .scratch_array_init = undefined, // unused since `checking_newlines` is `true`
+    };
 
     var remaining_exprs = array_init.ast.elements;
-    var remaining_widths = expr_widths;
-    while (remaining_exprs.len != 0) {
-        var row_size: usize = 1;
-        for (1.., remaining_exprs, remaining_widths) |len, e, w| {
-            if (w == .nonprint) break;
-            row_size = len;
+    section: while (remaining_exprs.len != 0) {
+        defer scratch.items.len = scratch_start;
+        // May not already be equal due to a section end and when `sub_ais` is initialized.
+        sub_ais.disabled_offset = ais.disabled_offset;
 
-            var after_expr = tree.lastToken(e);
-            after_expr += @intFromBool(tree.tokenTag(after_expr + 1) == .comma);
-            assert(tree.tokenTag(after_expr) == .comma or after_expr + 1 == rbrace);
-            if (!tree.tokensOnSameLine(after_expr, after_expr + 1))
-                break;
-        } else {
-            // All the expressions are on the same line.
-            // However, if there is a trailing comma, we put them each on their own line.
-            if (tree.tokenTag(rbrace - 1) == .comma)
-                row_size = 1;
-        }
+        var n_section_exprs: usize = 0;
+        var n_cols: usize = 0;
+        var line_col: usize = 0;
+        var first_line: bool = true;
+        // `scratch` will contain the width of the first `n_section_exprs`;
+        // zero indicates the expression is on its own line.
+        while (true) {
+            assert(scratch.items[scratch_start..].len == n_section_exprs);
 
-        // Determine the size of this section
-        const section_end = end: {
-            var line_start = row_size; // Start after the first row to ignore comments on it
-            break :end for (line_start.., remaining_exprs[line_start..]) |i, e| {
-                const expr_first = tree.firstToken(e);
-                // Any nonprint character terminates the line because they are always put on their
-                // own line, so they will not end up on the same line as the trailing comment.
-                if (expr_widths[i - 1] == .nonprint or !tree.tokensOnSameLine(expr_first - 1, expr_first)) {
-                    line_start = i;
+            const expr = remaining_exprs[n_section_exprs];
+            const final_expr = n_section_exprs + 1 == remaining_exprs.len;
+            var elem_last = tree.lastToken(expr);
+            elem_last += @intFromBool(tree.tokenTag(elem_last + 1) == .comma);
+            assert(tree.tokenTag(elem_last) == .comma or elem_last + 1 == rbrace);
+
+            const own_line = ends_line: {
+                const ends_line = final_expr or !tree.tokensOnSameLine(elem_last, elem_last + 1);
+                if (ends_line and n_cols == 0) {
+                    // Avoid doing extra work below since the width will not be required.
+                    break :ends_line false;
+                } // Otherwise a correct value for `own_line` is required.
+                // This is the case even for `n_cols == 1` since it may become `2` below.
+
+                if (sub_ais.disabled_offset != null) {
+                    if (n_cols >= 2) {
+                        // Comments still need rendered since they may enable/disable zig fmt
+                        // for later expressions.
+                        try renderCommentsBetweenTokens(&sub_r, tree.firstToken(expr), elem_last + 1);
+                        sub_buf.clearRetainingCapacity();
+                    }
+                    break :ends_line true;
+                }
+                // `.skip` space so trailing commments aren't included
+                try renderExpressionComma(&sub_r, expr, .skip);
+                var own_line = sub_ais.disabled_offset != null;
+                for (sub_buf.written()) |c| {
+                    if (!std.ascii.isPrint(c)) {
+                        // The expression contained a newline or unicode character so it is
+                        // put on its own line since there is no reasonable way to align it.
+                        own_line = true;
+                    }
+                }
+                const width = sub_buf.written().len -
+                    @intFromBool(sub_buf.written()[sub_buf.written().len - 1] == ',');
+                sub_buf.clearRetainingCapacity();
+
+                // Write trailing comments since they may enable/disable zig fmt.
+                _ = try renderComments(
+                    &sub_r,
+                    tree.tokenStart(elem_last) + tokenSliceForRender(tree, elem_last).len,
+                    tree.tokenStart(elem_last + 1),
+                );
+                sub_buf.clearRetainingCapacity();
+
+                // Make sure isLineOverIndented is not influenced for future elements.
+                sub_ais.indent_count = 0;
+                sub_ais.applied_indent = 0;
+
+                if (own_line) {
+                    break :ends_line true;
                 }
 
-                var after_expr = tree.lastToken(e);
-                after_expr += @intFromBool(tree.tokenTag(after_expr + 1) == .comma);
-                assert(tree.tokenTag(after_expr) == .comma or after_expr + 1 == rbrace);
-                if (hasTrailingComment(tree, after_expr))
-                    break line_start;
-            } else remaining_exprs.len;
-        };
-        const section_exprs = remaining_exprs[0..section_end];
-        const section_widths = remaining_widths[0..section_end];
-        remaining_exprs = remaining_exprs[section_end..];
-        remaining_widths = remaining_widths[section_end..];
+                // This is a valid element to be put on a line with others.
+                assert(width != 0);
 
-        // Determine the width of each column
-        var col_widths = try gpa.alloc(usize, row_size);
-        defer gpa.free(col_widths);
-        @memset(col_widths, 0);
+                try scratch.append(r.gpa, width);
+                line_col += 1;
+                n_cols += @intFromBool(first_line);
+                n_section_exprs += 1;
+
+                if (ends_line) {
+                    break :ends_line false;
+                }
+
+                continue;
+            };
+
+            if (n_cols <= 1 and first_line) {
+                // Since there is only one column, there is no need to render each expression to
+                // find its width. However, the section ending still needs to be accounted for, so
+                // below we find the number of expressions that can be rendered before the section
+                // might end.
+                n_section_exprs = 1;
+                n_cols = 1;
+                line_col = 0;
+                scratch.items.len = scratch_start;
+
+                while (n_section_exprs != remaining_exprs.len) {
+                    const s_expr = remaining_exprs[n_section_exprs];
+                    var s_elem_last = tree.lastToken(s_expr);
+                    s_elem_last += @intFromBool(tree.tokenTag(s_elem_last + 1) == .comma);
+                    assert(tree.tokenTag(s_elem_last) == .comma or s_elem_last + 1 == rbrace);
+
+                    // `line_col` here does not account for expressions being put on their own line.
+                    if (tree.tokensOnSameLine(s_elem_last, s_elem_last + 1)) {
+                        line_col += 1;
+                    } else if (hasTrailingComment(tree, s_elem_last)) {
+                        n_section_exprs -= line_col;
+                        break;
+                    } else {
+                        line_col = 0;
+                    }
+                    n_section_exprs += 1;
+                } else {
+                    line_col = 0;
+                }
+
+                for (remaining_exprs[0..n_section_exprs]) |s_expr| {
+                    if (s_expr != array_init.ast.elements[0]) {
+                        try renderExtraNewline(r, s_expr);
+                    }
+                    try renderExpression(r, s_expr, .comma);
+                }
+                remaining_exprs = remaining_exprs[n_section_exprs..];
+
+                if (line_col != 0) {
+                    assert(remaining_exprs.len != 0);
+
+                    // Since the final expressions may be forced on their own line, and so still
+                    // part of this section, the final row is handled by the slower path.
+                    sub_ais.disabled_offset = ais.disabled_offset;
+                    n_section_exprs = 0;
+                    line_col = 0;
+                    first_line = false;
+                    continue;
+                }
+
+                continue :section;
+            }
+
+            first_line &= !own_line or n_section_exprs == 0;
+
+            if (!first_line and hasTrailingComment(tree, elem_last)) {
+                // End of the section
+                if (own_line) {
+                    line_col = 0;
+                }
+                n_section_exprs -= line_col;
+                scratch.items.len -= line_col;
+
+                break;
+            }
+
+            if (own_line) {
+                // The expression has no width, so it is not yet present in `scratch`.
+                try scratch.append(r.gpa, 0);
+                n_section_exprs += 1;
+            }
+
+            if (final_expr) {
+                break;
+            }
+
+            line_col = 0;
+            first_line = false;
+        }
+        line_col = undefined;
+
+        const section_exprs = remaining_exprs[0..n_section_exprs];
+        remaining_exprs = remaining_exprs[n_section_exprs..];
+
+        if (n_cols == 1 or
+            // If all the expressions are on the same line with a
+            // trailing comma, they are each put on their own line.
+            (n_cols == array_init.ast.elements.len and
+                tree.tokenTag(rbrace - 1) == .comma and tree.tokensOnSameLine(rbrace - 1, rbrace)))
+        {
+            scratch.items.len = scratch_start;
+            for (section_exprs) |expr| {
+                if (expr != array_init.ast.elements[0]) {
+                    try renderExtraNewline(r, expr);
+                } else {
+                    // Can only be the case if `n_cols` became `1` at the end (one line with a
+                    // trailing comma) since otherwise the first rows were already rendered.
+                    assert(n_section_exprs == array_init.ast.elements.len);
+                }
+                try renderExpression(r, expr, .comma);
+            }
+            continue;
+        }
+
+        {
+            assert(scratch.items[scratch_start..].len == n_section_exprs);
+            // Determine the width of each column. This cannot be done with the width calculations
+            // above since the section may have ended, removing elements already iterated over.
+            //
+            // The first `n_section_exprs` of `scratch` will contain zero at each end-of-line.
+            // The remaining `n_cols - 1` will contain the widths of each column.
+            const col_widths = try scratch.addManyAsSlice(gpa, n_cols - 1);
+
+            @memcpy(col_widths, scratch.items[scratch_start..][0 .. n_cols - 1]);
+            scratch.items[scratch_start + n_cols - 1] = 0;
+
+            var col: usize = 0;
+            for (
+                scratch_start + n_cols..,
+                scratch.items[scratch_start..][n_cols..n_section_exprs],
+            ) |i, width| {
+                if (width == 0) {
+                    scratch.items[i - 1] = 0;
+                    col = 0;
+                } else if (col + 1 == n_cols) {
+                    scratch.items[i] = 0;
+                    col = 0;
+                } else {
+                    col_widths[col] = @max(col_widths[col], width);
+                    col += 1;
+                }
+            }
+
+            scratch.items[scratch_start + n_section_exprs - 1] = 0;
+        }
 
         var col: usize = 0;
-        for (section_widths) |w| {
-            if (w == .nonprint) {
-                col = 0;
-                continue;
-            }
-            col_widths[col] = @max(col_widths[col], @backingInt(w));
-            col += 1;
-            if (col == row_size) {
-                col = 0;
-            }
-        }
+        for (0.., section_exprs) |i, expr| {
+            assert(col < n_cols);
 
-        // Render each expression
-        col = 0;
-        for (0.., section_exprs, section_widths) |i, e, w| {
-            if (i + 1 == section_end or col + 1 == row_size or
-                w == .nonprint or section_widths[i + 1] == .nonprint)
-            {
-                try renderExpression(r, e, .comma);
-                col = 0;
-                if (i + 1 != section_end) {
-                    try renderExtraNewline(r, section_exprs[i + 1]);
-                }
-            } else {
-                try renderExpression(r, e, .comma_space);
-                try ais.splatByteAll(' ', col_widths[col] - @backingInt(w));
+            if (col == 0 and expr != array_init.ast.elements[0]) {
+                try renderExtraNewline(r, expr);
+            }
+
+            const width = scratch.items[scratch_start + i];
+            if (width != 0) {
+                try renderExpression(r, expr, .comma_space);
+
+                const col_width = scratch.items[scratch_start + n_section_exprs + col];
+                try ais.splatByteAll(' ', col_width - width);
+
                 col += 1;
+            } else {
+                try renderExpression(r, expr, .comma);
+                col = 0;
             }
         }
+        assert(col == 0);
     }
 
     ais.popSpace();

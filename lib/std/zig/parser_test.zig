@@ -1937,6 +1937,12 @@ test "zig fmt: array literal with hint" {
         \\    5, 6, //
         \\    7, 8, //
         \\};
+        \\const a = .{
+        \\    1,
+        \\    2, 3, '±', //
+        \\    4, 5,
+        \\    6, 7, //
+        \\};
     ,
         \\const a = []u8{
         \\    1, 2, //
@@ -1972,6 +1978,15 @@ test "zig fmt: array literal with hint" {
         \\    3, 4, //
         \\    5, 6, //
         \\    7, 8, //
+        \\};
+        \\const a = .{
+        \\    1,
+        \\    2,
+        \\    3,
+        \\    '±', //
+        \\    4,
+        \\    5,
+        \\    6, 7, //
         \\};
         \\
     );
@@ -5006,6 +5021,10 @@ test "zig fmt: single argument trailing commas in @builtins()" {
 test "zig fmt: trailing comma should force multiline 1 column" {
     try testTransform(
         \\pub const UUID_NULL: uuid_t = [16]u8{0,0,0,0,};
+        \\pub const UUID_NULL: uuid_t = [16]u8{
+        \\0,0,0,0, };
+        \\pub const UUID_NULL: uuid_t = [16]u8{0,0,0,0,
+        \\};
         \\
     ,
         \\pub const UUID_NULL: uuid_t = [16]u8{
@@ -5013,6 +5032,15 @@ test "zig fmt: trailing comma should force multiline 1 column" {
         \\    0,
         \\    0,
         \\    0,
+        \\};
+        \\pub const UUID_NULL: uuid_t = [16]u8{
+        \\    0,
+        \\    0,
+        \\    0,
+        \\    0,
+        \\};
+        \\pub const UUID_NULL: uuid_t = [16]u8{
+        \\    0, 0, 0, 0,
         \\};
         \\
     );
@@ -7047,6 +7075,101 @@ test "zig fmt: canonicalize @enumFromInt(x) to @fromBackingInt(@intCast(x))" {
         \\const d: E = @fromBackingInt(@intCast( // comment 1 preserved
         \\    x, // comment 2 preserved
         \\)); // comment 3 preserved
+        \\
+    );
+}
+
+test "zig fmt: linear time for nested array inits" {
+    const source = comptime source: {
+        var source: []const u8 = "const a = .{\n";
+        var indent: []const u8 = "    ";
+
+        for (0..32) |_| {
+            source = source ++ indent ++ ".{},\n" ++ indent ++ ".{\n";
+            indent = indent ++ "    ";
+        }
+        source = source ++ indent ++ ".{},\n";
+        for (0..32) |_| {
+            indent = indent[4..];
+            source = source ++ indent ++ "},\n";
+        }
+
+        break :source source ++ "};\n";
+    };
+    try testCanonical(source);
+}
+
+test "zig fmt: on/off with nested array inits" {
+    try testCanonical(
+        \\const a = .{
+        \\    .{
+        \\        0, // zig fmt: off
+        \\    },
+        \\    1, 2, // zig fmt: on
+        \\    3,
+        \\    4,
+        \\};
+        \\const b = .{
+        \\    // zig fmt: off
+        \\    .{
+        \\        0, // zig fmt: on
+        \\    },
+        \\    1, 2, //
+        \\    3, 4,
+        \\};
+        \\const c = .{
+        \\    .{
+        \\        // zig fmt: off
+        \\        0, // zig fmt: on
+        \\    },
+        \\    1, 2, //
+        \\    3, 4,
+        \\};
+        \\
+    );
+}
+
+test "zig fmt: empty lines in array inits" {
+    try testTransform(
+        \\const a = .{
+        \\    1,
+        \\
+        \\    2, //
+        \\    3,
+        \\
+        \\    4, 5, //
+        \\    6,
+        \\
+        \\    7,
+        \\
+        \\    8,
+        \\};
+        \\
+    ,
+        \\const a = .{
+        \\    1,
+        \\
+        \\    2, //
+        \\    3,
+        \\
+        \\    4, 5, //
+        \\    6, 7,
+        \\
+        \\    8,
+        \\};
+        \\
+    );
+}
+
+test "zig fmt: nested array init with asm" {
+    try testCanonical(
+        \\const a = .{
+        \\    asm (.{
+        \\            0,
+        \\        }
+        \\        : [_] "" (_),
+        \\    ),
+        \\};
         \\
     );
 }
