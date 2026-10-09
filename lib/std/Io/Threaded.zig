@@ -13055,7 +13055,7 @@ fn netReadWindows(socket_handle: net.Socket.Handle, data: [][]u8) net.Stream.Rea
         .SUCCESS => return iosb.Information,
         .CANCELLED => unreachable,
         .INSUFFICIENT_RESOURCES => return error.SystemResources,
-        .CONNECTION_RESET, .REMOTE_DISCONNECT => return error.ConnectionResetByPeer,
+        .CONNECTION_RESET, .REMOTE_DISCONNECT, .LOCAL_DISCONNECT => return error.ConnectionResetByPeer,
         .IO_TIMEOUT => return error.ConnectionTimedOut,
         else => |status| return windows.unexpectedStatus(status),
     }
@@ -13569,7 +13569,7 @@ fn netWriteWindows(
         .SUCCESS => return iosb.Information,
         .CANCELLED => unreachable,
         .INSUFFICIENT_RESOURCES => return error.SystemResources,
-        .CONNECTION_RESET, .REMOTE_DISCONNECT => return error.ConnectionResetByPeer,
+        .CONNECTION_RESET, .REMOTE_DISCONNECT, .LOCAL_DISCONNECT => return error.ConnectionResetByPeer,
         .IO_TIMEOUT => return error.ConnectionTimedOut,
         else => |status| return windows.unexpectedStatus(status),
     }
