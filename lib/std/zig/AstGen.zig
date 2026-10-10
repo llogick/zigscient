@@ -4932,6 +4932,8 @@ fn structDeclInner(
 
     // Before any field bodies comes the backing int type, if specified.
     const backing_int_type_body_len: ?u32 = if (maybe_backing_int_node.unwrap()) |backing_int_node| len: {
+        block_scope.src_baseline = backing_int_node;
+        defer block_scope.src_baseline = node;
         if (layout != .@"packed") return astgen.failNode(
             backing_int_node,
             "non-packed struct does not support backing integer type",
@@ -5227,6 +5229,8 @@ fn unionDeclInner(
 
     // Before any field bodies comes the tag/backing type, if specified.
     const arg_type_body_len: ?u32 = if (opt_arg_node.unwrap()) |arg_node| len: {
+        block_scope.src_baseline = arg_node;
+        defer block_scope.src_baseline = node;
         astgen.src_hasher.update(astgen.tree.getNodeSource(arg_node));
         const type_ref = try typeExpr(&block_scope, &namespace.base, arg_node);
         if (!block_scope.endsWithNoReturn()) {
@@ -5447,6 +5451,8 @@ fn containerDecl(
 
             // Before any field bodies comes the tag type, if specified.
             const tag_type_body_len: ?u32 = if (container_decl.ast.arg.unwrap()) |tag_type_node| len: {
+                block_scope.src_baseline = tag_type_node;
+                defer block_scope.src_baseline = node;
                 astgen.src_hasher.update(astgen.tree.getNodeSource(tag_type_node));
                 const type_ref = try typeExpr(&block_scope, &namespace.base, tag_type_node);
                 if (!block_scope.endsWithNoReturn()) {
