@@ -1029,8 +1029,10 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
             try argv.append("-shared");
         }
 
-        if (comp.config.pie and output_mode == .Exe) {
-            try argv.append("-pie");
+        if (output_mode == .Exe) {
+            // Always be explicit: some lld builds (e.g. OpenBSD's) default
+            // to PIE, which breaks non-PIE executables for other targets.
+            try argv.append(if (comp.config.pie) "-pie" else "-no-pie");
         }
 
         if (is_exe_or_dyn_lib and target.os.tag == .netbsd) {
