@@ -1179,6 +1179,7 @@ const Poly = struct {
 
         const T = switch (builtin.target.cpu.arch) {
             .x86_64, .x86 => u32, // Generates better code on Intel CPUs
+            .riscv64 => u32, // Work around LLVM miscompiling coefficient extraction with u64 batches https://codeberg.org/ziglang/zig/issues/37128
             else => u64, // u128 might be faster on some other CPUs.
         };
 
@@ -1522,8 +1523,6 @@ test "Compression" {
 }
 
 test "noise" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     for (&seed, 0..) |*s, i| {
         s.* = @as(u8, @intCast(i));
@@ -1657,20 +1656,14 @@ test "Test happy flow" {
 // Code to test NIST Known Answer Tests (KAT), see PQCgenKAT.c.
 
 test "NIST KAT test d00.Kyber512" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     try testNistKat(d00.Kyber512, "e9c2bd37133fcb40772f81559f14b1f58dccd1c816701be9ba6214d43baf4547");
 }
 
 test "NIST KAT test d00.Kyber1024" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     try testNistKat(d00.Kyber1024, "89248f2f33f7f4f7051729111f3049c409a933ec904aedadf035f30fa5646cd5");
 }
 
 test "NIST KAT test d00.Kyber768" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     try testNistKat(d00.Kyber768, "a1e122cad3c24bc51622e4c242d8b8acbcd3f618fee4220400605ca8f9ea02c2");
 }
 

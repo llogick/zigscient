@@ -13,7 +13,6 @@
 //! The combiner uses the C2PRI construction to derive the final shared secret
 //! from the component shared secrets, ciphertext, and public key.
 
-const builtin = @import("builtin");
 const std = @import("std");
 const crypto = std.crypto;
 const fmt = std.fmt;
@@ -371,8 +370,6 @@ test "MLKEM768-X25519 basic round trip" {
 }
 
 test "MLKEM768-X25519 test vector 0" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1216]u8 = undefined;
     var randomness: [64]u8 = undefined;
@@ -397,8 +394,6 @@ test "MLKEM768-X25519 test vector 0" {
 }
 
 test "MLKEM768-X25519 test vector 1" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1216]u8 = undefined;
     var randomness: [64]u8 = undefined;
@@ -423,8 +418,6 @@ test "MLKEM768-X25519 test vector 1" {
 }
 
 test "MLKEM768-X25519 test vector 2" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1216]u8 = undefined;
     var randomness: [64]u8 = undefined;
@@ -449,8 +442,6 @@ test "MLKEM768-X25519 test vector 2" {
 }
 
 test "MLKEM768-X25519 test vector 3" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1216]u8 = undefined;
     var randomness: [64]u8 = undefined;
@@ -475,8 +466,6 @@ test "MLKEM768-X25519 test vector 3" {
 }
 
 test "MLKEM768-X25519 test vector 4" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1216]u8 = undefined;
     var randomness: [64]u8 = undefined;
@@ -501,8 +490,6 @@ test "MLKEM768-X25519 test vector 4" {
 }
 
 test "MLKEM768-X25519 test vector 5" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1216]u8 = undefined;
     var randomness: [64]u8 = undefined;
@@ -527,8 +514,6 @@ test "MLKEM768-X25519 test vector 5" {
 }
 
 test "MLKEM768-X25519 test vector 6" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1216]u8 = undefined;
     var randomness: [64]u8 = undefined;
@@ -553,8 +538,6 @@ test "MLKEM768-X25519 test vector 6" {
 }
 
 test "MLKEM768-X25519 test vector 7" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1216]u8 = undefined;
     var randomness: [64]u8 = undefined;
@@ -579,8 +562,6 @@ test "MLKEM768-X25519 test vector 7" {
 }
 
 test "MLKEM768-X25519 test vector 8" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1216]u8 = undefined;
     var randomness: [64]u8 = undefined;
@@ -605,8 +586,6 @@ test "MLKEM768-X25519 test vector 8" {
 }
 
 test "MLKEM768-X25519 test vector 9" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1216]u8 = undefined;
     var randomness: [64]u8 = undefined;
@@ -631,8 +610,6 @@ test "MLKEM768-X25519 test vector 9" {
 }
 
 test "MLKEM768-P256 test vector 0" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1249]u8 = undefined;
     var randomness: [160]u8 = undefined;
@@ -657,8 +634,6 @@ test "MLKEM768-P256 test vector 0" {
 }
 
 test "MLKEM768-P256 test vector 1" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1249]u8 = undefined;
     var randomness: [160]u8 = undefined;
@@ -683,8 +658,6 @@ test "MLKEM768-P256 test vector 1" {
 }
 
 test "MLKEM768-P256 test vector 2" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1249]u8 = undefined;
     var randomness: [160]u8 = undefined;
@@ -709,8 +682,6 @@ test "MLKEM768-P256 test vector 2" {
 }
 
 test "MLKEM768-P256 test vector 3" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1249]u8 = undefined;
     var randomness: [160]u8 = undefined;
@@ -735,8 +706,6 @@ test "MLKEM768-P256 test vector 3" {
 }
 
 test "MLKEM768-P256 test vector 4" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1249]u8 = undefined;
     var randomness: [160]u8 = undefined;
@@ -761,8 +730,6 @@ test "MLKEM768-P256 test vector 4" {
 }
 
 test "MLKEM768-P256 test vector 5" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1249]u8 = undefined;
     var randomness: [160]u8 = undefined;
@@ -787,8 +754,6 @@ test "MLKEM768-P256 test vector 5" {
 }
 
 test "MLKEM768-P256 test vector 6" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1249]u8 = undefined;
     var randomness: [160]u8 = undefined;
@@ -813,8 +778,6 @@ test "MLKEM768-P256 test vector 6" {
 }
 
 test "MLKEM768-P256 test vector 7" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1249]u8 = undefined;
     var randomness: [160]u8 = undefined;
@@ -839,8 +802,6 @@ test "MLKEM768-P256 test vector 7" {
 }
 
 test "MLKEM768-P256 test vector 8" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1249]u8 = undefined;
     var randomness: [160]u8 = undefined;
@@ -865,8 +826,6 @@ test "MLKEM768-P256 test vector 8" {
 }
 
 test "MLKEM768-P256 test vector 9" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1249]u8 = undefined;
     var randomness: [160]u8 = undefined;
@@ -891,8 +850,6 @@ test "MLKEM768-P256 test vector 9" {
 }
 
 test "MLKEM1024-P384 test vector 0" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1665]u8 = undefined;
     var randomness: [80]u8 = undefined;
@@ -917,8 +874,6 @@ test "MLKEM1024-P384 test vector 0" {
 }
 
 test "MLKEM1024-P384 test vector 1" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1665]u8 = undefined;
     var randomness: [80]u8 = undefined;
@@ -943,8 +898,6 @@ test "MLKEM1024-P384 test vector 1" {
 }
 
 test "MLKEM1024-P384 test vector 2" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1665]u8 = undefined;
     var randomness: [80]u8 = undefined;
@@ -969,8 +922,6 @@ test "MLKEM1024-P384 test vector 2" {
 }
 
 test "MLKEM1024-P384 test vector 3" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1665]u8 = undefined;
     var randomness: [80]u8 = undefined;
@@ -995,8 +946,6 @@ test "MLKEM1024-P384 test vector 3" {
 }
 
 test "MLKEM1024-P384 test vector 4" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1665]u8 = undefined;
     var randomness: [80]u8 = undefined;
@@ -1021,8 +970,6 @@ test "MLKEM1024-P384 test vector 4" {
 }
 
 test "MLKEM1024-P384 test vector 5" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1665]u8 = undefined;
     var randomness: [80]u8 = undefined;
@@ -1047,8 +994,6 @@ test "MLKEM1024-P384 test vector 5" {
 }
 
 test "MLKEM1024-P384 test vector 6" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1665]u8 = undefined;
     var randomness: [80]u8 = undefined;
@@ -1073,8 +1018,6 @@ test "MLKEM1024-P384 test vector 6" {
 }
 
 test "MLKEM1024-P384 test vector 7" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1665]u8 = undefined;
     var randomness: [80]u8 = undefined;
@@ -1099,8 +1042,6 @@ test "MLKEM1024-P384 test vector 7" {
 }
 
 test "MLKEM1024-P384 test vector 8" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1665]u8 = undefined;
     var randomness: [80]u8 = undefined;
@@ -1125,8 +1066,6 @@ test "MLKEM1024-P384 test vector 8" {
 }
 
 test "MLKEM1024-P384 test vector 9" {
-    if (builtin.zig_backend == .stage2_llvm and builtin.target.cpu.arch.isRiscv64()) return error.SkipZigTest; // https://codeberg.org/ziglang/zig/issues/37128
-
     var seed: [32]u8 = undefined;
     var expected_ek: [1665]u8 = undefined;
     var randomness: [80]u8 = undefined;
