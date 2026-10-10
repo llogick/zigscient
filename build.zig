@@ -206,7 +206,7 @@ pub fn build(b: *std.Build) !void {
 
     const mem_leak_frames: u32 = b.option(u32, "mem-leak-frames", "How many stack frames to print when a memory leak occurs. Tests get 2x this amount.") orelse blk: {
         if (strip == true) break :blk @as(u32, 0);
-        if (optimize != .debug) break :blk 0;
+        if (optimize) |opt| if (opt != .debug) break :blk 0;
         break :blk 4;
     };
 
@@ -262,7 +262,7 @@ pub fn build(b: *std.Build) !void {
         exe.root_module.link_libc = true;
     }
 
-    const is_debug = optimize == .debug;
+    const is_debug = if (optimize) |opt| opt == .debug else true;
     const enable_debug_extensions = b.option(bool, "debug-extensions", "Enable commands and options useful for debugging the compiler") orelse is_debug;
     const enable_logging = b.option(bool, "log", "Enable debug logging with --debug-log") orelse is_debug;
 
