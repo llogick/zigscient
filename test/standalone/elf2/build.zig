@@ -1,4 +1,8 @@
+pub const supports_skip_non_native = true;
+
 pub fn build(b: *Build) void {
+    const skip_non_native = b.option(bool, "skip_non_native", "Skip non-native targets") orelse false;
+
     const test_step = b.step("test", "Test the new ELF linker");
     b.default_step = test_step;
 
@@ -15,6 +19,9 @@ pub fn build(b: *Build) void {
         .cpu_arch = .x86_64,
         .os_tag = .linux,
     });
+
+    if (skip_non_native and !std.zig.target.isNative(&x86_64_linux_target.query, &x86_64_linux_target.result, &b.graph.host.result)) return;
+
     addOne(b, test_step, x86_64_linux_target, false, .static, false, false, "elf2-hello-selfhosted-static");
     addOne(b, test_step, x86_64_linux_target, false, .static, true, false, "elf2-hello-selfhosted-static-pie");
     addOne(b, test_step, x86_64_linux_target, true, .static, false, false, "elf2-hello-llvm-static");

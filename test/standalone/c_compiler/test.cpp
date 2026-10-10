@@ -1,9 +1,6 @@
 #include <cassert>
 #include <iostream>
-
-#ifndef _LIBCPP_HAS_NO_THREADS
 #include <future>
-#endif
 
 thread_local unsigned int tls_counter = 1;
 
@@ -59,14 +56,12 @@ int main (int argc, char *argv[])
 
   if (!ok) abort();
 
-#ifndef _LIBCPP_HAS_NO_THREADS
   std::future<bool> fut = std::async(is_prime, 313);
   bool ret = fut.get();
   assert(ret);
-#endif
 
-#if !defined(__wasm__) && !defined(__APPLE__)
-  // WASM and macOS are not passing this yet.
+#if !defined(__APPLE__)
+  // macOS is not passing this yet.
   // TODO file an issue for this and link it here.
   try {
     throw 20;

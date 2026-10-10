@@ -18009,6 +18009,17 @@ test "x86_64 sysv args" {
     c_x86_64_sysv_uint_int_uint_int(1, -2, 3, -4);
 }
 
+extern fn c_varargs_fn_ptr(n: c_int, ...) void;
+
+fn zigVaCb(x: c_int) callconv(.c) void {
+    expect(x == 123) catch @panic("test failure: zigVaCb");
+}
+
+test "function pointer through varargs" {
+    // Bare function (not `&`), as in the original #12706 repro.
+    c_varargs_fn_ptr(2, zigVaCb, @as(c_int, 123));
+}
+
 extern fn c_win64_varargs_u64_f64_u64_f64(...) void;
 extern fn c_win64_varargs_f64_u64_f64_u64(...) void;
 

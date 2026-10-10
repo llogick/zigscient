@@ -577,6 +577,7 @@ pub fn build(b: *std.Build) !void {
     test_step.dependOn(tests.addStandaloneTests(
         b,
         optimize_modes,
+        skip_non_native,
         enable_macos_sdk,
         enable_ios_sdk,
         enable_symlinks_windows,

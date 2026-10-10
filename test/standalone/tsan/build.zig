@@ -1,34 +1,62 @@
 const std = @import("std");
 
+pub const supports_skip_non_native = true;
+
+const targets: []const std.Target.Query = &.{
+    .{ .cpu_arch = .aarch64, .os_tag = .freebsd, .abi = .none },
+    .{ .cpu_arch = .x86_64, .os_tag = .freebsd, .abi = .none },
+
+    .{ .cpu_arch = .aarch64, .os_tag = .linux, .abi = .gnu },
+    .{ .cpu_arch = .aarch64, .os_tag = .linux, .abi = .musl },
+    .{ .cpu_arch = .aarch64_be, .os_tag = .linux, .abi = .gnu },
+    .{ .cpu_arch = .aarch64_be, .os_tag = .linux, .abi = .musl },
+    .{ .cpu_arch = .loongarch64, .os_tag = .linux, .abi = .gnu },
+    .{ .cpu_arch = .loongarch64, .os_tag = .linux, .abi = .musl },
+    .{ .cpu_arch = .mips64, .os_tag = .linux, .abi = .gnuabi64 },
+    .{ .cpu_arch = .mips64, .os_tag = .linux, .abi = .muslabi64 },
+    .{ .cpu_arch = .mips64el, .os_tag = .linux, .abi = .gnuabi64 },
+    .{ .cpu_arch = .mips64el, .os_tag = .linux, .abi = .muslabi64 },
+    .{ .cpu_arch = .powerpc64le, .os_tag = .linux, .abi = .gnu },
+    .{ .cpu_arch = .powerpc64le, .os_tag = .linux, .abi = .musl },
+    .{ .cpu_arch = .riscv64, .os_tag = .linux, .abi = .gnu },
+    .{ .cpu_arch = .riscv64, .os_tag = .linux, .abi = .musl },
+    .{ .cpu_arch = .s390x, .os_tag = .linux, .abi = .gnu },
+    // .{ .cpu_arch = .s390x, .os_tag = .linux, .abi = .musl },
+    .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .gnu },
+    .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl },
+
+    .{ .cpu_arch = .aarch64, .os_tag = .macos, .abi = .none },
+
+    // .{ .cpu_arch = .x86_64, .os_tag = .netbsd, .abi = .none },
+
+    // .{ .cpu_arch = .aarch64, .os_tag = .windows, .abi = .gnu },
+    // .{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu },
+};
+
 pub fn build(b: *std.Build) !void {
+    const skip_non_native = b.option(bool, "skip_non_native", "Skip non-native targets") orelse false;
+
     const test_step = b.step("test", "Test the program");
     b.default_step = test_step;
 
     const is_macos = b.graph.host.result.os.tag == .macos;
 
-    for ([_]struct { std.Target.Os.Tag, []const std.Target.Cpu.Arch }{
-        // .s390x and mips64(el) fail to build
-        .{ .linux, &.{ .aarch64, .aarch64_be, .loongarch64, .powerpc64, .powerpc64le, .riscv64, .x86_64 } },
-        .{ .macos, &.{ .aarch64, .x86_64 } },
+    for (targets) |query| {
+        const target = b.resolveTargetQuery(query);
 
-        // powerpc64, powerpc64le, and riscv64 are not supported by TSan yet.
-        .{ .freebsd, &.{ .aarch64, .x86_64 } },
+        if (skip_non_native and !std.zig.target.isNative(&target.query, &target.result, &b.graph.host.result)) continue;
 
-        .{ .netbsd, &.{.x86_64} },
-
-        // TSan doesn't have full support for windows yet.
-        // .{ .windows, &.{ .aarch64, .x86_64 } },
-    }) |entry| {
-        switch (entry[0]) {
-            // compiling tsan on macos requires system headers that aren't present during cross-compilation
+        switch (target.result.os.tag) {
             .macos => {
+                // compiling tsan on macos requires system headers that aren't present during cross-compilation
                 if (!is_macos) continue;
-                const target = b.resolveTargetQuery(.{});
+
                 const exe = b.addExecutable(.{
-                    .name = b.fmt("tsan_{s}_{s}", .{ @tagName(entry[0]), @tagName(target.result.cpu.arch) }),
+                    .name = b.fmt("tsan_{s}_{s}", .{ @tagName(target.result.os.tag), @tagName(target.result.cpu.arch) }),
+                    .linkage = .dynamic,
                     .root_module = b.createModule(.{
                         .root_source_file = b.path("main.zig"),
-                        .target = target,
+                        .target = b.graph.host,
                         .optimize = .debug,
                         .sanitize_thread = true,
                     }),
@@ -36,13 +64,10 @@ pub fn build(b: *std.Build) !void {
                 const install_exe = b.addInstallArtifact(exe, .{});
                 test_step.dependOn(&install_exe.step);
             },
-            else => for (entry[1]) |arch| {
-                const target = b.resolveTargetQuery(.{
-                    .os_tag = entry[0],
-                    .cpu_arch = arch,
-                });
+            else => {
                 const exe = b.addExecutable(.{
-                    .name = b.fmt("tsan_{s}_{s}", .{ @tagName(entry[0]), @tagName(arch) }),
+                    .name = b.fmt("tsan_{s}_{s}", .{ @tagName(target.result.os.tag), @tagName(target.result.cpu.arch) }),
+                    .linkage = .dynamic,
                     .root_module = b.createModule(.{
                         .root_source_file = b.path("main.zig"),
                         .target = target,

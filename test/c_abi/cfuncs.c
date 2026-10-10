@@ -1,6 +1,7 @@
 #include <complex.h>
 #include <inttypes.h>
 #include <stdalign.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16773,6 +16774,16 @@ void c_x86_64_sysv_uint_int_uint_int(unsigned a, int b, unsigned c, int d) {
     assert_or_panic(b == -2);
     assert_or_panic(c == 3);
     assert_or_panic(d == -4);
+}
+
+void c_varargs_fn_ptr(int n, ...) {
+    assert_or_panic(n == 2);
+    va_list ap;
+    va_start(ap, n);
+    void (*fn_ptr)(int) = va_arg(ap, void (*)(int));
+    int arg = va_arg(ap, int);
+    va_end(ap);
+    fn_ptr(arg);
 }
 
 void c_win64_varargs_u64_f64_u64_f64(uint64_t a, double b, uint64_t c, double d) {

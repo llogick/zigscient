@@ -495,7 +495,7 @@ pub fn lowerToBuildSteps(
 
         if (case.case.? == .Error and options.skip_compile_errors) continue;
 
-        if (options.skip_non_native and !@import("../tests.zig").isNative(&case.target, &b.graph.host.result))
+        if (options.skip_non_native and !std.zig.target.isNative(&case.target.query, &case.target.result, &b.graph.host.result))
             continue;
 
         if (options.skip_spirv and case.target.query.cpu_arch != null and case.target.query.cpu_arch.?.isSpirV()) continue;

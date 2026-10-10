@@ -19,3 +19,7 @@ pub fn log(
 pub fn main() anyerror!void {
     std.log.info("All your codebase are belong to us.", .{});
 }
+
+// compile
+// output_mode=Exe
+// target=wasm32-freestanding

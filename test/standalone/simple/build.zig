@@ -97,26 +97,6 @@ const cases = [_]Case{
     .{
         .src_path = "cat/main.zig",
     },
-    // https://github.com/ziglang/zig/issues/6025
-    //.{
-    //    .src_path = "issue_9693/main.zig",
-    //},
-    .{
-        .src_path = "issue_7030.zig",
-        .target = .{
-            .cpu_arch = .wasm32,
-            .os_tag = .freestanding,
-        },
-    },
     .{ .src_path = "guess_number/main.zig" },
-    .{ .src_path = "main_return_error/error_u8.zig" },
-    .{ .src_path = "main_return_error/error_u8_non_zero.zig" },
-    .{ .src_path = "noreturn_call/inline.zig" },
-    .{ .src_path = "noreturn_call/as_arg.zig" },
     .{ .src_path = "std_enums_big_enums.zig" },
-    .{
-        .src_path = "issue_9402/main.zig",
-        .os_filter = .windows,
-        .link_libc = true,
-    },
 };

@@ -1,19 +1,12 @@
 const std = @import("std");
 
+pub const supports_skip_non_native = true;
+
 /// This tests the path where DWARF information is embedded in a COFF binary
 pub fn build(b: *std.Build) void {
+    const skip_non_native = b.option(bool, "skip_non_native", "Skip non-native targets") orelse false;
+
     const host = b.graph.host;
-
-    // https://github.com/ziglang/zig/issues/25471
-    if (host.result.os.tag == .freebsd) return;
-
-    switch (host.result.cpu.arch) {
-        .aarch64,
-        .x86,
-        .x86_64,
-        => {},
-        else => return,
-    }
 
     const test_step = b.step("test", "Test it");
     b.default_step = test_step;
@@ -23,6 +16,8 @@ pub fn build(b: *std.Build) void {
         .windows => host,
         else => b.resolveTargetQuery(.{ .os_tag = .windows }),
     };
+
+    if (skip_non_native and !std.zig.target.isNative(&target.query, &target.result, &host.result)) return;
 
     const exe = b.addExecutable(.{
         .name = "main",

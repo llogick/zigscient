@@ -1,11 +1,19 @@
+pub const supports_skip_non_native = true;
+
 pub fn build(b: *std.Build) !void {
+    const skip_non_native = b.option(bool, "skip_non_native", "Skip non-native targets") orelse false;
+
+    const target = b.resolveTargetQuery(try .parse(.{
+        .arch_os_abi = "x86_64-linux",
+    }));
+
+    if (skip_non_native and !std.zig.target.isNative(&target.query, &target.result, &b.graph.host.result)) return;
+
     const mod = b.createModule(.{
         // Setting the entry point doesn't work properly on all targets right now. Since we're
         // really just trying to make sure that the compiler *frontend* respects `-fentry` and
         // includes it in the cache manifest, just test for a target where it works.
-        .target = b.resolveTargetQuery(try .parse(.{
-            .arch_os_abi = "x86_64-linux",
-        })),
+        .target = target,
         .optimize = .fast, // non-Debug build for reproducible output
         .root_source_file = b.path("main.zig"),
     });

@@ -1,7 +1,11 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
+pub const supports_skip_non_native = true;
+
 pub fn build(b: *std.Build) void {
+    const skip_non_native = b.option(bool, "skip_non_native", "Skip non-native targets") orelse false;
+
     const test_step = b.step("test", "Test it");
     b.default_step = test_step;
 
@@ -11,6 +15,8 @@ pub fn build(b: *std.Build) void {
         .os_tag = .freestanding,
         .abi = .gnueabihf,
     });
+
+    if (skip_non_native and !std.zig.target.isNative(&target.query, &target.result, &b.graph.host.result)) return;
 
     const optimize: std.builtin.Optimize = .debug;
 

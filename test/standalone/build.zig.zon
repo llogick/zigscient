@@ -30,14 +30,8 @@
         .static_c_lib = .{
             .path = "static_c_lib",
         },
-        .issue_339 = .{
-            .path = "issue_339",
-        },
         .compile_asm = .{
             .path = "compile_asm",
-        },
-        .issue_5825 = .{
-            .path = "issue_5825",
         },
         .pkg_import = .{
             .path = "pkg_import",
@@ -132,23 +126,8 @@
         .c_embed_path = .{
             .path = "c_embed_path",
         },
-        .issue_12706 = .{
-            .path = "issue_12706",
-        },
-        .strip_empty_loop = .{
-            .path = "strip_empty_loop",
-        },
-        .strip_struct_init = .{
-            .path = "strip_struct_init",
-        },
-        .zerolength_check = .{
-            .path = "zerolength_check",
-        },
         .coff_dwarf = .{
             .path = "coff_dwarf",
-        },
-        .compiler_rt_panic = .{
-            .path = "compiler_rt_panic",
         },
         .ios = .{
             .path = "ios",
@@ -168,9 +147,6 @@
         .run_output_paths = .{
             .path = "run_output_paths",
         },
-        .empty_global_error_set = .{
-            .path = "empty_global_error_set",
-        },
         .config_header = .{
             .path = "config_header",
         },
@@ -180,10 +156,9 @@
         .run_cwd = .{
             .path = "run_cwd",
         },
-        // https://github.com/ziglang/zig/issues/25471
-        // .tsan = .{
-        //     .path = "tsan",
-        // },
+        .tsan = .{
+            .path = "tsan",
+        },
         .posix = .{
             .path = "posix",
         },

@@ -1,6 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+pub const supports_skip_non_native = true;
+
 // To run executables linked against a specific glibc version, the
 // run-time glibc version needs to be new enough.  Check the host's glibc
 // version.  Note that this does not allow for translation/vm/emulation
@@ -8,17 +10,23 @@ const builtin = @import("builtin");
 const running_glibc_ver = builtin.os.versionRange().gnuLibCVersion();
 
 pub fn build(b: *std.Build) void {
+    const skip_non_native = b.option(bool, "skip_non_native", "Skip non-native targets") orelse false;
+
     const test_step = b.step("test", "Test");
     b.default_step = test_step;
 
     for ([_][]const u8{ "aarch64-linux-gnu.2.27", "aarch64-linux-gnu.2.34" }) |t| {
+        const target = b.resolveTargetQuery(std.Target.Query.parse(
+            .{ .arch_os_abi = t },
+        ) catch unreachable);
+
+        if (skip_non_native and !std.zig.target.isNative(&target.query, &target.result, &b.graph.host.result)) continue;
+
         const exe = b.addExecutable(.{
             .name = t,
             .root_module = b.createModule(.{
                 .root_source_file = null,
-                .target = b.resolveTargetQuery(std.Target.Query.parse(
-                    .{ .arch_os_abi = t },
-                ) catch unreachable),
+                .target = target,
                 .link_libc = true,
             }),
         });
@@ -48,6 +56,8 @@ pub fn build(b: *std.Build) void {
         const target = b.resolveTargetQuery(std.Target.Query.parse(
             .{ .arch_os_abi = t },
         ) catch unreachable);
+
+        if (skip_non_native and !std.zig.target.isNative(&target.query, &target.result, &b.graph.host.result)) continue;
 
         const glibc_ver = target.result.os.version_range.linux.glibc;
 
@@ -102,6 +112,8 @@ pub fn build(b: *std.Build) void {
         const target = b.resolveTargetQuery(std.Target.Query.parse(
             .{ .arch_os_abi = t },
         ) catch unreachable);
+
+        if (skip_non_native and !std.zig.target.isNative(&target.query, &target.result, &b.graph.host.result)) continue;
 
         if (target.result.cpu.arch.isLoongArch()) continue; // https://github.com/Vexu/arocc/issues/1096
 

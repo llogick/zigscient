@@ -8,3 +8,6 @@ pub fn main() !u8 {
     if (foo() == 7) return Err.Foo;
     return 123;
 }
+
+// compile
+// output_mode=Exe

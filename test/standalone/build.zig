@@ -14,6 +14,7 @@ pub fn build(b: *std.Build) void {
     const simple_skip_release_safe = b.option(bool, "simple_skip_release_safe", "Simple tests skip release-safe builds") orelse false;
     const simple_skip_release_fast = b.option(bool, "simple_skip_release_fast", "Simple tests skip release-fast builds") orelse false;
     const simple_skip_release_small = b.option(bool, "simple_skip_release_small", "Simple tests skip release-small builds") orelse false;
+    const skip_non_native = b.option(bool, "skip_non_native", "Skip non-native targets") orelse false;
 
     const simple_dep = b.dependency("simple", .{
         .skip_debug = simple_skip_debug,
@@ -103,7 +104,7 @@ pub fn build(b: *std.Build) void {
         if (std.mem.eql(u8, dep_name, "simple")) continue;
 
         const all_pkgs = @import("root").dependencies.packages;
-        inline for (@typeInfo(all_pkgs).@"struct".decl_names) |pkg_hash| {
+        const forward_skip_non_native = inline for (@typeInfo(all_pkgs).@"struct".decl_names) |pkg_hash| {
             if (std.mem.eql(u8, dep_hash, pkg_hash)) {
                 const pkg = @field(all_pkgs, pkg_hash);
                 if (!@hasDecl(pkg, "build_zig")) {
@@ -121,11 +122,15 @@ pub fn build(b: *std.Build) void {
                 {
                     continue :add_dep_steps;
                 }
-                break;
+                break @hasDecl(pkg.build_zig, "supports_skip_non_native") and
+                    pkg.build_zig.supports_skip_non_native;
             }
         } else unreachable;
 
-        const dep = b.dependency(dep_name, .{});
+        const dep = if (forward_skip_non_native)
+            b.dependency(dep_name, .{ .skip_non_native = skip_non_native })
+        else
+            b.dependency(dep_name, .{});
         const dep_step = dep.builder.default_step;
         dep_step.name = b.fmt("standalone_test_cases.{s}", .{dep_name});
         step.dependOn(dep_step);

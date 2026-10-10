@@ -419,3 +419,11 @@ test "labeled break from else" {
     try S.doTheTest(5);
     try comptime S.doTheTest(5);
 }
+
+fn infiniteLoop() noreturn {
+    while (true) {}
+}
+
+test "infinite while true" {
+    _ = &infiniteLoop;
+}
