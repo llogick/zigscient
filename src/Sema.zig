@@ -17956,40 +17956,19 @@ fn ensurePostHoc(sema: *Sema, block: *Block, dest_block: Zir.Inst.Index) !*Label
 /// break from an inline loop. In such case we must convert it to
 /// a runtime break.
 fn addRuntimeBreak(sema: *Sema, child_block: *Block, block_inst: Zir.Inst.Index, break_operand: Zir.Inst.Ref) !void {
-    const operand = sema.resolveInst(break_operand);
-
-    var target_block: ?*Block = child_block;
-    while (target_block) |candidate| : (target_block = candidate.parent) {
-        const label = candidate.label orelse continue;
-        if (label.zir_block != block_inst) continue;
-        switch (sema.code.instructions.items(.tag)[@backingInt(label.zir_block)]) {
-            .block_inline, .block_comptime => continue,
-            else => {},
-        }
-        return sema.addRuntimeBreakToBlock(child_block, candidate, label, operand);
-    }
-
     const labeled_block = try sema.ensurePostHoc(child_block, block_inst);
-    return sema.addRuntimeBreakToBlock(child_block, &labeled_block.block, &labeled_block.label, operand);
-}
 
-fn addRuntimeBreakToBlock(
-    sema: *Sema,
-    child_block: *Block,
-    target_block: *Block,
-    label: *Block.Label,
-    operand: Air.Inst.Ref,
-) !void {
-    const br_ref = try child_block.addBr(label.merges.block_inst, operand);
+    const operand = sema.resolveInst(break_operand);
+    const br_ref = try child_block.addBr(labeled_block.label.merges.block_inst, operand);
 
-    try label.merges.results.append(sema.gpa, operand);
-    try label.merges.br_list.append(sema.gpa, br_ref.toIndex().?);
-    try label.merges.src_locs.append(sema.gpa, null);
+    try labeled_block.label.merges.results.append(sema.gpa, operand);
+    try labeled_block.label.merges.br_list.append(sema.gpa, br_ref.toIndex().?);
+    try labeled_block.label.merges.src_locs.append(sema.gpa, null);
 
-    target_block.runtime_index.increment();
-    if (target_block.runtime_cond == null and target_block.runtime_loop == null) {
-        target_block.runtime_cond = child_block.runtime_cond orelse child_block.runtime_loop;
-        target_block.runtime_loop = child_block.runtime_loop;
+    labeled_block.block.runtime_index.increment();
+    if (labeled_block.block.runtime_cond == null and labeled_block.block.runtime_loop == null) {
+        labeled_block.block.runtime_cond = child_block.runtime_cond orelse child_block.runtime_loop;
+        labeled_block.block.runtime_loop = child_block.runtime_loop;
     }
 }
 
