@@ -147,6 +147,7 @@ pub const ResolveError = error{
     TargetRequiresPie,
     SanitizeThreadRequiresPie,
     SanitizeThreadRequiresLlvmBackend,
+    FuzzRequiresLlvmBackend,
     BackendLacksErrorTracing,
     LlvmLibraryUnavailable,
     LldUnavailable,
@@ -196,7 +197,8 @@ pub fn resolve(options: Options) ResolveError!Config {
         break :b options.use_lib_llvm orelse true;
     };
 
-    const root_optimize_mode = options.root_optimize_mode orelse .debug;
+    const root_optimize_mode = options.root_optimize_mode orelse
+        @as(std.lang.OptimizeMode, if (options.any_fuzz) .safe else .debug);
 
     // Make a decision on whether to use Clang or Aro for translate-c and compiling C files.
     const c_frontend: CFrontend = b: {
@@ -346,6 +348,12 @@ pub fn resolve(options: Options) ResolveError!Config {
         if (options.any_sanitize_thread) {
             // Thread sanitization instrumentation requires the LLVM backend.
             if (options.use_llvm == false) return error.SanitizeThreadRequiresLlvmBackend;
+            break :b true;
+        }
+
+        if (options.any_fuzz) {
+            // Fuzzing instrumentation requires the LLVM backend.
+            if (options.use_llvm == false) return error.FuzzRequiresLlvmBackend;
             break :b true;
         }
 

@@ -1190,14 +1190,14 @@ pub const StandardOptimizeOptionOptions = struct {
     preferred_optimize_mode: ?std.builtin.Optimize = null,
 };
 
-pub fn standardOptimizeOption(b: *Build, options: StandardOptimizeOptionOptions) std.builtin.Optimize {
+pub fn standardOptimizeOption(b: *Build, options: StandardOptimizeOptionOptions) ?std.builtin.Optimize {
     const graph = b.graph;
 
     if (options.preferred_optimize_mode) |mode| {
         if (b.option(bool, "release", "optimize for end users") orelse (graph.release_mode != .off)) {
             return mode;
         } else {
-            return .debug;
+            return null;
         }
     }
 
@@ -1210,7 +1210,7 @@ pub fn standardOptimizeOption(b: *Build, options: StandardOptimizeOptionOptions)
     }
 
     return switch (graph.release_mode) {
-        .off => .debug,
+        .off => null,
         .any => {
             std.debug.print("the project does not declare a preferred optimization mode. choose: --release=fast, --release=safe, or --release=small\n", .{});
             process.exit(1);

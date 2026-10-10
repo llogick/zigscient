@@ -859,7 +859,7 @@ fn addWasiUpdateStep(b: *std.Build, version: [:0]const u8) !void {
 }
 
 const AddCompilerModOptions = struct {
-    optimize: std.lang.Optimize,
+    optimize: ?std.lang.Optimize,
     target: std.Build.ResolvedTarget,
     strip: ?bool = null,
     valgrind: ?bool = null,
@@ -1704,7 +1704,7 @@ fn cfgLspServer(
     b: *std.Build,
     exe: *std.Build.Step.Compile,
     target: std.Build.ResolvedTarget,
-    optimize: std.lang.OptimizeMode,
+    optimize: ?std.lang.OptimizeMode,
     test_filters: []const []const u8,
     single_threaded: ?bool,
     exe_options_module: *std.Build.Module,
@@ -1997,7 +1997,7 @@ fn createLspServerModule(
     b: *std.Build,
     options: struct {
         target: std.Build.ResolvedTarget,
-        optimize: std.lang.OptimizeMode,
+        optimize: ?std.lang.OptimizeMode,
         // tracy_enable: bool,
         // tracy_options: *std.Build.Module,
         build_options: *std.Build.Module,
@@ -2067,7 +2067,7 @@ fn createTracyModule(
     b: *std.Build,
     options: struct {
         target: std.Build.ResolvedTarget,
-        optimize: std.lang.OptimizeMode,
+        optimize: ?std.lang.OptimizeMode,
         enable: bool,
         // tracy_options: *std.Build.Module,
     },

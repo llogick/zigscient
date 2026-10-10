@@ -10,14 +10,14 @@ pub fn build(b: *std.Build) !void {
 
     const none_specified_mod = none_specified.module("dummy");
     if (!none_specified_mod.resolved_target.?.query.eql(b.graph.host.query)) return error.TestFailed;
-    const expected_optimize: std.builtin.Optimize = switch (b.graph.release_mode) {
-        .off => .debug,
+    const expected_optimize: ?std.builtin.OptimizeMode = switch (b.graph.release_mode) {
+        .off => null,
         .any => unreachable,
         .fast => .fast,
         .safe => .safe,
         .small => .small,
     };
-    if (none_specified_mod.optimize.? != expected_optimize) return error.TestFailed;
+    if (none_specified_mod.optimize != expected_optimize) return error.TestFailed;
 
     // Passing null is the same as not specifying the option,
     // so this should resolve to the same cached dependency instance.
