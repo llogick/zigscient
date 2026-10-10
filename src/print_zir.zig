@@ -1462,7 +1462,7 @@ const Writer = struct {
         if (struct_decl.backing_int_type_body) |backing_int_type_body| {
             assert(struct_decl.layout == .@"packed");
             try stream.writeAll("packed(");
-            try self.writeBracedDecl(stream, backing_int_type_body);
+            try self.writeBracedDeclWithBaseline(stream, backing_int_type_body, struct_decl.arg_baseline_src_node);
             try stream.writeAll("), ");
         } else {
             try stream.print("{s}, ", .{@tagName(struct_decl.layout)});
@@ -1487,15 +1487,15 @@ const Writer = struct {
                 try stream.print("{f}: ", .{std.zig.fmtIdP(field_name)});
 
                 self.indent += 2;
-                try self.writeBracedDecl(stream, field.type_body);
+                try self.writeBracedDeclWithBaseline(stream, field.type_body, struct_decl.fields_baseline_src_node);
                 if (field.align_body) |body| {
                     try stream.writeAll(" align(");
-                    try self.writeBracedDecl(stream, body);
+                    try self.writeBracedDeclWithBaseline(stream, body, struct_decl.fields_baseline_src_node);
                     try stream.writeByte(')');
                 }
                 if (field.default_body) |body| {
                     try stream.writeAll(" = ");
-                    try self.writeBracedDecl(stream, body);
+                    try self.writeBracedDeclWithBaseline(stream, body, struct_decl.fields_baseline_src_node);
                 }
                 self.indent -= 2;
 
@@ -1529,18 +1529,18 @@ const Writer = struct {
             .@"packed" => try stream.writeAll("packed, "),
             .packed_explicit => {
                 try stream.writeAll("packed(");
-                try self.writeBracedDecl(stream, union_decl.arg_type_body.?);
+                try self.writeBracedDeclWithBaseline(stream, union_decl.arg_type_body.?, union_decl.arg_baseline_src_node);
                 try stream.writeAll("), ");
             },
             .tagged_explicit => {
                 try stream.writeAll("tagged(");
-                try self.writeBracedDecl(stream, union_decl.arg_type_body.?);
+                try self.writeBracedDeclWithBaseline(stream, union_decl.arg_type_body.?, union_decl.arg_baseline_src_node);
                 try stream.writeAll("), ");
             },
             .tagged_enum => try stream.writeAll("tagged(enum), "),
             .tagged_enum_explicit => {
                 try stream.writeAll("tagged(enum(");
-                try self.writeBracedDecl(stream, union_decl.arg_type_body.?);
+                try self.writeBracedDeclWithBaseline(stream, union_decl.arg_type_body.?, union_decl.arg_baseline_src_node);
                 try stream.writeAll(")), ");
             },
         }
@@ -1565,16 +1565,16 @@ const Writer = struct {
                 self.indent += 2;
                 if (field.type_body) |body| {
                     try stream.writeAll(": ");
-                    try self.writeBracedDecl(stream, body);
+                    try self.writeBracedDeclWithBaseline(stream, body, union_decl.fields_baseline_src_node);
                 }
                 if (field.align_body) |body| {
                     try stream.writeAll(" align(");
-                    try self.writeBracedDecl(stream, body);
+                    try self.writeBracedDeclWithBaseline(stream, body, union_decl.fields_baseline_src_node);
                     try stream.writeByte(')');
                 }
                 if (field.value_body) |body| {
                     try stream.writeAll(" = ");
-                    try self.writeBracedDecl(stream, body);
+                    try self.writeBracedDeclWithBaseline(stream, body, union_decl.fields_baseline_src_node);
                 }
                 self.indent -= 2;
 
@@ -1603,7 +1603,7 @@ const Writer = struct {
         try self.writeFlag(stream, "nonexhaustive, ", enum_decl.nonexhaustive);
         if (enum_decl.tag_type_body) |tag_type_body| {
             try stream.writeAll("tag(");
-            try self.writeBracedDecl(stream, tag_type_body);
+            try self.writeBracedDeclWithBaseline(stream, tag_type_body, enum_decl.arg_baseline_src_node);
             try stream.writeAll("), ");
         }
 
@@ -1625,7 +1625,7 @@ const Writer = struct {
                 try stream.print("{f}", .{std.zig.fmtIdP(field_name)});
                 if (field.value_body) |body| {
                     try stream.writeAll(" = ");
-                    try self.writeBracedDecl(stream, body);
+                    try self.writeBracedDeclWithBaseline(stream, body, enum_decl.fields_baseline_src_node);
                 }
                 try stream.writeAll(",\n");
             }
@@ -2407,6 +2407,18 @@ const Writer = struct {
 
     fn writeBracedDecl(self: *Writer, stream: *std.Io.Writer, body: []const Zir.Inst.Index) !void {
         try self.writeBracedBodyConditional(stream, body, self.recurse_decls);
+    }
+
+    fn writeBracedDeclWithBaseline(
+        self: *Writer,
+        stream: *std.Io.Writer,
+        body: []const Zir.Inst.Index,
+        src_baseline: Ast.Node.Index,
+    ) !void {
+        const prev_parent_decl_node = self.parent_decl_node;
+        self.parent_decl_node = src_baseline;
+        defer self.parent_decl_node = prev_parent_decl_node;
+        try self.writeBracedDecl(stream, body);
     }
 
     fn writeBracedBody(self: *Writer, stream: *std.Io.Writer, body: []const Zir.Inst.Index) !void {
