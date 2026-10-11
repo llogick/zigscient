@@ -45,3 +45,13 @@ ZIG_DEBUG_CMD=1 ZIG_LIB_DIR=./lib zig build -Doptimize=ReleaseFast
 
 > [!NOTE]  
 > Remember to rename the executable or update your editor's configuration
+
+<br>
+<br>
+
+## Disclaimer
+This repository contains an independent derivative work that is not affiliated with or endorsed by The Zig Software Foundation.
+
+* **Support & Maintenance:** All technical support, bug tracking, and maintenance are handled exclusively within this repository. Please **file all issues here** and do not submit bugs or requests upstream.
+* **Contributor Attribution:** Any attribution of upstream developers in the contributor history or commit log is an artifact of git commit migration. It does not imply their active involvement, endorsement, or support of this specific derivative work.
+
