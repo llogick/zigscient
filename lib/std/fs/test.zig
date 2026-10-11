@@ -298,6 +298,43 @@ test "File.stat on a File that is a symlink returns Kind.sym_link" {
     }.impl);
 }
 
+test "File.stat on a File that is a named pipe returns Kind.named_pipe" {
+    // Creating pipes is Io.Threaded-specific
+    var threaded: std.Io.Threaded = .init(std.testing.allocator, .{
+        .argv0 = .empty,
+        .environ = .empty,
+    });
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var read_end: Io.File = undefined;
+    var write_end: Io.File = undefined;
+    switch (builtin.target.os.tag) {
+        .wasi => return error.SkipZigTest,
+        .windows => {
+            const pipe = try threaded.windowsCreatePipe(.{
+                .server = .{ .mode = .{ .IO = .SYNCHRONOUS_NONALERT } },
+                .client = .{ .mode = .{ .IO = .SYNCHRONOUS_NONALERT } },
+                .inbound = true,
+            });
+            read_end = .{ .handle = pipe[0], .flags = .{ .nonblocking = false } };
+            write_end = .{ .handle = pipe[1], .flags = .{ .nonblocking = false } };
+        },
+        else => {
+            const pipe = try std.Io.Threaded.pipe2(.{ .CLOEXEC = true });
+            read_end = .{ .handle = pipe[0], .flags = .{ .nonblocking = false } };
+            write_end = .{ .handle = pipe[1], .flags = .{ .nonblocking = false } };
+        },
+    }
+    defer {
+        read_end.close(io);
+        write_end.close(io);
+    }
+
+    try expectEqual(.named_pipe, (try read_end.stat(io)).kind);
+    try expectEqual(.named_pipe, (try write_end.stat(io)).kind);
+}
+
 test "Dir.statFile on a symlink" {
     const io = testing.io;
 

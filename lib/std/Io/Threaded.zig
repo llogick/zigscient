@@ -4088,6 +4088,30 @@ fn fileStatLinux(userdata: ?*anyopaque, file: File) File.StatError!File.Stat {
     }
 }
 
+fn windowsGetFileDevice(file: File) error{ Canceled, AccessDenied, Unexpected }!windows.CTL_CODE.FILE_DEVICE {
+    var io_status_block: windows.IO_STATUS_BLOCK = undefined;
+    var device_info: windows.FILE.FS_DEVICE_INFORMATION = undefined;
+    {
+        const syscall: Syscall = try .start();
+        while (true) switch (windows.ntdll.NtQueryVolumeInformationFile(
+            file.handle,
+            &io_status_block,
+            &device_info,
+            @sizeOf(windows.FILE.FS_DEVICE_INFORMATION),
+            .Device,
+        )) {
+            .SUCCESS => break syscall.finish(),
+            .CANCELLED => {
+                try syscall.checkCancel();
+                continue;
+            },
+            .ACCESS_DENIED => return syscall.fail(error.AccessDenied),
+            else => |s| return syscall.unexpectedNtstatus(s),
+        };
+    }
+    return device_info.DeviceType.FileDevice;
+}
+
 fn fileStatWindows(userdata: ?*anyopaque, file: File) File.StatError!File.Stat {
     const t: *Threaded = @ptrCast(@alignCast(userdata));
 
@@ -4112,7 +4136,31 @@ fn fileStatWindows(userdata: ?*anyopaque, file: File) File.StatError!File.Stat {
             // size provided. This is treated as success because the type of variable-length information that this would be relevant for
             // (name, volume name, etc) we don't care about.
             .BUFFER_OVERFLOW => break syscall.finish(),
-            .INVALID_PARAMETER => |err| return syscall.ntstatusBug(err),
+            .INVALID_PARAMETER, // SERIAL_PORT devices like AUX, COM1, etc
+            .INVALID_DEVICE_REQUEST, // CONSOLE, etc devices
+            .INVALID_INFO_CLASS, // NULL, etc devices
+            => {
+                syscall.finish();
+                const device = try windowsGetFileDevice(file);
+                return .{
+                    .inode = @intCast(@intFromPtr(file.handle)),
+                    .size = 0,
+                    .permissions = .default_file,
+                    .kind = switch (device) {
+                        // These are classified as FILE_TYPE_CHAR by GetFileType
+                        // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfiletype
+                        // (GetFileType calls NtQueryVolumeInformationFile with FS_DEVICE_INFORMATION)
+                        .CONSOLE, .NULL, .SERIAL_PORT => .character_device,
+                        else => .unknown,
+                    },
+                    // Match the times that NtQueryInformationFile returns for named pipes.
+                    .atime = windows.fromSysTime(0),
+                    .mtime = windows.fromSysTime(0),
+                    .ctime = windows.fromSysTime(0),
+                    .nlink = 1,
+                    .block_size = block_size,
+                };
+            },
             .ACCESS_DENIED => return syscall.fail(error.AccessDenied),
             .CANCELLED => {
                 try syscall.checkCancel();
@@ -4151,8 +4199,10 @@ fn fileStatWindows(userdata: ?*anyopaque, file: File) File.StatError!File.Stat {
             break :reparse_point .unknown;
         } else if (info.BasicInformation.FileAttributes.DIRECTORY)
             .directory
-        else
-            .file,
+        else switch (try windowsGetFileDevice(file)) {
+            .NAMED_PIPE => .named_pipe,
+            else => .file,
+        },
         .atime = windows.fromSysTime(info.BasicInformation.LastAccessTime),
         .mtime = windows.fromSysTime(info.BasicInformation.LastWriteTime),
         .ctime = windows.fromSysTime(info.BasicInformation.ChangeTime),
@@ -17794,6 +17844,7 @@ pub fn windowsCreatePipe(t: *Threaded, options: CreatePipeOptions) ![2]windows.H
                     .READ_DATA = options.inbound,
                     .WRITE_DATA = options.outbound,
                     .WRITE_ATTRIBUTES = true,
+                    .READ_ATTRIBUTES = true,
                 } },
                 .STANDARD = .{ .SYNCHRONIZE = true },
             },
@@ -17836,6 +17887,7 @@ pub fn windowsCreatePipe(t: *Threaded, options: CreatePipeOptions) ![2]windows.H
                     .READ_DATA = options.outbound,
                     .WRITE_DATA = options.inbound,
                     .WRITE_ATTRIBUTES = true,
+                    .READ_ATTRIBUTES = true,
                 } },
                 .STANDARD = .{ .SYNCHRONIZE = true },
             },
