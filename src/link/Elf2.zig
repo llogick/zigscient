@@ -9009,11 +9009,6 @@ fn addRelocAssumeCapacity(
                 .WDISP22,
                 .HI22,
                 .LO10,
-                .HIPLT22,
-                .LOPLT10,
-                .PCPLT22,
-                .PCPLT10,
-                .OLO10,
                 .HH22,
                 .HM10,
                 .LM22,
@@ -9024,14 +9019,29 @@ fn addRelocAssumeCapacity(
                 .WDISP19,
                 .HIX22,
                 .LOX10,
-                .REGISTER,
                 .H34,
                 .WDISP10,
                 => return error.UnimplementedRelocation,
 
+                // Nobody seems to support these.
+                .HIPLT22,
+                .LOPLT10,
+                .PCPLT22,
+                .PCPLT10,
+                => return error.UnimplementedRelocation,
+
+                // Needs to use the second addend in `ELF64_R_TYPE_DATA(reloc.r_info)` which we currently can't model.
+                .OLO10 => return error.UnimplementedRelocation,
+
+                // Does not patch any bytes. Together with `STT_SPARC_REGISTER`, this is used to indicate that an object
+                // file owns a global register and what value it should be initialized to. I don't think this sees any
+                // real-world use.
+                .REGISTER => return error.UnimplementedRelocation,
+
                 // These need similar handling to `R_X86_64_GOTOFF64`. No compiler seems to emit them though.
-                .GOTDATA_HIX22 => return error.UnimplementedRelocation,
-                .GOTDATA_LOX10 => return error.UnimplementedRelocation,
+                .GOTDATA_HIX22,
+                .GOTDATA_LOX10,
+                => return error.UnimplementedRelocation,
 
                 // These relocations signal that certain relaxations are legal, but this linker does
                 // not yet implement relaxation, so these are ignored.
@@ -9063,8 +9073,8 @@ fn addRelocAssumeCapacity(
                 .DISP32 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel, .{ .dest = .@"32", .cast = .signed, .shift = .@"0" })),
                 .DISP64 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel, .{ .dest = .@"64", .cast = .signed, .shift = .@"0" })),
 
-                .SIZE32   => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.size, .{ .dest = .@"32", .cast = .unsigned, .shift = .@"0" })),
-                .SIZE64   => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.size, .{ .dest = .@"64", .cast = .unsigned, .shift = .@"0" })),
+                .SIZE32 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.size, .{ .dest = .@"32", .cast = .unsigned, .shift = .@"0" })),
+                .SIZE64 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.size, .{ .dest = .@"64", .cast = .unsigned, .shift = .@"0" })),
 
                 .PCPLT32 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltrel, .{ .dest = .@"32", .cast = .signed,   .shift = .@"0" })),
                 .PLT32   => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltabs, .{ .dest = .@"32", .cast = .unsigned, .shift = .@"0" })),
