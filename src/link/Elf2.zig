@@ -9023,8 +9023,6 @@ fn addRelocAssumeCapacity(
                 .HIX22,
                 .LOX10,
                 .REGISTER,
-                .TLS_IE_HI22,
-                .TLS_IE_LO10,
                 .TLS_DTPMOD32,
                 .TLS_DTPMOD64,
                 .H34,
@@ -9088,6 +9086,7 @@ fn addRelocAssumeCapacity(
                 .GOTDATA_OP_HIX22 => elf.addGotRelocAssumeCapacity(node, offset, .{ .symbol = target }, addend, .special(.sparc_op_hix22)),
                 .TLS_GD_HI22      => elf.addGotRelocAssumeCapacity(node, offset, .{ .tlsgd0 = target }, addend, .simple(.offset, .{ .dest = .@"32[21:0]", .cast = .trunc, .shift = .@"10" })),
                 .TLS_LDM_HI22     => elf.addGotRelocAssumeCapacity(node, offset, .tlsld0,               addend, .simple(.offset, .{ .dest = .@"32[21:0]", .cast = .trunc, .shift = .@"10" })),
+                .TLS_IE_HI22      => elf.addGotRelocAssumeCapacity(node, offset, .{ .tpoff = target },  addend, .simple(.offset, .{ .dest = .@"32[21:0]", .cast = .trunc, .shift = .@"10" })),
                 // zig fmt: on
 
                 .TLS_GD_CALL, .TLS_LDM_CALL => {
@@ -9132,6 +9131,10 @@ fn addRelocAssumeCapacity(
                 .TLS_LDM_LO10 => {
                     try elf.one_shot_fixups.append(elf.base.comp.gpa, .{ .node = node, .offset = offset, .action = .@"32[12:10] = 0b000" });
                     elf.addGotRelocAssumeCapacity(node, offset, .tlsld0, addend, .simple(.offset, .{ .dest = .@"32[9:0]", .cast = .trunc, .shift = .@"0" }));
+                },
+                .TLS_IE_LO10 => {
+                    try elf.one_shot_fixups.append(elf.base.comp.gpa, .{ .node = node, .offset = offset, .action = .@"32[12:10] = 0b000" });
+                    elf.addGotRelocAssumeCapacity(node, offset, .{ .tpoff = target }, addend, .simple(.offset, .{ .dest = .@"32[9:0]", .cast = .trunc, .shift = .@"0" }));
                 },
             },
             .X86_64 => rel_type: switch (@"type".X86_64) {
