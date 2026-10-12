@@ -857,23 +857,33 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
             return out;
         }
 
-        fn montgomeryLoop(self: Self, d: *Fe, x: Fe, y: Fe) u1 {
+        fn montgomeryLoop(self: *const Self, noalias d: *Fe, x: *const Fe, y: *const Fe) u1 {
+            if (self.limbs_count() == FeUint.max_limbs_count) {
+                return montgomeryLoopWithWidth(true, self, d, x, y);
+            }
+            return montgomeryLoopWithWidth(false, self, d, x, y);
+        }
+
+        fn montgomeryLoopWithWidth(comptime full_width: bool, self: *const Self, noalias d: *Fe, x: *const Fe, y: *const Fe) u1 {
+            assert(d != x and d != y);
             assert(d.limbs_count() == x.limbs_count());
             assert(d.limbs_count() == y.limbs_count());
             assert(d.limbs_count() == self.limbs_count());
+            assert(self.v.isOdd());
 
-            const a_limbs = x.v.limbsConst();
-            const b_limbs = y.v.limbsConst();
-            const d_limbs = d.v.limbs();
-            const m_limbs = self.v.limbsConst();
+            const n = if (full_width) FeUint.max_limbs_count else self.limbs_count();
+            const a_limbs = x.v.limbs_buffer[0..n];
+            const b_limbs = y.v.limbs_buffer[0..n];
+            const d_limbs = d.v.limbs_buffer[0..n];
+            const m_limbs = self.v.limbs_buffer[0..n];
 
             var overflow: u1 = 0;
-            for (0..self.limbs_count()) |i| {
+            for (0..n) |i| {
                 var carry: Limb = 0;
 
                 var wide = ct.mulWide(a_limbs[i], b_limbs[0]);
                 var z_lo = @addWithOverflow(d_limbs[0], wide.lo);
-                const f = @as(TLimb, @truncate(z_lo[0] *% self.m0inv));
+                const f: TLimb = @truncate(z_lo[0] *% self.m0inv);
                 var z_hi = wide.hi +% z_lo[1];
                 wide = ct.mulWide(f, m_limbs[0]);
                 z_lo = @addWithOverflow(z_lo[0], wide.lo);
@@ -881,7 +891,7 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
                 z_hi +%= wide.hi;
                 carry = (z_hi << 1) | (z_lo[0] >> t_bits);
 
-                for (1..self.limbs_count()) |j| {
+                for (1..n) |j| {
                     wide = ct.mulWide(a_limbs[i], b_limbs[j]);
                     z_lo = @addWithOverflow(d_limbs[j], wide.lo);
                     z_hi = wide.hi +% z_lo[1];
@@ -897,18 +907,17 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
                     carry = (z_hi << 1) | (z_lo[0] >> t_bits);
                 }
                 const z = overflow + carry;
-                d_limbs[self.limbs_count() - 1] = @as(TLimb, @truncate(z));
-                overflow = @as(u1, @truncate(z >> t_bits));
+                d_limbs[n - 1] = @as(TLimb, @truncate(z));
+                overflow = @truncate(z >> t_bits);
             }
             return overflow;
         }
 
-        // Montgomery multiplication.
         fn montgomeryMul(self: Self, x: Fe, y: Fe) Fe {
             var d = self.zero;
             assert(x.limbs_count() == self.limbs_count());
             assert(y.limbs_count() == self.limbs_count());
-            const overflow = self.montgomeryLoop(&d, x, y);
+            const overflow = self.montgomeryLoop(&d, &x, &y);
             const underflow = 1 -% @intFromBool(ct.limbsCmpGeq(d.v, self.v));
             const need_sub = ct.eql(overflow, underflow);
             _ = d.v.conditionalSubWithOverflow(need_sub, self.v);
@@ -916,11 +925,10 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
             return d;
         }
 
-        // Montgomery squaring.
         fn montgomerySq(self: Self, x: Fe) Fe {
             var d = self.zero;
             assert(x.limbs_count() == self.limbs_count());
-            const overflow = self.montgomeryLoop(&d, x, x);
+            const overflow = self.montgomeryLoop(&d, &x, &x);
             const underflow = 1 -% @intFromBool(ct.limbsCmpGeq(d.v, self.v));
             const need_sub = ct.eql(overflow, underflow);
             _ = d.v.conditionalSubWithOverflow(need_sub, self.v);
