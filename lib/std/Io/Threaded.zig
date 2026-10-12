@@ -8063,7 +8063,7 @@ fn dirRenamePreserveLinux(
         .XDEV => return syscall.fail(error.CrossDevice),
         .ILSEQ => return syscall.fail(error.BadPathName),
         .FAULT => |err| return syscall.errnoBug(err),
-        .INVAL => |err| return syscall.errnoBug(err),
+        .INVAL => return syscall.fail(error.OperationUnsupported),
         else => |err| return syscall.unexpectedErrno(err),
     };
 }
