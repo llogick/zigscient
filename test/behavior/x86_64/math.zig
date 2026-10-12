@@ -22,6 +22,10 @@ pub const Sse = if (builtin.cpu.has(.x86, .avx))
 else
     @Vector(16, u8);
 
+pub fn fracBits(comptime Float: type) comptime_int {
+    return std.math.floatFractionalBits(Float);
+}
+
 pub fn Scalar(comptime Type: type) type {
     return switch (@typeInfo(Type)) {
         else => Type,
