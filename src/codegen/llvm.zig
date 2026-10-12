@@ -2350,25 +2350,21 @@ pub const Object = struct {
 
         if (fn_info.return_type == .noreturn_type) try attributes.addFnAttr(.noreturn, &o.builder);
 
-        var it = iterateParamTypes(o, fn_info.cc, fn_info.param_types);
-        if (try fnReturnStrat(o, fn_info.cc, .fromInterned(fn_info.return_type)) == .sret) {
+        const ret_strat = try fnReturnStrat(o, fn_info.cc, .fromInterned(fn_info.return_type));
+        var it = iterateParamTypes(o, fn_info.cc, fn_info.param_types, ret_strat);
+        if (ret_strat == .sret) {
             try o.addSRetFnAttributes(
                 attributes,
                 try o.lowerType(.fromInterned(fn_info.return_type), .in_memory),
                 Type.fromInterned(fn_info.return_type).abiAlignment(zcu).toLlvm(),
                 .declaration,
             );
-            it.llvm_index += 1;
         } else if (ccAbiPromoteInt(fn_info.cc, zcu, Type.fromInterned(fn_info.return_type))) |s| switch (s) {
             .signed => try attributes.addRetAttr(.signext, &o.builder),
             .unsigned => try attributes.addRetAttr(.zeroext, &o.builder),
         };
 
-        const err_return_tracing = fn_info.cc == .auto and zcu.comp.config.any_error_tracing;
-        if (err_return_tracing) {
-            try attributes.addParamAttr(it.llvm_index, .nonnull, &o.builder);
-            it.llvm_index += 1;
-        }
+        if (it.errorReturnTraceIndex()) |i| try attributes.addParamAttr(i, .nonnull, &o.builder);
 
         var remaining_inreg_int = cc_info.inreg_int_params;
         var remaining_inreg_float = cc_info.inreg_float_params;
@@ -3106,17 +3102,14 @@ pub const Object = struct {
         var llvm_params: std.ArrayList(Builder.Type) = .empty;
         defer llvm_params.deinit(o.gpa);
 
-        if (ret_strat == .sret) {
-            try llvm_params.append(o.gpa, .ptr);
-        }
-
-        if (fn_info.cc == .auto and zcu.comp.config.any_error_tracing) {
+        var it = iterateParamTypes(o, fn_info.cc, fn_info.param_types, ret_strat);
+        if (it.sretIndex() != null) try llvm_params.append(o.gpa, .ptr);
+        if (it.errorReturnTraceIndex() != null) {
             // First parameter is a pointer to `std.lang.StackTrace`.
             const llvm_ptr_ty = try o.builder.ptrType(toLlvmAddressSpace(.generic, target));
             try llvm_params.append(o.gpa, llvm_ptr_ty);
         }
 
-        var it = iterateParamTypes(o, fn_info.cc, fn_info.param_types);
         while (try it.next()) |lowering| switch (lowering) {
             .no_bits => continue,
             .byval => {

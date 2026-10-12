@@ -17285,6 +17285,93 @@ export fn zig_big_struct_both(x: BigStruct) BigStruct {
     return s;
 }
 
+extern fn c_sret_gpr_straddle(Struct_u64_u64, Struct_u64_u64, Struct_u64_u64) Struct_u64_u64_u64_u64;
+extern fn c_test_sret_gpr_straddle() void;
+
+test "sret with integer parameters straddling the register budget" {
+    if (builtin.cpu.arch == .hexagon) return error.SkipZigTest;
+    if (builtin.cpu.arch.isPowerPC32()) return error.SkipZigTest;
+
+    const p: Struct_u64_u64 = .{ .a = 1, .b = 2 };
+    const q: Struct_u64_u64 = .{ .a = 3, .b = 4 };
+    const r: Struct_u64_u64 = .{ .a = 5, .b = 6 };
+    const res = c_sret_gpr_straddle(p, q, r);
+    try expect(res.a == 1);
+    try expect(res.b == 4);
+    try expect(res.c == 5);
+    try expect(res.d == 6);
+    c_test_sret_gpr_straddle();
+}
+
+export fn zig_sret_gpr_straddle(
+    p: Struct_u64_u64,
+    q: Struct_u64_u64,
+    r: Struct_u64_u64,
+) Struct_u64_u64_u64_u64 {
+    expect(p.a == 10) catch @panic("test failure: zig_sret_gpr_straddle p.a");
+    expect(p.b == 20) catch @panic("test failure: zig_sret_gpr_straddle p.b");
+    expect(q.a == 30) catch @panic("test failure: zig_sret_gpr_straddle q.a");
+    expect(q.b == 40) catch @panic("test failure: zig_sret_gpr_straddle q.b");
+    expect(r.a == 50) catch @panic("test failure: zig_sret_gpr_straddle r.a");
+    expect(r.b == 60) catch @panic("test failure: zig_sret_gpr_straddle r.b");
+    return .{ .a = p.a, .b = q.b, .c = r.a, .d = r.b };
+}
+
+extern fn c_sse_then_gpr(f64, f64, f64, f64, f64, f64, Struct_u64_u64) u64;
+extern fn c_test_sse_then_gpr() void;
+
+test "integer aggregate after the float parameter registers" {
+    if (builtin.cpu.arch.isPowerPC32()) return error.SkipZigTest;
+
+    const s: Struct_u64_u64 = .{ .a = 100, .b = 23 };
+    try expect(c_sse_then_gpr(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, s) == 123);
+    c_test_sse_then_gpr();
+}
+
+export fn zig_sse_then_gpr(a: f64, b: f64, c: f64, d: f64, e: f64, f: f64, s: Struct_u64_u64) u64 {
+    expect(a == 10.0) catch @panic("test failure: zig_sse_then_gpr a");
+    expect(b == 20.0) catch @panic("test failure: zig_sse_then_gpr b");
+    expect(c == 30.0) catch @panic("test failure: zig_sse_then_gpr c");
+    expect(d == 40.0) catch @panic("test failure: zig_sse_then_gpr d");
+    expect(e == 50.0) catch @panic("test failure: zig_sse_then_gpr e");
+    expect(f == 60.0) catch @panic("test failure: zig_sse_then_gpr f");
+    return s.a +% s.b;
+}
+
+extern fn c_sse_budget_straddle(f64, f64, f64, f64, f64, f64, f64, f64, Struct_f64_f64) f64;
+extern fn c_test_sse_budget_straddle() void;
+
+test "float aggregate straddling the float register budget" {
+    if (builtin.cpu.arch.isPowerPC()) return error.SkipZigTest;
+    if (builtin.cpu.arch.isRiscv32()) return error.SkipZigTest;
+
+    const s: Struct_f64_f64 = .{ .a = 100.0, .b = 23.0 };
+    try expect(c_sse_budget_straddle(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, s) == 123.0);
+    c_test_sse_budget_straddle();
+}
+
+export fn zig_sse_budget_straddle(
+    a: f64,
+    b: f64,
+    c: f64,
+    d: f64,
+    e: f64,
+    f: f64,
+    g: f64,
+    h: f64,
+    s: Struct_f64_f64,
+) f64 {
+    expect(a == 10.0) catch @panic("test failure: zig_sse_budget_straddle a");
+    expect(b == 20.0) catch @panic("test failure: zig_sse_budget_straddle b");
+    expect(c == 30.0) catch @panic("test failure: zig_sse_budget_straddle c");
+    expect(d == 40.0) catch @panic("test failure: zig_sse_budget_straddle d");
+    expect(e == 50.0) catch @panic("test failure: zig_sse_budget_straddle e");
+    expect(f == 60.0) catch @panic("test failure: zig_sse_budget_straddle f");
+    expect(g == 70.0) catch @panic("test failure: zig_sse_budget_straddle g");
+    expect(h == 80.0) catch @panic("test failure: zig_sse_budget_straddle h");
+    return s.a + s.b;
+}
+
 export fn zig_ret_bool() bool {
     return true;
 }
