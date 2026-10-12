@@ -1122,14 +1122,19 @@ pub const RenamePreserveError = error{
     /// policy of the current thread or process disallows dataless directory materialization.
     AccessDenied,
     PathAlreadyExists,
-    /// Operating system or file system does not support atomic nonreplacing
-    /// rename.
+    /// Operating system or file system does not support atomic nonreplacing rename.
     OperationUnsupported,
 } || RenameError;
 
 /// Change the name or location of a file or directory.
 ///
 /// If `new_sub_path` already exists, `error.PathAlreadyExists` will be returned.
+///
+/// If the operating system supports it, the entire operation will be done atomically. If unsupported, will
+/// fall back to hard link followed by unlink, which is atomic with respect to `new_sub_path` but leaves a
+/// window where the cleanup of `old_sub_path may fail. Although the operation is fairly portable, technically
+/// this fallback, too, may be unsupported in some environments, in which case `error.OperationUnsupported` is
+/// returned.
 ///
 /// * On Windows, both paths should be encoded as [WTF-8](https://wtf-8.codeberg.page/).
 /// * On WASI, both paths should be encoded as valid UTF-8.

@@ -7734,7 +7734,14 @@ fn dirRenamePreserve(
     const t: *Threaded = @ptrCast(@alignCast(userdata));
     if (is_windows) return dirRenameWindowsInner(old_dir, old_sub_path, new_dir, new_sub_path, false);
     if (is_darwin) return dirRenamePreserveDarwin(old_dir, old_sub_path, new_dir, new_sub_path);
-    if (native_os == .linux) return dirRenamePreserveLinux(old_dir, old_sub_path, new_dir, new_sub_path);
+    if (native_os == .linux) {
+        if (dirRenamePreserveLinux(old_dir, old_sub_path, new_dir, new_sub_path)) |_| {
+            return;
+        } else |err| switch (err) {
+            else => |e| return e,
+            error.OperationUnsupported => {}, // Fall back to link/unlink below.
+        }
+    }
     // Make a hard link then delete the original.
     try dirHardLink(t, old_dir, old_sub_path, new_dir, new_sub_path, .{ .follow_symlinks = false });
     const prev = swapCancelProtection(t, .blocked);
@@ -8062,8 +8069,10 @@ fn dirRenamePreserveLinux(
         .ROFS => return syscall.fail(error.ReadOnlyFileSystem),
         .XDEV => return syscall.fail(error.CrossDevice),
         .ILSEQ => return syscall.fail(error.BadPathName),
+        // EINVAL when passing NOREPLACE=true observed on ext4, 7.0.0-38-generic #38~24.04.4-Ubuntu.
+        // OPNOTSUPP handled defensively.
+        .INVAL, .OPNOTSUPP => return syscall.fail(error.OperationUnsupported),
         .FAULT => |err| return syscall.errnoBug(err),
-        .INVAL => return syscall.fail(error.OperationUnsupported),
         else => |err| return syscall.unexpectedErrno(err),
     };
 }
