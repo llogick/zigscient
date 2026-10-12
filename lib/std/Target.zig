@@ -2450,6 +2450,7 @@ pub const DynamicLinker = struct {
     pub fn kind(os: Os.Tag) Kind {
         return switch (os) {
             .fuchsia,
+            .managarm,
 
             .haiku,
             .illumos,
@@ -2468,13 +2469,13 @@ pub const DynamicLinker = struct {
             .visionos,
             .watchos,
             => .arch_os,
+
             .hurd,
             .linux,
             => .arch_os_abi,
+
             .freestanding,
             .other,
-
-            .managarm, // Needs to be double-checked.
 
             .plan9,
             .rtems,
@@ -2533,6 +2534,13 @@ pub const DynamicLinker = struct {
                 .thumb,
                 .x86_64,
                 => init("ld.so.1"), // Fuchsia is unusual in that `DT_INTERP` is just a basename.
+                else => none,
+            },
+
+            .managarm => switch (cpu.arch) {
+                .aarch64 => init("/lib/aarch64-managarm-mlibc-ld.so"),
+                .riscv64 => init("/lib/riscv64-managarm-mlibc-ld.so"),
+                .x86_64 => init("/lib/x86_64-managarm-mlibc-ld.so"),
                 else => none,
             },
 
@@ -2939,8 +2947,6 @@ pub const DynamicLinker = struct {
 
             // TODO go over each item in this list and either move it to the above list, or
             // implement the standard dynamic linker path code for it.
-            .managarm,
-
             .ps3,
             .ps4,
             .ps5,
