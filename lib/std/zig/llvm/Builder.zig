@@ -269,7 +269,6 @@ pub fn tripleForTarget(allocator: Allocator, target: *const std.Target) ![]const
         .ps5 => "ps5",
         .mesa3d => "mesa3d",
         .amdpal => "amdpal",
-        .hermit => "hermit",
         .hurd => "hurd",
         .wasi => "wasi",
         .emscripten => "emscripten",

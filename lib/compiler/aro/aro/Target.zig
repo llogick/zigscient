@@ -1302,7 +1302,6 @@ pub fn toLLVMTriple(target: *const Target, buf: []u8) []const u8 {
         .freestanding => "unknown",
         .fuchsia => "fuchsia",
         .haiku => "haiku",
-        .hermit => "hermit",
         .hurd => "hurd",
         .illumos => "illumos",
         .ios, .maccatalyst => "ios",

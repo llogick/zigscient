@@ -8024,9 +8024,6 @@ pub const pthread_mutex_t = switch (native_os) {
     .freebsd, .dragonfly, .openbsd => extern struct {
         inner: ?*anyopaque = null,
     },
-    .hermit => extern struct {
-        ptr: usize = maxInt(usize),
-    },
     .netbsd => extern struct {
         magic: u32 = 0x33330003,
         errorcheck: padded_pthread_spin_t = 0,
@@ -8079,9 +8076,6 @@ pub const pthread_cond_t = switch (native_os) {
     },
     .freebsd, .dragonfly, .openbsd => extern struct {
         inner: ?*anyopaque = null,
-    },
-    .hermit => extern struct {
-        ptr: usize = maxInt(usize),
     },
     .netbsd => extern struct {
         magic: u32 = 0x55550005,
@@ -8137,9 +8131,6 @@ pub const pthread_rwlock_t = switch (native_os) {
     },
     .freebsd, .dragonfly, .openbsd => extern struct {
         ptr: ?*anyopaque = null,
-    },
-    .hermit => extern struct {
-        ptr: usize = maxInt(usize),
     },
     .netbsd => extern struct {
         magic: c_uint = 0x99990009,

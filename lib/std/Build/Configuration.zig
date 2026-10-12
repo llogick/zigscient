@@ -2381,7 +2381,6 @@ pub const TargetQuery = struct {
         other,
         contiki,
         fuchsia,
-        hermit,
         managarm,
         haiku,
         hurd,

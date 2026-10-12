@@ -21,7 +21,6 @@ pub const Os = struct {
 
         contiki,
         fuchsia,
-        hermit,
         managarm,
 
         haiku,
@@ -180,7 +179,6 @@ pub const Os = struct {
 
                 .contiki,
                 .fuchsia,
-                .hermit,
 
                 .rtems,
 
@@ -429,12 +427,6 @@ pub const Os = struct {
                     .semver = .{
                         .min = .{ .major = 27, .minor = 0, .patch = 0 },
                         .max = .{ .major = 30, .minor = 0, .patch = 0 },
-                    },
-                },
-                .hermit => .{
-                    .semver = .{
-                        .min = .{ .major = 0, .minor = 8, .patch = 0 },
-                        .max = .{ .major = 0, .minor = 13, .patch = 2 },
                     },
                 },
 
@@ -955,7 +947,6 @@ pub const Abi = enum {
             .ashetos => .eabi,
 
             .contiki,
-            .hermit,
             .illumos,
             .managarm,
             .plan9,
@@ -2344,7 +2335,6 @@ pub fn requiresLibC(target: *const Target) bool {
         .mesa3d,
         .contiki,
         .amdpal,
-        .hermit,
         .hurd,
         .wasi,
         .uefi,
@@ -2495,7 +2485,6 @@ pub const DynamicLinker = struct {
             .other,
 
             .contiki,
-            .hermit,
             .managarm, // Needs to be double-checked.
 
             .plan9,
@@ -2929,7 +2918,6 @@ pub const DynamicLinker = struct {
             .other,
 
             .contiki,
-            .hermit,
 
             .plan9,
             .rtems,
@@ -3318,7 +3306,6 @@ pub fn cTypeBitSize(target: *const Target, c_type: CType) ?u16 {
         },
 
         .fuchsia,
-        .hermit,
 
         .haiku,
         .hurd,
