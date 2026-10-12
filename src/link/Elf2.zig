@@ -1356,6 +1356,7 @@ const SymbolReloc = struct {
                 @"32[10:0]",
                 @"32[11:0]",
                 @"32[12:0]",
+                @"32[18:0]",
                 @"32[21:0]",
                 @"32[21:10]",
                 @"32[24:5]",
@@ -1399,6 +1400,7 @@ const SymbolReloc = struct {
                 @"12",
                 @"22",
                 @"32",
+                @"42",
                 @"52",
             },
 
@@ -1418,6 +1420,7 @@ const SymbolReloc = struct {
                     .@"12" => .{ 12, false },
                     .@"22" => .{ 22, false },
                     .@"32" => .{ 32, false },
+                    .@"42" => .{ 42, false },
                     .@"52" => .{ 52, false },
                 };
 
@@ -1438,6 +1441,7 @@ const SymbolReloc = struct {
                     .@"32[10:0]"  => .{ 32, 10,  0 },
                     .@"32[11:0]"  => .{ 32, 11,  0 },
                     .@"32[12:0]"  => .{ 32, 12,  0 },
+                    .@"32[18:0]"  => .{ 32, 18,  0 },
                     .@"32[21:0]"  => .{ 32, 21,  0 },
                     .@"32[21:10]" => .{ 32, 21, 10 },
                     .@"32[24:5]"  => .{ 32, 24,  5 },
@@ -1500,7 +1504,10 @@ const SymbolReloc = struct {
             larch_b26,
             larch_call36,
 
+            sparc_hix22,
             sparc_le_hix22,
+            sparc_wdisp10,
+            sparc_wdisp16,
 
             fn applyInner(
                 s: Special,
@@ -1598,6 +1605,17 @@ const SymbolReloc = struct {
                             else => unreachable,
                         }
                     },
+
+                    .sparc_hix22 => {
+                        const dest_ptr: *align(1) packed struct(u32) {
+                            imm22: u22,
+                            b22_31: u10,
+                        } = @ptrCast(dest_slice);
+                        elf.targetStore(dest_ptr, .{
+                            .imm22 = @truncate(~(target.value(elf) +% addend) >> 10),
+                            .b22_31 = elf.targetLoad(dest_ptr).b22_31,
+                        });
+                    },
                     .sparc_le_hix22 => {
                         const tls_phndx = elf.getNode(elf.ni.tls.unwrap().?).segment;
                         const tls_size: u64 = switch (elf.phdrSlice()) {
@@ -1614,6 +1632,57 @@ const SymbolReloc = struct {
                             .imm22 = @truncate(~(target.value(elf) +% addend -% tls_size) >> 10),
                             .b22_31 = elf.targetLoad(dest_ptr).b22_31,
                         });
+                    },
+                    .sparc_wdisp16, .sparc_wdisp10 => {
+                        const target_vaddr: u64 = elf.pltEntryTargetAddr(target) orelse target.value(elf);
+                        const jump_offset: i64 = @bitCast(target_vaddr +% addend -% dest_vaddr);
+                        if ((jump_offset >> 2) << 2 != jump_offset) {
+                            return error.RelocationMisaligned;
+                        }
+                        const shifted_jump_offset: i64 = @shrExact(jump_offset, 2);
+                        switch (s) {
+                            .sparc_wdisp10 => {
+                                if ((shifted_jump_offset << (64 - 10)) >> (64 - 10) != shifted_jump_offset) {
+                                    return error.RelocationOverflow;
+                                }
+                                const truncated: i10 = @intCast(shifted_jump_offset);
+                                const parts: packed struct { lo8: u8, hi2: u2 } = @bitCast(truncated);
+                                const inst: *align(1) packed struct(u32) {
+                                    b0_4: u5,
+                                    disp10: u8,
+                                    b13_18: u6,
+                                    d2: u2,
+                                    b21_31: u11,
+                                } = @ptrCast(dest_slice[0..4]);
+                                elf.targetStore(inst, .{
+                                    .b0_4 = elf.targetLoad(inst).b0_4,
+                                    .disp10 = parts.lo8,
+                                    .b13_18 = elf.targetLoad(inst).b13_18,
+                                    .d2 = parts.hi2,
+                                    .b21_31 = elf.targetLoad(inst).b21_31,
+                                });
+                            },
+                            .sparc_wdisp16 => {
+                                if ((shifted_jump_offset << (64 - 16)) >> (64 - 16) != shifted_jump_offset) {
+                                    return error.RelocationOverflow;
+                                }
+                                const truncated: i16 = @intCast(shifted_jump_offset);
+                                const parts: packed struct { lo14: u14, hi2: u2 } = @bitCast(truncated);
+                                const inst: *align(1) packed struct(u32) {
+                                    disp14: u14,
+                                    b14_19: u6,
+                                    d2: u2,
+                                    b22_31: u10,
+                                } = @ptrCast(dest_slice[0..4]);
+                                elf.targetStore(inst, .{
+                                    .disp14 = parts.lo14,
+                                    .b14_19 = elf.targetLoad(inst).b14_19,
+                                    .d2 = parts.hi2,
+                                    .b22_31 = elf.targetLoad(inst).b22_31,
+                                });
+                            },
+                            else => unreachable,
+                        }
                     },
                 }
             }
@@ -1649,6 +1718,10 @@ const SymbolReloc = struct {
                         .larch_b21,
                         .larch_b26,
                         .larch_call36,
+
+                        .sparc_hix22,
+                        .sparc_wdisp10,
+                        .sparc_wdisp16,
                         => false,
                     },
                 },
@@ -9000,38 +9073,31 @@ fn addRelocAssumeCapacity(
                 .JMP_SLOT,
                 .RELATIVE,
                 .IRELATIVE,
+                .TLS_DTPMOD32,
+                .TLS_DTPMOD64,
+                .TLS_TPOFF32,
+                .TLS_TPOFF64,
                 => return error.NonStaticRelocation,
 
-                .WDISP22,
-                .HI22,
-                .LO10,
+                // Nobody seems to support these.
                 .HIPLT22,
                 .LOPLT10,
                 .PCPLT22,
                 .PCPLT10,
-                .OLO10,
-                .HH22,
-                .HM10,
-                .LM22,
-                .PC_HH22,
-                .PC_HM10,
-                .PC_LM22,
-                .WDISP16,
-                .WDISP19,
-                .HIX22,
-                .LOX10,
-                .REGISTER,
-                .TLS_IE_HI22,
-                .TLS_IE_LO10,
-                .TLS_DTPMOD32,
-                .TLS_DTPMOD64,
-                .H34,
-                .WDISP10,
                 => return error.UnimplementedRelocation,
 
+                // Needs to use the second addend in `ELF64_R_TYPE_DATA(reloc.r_info)` which we currently can't model.
+                .OLO10 => return error.UnimplementedRelocation,
+
+                // Does not patch any bytes. Together with `STT_SPARC_REGISTER`, this is used to indicate that an object
+                // file owns a global register and what value it should be initialized to. I don't think this sees any
+                // real-world use.
+                .REGISTER => return error.UnimplementedRelocation,
+
                 // These need similar handling to `R_X86_64_GOTOFF64`. No compiler seems to emit them though.
-                .GOTDATA_HIX22 => return error.UnimplementedRelocation,
-                .GOTDATA_LOX10 => return error.UnimplementedRelocation,
+                .GOTDATA_HIX22,
+                .GOTDATA_LOX10,
+                => return error.UnimplementedRelocation,
 
                 // These relocations signal that certain relaxations are legal, but this linker does
                 // not yet implement relaxation, so these are ignored.
@@ -9063,15 +9129,26 @@ fn addRelocAssumeCapacity(
                 .DISP32 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel, .{ .dest = .@"32", .cast = .signed, .shift = .@"0" })),
                 .DISP64 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel, .{ .dest = .@"64", .cast = .signed, .shift = .@"0" })),
 
-                .SIZE32   => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.size, .{ .dest = .@"32", .cast = .unsigned, .shift = .@"0" })),
-                .SIZE64   => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.size, .{ .dest = .@"64", .cast = .unsigned, .shift = .@"0" })),
+                .SIZE32 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.size, .{ .dest = .@"32", .cast = .unsigned, .shift = .@"0" })),
+                .SIZE64 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.size, .{ .dest = .@"64", .cast = .unsigned, .shift = .@"0" })),
 
                 .PCPLT32 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltrel, .{ .dest = .@"32", .cast = .signed,   .shift = .@"0" })),
                 .PLT32   => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltabs, .{ .dest = .@"32", .cast = .unsigned, .shift = .@"0" })),
                 .PLT64   => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltabs, .{ .dest = .@"64", .cast = .unsigned, .shift = .@"0" })),
 
+                .WDISP10          => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .special(.sparc_wdisp10)),
+                .WDISP16          => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .special(.sparc_wdisp16)),
+                .WDISP19          => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltrel, .{ .dest = .@"32[18:0]", .cast = .signed,   .shift = .@"2_exact" })),
+                .WDISP22          => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltrel, .{ .dest = .@"32[21:0]", .cast = .signed,   .shift = .@"2_exact" })),
                 .WDISP30, .WPLT30 => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.pltrel, .{ .dest = .@"32[29:0]", .cast = .signed,   .shift = .@"2_exact" })),
                 .PC22             => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel,    .{ .dest = .@"32[21:0]", .cast = .unsigned, .shift = .@"10" })),
+                .PC_LM22          => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel,    .{ .dest = .@"32[21:0]", .cast = .trunc,    .shift = .@"10" })),
+                .PC_HH22          => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel,    .{ .dest = .@"32[21:0]", .cast = .unsigned, .shift = .@"42" })),
+                .HI22             => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs,    .{ .dest = .@"32[21:0]", .cast = .unsigned, .shift = .@"10" })),
+                .LM22             => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs,    .{ .dest = .@"32[21:0]", .cast = .trunc,    .shift = .@"10" })),
+                .HH22             => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs,    .{ .dest = .@"32[21:0]", .cast = .unsigned, .shift = .@"42" })),
+                .HIX22            => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .special(.sparc_hix22)),
+                .H34              => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs,    .{ .dest = .@"32[21:0]", .cast = .unsigned, .shift = .@"12" })),
                 .H44              => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs,    .{ .dest = .@"32[21:0]", .cast = .unsigned, .shift = .@"22" })),
                 .M44              => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs,    .{ .dest = .@"32[9:0]",  .cast = .trunc,    .shift = .@"12" })),
 
@@ -9079,8 +9156,6 @@ fn addRelocAssumeCapacity(
                 .TLS_LE_HIX22  => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .special(.sparc_le_hix22)),
                 .TLS_DTPOFF32  => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.dtpoff, .{ .dest = .@"32", .cast = .unsigned, .shift = .@"0" })),
                 .TLS_DTPOFF64  => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.dtpoff, .{ .dest = .@"64", .cast = .unsigned, .shift = .@"0" })),
-                .TLS_TPOFF32   => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.tpoff,  .{ .dest = .@"32", .cast = .signed,   .shift = .@"0" })),
-                .TLS_TPOFF64   => try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.tpoff,  .{ .dest = .@"64", .cast = .signed,   .shift = .@"0" })),
 
                 .GOT13            => elf.addGotRelocAssumeCapacity(node, offset, .{ .symbol = target }, addend, .simple(.offset, .{ .dest = .@"32[12:0]", .cast = .unsigned, .shift = .@"0" })),
                 .GOT22            => elf.addGotRelocAssumeCapacity(node, offset, .{ .symbol = target }, addend, .simple(.offset, .{ .dest = .@"32[21:0]", .cast = .trunc,    .shift = .@"10" })),
@@ -9088,6 +9163,7 @@ fn addRelocAssumeCapacity(
                 .GOTDATA_OP_HIX22 => elf.addGotRelocAssumeCapacity(node, offset, .{ .symbol = target }, addend, .special(.sparc_op_hix22)),
                 .TLS_GD_HI22      => elf.addGotRelocAssumeCapacity(node, offset, .{ .tlsgd0 = target }, addend, .simple(.offset, .{ .dest = .@"32[21:0]", .cast = .trunc, .shift = .@"10" })),
                 .TLS_LDM_HI22     => elf.addGotRelocAssumeCapacity(node, offset, .tlsld0,               addend, .simple(.offset, .{ .dest = .@"32[21:0]", .cast = .trunc, .shift = .@"10" })),
+                .TLS_IE_HI22      => elf.addGotRelocAssumeCapacity(node, offset, .{ .tpoff = target },  addend, .simple(.offset, .{ .dest = .@"32[21:0]", .cast = .trunc, .shift = .@"10" })),
                 // zig fmt: on
 
                 .TLS_GD_CALL, .TLS_LDM_CALL => {
@@ -9108,6 +9184,22 @@ fn addRelocAssumeCapacity(
                 .PC10 => {
                     try elf.one_shot_fixups.append(elf.base.comp.gpa, .{ .node = node, .offset = offset, .action = .@"32[12:10] = 0b000" });
                     try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel, .{ .dest = .@"32[9:0]", .cast = .trunc, .shift = .@"0" }));
+                },
+                .PC_HM10 => {
+                    try elf.one_shot_fixups.append(elf.base.comp.gpa, .{ .node = node, .offset = offset, .action = .@"32[12:10] = 0b000" });
+                    try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.rel, .{ .dest = .@"32[9:0]", .cast = .trunc, .shift = .@"32" }));
+                },
+                .LO10 => {
+                    try elf.one_shot_fixups.append(elf.base.comp.gpa, .{ .node = node, .offset = offset, .action = .@"32[12:10] = 0b000" });
+                    try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs, .{ .dest = .@"32[9:0]", .cast = .trunc, .shift = .@"0" }));
+                },
+                .HM10 => {
+                    try elf.one_shot_fixups.append(elf.base.comp.gpa, .{ .node = node, .offset = offset, .action = .@"32[12:10] = 0b000" });
+                    try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs, .{ .dest = .@"32[9:0]", .cast = .trunc, .shift = .@"32" }));
+                },
+                .LOX10 => {
+                    try elf.one_shot_fixups.append(elf.base.comp.gpa, .{ .node = node, .offset = offset, .action = .@"32[12:10] = 0b111" });
+                    try elf.addSymbolRelocAssumeCapacity(node, offset, target, addend, .simple(.abs, .{ .dest = .@"32[9:0]", .cast = .trunc, .shift = .@"0" }));
                 },
                 .L44 => {
                     try elf.one_shot_fixups.append(elf.base.comp.gpa, .{ .node = node, .offset = offset, .action = .@"32[12:12] = 0b0" });
@@ -9132,6 +9224,10 @@ fn addRelocAssumeCapacity(
                 .TLS_LDM_LO10 => {
                     try elf.one_shot_fixups.append(elf.base.comp.gpa, .{ .node = node, .offset = offset, .action = .@"32[12:10] = 0b000" });
                     elf.addGotRelocAssumeCapacity(node, offset, .tlsld0, addend, .simple(.offset, .{ .dest = .@"32[9:0]", .cast = .trunc, .shift = .@"0" }));
+                },
+                .TLS_IE_LO10 => {
+                    try elf.one_shot_fixups.append(elf.base.comp.gpa, .{ .node = node, .offset = offset, .action = .@"32[12:10] = 0b000" });
+                    elf.addGotRelocAssumeCapacity(node, offset, .{ .tpoff = target }, addend, .simple(.offset, .{ .dest = .@"32[9:0]", .cast = .trunc, .shift = .@"0" }));
                 },
             },
             .X86_64 => rel_type: switch (@"type".X86_64) {
@@ -9256,12 +9352,17 @@ fn addSymbolRelocAssumeCapacity(
                 .larch_pcala_hi20,
                 .larch_pcala64_lo20,
                 .larch_pcala64_hi12,
+
+                .sparc_hix22,
                 => true,
 
                 .larch_b21,
                 .larch_b26,
                 .larch_call36,
+
                 .sparc_le_hix22,
+                .sparc_wdisp10,
+                .sparc_wdisp16,
                 => false,
             },
         };

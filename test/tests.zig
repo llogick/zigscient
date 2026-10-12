@@ -1568,6 +1568,15 @@ const module_test_targets = blk: {
 
         .{
             .target = .{
+                .cpu_arch = .sparc64,
+                .os_tag = .openbsd,
+                .abi = .none,
+            },
+            .link_libc = true,
+        },
+
+        .{
+            .target = .{
                 .cpu_arch = .x86,
                 .os_tag = .openbsd,
                 .abi = .none,

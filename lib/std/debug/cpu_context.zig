@@ -42,7 +42,7 @@ pub fn fromPosixSignalContext(ctx_ptr: ?*const anyopaque) ?Native {
     // Deal with some special cases first.
     if (native_arch.isArc() and native_os == .linux) {
         var native: Native = .{
-            .r = [_]u32{ uc.mcontext.r31, uc.mcontext.r30, 0, uc.mcontext.r28 } ++
+            .r = [_]Arc.Gpr{ uc.mcontext.r31, uc.mcontext.r30, 0, uc.mcontext.r28 } ++
                 uc.mcontext.r27_26 ++
                 uc.mcontext.r25_13 ++
                 uc.mcontext.r12_0,
@@ -100,15 +100,29 @@ pub fn fromPosixSignalContext(ctx_ptr: ?*const anyopaque) ?Native {
             .i = frame.i,
             .pc = uc.mcontext.pc,
         };
+    } else if (native_arch.isSparc() and native_os == .netbsd) {
+        // The kernel flushes all user windows before delivering a signal.
+        const save: *const [16]usize = @ptrFromInt(uc.mcontext.o[6] +% if (native_arch == .sparc64) 2047 else 0);
+
+        return .{
+            .g = [_]Sparc.Gpr{0} ++ uc.mcontext.g1_7,
+            .o = uc.mcontext.o,
+            .l = save[0..8].*,
+            .i = save[8..16].*,
+            .pc = uc.mcontext.pc,
+        };
+    } else if (native_arch == .sparc64 and native_os == .openbsd) {
+        // https://codeberg.org/ziglang/zig/issues/30958
+        return null;
     }
 
     // Only unified conversions from here.
     return switch (native_arch) {
         .arm, .armeb, .thumb, .thumbeb => .{
-            .r = uc.mcontext.r ++ [_]u32{uc.mcontext.pc},
+            .r = uc.mcontext.r ++ [_]Arm.Gpr{uc.mcontext.pc},
         },
         .aarch64, .aarch64_be => .{
-            .x = uc.mcontext.x ++ [_]u64{uc.mcontext.lr},
+            .x = uc.mcontext.x ++ [_]Aarch64.Gpr{uc.mcontext.lr},
             .sp = uc.mcontext.sp,
             .pc = uc.mcontext.pc,
         },
@@ -118,9 +132,9 @@ pub fn fromPosixSignalContext(ctx_ptr: ?*const anyopaque) ?Native {
         },
         .csky => .{
             .r = uc.mcontext.r0_13 ++
-                [_]u32{ uc.mcontext.r14, uc.mcontext.r15 } ++
+                [_]Csky.Gpr{ uc.mcontext.r14, uc.mcontext.r15 } ++
                 uc.mcontext.r16_30 ++
-                [_]u32{uc.mcontext.r31},
+                [_]Csky.Gpr{uc.mcontext.r31},
             .pc = uc.mcontext.pc,
         },
         .hexagon, .loongarch32, .loongarch64, .mips, .mipsel, .mips64, .mips64el, .or1k => .{
@@ -2557,7 +2571,17 @@ const signal_ucontext_t = switch (native_os) {
             },
         },
         // https://github.com/openbsd/src/blob/42468faed8369d07ae49ae02dd71ec34f59b66cd/sys/arch/sparc64/include/signal.h
-        .sparc64 => @compileError("sparc64-openbsd ucontext_t missing"),
+        .sparc64 => extern struct {
+            _cookie: i64,
+            mcontext: extern struct {
+                sp: u64,
+                pc: u64,
+                _npc: i64,
+                _tstate: i64,
+                g1: u64,
+                o0: u64,
+            },
+        },
         // https://github.com/openbsd/src/blob/42468faed8369d07ae49ae02dd71ec34f59b66cd/sys/arch/sh/include/signal.h
         .sh => extern struct {
             pc: u32,
@@ -2694,8 +2718,22 @@ const signal_ucontext_t = switch (native_os) {
                 pc: usize,
             },
             // https://github.com/NetBSD/src/blob/861008c62187bf7bc0aac4d81e52ed6eee4d0c74/sys/arch/sparc/include/mcontext.h
-            .sparc => @compileError("sparc-netbsd mcontext_t missing"),
-            .sparc64 => @compileError("sparc64-netbsd mcontext_t missing"),
+            .sparc => extern struct {
+                _psr: i32 align(8),
+                pc: u32,
+                _npc: i32,
+                _y: i32,
+                g1_7: [7]u32,
+                o: [8]u32,
+            },
+            .sparc64 => extern struct {
+                _ccr: i64 align(16),
+                pc: u64,
+                _npc: i64,
+                _y: i64,
+                g1_7: [7]u64,
+                o: [8]u64,
+            },
             // https://github.com/NetBSD/src/blob/861008c62187bf7bc0aac4d81e52ed6eee4d0c74/sys/arch/sh3/include/mcontext.h
             .sh, .sheb => extern struct {
                 _gbr: i32,
