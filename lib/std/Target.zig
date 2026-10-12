@@ -19,7 +19,6 @@ pub const Os = struct {
         freestanding,
         other,
 
-        contiki,
         fuchsia,
         managarm,
 
@@ -177,7 +176,6 @@ pub const Os = struct {
                 .ashetos,
                 => .none,
 
-                .contiki,
                 .fuchsia,
 
                 .rtems,
@@ -417,12 +415,6 @@ pub const Os = struct {
                 .ashetos,
                 => .{ .none = {} },
 
-                .contiki => .{
-                    .semver = .{
-                        .min = .{ .major = 5, .minor = 0, .patch = 0 },
-                        .max = .{ .major = 5, .minor = 1, .patch = 0 },
-                    },
-                },
                 .fuchsia => .{
                     .semver = .{
                         .min = .{ .major = 27, .minor = 0, .patch = 0 },
@@ -946,7 +938,6 @@ pub const Abi = enum {
 
             .ashetos => .eabi,
 
-            .contiki,
             .illumos,
             .managarm,
             .plan9,
@@ -2333,7 +2324,6 @@ pub fn requiresLibC(target: *const Target) bool {
         .psp,
         .vita,
         .mesa3d,
-        .contiki,
         .amdpal,
         .hurd,
         .wasi,
@@ -2484,7 +2474,6 @@ pub const DynamicLinker = struct {
             .freestanding,
             .other,
 
-            .contiki,
             .managarm, // Needs to be double-checked.
 
             .plan9,
@@ -2916,8 +2905,6 @@ pub const DynamicLinker = struct {
             // dynamic linker path.
             .freestanding,
             .other,
-
-            .contiki,
 
             .plan9,
             .rtems,
@@ -3557,7 +3544,6 @@ pub fn cTypeBitSize(target: *const Target, c_type: CType) ?u16 {
         .opengl => null,
 
         .ps3,
-        .contiki,
         .managarm,
         => @panic("specify the C integer and float type sizes for this OS"),
     };

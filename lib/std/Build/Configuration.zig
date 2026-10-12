@@ -2379,7 +2379,6 @@ pub const TargetQuery = struct {
     pub const OsTag = enum(u6) {
         freestanding,
         other,
-        contiki,
         fuchsia,
         managarm,
         haiku,

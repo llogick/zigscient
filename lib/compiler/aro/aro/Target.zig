@@ -1293,7 +1293,6 @@ pub fn toLLVMTriple(target: *const Target, buf: []u8) []const u8 {
     const llvm_os = switch (target.os.tag) {
         .amdhsa => "amdhsa",
         .amdpal => "amdpal",
-        .contiki => "contiki",
         .cuda => "cuda",
         .dragonfly => "dragonfly",
         .driverkit => "driverkit",

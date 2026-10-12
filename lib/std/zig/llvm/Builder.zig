@@ -282,7 +282,6 @@ pub fn tripleForTarget(allocator: Allocator, target: *const std.Target) ![]const
         .vulkan => "vulkan",
         .managarm => "managarm",
 
-        .contiki,
         .freestanding,
         .opencl, // https://llvm.org/docs/SPIRVUsage.html#target-triples
         .opengl,
