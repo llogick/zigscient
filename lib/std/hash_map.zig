@@ -1274,7 +1274,7 @@ fn Custom(
             // map, which is assumed to exist as key_ptr must be valid.  This
             // item must be at index 0.
             const idx = if (@sizeOf(K) > 0)
-                @as([*]K, @ptrCast(key_ptr)) - self.keys()
+                @as([*]const K, @ptrCast(key_ptr)) - self.keys()
             else
                 0;
 
