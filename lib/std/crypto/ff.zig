@@ -638,6 +638,28 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
             return x.eql(mo);
         }
 
+        // Computes -lo^-1 mod 2^t_bits for an odd `lo`.
+        fn computeM0Inv(lo: Limb) Limb {
+            var y = lo;
+            inline for (0..comptime math.log2_int(usize, t_bits)) |_| {
+                y = y *% (2 -% lo *% y);
+            }
+            return (@as(Limb, 1) << t_bits) - (@as(TLimb, @truncate(y)));
+        }
+
+        // Initialize without R2
+        fn initWithoutRR(v: FeUint, leading: usize, m0inv: Limb) Self {
+            var m = Self{
+                .zero = Fe{ .v = FeUint.zero },
+                .v = v,
+                .leading = leading,
+                .m0inv = m0inv,
+                .rr = undefined,
+            };
+            m.shrink(&m.zero) catch unreachable;
+            return m;
+        }
+
         /// Creates a new modulus from a `Uint` value.
         /// The modulus must be odd and larger than 2.
         pub fn fromUint(v_: FeUint) InvalidModulusError!Self {
@@ -651,25 +673,8 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
                 return error.ModulusTooSmall;
             }
 
-            const leading = @clz(hi) - carry_bits;
+            var m = initWithoutRR(v, @clz(hi) - carry_bits, computeM0Inv(lo));
 
-            var y = lo;
-
-            inline for (0..comptime math.log2_int(usize, t_bits)) |_| {
-                y = y *% (2 -% lo *% y);
-            }
-            const m0inv = (@as(Limb, 1) << t_bits) - (@as(TLimb, @truncate(y)));
-
-            const zero = Fe{ .v = FeUint.zero };
-
-            var m = Self{
-                .zero = zero,
-                .v = v,
-                .leading = leading,
-                .m0inv = m0inv,
-                .rr = undefined, // will be computed right after
-            };
-            m.shrink(&m.zero) catch unreachable;
             computeRR(&m);
 
             return m;
@@ -759,15 +764,21 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
             x.v.cmov(need_sub, d.v);
         }
 
+        // Adds y to x. Returns whether reduction was needed.
+        fn addAndReduce(x: *FeUint, y: FeUint, bound: FeUint) bool {
+            const overflow = x.addWithOverflow(y);
+            const underflow: u1 = @bitCast(ct.limbsCmpLt(x.*, bound));
+            const need_sub = ct.eql(overflow, underflow);
+            _ = x.conditionalSubWithOverflow(need_sub, bound);
+            return need_sub;
+        }
+
         /// Adds two field elements (mod m).
         pub fn add(self: Self, x: Fe, y: Fe) Fe {
             var out = x;
             if (x.montgomery == y.montgomery) {
                 @branchHint(.likely);
-                const overflow = out.v.addWithOverflow(y.v);
-                const underflow: u1 = @bitCast(ct.limbsCmpLt(out.v, self.v));
-                const need_sub = ct.eql(overflow, underflow);
-                _ = out.v.conditionalSubWithOverflow(need_sub, self.v);
+                _ = addAndReduce(&out.v, y.v, self.v);
                 return out;
             } else {
                 var y_ = y;
@@ -776,10 +787,7 @@ pub fn Modulus(comptime max_bits: comptime_int) type {
                 } else {
                     self.toMontgomery(&y_) catch unreachable;
                 }
-                const overflow = out.v.addWithOverflow(y_.v);
-                const underflow: u1 = @bitCast(ct.limbsCmpLt(out.v, self.v));
-                const need_sub = ct.eql(overflow, underflow);
-                _ = out.v.conditionalSubWithOverflow(need_sub, self.v);
+                _ = addAndReduce(&out.v, y_.v, self.v);
                 return out;
             }
         }
