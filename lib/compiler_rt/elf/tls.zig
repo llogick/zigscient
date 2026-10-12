@@ -29,10 +29,17 @@ comptime {
     // function for the GD and LD models. This function is unlikely to actually be used, since the
     // linker should be able to relax every TLS access to the LE model and therefore eliminate all
     // calls to this function, but that isn't guaranteed.
-    if (native_arch == .s390x)
-        symbol(&__tls_get_offset, "__tls_get_offset")
-    else
+    if (native_arch == .s390x) {
+        symbol(&__tls_get_offset, "__tls_get_offset");
+    } else {
         symbol(&__tls_get_addr, "__tls_get_addr");
+        if (native_arch == .m68k) {
+            symbol(&__m68k_read_tp, "__m68k_read_tp");
+        }
+        if (native_arch == .x86) {
+            symbol(&___tls_get_addr, "___tls_get_addr");
+        }
+    }
 }
 
 /// Represents an ELF TLS variant.
@@ -158,30 +165,12 @@ const current_dtv_offset = switch (native_arch) {
 
 /// Per-thread storage for the ELF TLS ABI.
 const AbiTcb = switch (current_variant) {
-    .I_original, .I_modified => switch (native_arch) {
-        .aarch64,
-        .aarch64_be,
-        .alpha,
-        .arm,
-        .armeb,
-        .hppa,
-        .microblaze,
-        .microblazeel,
-        .sh,
-        .sheb,
-        .thumb,
-        .thumbeb,
-        .xtensa,
-        .xtensaeb,
-        => extern struct {
-            /// This is offset by `current_dtv_offset`.
-            dtv: usize,
-            _reserved: ?*anyopaque,
-        },
-        else => extern struct {
-            /// This is offset by `current_dtv_offset`.
-            dtv: usize,
-        },
+    .I_original => extern struct {
+        dtv: usize,
+        _reserved: ?*anyopaque,
+    },
+    .I_modified => extern struct {
+        dtv: usize,
     },
     .II => extern struct {
         /// This is self-referential.
@@ -517,7 +506,7 @@ fn computeAreaDesc(phdrs: []elf.ElfN.Phdr) void {
     var block_size: usize = undefined;
 
     if (tls_phdr) |phdr| {
-        align_factor = phdr.@"align";
+        align_factor = @max(phdr.@"align", 1);
 
         // The effective size in memory is represented by `memsz`; the length of the data stored
         // in the `PT.TLS` segment is `filesz` and may be less than the former.
@@ -738,6 +727,12 @@ inline fn mmap(length: usize) usize {
     }
 }
 
+fn __m68k_read_tp() callconv(.c) ?*anyopaque {
+    comptime assert(native_arch == .m68k);
+
+    return @ptrFromInt(getThreadPointer());
+}
+
 const TlsIndex = switch (native_arch) {
     .x86_64 => extern struct { module: u64, offset: u64 }, // Even for x32...
     else => extern struct { module: usize, offset: usize }, // ...but not MIPS N32!
@@ -748,14 +743,26 @@ fn __tls_get_addr(ti: *const TlsIndex) callconv(.c) *anyopaque {
 
     assert(ti.module == 1); // The executable's module ID is always 1
     const tp = getThreadPointer();
-    const block: [*]u8 = switch (current_variant) {
-        .I_original => @ptrFromInt(tp -% area_info.abi_tcb.offset +% area_info.block.offset),
-        .I_modified => @ptrFromInt(tp -% current_tp_offset),
+    const block = switch (current_variant) {
+        .I_original => tp -% area_info.abi_tcb.offset +% area_info.block.offset,
+        .I_modified => tp -% current_tp_offset,
         // The `.I_original` approach would also work for `.II`, but there is an
         // alternative strategy which is one less operation:
-        .II => @ptrFromInt(tp -% area_info.block.size),
+        .II => tp -% area_info.abi_tcb.offset,
     };
-    return block[@intCast(ti.offset)..];
+    return @ptrFromInt(block +% current_dtv_offset +% @as(usize, @intCast(ti.offset)));
+}
+
+fn ___tls_get_addr() callconv(.naked) *anyopaque {
+    comptime assert(native_arch == .x86);
+
+    // We receive the `TlsIndex` pointer in eax.
+    comptime assert(@sizeOf(AbiTcb) + @sizeOf(ZigTcb) + @offsetOf(Dtv, "tls_block") == 12);
+    asm volatile (
+        \\ mov 4(%%eax), %%eax
+        \\ add %%gs:12, %%eax
+        \\ ret
+    );
 }
 
 fn __tls_get_offset() callconv(.naked) noreturn {
@@ -765,10 +772,10 @@ fn __tls_get_offset() callconv(.naked) noreturn {
     asm volatile (
         \\ la %%r1, 0(%%r12, %%r2)
         \\ lg %%r2, 8(%%r1)
-        \\ lgrl %%r0, %[block_size]
+        \\ lgrl %%r0, %[abi_tcb_offset]
         \\ sgr %%r2, %%r0
         \\ br %%r14
         :
-        : [block_size] "s" (&area_info.block.size),
+        : [abi_tcb_offset] "s" (&area_info.abi_tcb.offset),
     );
 }
