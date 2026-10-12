@@ -5,6 +5,7 @@ const Compare = math.Compare;
 const fmax = math.fmax;
 const fmin = math.fmin;
 const Gpr = math.Gpr;
+const fracBits = math.fracBits;
 const inf = math.inf;
 const Log2IntCeil = math.Log2IntCeil;
 const math = @import("math.zig");
@@ -4487,34 +4488,65 @@ fn unary(comptime op: anytype, comptime opts: struct {
         fn testFloatVectorTypes() !void {
             try testArgs(@Vector(1, f16), undefined);
             try testArgs(@Vector(2, f16), undefined);
+            try testArgs(@Vector(3, f16), undefined);
             try testArgs(@Vector(4, f16), undefined);
+            try testArgs(@Vector(5, f16), undefined);
+            try testArgs(@Vector(7, f16), undefined);
             try testArgs(@Vector(8, f16), undefined);
+            try testArgs(@Vector(9, f16), undefined);
+            try testArgs(@Vector(15, f16), undefined);
             try testArgs(@Vector(16, f16), undefined);
+            try testArgs(@Vector(17, f16), undefined);
+            try testArgs(@Vector(31, f16), undefined);
             try testArgs(@Vector(32, f16), undefined);
+            try testArgs(@Vector(33, f16), undefined);
+            try testArgs(@Vector(63, f16), undefined);
             try testArgs(@Vector(64, f16), undefined);
+            try testArgs(@Vector(65, f16), undefined);
 
             try testArgs(@Vector(1, f32), undefined);
             try testArgs(@Vector(2, f32), undefined);
+            try testArgs(@Vector(3, f32), undefined);
             try testArgs(@Vector(4, f32), undefined);
+            try testArgs(@Vector(5, f32), undefined);
+            try testArgs(@Vector(7, f32), undefined);
             try testArgs(@Vector(8, f32), undefined);
+            try testArgs(@Vector(9, f32), undefined);
+            try testArgs(@Vector(15, f32), undefined);
             try testArgs(@Vector(16, f32), undefined);
+            try testArgs(@Vector(17, f32), undefined);
+            try testArgs(@Vector(31, f32), undefined);
             try testArgs(@Vector(32, f32), undefined);
+            try testArgs(@Vector(33, f32), undefined);
 
             try testArgs(@Vector(1, f64), undefined);
             try testArgs(@Vector(2, f64), undefined);
+            try testArgs(@Vector(3, f64), undefined);
             try testArgs(@Vector(4, f64), undefined);
+            try testArgs(@Vector(5, f64), undefined);
+            try testArgs(@Vector(7, f64), undefined);
             try testArgs(@Vector(8, f64), undefined);
+            try testArgs(@Vector(9, f64), undefined);
+            try testArgs(@Vector(15, f64), undefined);
             try testArgs(@Vector(16, f64), undefined);
+            try testArgs(@Vector(17, f64), undefined);
 
             try testArgs(@Vector(1, f80), undefined);
             try testArgs(@Vector(2, f80), undefined);
+            try testArgs(@Vector(3, f80), undefined);
             try testArgs(@Vector(4, f80), undefined);
+            try testArgs(@Vector(5, f80), undefined);
+            try testArgs(@Vector(7, f80), undefined);
             try testArgs(@Vector(8, f80), undefined);
+            try testArgs(@Vector(9, f80), undefined);
 
             try testArgs(@Vector(1, f128), undefined);
             try testArgs(@Vector(2, f128), undefined);
+            try testArgs(@Vector(3, f128), undefined);
             try testArgs(@Vector(4, f128), undefined);
+            try testArgs(@Vector(7, f128), undefined);
             try testArgs(@Vector(8, f128), undefined);
+            try testArgs(@Vector(9, f128), undefined);
         }
         fn testFloatVectors() !void {
             try testArgs(@Vector(1, f16), .{
@@ -5255,6 +5287,20 @@ inline fn reduceMulOptimized(comptime Type: type, rhs: Type) @typeInfo(Type).vec
 test reduceMulOptimized {
     const test_reduce_mul_optimized = unary(reduceMulOptimized, .{ .compare = .approx_or_overflow });
     try test_reduce_mul_optimized.testFloatVectors();
+}
+
+inline fn reduceAddOrder(comptime Type: type, _: Type) @typeInfo(Type).vector.child {
+    const vector = @typeInfo(Type).vector;
+    const full_mant_bits = 1 + fracBits(vector.child);
+    comptime var rhs: Type = @splat(1);
+    rhs[0] = @exp2(full_mant_bits);
+    rhs[@as(usize, vector.len) -| 2] = -rhs[0];
+    rhs[vector.len - 1] = @exp2(-full_mant_bits);
+    return @reduce(.Add, runtime(Type, rhs));
+}
+test reduceAddOrder {
+    const test_reduce_add_order = unary(reduceAddOrder, .{});
+    try test_reduce_add_order.testFloatVectorTypes();
 }
 
 inline fn splat(comptime Type: type, rhs: Type) Type {
