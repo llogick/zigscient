@@ -8,6 +8,7 @@
 const std = @import("std");
 const math = std.math;
 const expect = std.testing.expect;
+const expectEqual = std.testing.expectEqual;
 const compiler_rt = @import("../compiler_rt.zig");
 const symbol = compiler_rt.symbol;
 
@@ -40,8 +41,10 @@ pub fn fma_f32(x: f32, y: f32, z: f32) f32 {
     if ((u & 0x1FFFFFFF) != 0x10000000 or e == 0x7FF or (xy_z - xy == z and xy_z - z == xy)) {
         return @floatCast(xy_z);
     } else {
-        // TODO: Handle inexact case with double-rounding
-        return @floatCast(xy_z);
+        // Correct double rounding at an f32 midpoint.
+        const negative = u >> 63 != 0;
+        const err = if (negative == (z > xy)) xy - xy_z + z else z - xy_z + xy;
+        return @floatCast(@as(f64, @bitCast(if (negative == (err < 0)) u + 1 else u - 1)));
     }
 }
 
@@ -74,6 +77,7 @@ pub fn fma_f64(x: f64, y: f64, z: f64) f64 {
     var zs = x3.significand;
 
     var spread = ex + ey - ez;
+    if (spread < -53) return z;
     if (spread <= 53 * 2) {
         zs = math.scalbn(zs, -spread);
     } else {
@@ -85,7 +89,7 @@ pub fn fma_f64(x: f64, y: f64, z: f64) f64 {
     spread = ex + ey;
 
     if (r.hi == 0.0) {
-        return xy.hi + zs + math.scalbn(xy.lo, spread);
+        return if (xy.lo == 0.0) xy.hi + zs else math.scalbn(xy.lo, spread);
     }
 
     const adj = add_adjusted(r.lo, xy.lo);
@@ -139,6 +143,7 @@ pub fn fma_f128(x: f128, y: f128, z: f128) f128 {
     var zs = x3.significand;
 
     var spread = ex + ey - ez;
+    if (spread < -113) return z;
     if (spread <= 113 * 2) {
         zs = math.scalbn(zs, -spread);
     } else {
@@ -150,7 +155,7 @@ pub fn fma_f128(x: f128, y: f128, z: f128) f128 {
     spread = ex + ey;
 
     if (r.hi == 0.0) {
-        return xy.hi + zs + math.scalbn(xy.lo, spread);
+        return if (xy.lo == 0.0) xy.hi + zs else math.scalbn(xy.lo, spread);
     }
 
     const adj = add_adjusted128(r.lo, xy.lo);
@@ -224,7 +229,7 @@ fn add_and_denorm(a: f64, b: f64, scale: i32) f64 {
     if (sum.lo != 0) {
         var uhii: u64 = @bitCast(sum.hi);
         const bits_lost = -@as(i32, @intCast((uhii >> 52) & 0x7FF)) - scale + 1;
-        if ((bits_lost != 1) == (uhii & 1 != 0)) {
+        if ((bits_lost != 1) != (uhii & 1 != 0)) {
             const uloi: u64 = @bitCast(sum.lo);
             uhii = uhii + 1 - (((uhii ^ uloi) >> 62) & 2);
             sum.hi = @bitCast(uhii);
@@ -291,7 +296,7 @@ fn add_and_denorm128(a: f128, b: f128, scale: i32) f128 {
     if (sum.lo != 0) {
         var uhii: u128 = @bitCast(sum.hi);
         const bits_lost = -@as(i32, @intCast((uhii >> 112) & 0x7FFF)) - scale + 1;
-        if ((bits_lost != 1) == (uhii & 1 != 0)) {
+        if ((bits_lost != 1) != (uhii & 1 != 0)) {
             const uloi: u128 = @bitCast(sum.lo);
             uhii = uhii + 1 - (((uhii ^ uloi) >> 126) & 2);
             sum.hi = @bitCast(uhii);
@@ -335,6 +340,9 @@ test "32" {
     try expect(math.approxEqAbs(f32, fma_f32(37.45, 5.0, 9.124), 196.374004, epsilon));
     try expect(math.approxEqAbs(f32, fma_f32(89.123, 5.0, 9.124), 454.739005, epsilon));
     try expect(math.approxEqAbs(f32, fma_f32(123123.234375, 5.0, 9.124), 615625.295875, epsilon));
+
+    // Avoid double rounding when the f64 sum lands on an f32 midpoint.
+    try expectEqual(0x3fc00001, @as(u32, @bitCast(fma_f32(0x1.000002p0, 1.5, -0x1p-60))));
 }
 
 test "64" {
@@ -347,6 +355,45 @@ test "64" {
     try expect(math.approxEqAbs(f64, fma_f64(37.45, 5.0, 9.124), 196.374, epsilon));
     try expect(math.approxEqAbs(f64, fma_f64(89.123, 5.0, 9.124), 454.739, epsilon));
     try expect(math.approxEqAbs(f64, fma_f64(123123.234375, 5.0, 9.124), 615625.295875, epsilon));
+
+    // Special operands.
+    try expect(math.isNan(fma_f64(math.inf(f64), 0.0, 1.0)));
+    try expect(math.isNan(fma_f64(math.inf(f64), 1.0, -math.inf(f64))));
+    try expectEqual(math.inf(f64), fma_f64(2.0, 3.0, math.inf(f64)));
+    try expectEqual(math.inf(f64), fma_f64(math.floatMax(f64), 2.0, 0.0));
+    try expect(math.isNan(fma_f64(math.nan(f64), 1.0, 1.0)));
+
+    // Addend dominates product.
+    try expectEqual(-1.438e308, fma_f64(-0.6, math.floatTrueMin(f64), -1.438e308));
+    try expectEqual(1.0, fma_f64(0x1p-600, 0x1p-600, 1.0));
+    try expectEqual(math.floatMax(f64), fma_f64(math.floatTrueMin(f64), math.floatTrueMin(f64), math.floatMax(f64)));
+
+    // Subnormal result is rounded once.
+    try expectEqual(0x000d2971831e2f43, @as(u64, @bitCast(fma_f64(
+        @bitCast(@as(u64, 0xbbbcae314558d732)),
+        @bitCast(@as(u64, 0x843d607d0e518063)),
+        @bitCast(@as(u64, 0x800000ba24d8f3ba)),
+    ))));
+    try expectEqual(0x000516a34ce113eb, @as(u64, @bitCast(fma_f64(
+        @bitCast(@as(u64, 0x2af4b8a2ad5294f0)),
+        @bitCast(@as(u64, 0x14ef6dd2b62857c2)),
+        @bitCast(@as(u64, 0x000000248ff787f4)),
+    ))));
+    try expectEqual(0x800bccc9d0e68a53, @as(u64, @bitCast(fma_f64(
+        @bitCast(@as(u64, 0x3e81368dcd4cb557)),
+        @bitCast(@as(u64, 0x817514ce659bdad8)),
+        @bitCast(@as(u64, 0x800075cba3b3043c)),
+    ))));
+
+    // Sign of zero.
+    try expectEqual(0x8000000000000000, @as(u64, @bitCast(fma_f64(
+        @bitCast(@as(u64, 0x2001526ce7a829e5)),
+        @bitCast(@as(u64, 0xa00c9ac305fd618a)),
+        @bitCast(@as(u64, 0x001ef7cb10a75631)),
+    ))));
+    try expect(!math.signbit(fma_f64(1.0, 1.0, -1.0)));
+    try expect(math.signbit(fma_f64(-math.floatTrueMin(f64), 0.5, 0.0)));
+    try expect(math.signbit(fma_f64(-0.0, 1.0, -0.0)));
 }
 
 test "128" {
@@ -359,4 +406,26 @@ test "128" {
     try expect(math.approxEqAbs(f128, fma_f128(37.45, 5.0, 9.124), 196.374, epsilon));
     try expect(math.approxEqAbs(f128, fma_f128(89.123, 5.0, 9.124), 454.739, epsilon));
     try expect(math.approxEqAbs(f128, fma_f128(123123.234375, 5.0, 9.124), 615625.295875, epsilon));
+
+    // Addend dominates product.
+    try expectEqual(-1.0e4932, fma_f128(-0.6, math.floatTrueMin(f128), -1.0e4932));
+    try expectEqual(0x8000f2eb9b403234570b698042da365d, @as(u128, @bitCast(fma_f128(
+        @bitCast(@as(u128, 0xa4d80b69452301dd5a3efab045ca0371)),
+        @bitCast(@as(u128, 0x13a5efea97a6ece0f0b24ffab5fcdcb4)),
+        @bitCast(@as(u128, 0x8000f2eb9b403234570b698042da365d)),
+    ))));
+
+    // Subnormal result is rounded once.
+    try expectEqual(0x0000f5ea6135ffda377d6f2322102a7b, @as(u128, @bitCast(fma_f128(
+        @bitCast(@as(u128, 0x2d83ef38da3dc9f883f14ecb887541ce)),
+        @bitCast(@as(u128, 0x123129a960f91ee507caa6a6702fc33e)),
+        @bitCast(@as(u128, 0x0000f5ea6135ffda377d6eff2506556b)),
+    ))));
+
+    // Sign of zero.
+    try expectEqual(0x80000000000000000000000000000000, @as(u128, @bitCast(fma_f128(
+        @bitCast(@as(u128, 0x1fd32f92b54d7cefc06df6f8521f1bc3)),
+        @bitCast(@as(u128, 0x202bb49b61ca93fdb382f78b6a2a32e2)),
+        @bitCast(@as(u128, 0x8000816f87a4a3a99ed5f1db8e4c0404)),
+    ))));
 }
