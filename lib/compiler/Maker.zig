@@ -23,6 +23,7 @@ const Color = std.zig.Color;
 const Client = std.zig.Client;
 const Server = std.zig.Server;
 const EnvVar = std.zig.EnvVar;
+const ErrorBundle = std.zig.ErrorBundle;
 const default_local_zig_cache_basename = std.zig.default_local_zig_cache_basename;
 const stringToEnum = std.meta.stringToEnum;
 
@@ -35,6 +36,7 @@ const ScannedConfig = @import("Maker/ScannedConfig.zig");
 const PkgConfig = @import("Maker/PkgConfig.zig");
 const Fetch = @import("Maker/Fetch.zig");
 const Package = @import("Maker/Package.zig");
+const Manifest = Package.Manifest;
 
 pub const std_options: std.Options = .{
     .side_channels_mitigations = .none,
@@ -115,8 +117,30 @@ const InstallPaths = struct {
 };
 
 const PrintNode = struct {
-    parent: ?*PrintNode,
+    parent: ?*const PrintNode,
     last: bool = false,
+
+    fn printPrefix(node: *const PrintNode, writer: *Writer, mode: Io.Terminal.Mode) Writer.Error!void {
+        const parent = node.parent orelse return;
+        if (parent.parent == null) return;
+        try printPrefix(parent, writer, mode);
+        if (parent.last) {
+            try writer.writeAll("   ");
+        } else {
+            try printTreeSibling(writer, mode);
+        }
+    }
+
+    fn printPrefixedChild(node: *const PrintNode, writer: *Writer, mode: Io.Terminal.Mode) Writer.Error!void {
+        try printPrefix(node, writer, mode);
+        if (node.parent != null) {
+            if (node.last) {
+                try printTreeChildLast(writer, mode);
+            } else {
+                try printTreeChild(writer, mode);
+            }
+        }
+    }
 };
 
 const ErrorStyle = enum {
@@ -139,7 +163,7 @@ const ErrorStyle = enum {
 };
 const MultilineErrors = enum { indent, newline, none };
 const Summary = enum { all, new, failures, line, none };
-const PrintConfiguration = enum { none, zon, path };
+const PrintConfiguration = enum { none, zon, path, tree, stop };
 
 const GeneratedFile = struct {
     data: ?[]const u8,
@@ -296,7 +320,6 @@ pub fn main(init: process.Init.Minimal) !void {
     var cached_passthru_configure: std.ArrayList(u32) = .empty;
     var forks: std.ArrayList(Fork) = .empty;
     var system_pkg_dir_path: ?[]const u8 = null;
-    var fetch_only = false;
     var fetch_mode: Fetch.JobQueue.Mode = .needed;
     var debug_target: ?[]const u8 = null;
     var cache_poison: std.Build.Graph.CachePoison = .pure;
@@ -381,12 +404,12 @@ pub fn main(init: process.Init.Minimal) !void {
                 override_local_cache_dir = nextArgOrFatal(args, &arg_i);
             } else if (mem.eql(u8, arg, "--pkg-dir")) {
                 override_pkg_dir = nextArgOrFatal(args, &arg_i);
+            } else if (mem.eql(u8, arg, "--print-tree")) {
+                print_configuration = .tree;
+            } else if (mem.eql(u8, arg, "--configure")) {
+                print_configuration = .stop;
             } else if (mem.eql(u8, arg, "--fetch")) {
-                fetch_only = true;
-            } else if (mem.cutPrefix(u8, arg, "--fetch=")) |rest| {
-                fetch_only = true;
-                fetch_mode = stringToEnum(Fetch.JobQueue.Mode, rest) orelse
-                    fatal("expected [needed|all] after \"--fetch=\", found {q}", .{rest});
+                fetch_mode = .all;
             } else if (mem.cutPrefix(u8, arg, "--fork=")) |rest| {
                 try forks.append(arena, .init(rest));
             } else if (mem.eql(u8, arg, "--fork")) {
@@ -616,7 +639,7 @@ pub fn main(init: process.Init.Minimal) !void {
         }
     }
 
-    const early_exit_mode = fetch_only or help_menu or steps_menu or print_configuration != .none;
+    const early_exit_mode = fetch_mode == .all or help_menu or steps_menu or print_configuration != .none;
     const server_mode = !early_exit_mode and (watch_flag or webui_listen != null or fuzz != null or listen);
 
     process.raiseFileDescriptorLimit();
@@ -624,10 +647,16 @@ pub fn main(init: process.Init.Minimal) !void {
     const cwd_path = std.zig.getResolvedCwd(io, arena) catch |err|
         fatal("resolving current directory path failed: {t}", .{err});
 
-    var build_root = try findBuildRoot(arena, io, .{
+    var build_root = findBuildRoot(arena, io, .{
         .cwd_path = cwd_path,
         .build_file = build_file,
-    });
+    }) catch |err| switch (err) {
+        error.BuildZigNotFound => {
+            if (help_menu) printUsageWithoutConfiguration(&graph, "build.zig not found");
+            process.exit(1);
+        },
+        else => |e| return e,
+    };
     defer build_root.deinit(io);
 
     graph.build_root_directory = build_root.directory;
@@ -763,7 +792,7 @@ pub fn main(init: process.Init.Minimal) !void {
         var configure_source_files: Cache.Manifest.SelfContainedFiles = .empty;
         defer configure_source_files.deinit(gpa);
 
-        var configure_error_bundle: std.zig.ErrorBundle = .empty;
+        var configure_error_bundle: ErrorBundle = .empty;
         defer configure_error_bundle.deinit(gpa);
 
         // If this fails, we can still start the server and wait for user
@@ -784,7 +813,6 @@ pub fn main(init: process.Init.Minimal) !void {
             .parent_progress_node = main_progress_node,
             .fetch_mode = fetch_mode,
             .system_pkg_dir_path = system_pkg_dir_path,
-            .fetch_only = fetch_only,
             .print_configuration = print_configuration,
             .forks = forks.items,
             .src_files = &configure_source_files,
@@ -812,6 +840,8 @@ pub fn main(init: process.Init.Minimal) !void {
                     return cleanExit(io, &scanned_config);
                 },
                 .path => unreachable,
+                .tree => unreachable,
+                .stop => return cleanExit(io, &scanned_config),
             }
 
             if (graph.reference_trace == null and override == .active) graph.reference_trace = 12;
@@ -1088,7 +1118,10 @@ pub fn main(init: process.Init.Minimal) !void {
         } else |err| {
             const can_fs_watch = switch (err) {
                 error.AlreadyReported => false,
-                error.FailedButCacheIntact => true,
+                error.FailedButCacheIntact => c: {
+                    if (help_menu) printUsageWithoutConfiguration(&graph, "build.zig compilation failure");
+                    break :c true;
+                },
                 else => |e| w: {
                     log.err("configuration failed: {t}", .{e});
                     break :w false;
@@ -1108,6 +1141,17 @@ pub fn main(init: process.Init.Minimal) !void {
             }
         }
     }
+}
+
+fn printUsageWithoutConfiguration(graph: *Graph, reason: []const u8) noreturn {
+    const io = graph.io;
+    _ = io.lockStderr(&.{}, graph.stderr_mode) catch {};
+    const writer = initStdoutWriter(io);
+    ScannedConfig.printUsageWithoutConfiguration(graph.zig_exe, writer, reason) catch |err| switch (err) {
+        error.WriteFailed => fatal("failed writing to stdout: {t}", .{stdout_writer_allocation.err.?}),
+    };
+    stdout_writer_allocation.flush() catch |err| fatal("failed writing to stdout: {t}", .{err});
+    return process.exit(0);
 }
 
 /// Temporarily adds the reconfigure pseudostep to step_stack, calls
@@ -1133,11 +1177,10 @@ const ConfigureOptions = struct {
     parent_progress_node: std.Progress.Node,
     fetch_mode: Fetch.JobQueue.Mode,
     system_pkg_dir_path: ?[]const u8,
-    fetch_only: bool,
     print_configuration: PrintConfiguration,
     forks: []Fork,
     src_files: *Cache.Manifest.SelfContainedFiles,
-    error_bundle: ?*std.zig.ErrorBundle = null,
+    error_bundle: ?*ErrorBundle = null,
 };
 
 fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
@@ -1381,10 +1424,26 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
                     return error.FailedButCacheIntact;
                 }
 
-                if (options.fetch_only) {
+                if (options.print_configuration == .tree) {
+                    const NO_COLOR = EnvVar.NO_COLOR.isSet(&graph.environ_map);
+                    const CLICOLOR_FORCE = EnvVar.CLICOLOR_FORCE.isSet(&graph.environ_map);
+                    printPkgTree(.{
+                        .writer = initStdoutWriter(io),
+                        .mode = try .detect(io, .stdout(), NO_COLOR, CLICOLOR_FORCE),
+                    }, arena, &job_queue, &fetch) catch |err| switch (err) {
+                        error.WriteFailed => return stdout_writer_allocation.err.?,
+                        else => |e| return e,
+                    };
+                    try stdout_writer_allocation.flush();
+                    process.exit(0);
+                }
+
+                if (options.fetch_mode == .all) {
                     _ = io.lockStderr(&.{}, .no_color) catch {};
                     process.exit(0);
                 }
+
+                try validateFingerprints(gpa, &job_queue);
 
                 // Create the dependencies.zig file for configurer to
                 // obtain via `@import("@dependencies")`.
@@ -1448,7 +1507,7 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
                     for (fetches) |f| {
                         if (!f.have_manifest) continue;
                         if (config_man) |man| {
-                            const manifest_path = try f.package_root.join(arena, Package.Manifest.basename);
+                            const manifest_path = try f.package_root.join(arena, Manifest.basename);
                             _ = try man.addInputPath(manifest_path, .{});
                         }
                         const mod = f.cli_module orelse continue;
@@ -1665,7 +1724,8 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
             _ = io.lockStderr(&.{}, .no_color) catch {};
             process.exit(0);
         },
-        .none, .zon => {},
+        .none, .zon, .stop => {},
+        .tree => unreachable,
     }
 
     const configuration = c: {
@@ -1701,6 +1761,147 @@ fn configure(graph: *Graph, options: ConfigureOptions) !ScannedConfig {
         .top_level_steps = top_level_steps,
         .path = configuration_path,
     };
+}
+
+const ValidFingerprintKey = struct {
+    project_id: Package.ProjectId,
+    version: std.SemanticVersion,
+
+    const Context = struct {
+        pub fn hash(this: @This(), a: ValidFingerprintKey) u32 {
+            _ = this;
+            var hasher: std.hash.Wyhash = .init(a.project_id.fingerprint_id);
+            hasher.update(&a.project_id.padded_name);
+            hasher.update(@ptrCast((&a.version.major)[0..1]));
+            hasher.update(@ptrCast((&a.version.minor)[0..1]));
+            hasher.update(@ptrCast((&a.version.patch)[0..1]));
+            if (a.version.pre) |pre| hasher.update(pre);
+            return @truncate(hasher.final());
+        }
+        pub fn eql(this: @This(), a: ValidFingerprintKey, b: ValidFingerprintKey, i: usize) bool {
+            _ = this;
+            _ = i;
+            return a.project_id.eql(&b.project_id) and a.version.order(b.version) == .eq;
+        }
+    };
+};
+
+const ValidFingerprintTable = std.array_hash_map.Custom(
+    ValidFingerprintKey,
+    struct { fetch: *Fetch, pkg_hash: Package.Hash, printed: bool },
+    ValidFingerprintKey.Context,
+    true,
+);
+
+/// Ensure that the dependency tree did not have any fingerprint matches with the same semantic version but
+/// differing package hashes.
+fn validateFingerprints(gpa: Allocator, job_queue: *const Fetch.JobQueue) !void {
+    var any_errors = false;
+
+    var table: ValidFingerprintTable = .empty;
+    defer table.deinit(gpa);
+
+    for (job_queue.table.keys(), job_queue.table.values()) |pkg_hash, fetch| {
+        if (!fetch.have_manifest) continue;
+        const gop = try table.getOrPut(gpa, .{
+            .project_id = .init(fetch.manifest.name, fetch.manifest.id),
+            .version = fetch.manifest.version,
+        });
+        if (gop.found_existing) {
+            any_errors = true;
+            const fingerprint: Package.Fingerprint = .init(fetch.manifest.id, fetch.manifest.name);
+            const stripped_version: std.SemanticVersion = .{
+                .major = fetch.manifest.version.major,
+                .minor = fetch.manifest.version.minor,
+                .patch = fetch.manifest.version.patch,
+                .pre = fetch.manifest.version.pre,
+            };
+            if (!gop.value_ptr.printed) {
+                gop.value_ptr.printed = true;
+                log.err("contradictory hash for package with fingerprint 0x{x} and version {f}: {s}", .{
+                    fingerprint.int(), stripped_version, gop.value_ptr.pkg_hash.toSlice(),
+                });
+            }
+            log.err("contradictory hash for package with fingerprint 0x{x} and version {f}: {s}", .{
+                fingerprint.int(), stripped_version, pkg_hash.toSlice(),
+            });
+        } else {
+            gop.value_ptr.* = .{ .fetch = fetch, .pkg_hash = pkg_hash, .printed = false };
+        }
+    }
+    if (any_errors) {
+        log.info("potential cause: package ownership dispute", .{});
+        log.info("potential cause: maintainer neglected to bump version after making changes", .{});
+        log.info("potential cause: dependency on unreleased changes", .{});
+        log.info("hint: use --print-tree to visualize all package versions and hashes", .{});
+        return error.FailedButCacheIntact;
+    }
+}
+
+fn printPkgTree(
+    terminal: Io.Terminal,
+    arena: Allocator,
+    job_queue: *const Fetch.JobQueue,
+    root_fetch: *const Fetch,
+) !void {
+    if (!root_fetch.have_manifest) return;
+    const names = root_fetch.manifest.dependencies.keys();
+    for (names, root_fetch.manifest.dependencies.values(), 0..) |name, *dep, i| {
+        var print_node: PrintNode = .{
+            .parent = null,
+            .last = i == names.len - 1,
+        };
+        try printPkgTreeChild(terminal, arena, job_queue, &print_node, name, dep.hash);
+    }
+}
+
+fn printPkgTreeChild(
+    terminal: Io.Terminal,
+    arena: Allocator,
+    job_queue: *const Fetch.JobQueue,
+    parent_print_node: *const PrintNode,
+    dep_name: []const u8,
+    opt_hash: ?[]const u8,
+) !void {
+    const w = terminal.writer;
+    try parent_print_node.printPrefixedChild(w, terminal.mode);
+    try w.writeAll(dep_name);
+
+    const hash = opt_hash orelse {
+        try terminal.setColor(.red);
+        try w.writeAll(" (missing hash)\n");
+        try terminal.setColor(.reset);
+        return;
+    };
+    try terminal.setColor(.dim);
+    try w.print(" {s}", .{hash});
+    try terminal.setColor(.reset);
+    const child_fetch = job_queue.table.get(.fromSlice(hash)) orelse {
+        try terminal.setColor(.red);
+        try w.writeAll(" (fetch failed)\n");
+        try terminal.setColor(.reset);
+        return;
+    };
+    switch (child_fetch.lazy_status) {
+        .eager, .available => {},
+        .unavailable => {
+            try terminal.setColor(.yellow);
+            try w.writeAll(" (not fetched)\n");
+            try terminal.setColor(.reset);
+            return;
+        },
+    }
+    try w.writeByte('\n');
+    if (!child_fetch.have_manifest) return;
+
+    const names = child_fetch.manifest.dependencies.keys();
+    for (names, child_fetch.manifest.dependencies.values(), 0..) |name, *dep, i| {
+        var print_node: PrintNode = .{
+            .parent = parent_print_node,
+            .last = i == names.len - 1,
+        };
+        try printPkgTreeChild(terminal, arena, job_queue, &print_node, name, dep.hash);
+    }
 }
 
 fn cmdFetch(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
@@ -1979,8 +2180,8 @@ fn cmdFetch(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
     try ast.render(gpa, &aw.writer, fixups);
     const rendered = aw.written();
 
-    build_root.directory.handle.writeFile(io, .{ .sub_path = Package.Manifest.basename, .data = rendered }) catch |err| {
-        fatal("unable to write {s} file: {t}", .{ Package.Manifest.basename, err });
+    build_root.directory.handle.writeFile(io, .{ .sub_path = Manifest.basename, .data = rendered }) catch |err| {
+        fatal("unable to write {s} file: {t}", .{ Manifest.basename, err });
     };
 
     return process.cleanExit(io);
@@ -2182,7 +2383,7 @@ fn cmdInit(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
             const s = Dir.path.sep_str;
             const template_paths = [_][]const u8{
                 default_build_zig_basename,
-                Package.Manifest.basename,
+                Manifest.basename,
                 "src" ++ s ++ "main.zig",
                 "src" ++ s ++ "root.zig",
             };
@@ -2206,7 +2407,7 @@ fn cmdInit(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
             return process.cleanExit(io);
         },
         .minimal => {
-            Templates.writeSimpleFile(io, Io.Dir.cwd(), Package.Manifest.basename,
+            Templates.writeSimpleFile(io, Io.Dir.cwd(), Manifest.basename,
                 \\.{{
                 \\    .name = .{s},
                 \\    .version = "0.0.1",
@@ -2220,8 +2421,8 @@ fn cmdInit(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
                 builtin.zig_version_string,
                 fingerprint.int(),
             }) catch |err| switch (err) {
-                else => fatal("failed to create {q}: {t}", .{ Package.Manifest.basename, err }),
-                error.PathAlreadyExists => fatal("refusing to overwrite {q}", .{Package.Manifest.basename}),
+                else => fatal("failed to create {q}: {t}", .{ Manifest.basename, err }),
+                error.PathAlreadyExists => fatal("refusing to overwrite {q}", .{Manifest.basename}),
             };
             Templates.writeSimpleFile(io, Io.Dir.cwd(), default_build_zig_basename,
                 \\const std = @import("std");
@@ -2236,12 +2437,12 @@ fn cmdInit(gpa: Allocator, graph: *Graph, args: []const []const u8) !void {
                 // their `build.zig.zon` *after* writing their `build.zig`. So this one isn't fatal.
                 error.PathAlreadyExists => {
                     log.info("successfully populated {q}, preserving existing {q}", .{
-                        Package.Manifest.basename, default_build_zig_basename,
+                        Manifest.basename, default_build_zig_basename,
                     });
                     return process.cleanExit(io);
                 },
             };
-            log.info("successfully populated {q} and {q}", .{ Package.Manifest.basename, default_build_zig_basename });
+            log.info("successfully populated {q} and {q}", .{ Manifest.basename, default_build_zig_basename });
             return process.cleanExit(io);
         },
     }
@@ -2983,18 +3184,7 @@ fn printTreeStep(
         .failures => make_step.state == .success,
     };
     if (skip) return;
-    try printPrefix(parent_node, stderr);
-
-    if (parent_node.parent != null) {
-        if (parent_node.last) {
-            try printChildNodePrefix(stderr);
-        } else {
-            try writer.writeAll(switch (stderr.mode) {
-                .escape_codes => "\x1B\x28\x30\x74\x71\x1B\x28\x42 ", // ├─
-                else => "+- ",
-            });
-        }
-    }
+    try parent_node.printPrefixedChild(writer, stderr.mode);
 
     if (!first) try stderr.setColor(.dim);
 
@@ -3223,23 +3413,22 @@ fn printStepFailure(
     }
 }
 
-fn printPrefix(node: *PrintNode, stderr: Io.Terminal) !void {
-    const parent = node.parent orelse return;
-    const writer = stderr.writer;
-    if (parent.parent == null) return;
-    try printPrefix(parent, stderr);
-    if (parent.last) {
-        try writer.writeAll("   ");
-    } else {
-        try writer.writeAll(switch (stderr.mode) {
-            .escape_codes => "\x1B\x28\x30\x78\x1B\x28\x42  ", // │
-            else => "|  ",
-        });
-    }
+fn printTreeChild(writer: *Writer, mode: Io.Terminal.Mode) Writer.Error!void {
+    return writer.writeAll(switch (mode) {
+        .escape_codes => "\x1B\x28\x30\x74\x71\x1B\x28\x42 ", // ├─
+        else => "+- ",
+    });
 }
 
-fn printChildNodePrefix(stderr: Io.Terminal) !void {
-    try stderr.writer.writeAll(switch (stderr.mode) {
+fn printTreeSibling(writer: *Writer, mode: Io.Terminal.Mode) Writer.Error!void {
+    return writer.writeAll(switch (mode) {
+        .escape_codes => "\x1B\x28\x30\x78\x1B\x28\x42  ", // │
+        else => "|  ",
+    });
+}
+
+fn printTreeChildLast(writer: *Writer, mode: Io.Terminal.Mode) !void {
+    try writer.writeAll(switch (mode) {
         .escape_codes => "\x1B\x28\x30\x6d\x71\x1B\x28\x42 ", // └─
         else => "+- ",
     });
@@ -3333,7 +3522,7 @@ pub fn invalidateResult(maker: *Maker, step: *Step) error{MustReconfigure}!bool 
 pub fn printErrorMessages(
     maker: *Maker,
     failing_step_index: Configuration.Step.Index,
-    options: std.zig.ErrorBundle.RenderOptions,
+    options: ErrorBundle.RenderOptions,
     stderr: Io.Terminal,
     error_style: ErrorStyle,
     multiline_errors: MultilineErrors,
@@ -3359,7 +3548,7 @@ pub fn printErrorMessages(
         while (step_stack.pop()) |step_index| : (indent += 1) {
             if (indent > 0) {
                 try writer.splatByteAll(' ', (indent - 1) * 3);
-                try printChildNodePrefix(stderr);
+                try printTreeChildLast(writer, stderr.mode);
             }
 
             try writer.writeAll(step_index.ptr(c).name.slice(c));
@@ -4093,7 +4282,9 @@ const FindBuildRootOptions = struct {
     cwd_path: []const u8,
 };
 
-fn findBuildRoot(arena: Allocator, io: Io, options: FindBuildRootOptions) !BuildRoot {
+const FindBuildRootError = error{ OutOfMemory, BuildZigNotFound };
+
+fn findBuildRoot(arena: Allocator, io: Io, options: FindBuildRootOptions) FindBuildRootError!BuildRoot {
     const build_zig_basename = if (options.build_file) |bf|
         Dir.path.basename(bf)
     else
@@ -4144,11 +4335,12 @@ fn findBuildRoot(arena: Allocator, io: Io, options: FindBuildRootOptions) !Build
                 dirname = Dir.path.dirname(dirname orelse options.cwd_path) orelse {
                     log.info("initialize {s} template file with \"zig init\"", .{std.zig.build_zig_basename});
                     log.info("see \"zig --help\" for more options", .{});
-                    fatal("no build.zig file found, in the current directory or any parent directories", .{});
+                    log.err("no build.zig file found, in the current directory or any parent directories", .{});
+                    return error.BuildZigNotFound;
                 };
                 continue;
             },
-            else => |e| return e,
+            else => |e| fatal("accessing {q} while searching for build.zig file failed: {t}", .{ joined_path, e }),
         }
     }
 }
@@ -4156,8 +4348,8 @@ fn findBuildRoot(arena: Allocator, io: Io, options: FindBuildRootOptions) !Build
 const Fork = struct {
     path: Path,
     manifest_ast: std.zig.Ast,
-    manifest: Package.Manifest,
-    error_bundle: std.zig.ErrorBundle.Wip,
+    manifest: Manifest,
+    error_bundle: ErrorBundle.Wip,
     failed: bool,
     arena_allocator: std.heap.ArenaAllocator,
 
@@ -4190,12 +4382,12 @@ const Fork = struct {
         fork.arena_allocator = .init(gpa);
         const arena = fork.arena_allocator.allocator();
 
-        var error_bundle: std.zig.ErrorBundle.Wip = try .init(gpa);
+        var error_bundle: ErrorBundle.Wip = try .init(gpa);
         defer error_bundle.deinit();
 
-        const manifest_path = try fork.path.join(arena, Package.Manifest.basename);
+        const manifest_path = try fork.path.join(arena, Manifest.basename);
 
-        Package.Manifest.load(
+        Manifest.load(
             io,
             arena,
             manifest_path,
@@ -4245,20 +4437,20 @@ fn loadManifest(
     arena: Allocator,
     io: Io,
     options: LoadManifestOptions,
-) !struct { Package.Manifest, std.zig.Ast } {
+) !struct { Manifest, std.zig.Ast } {
     const rng: std.Random.IoSource = .{ .io = io };
 
     const manifest_bytes = while (true) {
         break options.dir.readFileAllocOptions(
             io,
-            Package.Manifest.basename,
+            Manifest.basename,
             arena,
-            .limited(Package.Manifest.max_bytes),
+            .limited(Manifest.max_bytes),
             .@"1",
             0,
         ) catch |err| switch (err) {
             error.FileNotFound => {
-                Templates.writeSimpleFile(io, options.dir, Package.Manifest.basename,
+                Templates.writeSimpleFile(io, options.dir, Manifest.basename,
                     \\.{{
                     \\    .name = .{s},
                     \\    .version = "0.0.1",
@@ -4272,29 +4464,29 @@ fn loadManifest(
                     builtin.zig_version_string,
                     Package.Fingerprint.generate(rng.interface(), options.root_name).int(),
                 }) catch |e| {
-                    fatal("unable to write {s}: {t}", .{ Package.Manifest.basename, e });
+                    fatal("unable to write {s}: {t}", .{ Manifest.basename, e });
                 };
                 continue;
             },
-            else => |e| fatal("unable to load {s}: {t}", .{ Package.Manifest.basename, e }),
+            else => |e| fatal("unable to load {s}: {t}", .{ Manifest.basename, e }),
         };
     };
     var ast = try std.zig.Ast.parse(gpa, manifest_bytes, .{ .mode = .zon });
     errdefer ast.deinit(gpa);
 
     if (ast.errors.len > 0) {
-        try std.zig.printAstErrorsToStderr(gpa, io, ast, Package.Manifest.basename, options.color);
+        try std.zig.printAstErrorsToStderr(gpa, io, ast, Manifest.basename, options.color);
         process.exit(2);
     }
 
-    var manifest = try Package.Manifest.parse(gpa, &ast, rng.interface(), .{});
+    var manifest = try Manifest.parse(gpa, &ast, rng.interface(), .{});
     errdefer manifest.deinit(gpa);
 
     if (manifest.errors.len > 0) {
-        var wip_errors: std.zig.ErrorBundle.Wip = try .init(gpa);
+        var wip_errors: ErrorBundle.Wip = try .init(gpa);
         defer wip_errors.deinit();
 
-        const src_path = try wip_errors.addString(Package.Manifest.basename);
+        const src_path = try wip_errors.addString(Manifest.basename);
         try manifest.copyErrorsIntoBundle(ast, src_path, &wip_errors);
 
         var error_bundle = try wip_errors.toOwnedBundle("");
@@ -4318,8 +4510,8 @@ fn sanitizeExampleName(arena: Allocator, bytes: []const u8) error{OutOfMemory}![
         else => continue,
     };
     if (!std.zig.isValidId(result.items)) return "foo";
-    if (result.items.len > Package.Manifest.max_name_len)
-        result.shrinkRetainingCapacity(Package.Manifest.max_name_len);
+    if (result.items.len > Manifest.max_name_len)
+        result.shrinkRetainingCapacity(Manifest.max_name_len);
 
     return result.toOwnedSlice(arena);
 }
