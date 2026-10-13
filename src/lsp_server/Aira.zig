@@ -262,8 +262,7 @@ pub fn derefOrUnwrap(
     ip_index: InternPool.Index,
 ) InternPool.Index {
     var ty = toType(ip_index, aira.active.pt);
-    // ...
-    switch (ty.ip_index) {
+    while (switch (aira.active.pt.zcu.intern_pool.indexToKey(switch (ty.ip_index) {
         .ptr_usize_type,
         .ptr_const_comptime_int_type,
         .manyptr_u8_type,
@@ -276,9 +275,8 @@ pub fn derefOrUnwrap(
         .manyptr_const_type_type,
         .slice_const_type_type,
         => return ty.ip_index,
-        else => {},
-    }
-    while (switch (aira.active.pt.zcu.intern_pool.indexToKey(ty.ip_index)) {
+        else => ty.ip_index,
+    })) {
         .ptr_type,
         .opt_type,
         => true,
