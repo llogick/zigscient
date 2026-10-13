@@ -737,7 +737,6 @@ fn loadBuildConfiguration(
 
     var stack: std.array_list.Managed(StackItem) = .init(arena);
     const c = &serialized;
-    // var top_level_steps: std.StringArrayHashMapUnmanaged(Configuration.Step.Index) = .empty;
     for (c.steps, 0..) |*conf_step, step_index_usize| {
         if (conf_step.owner != .root) continue;
         if (conf_step.flags(c).tag != .top_level) continue;
@@ -815,6 +814,7 @@ fn loadBuildConfiguration(
                         if (!gop.found_existing) gop.value_ptr.* = .{
                             .name = try self.allocator.dupe(u8, compile.root_name.slice(c)),
                             .mods = mods,
+                            .kind = compile.flags3.kind,
                         };
                     },
                     else => try roots_info.print(arena, "{s}{q} ({t})\n", .{

@@ -23,8 +23,10 @@ pub const Configuration = struct {
 };
 
 pub const Roots = struct {
-    /// The user selected index within map.keys()
+    /// The compile step's index within map.keys()
     index: u32 = 0,
+    /// Whether the compile step was explicitly selected with $ls root_id
+    explicitly_selected: bool = false,
     tailor_run_state: enum {
         pending,
         success,
@@ -58,6 +60,7 @@ pub const CompileStep = struct {
     name: []const u8,
     args: ?[]const []const u8 = null,
     mods: std.ArrayList(NamePathPair) = .empty,
+    kind: std.Build.Configuration.Step.Compile.Kind,
 
     pub const NamePathPair = struct {
         name: []const u8,
@@ -157,9 +160,11 @@ pub fn collectBuildConfigIncludePaths(
 pub fn triggerTailorRun(self: *BldDoc, ds: *DocumentStore) std.Io.Cancelable!void {
     self.runTailor(ds) catch |err| switch (err) {
         error.Canceled => |e| return e,
+        error.RootId0TestStepNotExplicitlySelected => {
+            log.warn("Skipped extracting compile step info: {q} : compile step index 0 is a test and not explicitly selected with '// $ls root_id 0'", .{self.flat_uri});
+        },
         else => |e| {
             log.err("Failed to extract full compile steps info for {q} : {t}", .{ self.flat_uri, e });
-            return;
         },
     };
 }
@@ -180,6 +185,10 @@ pub fn runTailor(build_file: *BldDoc, ds: *DocumentStore) !void {
     const map = config.roots.map;
     if (!(config.roots.index < map.count())) return error.RequestedRootIndexOOB;
     const step_index = map.keys()[config.roots.index];
+    if (config.roots.index == 0 and
+        map.values()[config.roots.index].kind.isTest() and
+        !config.roots.explicitly_selected)
+        return error.RootId0TestStepNotExplicitlySelected;
 
     std.debug.assert(ds.config.zig_exe_path != null);
     std.debug.assert(ds.config.global_cache_dir != null);
