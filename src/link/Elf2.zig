@@ -1210,7 +1210,7 @@ const SymbolReloc = struct {
     /// A symbol used to compute the relocated value. Precise meaning depends on `@"type"`.
     target: Symbol.Id,
     /// A signed constant used to compute the relocated value. Precise meaning depends on `@"type"`.
-    addend: i64,
+    addend: SymbolReloc.Addend,
     /// Specifies how to apply the relocation.
     ///
     /// When emitting a relocatable, this field is `undefined`.
@@ -1250,6 +1250,18 @@ const SymbolReloc = struct {
         assert(shndx != .UNDEF);
         return shndx;
     }
+
+    const Addend = packed union(u64) {
+        normal: i64,
+        /// Only valid for `Type.special(.sparc_olo10)`.
+        sparc_olo10: packed struct {
+            /// The first addend from `r_addend`.
+            a: u10,
+            /// The second addend from the upper `r_info` type bits.
+            o: i24,
+            _pad: u30 = 0,
+        },
+    };
 
     /// Instead of using the ELF relocation enums, we have our own internal representation for
     /// relocation types. This representation is more compact (requiring only 16 bits), and allows
@@ -1504,6 +1516,7 @@ const SymbolReloc = struct {
             larch_b26,
             larch_call36,
 
+            sparc_olo10,
             sparc_hix22,
             sparc_le_hix22,
             sparc_wdisp10,
@@ -1513,13 +1526,14 @@ const SymbolReloc = struct {
                 s: Special,
                 elf: *Elf,
                 target: Symbol.Id,
-                addend: u64,
+                addend: SymbolReloc.Addend,
                 dest_vaddr: u64,
                 dest_slice: []u8,
             ) error{ RelocationMisaligned, RelocationOverflow }!void {
+                const normal_addend: u64 = @bitCast(addend.normal);
                 switch (s) {
                     .larch_pcala_hi20 => {
-                        const val = target.value(elf) +% addend;
+                        const val = target.value(elf) +% normal_addend;
                         const inst: *align(1) link.loongarch.J20 = @ptrCast(dest_slice[0..4]);
                         elf.targetStore(inst, .{
                             .b0_4 = elf.targetLoad(inst).b0_4,
@@ -1528,7 +1542,7 @@ const SymbolReloc = struct {
                         });
                     },
                     .larch_pcala64_lo20 => {
-                        const val = target.value(elf) +% addend;
+                        const val = target.value(elf) +% normal_addend;
                         const inst: *align(1) link.loongarch.J20 = @ptrCast(dest_slice[0..4]);
                         elf.targetStore(inst, .{
                             .b0_4 = elf.targetLoad(inst).b0_4,
@@ -1537,7 +1551,7 @@ const SymbolReloc = struct {
                         });
                     },
                     .larch_pcala64_hi12 => {
-                        const val = target.value(elf) +% addend;
+                        const val = target.value(elf) +% normal_addend;
                         const inst: *align(1) link.loongarch.K12 = @ptrCast(dest_slice[0..4]);
                         elf.targetStore(inst, .{
                             .b0_9 = elf.targetLoad(inst).b0_9,
@@ -1547,7 +1561,7 @@ const SymbolReloc = struct {
                     },
                     .larch_b21, .larch_b26, .larch_call36 => {
                         const target_vaddr: u64 = elf.pltEntryTargetAddr(target) orelse target.value(elf);
-                        const jump_offset: i64 = @bitCast(target_vaddr +% addend -% dest_vaddr);
+                        const jump_offset: i64 = @bitCast(target_vaddr +% normal_addend -% dest_vaddr);
                         if ((jump_offset >> 2) << 2 != jump_offset) {
                             return error.RelocationMisaligned;
                         }
@@ -1606,13 +1620,26 @@ const SymbolReloc = struct {
                         }
                     },
 
+                    .sparc_olo10 => {
+                        const addends = addend.sparc_olo10;
+                        const lo10: i64 = @as(u10, @truncate(target.value(elf) +% addends.a));
+                        const simm13 = std.math.cast(i13, lo10 + addends.o) orelse return error.RelocationOverflow;
+                        const dest_ptr: *align(1) packed struct(u32) {
+                            simm13: u13,
+                            b13_31: u19,
+                        } = @ptrCast(dest_slice);
+                        elf.targetStore(dest_ptr, .{
+                            .simm13 = @bitCast(simm13),
+                            .b13_31 = elf.targetLoad(dest_ptr).b13_31,
+                        });
+                    },
                     .sparc_hix22 => {
                         const dest_ptr: *align(1) packed struct(u32) {
                             imm22: u22,
                             b22_31: u10,
                         } = @ptrCast(dest_slice);
                         elf.targetStore(dest_ptr, .{
-                            .imm22 = @truncate(~(target.value(elf) +% addend) >> 10),
+                            .imm22 = @truncate(~(target.value(elf) +% normal_addend) >> 10),
                             .b22_31 = elf.targetLoad(dest_ptr).b22_31,
                         });
                     },
@@ -1629,13 +1656,13 @@ const SymbolReloc = struct {
                             b22_31: u10,
                         } = @ptrCast(dest_slice);
                         elf.targetStore(dest_ptr, .{
-                            .imm22 = @truncate(~(target.value(elf) +% addend -% tls_size) >> 10),
+                            .imm22 = @truncate(~(target.value(elf) +% normal_addend -% tls_size) >> 10),
                             .b22_31 = elf.targetLoad(dest_ptr).b22_31,
                         });
                     },
                     .sparc_wdisp16, .sparc_wdisp10 => {
                         const target_vaddr: u64 = elf.pltEntryTargetAddr(target) orelse target.value(elf);
-                        const jump_offset: i64 = @bitCast(target_vaddr +% addend -% dest_vaddr);
+                        const jump_offset: i64 = @bitCast(target_vaddr +% normal_addend -% dest_vaddr);
                         if ((jump_offset >> 2) << 2 != jump_offset) {
                             return error.RelocationMisaligned;
                         }
@@ -1719,6 +1746,7 @@ const SymbolReloc = struct {
                         .larch_b26,
                         .larch_call36,
 
+                        .sparc_olo10,
                         .sparc_hix22,
                         .sparc_wdisp10,
                         .sparc_wdisp16,
@@ -1815,7 +1843,7 @@ const SymbolReloc = struct {
             .special => return reloc.type.action.special.applyInner(
                 elf,
                 reloc.target,
-                addend,
+                reloc.addend,
                 dest_vaddr,
                 dest_slice,
             ),
@@ -8986,7 +9014,7 @@ fn addRelocAssumeCapacity(
                 .offset = offset,
                 .type = undefined,
                 .target = target,
-                .addend = addend,
+                .addend = .{ .normal = addend },
                 .next = next,
                 .prev = .none,
                 .rela_index = rela_index.toOptional(),
@@ -9064,7 +9092,8 @@ fn addRelocAssumeCapacity(
                 _ => return error.UnknownRelocation,
                 else => return error.UnimplementedRelocation,
             },
-            .SPARCV9 => switch (@"type".SPARC) {
+            // For SPARC, only the 8 lower bits represent the type. See the `R_SPARC_OLO10` prong below for more info.
+            .SPARCV9 => switch (@as(std.elf.R_SPARC, @fromBackingInt(@as(u8, @truncate(@backingInt(@"type".SPARC)))))) {
                 .NONE => {},
                 _ => return error.UnknownRelocation,
 
@@ -9085,9 +9114,6 @@ fn addRelocAssumeCapacity(
                 .PCPLT22,
                 .PCPLT10,
                 => return error.UnimplementedRelocation,
-
-                // Needs to use the second addend in `ELF64_R_TYPE_DATA(reloc.r_info)` which we currently can't model.
-                .OLO10 => return error.UnimplementedRelocation,
 
                 // Does not patch any bytes. Together with `STT_SPARC_REGISTER`, this is used to indicate that an object
                 // file owns a global register and what value it should be initialized to. I don't think this sees any
@@ -9174,6 +9200,20 @@ fn addRelocAssumeCapacity(
                     });
                     try elf.addSymbolRelocAssumeCapacity(node, offset, callee_sym, addend, .simple(.pltrel, .{ .dest = .@"32[29:0]", .cast = .signed, .shift = .@"2_exact" }));
                 },
+
+                // `R_SPARC_OLO10` packs a secondary addend into the upper 24 bits. Conceptually, this relocation is
+                // just `R_SPARC_LO10` (with `r_addend`) + `R_SPARC_13` (with `r_info` addend) applied in sequence. We
+                // can neatly fit both into the single `addend` value, to be handled by `SymbolReloc.Special.applyInner`.
+                .OLO10 => |t| try elf.addSymbolRelocAssumeCapacityInner(
+                    node,
+                    offset,
+                    target,
+                    .{ .sparc_olo10 = .{
+                        .a = @truncate(@as(u64, @bitCast(addend))),
+                        .o = @truncate(@as(i32, @bitCast(@backingInt(t) >> 8))),
+                    } },
+                    .special(.sparc_olo10),
+                ),
 
                 // The following relocations are all represented by the ABI as writing to a 13 bit
                 // field (32[12:0]), but masking out some bits of the value. To simplify our logic
@@ -9325,6 +9365,16 @@ fn addSymbolRelocAssumeCapacity(
     addend: i64,
     @"type": SymbolReloc.Type,
 ) Error!void {
+    return elf.addSymbolRelocAssumeCapacityInner(node, offset, target, .{ .normal = addend }, @"type");
+}
+fn addSymbolRelocAssumeCapacityInner(
+    elf: *Elf,
+    node: MappedFile.Node.Index,
+    offset: u64,
+    target: Symbol.Id,
+    addend: SymbolReloc.Addend,
+    @"type": SymbolReloc.Type,
+) Error!void {
     assert(elf.ehdrType() != .REL);
 
     const rela_index: Section.RelaIndex.Optional = r: {
@@ -9353,6 +9403,7 @@ fn addSymbolRelocAssumeCapacity(
                 .larch_pcala64_lo20,
                 .larch_pcala64_hi12,
 
+                .sparc_olo10,
                 .sparc_hix22,
                 => true,
 
@@ -9447,7 +9498,7 @@ fn addSymbolRelocAssumeCapacity(
                     .type = dynamic_reloc_type,
                     .offset = node_vaddr + offset,
                     .raw_sym_index = target.unwrap().global.dynsymIndex(elf).?,
-                    .addend = addend,
+                    .addend = addend.normal,
                 }).toOptional();
             },
         }
