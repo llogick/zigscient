@@ -75,12 +75,15 @@ pub fn syscall4(
     arg3: syscall_arg_t,
     arg4: syscall_arg_t,
 ) u64 {
+    // $7 is both an input and a clobber.
+    var r7_out: syscall_arg_t = undefined;
     return asm volatile (
         \\ syscall
         \\ beq $a3, $zero, 1f
         \\ dsubu $v0, $zero, $v0
         \\1:
         : [ret] "={$2}" (-> u64),
+          [r7_out] "={$7}" (r7_out),
         : [number] "{$2}" (@backingInt(number)),
           [arg1] "{$4}" (arg1),
           [arg2] "{$5}" (arg2),
@@ -97,12 +100,15 @@ pub fn syscall5(
     arg4: syscall_arg_t,
     arg5: syscall_arg_t,
 ) u64 {
+    // $7 is both an input and a clobber.
+    var r7_out: syscall_arg_t = undefined;
     return asm volatile (
         \\ syscall
         \\ beq $a3, $zero, 1f
         \\ dsubu $v0, $zero, $v0
         \\1:
         : [ret] "={$2}" (-> u64),
+          [r7_out] "={$7}" (r7_out),
         : [number] "{$2}" (@backingInt(number)),
           [arg1] "{$4}" (arg1),
           [arg2] "{$5}" (arg2),
@@ -121,12 +127,15 @@ pub fn syscall6(
     arg5: syscall_arg_t,
     arg6: syscall_arg_t,
 ) u64 {
+    // $7 is both an input and a clobber.
+    var r7_out: syscall_arg_t = undefined;
     return asm volatile (
         \\ syscall
         \\ beq $a3, $zero, 1f
         \\ dsubu $v0, $zero, $v0
         \\1:
         : [ret] "={$2}" (-> u64),
+          [r7_out] "={$7}" (r7_out),
         : [number] "{$2}" (@backingInt(number)),
           [arg1] "{$4}" (arg1),
           [arg2] "{$5}" (arg2),
