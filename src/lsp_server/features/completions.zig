@@ -909,20 +909,33 @@ fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.Posi
         if (!DocumentStore.supports_build_system) {
             // no build system modules
         } else if (DocumentStore.isBuildFile(builder.orig_handle.uri)) blk: {
-            // NOTE deps_build_roots are currently not available in the serialized configuration
-            // const build_file = store.getBuildFile(builder.orig_handle.uri) orelse break :blk;
-            // const build_config = build_file.tryLockConfig(store.io) orelse break :blk;
-            // defer build_file.unlockConfig(store.io);
-
-            // try builder.completions.ensureUnusedCapacity(builder.arena, build_config.deps_build_roots.len);
-            // for (build_config.deps_build_roots) |dbr| {
-            //     builder.completions.appendAssumeCapacity(.{
-            //         .label = dbr.name,
-            //         .kind = .Module,
-            //         .detail = dbr.path,
-            //         .sortText = "4",
-            //     });
-            // }
+            const handle = builder.orig_handle;
+            const self = builder.server;
+            const arena = builder.arena;
+            const zdoc_path = URI.toFsPath(arena, handle.uri) catch break :blk;
+            const zon_path = try arena.print("{s}.zon", .{zdoc_path});
+            std.Io.Dir.accessAbsolute(self.io, zon_path, .{}) catch |err| switch (err) {
+                error.Canceled => return error.Canceled,
+                else => break :blk,
+            };
+            const zon_src = try DocumentStore.readFile(&self.document_store, URI.fromPath(arena, zon_path) catch break :blk) orelse break :blk;
+            defer self.allocator.free(zon_src);
+            const zon_ast = try std.zig.Ast.parse(arena, zon_src, .{ .mode = .zon });
+            if (zon_ast.errors.len != 0) break :blk;
+            var buffer: [2]std.zig.Ast.Node.Index = undefined;
+            var si = zon_ast.fullStructInit(&buffer, zon_ast.rootDecls()[0]) orelse break :blk;
+            const deps_fld = for (si.ast.fields) |fld| {
+                if (std.mem.eql(u8, zon_ast.tokenSlice(zon_ast.firstToken(fld) - 2), "dependencies")) break fld;
+            } else break :blk;
+            si = zon_ast.fullStructInit(&buffer, deps_fld) orelse break :blk;
+            try builder.completions.ensureUnusedCapacity(builder.arena, si.ast.fields.len);
+            for (si.ast.fields) |fld| {
+                builder.completions.appendAssumeCapacity(.{
+                    .label = try arena.dupe(u8, zon_ast.tokenSlice(zon_ast.firstToken(fld) - 2)),
+                    .kind = .Module,
+                    .sortText = "4",
+                });
+            }
             break :blk;
         } else if (builder.orig_handle.closest_build_file_uri) |uri| blk: {
             const build_file = store.getBuildFile(uri) orelse break :blk;

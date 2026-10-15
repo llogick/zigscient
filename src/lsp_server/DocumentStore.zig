@@ -131,7 +131,7 @@ pub fn getHandle(self: *DocumentStore, uri: Uri) ?*Handle {
     return self.handles.get(uri);
 }
 
-fn readFile(self: *DocumentStore, uri: Uri) error{ Canceled, OutOfMemory }!?[:0]u8 {
+pub fn readFile(self: *DocumentStore, uri: Uri) error{ Canceled, OutOfMemory }!?[:0]u8 {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -1351,16 +1351,63 @@ pub fn uriFromImportStr(self: *DocumentStore, allocator: std.mem.Allocator, hand
 
     if (supports_build_system) {
         if (isBuildFile(handle.uri)) blk: {
-            // NOTE deps_build_roots are currently not available in the serialized configuration
-            // const build_file = self.getBuildFile(handle.uri) orelse break :blk;
-            // const build_config = build_file.tryLockConfig(self.io) orelse break :blk;
-            // defer build_file.unlockConfig(self.io);
-
-            // for (build_config.deps_build_roots) |dep_build_root| {
-            //     if (std.mem.eql(u8, import_str, dep_build_root.name)) {
-            //         return try URI.fromPath(allocator, dep_build_root.path);
-            //     }
-            // }
+            if (std.mem.endsWith(u8, import_str, ".zig")) break :blk;
+            var arena_instance: std.heap.ArenaAllocator = .init(allocator);
+            defer arena_instance.deinit();
+            const arena = arena_instance.allocator();
+            const zdoc_path = URI.toFsPath(arena, handle.uri) catch return null;
+            const zon_path = try arena.print("{s}.zon", .{zdoc_path});
+            std.Io.Dir.accessAbsolute(self.io, zon_path, .{}) catch |err| switch (err) {
+                error.Canceled => return error.Canceled,
+                else => return null,
+            };
+            const zon_src = try readFile(self, URI.fromPath(arena, zon_path) catch return null) orelse return null;
+            defer self.allocator.free(zon_src);
+            const zon_ast = try std.zig.Ast.parse(arena, zon_src, .{ .mode = .zon });
+            if (zon_ast.errors.len != 0) return null;
+            var buffer: [2]std.zig.Ast.Node.Index = undefined;
+            var si = zon_ast.fullStructInit(&buffer, zon_ast.rootDecls()[0]) orelse return null;
+            const deps_fld = for (si.ast.fields) |fld| {
+                if (std.mem.eql(u8, zon_ast.tokenSlice(zon_ast.firstToken(fld) - 2), "dependencies")) break fld;
+            } else return null;
+            si = zon_ast.fullStructInit(&buffer, deps_fld) orelse return null;
+            const dep_decl_fld = for (si.ast.fields) |fld| {
+                if (std.mem.eql(u8, zon_ast.tokenSlice(zon_ast.firstToken(fld) - 2), import_str)) break fld;
+            } else return null;
+            si = zon_ast.fullStructInit(&buffer, dep_decl_fld) orelse return null;
+            for (si.ast.fields) |fld| {
+                if (std.mem.eql(u8, zon_ast.tokenSlice(zon_ast.firstToken(fld) - 2), "hash")) {
+                    if (zon_ast.nodeTag(fld) != .string_literal) return null;
+                    const hash = offsets.nodeToSlice(&zon_ast, fld);
+                    if (hash.len < 2) return null;
+                    const resolved_path = try std.Io.Dir.path.resolveAlloc(arena, &.{
+                        std.Io.Dir.path.dirname(zdoc_path) orelse return null,
+                        "zig-pkg",
+                        hash[1 .. hash.len - 1],
+                        "build.zig",
+                    });
+                    std.Io.Dir.accessAbsolute(self.io, resolved_path, .{}) catch |err| switch (err) {
+                        error.Canceled => return error.Canceled,
+                        else => return null,
+                    };
+                    return try URI.fromPath(allocator, resolved_path);
+                }
+                if (std.mem.eql(u8, zon_ast.tokenSlice(zon_ast.firstToken(fld) - 2), "path")) {
+                    if (zon_ast.nodeTag(fld) != .string_literal) return null;
+                    const path = offsets.nodeToSlice(&zon_ast, fld);
+                    if (path.len < 2) return null;
+                    const resolved_path = try std.Io.Dir.path.resolveAlloc(arena, &.{
+                        std.Io.Dir.path.dirname(zdoc_path) orelse return null,
+                        path[1 .. path.len - 1],
+                        "build.zig",
+                    });
+                    std.Io.Dir.accessAbsolute(self.io, resolved_path, .{}) catch |err| switch (err) {
+                        error.Canceled => return error.Canceled,
+                        else => return null,
+                    };
+                    return try URI.fromPath(allocator, resolved_path);
+                }
+            }
             break :blk;
         } else {
             closest: {
