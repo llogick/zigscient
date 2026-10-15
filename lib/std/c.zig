@@ -3329,7 +3329,18 @@ const common_linux_Sigaction = extern struct {
 
 /// Renamed from `sigaction` to `Sigaction` to avoid conflict with function name.
 pub const Sigaction = switch (native_os) {
-    .linux => switch (native_arch) {
+    .linux => if (builtin.abi.isAndroid() and builtin.target.ptrBitWidth() == 64) extern struct {
+        pub const handler_fn = *align(1) const fn (SIG) callconv(.c) void;
+        pub const sigaction_fn = *const fn (SIG, *const siginfo_t, ?*anyopaque) callconv(.c) void;
+
+        flags: c_uint,
+        handler: extern union {
+            handler: ?handler_fn,
+            sigaction: ?sigaction_fn,
+        },
+        mask: sigset_t,
+        restorer: ?*const fn () callconv(.c) void = null,
+    } else switch (native_arch) {
         .mips,
         .mipsel,
         .mips64,
@@ -4967,7 +4978,8 @@ pub const siginfo_t = switch (native_os) {
     else => void,
 };
 pub const sigset_t = switch (native_os) {
-    .linux => [1024 / @bitSizeOf(c_ulong)]c_ulong, // glibc and musl present a 1024-bit sigset_t, while kernel's is 128-bit or less.
+    // glibc and musl present a 1024-bit sigset_t, while kernel's (and bionic's) is 128-bit or less.
+    .linux => if (builtin.abi.isAndroid()) c_ulong else [1024 / @bitSizeOf(c_ulong)]c_ulong,
     .emscripten => emscripten.sigset_t,
     // https://github.com/SerenityOS/serenity/blob/ec492a1a0819e6239ea44156825c4ee7234ca3db/Kernel/API/POSIX/signal.h#L19
     .openbsd, .serenity => u32,
