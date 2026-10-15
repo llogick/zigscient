@@ -435,6 +435,7 @@ fn fromZoirInner(
         .arena = options.arena,
         .ast = options.ast,
         .zoir = options.zoir,
+        .node = options.node,
         .errors = &errors,
         .ignore_unknown_fields = options.ignore_unknown_fields,
     });
@@ -4949,6 +4950,47 @@ test "std.zon variants" {
             end,
         );
     }
+}
+
+test "std.zon parse specific node with zoir" {
+    const gpa = std.testing.allocator;
+    var arena_allocator: ArenaAllocator = .init(gpa);
+    defer arena_allocator.deinit();
+    const arena = arena_allocator.allocator();
+    var diagnostics: Diagnostics = undefined;
+
+    var ast = try std.zig.Ast.parse(gpa, ".{ .x = 1.5, .y = 2.5 }", .{ .mode = .zon });
+    defer ast.deinit(gpa);
+
+    var zoir = try ZonGen.generate(gpa, ast, .{ .parse_str_lits = false });
+    defer zoir.deinit(gpa);
+
+    const root_node: std.zig.Zoir.Node = std.zig.Zoir.Node.Index.get(.root, &zoir);
+
+    try std.testing.expect(root_node == .struct_literal);
+    try std.testing.expectEqual(2, root_node.struct_literal.vals.len);
+
+    const x_node = root_node.struct_literal.vals.at(0);
+    const x_result = try fromZoirNoAlloc(f32, .{
+        .arena = arena,
+        .ast = &ast,
+        .zoir = &zoir,
+        .node = x_node,
+        .diagnostics = &diagnostics,
+    });
+
+    try std.testing.expectApproxEqAbs(x_result, 1.5, 0.1);
+
+    const y_node = root_node.struct_literal.vals.at(1);
+    const y_result = try fromZoirNoAlloc(f32, .{
+        .arena = arena,
+        .ast = &ast,
+        .zoir = &zoir,
+        .node = y_node,
+        .diagnostics = &diagnostics,
+    });
+
+    try std.testing.expectApproxEqAbs(y_result, 2.5, 0.1);
 }
 
 test {
