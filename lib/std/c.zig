@@ -9187,9 +9187,15 @@ pub const V = switch (native_os) {
 };
 
 pub const NCCS = switch (native_os) {
-    .linux => linux.NCCS,
+    .linux => if (native_abi.isGnu())
+        32
+    else if (native_abi.isMusl())
+        if (native_arch.isPowerpc()) 19 else 32
+    else
+        linux.NCCS,
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos, .freebsd, .netbsd, .openbsd, .dragonfly => 20,
     .haiku => 11,
+    .hurd => 20,
     .illumos => 19,
     // https://github.com/SerenityOS/serenity/blob/d277cdfd4c7ed21d5248a83217ae03b9f890c3c8/Kernel/API/POSIX/termios.h#L15
     .emscripten, .wasi, .serenity => 32,
