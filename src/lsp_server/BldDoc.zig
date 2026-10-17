@@ -265,9 +265,12 @@ pub fn runTailor(build_file: *BldDoc, ds: *DocumentStore) !void {
     const json = std.json.parseFromSlice(
         lsp_server.Maker.CompileStepsInfo,
         arena,
-        tailor_run_result.stdout,
+        tailor_run_result.stdout[if (std.mem.findLast(u8, tailor_run_result.stdout, lsp_server.Maker.custom_json_data_prefix ++ "{")) |cjdi| cjdi + lsp_server.Maker.custom_json_data_prefix.len else 0..],
         parse_options,
-    ) catch return error.InvalidBuildConfig;
+    ) catch {
+        log.err("Unexpected IntegratedMaker output:\n{s}", .{tailor_run_result.stdout});
+        return error.InvalidBuildConfig;
+    };
     defer json.deinit();
 
     for (json.value.compile_steps_info) |csi| {

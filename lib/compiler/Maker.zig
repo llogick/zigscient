@@ -198,6 +198,7 @@ pub const CliModule = struct {
 const Override = enum { inactive, active, print_configuration, watch };
 var override: Override = .inactive;
 pub const step_index_arg_prefix = "#$!:";
+pub const custom_json_data_prefix = "###LS_JSON_DATA###\n";
 
 pub fn main(init: process.Init.Minimal) !void {
     // The build runner is long-lived in the following use cases:
@@ -1019,6 +1020,7 @@ pub fn main(init: process.Init.Minimal) !void {
                     );
 
                     var file_writer = std.Io.File.stdout().writer(io, &.{});
+                    file_writer.interface.writeAll(custom_json_data_prefix) catch return file_writer.err.?;
                     file_writer.interface.writeAll(stringified_build_config) catch return file_writer.err.?;
                     std.process.exit(0);
                 }
