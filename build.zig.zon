@@ -30,8 +30,8 @@
             // .path = "../../../lws-lsp-kit",
         },
         .extended_zccs = .{
-            .url = "https://github.com/llogick/extended-zccs/archive/02bccbf4d4d4be11221a291b5d129d759a1b7b9d.tar.gz",
-            .hash = "extended_zccs-0.17.0-dev-zEaUNtFwDgBMEtl0u8RdgZxFVSZ7PG8iYSF4zl6CD292",
+            .url = "https://github.com/llogick/extended-zccs/archive/2df554f5e03585cff4245ee05481ee3273bcd7e2.tar.gz",
+            .hash = "extended_zccs-0.17.0-dev-zEaUNo5wDgD6Hfoc0DymCIky_rSpjPZavrf9JxMDtpye",
             //.path = "../../../extended-zccs",
         },
         .tracy = .{
